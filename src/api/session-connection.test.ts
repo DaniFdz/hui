@@ -186,6 +186,35 @@ test("an opening socket that only receives heartbeats is replaced after 20 secon
   stop();
 });
 
+test("a socket silent before its first frame is replaced within one minute", { timeout: 20_000 }, async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  let upgraded = false;
+  const gw = await gateway((socket) => {
+    socket.once("pong", () => { upgraded = true; });
+    socket.ping();
+  });
+  t.onTestFinished(gw.close);
+  const states: SessionConnection[] = [];
+  const stop = subscribeSession("alpha", handlers({ onConnection: (state) => states.push(state) }));
+  t.onTestFinished(stop);
+
+  await until(() => upgraded, "the transport should finish its handshake");
+  await settle();
+  vi.advanceTimersByTime(59_999);
+  await settle();
+  assert.equal(gw.tickets(), 1);
+  assert.equal(states.length, 0, "a protocol pong is not application state");
+  vi.advanceTimersByTime(1);
+  await settle();
+  await until(() => gw.sockets[0]?.readyState === WebSocket.CLOSED, "a socket silent since upgrade should be dropped");
+  vi.advanceTimersByTime(1_000);
+  await settle();
+  await until(() => gw.tickets() === 2, "the silent opening should get a new ticket");
+  assert.ok(!states.includes("live"));
+  stop();
+});
+
 test("a silent live stream reconnects after 40 seconds", { timeout: 20_000 }, async (t) => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   t.onTestFinished(() => { vi.useRealTimers(); });

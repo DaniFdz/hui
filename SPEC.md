@@ -550,11 +550,14 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
 - Loading, no matching data, partial data and read failures are explicit. Controls
   work with the keyboard and fit phone widths. No provider credentials, prompts,
   message bodies, tool arguments or tool output enter the usage response.
-- The gateway reads every history once and answers range, zone and filter changes
-  from that scan, so those interactions stay responsive on a large session list.
-  Refresh, and the first read after recorded activity changes, reads them again.
-  A compaction ending updates that activity, so its spend appears on the next
-  read without a manual refresh.
+- The gateway keeps one range-independent scan per time zone and answers range,
+  zone and filter changes from it, so those interactions stay responsive on a
+  large session list. Recorded activity reads only appended entries; safely
+  added sessions reuse the histories already counted, while changes that may
+  reassign history require a full read. Refresh always requests a full read,
+  including when an incremental read is in progress. An interrupted conversation
+  read contributes no partial counters to the cache. A compaction ending updates
+  activity, so its spend appears on the next read without a manual refresh.
 
 ---
 
@@ -1140,8 +1143,8 @@ restoring live controls; a different build offers **Reload HUI** instead. Offlin
 reload requires HTTPS or localhost, where browsers allow service workers.
 
 Detailed chat connections receive an application heartbeat every 15 seconds.
-An opening socket cannot wait indefinitely, and 40 seconds without an incoming
-application frame causes a reconnect. A send unanswered for five seconds starts
+A heartbeat alone cannot make a conversation live, and 40 seconds without an
+incoming application frame after it is live causes a reconnect. A send unanswered for five seconds starts
 a liveness check, with another ten seconds for incoming traffic to prove the
 socket is alive. Returning to a visible tab or regaining connectivity can shorten
 a retry after a fresh gateway response. Live sockets are not replaced merely
@@ -1160,7 +1163,20 @@ question frames. Each pane caches three visited session views (including
 the current view), retaining extra views only while they hold an unsaved queue
 edit. Cached and narrow-hidden views stay mounted until evicted or
 the pane closes. Sessions only listed in the sidebar do not broadcast every
-token to the browser. Closing a view releases its subscription, not its runtime.
+token to the browser. Closing a view releases its subscription, not its runtime. It also cancels
+unfinished reads of that view, so an evicted or replaced conversation does not
+keep downloading a response nobody will use.
+
+An opening request has a 20-second response-header deadline. A JSON download
+may take longer while bytes keep arriving; 40 seconds without body progress
+fails the read and shows the existing **Try again** action instead of leaving
+the conversation loading forever. Session-stream ticket acquisition and the
+WebSocket handshake each have a 20-second deadline and use the existing retry
+backoff. The handshake deadline ends when the socket opens, not when its first
+snapshot finishes downloading. A socket may take up to 60 seconds to deliver its
+first frame, so a connection lost immediately after the handshake cannot wait
+forever. A heartbeat before any state bounds the wait for state to 20 seconds
+from socket establishment.
 
 The Sessions page also projects ephemeral runtime cost: loaded runtime count,
 best-effort process-tree RSS, measured startup duration and the heaviest loaded

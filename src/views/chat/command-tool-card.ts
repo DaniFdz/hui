@@ -55,7 +55,6 @@ export function renderCommandToolCard(item: Tool, options: {
   if (!view) return html``;
   const running = (item.status ?? "running") === "running";
   const failed = item.failed || item.status === "failed";
-  const copy = (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, item.output ?? "", options.onCopy);
   return html`<div class="chat-tool-msg-collapse chat-tool-msg-collapse--manual ${options.expanded ? "is-open" : ""}" data-tool-id=${item.id}>
     <button class="chat-inline-disclosure chat-tool-msg-summary chat-tool-row ${running ? "chat-tool-row--running" : ""}"
       type="button" aria-expanded=${String(options.expanded)}
@@ -66,14 +65,24 @@ export function renderCommandToolCard(item: Tool, options: {
       ${failed && !options.expanded ? html`<span class="chat-tool-failure">failed</span>` : nothing}
       <span class="chat-tool-row__chevron" aria-hidden="true">${icons.chevron}</span>
     </button>
-    ${options.expanded ? html`<div class="chat-tool-msg-body"><div class="chat-tool-card chat-tool-card--flush ${failed ? "chat-tool-card--error" : ""}"
-      tabindex="0" @contextmenu=${copy} @keydown=${copy}>
-      <div class="chat-tool-card__actions"></div>
-      <div class="chat-tool-term"><div class="chat-tool-term__cmd"><span class="chat-tool-term__prompt">$</span><code>${guard([view.command], () => renderHighlightedCommand(view.command))}</code></div>
-        ${item.output?.trim() ? html`<pre class="chat-tool-term__out"><code>${item.output}</code></pre>` : nothing}
-      </div>
-      ${view.extras.length > 0 ? html`<div class="chat-tool-kv">${view.extras.map(([key, value]) => html`<div class="chat-tool-kv__row"><span class="chat-tool-kv__key">${key}:</span><span class="chat-tool-kv__value">${displayToolValue(value)}</span></div>`)}</div>` : nothing}
-      <div class="chat-tool-card__outcome">${failed ? "failed" : running ? "Running" : "Completed"}</div>
-    </div></div>` : nothing}
+    ${options.expanded ? renderCommandToolBody(item, { onCopy: options.onCopy }) : nothing}
   </div>`;
+}
+
+/** The opened terminal card on its own, for a command row inside a tool-call group. */
+export function renderCommandToolBody(item: Tool, options: { onCopy: (text: string) => Promise<boolean> }) {
+  const view = commandToolPresentation(item);
+  if (!view) return html``;
+  const running = (item.status ?? "running") === "running";
+  const failed = item.failed || item.status === "failed";
+  const copy = (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, item.output ?? "", options.onCopy);
+  return html`<div class="chat-tool-msg-body"><div class="chat-tool-card chat-tool-card--flush ${failed ? "chat-tool-card--error" : ""}"
+    tabindex="0" @contextmenu=${copy} @keydown=${copy}>
+    <div class="chat-tool-card__actions"></div>
+    <div class="chat-tool-term"><div class="chat-tool-term__cmd"><span class="chat-tool-term__prompt">$</span><code>${guard([view.command], () => renderHighlightedCommand(view.command))}</code></div>
+      ${item.output?.trim() ? html`<pre class="chat-tool-term__out"><code>${item.output}</code></pre>` : nothing}
+    </div>
+    ${view.extras.length > 0 ? html`<div class="chat-tool-kv">${view.extras.map(([key, value]) => html`<div class="chat-tool-kv__row"><span class="chat-tool-kv__key">${key}:</span><span class="chat-tool-kv__value">${displayToolValue(value)}</span></div>`)}</div>` : nothing}
+    <div class="chat-tool-card__outcome">${failed ? "failed" : running ? "Running" : "Completed"}</div>
+  </div></div>`;
 }

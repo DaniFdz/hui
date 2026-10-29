@@ -125,8 +125,6 @@ export function renderCodemodeToolCard(item: Tool, options: {
   const view = codemodeToolPresentation(item);
   if (!view) return html``;
   const failed = view.state === "failed";
-  const copy = (text: string) => (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, text, options.onCopy);
-  const errorAt = view.output.search(/^Script error:/mu);
   return html`<div class="chat-tool-msg-collapse chat-tool-msg-collapse--manual chat-tool-codemode ${options.expanded ? "is-open" : ""}" data-tool-id=${item.id}>
     <button class="chat-inline-disclosure chat-tool-msg-summary chat-tool-row ${view.state === "running" ? "chat-tool-row--running" : ""}"
       type="button" aria-expanded=${String(options.expanded)}
@@ -138,21 +136,31 @@ export function renderCodemodeToolCard(item: Tool, options: {
       ${view.wallSeconds ? html`<span class="chat-tool-codemode__time">${view.wallSeconds}s</span>` : nothing}
       <span class="chat-tool-row__chevron" aria-hidden="true">${icons.chevron}</span>
     </button>
-    ${options.expanded ? html`<div class="chat-tool-msg-body"><div class="chat-tool-card ${failed ? "chat-tool-card--error" : ""}">
-      <section class="chat-tool-card__block" tabindex="0" aria-label="Script" @contextmenu=${copy(view.code)} @keydown=${copy(view.code)}>
-        <div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Script</span></div>
-        <pre class="chat-tool-card__block-content chat-tool-codemode__script"><code>${renderScript(view.code)}</code></pre>
-      </section>
-      ${view.calls.length ? html`<section class="chat-tool-card__block">
-        <div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Calls · ${view.calls.length}</span></div>
-        <ol class="chat-tool-codemode__calls" tabindex="0" aria-label="Calls">${view.calls.map(renderCall)}</ol>
-      </section>` : nothing}
-      ${view.output ? html`<section class="chat-tool-card__block" tabindex="0" aria-label="Output" @contextmenu=${copy(item.output ?? "")} @keydown=${copy(item.output ?? "")}>
-        <div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Output</span></div>
-        <pre class="chat-tool-card__block-content"><code>${errorAt < 0 ? view.output : html`${view.output.slice(0, errorAt)}<span class="chat-tool-codemode__script-error">${view.output.slice(errorAt)}</span>`}</code></pre>
-        ${view.fullOutputPath ? html`<div class="chat-tool-kv"><div class="chat-tool-kv__row"><span class="chat-tool-kv__key">Full output:</span><span class="chat-tool-kv__value">${renderToolFileReference(view.fullOutputPath)}</span></div></div>` : nothing}
-      </section>` : nothing}
-      <div class="chat-tool-card__outcome">${outcome(view)}</div>
-    </div></div>` : nothing}
+    ${options.expanded ? renderCodemodeToolBody(item, { onCopy: options.onCopy }) : nothing}
   </div>`;
+}
+
+/** The opened codemode card on its own, for a codemode row inside a tool-call group. */
+export function renderCodemodeToolBody(item: Tool, options: { onCopy: (text: string) => Promise<boolean> }) {
+  const view = codemodeToolPresentation(item);
+  if (!view) return html``;
+  const failed = view.state === "failed";
+  const copy = (text: string) => (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, text, options.onCopy);
+  const errorAt = view.output.search(/^Script error:/mu);
+  return html`<div class="chat-tool-msg-body"><div class="chat-tool-card ${failed ? "chat-tool-card--error" : ""}">
+    <section class="chat-tool-card__block" tabindex="0" aria-label="Script" @contextmenu=${copy(view.code)} @keydown=${copy(view.code)}>
+      <div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Script</span></div>
+      <pre class="chat-tool-card__block-content chat-tool-codemode__script"><code>${renderScript(view.code)}</code></pre>
+    </section>
+    ${view.calls.length ? html`<section class="chat-tool-card__block">
+      <div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Calls · ${view.calls.length}</span></div>
+      <ol class="chat-tool-codemode__calls" tabindex="0" aria-label="Calls">${view.calls.map(renderCall)}</ol>
+    </section>` : nothing}
+    ${view.output ? html`<section class="chat-tool-card__block" tabindex="0" aria-label="Output" @contextmenu=${copy(item.output ?? "")} @keydown=${copy(item.output ?? "")}>
+      <div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Output</span></div>
+      <pre class="chat-tool-card__block-content"><code>${errorAt < 0 ? view.output : html`${view.output.slice(0, errorAt)}<span class="chat-tool-codemode__script-error">${view.output.slice(errorAt)}</span>`}</code></pre>
+      ${view.fullOutputPath ? html`<div class="chat-tool-kv"><div class="chat-tool-kv__row"><span class="chat-tool-kv__key">Full output:</span><span class="chat-tool-kv__value">${renderToolFileReference(view.fullOutputPath)}</span></div></div>` : nothing}
+    </section>` : nothing}
+    <div class="chat-tool-card__outcome">${outcome(view)}</div>
+  </div></div>`;
 }

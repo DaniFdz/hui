@@ -42,6 +42,7 @@ export type OptChatState = { enabled: boolean; name: string; model?: string; thi
 export const OptChatDoc = defineDoc<OptChatState>({
   kind: "hui.optchat", version: 1, scope: "conversation", history: "latest", fork: "initial",
   initial: () => ({ enabled: false, name: "" }),
+  checkpointWhen: () => false,
 });
 
 /** The global extension (hooks and the prompt section), in every conversation's default selection. */

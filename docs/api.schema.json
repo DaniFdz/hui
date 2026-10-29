@@ -10122,7 +10122,8 @@
             "collapseTaskProgress",
             "sendShortcut",
             "githubEmbeds",
-            "datadogEmbeds"
+            "datadogEmbeds",
+            "toolMarks"
           ],
           "properties": {
             "messageWidth": {
@@ -10161,6 +10162,14 @@
             },
             "datadogEmbeds": {
               "type": "boolean"
+            },
+            "toolMarks": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "type": "string"
+                }
+              }
             }
           }
         },

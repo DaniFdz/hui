@@ -13,7 +13,7 @@ import type { CallRecord } from "./schema/calls.ts";
 import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionThinkingResponse, SideQuestionResult, SubagentTaskView } from "./schema/session-events.ts";
 import type { TaskSuggestion } from "./schema/task-suggestions.ts";
 import type { Watcher } from "./schema/watchers.ts";
-import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
+import { CLIENT_HEADERS, fetchJson, RESPONSE_TIMEOUT_MS, trackedFetch } from "./request.ts";
 import { OutdatedBuildError } from "./offline.ts";
 import { GatewayHttpError, isGatewayUnavailable } from "./gateway-error.ts";
 
@@ -255,10 +255,12 @@ export async function loadGitCheckout(cwd: string): Promise<GitCheckoutInfo> {
 /** Ensures a runtime exists and returns what to paint immediately. */
 export async function openSession(
   id: string,
+  signal?: AbortSignal,
 ): Promise<{ session: SessionView; snapshot: SessionSnapshot; revision?: number }> {
   const body = await fetchJson<{ session?: SessionView; snapshot?: SessionSnapshot; revision?: number }>(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/open`,
     { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+    signal,
   );
   if (!body.session || !body.snapshot) {
     throw new Error("Could not open that session.");
@@ -557,6 +559,7 @@ const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS = 4_000;
 
 const CONNECT_TIMEOUT_MS = 20_000;
+const FIRST_FRAME_TIMEOUT_MS = 60_000;
 const STREAM_SILENCE_MS = 40_000;
 const SEND_LIVENESS_MS = 5_000;
 const SEND_GRACE_MS = 10_000;
@@ -615,11 +618,11 @@ export function subscribeSession(id: string, handlers: SessionStreamHandlers, he
   const abort = new AbortController();
   let attempt = 0;
   let held = heldRevision;
-  let current: { startedAt: number; cancel: AbortController; live: boolean } | undefined;
+  let current: { startedAt: number; cancel: AbortController; established: boolean } | undefined;
   let endBackoff: (() => void) | undefined;
   let probing = false;
 
-  const stuck = () => current !== undefined && !current.live && Date.now() - current.startedAt >= STUCK_OPENING_MS;
+  const stuck = () => current !== undefined && !current.established && Date.now() - current.startedAt >= STUCK_OPENING_MS;
   const retryNow = () => {
     if (abort.signal.aborted || probing || (!stuck() && !endBackoff)) return;
     probing = true;
@@ -650,12 +653,11 @@ export function subscribeSession(id: string, handlers: SessionStreamHandlers, he
   void (async () => {
     try {
       while (!abort.signal.aborted) {
-        const pending = { startedAt: Date.now(), cancel: new AbortController(), live: false };
+        const pending = { startedAt: Date.now(), cancel: new AbortController(), established: false };
         current = pending;
         const outcome = await connectOnce(id, handlers, AbortSignal.any([abort.signal, pending.cancel.signal]), () => {
           attempt = 0;
-          pending.live = true;
-        }, held);
+        }, () => { pending.established = true; }, held);
         current = undefined;
         held = undefined;
         if (abort.signal.aborted) {
@@ -715,17 +717,18 @@ async function connectOnce(
   handlers: SessionStreamHandlers,
   signal: AbortSignal,
   onLive: () => void,
+  onEstablished: () => void,
   heldRevision: number | undefined,
 ): Promise<StreamOutcome> {
-  const startedAt = Date.now();
-  const opening = AbortSignal.any([signal, AbortSignal.timeout(CONNECT_TIMEOUT_MS)]);
   let socket: WebSocket;
+  const attempt = new AbortController();
+  const ticketDeadline = setTimeout(() => attempt.abort(new DOMException("The session connection did not answer.", "TimeoutError")), RESPONSE_TIMEOUT_MS);
   try {
     const response = await trackedFetch(`${SESSIONS_URL}/${encodeURIComponent(id)}/connect`, {
       method: "POST",
       headers: CLIENT_HEADERS,
       cache: "no-store",
-      signal: opening,
+      signal: AbortSignal.any([signal, attempt.signal]),
     });
     if (!response.ok) {
       return response.status >= 500 || response.status === 429
@@ -736,16 +739,20 @@ async function connectOnce(
     address.protocol = address.protocol === "https:" ? "wss:" : "ws:";
     address.searchParams.set("slim", "1");
     if (heldRevision !== undefined) address.searchParams.set("revision", String(heldRevision));
-    if (opening.aborted) return { kind: "dropped" };
+    if (signal.aborted || attempt.signal.aborted) return { kind: "dropped" };
     socket = new WebSocket(address);
   } catch (error) {
     if (error instanceof OutdatedBuildError) return { kind: "outdated", message: error.message };
     return error instanceof GatewayHttpError && !isGatewayUnavailable(error)
       ? { kind: "refused", message: error.message } : { kind: "dropped" };
+  } finally {
+    clearTimeout(ticketDeadline);
   }
   return new Promise((resolve) => {
     let settled = false;
     let admitted = false;
+    let openedAt = 0;
+    let awaitingState = false;
     let silence: ReturnType<typeof setTimeout> | undefined;
     const expectFrame = (ms: number) => {
       clearTimeout(silence);
@@ -756,20 +763,27 @@ async function connectOnce(
       if (settled) return;
       settled = true;
       clearTimeout(silence);
+      clearTimeout(handshakeDeadline);
       const streams = liveStreams.get(id);
       streams?.delete(proveAlive);
       if (!streams?.size) liveStreams.delete(id);
       signal.removeEventListener("abort", abort);
-      socket.onmessage = socket.onclose = socket.onerror = null;
+      socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null;
       socket.close();
       resolve(outcome);
     };
+    const handshakeDeadline = setTimeout(() => finish({ kind: "dropped" }), RESPONSE_TIMEOUT_MS);
     const abort = () => finish({ kind: "dropped" });
     signal.addEventListener("abort", abort, { once: true });
     let streams = liveStreams.get(id);
     if (!streams) liveStreams.set(id, streams = new Set());
     streams.add(proveAlive);
-    expectFrame(Math.max(1, CONNECT_TIMEOUT_MS - (Date.now() - startedAt)));
+    socket.onopen = () => {
+      clearTimeout(handshakeDeadline);
+      openedAt = Date.now();
+      expectFrame(FIRST_FRAME_TIMEOUT_MS);
+      onEstablished();
+    };
     socket.onmessage = (message) => {
       if (settled) return;
       try {
@@ -777,6 +791,10 @@ async function connectOnce(
         const stateFrame = ["snapshot", "transcript", "event", "status", "model", "thinking_level", "fast"].includes(frame.event);
         if (!admitted && (!stateFrame || (heldRevision === undefined && frame.event !== "snapshot"))) {
           if (frame.event === "closed") finish({ kind: "ended" });
+          else if (frame.event === "heartbeat" && !awaitingState) {
+            awaitingState = true;
+            expectFrame(Math.max(1, CONNECT_TIMEOUT_MS - (Date.now() - openedAt)));
+          }
           return;
         }
         expectFrame(STREAM_SILENCE_MS);

@@ -66,6 +66,7 @@ import { positionRail } from "./chat/position-rail.ts";
 import { readToolPresentation, renderReadToolCard, renderToolFileReference, toolFilePath } from "./chat/read-tool-card.ts";
 import { commandToolPresentation, renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { codemodeToolPresentation, renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
+import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
@@ -245,6 +246,8 @@ export type HomeProps = {
     sendShortcut: "enter" | "modifierEnter";
     githubEmbeds: boolean;
     datadogEmbeds: boolean;
+    /** The user's own emoji per CLI or tool, over the built-in set (tool-call-group.ts). */
+    toolMarks: Record<string, string>;
   };
   queue: QueueSnapshot;
   thinking: string;
@@ -1273,9 +1276,15 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       if (handoff) return renderHandoff(props, row.id, handoff);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
       const open = props.expandedActivityIds.has(expansionId);
+      // Tools read as one card of their own (tool-call-group.ts); reasoning and errors that share the row keep the
+      // fold they had, above it.
+      const tools = row.items.filter((item): item is ToolCallItem => item.kind === "tool");
+      const others = row.items.filter((item) => item.kind !== "tool");
+      const running = tools.some((item) => (item.status ?? "running") === "running" && !item.failed);
+      const groupOpen = open || running;
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
-          <details
+          ${others.length ? html`<details
             class="chat-activity-group"
             .open=${open}
             @toggle=${(event: Event) => {
@@ -1285,10 +1294,20 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
           >
             <summary class="chat-inline-disclosure chat-activity-group__summary">
               <span class="chat-activity-group__icon">${chevronDownIcon}</span>
-              <span class="chat-activity-group__label">${activityLabel(row.items, props.streaming)}</span>
+              <span class="chat-activity-group__label">${activityLabel(others, props.streaming)}</span>
             </summary>
-            ${open ? html`<div class="chat-activity-group__body">${row.items.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
-          </details>
+            ${open ? html`<div class="chat-activity-group__body">${others.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
+          </details>` : nothing}
+          ${tools.length ? renderToolCallGroup(tools, {
+            id: row.id,
+            expanded: groupOpen,
+            onToggle: (next) => props.onActivityExpanded(expansionId, next),
+            expansionId: (item) => `${props.session?.id ?? "session"}:tool:${props.transcript.indexOf(item)}:${item.id}`,
+            expandedIds: props.expandedActivityIds,
+            onRowToggle: (id, next) => props.onActivityExpanded(id, next),
+            onCopy: (text, key) => void props.onCopy(text, key),
+            marks: props.chatPreferences.toolMarks,
+          }) : nothing}
           ${browserPreview?.index === rowIndex ? renderBrowserPreview(props, browserPreview) : nothing}
         </div>
       </div>`;

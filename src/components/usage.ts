@@ -1,9 +1,9 @@
 /** The Usage page: reporting controls and charts over recorded local conversation histories, never provider billing. */
 import { LitElement, html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
-import type { UsageMetrics } from "../api/schema/diagnostics.ts";
+import type { UsageMetrics, UsageReport } from "../api/schema/diagnostics.ts";
 import { UsageController } from "../controllers/usage-controller.ts";
-import { usageChartDays, usageCost, usageOverview } from "../lib/usage.ts";
+import { usageChartDays, usageCost, usageOverview, type UsageSort } from "../lib/usage.ts";
 import { icons } from "../lib/icons.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
@@ -32,6 +32,7 @@ export class HuiUsagePage extends LitElement {
   onOpenSession?: (id: string) => void;
   #usage = new UsageController(this);
   #chartFocus = 0;
+  #overview: { report: UsageReport; query: string; sort: UsageSort; value: ReturnType<typeof usageOverview> } | undefined;
 
   override createRenderRoot() { return this; }
   override connectedCallback() { super.connectedCallback(); void this.#usage.load(); }
@@ -90,7 +91,10 @@ export class HuiUsagePage extends LitElement {
   override render() {
     const state = this.#usage;
     const report = state.report;
-    const overview = report ? usageOverview(report, state.query, state.sort) : undefined;
+    if (report && (this.#overview?.report !== report || this.#overview.query !== state.query || this.#overview.sort !== state.sort)) {
+      this.#overview = { report, query: state.query, sort: state.sort, value: usageOverview(report, state.query, state.sort) };
+    }
+    const overview = report ? this.#overview?.value : undefined;
     const totals = overview?.totals;
     return html`<header class="content-header content-header--settings"><div><div class="page-title">Usage</div><div class="page-subtitle">Recorded tokens and PI cost estimates.</div></div><div class="page-header-actions"><button class="btn" type="button" @click=${() => state.refresh()}>${icons.refresh}<span>${state.loading ? "Refreshing…" : "Refresh"}</span></button></div></header>
     <main class="settings-page settings-page--wide usage-page usage-report" data-testid="usage-report" aria-busy=${state.loading}>
