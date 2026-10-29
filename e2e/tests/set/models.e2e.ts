@@ -11,7 +11,7 @@ test("Primary, Fallback and Utility list the catalog and Use PI default, say whe
 
   for (const [route, model] of [["Primary model", "Opus fixture"], ["Fallback model", "HUI SDK Fixture"], ["Utility model", "Opus fixture"]] as const) {
     await screen.getByRole("button", `${route}: Use PI default`).tap();
-    await expect.poll(() => hui.textOf(screen.getByLabel(route, { exact: true }))).toMatch(/^\s*Use PI default\s*HUI SDK Fixture\s*Opus fixture\s*$/u);
+    await expect.poll(() => hui.textOf(screen.getByLabel(route, { exact: true }))).toMatch(/^\s*Use PI default\s*HUI SDK Fixture\s*HUI Route Fixture\s*Opus fixture\s*$/u);
     await screen.getByLabel(route, { exact: true }).getByText(model, { exact: true }).tap();
     await expect(screen.getByRole("button", `${route}: ${model}`)).toBeVisible();
   }

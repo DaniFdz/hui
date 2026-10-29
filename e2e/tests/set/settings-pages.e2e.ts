@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-const EVERY_PAGE = "Appearance Connections Gateway Integrations Workers Agents & Tools Models Plugins Skills Tools Memory Automation Privacy & Security Privacy & Security System Worktrees Diagnostics";
+const EVERY_PAGE = "Appearance Notifications Connections Gateway Integrations Workers Agents & Tools Models Plugins Skills Tools Memory Automation Privacy & Security Privacy & Security System Worktrees Diagnostics";
 
 test("Settings opens the page chosen from its grouped list, a direct link or the old /worktrees link, keeps it across a reload, and Exit Settings leaves", { tags: ["SET-001"], platforms: ["web"] }, async ({ screen, hui }) => {
   const pages = screen.getByLabel("Settings pages");
