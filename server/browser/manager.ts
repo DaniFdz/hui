@@ -281,6 +281,11 @@ function screenshotPath(cwd: string, raw: unknown): string {
 }
 
 const CONTAINS_HIT = String.raw`function (other, x, y) {
+  // Some Chromium builds resolve the hit pseudo-element to such an object itself (its tagName is "::after", its parent
+  // element beside it) instead of a { type, element } pair: same thing, named the way the branch below reads it.
+  if (other && typeof other.type !== "string" && typeof other.tagName === "string" && other.tagName.startsWith("::") && other.parentElement instanceof Element) {
+    other = { type: other.tagName, element: other.parentElement };
+  }
   if (other && typeof other.type === "string" && other.element instanceof Element) {
     // Chromium's hit test reports the CSS pseudo-element it finds (for example a
     // decorative ::after overlay), and ignorePointerEventsNone does not filter
