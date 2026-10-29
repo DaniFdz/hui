@@ -45,7 +45,8 @@ test("the sidebar opens Contributions, Kanban, Sessions and Usage as the current
   await screen.getByTestId("settings-page-link").filter({ hasText: "Diagnostics" }).tap();
   await expect(settingsTitle).toHaveText("Diagnostics");
   await screen.getByRole("button", "Exit Settings").tap();
-  await expect(heading).toHaveText("Sessions");
+  await expect(heading).toHaveText("Usage");
+  expect(await hui.url()).toMatch(/\/usage$/u);
   await settings.tap();
   await expect(settingsTitle).toHaveText("Diagnostics");
   await hui.reload();
