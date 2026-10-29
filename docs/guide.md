@@ -230,9 +230,16 @@ fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Cal
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
 
-**Subagent routes** sit under the same page. A route is a name you choose, a
-one-line description and a model, and may pin a reasoning level. An agent that
-spawns a subagent can pass the name to `sessions_spawn` instead of a model id.
+**Subagent routes** sit under the same page. Choose **Add route** to open a
+form for its name, one-line description, model and optional reasoning level.
+The model starts on your primary model when available, and thinking inherits
+the parent's level. **Add route** saves the completed form; **Cancel** or Escape
+closes it without adding anything. A failed save keeps the form for retry.
+Saved routes show a brief summary of their description, model and thinking level.
+Choose **Edit** to open the same form with the current values. **Save changes**
+applies the edit; Cancel or Escape leaves the saved configuration unchanged.
+**Remove** stays beside Edit. An agent that spawns a subagent can pass the name
+to `sessions_spawn` instead of a model id.
 The prompt lists your names and descriptions. Raw model ids remain supported;
 routes do not restrict which models the tool can use. A spawn without a route or
 model inherits its parent's model and reasoning level. Its own `thinking`
@@ -1077,6 +1084,23 @@ long, unguessable link, as it does for its own sharing and its Slack app. HUI
 never shows that link. **Settings → Appearance → Chat → Datadog link
 previews** turns the cards off. [docs/api.md](api.md#datadog-link-previews) has
 the full contract.
+
+## Custom marks for tool calls
+
+A turn's tool calls show a mark per row. HUI picks it in this order: your icon file, your emoji, the built-in emoji for that CLI or tool, then the tinted SVG mark.
+
+Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`):
+
+```json
+{
+  "chat": {
+    "toolIcons": { "git": "github.svg", "kubectl": "kubernetes.svg" },
+    "toolMarks": { "pup": "🐶" }
+  }
+}
+```
+
+Icon files go in `HUI_CONFIG_DIR/tool-icons/` and are served read-only at `/__hui/tool-icons/<file>`; the browser only ever draws them in an `<img>`, so an SVG cannot run script. Names are flat file names — no paths — with an `.svg`, `.png`, `.webp`, `.jpg` or `.jpeg` extension, at most 256 KB. Keys are a CLI binary or a tool name, lowercased. Restart the gateway after adding files or editing the maps.
 
 ## Codemode: one script, many tool calls
 

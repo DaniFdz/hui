@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
     githubEmbeds: true,
     datadogEmbeds: true,
     toolMarks: {},
+    toolIcons: {},
   },
   profileName: "HUI Operator",
   profileHandle: "",
@@ -215,7 +216,23 @@ function normalizeChat(value: unknown): Settings["chat"] {
     githubEmbeds: source["githubEmbeds"] !== false,
     datadogEmbeds: source["datadogEmbeds"] !== false,
     toolMarks: normalizeToolMarks(source["toolMarks"]),
+    toolIcons: normalizeToolIcons(source["toolIcons"]),
   };
+}
+
+/** Flat icon file names, mirrored from the gateway's `server/tool-icons.ts` rule. */
+const TOOL_ICON_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}\.(?:svg|png|webp|jpe?g)$/u;
+
+function normalizeToolIcons(value: unknown): Settings["chat"]["toolIcons"] {
+  if (!isRecord(value)) return {};
+  const icons: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = rawKey.trim().toLowerCase().slice(0, 40);
+    if (!key || /[\p{Cc}\s]/u.test(key) || typeof rawValue !== "string" || !TOOL_ICON_FILE.test(rawValue)) continue;
+    icons[key] = rawValue;
+    if (Object.keys(icons).length >= 200) break;
+  }
+  return icons;
 }
 
 /** The user's own emoji per CLI or tool, mirrored from the gateway's sanitizer. */

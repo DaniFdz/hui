@@ -32,6 +32,8 @@ type OriginalSettings = {
     datadogEmbeds: boolean;
 
     toolMarks: Record<string, string>;
+
+    toolIcons: Record<string, string>;
   };
   profileName: string;
   profileHandle: string;
