@@ -35,12 +35,6 @@ hui-files-view {
 .hui-files .btn--icon svg { width: 16px; height: 16px; }
 .hui-files .btn--sm svg { width: 14px; height: 14px; }
 
-/* ── Sidebar Files tab: the navigator fills the tab, and its tree scrolls inside it ── */
-.sidebar-files { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.sidebar-files hui-files-view { background: transparent; }
-.hui-files--sidebar { flex-direction: column; }
-.hui-files--sidebar > .hui-files-nav { flex: 1 1 auto; width: auto; border-right: 0; background: transparent; }
-
 /* ── Files navigator ── */
 .hui-files-nav {
   display: flex;

@@ -1,4 +1,4 @@
-/** The sidebar tabs (Agents, Bots, Files) move with the arrow keys, and Home and End jump to the ends (BOT-002). */
+/** The sidebar tabs (Agents, Bots) move with the arrow keys, and Home and End jump to the ends (BOT-002). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -13,9 +13,8 @@ test("ArrowLeft and ArrowRight move between the sidebar tabs, and Home and End j
 
   await expect(tab("Agents")).toHaveAttribute("aria-selected", "true");
   await press("Agents", "ArrowRight", "Bots");
-  await press("Bots", "ArrowRight", "Files");
-  await press("Files", "ArrowRight", "Agents");
-  await press("Agents", "ArrowLeft", "Files");
-  await press("Files", "Home", "Agents");
-  await press("Agents", "End", "Files");
+  await press("Bots", "ArrowRight", "Agents");
+  await press("Agents", "ArrowLeft", "Bots");
+  await press("Bots", "Home", "Agents");
+  await press("Agents", "End", "Bots");
 });
