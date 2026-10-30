@@ -144,6 +144,40 @@
         }
       }
     },
+    "AppOpenError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "AppOpenRequest": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "AppOpenResponse": {
+      "type": "object",
+      "required": [
+        "opened"
+      ],
+      "properties": {
+        "opened": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
     "AutomationCancelResponse": {
       "type": "object",
       "required": [
@@ -13587,6 +13621,11 @@
       "ApiSchemaReference",
       "ApiSchemaRoute"
     ],
+    "app": [
+      "AppOpenError",
+      "AppOpenRequest",
+      "AppOpenResponse"
+    ],
     "power": [
       "PowerError",
       "PowerRequest",
@@ -14062,6 +14101,16 @@
       "path": "/__hui/api-schema",
       "response": {
         "$ref": "#/$defs/ApiSchemaDocument"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/app/open",
+      "request": {
+        "$ref": "#/$defs/AppOpenRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/AppOpenResponse"
       }
     },
     {

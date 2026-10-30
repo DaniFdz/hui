@@ -61,6 +61,7 @@ import {
   managedBrowser,
   piRoutes,
   powerRoutes,
+  appRoutes,
   providerRoutes,
   sessionActionRoutes,
   sessionList,
@@ -393,6 +394,8 @@ async function handleRequest(
   if (answered(response, path, await providerRoutes.handle(routed))) return;
 
   if (answered(response, path, await powerRoutes.handle(routed))) return;
+
+  if (answered(response, path, await appRoutes.handle(routed))) return;
   if (answered(response, path, await hostMetricsRoutes.handle(routed))) return;
   if (answered(response, path, await handleApiSchemaRoute(routed))) return;
 

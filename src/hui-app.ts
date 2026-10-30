@@ -141,7 +141,8 @@ import {
   settingsReturnTarget,
   type NavigationTarget,
 } from "./lib/navigation.ts";
-import { appHandoffUrl } from "./lib/app-link.ts";
+import { appHandoffPath, appHandoffUrl } from "./lib/app-link.ts";
+import { openChatInApp } from "./api/app.ts";
 
 const HUI_UPDATE_SESSION_TITLE = "HUI update";
 
@@ -510,7 +511,7 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) {
       if (this.paneSessionId) this.applyNavigation({ kind: "session", id: this.paneSessionId });
     } else {
-      this.appLink = appHandoffUrl({ pathname: window.location.pathname, search: window.location.search, userAgent: navigator.userAgent });
+      this.offerApp(appHandoffUrl({ pathname: window.location.pathname, search: window.location.search, userAgent: navigator.userAgent }));
       this.work.start();
       this.syncFromLocation();
       this.mobileNavMedia = window.matchMedia(APP_SHELL_DRAWER_MEDIA);
@@ -804,6 +805,13 @@ export class HuiApp extends HuiElement {
       window.history.replaceState({ ...window.history.state, huiSessionLayout: this.work.layout }, "", canonical);
     }
     this.applyNavigation(resolved.target);
+  }
+
+  /** A marked chat link opens the desktop app through the gateway, since a browser cannot start it without a click.
+   * The banner is the fallback for a host without the app. */
+  private offerApp(handoff: string | undefined) {
+    if (!handoff) return;
+    void openChatInApp(appHandoffPath(handoff)).catch(() => { this.appLink = handoff; });
   }
 
   private navigate(target: NavigationTarget, replace = false) {
