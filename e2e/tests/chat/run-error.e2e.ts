@@ -38,7 +38,7 @@ test("a failed run's error card copies the error, comes back after a dismiss and
   await expect(transcript.getByText("see the fixture for why", { exact: false })).toBeVisible();
 
   await continueRun.tap();
-  await expect(transcript.getByText("Continue from where you left off.")).toBeVisible();
+  await expect(transcript.getByText(/^The previous run was interrupted while handling this request:\s+E2E_ERROR_LONG\s+Review the latest transcript and workspace state/u)).toBeVisible();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
   await expect(summary).toBeHidden();
   await expect(idle).toBeVisible();

@@ -57,17 +57,20 @@ test("a codemode script shows its calls live, then its tools, time, failures and
   await reveal(transcript.getByLabel("Output").getByText("script output"));
   await expect(transcript.getByRole("button", "Read fixture.txt")).toBeHidden();
 
+  const failed = await hui.createSession({ title: "Codemode failure" });
+  await hui.open(`/sessions/${failed.id}`);
+  await expect(idle).toBeVisible();
   await message.fill(codemode("CALL", 'throw new Error("script broke");'));
   await send.tap();
-  await expect(transcript.getByText(/^tool answered: /u).last()).toBeVisible();
+  await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(idle).toBeVisible();
-  await reveal(transcript.getByText("Used 1 tool").last());
-  const broken = transcript.getByRole("button", /^Ran a codemode script/u).last();
-  if (!(await broken.isVisible())) await transcript.getByText("Used 1 tool").last().tap();
+  await reveal(transcript.getByText("Used 1 tool"));
+  const broken = transcript.getByRole("button", /^Ran a codemode script/u);
+  if (!(await broken.isVisible())) await transcript.getByText("Used 1 tool").tap();
   await reveal(broken);
   await broken.tap();
   await expect(transcript.getByText(/^Failed/u)).toBeVisible();
-  await expect(transcript.getByLabel("Output").last().getByText("Script error: Error: script broke", { exact: false })).toBeVisible();
+  await expect(transcript.getByLabel("Output").getByText("Script error: Error: script broke", { exact: false })).toBeVisible();
 });
 
 test("a codemode output PI cut links its full output", { tags: ["CHAT-027"] }, async ({ screen, hui }) => {

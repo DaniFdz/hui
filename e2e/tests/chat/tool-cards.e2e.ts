@@ -104,8 +104,7 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await expect(transcript.getByText("Input")).toBeVisible();
   await hui.provider.release();
   await expect(idle).toBeVisible();
-  await expect(transcript.getByText("fixture echo", { visible: true })).toBeVisible();
-  await expect(transcript.getByText("Input")).toBeVisible();
+  await expect(transcript.getByText("Used fixture echo")).toBeVisible();
   await expect(transcript.getByText("Input")).toBeVisible();
   await expect(transcript.getByText(/"text": "from the model"/u)).toBeVisible();
   await expect(transcript.getByText("Output")).toBeVisible();
@@ -135,7 +134,7 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   if (!(await failedTool.isVisible())) await transcript.getByText("Used 1 tool").tap();
   await hui.scrollTo(transcript, failedTool);
   await failedTool.tap();
-  await expect(transcript.getByText("fixture echo", { visible: true })).toBeVisible();
+  await expect(transcript.getByText("Used fixture echo")).toBeVisible();
   await expect(transcript.getByText("Fixture echo failed on purpose.")).toBeVisible();
 });
 

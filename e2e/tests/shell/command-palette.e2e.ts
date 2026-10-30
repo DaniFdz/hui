@@ -46,7 +46,7 @@ test("typing a search lists matching chats, pages and Settings pages under their
   await expect(screen.getByLabel(/^Model notes, status idle/u)).toBeVisible();
   await hui.paletteChord();
   await input.fill("model");
-  await expect(results).toContainText(/^Chats\s*Model notes.*A model review.*Navigation\s*Model Providers.*Model Setup.*Usage.*Settings\s*Models/iu);
+  await expect(results).toContainText(/^Navigation\s*Model Providers.*Model Setup.*Usage.*Settings\s*Models.*Chats\s*Model notes.*A model review/iu);
   await input.fill("no such thing anywhere");
   await expect(results).toHaveText("No results");
 

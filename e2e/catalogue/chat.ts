@@ -197,9 +197,9 @@ const cases: UseCase[] = [
   {
     id: "CHAT-020",
     title: "See a run error and continue from it",
-    behaviour: "A run that ends on a provider or runtime error keeps the error inside its folded activity and shows an alert card above the composer with the message (Details for a long one), Copy error, Continue and Dismiss error. Continue sends \"Continue from where you left off.\" as a normal turn and the card goes; Dismiss error hides it for this page load only, so a reload shows it again until a new turn starts.",
+    behaviour: "A run that ends on a provider or runtime error keeps the error inside its folded activity and shows an alert card above the composer with the message (Details for a long one), Copy error, Continue and Dismiss error. Continue restates the request the failed run was handling in a recovery turn (\"The previous run was interrupted while handling this request: …\") and the card goes; Dismiss error hides it for this page load only, so a reload shows it again until a new turn starts.",
     spec: ["SPEC.md#live-chat-projection"],
-    surfaces: ["route:POST /__hui/sessions/:id/prompt", "item:error"],
+    surfaces: ["route:POST /__hui/sessions/:id/continue", "item:error"],
     journeys: ["chat-composer"],
     web: "required",
     ios: "required",
