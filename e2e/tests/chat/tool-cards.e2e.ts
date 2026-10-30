@@ -118,8 +118,10 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await expect(transcript.getByText(/^tool answered: /u).last()).toBeVisible();
   await expect(idle).toBeVisible();
   await hui.scrollTo(transcript, transcript.getByText("Used 1 tool").last());
+  // A settled turn's group starts folded, so its row is not on the screen yet, while an
+  // earlier turn's row of the same name still is: open the newest group rather than look it up.
+  await transcript.getByText("Used 1 tool").last().tap();
   const empty = transcript.getByRole("button", /^Used fixture echo/u).last();
-  if (!(await empty.isVisible())) await transcript.getByText("Used 1 tool").last().tap();
   await hui.scrollTo(transcript, empty);
   await empty.tap();
   await expect(transcript.getByText("No output")).toBeVisible();

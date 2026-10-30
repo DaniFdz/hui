@@ -241,21 +241,24 @@ const server = createServer(async (request, response) => {
     text(response, compress ? `${input.slice(0, input.indexOf(":"))}: FIXTURE_MEMORY ${marker}` : `FIXTURE_MEMORY merged ${marker}`);
     return finish(response);
   }
+  // A recovery turn ("The previous run was interrupted while handling this request: …") quotes the request the
+  // interrupted run was answering, so the markers below must not fail it a second time: it answers the continuation.
+  const recovering = source.includes("The previous run was interrupted while handling this request:");
   // PI retries 5xx answers and messages that look transient, so E2E_ERROR_LONG fails at once with a 400, and its
   // message is longer than the run error card's summary, so the card offers Details.
-  if (source.includes("E2E_ERROR_LONG")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
+  if (!recovering && source.includes("E2E_ERROR_LONG")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
     message: `fixture provider error: ${"the fixture refuses this request on purpose; ".repeat(4)}see the fixture for why` } });
   // E2E_ERROR_QUOTA fails at once with a 400 whose message names the quota, as a provider out of credits does, so a
   // routine's run records the rate-limit kind that needs the operator.
-  if (source.includes("E2E_ERROR_QUOTA")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
+  if (!recovering && source.includes("E2E_ERROR_QUOTA")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
     message: "fixture quota exhausted: the fixture's plan has no credits left" } });
   // E2E_OVERFLOW overflows the context window until PI's summary is in the request, so PI compacts and retries the turn.
-  if (source.includes("E2E_OVERFLOW") && !flattenedText(body.messages).includes("FIXTURE_SUMMARY") && !flattenedText(body.system).includes("context summarization assistant")) {
+  if (!recovering && source.includes("E2E_OVERFLOW") && !flattenedText(body.messages).includes("FIXTURE_SUMMARY") && !flattenedText(body.system).includes("context summarization assistant")) {
     return json(response, 400, { type: "error", error: { type: "invalid_request_error", message: "prompt is too long: 213462 tokens > 200000 maximum" } });
   }
   // E2E_PRIMARY_ERROR fails only the primary fixture model, so the run falls back to another model that answers it.
-  if (source.includes("E2E_PRIMARY_ERROR") && body.model === "fixture") return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
-  if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
+  if (!recovering && source.includes("E2E_PRIMARY_ERROR") && body.model === "fixture") return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
+  if (!recovering && source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
   // E2E_FAIL_ONCE fails the first run of each session that mentions it, so a journey can watch a recovered run
   // finish. It is an expired key rather than E2E_ERROR's retryable 500, because the run has to fail, not be retried.
   const failKey = clientSessionId ?? source;
