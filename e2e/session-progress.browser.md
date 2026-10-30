@@ -3,6 +3,31 @@
 Historical proof of the initial approximation. Its sidebar rendering and mobile
 progress button are superseded by the [original component port](session-hovercard.browser.md).
 
+## Where the card comes from now
+
+Since 2026-10-30 HUI writes the card itself. A session's turn settling, and every
+five minutes of a running one, send a bounded digest of the conversation to the
+utility model, which answers a one-line summary and a `done`/`doing`/`todo` plan.
+The card lives on the session record: a cold session and a restarted gateway keep
+it, and the agent's `progress_card` tool and the card's refresh control are gone.
+
+Verified on branch `dani.fernandez/session-status-fallback-updates` through
+`e2e/visual-verification.mjs` with the deterministic provider and real PI:
+
+- `e2e/tests/chat/task-progress.e2e.ts` passed: the card appears after the first
+  turn (`1 of 2`), a second turn rewrites it (`2 of 3` and a new summary),
+  folding shows the current step with `2/3`, a reload keeps it, and Collapse
+  task progress starts it folded.
+- Driven by hand at 1440 × 900 and 390 × 844: the card renders above the composer
+  with its summary and steps, the session row's hovercard shows the same
+  step/count and summary without opening the session, and mobile reports no
+  horizontal document overflow. Desktop, hovercard and mobile captures are
+  attached to the pull request.
+- `npm test` (2664 passed), `npm run typecheck` and `npm run build` passed.
+
+A card whose model call fails keeps the previous one, and the failure is logged
+as `session_progress_failed`; the turn never waits for the card.
+
 Verified 2026-09-25 with the real PI RPC runtime and the repository's local
 `e2e/fixtures/pi-provider-fixture.mjs`, without external API requests or credentials.
 
