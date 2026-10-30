@@ -113,13 +113,14 @@ test("another tool shows its state, input and output, and its output copies from
   await screen.getByText("Copy as markdown").tap();
   await expect.poll(() => hui.copied()).toBe("Extension tool executed: from the model");
 
+  await openSession(hui, "Empty output");
   await message.fill(call("CALL", "fixture_echo", { text: "" }));
   await send.tap();
-  await expect(transcript.getByText(/^tool answered: /u).last()).toBeVisible();
+  await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(idle).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool").last());
-  const empty = transcript.getByRole("button", /^Used fixture echo/u).last();
-  if (!(await empty.isVisible())) await transcript.getByText("Used 1 tool").last().tap();
+  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
+  const empty = transcript.getByRole("button", /^Used fixture echo/u);
+  if (!(await empty.isVisible())) await transcript.getByText("Used 1 tool").tap();
   await hui.scrollTo(transcript, empty);
   await empty.tap();
   await expect(transcript.getByText("No output")).toBeVisible();
