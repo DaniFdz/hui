@@ -418,7 +418,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#session-list-progress"],
     surfaces: ["route:GET /__hui/sessions"],
     journeys: ["session-progress", "session-hovercard"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

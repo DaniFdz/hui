@@ -1,4 +1,5 @@
-/** HUI's utility model writes each session's Task progress card, and the composer draws it (AGENT-053). */
+/** HUI's utility model writes each session's Task progress card, the composer draws it (AGENT-053) and the session
+ * row's hovercard reads the same stored card without opening the session (SESS-043). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
@@ -47,4 +48,22 @@ test("Task progress follows the work, folds, and survives a reload", { tags: ["A
   await hui.reload();
   await expect(screen.getByText("2/3")).toBeVisible();
   await expect(card).toBeHidden();
+});
+
+test("a session's stored card shows in its row hovercard without opening it", { tags: ["SESS-043"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const settings = await hui.api<Settings>("GET", "/__hui/settings");
+  await hui.api("PUT", "/__hui/settings", { ...settings, models: { ...settings.models, utility: "hui-e2e/fixture" } });
+
+  const session = await hui.createSession({ title: "Hovercard progress" });
+  await hui.open(`/sessions/${session.id}`);
+  await screen.getByLabel("Message").fill("E2E_PROGRESS");
+  await screen.getByRole("button", "Send message").tap();
+  await expect(screen.getByText("1 of 2")).toBeVisible();
+
+  // Home lists the session on its own: the stored card reaches the row's preview without opening anything.
+  await hui.open("/");
+  await screen.getByLabel(/, status idle, tool durable, stage investigation$/u).hover();
+  await expect(screen.getByLabel("Agent Notepad")).toContainText("HUI's utility model writes this");
+  await expect(screen.getByText("1/2")).toBeVisible();
+  await expect(screen.getByText("Verify presentation")).toBeVisible();
 });

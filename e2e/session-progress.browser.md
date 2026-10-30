@@ -14,10 +14,11 @@ it, and the agent's `progress_card` tool and the card's refresh control are gone
 Verified on branch `dani.fernandez/session-status-fallback-updates` through
 `e2e/visual-verification.mjs` with the deterministic provider and real PI:
 
-- `e2e/tests/chat/task-progress.e2e.ts` passed: the card appears after the first
-  turn (`1 of 2`), a second turn rewrites it (`2 of 3` and a new summary),
-  folding shows the current step with `2/3`, a reload keeps it, and Collapse
-  task progress starts it folded.
+- `e2e/tests/chat/task-progress.e2e.ts` passed (AGENT-053, SESS-043): the card
+  appears after the first turn (`1 of 2`), a second turn rewrites it (`2 of 3`
+  and a new summary), folding shows the current step with `2/3`, a reload keeps
+  it, Collapse task progress starts it folded, and the session row's hovercard
+  shows the stored step/count and summary without opening the session.
 - Driven by hand at 1440 × 900 and 390 × 844: the card renders above the composer
   with its summary and steps, the session row's hovercard shows the same
   step/count and summary without opening the session, and mobile reports no
