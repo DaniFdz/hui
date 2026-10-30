@@ -11,12 +11,12 @@ test("Primary, Fallback and Utility list the catalog and Use PI default, say whe
 
   for (const [route, model] of [["Primary model", "Opus fixture"], ["Fallback model", "HUI SDK Fixture"], ["Utility model", "Opus fixture"]] as const) {
     await screen.getByRole("button", `${route}: Use PI default`).tap();
-    await expect.poll(() => hui.textOf(screen.getByLabel(route, { exact: true }))).toMatch(/^\s*Use PI default\s*HUI SDK Fixture\s*Opus fixture\s*$/u);
+    await expect.poll(() => hui.textOf(screen.getByLabel(route, { exact: true }))).toMatch(/^\s*Use PI default\s*HUI SDK Fixture\s*HUI Route Fixture\s*Opus fixture\s*$/u);
     await screen.getByLabel(route, { exact: true }).getByText(model, { exact: true }).tap();
     await expect(screen.getByRole("button", `${route}: ${model}`)).toBeVisible();
   }
-  await expect.poll(async () => (await hui.api<{ models: Record<string, string> }>("GET", "/__hui/settings")).models)
-    .toEqual({ primary: "hui-e2e/anthropic/claude-opus-5-5", fallback: "hui-e2e/fixture", utility: "hui-e2e/anthropic/claude-opus-5-5" });
+  await expect.poll(async () => (await hui.api<{ models: Record<string, unknown> }>("GET", "/__hui/settings")).models)
+    .toEqual({ primary: "hui-e2e/anthropic/claude-opus-5-5", fallback: "hui-e2e/fixture", utility: "hui-e2e/anthropic/claude-opus-5-5", routes: [] });
 
   await hui.reload();
   await expect(screen.getByRole("button", "Primary model: Opus fixture")).toBeVisible();

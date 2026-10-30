@@ -22,9 +22,10 @@ test("Asked to check something on a schedule, a bot adds a temporary routine tha
   await screen.getByRole("button", `Back to ${bot.name}`).tap();
   await screen.getByLabel("Message").fill("E2E_ROUTINE_ADD check whether PR #82 is green every 5 minutes until it is");
   await screen.getByRole("button", "Send message").tap();
-  await transcript.getByText("Ran 1 command").tap();
-  await expect(transcript.getByText("routines", { exact: true }).first()).toBeVisible();
   await expect(transcript.getByText(/^routines answered: /u)).toBeVisible();
+  const addCall = transcript.getByRole("button", /^Used routines/u);
+  if (!(await addCall.isVisible())) await transcript.getByText("Used 1 tool").tap();
+  await expect(addCall).toBeVisible();
   await expect.poll(async () => (await tasks()).map((task) => task.name)).toEqual(["Watch #82"]);
   const routine = (await tasks())[0]!;
   expect(routine.createdBy).toEqual(expect.objectContaining({ kind: "bot", handle: bot.handle }));
