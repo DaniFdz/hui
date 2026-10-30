@@ -89,12 +89,32 @@ export function slashCommandQuery(text: string, caret: number, selectionEnd = ca
   return { text: (start === 0 && typed.startsWith("/") ? typed.slice(1) : typed).toLocaleLowerCase(), start };
 }
 
+/** How well a command's own name answers the query: exact 0, prefix 1, contained 2, only its description or
+ * source 3. A skill answers by the bare name an operator types, so `bro` matches `skill:bro` exactly. */
+function nameMatch(command: ComposerCommand, search: string): number {
+  const bare = command.source === "skill" ? command.name.replace(/^skill:/u, "") : command.name;
+  const names = search.startsWith("skill:") ? [command.name, bare] : [bare];
+  return Math.min(...names.map((name) => {
+    const value = name.toLocaleLowerCase();
+    return value === search ? 0 : value.startsWith(search) ? 1 : value.includes(search) ? 2 : 3;
+  }));
+}
+
 export function filterSlashCommands(commands: readonly ComposerCommand[], query: string): ComposerCommand[] {
   const search = query.replace(/^\$/u, "").toLocaleLowerCase();
   const order = { hui: -1, extension: 0, skill: 1, prompt: 2 };
-  return commands.filter((command) => (!query.startsWith("$") || (command.source === "skill" || command.source === "extension")) &&
-    `${command.name} ${command.description} ${command.source}`.toLocaleLowerCase().includes(search),
-  ).sort((a, b) => order[a.source] - order[b.source] || a.name.localeCompare(b.name));
+  const matches = new Map<ComposerCommand["source"], { command: ComposerCommand; match: number }[]>();
+  for (const command of commands) {
+    if (query.startsWith("$") && command.source !== "skill" && command.source !== "extension") continue;
+    if (!`${command.name} ${command.description} ${command.source}`.toLocaleLowerCase().includes(search)) continue;
+    const entries = matches.get(command.source) ?? [];
+    entries.push({ command, match: nameMatch(command, search) });
+    matches.set(command.source, entries);
+  }
+  // The menu draws one section per source, so the groups rank by their best match and stay contiguous.
+  const groups = [...matches.values()].map((entries) => entries.sort((a, b) => a.match - b.match || a.command.name.localeCompare(b.command.name)));
+  return groups.sort((a, b) => a[0]!.match - b[0]!.match || order[a[0]!.command.source] - order[b[0]!.command.source])
+    .flatMap((entries) => entries.map((entry) => entry.command));
 }
 
 /** Both discovery menus insert the same stable alias in place of the word at `start`; templates keep their slash syntax. */
