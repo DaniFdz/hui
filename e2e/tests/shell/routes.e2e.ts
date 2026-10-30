@@ -11,7 +11,7 @@ test("Home shows the new-session form with no session selected, the four destina
   await expect(screen.getByRole("button", "Start session")).toBeVisible();
   await expect(screen.getByLabel(/^Not selected, status idle/u)).toBeVisible();
   await expect(screen.getByTestId("session-title")).toBeHidden();
-  await expect(screen.getByLabel("Primary navigation")).toHaveText("Contributions Kanban Sessions Settings");
+  await expect(screen.getByLabel("Primary navigation")).toHaveText("Contributions Kanban Sessions Usage");
   const header = screen.getByTestId("sidebar-header");
   await expect(header.getByRole("button")).toHaveAccessibleName("Collapse sidebar");
   await expect(header.getByRole("tab", "Agents")).toBeVisible();
@@ -20,13 +20,14 @@ test("Home shows the new-session form with no session selected, the four destina
   expect(await hui.url()).toMatch(/:\d+\/$/u);
 });
 
-test("the sidebar opens Contributions, Kanban and Sessions as the current page, Settings on the page last shown, and a reload keeps each", { tags: ["SHELL-002"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the sidebar opens Contributions, Kanban, Sessions and Usage as the current page, Settings on the page last shown, and a reload keeps each", { tags: ["SHELL-002"], platforms: ["web"] }, async ({ screen, hui }) => {
   const heading = screen.getByTestId("page-title");
   const item = (name: string) => screen.getByTestId("nav-item").filter({ hasText: name });
+  const settings = screen.getByTestId("nav-settings");
   const settingsTitle = screen.getByTestId("settings-page-title");
 
   await hui.open("/");
-  for (const [name, path] of [["Contributions", "/contributions"], ["Kanban", "/kanban"], ["Sessions", "/sessions"]] as const) {
+  for (const [name, path] of [["Contributions", "/contributions"], ["Kanban", "/kanban"], ["Sessions", "/sessions"], ["Usage", "/usage"]] as const) {
     await item(name).tap();
     await expect(heading).toHaveText(name);
     await expect(item(name)).toHaveAttribute("aria-current", "page");
@@ -38,14 +39,15 @@ test("the sidebar opens Contributions, Kanban and Sessions as the current page, 
   }
   await expect(item("Contributions")).toHaveAttribute("aria-current", "false");
 
-  await item("Settings").tap();
+  await settings.tap();
   await expect(settingsTitle).toHaveText("Appearance");
   expect(await hui.url()).toMatch(/\/settings\/appearance$/u);
   await screen.getByTestId("settings-page-link").filter({ hasText: "Diagnostics" }).tap();
   await expect(settingsTitle).toHaveText("Diagnostics");
   await screen.getByRole("button", "Exit Settings").tap();
-  await expect(heading).toHaveText("Sessions");
-  await item("Settings").tap();
+  await expect(heading).toHaveText("Usage");
+  expect(await hui.url()).toMatch(/\/usage$/u);
+  await settings.tap();
   await expect(settingsTitle).toHaveText("Diagnostics");
   await hui.reload();
   await expect(settingsTitle).toHaveText("Diagnostics");
@@ -54,7 +56,7 @@ test("the sidebar opens Contributions, Kanban and Sessions as the current page, 
 
 test("pages outside the sidebar open by their address and survive a reload, old addresses are rewritten, and unknown ones land on Home", { tags: ["SHELL-003", "SHELL-004"], platforms: ["web"] }, async ({ screen, hui }) => {
   const heading = screen.getByTestId("page-title");
-  for (const [path, name] of [["/activity", "Activity"], ["/logs", "Logs"], ["/about", "About"], ["/cron", "Automations"], ["/usage", "Usage"], ["/skills", "Skills"]] as const) {
+  for (const [path, name] of [["/activity", "Activity"], ["/logs", "Logs"], ["/about", "About"], ["/cron", "Automations"], ["/skills", "Skills"]] as const) {
     await hui.open(path);
     await expect(heading).toHaveText(name);
     await hui.reload();
@@ -121,6 +123,7 @@ test("Back and Forward return the address and the screen of each page, Settings 
   const settingsTitle = screen.getByTestId("settings-page-title");
   const sessionTitle = screen.getByTestId("session-title", { visible: true });
   const item = (name: string) => screen.getByTestId("nav-item").filter({ hasText: name });
+  const settings = screen.getByTestId("nav-settings");
   const session = await hui.createSession({ title: "Visited in history" });
   await hui.prompt(session, "Remember this visit");
 
@@ -131,7 +134,7 @@ test("Back and Forward return the address and the screen of each page, Settings 
   await screen.getByLabel(/^Visited in history, status idle/u).tap();
   await expect(sessionTitle).toHaveText("Visited in history");
   await expect(screen.getByTestId("transcript").getByText("Remember this visit")).toBeVisible();
-  await item("Settings").tap();
+  await settings.tap();
   await expect(settingsTitle).toHaveText("Appearance");
   await screen.getByTestId("settings-page-link").filter({ hasText: "Models" }).tap();
   await expect(settingsTitle).toHaveText("Models");
@@ -166,7 +169,7 @@ test("Exit Settings returns to the page or session it was opened from, or Home a
   const heading = screen.getByTestId("page-title");
   const settingsTitle = screen.getByTestId("settings-page-title");
   const exit = screen.getByRole("button", "Exit Settings");
-  const settings = screen.getByTestId("nav-item").filter({ hasText: "Settings" });
+  const settings = screen.getByTestId("nav-settings");
   const session = await hui.createSession({ title: "Settings opened here" });
 
   await hui.open("/kanban");
