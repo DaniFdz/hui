@@ -274,7 +274,7 @@ const cases: UseCase[] = [
   {
     id: "CHAT-028",
     title: "Inspect any other tool call",
-    behaviour: "A tool without its own card, including one a PI extension adds, shows its name and Running, Completed or Failed. Expanded, it lists its Input and Output (\"No output\" when empty), with Copy output.",
+    behaviour: "A tool without its own card, including one a PI extension adds, shows as a row reading Using or Used and the tool's name, with a spinner while it runs and a Done or Failed mark after. Expanded, it lists its Input and Output (\"No output\" when empty), and the Output copies from its context menu.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:grep", "tool:find", "tool:ls", "item:tool"],
     journeys: ["durable-extensions"],
