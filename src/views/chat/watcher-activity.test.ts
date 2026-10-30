@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { renderWatcherActivity, watcherTargetLabel, type WatcherActivityProps } from "./watcher-activity.ts";
+import { renderWatcherActivity, renderWatcherEvent, watcherTargetLabel, type WatcherActivityProps } from "./watcher-activity.ts";
 import type { Watcher } from "../../api/watchers.ts";
 
 function text(value: unknown): string {
@@ -78,4 +78,22 @@ test("several watchers collapse into one summary line", () => {
 test("watcherTargetLabel strips the scheme and clamps long URLs", () => {
   assert.equal(watcherTargetLabel("https://www.github.com/o/r/pull/1"), "github.com/o/r/pull/1");
   assert.equal(watcherTargetLabel(`https://example.com/${"x".repeat(120)}`).length, 78);
+});
+
+test("a settled watcher's event is a system note: the wait, how it ended and what follows", () => {
+  const done = text(renderWatcherEvent({ ...running, state: "done", endedAt: "2026-10-02T10:30:00.000Z", note: "The command finished and recorded status 0." }));
+  assert.match(done, /class="chat-group system chat-group--watcher-event"/u);
+  assert.match(done, /aria-label=Watcher finished: Wait for #21532 approval/u);
+  assert.match(done, /Done · /u);
+  assert.match(done, /<a href=https:\/\/github\.com\/ddoghq\/web-ui\/pull\/21532/u);
+  assert.match(done, /Then: post \/merge/u);
+  assert.match(done, /The command finished and recorded status 0\./u);
+  assert.doesNotMatch(done, />Stop</u, "an event carries no controls");
+
+  const dead = text(renderWatcherEvent({ purpose: "Watch CI", state: "dead" }));
+  assert.match(dead, /Watcher died: Watch CI/u);
+  assert.doesNotMatch(dead, /chat-watcher__details/u, "nothing to add: the state line is the whole event");
+
+  assert.match(text(renderWatcherEvent({ purpose: "" })), /Watcher event[^]*Automated event · delivered to pi/u,
+    "a marker HUI wrote is never the operator's words, even unread");
 });

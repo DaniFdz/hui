@@ -1,4 +1,5 @@
-/** Normalizes watcher snapshot rows and formats their state labels and failure notes. */
+/** Normalizes watcher snapshot rows, formats their state labels and failure notes, and reads the one event a settle
+ * writes into its conversation. */
 import type { Watcher, WatcherState } from "../api/schema/watchers.ts";
 export type { Watcher, WatcherState } from "../api/schema/watchers.ts";
 
@@ -64,4 +65,44 @@ export function watcherStateNote(watcher: Pick<Watcher, "state" | "exitCode">): 
   if (watcher.state === "failed" && watcher.exitCode !== undefined) return `Exited with status ${watcher.exitCode}.`;
   if (watcher.state === "dead") return "The process is gone and recorded no exit status, for example after a restart.";
   return "";
+}
+
+const WATCHER_EVENT_MARKER = "[HUI watcher event]";
+
+/** A settled watcher's event, as the chat shows it instead of the operator's bubble. `state` is absent only when the
+ * marker's fields could not be read: still HUI's event, never the operator's words. */
+export type WatcherEvent = {
+  purpose: string;
+  state?: WatcherState;
+  note?: string;
+  target?: string;
+  outcome?: string;
+  endedAt?: string;
+};
+
+/** Reads the event `server/agent-tools/watcher-events.ts` writes; undefined for anything else, the operator's own words
+ * included. The event carries more (`last_output`, `log`, the action that follows); the chat shows the wait, not the
+ * commands. */
+export function parseWatcherEvent(text: string): WatcherEvent | undefined {
+  if (text !== WATCHER_EVENT_MARKER && !text.startsWith(`${WATCHER_EVENT_MARKER}\n`)) return undefined;
+  const fields = new Map<string, string>();
+  for (const line of text.split("\n").slice(1)) {
+    // The event's values are single lines; a blank one ends them, before its `Action:` instructions.
+    if (!line) break;
+    const match = /^([a-z_]+): ?(.*)$/u.exec(line);
+    if (match) fields.set(match[1]!, match[2]!);
+  }
+  const state = fields.get("state") ?? "";
+  const note = fields.get("note");
+  const target = fields.get("target");
+  const outcome = fields.get("outcome");
+  const endedAt = fields.get("ended_at");
+  return {
+    purpose: fields.get("purpose") ?? "",
+    ...(STATE_SET.has(state) ? { state: state as WatcherState } : {}),
+    ...(note ? { note } : {}),
+    ...(target ? { target } : {}),
+    ...(outcome ? { outcome } : {}),
+    ...(endedAt ? { endedAt } : {}),
+  };
 }

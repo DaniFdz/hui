@@ -6,6 +6,7 @@ import { html, nothing } from "lit";
 import { relativeTime } from "../../lib/browser-view.ts";
 import { icons } from "../../lib/icons.ts";
 import { watcherStateLabel, watcherStateNote, type Watcher } from "../../api/watchers.ts";
+import type { WatcherEvent, WatcherState } from "../../lib/watchers.ts";
 
 export type WatcherLogView = {
   id: string;
@@ -92,6 +93,34 @@ function renderRow(props: WatcherActivityProps, watcher: Watcher) {
     </summary>
     ${open ? renderDetails(props, watcher) : nothing}
   </details>`;
+}
+
+const STATE_VERBS: Record<WatcherState, string> = { running: "running", done: "finished", failed: "failed", stopped: "stopped", dead: "died" };
+
+/** The event a settled watcher wrote into its conversation, where it woke the agent: a system note, never the
+ * operator's bubble. The wait, how it ended and what follows; the log stays with the watcher's own row. */
+export function renderWatcherEvent(event: WatcherEvent) {
+  const { state } = event;
+  const label = state ? `Watcher ${STATE_VERBS[state]}${event.purpose ? `: ${event.purpose}` : ""}` : "Watcher event";
+  const when = event.endedAt ? ` · ${relativeTime(event.endedAt)}` : "";
+  return html`<div class="chat-group system chat-group--watcher-event" role="note" aria-label=${label}>
+    <div class="chat-group-messages">
+      <div class="chat-subagents chat-subagents--event">
+        <div class="chat-subagents__event-title">
+          <span class="chat-subagents__icon">${state ? stateIcon(state) : nothing}</span>
+          <span class="chat-subagents__label" title=${event.purpose}>${label}</span>
+          <span class="chat-subagents__snippet">${state ? `${watcherStateLabel({ state })}${when}` : "Automated event · delivered to pi"}</span>
+        </div>
+        ${event.target || event.outcome || event.note ? html`<div class="chat-watcher__details">
+          ${event.target || event.outcome ? html`<div class="chat-watcher__meta">
+            ${event.target ? html`<a href=${event.target} target="_blank" rel="noreferrer noopener">${watcherTargetLabel(event.target)}</a>` : nothing}
+            ${event.outcome ? html`<span>Then: ${event.outcome}</span>` : nothing}
+          </div>` : nothing}
+          ${event.note ? html`<p class="chat-watcher__note">${event.note}</p>` : nothing}
+        </div>` : nothing}
+      </div>
+    </div>
+  </div>`;
 }
 
 export function renderWatcherActivity(props: WatcherActivityProps) {
