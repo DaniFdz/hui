@@ -394,7 +394,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#a-settled-watcher-tells-its-conversation-2026-10-28", "docs/api.md#background-watchers"],
     surfaces: ["row:watcherEvent"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
