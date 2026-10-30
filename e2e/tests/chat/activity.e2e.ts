@@ -29,9 +29,10 @@ test("a message written mid-turn keeps its own row with its links, live and afte
     await hui.expectLinkTo(transcript, "service dashboard", "https://example.com/dashboard/checkout");
     await hui.expectLinkTo(transcript, "error logs", "https://example.com/logs?query=status%3Aerror");
     await expect(transcript.getByText("Started two helpers in the background; I'll report when they're back.")).toBeVisible();
-    await hui.scrollTo(transcript, transcript.getByText("Ran 1 command"));
-    await transcript.getByText("Ran 1 command").tap();
-    await expect(transcript.getByRole("button", "Read fixture.txt")).toBeVisible();
+    await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
+    const read = transcript.getByRole("button", /^Read fixture\.txt/u);
+    if (!(await read.isVisible())) await transcript.getByText("Used 1 tool").tap();
+    await expect(read).toBeVisible();
   }
 });
 
@@ -54,7 +55,7 @@ test("each stretch of activity folds under a label from what it holds and opens 
   await message.fill(call("HOLD", [{ name: "fixture_echo", input: { text: "live" } }]));
   await send.tap();
   await hui.provider.held();
-  await expect(transcript.getByText("fixture_echo…")).toBeVisible();
+  await expect(transcript.getByText("Using 1 tool")).toBeVisible();
   await hui.provider.release();
   await expect(idle).toBeVisible();
 
@@ -62,9 +63,10 @@ test("each stretch of activity folds under a label from what it holds and opens 
   await send.tap();
   await expect(transcript.getByText("Tool complete")).toBeVisible();
   await expect(idle).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command").last());
-  await transcript.getByText("Ran 1 command").last().tap();
-  await inOrder(transcript.getByText("Inspecting the fixture."), transcript.getByRole("button", "Read fixture.txt"));
+  await hui.scrollTo(transcript, transcript.getByText("Used 1 tool").last());
+  const read = transcript.getByRole("button", /^Read fixture\.txt/u);
+  if (!(await read.isVisible())) await transcript.getByText("Used 1 tool").last().tap();
+  await inOrder(transcript.getByText("Inspecting the fixture."), read);
 
   await message.fill(call("CALL", [
     { name: "read", input: { path: `${hui.workspace}/fixture.txt` } },
@@ -73,9 +75,10 @@ test("each stretch of activity folds under a label from what it holds and opens 
   ]));
   await send.tap();
   await expect(idle).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText("Ran 3 commands, edited 1 file"));
-  await transcript.getByText("Ran 3 commands, edited 1 file").tap();
-  await inOrder(transcript.getByRole("button", "Read fixture.txt").last(), transcript.getByRole("button", "echo folded"), transcript.getByText("edit", { visible: true }));
+  await hui.scrollTo(transcript, transcript.getByText("Used 3 tools"));
+  const ranEcho = transcript.getByRole("button", /^Ran echo folded/u);
+  if (!(await ranEcho.isVisible())) await transcript.getByText("Used 3 tools").tap();
+  await inOrder(transcript.getByRole("button", /^Read fixture\.txt/u).last(), ranEcho, transcript.getByRole("button", /^Edited missing\.txt/u));
   await hui.scrollTo(transcript, transcript.getByText("Weighing the fixture."));
   await expect(transcript.getByText("Weighing the fixture.")).toBeVisible();
 });

@@ -155,7 +155,7 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   await expect(screen.getByText("I sent the command to your shared terminal.", { exact: false })).toBeVisible();
   await expect.poll(() => replay(hui, session.id, id)).toContain("Shared variable: hello-from-operator");
   expect(await replay(hui, session.id, id)).toContain("PI_SHARED_TERMINAL");
-  await expect(screen.getByText("Ran 3 commands")).toBeVisible();
+  await expect(screen.getByText("Used 3 tools")).toBeVisible();
 
   const stranger = await hui.createSession({ title: "Another conversation", cwd: repository.path });
   await hui.prompt(stranger, "E2E_SHARED_TERMINAL");
