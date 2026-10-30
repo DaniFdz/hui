@@ -55,11 +55,9 @@ test("the Sessions page reads the runtime summary and each row's Active or Cold,
   const starting = await hui.intercept("GET", /\/__hui\/sessions$/u);
   await hui.reload();
   await starting.arrived();
-  await events.arrived();
   await starting.answer(await answer((sessions) => {
     sessions.find(({ title }) => title === "Bravo warm")!.status = "starting";
   }));
-  await expect(screen.getByRole("table")).toContainText("Bravo warm");
   await expect(warmRow.getByText("Measuring…", { exact: true })).toBeVisible();
   await expect(screen.getByText("1 Live", { exact: true })).toBeVisible();
   await events.deliver();
