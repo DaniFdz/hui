@@ -14,11 +14,13 @@ test("a trigger steers a bot's running turn by default, and two events join it t
   await send.tap();
   await hui.provider.held();
 
-  // Two listener events arrive while the bot's turn is held at the model.
+  // Two listener events arrive while the bot's turn is held at the model. Each delivery is accepted by the bot's
+  // session before its trigger records the run, so both are waiting in the turn when it is released.
   for (const id of ["one", "two"]) {
     const event = { id, summary: `review ${id}`, details: `RAW ${id}`, at: new Date().toISOString() };
     await hui.api("POST", hook.path, { events: [event] });
   }
+  await expect.poll(async () => (await hui.api<{ runs: unknown[] }>("GET", `/__hui/bots/${bot.id}/triggers`)).runs.length).toBe(2);
   await hui.provider.release();
 
   await expect(transcript.getByText("review one").first()).toBeVisible();
