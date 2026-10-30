@@ -243,7 +243,7 @@ const server = createServer(async (request, response) => {
   }
   // A recovery turn ("The previous run was interrupted while handling this request: …") quotes the request the
   // interrupted run was answering, so the markers below must not fail it a second time: it answers the continuation.
-  const recovering = source.startsWith("The previous run was interrupted while handling this request:");
+  const recovering = source.includes("The previous run was interrupted while handling this request:");
   // PI retries 5xx answers and messages that look transient, so E2E_ERROR_LONG fails at once with a 400, and its
   // message is longer than the run error card's summary, so the card offers Details.
   if (!recovering && source.includes("E2E_ERROR_LONG")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
