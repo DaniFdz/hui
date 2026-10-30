@@ -30,15 +30,11 @@ export function transcriptAsMarkdown(items: readonly TranscriptItem[]): string {
   }).join("\n\n").trim();
 }
 
-/** How a session on a machine HUI cannot reach reads: its status and the
- * notice that explains it. Undefined while the session is reachable. */
-export function unreachableHost(session: Pick<SessionView, "status" | "worker">): { status: string; notice: string } | undefined {
+/** How a session on a machine HUI cannot reach reads. Undefined while the
+ * session is reachable. */
+export function unreachableHost(session: Pick<SessionView, "status" | "worker">): string | undefined {
   const name = session.worker?.name ?? "its machine";
-  if (session.status === "reconnecting") {
-    return { status: `Reconnecting to ${name}…`, notice: `Connection to ${name} lost — the session keeps running there. HUI reconnects automatically.` };
-  }
-  if (session.status === "disconnected") {
-    return { status: `Disconnected from ${name}`, notice: `Disconnected from ${name}. The session may still be running there.` };
-  }
+  if (session.status === "reconnecting") return `Reconnecting to ${name}…`;
+  if (session.status === "disconnected") return `Disconnected from ${name}`;
   return undefined;
 }

@@ -539,26 +539,44 @@ test("Ultra is the stop above Maximum where the runtime offers it, and both glow
 
 const sendButton = (html: string) => html.match(/<button type="submit" class="chat-send-btn chat-send-btn--send" \?disabled=(\w+)/u)?.[1];
 
-test("a worker session HUI is reconnecting to reads calm: a status, one notice, the draft kept and no failure", async () => {
+test("a worker session HUI is reconnecting to reads calm: one status under the composer, the draft kept and no failure", async () => {
   const html = await renderWorkerSession("reconnecting");
   assert.match(html, /durable on devbox · [^<]* · <span role="status" aria-label=Session status: Reconnecting to devbox…>Reconnecting to devbox…<\/span> </u);
-  assert.match(html, /Reconnecting to devbox — draft preserved\./u);
-  assert.equal(html.split("Connection to devbox lost — the session keeps running there. HUI reconnects automatically.").length, 2, "exactly one notice");
+  // The header's status label and text, then the one composer status: nowhere else.
+  assert.equal(html.split("Reconnecting to devbox…").length, 4, "one status in the header, one under the composer");
+  assert.match(html, /class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status" data-testid="composer-status"> <span class="agent-chat__composer-status-icon" aria-hidden="true"><span class="session-run-spinner"><\/span><\/span> <span class="agent-chat__composer-status-text">Reconnecting to devbox…<\/span> <\/div><\/div>/u);
+  assert.doesNotMatch(html, /transcript__note|draft preserved/u, "no second copy in the chat or under the composer");
   assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
   assert.doesNotMatch(html, /reconnect-session/u, "HUI reconnects by itself; there is nothing to click");
   assert.match(html, /\.value=keep this draft/u);
-  assert.match(html, /placeholder=Draft while HUI reconnects…/u);
+  assert.match(html, /placeholder=Send a message…/u);
   assert.equal(sendButton(html), "true", "sending waits for the worker");
 });
 
 test("a worker session HUI no longer retries says it is disconnected and offers Reconnect", async () => {
   const html = await renderWorkerSession("disconnected");
   assert.match(html, /· <span role="status" aria-label=Session status: Disconnected from devbox>Disconnected from devbox<\/span> </u);
-  assert.match(html, /Disconnected from devbox — draft preserved\./u);
-  assert.match(html, /Disconnected from devbox\. The session may still be running there\. <button type="button" class="btn btn--sm reconnect-session" @click=>Reconnect<\/button>/u);
+  assert.match(html, /<span class="agent-chat__composer-status-text">Disconnected from devbox<\/span> <button type="button" class="btn btn--sm reconnect-session" @click=>Reconnect<\/button>/u);
+  assert.doesNotMatch(html, /transcript__note|draft preserved|may still be running there/u);
   assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
   assert.match(html, /\.value=keep this draft/u);
   assert.equal(sendButton(html), "true");
+});
+
+test("a dropped stream says so once under the composer, and a stopped one keeps the runtime's own words", async () => {
+  const reconnecting = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status: "idle" }, connection: "reconnecting" });
+  assert.match(reconnecting, /<span class="agent-chat__composer-status-text">Reconnecting…<\/span>/u);
+  assert.doesNotMatch(reconnecting, /transcript__note|draft preserved/u);
+  const stopped = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status: "idle" }, connection: "stopped", connectionNote: "The runtime exited — this session is no longer streaming." });
+  assert.match(stopped, /<span class="agent-chat__composer-status-text">The runtime exited — this session is no longer streaming\.<\/span>/u);
+  assert.doesNotMatch(stopped, /session-run-spinner/u, "nothing is retrying, so nothing spins");
+});
+
+test("a saved offline copy says so once and offers no Reconnect it cannot honour", async () => {
+  const saved = await renderWorkerSession("disconnected", { connection: "saved", savedCopy: { savedAt: "2026-10-01T10:00:00.000Z", truncated: true } });
+  assert.match(saved, /<span class="agent-chat__composer-status-text">Saved conversation · draft preserved\. Send waits for a live connection\.<\/span>/u);
+  assert.doesNotMatch(saved, /reconnect-session|session-run-spinner/u, "nothing is retrying and there is no worker to reconnect");
+  assert.match(saved, /Only recent messages are saved\./u, "the reading copy still says how much of it was kept");
 });
 
 test("a reachable worker session shows neither notice, and a failed one keeps its error banner", async () => {

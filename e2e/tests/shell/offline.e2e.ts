@@ -85,7 +85,7 @@ test("a silent connection recovers without sending the draft", { tags: ["CHAT-07
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const transcript = screen.getByTestId("transcript");
-  const reconnecting = screen.getByText("Reconnecting — draft preserved.", { exact: true });
+  const reconnecting = screen.getByTestId("composer-status");
   const editedDraft = `${DRAFT} after editing`;
 
   await conversationSavedForOffline({ screen, hui }, "Silent connection");
