@@ -271,7 +271,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-028",
     title: "Let an agent coordinate with its session tree",
-    behaviour: "An agent lists its tree, reads a child's history and sends it a message, and the reply comes back to it (Coordination complete: Cross-session reply from child.); the message shows in the child's transcript as sent by the parent session. It can also steer or cancel its own children, and a child it cancels reads Cancelled by another agent. in the card. Sessions outside the tree stay out of reach.",
+    behaviour: "An agent lists its tree, reads a child's history and sends it a message, and the reply comes back to it (Coordination complete: Cross-session reply from child.); the message shows in the child's transcript as sent by the parent session. A target that is busy takes the message in the turn going on, before its next model call, rather than waiting for a turn of its own. It can also steer or cancel its own children, and a child it cancels reads Cancelled by another agent. in the card. Sessions outside the tree stay out of reach.",
     spec: SUBAGENTS,
     surfaces: ["tool:sessions_list", "tool:sessions_history", "tool:sessions_send", "tool:subagents"],
     journeys: ["subagents"],

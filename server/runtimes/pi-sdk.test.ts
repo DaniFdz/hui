@@ -504,13 +504,17 @@ test("SDK abort and steer/follow-up settle without losing queue messages", { tim
   assert.deepEqual(session.transcript(), []);
   prefix = nextEvent(session, (event) => event.type === "text" && event.delta.includes("Replay prefix"));
   await session.prompt("E2E_REPLAY"); await prefix;
-  await session.steer("Steering fixture"); await session.followUp("Follow-up fixture");
-  assert.deepEqual(session.pendingQueue(), { steering: ["Steering fixture"], followUp: ["Follow-up fixture"] });
+  await session.steer("Steering fixture"); await session.steer("Second steering fixture"); await session.followUp("Follow-up fixture");
+  assert.deepEqual(session.pendingQueue(), { steering: ["Steering fixture", "Second steering fixture"], followUp: ["Follow-up fixture"] });
   settled = nextEvent(session, (event) => event.type === "settled");
   await fetch(`${f.baseUrl}/control/release-replay`, { method: "POST" }); await settled;
   const history = JSON.stringify(session.transcript());
-  assert.match(history, /Steering fixture/u); assert.match(history, /Follow-up fixture/u);
+  assert.match(history, /Steering fixture/u); assert.match(history, /Second steering fixture/u); assert.match(history, /Follow-up fixture/u);
   assert.deepEqual(session.pendingQueue(), { steering: [], followUp: [] });
+  const requests = completeLines(await readFile(f.log, "utf8")).map((line) => JSON.parse(line) as { messages?: unknown[] });
+  const carrying = requests.filter((request) => JSON.stringify(request.messages ?? []).includes("Steering fixture"));
+  assert.ok(carrying.length > 0);
+  assert.ok(JSON.stringify(carrying[0]!.messages).includes("Second steering fixture"), "both steers reached the model in the same request");
 });
 
 test("CLI fallback and SDK can resume each other's PI transcripts", { timeout: 45_000 }, async (t) => {

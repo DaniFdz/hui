@@ -546,7 +546,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-055",
     title: "Steer a busy bot with short trigger notices",
-    behaviour: "With \"Steer the current turn with summaries and PR links only\" chosen, the card says it steers with summaries and links; an event while the bot works reaches its current turn before its next model call, without event details or fetched pull request diffs and without stopping the turn. While idle the event starts a turn, and a trigger without the option keeps full-context follow-ups.",
+    behaviour: "Every trigger steers the current turn with summaries and PR links only unless the operator clears \"Steer the current turn with summaries and PR links only\", which leaves full-context follow-ups; the card names a follow-up when that is what the trigger does. A steered event while the bot works reaches its current turn before its next model call, without event details or fetched pull request diffs and without stopping the turn, and while idle it starts a turn. A trigger saved before the choice existed keeps full-context follow-ups.",
     spec: ["SPEC.md#bots", "docs/api.md#triggers"],
     surfaces: ["route:POST /__hui/bots/:id/triggers", "route:POST /__hui/hooks/<token>"],
     journeys: ["bot-triggers"],
