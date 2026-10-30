@@ -1390,6 +1390,7 @@ thinking disabled. The question and answer never enter PI's durable session or
 the main transcript, so they cannot influence later turns. Examples include
 `/btw which file are we editing?` and `/btw summarize the current task in one sentence`.
 
+<<<<<<< HEAD
 HUI also supplies PI with a session-scoped `progress_card` presentation tool.
 PI persists its ordinary tool call in the transcript; HUI projects only the
 latest validated call into a collapsible Task progress card attached above the
@@ -1399,13 +1400,24 @@ by hand keeps it open. An empty call clears the card. HUI never infers plan stat
 A refresh control on the card reads the session again and asks the agent to
 update the card, so a missed stream update and a plan the agent stopped
 revising both end current.
+=======
+HUI keeps each conversation's Task progress card itself, not the agent. A
+session's turn settling, and every five minutes while one is still running, send
+a bounded digest of the conversation to the configured utility model; its
+summary and `done`/`doing`/`todo` plan become a collapsible card attached above
+the composer, stored with the session. Nothing waits on that call: without a
+utility model, on a failure, or on an answer with neither a summary nor a plan,
+the previous card stays and the turn is unaffected. Subagent sessions get no
+card of their own; their work is the parent's. HUI never infers plan state from
+prose in the transcript, and the agent has no tool for it.
+>>>>>>> 736f82b6 (feat: let HUI write each session's task progress card)
 Session rows retain OpenClaw’s single-line layout. Hover or keyboard focus opens
 the ported OpenClaw 2026.9.5 hovercard: session age, workspace, current unfinished
-step/count and agent notepad. Idle unfinished plans show the original paused clock;
-completed plans have no heads-up. Notes-only cards have no invented percentage.
-Touch does not gain an extra progress button absent from the original. Background sessions
-refresh while the page is visible. After a gateway restart, progress returns when
-the session is reopened and its runtime restores the transcript.
+step/count and the card's Markdown summary. Idle unfinished plans show the
+original paused clock; completed plans have no heads-up. Notes-only cards have
+no invented percentage. Touch does not gain an extra progress button absent
+from the original. Background sessions refresh while the page is visible. The
+card is registry state, so it is there immediately after a gateway restart.
 
 ## Goals
 

@@ -285,8 +285,9 @@ and mobile geometry. Model and thinking share an exclusive composer popover;
 thinking uses OpenClaw's compact dotted Effort scale, previews changes while the
 thumb moves, and remains available on narrow screens. OpenClaw's separate Fast
 mode row stays absent because PI exposes no equivalent runtime setting.
-The bundled `progress_card` PI extension persists explicit plan updates in the
-runtime transcript and renders their latest validated state above the composer.
+HUI's utility model keeps each session's Task progress card from the
+conversation digest after every settled turn and every five minutes of a running
+one, stores it on the session record, and the composer renders it.
 The session list now ports the original OpenClaw 2026.9.5 hovercard source, CSS,
 positioning and interaction lifecycle; background updates retain the same PI API.
 Independent original-render comparison matches structure and all 13 measured

@@ -4,11 +4,10 @@
  * the models it can switch to and the one it runs on, its context usage, thinking level and fast mode, with the
  * requests that change them and the once-per-selection model list request; the pending question with the focus it
  * returns to; the live compaction; and the copied-message mark. The shell reads its props and receives the stream's
- * frames that belong to the composer, the backlog and the sidebar; and the refresh that reads the session again and
- * asks the agent to bring the task progress card up to date.
+ * frames that belong to the composer, the backlog and the sidebar.
  */
 import type { LitElement, ReactiveController, ReactiveControllerHost } from "lit";
-import { followUpSession, loadModels, openSession, sendPrompt, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
+import { loadModels, openSession, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
 import { isGatewayUnavailable } from "../api/request.ts";
 import { OutdatedBuildError } from "../api/offline.ts";
 import { forgetConversation, readSavedConversation, saveConversation, type SavedConversation } from "../lib/session/offline-store.ts";
@@ -34,16 +33,11 @@ type ConversationDeps = {
 
 type ConversationHost = ReactiveControllerHost & Pick<LitElement, "renderRoot">;
 
-/** The card is the agent's own writing, so only the agent can bring it up to date; HUI asks in a normal user turn. */
-const REFRESH_PROGRESS_PROMPT = "Refresh the task progress card to match where this work stands now. Update only the card, then stop.";
-
 export class ConversationController implements ReactiveController {
   selected: SessionView | undefined;
   transcript: readonly TranscriptItem[] = [];
   subagents: readonly SubagentTaskView[] = [];
   opening = false;
-  /** A refresh is in flight: from the click until the agent's turn for it ends. */
-  refreshing = false;
   /** Why the selected session's open request failed; its view offers a retry. */
   openError = "";
   streaming = false;
@@ -78,8 +72,6 @@ export class ConversationController implements ReactiveController {
   #frameUpdate: number | undefined;
   #copyTimer: number | undefined;
   #disconnected = false;
-  /** The refresh's prompt was accepted, so the agent's next settle ends the busy state. */
-  #refreshAccepted = false;
 
   constructor(host: ConversationHost, deps: ConversationDeps) {
     this.#host = host;
@@ -146,7 +138,6 @@ export class ConversationController implements ReactiveController {
   #cancelRead(): void {
     this.#readAbort?.abort();
     this.#readAbort = undefined;
-    this.#endRefresh();
   }
 
   /** Opens (starting a runtime if needed) and begins streaming. */
@@ -241,50 +232,6 @@ export class ConversationController implements ReactiveController {
     this.#host.requestUpdate();
     await this.#deps.refreshSessions();
   };
-
-  /** Reads the open session again and asks the agent for a card that matches the work as it stands now. */
-  async refresh(): Promise<void> {
-    const id = this.selected?.id;
-    if (!id || this.refreshing || this.opening || this.connection !== "live") return;
-    const requestToken = this.#openRequestToken;
-    const abort = new AbortController();
-    this.#readAbort = abort;
-    this.refreshing = true;
-    this.#refreshAccepted = false;
-    this.#host.requestUpdate();
-    try {
-      const opened = await openSession(id, abort.signal);
-      if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) return;
-      if (this.connection !== "live") {
-        this.#endRefresh();
-        return;
-      }
-      this.selected = opened.session;
-      this.applySnapshot(opened.snapshot);
-      // Accepted after the snapshot's own status, which says nothing about the turn to come. A running
-      // session takes it as the follow-up the composer would send, rather than refusing it.
-      await (this.streaming ? followUpSession : sendPrompt)(id, REFRESH_PROGRESS_PROMPT);
-      if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) this.#refreshAccepted = true;
-    } catch (error) {
-      if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
-        this.#endRefresh();
-        this.#deps.showError(error instanceof Error ? error.message : "Could not refresh that session.");
-      }
-    } finally {
-      if (this.#readAbort === abort) {
-        this.#readAbort = undefined;
-        this.#host.requestUpdate();
-      }
-    }
-  }
-
-  /** The click's work is done once the agent's own turn for it has ended. */
-  #endRefresh(): void {
-    this.#refreshAccepted = false;
-    if (!this.refreshing) return;
-    this.refreshing = false;
-    this.#host.requestUpdate();
-  }
 
   #startStream(id: string, heldRevision?: number): void {
     // An older attempt may have installed a stream while a newer open request
@@ -444,13 +391,11 @@ export class ConversationController implements ReactiveController {
         // pi emits turn_end before agent_end. The following status frame is
         // authoritative; unlocking here would accept a prompt PI still rejects.
         this.streaming = streamingAfterEvent(this.streaming, event.type);
-        if (this.#refreshAccepted) this.#endRefresh();
         break;
       case "settled":
         // `settled` explains why the next status may become idle, but the
         // status SSE remains the single authority that unlocks the composer.
         this.streaming = streamingAfterEvent(this.streaming, event.type);
-        if (this.#refreshAccepted) this.#endRefresh();
         break;
     }
     if (event.type === "text" || event.type === "thinking" || event.type === "tool_update") this.#requestFrameUpdate();
@@ -470,8 +415,6 @@ export class ConversationController implements ReactiveController {
     // so the composer lock follows the status rather than only turn events.
     this.streaming = streamingForStatus(status);
     if (status !== "running" && status !== "waiting") this.stopping = false;
-    // A refresh waits for the turn it started; a session that stops working has nothing more to send.
-    if (this.#refreshAccepted && status !== "running" && status !== "waiting") this.#endRefresh();
     this.#host.requestUpdate();
     this.requestModelsWhenReady(id, status);
     this.#deps.statusChanged(id, status, interrupted);
@@ -645,18 +588,16 @@ export class ConversationController implements ReactiveController {
       });
   };
 
-  props(): Pick<HomeProps, "thinking" | "fast" | "models" | "currentModel" | "usage" | "refreshing" | "onSelectModel" | "onSelectThinking" | "onSelectFast" | "onRefreshSession"> {
+  props(): Pick<HomeProps, "thinking" | "fast" | "models" | "currentModel" | "usage" | "onSelectModel" | "onSelectThinking" | "onSelectFast"> {
     return {
       thinking: this.thinking,
       ...(this.fast === undefined ? {} : { fast: this.fast }),
       models: this.models,
       currentModel: this.currentModel,
       usage: this.usage,
-      refreshing: this.refreshing,
       onSelectModel: this.#selectModel,
       onSelectThinking: this.#selectThinking,
       onSelectFast: this.#selectFast,
-      onRefreshSession: () => void this.refresh(),
     };
   }
 }

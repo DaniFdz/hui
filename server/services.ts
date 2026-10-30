@@ -120,6 +120,7 @@ import {
 import { createSessionLifecycle, defaultSessionTool, SESSION_TITLE_MAX } from "./sessions/lifecycle.ts";
 import { setAgentStage } from "./sessions/stages.ts";
 import { claimGoalContinuation, updateGoalFromAgent } from "./sessions/goals.ts";
+import { SessionProgress } from "./sessions/session-progress.ts";
 import { createSessionViews } from "./sessions/views.ts";
 
 const piMutations = new PiMutationService();
@@ -334,6 +335,27 @@ export const hostMetricsRoutes = createHostMetricsRoutes({ hostMetrics: createHo
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 /** A goal that is still active gets its next turn from the queue, never from a timer of its own. */
 liveSessions.setGoalContinuation((id) => claimGoalContinuation(id));
+/** The Task progress card is HUI's: the utility model writes it after each settled turn and every five minutes of a
+ * running one. Nothing waits on it, and a failed call leaves the previous card in place. */
+const sessionProgress = new SessionProgress({
+  settings: readHuiSettings,
+  session: async (id) => {
+    const record = (await readRegistry()).find((each) => each.id === id);
+    return record && { cwd: record.cwd, ...(record.worker ? { worker: record.worker } : {}), ...(record.parentId ? { parentId: record.parentId } : {}) };
+  },
+  transcript: (id) => liveSessions.transcript(id),
+  running: () => liveSessions.runningIds(),
+  save: async (id, card) => {
+    // An unchanged card is not written: the list every screen shares would be
+    // rebuilt and rebroadcast for nothing.
+    const stored = (await readRegistry()).find((record) => record.id === id);
+    if (!stored || JSON.stringify(stored.progress) === JSON.stringify(card)) return;
+    await updateRegistry((records) => records.map((record) => record.id === id ? { ...record, progress: card } : record));
+    liveSessions.publishProgress(id, card);
+  },
+});
+liveSessions.setProgressRefresh((id, transcript) => sessionProgress.settled(id, transcript));
+sessionProgress.start();
 liveSessions.setWatcherProvider((id) => watchers.list(id));
 export const secretRequests = new SecretRequests({ onChange: (id) => liveSessions.notifySnapshot(id) });
 export const secretFiles = new SecretFiles();

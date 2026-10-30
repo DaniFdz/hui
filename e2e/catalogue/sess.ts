@@ -414,11 +414,11 @@ const cases: UseCase[] = [
   {
     id: "SESS-043",
     title: "Follow a session's task progress without opening it",
-    behaviour: "A session's latest progress card shows in its row preview while another session or Home is open, and it updates in the background: clearing the plan removes it and a new plan brings it back. It survives a reload; after a gateway restart it returns once the session is reopened.",
+    behaviour: "A session's stored Task progress card shows in its row preview while another session or Home is open, and it updates there in the background as HUI rewrites it from the conversation. It survives a reload and a gateway restart, because HUI stores it with the session rather than projecting it from a runtime transcript.",
     spec: ["docs/api.md#session-list-progress"],
-    surfaces: ["tool:progress_card", "route:GET /__hui/sessions"],
+    surfaces: ["route:GET /__hui/sessions"],
     journeys: ["session-progress", "session-hovercard"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

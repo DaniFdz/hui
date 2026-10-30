@@ -55,7 +55,6 @@ import "../components/questionnaire-card.ts";
 import type { QuestionnaireQuestion, QuestionnaireResult } from "../api/schema/sessions.ts";
 import { markdownBlocks } from "../lib/markdown/blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
-import { progressCardFromTranscript } from "../lib/progress-card.ts";
 import { mediaSizeLabel, presentedMediaFromDetails, type PresentedMediaItem } from "../lib/presented-media.ts";
 import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
@@ -236,10 +235,6 @@ export type HomeProps = {
   opening: boolean;
   /** The open request failed, so there is no transcript to show; onRetry asks again. */
   openError?: string;
-  /** A re-read of the open session is in flight. */
-  refreshing?: boolean;
-  /** Reads the open session again, for a card the stream left behind. */
-  onRefreshSession: () => void;
   /** A turn is in flight, so the composer is locked. */
   streaming: boolean;
   sending: boolean;
@@ -1986,7 +1981,7 @@ function goalStatusLabel(status: SessionGoal["status"]): string {
 }
 
 function renderTaskProgress(props: HomeProps) {
-  const card = progressCardFromTranscript(props.transcript);
+  const card = props.session?.progress;
   if (!card) return nothing;
   const completed = card.steps.filter((step) => step.status === "completed").length;
   const current = card.steps.find((step) => step.status === "in_progress")
@@ -2002,7 +1997,6 @@ function renderTaskProgress(props: HomeProps) {
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
         <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
         <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
-        <button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card" aria-busy=${props.refreshing} ?disabled=${props.refreshing || props.connection !== "live"} @click=${(event: Event) => refreshTaskProgress(event, props)}>${icons.refresh}</button>
         <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
       </summary>
       <div class="session-progress-card__body" role="region" aria-label="Task progress">
@@ -2011,13 +2005,6 @@ function renderTaskProgress(props: HomeProps) {
       </div>
     </details>
   </div>`;
-}
-
-/** A control inside the summary asks for a fresh card instead of collapsing it. */
-function refreshTaskProgress(event: Event, props: HomeProps) {
-  event.preventDefault();
-  event.stopPropagation();
-  props.onRefreshSession();
 }
 
 /** The offline reading copy's own note: when it was saved, how much of it, and what to do about an old build. */
@@ -2030,6 +2017,7 @@ function renderSavedNotice(props: HomeProps) {
     ${props.savedCopy && props.onForgetSaved ? html` <button type="button" class="btn btn--sm" @click=${props.onForgetSaved}>Forget saved conversations</button>` : nothing}
   </div>`;
 }
+
 /** `provider/id`, which is how a model is addressed everywhere else. */
 function modelValue(model: RuntimeModel): string {
   return model.provider ? `${model.provider}/${model.id}` : model.id;

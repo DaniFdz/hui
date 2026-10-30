@@ -12,7 +12,8 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
 import { CONFIG_DIR } from "../paths.ts";
-import type { SessionGoal, SessionGoalStatus, SessionStage, SessionStageSource } from "../api/sessions.ts";
+import type { ProgressCard, SessionGoal, SessionGoalStatus, SessionStage, SessionStageSource } from "../api/sessions.ts";
+import { parseProgressCard } from "./progress-card.ts";
 import { isSessionStage, isSessionStageSource } from "./session-stages.ts";
 
 const REGISTRY_FILE = join(CONFIG_DIR, "sessions.json");
@@ -82,6 +83,10 @@ export type SessionRecord = {
   /** The objective this conversation pursues, with how far it got. Absent on
    * every session without a goal, so existing registries need no migration. */
   goal?: SessionGoal;
+  /** The Task progress card HUI's utility model last wrote for this
+   * conversation. Optional and additive, so existing registries need no
+   * migration; absent means no card yet. */
+  progress?: ProgressCard;
   createdAt: string;
   updatedAt: string;
   /** Where the record came from, so an import can be reported honestly. */
@@ -245,6 +250,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ? raw["stagePullRequests"].filter((url): url is string => typeof url === "string" && /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/u.test(url)).slice(-20)
     : [];
   const goal = storedGoal(raw["goal"]);
+  const progress = parseProgressCard(raw["progress"]);
   return {
     id,
     title: str(raw["title"]).trim() || id,
@@ -264,6 +270,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(raw["unread"] === true ? { unread: true } : {}),
     ...(icon ? { icon } : {}),
     ...(parentId ? { parentId } : {}),
+    ...(progress ? { progress } : {}),
     ...(subagent ? { subagent } : {}),
     ...(bot ? { bot } : {}),
     ...(jiraIssues.length ? { jiraIssues } : {}),

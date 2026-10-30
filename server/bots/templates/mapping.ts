@@ -24,7 +24,6 @@ const INTEGRATION_TOOLS: readonly [RegExp, readonly string[]][] = [
   [/\b(?:secrets?|credentials?|api keys?|passwords?)\b/u, ["secret_request"]],
   [/\b(?:widgets?|charts?|visuali[sz]ations?|graphs?|diagrams?)\b/u, ["show_widget"]],
   [/\b(?:message (?:other )?bots?|bot messages?)\b/u, ["message_bot"]],
-  [/\b(?:todos?|to-?do lists?|task lists?|progress)\b/u, ["progress_card"]],
 ];
 
 export type OfferedToolInfo = { name: string; label: string };

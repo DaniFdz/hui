@@ -229,43 +229,28 @@ test("the composer send control uses OpenClaw's SVG geometry and state colors", 
   assert.match(styles, /\.agent-chat__input \.chat-send-btn\s*\{[^}]*height:\s*var\(--chat-composer-send-size\);[^}]*color:\s*var\(--primary-foreground\);[^}]*box-shadow:\s*none;/s);
 });
 
-test("Task progress projects the durable progress_card signal above the composer", () => {
+test("Task progress draws the card HUI's utility model wrote above the composer", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /progressCardFromTranscript\(props\.transcript\)/);
+  assert.match(source, /const card = props\.session\?\.progress;/);
   assert.match(source, /class="session-progress-card session-progress-card--composer"/);
+  // Calls an older transcript still holds are never drawn as activity.
   assert.match(source, /item\.name !== "progress_card"/);
   assert.match(styles, /\.agent-chat__progress-float\s*\{[^}]*--chat-progress-underlap:\s*18px;/s);
   assert.ok(source.indexOf("${renderTaskProgress(props)}") > source.indexOf('<div class="agent-chat__composer-shell'));
-  assert.match(source, /class="agent-chat__question-dock"/);
-  assert.match(source, /agent-chat__composer-shell--question-composer/);
-});
 
-test("Task progress offers a refresh control that asks for a new card without folding it, and turns busy meanwhile", async () => {
-  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const styles = readStyles("../styles/openclaw-chat.css");
-  const props = {
-    transcript: [
-      { kind: "message", role: "user", text: "long task" },
-      { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "Check the build", status: "in_progress" }] }, status: "running" },
-    ],
-  };
-  const idle = await renderWorkerSession("running", props);
-  const busy = await renderWorkerSession("running", { ...props, refreshing: true });
-
-  assert.match(idle, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card"/u);
-  assert.doesNotMatch(idle, /aria-busy=(?:true|"true")/u);
-  assert.match(idle, /Check the build/u);
-  assert.match(busy, /aria-busy=true \?disabled=true/u);
-  for (const connection of ["saved", "reconnecting", "stopped", "outdated"]) {
-    const offline = await renderWorkerSession("idle", { ...props, connection });
-    assert.match(offline, /class="session-progress-card__refresh"[^>]*\?disabled=true/u);
-  }
-  assert.match(source, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*props\.onRefreshSession\(\);/u);
-  assert.match(styles, /\.session-progress-card__refresh\s*\{[^}]*cursor:\s*var\(--cursor-action\);/s);
-  assert.match(styles, /\.session-progress-card__refresh\[aria-busy="true"\] > svg\s*\{[^}]*animation:\s*session-run-spin/s);
-  assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\.session-progress-card__refresh\[aria-busy="true"\]/s);
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status: "running", worker: { id: "w", name: "devbox" } };
+  const html = await renderWorkerSession("running", {
+    session: { ...session, progress: { markdown: "Wiring the card.", steps: [
+      { step: "Read the session", status: "completed" },
+      { step: "Check the build", status: "in_progress" },
+    ] } },
+  });
+  assert.match(html, /Check the build/u);
+  assert.match(html, /1 of 2/u);
+  assert.match(html, /Wiring the card\./u);
+  assert.doesNotMatch(await renderWorkerSession("idle"), /session-progress-card/u, "no card, nothing drawn");
 });
 
 test("model and thinking reuse one exclusive composer picker pattern", () => {

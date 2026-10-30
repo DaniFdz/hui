@@ -13,7 +13,6 @@ import { groupSessions, readSessionRegistry, sessionRegistryWrites, updateRegist
 import type { WatcherService } from "../agent-tools/watchers.ts";
 import { workers } from "../workers.ts";
 import type { SessionJiraIssue, SessionStatus, SessionSubagent, SessionView, WorktreeProgress } from "../api/sessions.ts";
-import { progressCardFromTranscript } from "./progress-card.ts";
 import { effectiveSessionStage, stageRank } from "./session-stages.ts";
 
 /** Worktree sessions whose checkout is still being created, shown in the
@@ -119,7 +118,7 @@ export function createSessionViews(deps: SessionViewDeps) {
     const bot = record.bot ? deps.bots().identity(record.bot) : undefined;
     return {
       id: record.id,
-      progress: progressCardFromTranscript(transcript),
+      progress: record.progress,
       ...(pullRequests.length ? { pullRequests } : {}),
       ...(jiraIssues.length ? { jiraIssues } : {}),
       title: record.title,

@@ -1179,6 +1179,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
 | `goal` | HUI | Optional objective the conversation pursues: objective, status, timestamps, a note and how many automatic turns it spent. Only the operator starts, pauses, resumes and clears it (`POST …/goal`, `/goal`); the agent may only report `complete` or `blocked` through `update_goal`. |
+| `progress` | HUI | Optional Task progress card `{ markdown, steps }` that HUI's utility model last wrote. Additive, so existing registries need no migration; absent means no card yet. See [Task progress](#task-progress). |
 | `piSessionFile` | Runtime identity, HUI pointer | PI: learned from `get_state`, then stored by HUI for `--session` resume. Durable: `durable:<conversationId>`, replaced by a rewind's fork; a fork's session starts on its copy |
 | messages and tool results | PI | PI's JSONL only; never copied into `sessions.json` |
 | `status` | HUI process | Derived live state; never persisted |
@@ -2808,9 +2809,9 @@ What creating does with a template, the same plan for the preview and the create
 - **Tools.** A Claude Code subagent's `tools` keep on only what they map to
   (Read → `read`, Write → `write`, Edit/MultiEdit → `edit`, Bash → `bash`,
   Grep/Glob/LS → `read`, WebFetch/WebSearch → `browser`, Task → `sessions_spawn`
-  and `subagents`, TodoWrite → `progress_card`) and turn the rest of the tools every
-  chat has off; a HUI export turns its own list off. An import never turns on
-  anything a new bot doesn't have.
+  and `subagents`) and turn the rest of the tools every chat has off; a HUI
+  export turns its own list off. An import never turns on anything a new bot
+  doesn't have.
 - **A HUI template's points.** `{{user}}` becomes Settings' profile name (*the
   operator* without one) in its name, title, description, Markdown (SOUL.md, its
   skills' Markdown and text files), routines' and triggers' prompts and open
@@ -4958,33 +4959,41 @@ Verifies the item with Jira, attaches it to the task and returns `{ issue, backl
 
 ### Task progress
 
-HUI starts PI with a bundled `progress_card` extension. The tool accepts optional
-Markdown and at most 50 ordered steps whose status is `pending`, `in_progress`
-or `completed`. PI remains the durable writer: the latest tool-call arguments in
-its transcript are the card state, and an empty call clears it. HUI hides the raw
-control call from transcript activity and renders the validated projection above
-the composer; it never derives progress from assistant prose. The card's refresh
-control reads the session again through `POST /__hui/sessions/:id/open`, then
-sends the agent an ordinary prompt asking it to update the card. A view that
-missed a streamed call and a card the agent stopped revising both come back
-current.
+HUI writes each conversation's Task progress card itself; no agent tool exists
+for it. `SessionProgress` (`server/sessions/session-progress.ts`) receives every
+settled turn with its final transcript, and a five-minute timer over the
+sessions whose turn is still going asks again. Each refresh builds the session
+digest (`sessionDigest`, the same bounded goal/follow-ups/changed-files/recent
+view `POST /__hui/sessions/:id/jira/draft` uses) and asks
+`settings.models.utility` for a `Summary:` line and a `done`/`doing`/`todo`
+plan with a 20-second timeout, tool-free and context-free. The answer is parsed
+into `{ markdown, steps }` (Markdown at most 8 KiB, at most 50 steps of 500
+characters, an unrecognized state dropped rather than guessed) and stored on the
+session record as `progress`. A missing utility model or an answer with neither
+a summary nor a plan leaves the stored card untouched; a failed call logs
+`session_progress_failed` and keeps it too. Nothing ever blocks the turn. Sessions with a `parentId` are skipped: a subagent's card is
+its parent's work. A remote session's utility call runs on this machine, in the
+gateway's home directory, because its checkout is not here.
+
+One refresh runs at a time, and a session with a refresh still waiting keeps
+only its newest transcript, so a slow model call delays cards without piling
+work up. A changed card is published to open browsers as
+`SessionStatusUpdate.progress`; an unchanged one writes nothing.
 
 ### Session-list progress
 
 Session rows use the original OpenClaw 2026.9.5 hovercard component and CSS,
 with HUI data adapters. Hover or keyboard focus reveals session age, workspace,
-the unfinished plan step/count and Markdown agent notepad. Idle unfinished plans
+the unfinished plan step/count and the card's Markdown summary. Idle unfinished plans
 use the original paused clock; completed plans have no heads-up. Notes-only cards
 have no invented percentage. Touch-only input does not open a hovercard. Runtime
 status remains independent of plan completion. No OpenClaw-only actor or PR
 metadata is fabricated. See the [port provenance](../src/components/openclaw/README.md).
-The optional `SessionView.progress` contains `{ markdown, steps }`, projected
-from the latest `progress_card` call in the live runtime transcript, never stored
-in the session registry. Background sessions refresh every three seconds while
-the page is visible. The shared sidebar refresh covers all panes; each pane's
-composer still uses its SSE transcript immediately.
-After a gateway restart, progress becomes available when that session is reopened
-and its runtime restores the transcript.
+The optional `SessionView.progress` contains `{ markdown, steps }`: the card HUI
+generated and stored on the record (see [Task progress](#task-progress)). It is
+registry state, so a cold session and a freshly restarted gateway answer it
+without opening a runtime. Background sessions refresh every three seconds while
+the page is visible, and the shared sidebar refresh covers all panes.
 
 The optional `SessionView.pullRequests` lists GitHub pull requests the session
 created:

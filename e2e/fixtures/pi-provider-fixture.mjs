@@ -663,6 +663,14 @@ const server = createServer(async (request, response) => {
     text(response, "Title: Improve session naming\nBranch: feature/improve-session-naming");
     return finish(response);
   }
+  // HUI's own Task progress card: the utility model answers in a summary and a plan.
+  if (source.includes("Track the task progress of this coding-agent session")) {
+    const second = source.includes("E2E_PROGRESS_TWO");
+    text(response, second
+      ? "Summary: Browser fixture, the plan moved on\nPlan:\n- done: Read fixture\n- done: Verify presentation\n- doing: Report the plan"
+      : "Summary: Browser fixture, HUI's utility model writes this\nPlan:\n- done: Read fixture\n- doing: Verify presentation");
+    return finish(response);
+  }
   if (source.includes("Generate a concise session title (3-6 words, max 60 characters)")) {
     // E2E_HOLD_NAMING waits for POST /control/release-replay, so a check can
     // see a plain session open under its provisional title before this answer.
@@ -766,25 +774,9 @@ const server = createServer(async (request, response) => {
     }, 1);
     return finish(response, "tool_use");
   }
-  if (source.includes("E2E_PROGRESS") || source.includes("E2E_CLEAR_PROGRESS")) {
-    const input = source.includes("E2E_CLEAR_PROGRESS")
-      ? { markdown: "", plan: [] }
-      : { markdown: "**Browser fixture** · real PI tool signal", plan: [
-          { step: "Read fixture", status: "completed" },
-          { step: "Verify presentation", status: "in_progress" },
-        ] };
-    event(response, { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-e2e-progress", name: "progress_card", input: {} } });
-    event(response, { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } });
-    event(response, { type: "content_block_stop", index: 0 });
-    return finish(response, "tool_use");
-  }
-  if (source.includes("Refresh the task progress card")) {
-    toolUse(response, "tool-e2e-progress-refresh", "progress_card", { markdown: "**Browser fixture** · refreshed after the click", plan: [
-      { step: "Read fixture", status: "completed" },
-      { step: "Verify presentation", status: "completed" },
-      { step: "Report the plan", status: "in_progress" },
-    ] });
-    return finish(response, "tool_use");
+  if (source.includes("E2E_PROGRESS")) {
+    text(response, "Working through the fixture.");
+    return finish(response);
   }
   if (source.includes("E2E_RICH") || source.includes("E2E_TOOL_FAILURE")) {
     event(response, { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } });
