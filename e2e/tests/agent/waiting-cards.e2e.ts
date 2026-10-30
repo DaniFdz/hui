@@ -31,8 +31,10 @@ test("Stop closes a waiting question or secret card and leaves the session idle"
     await expect(card).toBeHidden();
     await hui.reload();
     await expect(idle).toBeVisible();
-    await transcript.getByText("Ran 1 command").tap();
-    await transcript.getByText("Failed").tap();
+    await transcript.getByText("Used 1 tool").tap();
+    const call = transcript.getByRole("button", new RegExp(`^Used ${tool.replaceAll("_", " ")}`, "u"));
+    await call.tap();
+    await expect(call.getByLabel("Failed")).toBeVisible();
     await expect(transcript.getByText(`<harness> [error] Tool ${tool} was aborted </harness>`)).toBeVisible();
     await expect(card).toBeHidden();
   }

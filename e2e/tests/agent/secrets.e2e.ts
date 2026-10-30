@@ -42,11 +42,12 @@ test("a secret request opens a masked card and the agent gets a file it uses", {
   expect((await hui.secretDirectories()).filter((name) => !before.includes(name))).toHaveLength(1);
   for (const pass of ["live", "reloaded"]) {
     if (pass === "reloaded") await hui.reload();
-    await transcript.getByText("Ran 2 commands").tap();
-    await transcript.getByText("Completed").tap();
+    const request = transcript.getByRole("button", /^Used secret request/u);
+    if ((await request.count()) === 0) await transcript.getByText("Used 2 tools").tap();
+    await request.tap();
     await expect(transcript.getByText(new RegExp(`"label": "${LABEL}",\\s+"reason": "${REASON}"`, "u"))).toBeVisible();
     await expect(transcript.getByText(new RegExp(`^The operator provided "${LABEL}"\\. It is in /tmp/hui-secret-\\d+-\\w+/secret until \\S+\\. Use it without printing it and delete the file when done\\.$`, "u"))).toBeVisible();
-    await transcript.getByRole("button", /^printf 'Secret length/u).tap();
+    await transcript.getByRole("button", /^Ran printf 'Secret length/u).tap();
     await expect(transcript.getByText(`Secret length: ${value.length}`)).toBeVisible();
     await expect(transcript.getByText(value, { exact: false })).toBeHidden();
   }

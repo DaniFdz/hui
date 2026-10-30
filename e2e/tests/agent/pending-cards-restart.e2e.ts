@@ -45,13 +45,18 @@ test("a gateway restart ends the waiting question, secret and suggestion cards a
 
   await hui.open(`/sessions/${question.id}`);
   await expect(idle).toBeVisible();
-  await transcript.getByText("Ran 1 command").tap();
-  await expect(transcript.getByText("Failed")).toBeVisible();
+  await transcript.getByText("Used 1 tool").tap();
+  const asked = transcript.getByRole("button", /^Used ask user question/u);
+  await asked.tap();
+  await expect(asked.getByLabel("Failed")).toBeVisible();
   await expect(interrupted("tool answered: ", "ask_user_question")).toBeVisible();
   await expect(card).toBeHidden();
 
   await hui.open(`/sessions/${secret.id}`);
   await expect(idle).toBeVisible();
+  await transcript.getByText("Used 1 tool").tap();
+  const request = transcript.getByRole("button", /^Used secret request/u);
+  await request.tap();
   await expect(interrupted("No secret to use: ", "secret_request")).toBeVisible();
   await expect(card).toBeHidden();
 

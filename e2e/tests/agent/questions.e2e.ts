@@ -266,29 +266,31 @@ test("a call the card can't show opens no card and fails back to the agent with 
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(screen.getByTestId("question-card")).toBeHidden();
 
-  const groups = transcript.getByText("Ran 1 command");
-  await hui.scrollTo(transcript, groups.nth(4));
+  const groups = transcript.getByText("Used 1 tool");
   await expect(groups).toHaveCount(5);
 
-  await groups.nth(4).tap();
-  const failed = transcript.getByText("Failed", { exact: true, visible: true });
-  await expect(failed).toHaveCount(1);
-  await failed.tap();
-  const shown = transcript.getByText("<harness> [error] questions[0]: previews are for single-select questions only. </harness>", { exact: false, visible: true }).first();
-  await hui.scrollTo(transcript, shown);
-  await expect(shown).toBeVisible();
+  await hui.reload();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
 
-  for (const received of [
-    "must not have more than 4 items",
-    '"Other" is reserved',
-    "must have unique labels",
-    "must not have more than 16 characters",
-    "previews are for single-select questions only",
-  ]) {
-    const handedBack = transcript.getByText(received, { exact: false, visible: true }).first();
+  // Every invalid call is one settled card of its own, and a reload folds all of them shut.
+  const rows = transcript.getByRole("button", /^Used ask user question/u);
+  for (let index = 0; index < 5; index += 1) {
+    await groups.nth(index).tap();
+    await expect(rows).toHaveCount(index + 1);
+  }
+
+  const reasons = ["must not have more than 4 items", '"Other" is reserved', "must have unique labels", "must not have more than 16 characters", "previews are for single-select questions only"];
+  for (const [index, received] of reasons.entries()) {
+    await rows.nth(index).tap();
+    await expect(rows.nth(index).getByLabel("Failed")).toBeVisible();
+    const handedBack = transcript.getByText(received, { exact: false }).first();
     await hui.scrollTo(transcript, handedBack);
     await expect(handedBack).toBeVisible();
   }
+
+  const shown = transcript.getByText("<harness> [error] questions[0]: previews are for single-select questions only. </harness>", { exact: false }).first();
+  await hui.scrollTo(transcript, shown);
+  await expect(shown).toBeVisible();
 });
 
 test("question text from the agent shows as text, wraps and keeps the card's actions in reach", { tags: ["AGENT-011"], platforms: ["web"] }, async ({ screen, hui }) => {

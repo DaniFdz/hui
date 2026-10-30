@@ -3,17 +3,34 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 const usage = { sessions: 0, filesRead: 0, records: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, costUsd: null, models: [], unavailable: [] };
+const metrics = { inputTokens: 42, outputTokens: 29, cacheReadTokens: 11, cacheWriteTokens: 6, totalTokens: 88, costUsd: null, unpricedCalls: 3, calls: 5, userMessages: 2, assistantMessages: 3, toolResults: 4, errors: 1 };
+const usageReport = {
+  generatedAt: "2026-01-02T03:04:05.000Z",
+  range: { from: "2026-01-02", to: "2026-01-31", timeZone: "UTC" },
+  sessions: [{
+    id: "usage-fixture",
+    title: "Fixture session",
+    lastActivityAt: Date.parse("2026-01-02T03:00:00.000Z"),
+    metrics,
+    days: [{ date: "2026-01-02", metrics }],
+    models: [{ provider: "hui-e2e", model: "fixture", metrics }],
+    tools: [{ name: "bash", calls: 4, errors: 1 }],
+  }],
+  coverage: { registeredSessions: 1, readSessions: 1, unavailable: [{ sessionId: "usage-missing", reason: "unreadable" }], undatedRecords: 0 },
+  unplacedSpend: { totalTokens: 0, costUsd: 0 },
+};
 
 test("Activity, Logs, Debug and Usage read while loading, refuse a failed read with Retry, and say Refreshing while Refresh reloads", { tags: ["PAGE-018"], platforms: ["web"] }, async ({ screen, hui }) => {
   const reading = screen.getByText(/^Reading HUI diagnostics…/u);
-  const failure = screen.getByText(/^diagnostics are unavailable/u);
+  const failure = screen.getByText(/diagnostics are unavailable/u);
   const refresh = screen.getByRole("button", "Refresh");
   const reloading = screen.getByRole("button", "Refreshing…");
   const observability = /\/__hui\/observability$/u;
-  const pages = [["/activity", screen.getByLabel("activity")], ["/logs", screen.getByLabel("logs")], ["/debug", screen.getByText("Snapshots", { exact: true })], ["/usage", screen.getByText("Total tokens", { exact: true })]] as const;
+  const usageRoute = /\/__hui\/usage\?/u;
+  const pages = [["/activity", screen.getByLabel("activity"), observability], ["/logs", screen.getByLabel("logs"), observability], ["/debug", screen.getByText("Snapshots", { exact: true }), observability], ["/usage", screen.getByText("Total tokens", { exact: true }), usageRoute]] as const;
 
-  for (const [path, marker] of pages) {
-    const first = await hui.intercept("GET", observability);
+  for (const [path, marker, endpoint] of pages) {
+    const first = await hui.intercept("GET", endpoint);
     await hui.open(path);
     await first.arrived();
     await expect(reading).toBeVisible();
@@ -22,7 +39,7 @@ test("Activity, Logs, Debug and Usage read while loading, refuse a failed read w
     await expect(failure).toBeVisible();
     await expect(reading).toBeHidden();
 
-    const retried = await hui.intercept("GET", observability);
+    const retried = await hui.intercept("GET", endpoint);
     await screen.getByRole("button", "Retry").tap();
     await retried.arrived();
     await expect(reloading).toBeVisible();
@@ -31,7 +48,7 @@ test("Activity, Logs, Debug and Usage read while loading, refuse a failed read w
     await expect(failure).toBeHidden();
     await expect(reading).toBeHidden();
 
-    const again = await hui.intercept("GET", observability);
+    const again = await hui.intercept("GET", endpoint);
     await refresh.tap();
     await again.arrived();
     await expect(reloading).toBeVisible();
@@ -69,54 +86,45 @@ test("Debug's Snapshots lists the gateway's status and transport, its Node runti
   await expect(screen.getByText("Since gateway start", { exact: true })).toBeVisible();
   await expect(screen.getByText("Exports contain operational metadata and redacted failure causes. HUI never includes prompt text, tool arguments/output, credentials or secret values.")).toBeVisible();
 });
-test("Usage shows total tokens with the transcripts read, input with cache-read, output with cache-write, Cost or Unavailable, tokens per model and the partial-totals warning", { tags: ["PAGE-021"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const counted = {
-    sessions: 3, filesRead: 2, records: 9, inputTokens: 642, outputTokens: 229, cacheReadTokens: 131, cacheWriteTokens: 61, totalTokens: 871, costUsd: null,
-    models: [{ model: "hui-e2e/fixture", tokens: 517 }, { model: "other/model", tokens: 354 }],
-    unavailable: ["one.jsonl"],
-  };
-  const reading = await hui.intercept("GET", /\/__hui\/observability$/u);
+test("Usage shows total tokens, PI cost estimate and sessions, the chart's input, output, cache-read and cache-write tokens, the top models and its partial-totals and unplaced-spend notes", { tags: ["PAGE-021"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const reading = await hui.intercept("GET", /\/__hui\/usage\?/u);
 
   await hui.open("/usage");
   await reading.arrived();
-  await reading.answer(JSON.stringify({
-    generatedAt: "2026-01-02T03:04:05.000Z",
-    retention: { kind: "memory", maximum: 300, since: "2026-01-02T03:00:00.000Z" },
-    activity: [],
-    logs: [],
-    usage: counted,
-    debug: { node: "v24.14.0", "platform": "darwin", uptimeSeconds: 12, memory: { rssBytes: 1, heapUsedBytes: 1, heapTotalBytes: 1 }, eventCount: 1 },
-  }));
+  await reading.answer(JSON.stringify(usageReport));
 
   await expect(screen.getByText("Total tokens", { exact: true })).toBeVisible();
-  await expect(screen.getByText("871", { exact: true })).toBeVisible();
-  await expect(screen.getByText("2 PI transcripts read", { exact: true })).toBeVisible();
-  await expect(screen.getByText("Input", { exact: true })).toBeVisible();
-  await expect(screen.getByText("642", { exact: true })).toBeVisible();
-  await expect(screen.getByText("131 cache-read", { exact: true })).toBeVisible();
-  await expect(screen.getByText("Output", { exact: true })).toBeVisible();
-  await expect(screen.getByText("229", { exact: true })).toBeVisible();
-  await expect(screen.getByText("61 cache-write", { exact: true })).toBeVisible();
-  await expect(screen.getByText("Cost", { exact: true })).toBeVisible();
-  await expect(screen.getByText("Unavailable", { exact: true })).toBeVisible();
-  await expect(screen.getByText("hui-e2e/fixture", { exact: true })).toBeVisible();
-  await expect(screen.getByText("517", { exact: true })).toBeVisible();
-  await expect(screen.getByText("other/model", { exact: true })).toBeVisible();
-  await expect(screen.getByText("354", { exact: true })).toBeVisible();
-  await expect(screen.getByText("1 transcript was unavailable. Totals are partial.", { exact: true })).toBeVisible();
+  await expect(screen.getByText("88", { exact: true }).first()).toBeVisible();
+  await expect(screen.getByText("5 usage records", { exact: true })).toBeVisible();
+  await expect(screen.getByText("PI cost estimate", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Unpriced", { exact: true }).first()).toBeVisible();
+  await expect(screen.getByText("3 unpriced records", { exact: true })).toBeVisible();
+  await expect(screen.getByText("1 local history read · 1 registered session", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Daily token usage", { exact: true })).toBeVisible();
+  await expect(screen.getByText("2026-01-02 to 2026-01-31 · UTC", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Input 42", { exact: true })).toBeVisible();
+  await expect(screen.getByText("11 cache-read tokens", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Output 29", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Cache write 6", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Cache read 11", { exact: true })).toBeVisible();
+  await expect(screen.getByText("2 user · 3 assistant", { exact: true })).toBeVisible();
+  await expect(screen.getByText("1 tool recorded", { exact: true })).toBeVisible();
+  await expect(screen.getByText("18.6%", { exact: true })).toBeVisible();
+  await expect(screen.getByText("2 / 5", { exact: true })).toBeVisible();
+  await expect(screen.getByText(/^hui-e2e\/fixture/u)).toBeVisible();
+  await expect(screen.getByText("88 tokens", { exact: true }).first()).toBeVisible();
+  await expect(screen.getByText("Totals are partial. 1 histories unavailable; 0 records without valid dates were excluded.", { exact: true })).toBeVisible();
 
-  const bare = await hui.intercept("GET", /\/__hui\/observability$/u);
+  const bare = await hui.intercept("GET", /\/__hui\/usage\?/u);
   await hui.reload();
   await bare.arrived();
   await bare.answer(JSON.stringify({
-    generatedAt: "2026-01-02T03:04:05.000Z",
-    retention: { kind: "memory", maximum: 300, since: "2026-01-02T03:00:00.000Z" },
-    activity: [],
-    logs: [],
-    usage: { ...counted, totalTokens: 0, models: [], unavailable: [], costUsd: 3.5 },
-    debug: { node: "v24.14.0", "platform": "darwin", uptimeSeconds: 12, memory: { rssBytes: 1, heapUsedBytes: 1, heapTotalBytes: 1 }, eventCount: 1 },
+    ...usageReport,
+    sessions: [],
+    coverage: { registeredSessions: 0, readSessions: 0, unavailable: [], undatedRecords: 0 },
+    unplacedSpend: { totalTokens: 12, costUsd: 0.25 },
   }));
-  await expect(screen.getByText("No token metadata is available yet.", { exact: true })).toBeVisible();
-  await expect(screen.getByText("$3.5000", { exact: true })).toBeVisible();
-  await expect(screen.getByText("Unavailable", { exact: true })).toBeHidden();
+  await expect(screen.getByText("No usage in this range.", { exact: true })).toBeVisible();
+  await expect(screen.getByText(/^Also recorded outside these entries: 12 tokens, \$0\.25, for all recorded time\./u)).toBeVisible();
+  await expect(screen.getByText("Unavailable", { exact: true }).first()).toBeVisible();
 });
