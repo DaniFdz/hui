@@ -77,12 +77,16 @@ export type WatcherEvent = {
   note?: string;
   target?: string;
   outcome?: string;
+  startedAt?: string;
   endedAt?: string;
+  exitCode?: number;
+  lastOutput?: string;
+  log?: string;
 };
 
 /** Reads the event `server/agent-tools/watcher-events.ts` writes; undefined for anything else, the operator's own words
- * included. The event carries more (`last_output`, `log`, the action that follows); the chat shows the wait, not the
- * commands. */
+ * included. The chat folds what it carries under the wait: how it ended, its output, times, exit status and log, never
+ * the action that follows. */
 export function parseWatcherEvent(text: string): WatcherEvent | undefined {
   if (text !== WATCHER_EVENT_MARKER && !text.startsWith(`${WATCHER_EVENT_MARKER}\n`)) return undefined;
   const fields = new Map<string, string>();
@@ -93,16 +97,24 @@ export function parseWatcherEvent(text: string): WatcherEvent | undefined {
     if (match) fields.set(match[1]!, match[2]!);
   }
   const state = fields.get("state") ?? "";
+  const exitCode = fields.has("exit_code") ? Number(fields.get("exit_code")) : undefined;
   const note = fields.get("note");
   const target = fields.get("target");
   const outcome = fields.get("outcome");
+  const startedAt = fields.get("started_at");
   const endedAt = fields.get("ended_at");
+  const lastOutput = fields.get("last_output");
+  const log = fields.get("log");
   return {
     purpose: fields.get("purpose") ?? "",
     ...(STATE_SET.has(state) ? { state: state as WatcherState } : {}),
     ...(note ? { note } : {}),
     ...(target ? { target } : {}),
     ...(outcome ? { outcome } : {}),
+    ...(startedAt ? { startedAt } : {}),
     ...(endedAt ? { endedAt } : {}),
+    ...(exitCode !== undefined && Number.isInteger(exitCode) ? { exitCode } : {}),
+    ...(lastOutput ? { lastOutput } : {}),
+    ...(log ? { log } : {}),
   };
 }

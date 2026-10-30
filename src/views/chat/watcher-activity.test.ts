@@ -80,13 +80,21 @@ test("watcherTargetLabel strips the scheme and clamps long URLs", () => {
   assert.equal(watcherTargetLabel(`https://example.com/${"x".repeat(120)}`).length, 78);
 });
 
-test("a settled watcher's event is a system note: the wait, how it ended and what follows", () => {
-  const done = text(renderWatcherEvent({ ...running, state: "done", endedAt: "2026-10-02T10:30:00.000Z", note: "The command finished and recorded status 0." }));
+test("a settled watcher's event is a system note folded onto what it reported", () => {
+  const done = text(renderWatcherEvent({
+    ...running, state: "done", startedAt: "2026-10-02T10:00:00.000Z", endedAt: "2026-10-02T10:30:00.000Z",
+    exitCode: 0, lastOutput: "posted /merge", log: "/Users/dani/.config/hui/watchers/w1.log", note: "The command finished and recorded status 0.",
+  }));
   assert.match(done, /class="chat-group system chat-group--watcher-event"/u);
   assert.match(done, /aria-label=Watcher finished: Wait for #21532 approval/u);
-  assert.match(done, /Done · /u);
+  assert.match(done, /Done · /u, "the closed row says how it ended");
+  assert.match(done, /<details class="chat-watcher-event">/u, "what it reported waits folded");
   assert.match(done, /<a href=https:\/\/github\.com\/ddoghq\/web-ui\/pull\/21532/u);
   assert.match(done, /Then: post \/merge/u);
+  assert.match(done, /Exit 0/u);
+  assert.match(done, /Started .+ · ended /u);
+  assert.match(done, /posted \/merge<\/pre>/u);
+  assert.match(done, /chat-watcher__log-path[^>]*>[^<]*w1\.log</u);
   assert.match(done, /The command finished and recorded status 0\./u);
   assert.doesNotMatch(done, />Stop</u, "an event carries no controls");
 

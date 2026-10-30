@@ -390,7 +390,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-062",
     title: "See a settled watcher's event as a system note",
-    behaviour: "When a watcher settles into done, failed or dead, the event HUI writes into its conversation reads as a system note where it woke the agent, never as a message from you: Watcher finished, failed or died with the watcher's purpose, its state and time, the target link, Then: <outcome> and why it ended. The event's own instructions and log path stay out of the chat.",
+    behaviour: "When a watcher settles into done, failed or dead, the event HUI writes into its conversation reads as a system note where it woke the agent, never as a message from you: Watcher finished, failed or died with the watcher's purpose, its state and time. Opening it adds the target link, Then: <outcome>, why it ended, the command's last line, its exit status, its start and end times and its log path. The event's own instructions never reach the chat.",
     spec: ["SPEC.md#a-settled-watcher-tells-its-conversation-2026-10-28", "docs/api.md#background-watchers"],
     surfaces: ["row:watcherEvent"],
     journeys: ["watchers"],

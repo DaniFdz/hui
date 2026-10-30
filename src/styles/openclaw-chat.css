@@ -762,6 +762,16 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .chat-subagents--event { margin: 4px 0; }
 .chat-subagents__event-title { display: grid; grid-template-columns: 16px fit-content(55%) minmax(0, 1fr); align-items: center; gap: 8px; min-height: 30px; padding: 4px 8px; color: var(--muted); }
 
+/* A settled watcher's event folds: the row says which wait is over and how it ended, and what the command printed, its
+   exit status, times and log wait behind the chevron. */
+.chat-group--watcher-event .chat-watcher-event__summary { grid-template-columns: 16px minmax(0, 1fr) auto auto; cursor: pointer; list-style: none; }
+.chat-watcher-event__summary::-webkit-details-marker { display: none; }
+.chat-watcher-event__summary:hover { background: color-mix(in srgb, var(--text) 8%, transparent); border-radius: 8px; color: var(--text); }
+.chat-watcher-event__summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chat-watcher-event[open] .chat-subagents__chevron { transform: none; }
+.chat-watcher__output { margin: 0; padding: 6px 8px; border-radius: 6px; background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); font: 11px/1.45 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-watcher__log-path { font: 11px var(--font-mono); overflow-wrap: anywhere; }
+
 /* A message HUI delivered from a bot, a session, a routine or a trigger: OpenClaw's peer turn on the left, its sender's
    face or icon in a leading column (direct threads and phones included), the bubble tinted with a bot's color and the
    sender's name under it, its time and actions beside the name on phones too (HUI keeps them shown, not revealed). */
@@ -897,7 +907,7 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .hui-subagent-status--dead { color: var(--warn); }
 .chat-watcher__details { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 2px 8px 8px 32px; color: var(--muted); font-size: 12px; }
 .chat-watcher__meta { display: flex; flex-wrap: wrap; gap: 2px 10px; }
-.chat-watcher__meta a { color: var(--accent); }
+.chat-watcher__meta a { color: var(--accent); overflow-wrap: anywhere; }
 .chat-watcher__note { margin: 0; }
 .chat-watcher__log {
   display: flex; flex-direction: column-reverse; max-height: 160px; overflow: auto;
