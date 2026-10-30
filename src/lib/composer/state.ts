@@ -38,15 +38,11 @@ export function composerEnterMode(input: {
  * offers Enqueue.
  */
 export function composerPlaceholder(input: {
-  status?: SessionStatus;
-  reconnecting: boolean;
   streaming: boolean;
   coarsePointer: boolean;
   sendShortcut?: "enter" | "modifierEnter";
   applePlatform: boolean;
 }): string {
-  if (input.status === "disconnected") return "Draft while disconnected…";
-  if (input.reconnecting) return "Draft while HUI reconnects…";
   if (!input.streaming) return "Send a message…";
   if (input.coarsePointer) return "Add to this run…";
   const queue = `${input.applePlatform ? "⌘↵" : "Ctrl+↵"} queues for later`;

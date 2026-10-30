@@ -407,7 +407,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
     : session.status === "error"
       ? { label: "Session failed", icon: icons.alertTriangle, tone: "error" }
       // Calm, not a failure: the session goes on on its machine.
-      : away ? { label: away.status, icon: icons.plug, tone: "away" } : undefined;
+      : away ? { label: away, icon: icons.plug, tone: "away" } : undefined;
   // Also shown as running while a watcher or a subagent below it still works.
   const background = session.status !== "running" && session.background === true && !attention;
   const busy = session.status === "running" || background;

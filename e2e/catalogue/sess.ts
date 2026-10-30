@@ -126,10 +126,10 @@ const cases: UseCase[] = [
   {
     id: "SESS-014",
     title: "Reconnect a session whose worker is unreachable",
-    behaviour: "While HUI retries a lost worker, the sidebar row and header read \"Reconnecting to <worker>…\" with a notice that the session keeps running there. When HUI is not retrying they read \"Disconnected from <worker>\" with Reconnect, which connects the worker; a failure is shown as a notice.",
+    behaviour: "When HUI is not retrying a lost worker, the header and one status line under the composer read \"Disconnected from <worker>\", the line offering Reconnect, which connects the worker. The composer keeps its draft while sending waits, and the chat itself carries no second copy of that status.",
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkersidconnect"],
     surfaces: ["route:POST /__hui/workers/:id/connect"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -626,6 +626,16 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/git-checkout", "page:new-session"],
     journeys: ["checkout-selector", "worktree-progress", "session-launch"],
     web: "required",
+    ios: "backlog",
+  },
+  {
+    id: "SESS-065",
+    title: "Show a session while HUI retries its worker",
+    behaviour: "While HUI retries a lost worker, the sidebar row, the header and one status line under the composer read \"Reconnecting to <worker>…\" with a running mark, and the composer keeps its draft while sending waits. The chat itself carries no second copy of that status.",
+    spec: ["SPEC.md#remote-workers", "docs/api.md#get-__huiworkers"],
+    surfaces: ["route:GET /__hui/workers"],
+    journeys: ["session-lifecycle"],
+    web: "backlog",
     ios: "backlog",
   },
 ];

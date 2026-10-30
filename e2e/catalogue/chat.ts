@@ -161,12 +161,12 @@ const cases: UseCase[] = [
   },
   {
     id: "CHAT-016",
-    title: "Keep drafting while the connection drops",
-    behaviour: "When the session stream drops, the composer shows \"Reconnecting — draft preserved.\" with the placeholder \"Draft while HUI reconnects…\" and sending waits; once the stream is back the transcript catches up without an error and sending works again. A runtime that exited shows \"Stream stopped — draft preserved.\".",
+    title: "Keep drafting while HUI cannot reach the session",
+    behaviour: "While HUI cannot reach a session, one status line under the composer names why, the chat carrying no second copy of it, and the composer reads as usual: its draft stays, sending waits, and once the session is back the draft sends.",
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidconnect"],
-    surfaces: ["route:POST /__hui/sessions/:id/connect"],
+    surfaces: ["route:POST /__hui/sessions/:id/connect", "route:POST /__hui/workers/:id/connect"],
     journeys: ["interrupted-recovery", "message-metadata"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -724,7 +724,7 @@ const cases: UseCase[] = [
   {
     id: "CHAT-074",
     title: "Recover a silent chat connection without resending a draft",
-    behaviour: "When an idle chat connection stops receiving frames, HUI reconnects after 40 seconds. The draft remains editable while sending is disabled, and returning to a compatible gateway restores the conversation without sending the draft; the user can send it once explicitly.",
+    behaviour: "When an idle chat connection stops receiving frames, HUI reconnects after 40 seconds and one status line under the composer reads \"Reconnecting…\". The draft remains editable while sending is disabled, and returning to a compatible gateway restores the conversation and clears that line without sending the draft; the user can send it once explicitly.",
     spec: ["SPEC.md#offline-reading-and-connection-recovery", "docs/api.md#post-__huisessionsidconnect"],
     surfaces: ["route:POST /__hui/sessions/:id/connect"],
     journeys: ["interrupted-recovery"],

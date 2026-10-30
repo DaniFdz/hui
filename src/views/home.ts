@@ -290,7 +290,7 @@ export type HomeProps = {
   };
   onCloseSideChat: () => void;
   onDismissNote: () => void;
-  /** A muted line about the event stream: reconnecting, or why it stopped. */
+  /** The composer status line under the editor: why the stream stopped, when it is not simply reconnecting. */
   connectionNote: string;
   savedCopy?: { savedAt: number; truncated: boolean };
   offlineSupported?: boolean;
@@ -1738,6 +1738,14 @@ function renderComposer(props: HomeProps) {
   const saved = props.connection === "saved" || props.connection === "outdated";
   const unreachable = props.session && !saved ? unreachableHost(props.session) : undefined;
   const disconnected = props.connection !== "live" || unreachable !== undefined;
+  // One status lane under the composer: the chat never repeats it in the transcript.
+  const connectionStatus = saved
+    ? "Saved conversation · draft preserved. Send waits for a live connection."
+    : unreachable
+      ?? (props.connection === "reconnecting" ? "Reconnecting…" : props.connection === "stopped" ? props.connectionNote || "Stream stopped." : undefined);
+  // A saved copy offers no action it cannot honour, and nothing is retrying there.
+  const reconnecting = !saved && (props.session?.status === "reconnecting" || (unreachable === undefined && props.connection === "reconnecting"));
+  const reconnect = !saved && props.session?.status === "disconnected";
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
   return html`
@@ -1799,8 +1807,6 @@ function renderComposer(props: HomeProps) {
               }}
               @paste=${onComposerPaste(props)}
               placeholder=${composerPlaceholder({
-                status: props.session?.status,
-                reconnecting: disconnected,
                 streaming: props.streaming,
                 coarsePointer: hasCoarsePointer(),
                 sendShortcut: props.chatPreferences.sendShortcut,
@@ -1861,7 +1867,11 @@ function renderComposer(props: HomeProps) {
           </div>
         </div>
       </form>
-      ${disconnected ? html`<div class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status"><span class="agent-chat__composer-status-text">${saved ? "Saved conversation · draft preserved. Send waits for a live connection." : unreachable ? `${unreachable.status.replace(/…$/u, "")} — draft preserved.` : props.connection === "reconnecting" ? "Reconnecting — draft preserved." : "Stream stopped — draft preserved."}</span></div></div>` : nothing}
+      ${connectionStatus === undefined ? nothing : html`<div class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status" data-testid="composer-status">
+        ${reconnecting ? html`<span class="agent-chat__composer-status-icon" aria-hidden="true"><span class="session-run-spinner"></span></span>` : nothing}
+        <span class="agent-chat__composer-status-text">${connectionStatus}</span>
+        ${reconnect ? html`<button type="button" class="btn btn--sm reconnect-session" @click=${props.onReconnect}>Reconnect</button>` : nothing}
+      </div></div>`}
     </div>
   `;
 }
@@ -2010,26 +2020,16 @@ function refreshTaskProgress(event: Event, props: HomeProps) {
   props.onRefreshSession();
 }
 
-function renderConnection(props: HomeProps) {
-  if (props.savedCopy || props.connection === "saved" || props.connection === "outdated") {
-    return html`<div class="transcript__note" role="status">
-      ${props.savedCopy ? html`Saved conversation · ${new Date(props.savedCopy.savedAt).toLocaleString()}. ${props.savedCopy.truncated ? "Only recent messages are saved." : "Message text is saved on this device."}` : nothing}
-      ${props.connectionNote}
-      ${props.connection === "outdated" ? html` <button type="button" class="btn btn--sm" @click=${() => window.location.reload()}>Reload HUI</button>` : nothing}
-      ${props.savedCopy && props.onForgetSaved ? html` <button type="button" class="btn btn--sm" @click=${props.onForgetSaved}>Forget saved conversations</button>` : nothing}
-    </div>`;
-  }
-  const unreachable = props.session ? unreachableHost(props.session) : undefined;
-  if (unreachable) {
-    return html`<p class="transcript__note" role="status">${unreachable.notice}${props.session?.status === "disconnected"
-      ? html` <button type="button" class="btn btn--sm reconnect-session" @click=${props.onReconnect}>Reconnect</button>`
-      : nothing}</p>`;
-  }
-  return props.connectionNote
-    ? html`<p class="transcript__note" role="status">${props.connectionNote}</p>`
-    : nothing;
+/** The offline reading copy's own note: when it was saved, how much of it, and what to do about an old build. */
+function renderSavedNotice(props: HomeProps) {
+  if (!(props.savedCopy || props.connection === "saved" || props.connection === "outdated")) return nothing;
+  return html`<div class="transcript__note" role="status">
+    ${props.savedCopy ? html`Saved conversation · ${new Date(props.savedCopy.savedAt).toLocaleString()}. ${props.savedCopy.truncated ? "Only recent messages are saved." : "Message text is saved on this device."}` : nothing}
+    ${props.connectionNote}
+    ${props.connection === "outdated" ? html` <button type="button" class="btn btn--sm" @click=${() => window.location.reload()}>Reload HUI</button>` : nothing}
+    ${props.savedCopy && props.onForgetSaved ? html` <button type="button" class="btn btn--sm" @click=${props.onForgetSaved}>Forget saved conversations</button>` : nothing}
+  </div>`;
 }
-
 /** `provider/id`, which is how a model is addressed everywhere else. */
 function modelValue(model: RuntimeModel): string {
   return model.provider ? `${model.provider}/${model.id}` : model.id;
@@ -2568,7 +2568,7 @@ function botFaceState(props: HomeProps): BotFaceState {
 
 /** A bot's chat names the bot, its role, the worker it runs on and whether it is summarizing memory. */
 function renderBotIdentity(bot: HomeBot, session: SessionView, face: BotFaceState) {
-  const status = bot.bot.memory?.waiting ? "Summarizing memory…" : unreachableHost(session)?.status ?? STATUS_TEXT[session.status];
+  const status = bot.bot.memory?.waiting ? "Summarizing memory…" : unreachableHost(session) ?? STATUS_TEXT[session.status];
   const worker = bot.bot.worker;
   return html`<div class="transcript__identity chat-pane__crumbs bot-chat-identity">
     ${renderBotAvatar(bot.bot, "md", { state: face })}
@@ -2600,7 +2600,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           ${props.panelPicker ?? html`<h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>`}
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(props.savedCopy ? "Saved copy" : unreachableHost(session)?.status ?? STATUS_TEXT[session.status])}
+            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(props.savedCopy ? "Saved copy" : unreachableHost(session) ?? STATUS_TEXT[session.status])}
           </span>
         </div>`}
         ${session.parentId ? html`<button
@@ -2678,7 +2678,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
           <div class="chat-split-container">
             <div class="chat-main">
               <div class="chat-main__conversation-column">
-                ${renderNote(props)} ${renderConnection(props)}
+                ${renderNote(props)} ${renderSavedNotice(props)}
                 ${props.offlineSupported === false ? html`<p class="transcript__note" role="status">Offline reload needs HTTPS or localhost.</p>` : nothing}
                 ${session.status === "error" && !props.worktreeError
                   ? html`<div class="chat-error" role="alert"><div class="chat-error__content">The runtime could not start.</div><button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Retry session</button></div>`
