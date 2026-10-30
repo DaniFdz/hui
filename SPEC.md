@@ -1327,6 +1327,10 @@ New Session offers the skills of the session it will start, never those of the
 chat that was open before it.
 Typing `/` opens one grouped menu containing HUI commands, plugin actions,
 skills, prompt templates, and absolute filesystem prefixes, with visible section separators.
+A command whose own name matches the query ranks above one that only mentions it
+in its description, and within a section exact names come first. The menu draws
+the section holding the best match first, so an exact skill name stays on top
+when another source's description merely contains the same letters.
 Selecting a skill/action inserts the same `$name` alias from either menu; name
 collisions retain the runtime-qualified skill name. Templates keep `/name`.
 The owning runtime resolves a leading alias against its current command catalog,

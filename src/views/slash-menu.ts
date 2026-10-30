@@ -32,6 +32,13 @@ export const SLASH_MENU_ID = "composer-slash-commands";
 export const slashOptionId = (index: number, menuId = SLASH_MENU_ID) => `${menuId}-${index}`;
 const labels = { hui: "HUI", extension: "Plugin actions", skill: "Skills", prompt: "Prompt templates" };
 
+/** One section per source, in the order the ranked commands reach it, so the active option stays the first drawn. */
+function orderedGroups(commands: readonly ComposerCommand[]) {
+  const indexed = commands.map((command, index) => ({ command, index }));
+  return [...new Set(commands.map((command) => command.source))]
+    .map((source) => ({ source, entries: indexed.filter((entry) => entry.command.source === source) }));
+}
+
 export function renderSlashMenu(props: SlashMenuProps) {
   if (!props.open) return nothing;
   const menuId = props.id ?? SLASH_MENU_ID;
@@ -44,10 +51,8 @@ export function renderSlashMenu(props: SlashMenuProps) {
         </div>` : nothing}
         ${!props.browseSession && !props.loading && !props.error && !props.commands.length && !props.paths?.length && !props.pathsLoading ? html`<div class="slash-menu__status" role="status">No matching commands or paths.</div>` : nothing}
         <div id=${menuId} role="listbox" aria-label="Commands and paths" aria-busy=${String(props.loading || props.pathsLoading)}>
-          ${(["hui", "extension", "skill", "prompt"] as const).map((source) => {
-            const entries = props.commands.map((command, index) => ({ command, index })).filter((item) => item.command.source === source);
-            if (!entries.length) return nothing;
-            return html`<div class="slash-menu-group" role="group" aria-label=${labels[source]}>
+          ${orderedGroups(props.commands).map(({ source, entries }) => html`
+            <div class="slash-menu-group" role="group" aria-label=${labels[source]}>
               <div class="slash-menu-group__label" aria-hidden="true">${labels[source]}</div>
               ${entries.map(({ command, index }) => html`
                 <button type="button" role="option" tabindex="-1" id=${slashOptionId(index, menuId)}
@@ -59,8 +64,7 @@ export function renderSlashMenu(props: SlashMenuProps) {
                   <span class="slash-menu-icon" aria-hidden="true">${source === "extension" ? icons.terminal : source === "skill" ? icons.book : icons.fileText}</span>
                   <span class="slash-menu-copy"><span class="slash-menu-name">${commandReference(command, props.catalog ?? props.commands)}</span><span class="slash-menu-desc">${command.description}</span></span>
                 </button>`)}
-            </div>`;
-          })}
+            </div>`)}
           ${props.paths ? html`<div class="slash-menu-group" role="group" aria-label="Files and folders">
             <div class="slash-menu-group__label" aria-hidden="true">Files and folders</div>
             ${props.pathsLoading ? html`<div class="slash-menu__status" role="status">Loading local paths…</div>` : nothing}
