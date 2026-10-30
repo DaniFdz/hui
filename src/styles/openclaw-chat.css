@@ -240,6 +240,39 @@
 .transcript__head .transcript__title { margin: 0; }
 .transcript__head .transcript__meta { font-size: 11px; color: var(--muted); }
 .transcript__head .session-history-action { flex-shrink: 0; }
+/* A phone shows the destination chooser where the title was, so the conversation keeps its row
+   (panel-selector.ts). The chooser's kind word is dropped: this header only ever names the chat. */
+.transcript__head .chat-pane__crumbs--picker .picker-select__trigger {
+  gap: 6px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-strong);
+  font: inherit;
+  text-align: start;
+}
+/* Only the trigger: the same parts label every option in the menu it opens. */
+.transcript__head .chat-pane__crumbs--picker .picker-select__trigger .picker-select__copy {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.transcript__head .chat-pane__crumbs--picker .picker-select__trigger .picker-select__label { display: none; }
+.transcript__head .chat-pane__crumbs--picker .picker-select__trigger .picker-select__description {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.transcript__head .chat-pane__crumbs--picker .picker-select__trigger .picker-select__leading { flex: none; color: var(--muted); }
+.transcript__head .chat-pane__crumbs--picker .picker-select__trigger .picker-select__leading svg { width: 14px; height: 14px; }
+.transcript__head .chat-pane__crumbs--picker .picker-select__trigger .picker-select__chevron { flex: none; width: 12px; height: 12px; margin-inline-start: 2px; }
 @container session-header (max-width: 600px) {
   .session-history-action { width: 28px; height: 28px; justify-content: center; padding: 0; }
   .session-history-action__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -1570,4 +1603,29 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   .agent-chat__goal-expand svg {
     transition: none;
   }
+}
+
+/* A phone has one column and the conversation owns it, so the surfaces stacked around the composer give up their
+ * card chrome and padding: background activity reads as a line, the plan keeps one row, and the composer tightens
+ * under its still-touch-sized controls. */
+@media (max-width: 768px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
+  .chat-subagents { margin: 4px 0 0; padding: 0; border: 0; background: none; box-shadow: none; }
+  .chat-swarm { width: 100%; margin: 4px 0 0; }
+  .chat-swarm__group { gap: 2px; padding: 0; border: 0; background: none; }
+  .chat-swarm__summary { gap: 6px; }
+  .chat-swarm__group--completed .chat-swarm__summary { min-height: 28px; margin: 0; padding: 2px 4px; }
+  .chat-subagents__row, .chat-subagents__summary, .chat-subagents__event-title { min-height: 28px; padding: 2px 4px; gap: 6px; }
+  .chat-subagents__list { margin-left: 12px; }
+  .chat-watcher__details { margin: 0 4px 4px 22px; gap: 4px; font-size: 11.5px; }
+  .agent-chat__progress-float { --chat-progress-underlap: 8px; }
+  .session-progress-card--composer .session-progress-card__summary { padding: 5px 8px; }
+  .agent-chat__input--mobile-toolbar { --chat-composer-min-height: 90px; }
+  .agent-chat__input--mobile-toolbar .agent-chat__composer-footer { padding-block: 0; }
+  .agent-chat__composer-combobox > :is(textarea, input) { padding-top: 7px; padding-bottom: 7px; }
+}
+
+@media (max-width: 560px) {
+  /* The phone's taller top scroll fade (sidebar.css) also sized the transcript's bottom padding. A resting
+   * conversation needs the composer's underlap and a gap, not the fade's height. */
+  .chat-thread { --chat-thread-padding-bottom: calc(6px + var(--chat-transcript-composer-underlap, 0px) + 32px); }
 }

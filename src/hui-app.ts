@@ -11,7 +11,7 @@ import { renderSessionPane } from "./views/session-pane.ts";
 import { sessionTreeIds } from "./lib/session/tree.ts";
 import { forgetConversation } from "./lib/session/offline-store.ts";
 import { isSubagentActive } from "./lib/subagent-activity.ts";
-import { html, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { icons } from "./lib/icons.ts";
 import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
 import { keyed } from "lit/directives/keyed.js";
@@ -90,7 +90,7 @@ import { UpdateController } from "./controllers/update-controller.ts";
 import { QUESTION_FOCUS_SELECTOR, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import "./components/contributions.ts";
 import "./components/usage.ts";
-import { renderPanelSelector } from "./views/panel-selector.ts";
+import { renderPanelPicker, type PanelSelectorProps } from "./views/panel-selector.ts";
 import { dedicatedPageRenderer, type DedicatedPageProps } from "./views/pages.ts";
 import { renderKanbanPage } from "./views/kanban.ts";
 import type { KanbanMove } from "./lib/kanban.ts";
@@ -358,6 +358,8 @@ export class HuiApp extends HuiElement {
   @property({ type: Boolean }) paneVisible = true;
   @property({ type: Boolean }) paneNarrow = false;
   @property({ type: Boolean }) paneMobileNav = false;
+  /** The destination chooser a phone shows in this pane's header instead of a row of its own. */
+  @property({ attribute: false }) panePanelPicker?: TemplateResult;
   @property(paneCallback) onPaneClose: (() => void) | undefined;
   @property(paneCallback) onPaneSplit: ((direction: SplitDirection) => void) | undefined;
   @property(paneCallback) onPaneTerminal: (() => Promise<void>) | undefined;
@@ -393,6 +395,8 @@ export class HuiApp extends HuiElement {
     setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
   });
   private mobileNavMedia: MediaQueryList | undefined;
+  /** The destination chooser a phone renders in the active pane's header instead of a row of its own. */
+  private narrowPicker: TemplateResult | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
     this.mobileNavLayout = event.matches;
@@ -2585,6 +2589,7 @@ export class HuiApp extends HuiElement {
       // File references open in the Work pane, which only multiplexed chat panes have (not a bot's chat).
       fileLinks: this.embeddedPane && this.paneCanAccessFiles(),
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
+      ...(this.embeddedPane && this.panePanelPicker ? { panelPicker: this.panePanelPicker } : {}),
       controlScope: this.embeddedPane ? this.paneId : undefined,
       groups: this.listedGroups,
       findSession: (id) => this.listedSession(id),
@@ -2773,6 +2778,7 @@ export class HuiApp extends HuiElement {
       listed: this.listedSession(pane.sessionId),
       groups: this.sessions.revision ? this.sessions.groups : undefined,
       mobileNav: this.mobileNavLayout,
+      panelPicker: pane.id === this.work.layout?.activePaneId ? this.narrowPicker : undefined,
       bots: this.mentionable(),
       onClose: controls.close,
       onSplit: controls.split,
@@ -2802,8 +2808,9 @@ export class HuiApp extends HuiElement {
     // Maximized on desktop: the Work pane fills the row and the panel selector (the narrow chooser) leads back to
     // the chat; the chat columns stay mounted, hidden and inert, underneath.
     const maximized = workPaneMaximized(work, this.work.narrow);
-    return html`<div class="hui-workspace-panels ${workShown ? "hui-workspace-panels--work" : ""} ${maximized ? "hui-workspace-panels--maximized" : ""}">
-    ${renderPanelSelector({
+    // A phone gives the conversation its header row back: the chooser lives in that header while the chat is the
+    // destination shown, and keeps a row of its own once the chat gives way to the Work pane.
+    const selectorProps: PanelSelectorProps = {
       panes,
       activePaneId: this.work.layout.activePaneId,
       sessionTitle: (sessionId) => this.sessions.groups.flatMap((group) => group.sessions).find(({ id }) => id === sessionId)?.title,
@@ -2824,7 +2831,11 @@ export class HuiApp extends HuiElement {
       onSelectWork: (key) => { this.work.commit(activateWorkView(this.work.panes, workSessionId, key, false)); this.work.showNarrow(); },
       onShowWork: () => this.work.showNarrow(),
       onLaunch: (kind) => void this.work.launch(kind),
-    })}
+    };
+    const picker = panes.length ? renderPanelPicker(selectorProps) : undefined;
+    this.narrowPicker = this.mobileNavLayout && !workShown && !maximized ? picker : undefined;
+    return html`<div class="hui-workspace-panels ${workShown ? "hui-workspace-panels--work" : ""} ${maximized ? "hui-workspace-panels--maximized" : ""}">
+    ${this.narrowPicker ? nothing : html`<div class="hui-panel-selector">${picker}</div>`}
     <div class="hui-workspace-row">
     <hui-session-multiplexer
       ?inert=${maximized}

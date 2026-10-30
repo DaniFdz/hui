@@ -224,6 +224,8 @@ export type HomeProps = {
   /** File references in the agent's replies and tool cards may open in this conversation's Files view. */
   fileLinks?: boolean;
   mobileNavLayout?: boolean;
+  /** The destination chooser, when the phone layout puts it in this conversation's header instead of its own row. */
+  panelPicker?: TemplateResult;
   groups: readonly SessionGroup[];
   /** Any session by id, a bot's chat and subagents included (session lists leave those out): names and links the
    * session a message came from. */
@@ -1981,8 +1983,10 @@ function renderTaskProgress(props: HomeProps) {
     ?? card.steps.find((step) => step.status === "pending")
     ?? card.steps.at(-1);
   const allComplete = card.steps.length > 0 && completed === card.steps.length;
+  // A phone's card sits over the conversation it documents, so it starts folded to its current step there.
+  const folded = props.chatPreferences.collapseTaskProgress || allComplete || Boolean(props.mobileNavLayout);
   return html`<div class="agent-chat__progress-float">
-    <details class="session-progress-card session-progress-card--composer" ?open=${!props.chatPreferences.collapseTaskProgress && !allComplete}>
+    <details class="session-progress-card session-progress-card--composer" ?open=${!folded}>
       <summary class="session-progress-card__summary">
         <span class="session-progress-card__summary-indicator ${allComplete ? "session-progress-card__summary-indicator--complete" : ""}" data-status=${current?.status ?? "pending"} aria-hidden="true">${allComplete ? checkIcon : current?.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span>
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
@@ -2592,9 +2596,9 @@ function renderHeader(props: HomeProps, session: SessionView) {
           aria-expanded="false"
           @click=${toggleNavigationDrawer}
         >${icons.menu}</button>` : nothing}
-        ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs">
+        ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs ${props.panelPicker ? "chat-pane__crumbs--picker" : ""}">
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
-          <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
+          ${props.panelPicker ?? html`<h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>`}
           <span class="transcript__meta" title=${session.cwd}>
             ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(props.savedCopy ? "Saved copy" : unreachableHost(session)?.status ?? STATUS_TEXT[session.status])}
           </span>

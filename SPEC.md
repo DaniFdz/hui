@@ -366,7 +366,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   conversation and desktop only; narrow screens, already one panel at a time, ignore it. Escape inside the pane returns focus to the chat and never
   stops the agent's turn. Below 1100px the pane is a full-screen destination: the
   panel selector lists the chat panes, the open Work views and the launchers, and
-  **Back to chat** or Ctrl+Alt+Shift+P returns. Hidden views stay mounted, so terminals
+  **Back to chat** or Ctrl+Alt+Shift+P returns. On a phone the chooser sits in the
+  conversation's own header, in place of its title, so a chat spends one row on
+  that header instead of two; the Work destination keeps the chooser in a row of
+  its own, because the chat header is out of sight there. Hidden views stay mounted, so terminals
   and pages keep their state across tab switches, collapsing and focus changes,
   for the three most recently focused conversations that have views; a view of
   an older one reconnects (a terminal replays its snapshot) when shown again.
@@ -1390,7 +1393,9 @@ the main transcript, so they cannot influence later turns. Examples include
 HUI also supplies PI with a session-scoped `progress_card` presentation tool.
 PI persists its ordinary tool call in the transcript; HUI projects only the
 latest validated call into a collapsible Task progress card attached above the
-composer. An empty call clears the card. HUI never infers plan state from prose.
+composer. On a phone the card starts folded to its current step and its count,
+because the unfolded plan would cover the conversation it documents; opening it
+by hand keeps it open. An empty call clears the card. HUI never infers plan state from prose.
 A refresh control on the card reads the session again and asks the agent to
 update the card, so a missed stream update and a plan the agent stopped
 revising both end current.

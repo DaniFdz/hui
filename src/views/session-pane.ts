@@ -3,7 +3,7 @@
  * shell callbacks it reports to (close, split, Work views, navigation, the session registry and drafts). Terminals and
  * the browser view live in the Work pane.
  */
-import { html } from "lit";
+import { html, type TemplateResult } from "lit";
 import type { Attachment, SessionGroup, SessionView } from "../api/sessions.ts";
 import type { BotView } from "../lib/bots/bots.ts";
 import type { SessionPane, SplitDirection } from "../lib/session/multiplexer.ts";
@@ -16,6 +16,8 @@ export type SessionPaneProps = {
   listed: SessionView | undefined;
   groups: readonly SessionGroup[] | undefined;
   mobileNav: boolean;
+  /** The destination chooser, when the phone layout puts it in this pane's header. */
+  panelPicker?: TemplateResult;
   bots: readonly BotView[];
   onClose: (() => void) | undefined;
   onSplit: ((direction: SplitDirection) => void) | undefined;
@@ -39,6 +41,7 @@ export const renderSessionPane = (props: SessionPaneProps) => html`
       .paneVisible=${props.state.visible}
       .paneNarrow=${props.state.narrow}
       .paneMobileNav=${props.mobileNav}
+      .panePanelPicker=${props.panelPicker}
       .onPaneClose=${props.onClose}
       .onPaneSplit=${props.onSplit}
       .onPaneTerminal=${props.onTerminal}
