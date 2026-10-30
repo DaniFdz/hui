@@ -731,7 +731,8 @@ export class SubagentService {
     try {
       const state = this.sessions.status(target.id);
       if (state === "running" || state === "waiting") {
-        await this.sessions.followUp(target.id, delivered);
+        try { await this.sessions.steer(target.id, delivered); }
+        catch { await this.sessions.followUp(target.id, delivered); }
       } else {
         await this.sessions.prompt(target.id, delivered);
       }

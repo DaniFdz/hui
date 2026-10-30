@@ -12,13 +12,13 @@ test("trigger limits and labels match the portable fixtures", async () => {
   for (const item of fixture.filters) assert.equal(botTriggerFilterSummary({ filter: item.input }), item.expected);
 });
 
-const FIELDS: TriggerFormFields = { name: "Reviews", prompt: "  Review it.  ", cooldown: "300", matchField: "", matchOp: "equals", matchValue: "", prLinks: false, external: false, bots: false };
+const FIELDS: TriggerFormFields = { name: "Reviews", prompt: "  Review it.  ", cooldown: "300", matchField: "", matchOp: "equals", matchValue: "", prLinks: false, external: false, bots: false, steer: true };
 
 test("the add form becomes a listener trigger's body", () => {
-  assert.deepEqual(triggerFormInput(FIELDS), { name: "Reviews", source: "listener", prompt: "Review it.", cooldownSeconds: 300, filter: {} });
-  assert.equal(triggerFormInput({ ...FIELDS, steer: true }).delivery, "steer");
+  assert.deepEqual(triggerFormInput(FIELDS), { name: "Reviews", source: "listener", prompt: "Review it.", delivery: "steer", cooldownSeconds: 300, filter: {} });
+  assert.equal(triggerFormInput({ ...FIELDS, steer: false }).delivery, "followUp", "clearing the box keeps the full-context follow-up");
   assert.deepEqual(triggerFormInput({ ...FIELDS, prompt: "", cooldown: "0", matchField: " fields.channel ", matchValue: " G01M4T1JFLK ", prLinks: true, bots: true }),
-    { name: "Reviews", source: "listener", cooldownSeconds: 0, filter: { match: { field: "fields.channel", op: "equals", value: "G01M4T1JFLK" }, prLinks: true, bots: true } });
+    { name: "Reviews", source: "listener", delivery: "steer", cooldownSeconds: 0, filter: { match: { field: "fields.channel", op: "equals", value: "G01M4T1JFLK" }, prLinks: true, bots: true } });
   assert.deepEqual(triggerFormInput({ ...FIELDS, matchField: "summary", matchOp: "contains", matchValue: "review", external: true }).filter, { match: { field: "summary", op: "contains", value: "review" }, external: true });
   assert.deepEqual(triggerFormInput({ ...FIELDS, matchField: "fields.channel", matchValue: "  " }).filter, {}, "a field without a value matches nothing in particular");
   for (const [change, message] of [[{ name: " " }, /Name the trigger/u], [{ name: "a [b]" }, /can't hold/u]] as const) {

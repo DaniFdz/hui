@@ -144,8 +144,8 @@ function renderForm(props: BotTriggersProps, open: boolean) {
       <label class="bot-trigger-form__check"><input type="checkbox" name="prLinks" /><span>Only events that link a GitHub pull request</span></label>
       <label class="bot-trigger-form__check"><input type="checkbox" name="external" /><span>Also events it marks as from outside your organization</span></label>
       <label class="bot-trigger-form__check"><input type="checkbox" name="bots" /><span>Also events it marks as from bots and apps</span></label>
-      <label class="bot-trigger-form__check"><input type="checkbox" name="steer" /><span>Steer the current turn with summaries and PR links only</span></label>
-      <p class="bot-field__hint">When selected, a busy bot receives the update before its next model call, without event details or fetched PR diffs. An idle bot starts a turn. Otherwise updates wait as full-context follow-ups.</p>
+      <label class="bot-trigger-form__check"><input type="checkbox" name="steer" checked /><span>Steer the current turn with summaries and PR links only</span></label>
+      <p class="bot-field__hint">While selected, a busy bot receives the update before its next model call, without event details or fetched PR diffs, and an idle bot starts a turn. Clear it to have updates wait as full-context follow-ups.</p>
       <label class="bot-field"><span class="bot-field__label">Prompt</span>
         <textarea class="settings-input" name="prompt" rows="2" maxlength=${BOT_TRIGGER_LIMITS.prompt} placeholder=${`What should ${name} do when it fires?`}></textarea></label>
       <label class="bot-field bot-trigger-form__cooldown"><span class="bot-field__label">Cooldown</span>

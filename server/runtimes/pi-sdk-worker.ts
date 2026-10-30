@@ -104,6 +104,7 @@ async function main() {
       ...(model ? { model } : {}), ...(thinking ? { thinkingLevel: thinking } : {}),
       customTools: launch.safeProbe ? [] : huiToolDefinitions({ browser: launch.browserTool !== false }),
     });
+    result.session.setSteeringMode("all");
     result.session.subscribe((event) => {
       if (event.type === "turn_start" || event.type === "turn_end") turnPrompts.set(result.session, result.session.systemPrompt);
     });

@@ -205,7 +205,7 @@ test("a bot exports as a reviewed template: the cleanup and the utility model so
     assert.equal(manifest.version, 2);
     assert.equal("handle" in manifest.bot, false);
     assert.equal(manifest.bot.tagging, "mention", "who may tag it travels: a policy, nothing of the owner's");
-    assert.deepEqual(manifest.triggers, [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review it with a teammate.", cooldownSeconds: 300 }]);
+    assert.deepEqual(manifest.triggers, [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review it with a teammate.", delivery: "steer", cooldownSeconds: 300 }]);
     assert.deepEqual(manifest.open.map((point) => [point.kind, point.where]), [["ask", "SOUL.md"], ["confirm", "SOUL.md"], ["confirm", "Skill weather: scripts/check.sh"]]);
     assert.equal(manifest.open[2]!.question, "It came from someone else's setup: check it before it runs. Which repositories should I watch for pull requests?");
 

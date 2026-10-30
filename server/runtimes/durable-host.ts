@@ -72,7 +72,8 @@ function harnessSettings(settings: SettingsManager, extensions: readonly Extensi
     },
     get compaction() { return settings.getCompactionSettings(); },
     get retry() { return settings.getRetrySettings(); },
-    get steeringMode() { return settings.getSteeringMode(); },
+    // Every steer waiting at a boundary is placed with the others: a watcher, a subagent and a bot report at once.
+    steeringMode: "all",
     get followUpMode() { return settings.getFollowUpMode(); },
   };
 }

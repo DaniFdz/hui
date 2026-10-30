@@ -683,6 +683,16 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "BOT-069",
+    title: "Serve a bot's trigger events in the turn already running",
+    behaviour: "The Triggers add form opens with \"Steer the current turn with summaries and PR links only\" checked. Two listener events from a trigger added without choosing a delivery, arriving while the bot's turn is held at the model, join that turn together before its next model call, and one reply follows them.",
+    spec: ["SPEC.md#automated-messages-steer-and-every-steer-goes-in-at-once-2026-10-30", "docs/api.md#triggers"],
+    surfaces: ["route:POST /__hui/bots/:id/triggers", "route:POST /__hui/hooks/<token>"],
+    journeys: ["bot-triggers"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;

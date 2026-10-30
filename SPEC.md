@@ -2148,17 +2148,18 @@ everything the Bots tab can, through the same routes.
 - **Triggers** wake a bot when something happens elsewhere, beside its routines
   (decisions below). HUI reads no other service for them itself: a listener, a
   program the operator runs, watches what it watches and reports to the
-  trigger's URL, a secret on the tailnet; each event wakes the bot once, its
-  delivery carrying the pull requests it links to, read through the gateway's
-  `gh`, by default. The operator can instead select compact steering: event
-  summaries, times and PR links only, without event details or fetched PR
-  context. It starts a turn while idle or steers the active turn before its
-  next model call without aborting work. Existing triggers keep full-context
-  follow-ups. Each delivery is `[trigger: <name> · <summary>] <prompt>` in its
-  chat; its sender restrictions remain the same in either mode. A cooldown
-  coalesces events into one delivery and an hourly cap holds the rest. The bot's
-  panel lists them on its overview and manages them on its Triggers page, and `hui bot trigger` manages them too; only
-  the operator adds or changes one, and the bot's `triggers` tool lists and
+  trigger's URL, a secret on the tailnet; each event wakes the bot once. By
+  default its delivery steers: event summaries, times and PR links only, without
+  event details or fetched PR context, into the turn going on or as the next
+  turn of an idle bot, before its next model call and without aborting work. The
+  operator can instead leave it a full-context follow-up, its delivery carrying
+  the pull requests it links to, read through the gateway's `gh`; a trigger
+  saved before the choice existed keeps that follow-up. Each delivery is
+  `[trigger: <name> · <summary>] <prompt>` in its chat; its sender restrictions
+  remain the same in either mode. A cooldown coalesces events into one delivery
+  and an hourly cap holds the rest. The bot's panel lists them on its overview
+  and manages them on its Triggers page, and `hui bot trigger` manages them too;
+  only the operator adds or changes one, and the bot's `triggers` tool lists and
   removes its own.
 - **Tagging.** Agents and bots hand a bot work by tagging it, `@handle`. A bot
   is described like a skill: its description says what it does and when to tag
@@ -2551,6 +2552,33 @@ short in-between notes ("Checking the logs.") stay visible too. Presentation
 tools (`present_media`, `show_widget`, `ask_user_question`, `message_bot`) keep
 their own rows as before. Link previews still render only under the newest
 assistant message; the links themselves work in every message.
+
+### Automated messages steer, and every steer goes in at once (2026-10-30)
+
+The owner got tired of watching a watcher's, a subagent's or a bot's message sit
+in the queue until the turn in progress ended, and of several of them arriving
+one turn apart: HUI now brings every message it delivers on someone else's
+behalf into the turn already running, and a turn takes them all together.
+
+- **The operator's own messages keep their chosen delivery.** Send steers, Enter
+  queues a follow-up, and a message to a bot that is busy still waits behind the
+  turn, as typed.
+- **Everything else steers.** A watcher's settle, a subagent's completion or
+  `sessions_send` message, another bot's tag or a bot's reply to an agent
+  (`message_bot`), and a trigger's delivery join the turn going on, before its
+  next model call, without aborting it; an idle conversation runs the message as
+  its next turn. Nothing waits for a turn to end first, and a message that would
+  have waited is no longer editable in the queue because it is already read.
+- **Routines keep their own turn.** A routine waits for the answer to its own
+  prompt, which steering would replace with the turn it joined.
+- **A trigger steers unless the operator says otherwise.** Added triggers are
+  created with `delivery: "steer"`, the compact summaries-and-links form; a
+  trigger saved before this, or one whose box was cleared, still queues the
+  full-context follow-up it always did.
+- **All of them at one boundary.** Where the runtime offered a choice of
+  placing one queued steer per boundary or all of them, HUI places all of them:
+  Durable's and the older PI SDK worker's steering mode is `all`. Three reports
+  that arrive while a tool runs reach the model in one request, not three.
 
 ### Chats show who sent each message (2026-10-16)
 

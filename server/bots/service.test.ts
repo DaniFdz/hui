@@ -46,6 +46,7 @@ class FakeChat implements RuntimeSession {
   readonly cwd: string;
   readonly resumesInterruptedRuns = true;
   prompts: string[] = [];
+  steers: string[] = [];
   history: TranscriptEntry[];
   questions: RuntimeQuestion[] = [];
   aborts = 0;
@@ -70,6 +71,11 @@ class FakeChat implements RuntimeSession {
     this.#streaming = true;
     this.history.push({ kind: "message", role: "user", text });
     for (const waiter of this.#promptWaiters.splice(0)) waiter(text);
+  }
+
+  async steer(text: string): Promise<void> {
+    this.steers.push(text);
+    this.emit({ type: "queue_update", queue: { steering: [...this.steers], followUp: [] } });
   }
 
   /** Resolves with the next prompt the runtime receives. */
@@ -1446,7 +1452,8 @@ test("message_bot delivers to a handle or a name, guards hops, refuses itself an
 
   assert.deepEqual(await h.service.messageBot(ada.sessionId, { to: "@BOB", message: "  hello  " }), { text: "Queued for @bob.", to: "bob", status: "sent" });
   assert.deepEqual(bobChat.prompts, ["[from @ada] hello"]);
-  assert.deepEqual(await h.service.messageBot(ada.sessionId, { to: "bob", message: "again" }), { text: "Queued for @bob.", to: "bob", status: "queued" }, "a busy bot gets a follow-up");
+  assert.deepEqual(await h.service.messageBot(ada.sessionId, { to: "bob", message: "again" }), { text: "Queued for @bob.", to: "bob", status: "queued" }, "a busy bot gets steering");
+  assert.deepEqual(bobChat.steers, ["[from @ada] again"], "it joins the turn going on rather than waiting for the next one");
   assert.equal((await h.service.messageBot(ada.sessionId, { to: "cy", message: "by name" })).to, "cy");
 
   const refusal = async (caller: string, params: Record<string, unknown>, pattern: RegExp) => {
@@ -1464,11 +1471,11 @@ test("message_bot delivers to a handle or a name, guards hops, refuses itself an
   const runAs = (prompt: string) => h.setRecords(h.records().map((record) => record.id === ada.sessionId ? { ...record, runPrompt: prompt } : record));
   runAs("[from @cy] can you ask bob?");
   await h.service.messageBot(ada.sessionId, { to: "bob", message: "cy asks" });
-  assert.equal(bobChat.prompts.length, 1, "bob is still busy, so it waits in his queue");
-  assert.equal(h.sessions.snapshot(bob.sessionId).queue.items?.at(-1)?.text, "[from @ada · hop 2] cy asks");
+  assert.equal(bobChat.prompts.length, 1, "bob is still busy, so it joins the turn going on");
+  assert.equal(h.sessions.snapshot(bob.sessionId).queue.steering.at(-1), "[from @ada · hop 2] cy asks");
   runAs("[from @cy · hop 2] and then?");
   await h.service.messageBot(ada.sessionId, { to: "bob", message: "third hop" });
-  assert.equal(h.sessions.snapshot(bob.sessionId).queue.items?.at(-1)?.text, `[from @ada · hop ${MAX_BOT_HOPS}] third hop`);
+  assert.equal(h.sessions.snapshot(bob.sessionId).queue.steering.at(-1), `[from @ada · hop ${MAX_BOT_HOPS}] third hop`);
   runAs(`[from @cy · hop ${MAX_BOT_HOPS}] keep going`);
   await refusal(ada.sessionId, { to: "bob", message: "fourth hop" }, /already crossed 3 bots/u);
   runAs("[routine: Morning] check");
@@ -1546,7 +1553,7 @@ test("a bot replies only to its calling agents, queues busy replies, and preserv
   assert.deepEqual(await h.service.messageBot(grace.sessionId, { to, message }), { text: `Queued for ${to}.`, to, status: "sent" });
   assert.deepEqual(agentChat.prompts, [`[from @grace · hop 2] ${message}`]);
   assert.deepEqual(await h.service.messageBot(grace.sessionId, { to, message: "Another finding." }), { text: `Queued for ${to}.`, to, status: "queued" });
-  assert.equal(h.sessions.snapshot(agent).queue.items?.at(-1)?.text, "[from @grace · hop 2] Another finding.");
+  assert.equal(h.sessions.snapshot(agent).queue.steering.at(-1), "[from @grace · hop 2] Another finding.");
 
   // Later watcher turns keep the original return route without an in-memory routing table.
   h.setRecords(h.records().map((record) => record.id === grace.sessionId ? { ...record, runPrompt: "[routine: PR watch] Review changed." } : record));
@@ -1556,7 +1563,7 @@ test("a bot replies only to its calling agents, queues busy replies, and preserv
 
   // An agent responding to Grace must not reset the chain to hop 1.
   await h.service.messageBot(agent, { to: "grace", message: "Keep the agreed policy." });
-  const thirdHop = h.sessions.snapshot(grace.sessionId).queue.items?.at(-1)?.text;
+  const thirdHop = h.sessions.snapshot(grace.sessionId).queue.steering.at(-1);
   assert.equal(thirdHop, `[from agent: Implement PR 7 · reply-to ${to} · hop 3] Keep the agreed policy.`);
   assert.equal(hopOf(thirdHop), 3);
   h.setRecords(h.records().map((record) => record.id === grace.sessionId ? { ...record, runPrompt: thirdHop } : record));

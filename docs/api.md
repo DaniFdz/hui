@@ -2392,17 +2392,20 @@ unique per bot in any case; a summary carries no brackets of its own.
 it as they refuse other bots' turns, and an access request asked in it says
 "Asked while handling the trigger …".
 
-The operator may select `delivery: "steer"` for compact status notifications.
-These carry the same marker, operator prompt and external-information warning,
+A trigger steers unless the operator selects `delivery: "followUp"`. A created
+trigger without `delivery` is stored as `"steer"`: compact status notifications
+that carry the same marker, operator prompt and external-information warning,
 then event summaries, times and PR links only. Listener details and automatic
 GitHub reads are omitted. An idle bot starts a normal turn; a busy bot takes the
 notice through the existing steering path before its next model call, without
 aborting a tool. Blocking compaction may hold it as a follow-up, as with ordinary
 steering. This does not impose a queue bound or change cooldowns, caps or sender
-restrictions. The bot must read live evidence when needed. Missing `delivery`
-or `delivery: "followUp"` keeps the existing full-context behavior. The add form
-exposes compact steering and its trigger card names the selected mode. Templates
-preserve it on export/import; imported triggers still start disabled.
+restrictions. The bot must read live evidence when needed. `delivery:
+"followUp"`, and a trigger stored before the choice existed with no `delivery`,
+keeps the full-context behavior. The add form exposes compact steering, selected
+by default, and its trigger card names a follow-up when that is what the
+trigger does. Templates preserve it on export/import; imported triggers still
+start disabled.
 
 **Cooldown and caps.** `cooldownSeconds` (0–86,400, default 300): an event
 within that long of the trigger's last delivery waits, and when the cooldown
