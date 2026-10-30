@@ -83,7 +83,7 @@ test("a read's output copies from its context menu", { tags: ["CHAT-068"] }, asy
   await expect.poll(() => hui.copied()).toBe("Real SDK browser fixture\n");
 });
 
-test("another tool shows its state, input and output, with Copy output", { tags: ["CHAT-028"] }, async ({ screen, hui }) => {
+test("another tool shows its state, input and output, and its output copies from its context menu", { tags: ["CHAT-028"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const transcript = screen.getByTestId("transcript");
@@ -109,8 +109,8 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await expect(transcript.getByText(/"text": "from the model"/u)).toBeVisible();
   await expect(transcript.getByText("Output")).toBeVisible();
   await expect(transcript.getByText("Extension tool executed: from the model")).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByRole("button", "Copy output"));
-  await transcript.getByRole("button", "Copy output").tap();
+  await hui.contextMenu(transcript.getByText("Extension tool executed: from the model"));
+  await screen.getByText("Copy as markdown").tap();
   await expect.poll(() => hui.copied()).toBe("Extension tool executed: from the model");
 
   await message.fill(call("CALL", "fixture_echo", { text: "" }));

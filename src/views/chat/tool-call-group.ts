@@ -8,6 +8,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { brandMarks, icons } from "../../lib/icons.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
 import { readToolPresentation, commandToolPresentation, codemodeToolPresentation, toolFilePath } from "../../lib/tool-cards.ts";
+import { openMessageContextMenu } from "../../lib/message-context-menu.ts";
 import { renderReadToolBody } from "./read-tool-card.ts";
 import { renderCommandToolBody } from "./command-tool-card.ts";
 import { renderCodemodeToolBody } from "./codemode-tool-card.ts";
@@ -241,12 +242,14 @@ function statusGlyph(status: Status) {
 
 /** The tool's own body when it has one; otherwise the arguments and output as the generic card shows them. */
 export function renderToolBody(item: ToolItem, onCopy: (text: string, key: string) => void): TemplateResult {
-  if (readToolPresentation(item)) return renderReadToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
-  if (commandToolPresentation(item)) return renderCommandToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
-  if (codemodeToolPresentation(item)) return renderCodemodeToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
+  const copy = (text: string) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean);
+  if (readToolPresentation(item)) return renderReadToolBody(item, { onCopy: copy });
+  if (commandToolPresentation(item)) return renderCommandToolBody(item, { onCopy: copy });
+  if (codemodeToolPresentation(item)) return renderCodemodeToolBody(item, { onCopy: copy });
+  const copyOutput = (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, item.output ?? "", copy);
   return html`<div class="chat-tool-msg-body"><div class="chat-tool-card">
     ${item.args !== undefined ? html`<section class="chat-tool-card__block"><div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Input</span></div><pre class="chat-tool-card__block-content"><code>${typeof item.args === "string" ? item.args : JSON.stringify(item.args, null, 2)}</code></pre></section>` : nothing}
-    ${item.output !== undefined ? html`<section class="chat-tool-card__block"><div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Output</span></div><pre class="chat-tool-card__block-content"><code>${item.output || "No output"}</code></pre></section>` : nothing}
+    ${item.output !== undefined ? html`<section class="chat-tool-card__block" tabindex="0" @contextmenu=${copyOutput} @keydown=${copyOutput}><div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Output</span></div><pre class="chat-tool-card__block-content"><code>${item.output || "No output"}</code></pre></section>` : nothing}
   </div></div>`;
 }
 
