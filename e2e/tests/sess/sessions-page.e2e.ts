@@ -121,6 +121,8 @@ test("a row's copy button copies its full path, and the table shows its empty, l
   await hui.reload();
   await loading.arrived();
   await events.arrived();
+  await expect(screen.getByTestId("page-title")).toHaveText("Sessions");
+  await expect(screen.getByText("Reading the HUI session registry.", { visible: true }).last()).toBeVisible();
   await expect(screen.getByText("Loading sessions…", { visible: true }).last()).toBeVisible();
   await loading.deliver();
   await expect(screen.getByTestId("session-data-row").filter({ hasText: "Zulu copied" })).toBeVisible();
