@@ -51,7 +51,7 @@ function renderTrigger(trigger: BotTrigger, props: BotTriggersProps) {
       ${renderSettingsToggle(`Enable ${trigger.name}`, trigger.enabled, (checked) => props.onToggle(trigger, checked), state.pending)}
     </div>
     <p class="bot-trigger__filter" title=${botTriggerFilterSummary(trigger)}>${botTriggerFilterSummary(trigger)}</p>
-    <p class="bot-trigger__meta">${fired} · cooldown ${cooldownLabel(trigger.cooldownSeconds)}${trigger.delivery === "steer" ? "" : " · waits as a follow-up"}${trigger.createdBy === "bot" ? ` · added by ${props.bot.name}` : ""}</p>
+    <p class="bot-trigger__meta">${fired} · cooldown ${cooldownLabel(trigger.cooldownSeconds)}${trigger.delivery === "steer" ? " · steers with summaries and links" : ""}${trigger.createdBy === "bot" ? ` · added by ${props.bot.name}` : ""}</p>
     ${trigger.pending ? html`<p class="bot-trigger__meta bot-trigger__meta--pending">${trigger.pending.events} event${trigger.pending.events === 1 ? "" : "s"} wait${trigger.pending.events === 1 ? "s" : ""}, sent together at ${whenLabel(trigger.pending.until, props.now)}</p>` : nothing}
     ${renderWatch(trigger, props.now)}
     <p class="bot-trigger__meta">URL …/hooks/${trigger.tokenHint ?? ""}… · shown when it was made</p>
