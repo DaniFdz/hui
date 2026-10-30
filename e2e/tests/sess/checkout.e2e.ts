@@ -94,7 +94,7 @@ test("New worktree starts the session in a new checkout on a utility-named branc
   await screen.getByPlaceholder("What should this session work on?").fill("Tidy the launch form");
   await screen.getByRole("button", "Start session").tap();
   await expect.poll(async () => new URL(await hui.url()).pathname).toMatch(/^\/sessions\/[^/]+$/u);
-  await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();
+  await expect(screen.getByTestId("transcript")).toContainText("Fixture response.");
   await expect.poll(async () => (await sessions(hui)).some(({ title }) => title === "Improve session naming")).toBe(true);
   const { cwd } = (await sessions(hui)).find(({ title }) => title === "Improve session naming")!;
   expect(cwd.startsWith(join(dirname(hui.workspace), "config", "hui", "worktrees") + "/")).toBe(true);
