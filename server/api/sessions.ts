@@ -213,7 +213,7 @@ export type SessionQueueRequest = Static<typeof SessionQueueRequest>;
 
 export const SessionStatusUpdate = Type.Object({
   id: Type.String(), status: SessionStatus, unread: Type.Optional(Type.Boolean()), creating: Type.Optional(WorktreeProgress),
-  creationError: Type.Optional(Type.String()), title: Type.Optional(Type.String()),
+  creationError: Type.Optional(Type.String()), title: Type.Optional(Type.String()), progress: Type.Optional(ProgressCard),
 }, { $id: "SessionStatusUpdate" });
 export type SessionStatusUpdate = Static<typeof SessionStatusUpdate>;
 

@@ -57,7 +57,7 @@ export type SessionStatus = ("idle") | ("running") | ("waiting") | ("starting") 
 
 export type SessionStatusStreamFrame = ({ "event": "snapshot"; "data": { "statuses": Array<SessionStatusUpdate>; }; }) | ({ "event": "status"; "data": SessionStatusUpdate; }) | ({ "event": "sessions"; "data": SessionListUpdate; });
 
-export type SessionStatusUpdate = { "id": string; "status": SessionStatus; "unread"?: boolean; "creating"?: WorktreeProgress; "creationError"?: string; "title"?: string; };
+export type SessionStatusUpdate = { "id": string; "status": SessionStatus; "unread"?: boolean; "creating"?: WorktreeProgress; "creationError"?: string; "title"?: string; "progress"?: ProgressCard; };
 
 export type SessionSubagent = { "taskId": string; "label"?: string; "status": SubagentStatus; "startedAt": string; "updatedAt": string; "endedAt"?: string; "error"?: string; "completionDelivery"?: ("pending") | ("delivered"); "collect"?: true; };
 

@@ -518,10 +518,10 @@ const cases: UseCase[] = [
   },
   {
     id: "AGENT-053",
-    title: "Follow the agent's task progress",
-    behaviour: "A progress_card call shows a card above the composer: folded, the current step and done/total; open, Task progress with N of M, the agent's Markdown notes and each step marked pending, in progress or done. It starts open unless every step is done or Collapse task progress is on, an empty call removes it, the raw call never shows as activity, and it returns after a reload. A refresh control on the card re-reads the session and asks the agent to update it, so the card comes back current.",
+    title: "Follow a session's task progress",
+    behaviour: "HUI's utility model reads the conversation after every turn and every five minutes of a running one, and writes a Task progress card above the composer: folded, the current step and done/total; open, Task progress with N of M, a one-line summary and each step marked pending, in progress or done. It starts open unless every step is done or Collapse task progress is on, a new turn rewrites it, and it is stored with the session so it returns after a reload. Without a utility model, or when the model cannot answer, the previous card stays and nothing blocks the turn.",
     spec: ["docs/api.md#task-progress"],
-    surfaces: ["tool:progress_card", "setting:chat.collapseTaskProgress"],
+    surfaces: ["setting:chat.collapseTaskProgress", "setting:models.utility"],
     web: "required",
     ios: "backlog",
   },

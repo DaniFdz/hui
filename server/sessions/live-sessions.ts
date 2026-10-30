@@ -21,7 +21,7 @@ import type { TaskSuggestion } from "../api/task-suggestions.ts";
 import type { Watcher } from "../api/watchers.ts";
 import type { SecretQuestion } from "../agent-tools/secret-requests.ts";
 import type { QuestionnairePrompt } from "../agent-tools/questionnaires.ts";
-import type { SessionStatus } from "../api/sessions.ts";
+import type { ProgressCard, SessionStatus } from "../api/sessions.ts";
 
 /** A question HUI itself asks: a `secret_request` or an `ask_user_question` card. */
 export type HuiQuestion = SecretQuestion | QuestionnairePrompt;
@@ -121,6 +121,8 @@ export type SessionStatusUpdate = {
   id: string;
   status: SessionStatus;
   unread?: boolean;
+  /** A generated Task progress card the browser should replace its own copy with. */
+  progress?: ProgressCard;
 };
 
 export type RuntimeTelemetry = {
@@ -289,6 +291,8 @@ export class LiveSessions {
   #huiQuestions: (sessionId: string) => readonly HuiQuestion[] = () => [];
   /** Claims one automatic turn for a session's active goal, or answers nothing when there is none to pursue. */
   #goalContinuation: (sessionId: string) => Promise<string | undefined> = async () => undefined;
+  /** Hands a settled conversation to the progress refresher; it never delays the settle. */
+  #progressRefresh: (sessionId: string, transcript: readonly TranscriptEntry[]) => void = () => {};
   #aborted: (sessionId: string) => void = () => {};
 
   /** Injectable so the state machine can be exercised without waiting to boot a
@@ -423,6 +427,26 @@ export class LiveSessions {
   /** A settled turn asks whether its goal is still active, and queues the next one when it is. */
   setGoalContinuation(claim: (sessionId: string) => Promise<string | undefined>): void {
     this.#goalContinuation = claim;
+  }
+
+  /** Every settled turn hands its final transcript to the card generator, whatever ends up reading the card. */
+  setProgressRefresh(refresh: (sessionId: string, transcript: readonly TranscriptEntry[]) => void): void {
+    this.#progressRefresh = refresh;
+  }
+
+  /** Sessions whose turn is going right now: the Task progress refresher asks for these every five minutes. */
+  runningIds(): string[] {
+    return [...this.#live.values()]
+      .filter((live) => !live.closed && live.status === "running")
+      .map((live) => live.record.id);
+  }
+
+  /** A card written outside the run: open browsers replace the one they hold, as they do a generated title. */
+  publishProgress(id: string, progress: ProgressCard): void {
+    const live = this.#live.get(id);
+    if (!live) return;
+    const update: SessionStatusUpdate = { id, status: this.#reported(live), progress };
+    for (const subscriber of this.#statusSubscribers) subscriber(update);
   }
 
   /** Re-emits the session's state after coordination state changes outside the
@@ -1623,6 +1647,7 @@ export class LiveSessions {
   }
 
   async #routeSettledTurn(live: Live, runtime: RuntimeSession): Promise<void> {
+    this.#progressRefresh(live.record.id, live.transcript);
     await this.#restoreAfterFallback(live, runtime);
     const retried = await this.#retryWithFallback(live, runtime).catch(() => false);
     if (!retried) {

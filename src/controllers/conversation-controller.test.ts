@@ -4,7 +4,6 @@ import { OutdatedBuildError } from "../api/offline.ts";
 import { GatewayHttpError } from "../api/request.ts";
 import type { SessionSnapshot, SessionStatus, SessionStreamHandlers, SessionStreamSnapshot, SessionView, SubagentTaskView } from "../api/sessions.ts";
 import type { SavedConversation } from "../lib/session/offline-store.ts";
-import { progressCardFromTranscript } from "../lib/progress-card.ts";
 import { ConversationController } from "./conversation-controller.ts";
 
 const fake = vi.hoisted(() => ({
@@ -174,96 +173,6 @@ test("only the session still selected opens and streams; its status frames reach
   assert.equal(fake.streams[0]?.stopped, true);
   assert.equal(controller.streamOpen, false);
 });
-
-test("a refresh reads the open session again, asks the agent, and stays busy until that turn ends", async () => {
-  const stale = { kind: "tool" as const, id: "p", name: "progress_card", args: { plan: [{ step: "Old step", status: "in_progress" }] } };
-  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
-  void controller.open("s1");
-  await settle();
-  fake.opens[0]?.resolve("idle");
-  await settle();
-  controller.transcript = [stale];
-  assert.equal(progressCardFromTranscript(controller.transcript)?.steps[0]?.step, "Old step");
-
-  const refreshed = controller.refresh();
-  assert.equal(controller.refreshing, true, "the click is busy at once, so a second one is refused");
-  void controller.refresh();
-  await settle();
-  assert.equal(fake.opens.length, 2, "a second click while busy asks the gateway nothing");
-  fake.opens[1]?.resolve("idle", {
-    transcript: [
-      { kind: "message", role: "user", text: "go" },
-      { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "New step", status: "in_progress" }] } },
-    ],
-  });
-  await refreshed;
-
-  assert.equal(progressCardFromTranscript(controller.transcript)?.steps[0]?.step, "New step");
-  assert.deepEqual(fake.prompts.map(({ id }) => id), ["s1"], "the card is the agent's, so the refresh asks it for a current one");
-  assert.match(fake.prompts[0]?.text ?? "", /^Refresh the task progress card/u);
-  assert.equal(fake.prompts[0]?.mode, "prompt", "an idle session starts the turn at once");
-  assert.equal(controller.refreshing, true, "the agent is still working on the card");
-
-  fake.streams[0]?.handlers.onStatus("idle");
-  assert.equal(controller.refreshing, false);
-});
-
-test("a refresh on a running session queues the request rather than being refused", async () => {
-  const { controller } = conversation({ selected: { id: "s1" } as SessionView, streaming: true });
-  const refreshed = controller.refresh();
-  await settle();
-  fake.opens[0]?.resolve("running");
-  await refreshed;
-
-  assert.equal(fake.prompts[0]?.mode, "follow-up");
-  assert.equal(controller.refreshing, true);
-});
-
-test("a refresh never asks the agent while the connection is not live", async () => {
-  for (const connection of ["saved", "reconnecting", "stopped", "outdated"] as const) {
-    const { controller } = conversation({ selected: { id: "s1" } as SessionView });
-    controller.connection = connection;
-    await controller.refresh();
-    assert.equal(fake.opens.length, 0);
-    assert.equal(fake.prompts.length, 0);
-  }
-
-  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
-  const refreshed = controller.refresh();
-  controller.connection = "outdated";
-  fake.opens[0]?.resolve("idle");
-  await refreshed;
-  assert.equal(fake.prompts.length, 0);
-  assert.equal(controller.refreshing, false);
-});
-
-for (const outcome of ["resolve", "reject"] as const) {
-  test(`a cancelled refresh that later ${outcome}s cannot clear the replacement session's refresh`, async () => {
-    const { controller, errors } = conversation({ selected: { id: "s1" } as SessionView });
-    const oldRefresh = controller.refresh();
-    controller.select({ id: "s2" } as SessionView);
-    const opening = controller.open("s2");
-    assert.equal(fake.opens[0]?.signal?.aborted, true);
-    await controller.refresh();
-    assert.equal(fake.opens.length, 2, "refresh does not compete with the initial open");
-    fake.opens[1]?.resolve("idle");
-    await opening;
-    const refresh = controller.refresh();
-    fake.opens[2]?.resolve("idle", { transcript: [{ kind: "message", role: "user", text: "Current session" }] });
-    await refresh;
-    assert.equal(controller.refreshing, true, "the replacement agent is still working");
-    if (outcome === "resolve") fake.opens[0]?.resolve("idle", { transcript: [{ kind: "message", role: "user", text: "Old session" }] });
-    else fake.opens[0]?.reject(new Error("Late network failure"));
-    await oldRefresh;
-    assert.equal(controller.refreshing, true, "the old read does not own this loading state");
-    assert.equal(controller.selected?.id, "s2");
-    assert.deepEqual(controller.transcript.map((item) => item.kind === "message" ? item.text : item.kind), ["Current session"]);
-    assert.deepEqual(fake.prompts.map(({ id }) => id), ["s2"]);
-    assert.deepEqual(errors, []);
-    fake.streams[0]?.handlers.onStatus("idle");
-    assert.equal(controller.refreshing, false);
-  });
-}
 
 test("a conversation whose element is removed starts no stream for an open still pending, and leaves no copy timer or stale state", async () => {
   vi.useFakeTimers();

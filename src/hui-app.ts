@@ -579,7 +579,7 @@ export class HuiApp extends HuiElement {
     }
   }
 
-  private followSessionStatus({ id, status, title }: SessionStatusUpdate) {
+  private followSessionStatus({ id, status, title, progress }: SessionStatusUpdate) {
     const bot = this.bots.list.find((candidate) => candidate.sessionId === id);
     if (bot) {
       this.bots.adopt(this.withLiveBotState(this.bots.list));
@@ -589,7 +589,7 @@ export class HuiApp extends HuiElement {
     }
     if (!this.embeddedPane && this.conversation.selected?.id === id) {
       this.reopenIfRestarted(id, status);
-      this.conversation.select({ ...this.conversation.selected, status, ...(title ? { title } : {}) });
+      this.conversation.select({ ...this.conversation.selected, status, ...(title ? { title } : {}), ...(progress ? { progress } : {}) });
     }
   };
 
