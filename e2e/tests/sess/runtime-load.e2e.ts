@@ -51,11 +51,10 @@ test("the Sessions page reads the runtime summary and each row's Active or Cold,
   await expect(summary.getByText("Bravo warm", { exact: true })).toBeVisible();
   await expect(summary.getByText("4.3 s", { exact: true })).toBeVisible();
 
-  const events = await hui.intercept("GET", /\/__hui\/sessions\/events$/u);
+  const events = await hui.intercept("GET", /\/__hui\/sessions\/events(?:\?.*)?$/u);
   const starting = await hui.intercept("GET", /\/__hui\/sessions$/u);
   await hui.reload();
   await starting.arrived();
-  await events.arrived();
   await starting.answer(await answer((sessions) => {
     sessions.find(({ title }) => title === "Bravo warm")!.status = "starting";
   }));
