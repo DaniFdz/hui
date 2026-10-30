@@ -116,7 +116,7 @@ test("a row's copy button copies its full path, and the table shows its empty, l
   await expect.poll(() => hui.copied()).toBe(repo.path);
   await expect(copy).toHaveAttribute("data-hui-tooltip", "Copied");
 
-  const events = await hui.intercept("GET", /\/__hui\/sessions\/events$/u);
+  const events = await hui.intercept("GET", /\/__hui\/sessions\/events(?:\?.*)?$/u);
   const loading = await hui.intercept("GET", /\/__hui\/sessions$/u);
   await hui.reload();
   await loading.arrived();
@@ -125,7 +125,7 @@ test("a row's copy button copies its full path, and the table shows its empty, l
   await expect(screen.getByTestId("session-data-row").filter({ hasText: "Zulu copied" })).toBeVisible();
   await events.deliver();
 
-  const statuses = await hui.intercept("GET", /\/__hui\/sessions\/events$/u);
+  const statuses = await hui.intercept("GET", /\/__hui\/sessions\/events(?:\?.*)?$/u);
   const failing = await hui.intercept("GET", /\/__hui\/sessions$/u);
   await hui.reload();
   await failing.arrived();
