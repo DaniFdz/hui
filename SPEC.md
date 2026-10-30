@@ -828,11 +828,15 @@ and HUI's durable registry format remain unchanged.
 ## Managed browser
 
 HUI gives agents a dedicated browser through the HUI-owned **browser** tool,
-modeled on OpenClaw's managed `openclaw` profile. The gateway launches one
-Chromium-family process (Chrome, Brave, Edge or Chromium, auto-detected or an
+modeled on OpenClaw's managed `openclaw` profile. The machine a session runs on
+launches one Chromium-family process (Chrome, Brave, Edge or Chromium,
+auto-detected — the Chromium Playwright's `npx playwright install chromium` put
+under `~/.cache/ms-playwright` or `$PLAYWRIGHT_BROWSERS_PATH` included — or an
 absolute executable path) with its own user-data directory under
-`$XDG_CONFIG_HOME/hui/browser/profile`. It never attaches to, reads or drives the
-operator's own browser, windows, cookies or passwords.
+`$XDG_CONFIG_HOME/hui/browser/profile`, or under the worker's data directory when
+the session runs there. It never attaches to, reads or drives the operator's own
+browser, windows, cookies or passwords. Each machine's browser keeps its own
+profile, so a login made from a session on a worker stays on that worker.
 
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
@@ -872,7 +876,9 @@ Follow agent. Both are
 read-only. Frames come from a CDP screencast that runs only while someone
 watches and only when the page repaints (at most about ten frames a second).
 Headless tabs each get their own window, so conversations never hide each
-other's pages.
+other's pages. A browser on a worker is not streamed here: its tabs stay on that
+machine, no preview or browser view shows them, and what the agent sees arrives
+as tool results, a screenshot included (which `present_media` shows in the chat).
 
 No new dependency is added: HUI speaks CDP directly. Browser settings are an
 additive `browser` block in `settings.json`; the browser view is a
@@ -2068,8 +2074,17 @@ leaves worker records unchanged.
   session's: the checkout picker reads that machine's branches, the worktree goes
   under the worker's own data directory (never the mirrored config, which each
   sync replaces), its progress arrives like a local one, and a failed registry
-  write rolls it back there. Not yet available remotely: terminals, watchers, the
-  managed browser, a worker's worktrees in Settings → Worktrees, and
+  write rolls it back there. The **browser** tool works there too: the worker host
+  runs its own managed browser, with a profile under the worker's data directory
+  (so its logins stay on that machine), offered to a session, a subagent and a
+  bot's chat there as Settings → Tools → Browser decides, and its calls answered
+  on the worker even with no gateway connected. Its executable is found on that
+  machine (a Chromium-family browser on PATH, Chrome, Brave or Edge where they
+  install, or the Chromium from `npx playwright install chromium`); the
+  gateway's executable path is not mirrored, and the tool names the missing
+  browser when there is none. A host from before this says so in `hello`, and the
+  gateway keeps refusing browser calls from it. Not yet available remotely:
+  terminals, watchers, a worker's worktrees in Settings → Worktrees, and
   multi-account quota rotation (the default account is used). Usage totals skip
   remote transcripts.
 
@@ -3366,10 +3381,11 @@ session on that worker, as any remote session's.
   per connection, so an offline worker never slows or fails the roster. Offline,
   a bot shows its session's state; its memory and messages fail with a reason
   naming the worker; a worker host from before bots is told apart.
-- **A remote session's limits.** The terminal, the managed browser and
-  watchers act on the gateway's machine, so a bot on a worker has none of them,
-  and no worktrees. Its secret requests work as a worker session's: the card is
-  answered on the gateway and the worker host writes the file.
+- **A remote session's limits.** The terminal and watchers act on the gateway's
+  machine, so a bot on a worker has neither, and no worktrees. The browser is its
+  own, as for any session on that worker, and the gateway's sits out. Its secret
+  requests work as a worker session's: the card is answered on the gateway and
+  the worker host writes the file.
 
 ### Bots are set up like Grok Bot (2026-10-06)
 

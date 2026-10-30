@@ -1335,5 +1335,7 @@ Verified desktop/mobile behavior and checks are recorded in
   `docker exec -i` and over SSH: Node download, release install, package
   dependency install, durable runs across a killed transport, host upgrade, and
   the Settings → Workers, Run on and reattach journeys in the browser.
-- Not yet remote: terminals, the managed browser, worktrees/branch checkout,
-  multi-account quota rotation and usage totals.
+- Not yet remote: terminals, watchers, worktrees/branch checkout,
+  multi-account quota rotation and usage totals. A session there browses in the
+  worker's own managed browser (`server/browser/`, a profile under its data
+  directory, no live view here), found with the same executable detection.
