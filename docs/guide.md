@@ -138,11 +138,11 @@ sandboxed without Node integration. Browser-local drafts have a separate Electro
 profile; HUI/PI storage remains shared through the existing gateway.
 
 The app also claims the `hui://` scheme, so a chat can be handed to it. A link
-carrying `?open=app`, which bots can mint, shows an **Open in HUI** button above
-the chat in a macOS browser; the button opens that chat in the app instead of
-the tab. The button is the hand-off because browsers only launch another program
-after a click. Other platforms and phones never show it and keep the chat in the
-browser.
+carrying `?open=app`, which bots can mint, asks the gateway to open that chat in
+the app, and the page falls back to an **Open in HUI** button when the app is not
+installed. A browser cannot start another program without a click, so the page
+asks the gateway (`POST /__hui/app/open`), which opens HUI itself. Other
+platforms and phones never ask and keep the chat in the browser.
 
 Installation is per-user, without sudo, and downloads the platform's Electron
 runtime. Reinstallation replaces only an HUI-owned bundle, never an unrelated

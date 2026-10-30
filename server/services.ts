@@ -93,6 +93,8 @@ import { createTaskSuggestionRoutes } from "./routes/task-suggestions.ts";
 import { createWatcherRoutes } from "./routes/watchers.ts";
 import { createPiRoutes } from "./routes/pi.ts";
 import { createPowerRoutes } from "./routes/power.ts";
+import { createAppRoutes } from "./routes/app.ts";
+import { openChatInApp } from "./desktop-app.ts";
 import { createHostMetricsRoutes } from "./routes/host-metrics.ts";
 import { createProviderRoutes } from "./routes/providers.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
@@ -327,6 +329,7 @@ export const vscodeRoutes = createVscodeRoutes({ vscode, readRegistry });
 /** macOS sleep prevention lives and dies with this gateway process. */
 export const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 export const powerRoutes = createPowerRoutes({ macPower });
+export const appRoutes = createAppRoutes({ openChatInApp });
 export const hostMetricsRoutes = createHostMetricsRoutes({ hostMetrics: createHostMetrics() });
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 /** A goal that is still active gets its next turn from the queue, never from a timer of its own. */

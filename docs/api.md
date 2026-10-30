@@ -819,6 +819,19 @@ Staying awake with the lid closed is never saved: it lasts one gateway run.
   the switch on reports it active and changes nothing, and turning it off
   reports that it is still on outside HUI.
 
+### `POST /__hui/app/open`
+
+Opens a chat in the installed HUI desktop app. A browser cannot start another
+program without a click, so a page carrying `?open=app` asks the gateway, which
+runs `open -a ~/Applications/HUI.app hui://<kind>/<id>`.
+
+- The body is `{ "path": "/sessions/<id>" }` or `{ "path": "/bots/<id>" }`.
+  Anything else is 400, and a method other than POST is 405.
+- It answers `{ "opened": true }` once macOS accepted the request. The app must
+  be the bundle HUI installed, recognized by its owner marker; without it, off
+  macOS, or when `open` fails, the answer is 503 with the reason, and the page
+  keeps the chat and offers the app as a button instead.
+
 ### `GET /__hui/host-metrics`
 
 Read-only resource use of the machine the gateway runs on, for the Dashboard
