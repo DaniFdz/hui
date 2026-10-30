@@ -55,6 +55,8 @@ type Intercepted = {
   deliver(): Promise<void>;
   reject(status: number, error: string): Promise<void>;
   answer(json: string): Promise<void>;
+  /** Answers the held request and every later request to the same path, so a page that refreshes keeps this payload. */
+  answerEvery(json: string): Promise<void>;
   deliverAndDrop(): Promise<void>;
 };
 
@@ -240,6 +242,12 @@ const gatewayProxy = async (gateway: string) => {
         deliver: () => decide(forward),
         reject: (status, error) => answer(status, JSON.stringify({ error })),
         answer: (json) => answer(200, json),
+        answerEvery: async (json) => {
+          holds.delete(held);
+          answer(200, json);
+          const keep = { method, path, hold: async ({ response }: GatewayRequest) => { response.writeHead(200, { "content-type": "application/json" }).end(json); } };
+          holds.add(keep);
+        },
         deliverAndDrop: () => decide(async ({ incoming, body, response }) => {
           await deliverBehind(method, new URL(incoming.url ?? "/", gateway).href, body.toString() || undefined);
           response.destroy();
@@ -707,6 +715,10 @@ export const test = base.extend<{ hui: Hui }>({
             deliver: () => decide((route) => route.continue()),
             reject: (status, error) => decide((route) => route.fulfill({ status, json: { error } })),
             answer: (json) => decide((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
+            answerEvery: async (json) => {
+              await settle((route) => route.fulfill({ status: 200, contentType: "application/json", body: json }));
+              await browser().route(path, (route) => (route.request.method === method ? route.fulfill({ status: 200, contentType: "application/json", body: json }) : route.fallback()));
+            },
             deliverAndDrop: () => decide(async (route) => {
               await deliverBehind(method, route.request.url, route.request.postData);
               await route.abort();
@@ -864,7 +876,10 @@ export const test = base.extend<{ hui: Hui }>({
           execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
         },
         copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
-        intercept: async (method, path) => proxy!.intercept(method, path),
+        intercept: async (method, path) => ({
+          ...await proxy!.intercept(method, path),
+          answerEvery: async () => { throw new Error("answerEvery: the iOS proxy holds one request at a time"); },
+        }),
         dropStreams: async () => proxy!.dropStreams(),
         url: async () => proxy!.url + await fixtures.screen.getByTestId("app-route").inputValue(),
         tapAt,

@@ -67,7 +67,7 @@ test("Model Providers shows PI's primary model, thinking level, available models
   const none = await hui.intercept("GET", /\/__hui\/pi$/u);
   await hui.reload();
   await none.arrived();
-  await none.answer(withModel(pi, { defaultProvider: "", defaultModel: "", authenticated: [], catalog: [] }));
+  await none.answerEvery(withModel(pi, { defaultProvider: "", defaultModel: "", authenticated: [], catalog: [] }));
   await expect(screen.getByText("No providers", { exact: true })).toBeVisible();
   await expect(screen.getByText("Credential configured", { exact: true })).toBeHidden();
 });
