@@ -245,6 +245,9 @@ export function renderToolBody(item: ToolItem, onCopy: (text: string, key: strin
   if (commandToolPresentation(item)) return renderCommandToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
   if (codemodeToolPresentation(item)) return renderCodemodeToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
   return html`<div class="chat-tool-msg-body"><div class="chat-tool-card">
+    <div class="chat-tool-card__header"><span class="chat-tool-card__detail">${item.name}</span>
+      ${item.output !== undefined ? html`<div class="chat-tool-card__actions"><button type="button" class="chat-copy-btn" aria-label="Copy output" title="Copy output" @click=${() => onCopy(item.output ?? "", `tool-${item.id}`)}>${icons.copy}</button></div>` : nothing}
+    </div>
     ${item.args !== undefined ? html`<section class="chat-tool-card__block"><div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Input</span></div><pre class="chat-tool-card__block-content"><code>${typeof item.args === "string" ? item.args : JSON.stringify(item.args, null, 2)}</code></pre></section>` : nothing}
     ${item.output !== undefined ? html`<section class="chat-tool-card__block"><div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Output</span></div><pre class="chat-tool-card__block-content"><code>${item.output || "No output"}</code></pre></section>` : nothing}
   </div></div>`;
