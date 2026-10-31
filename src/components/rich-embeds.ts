@@ -41,7 +41,12 @@ function renderMermaid(code: string, target: HTMLElement): Promise<void> {
       theme: prefersDark() ? "dark" : "default",
     });
     const { svg, bindFunctions } = await mermaid.render(`hui-mermaid-${++mermaidSequence}`, code, target);
-    target.innerHTML = svg;
+    // Mermaid returns SVG text. Parse it as XML and adopt its root; assigning it as HTML would let SVG text be
+    // reinterpreted by the HTML parser.
+    const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+    const root = parsed.documentElement;
+    if (root.nodeName.toLowerCase() !== "svg") throw new Error("Mermaid returned no SVG.");
+    target.replaceChildren(target.ownerDocument.importNode(root, true));
     bindFunctions?.(target);
   });
   mermaidQueue = task;
