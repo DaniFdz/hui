@@ -31,7 +31,7 @@
  * themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer, request, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -42,14 +42,9 @@ import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { IOS_DEVICE, IOS_PORT } from "../../e2e.config.ts";
 import { navigationPath, resolveNavigation } from "../../src/lib/navigation.ts";
-import { workerRelease } from "../../server/worker/release.ts";
+import { addWorkerOnThisMachine } from "./worker.ts";
 
 const MAX_SCROLL_SWIPES = 20;
-const checkout = fileURLToPath(new URL("../../", import.meta.url));
-
-/** A worker's connect command as HUI stores it: plain words, POSIX quoted. */
-const commandText = (words: readonly string[]) => words.map((word) => (/^[\w@%+=:,./-]+$/u.test(word) ? word : `'${word.replaceAll("'", `'"'"'`)}'`)).join(" ");
-
 type Receipt = { url: string; providerUrl: string; workspace: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
@@ -519,6 +514,8 @@ export const test = base.extend<{ hui: Hui }>({
           const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
           if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
             await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
+            // A row is tappable only once the drawer has taken the screen.
+            await expect(fixtures.screen.getByRole("button", "Close navigation", { visible: true })).toBeVisible();
           }
         },
         settingsPages: async () => {
@@ -615,25 +612,7 @@ export const test = base.extend<{ hui: Hui }>({
           const file = await browser().waitForDownload(() => target.tap());
           return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };
         },
-        addWorker: async (name) => {
-          // The checkout itself as the remote release, so connecting never needs the network (as workers.test.ts does).
-          const home = join(await mkdtemp(join(tmpdir(), "hui-e2e-worker-")), "home");
-          workerHomes.push(home);
-          const release = await workerRelease();
-          const dir = join(home, ".local", "share", "hui-worker", "releases", release.id);
-          for (const file of release.files) {
-            await mkdir(dirname(join(dir, file.path)), { recursive: true });
-            await writeFile(join(dir, file.path), file.data, { mode: file.mode });
-          }
-          await symlink(join(checkout, "node_modules"), join(dir, "node_modules"));
-          await writeFile(join(dir, ".ready"), "");
-          const command = commandText(["env", "-u", "PI_CODING_AGENT_DIR", "-u", "XDG_CONFIG_HOME", "-u", "XDG_DATA_HOME", "-u", "PI_OFFLINE", "-u", "HUI_CONFIG_DIR", `HOME=${home}`, "SHELL=/bin/sh"]);
-          const created = await api<{ worker: { id: string } }>("POST", "/__hui/workers", { name, command });
-          await api("POST", `/__hui/workers/${created.worker.id}/connect`);
-          await expect.poll(async () => (await api<{ workers: { id: string; state: string; error?: string }[] }>("GET", "/__hui/workers")).workers.find((worker) => worker.id === created.worker.id)?.state, { timeout: 120_000 })
-            .toBe("connected");
-          return { id: created.worker.id, home };
-        },
+        addWorker: (name) => addWorkerOnThisMachine(api, workerHomes, name),
         clipboardSpy: async () => {
           await browser().evaluate(() => {
             const writes: string[] = [];

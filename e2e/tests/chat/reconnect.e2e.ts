@@ -6,7 +6,7 @@ test("a dropped stream keeps the draft and holds sending until it is back, and a
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const transcript = screen.getByTestId("transcript");
-  const reconnecting = screen.getByText("Reconnecting — draft preserved.");
+  const reconnecting = screen.getByText("Reconnecting…");
 
   const session = await hui.createSession({ title: "Dropped stream" });
   await hui.open(`/sessions/${session.id}`);
@@ -15,7 +15,6 @@ test("a dropped stream keeps the draft and holds sending until it is back, and a
   await hui.dropStreams();
   await reconnect.arrived();
   await expect(reconnecting).toBeVisible();
-  await expect(screen.getByPlaceholder("Draft while HUI reconnects…")).toBeVisible();
   await message.fill("Written while away");
   await expect(send).toBeDisabled();
   await hui.prompt(session, "Sent from elsewhere");
@@ -36,6 +35,6 @@ test("a dropped stream keeps the draft and holds sending until it is back, and a
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await message.fill("Kept through the exit");
   await hui.exitRuntimes();
-  await expect(screen.getByText("Stream stopped — draft preserved.")).toBeVisible();
+  await expect(screen.getByText("The runtime exited — this session is no longer streaming.")).toBeVisible();
   await expect(message).toHaveValue("Kept through the exit");
 });

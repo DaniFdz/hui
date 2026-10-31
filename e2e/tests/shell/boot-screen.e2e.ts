@@ -14,7 +14,7 @@ test("the boot screen shows HUI's name and loading bar on the background the sys
   const reload = screen.getByRole("link", "Reload");
 
   await hui.deviceAppearance("dark");
-  let code = await hui.intercept("GET", /\/src\/hui-app\.ts/u);
+  let code = await hui.intercept("GET", /\/assets\/hui-app-[^/]+\.js$/u);
   const started = Date.now();
   await hui.open("/");
   await code.arrived();
@@ -31,7 +31,7 @@ test("the boot screen shows HUI's name and loading bar on the background the sys
   await expect(slow).toHaveCount(0);
 
   await hui.deviceAppearance("light");
-  code = await hui.intercept("GET", /\/src\/hui-app\.ts/u);
+  code = await hui.intercept("GET", /\/assets\/hui-app-[^/]+\.js$/u);
   await hui.reload();
   await code.arrived();
   await expect(name).toBeVisible();
@@ -54,7 +54,7 @@ test("a chosen theme and accent paint the boot screen of the next load in their 
   await screen.getByLabel("Accent color").getByRole("button", "Blue").tap();
   await expect.poll(async () => (await hui.look(title)).color).toEqual(BLUE_ACCENT);
 
-  const code = await hui.intercept("GET", /\/src\/hui-app\.ts/u);
+  const code = await hui.intercept("GET", /\/assets\/hui-app-[^/]+\.js$/u);
   await hui.reload();
   await code.arrived();
   const boot = await hui.look(name);
@@ -72,7 +72,7 @@ test("code that never downloads swaps the loading bar for the connection message
   const failure = screen.getByText("HUI could not load over this connection.", { exact: true });
   const reload = screen.getByRole("button", "Reload");
 
-  const code = await hui.intercept("GET", /\/src\/hui-app\.ts/u);
+  const code = await hui.intercept("GET", /\/assets\/hui-app-[^/]+\.js$/u);
   await hui.open("/");
   await code.arrived();
   await expect(bar).toBeVisible();

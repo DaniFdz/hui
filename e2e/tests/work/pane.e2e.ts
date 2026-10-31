@@ -162,7 +162,7 @@ test("closing the last view collapses the pane, restores a maximized pane and re
   await pane.getByRole("button", { name: /^Close Terminal/u }).tap();
   await expect(screen.getByRole("button", "Back to chat")).toBeHidden();
   await expect(screen.getByLabel("Message")).toBeVisible();
-  await expect(selector).toContainText("Chat");
+  await expect(selector).toHaveAttribute("aria-label", /Chat/u);
   await hui.wideScreen();
 });
 
@@ -219,7 +219,7 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await hui.phoneScreen();
   await hui.open(`/sessions/${session.id}`);
   await message.fill("Draft kept in the chat");
-  await expect(selector).toContainText("Chat");
+  await expect(selector).toHaveAttribute("aria-label", /Chat/u);
   await selector.tap();
   await expect(screen.getByText("Chat").last()).toBeVisible();
   await expect(screen.getByText(/^Open$/u)).toHaveCount(5);
@@ -231,7 +231,7 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await expect(screen.getByRole("button", "Back to chat")).toBeVisible();
   await screen.getByRole("button", "Back to chat").tap();
   await expect(message).toHaveValue("Draft kept in the chat");
-  await expect(selector).toContainText("Chat");
+  await expect(selector).toHaveAttribute("aria-label", /Chat/u);
 
   await selector.tap();
   await expect(screen.getByText(/^Work$/u)).toHaveCount(1);

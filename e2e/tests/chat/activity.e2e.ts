@@ -64,6 +64,9 @@ test("each stretch of activity folds under a label from what it holds and opens 
   await expect(transcript.getByText("Tool complete")).toBeVisible();
   await expect(idle).toBeVisible();
   await hui.scrollTo(transcript, transcript.getByText("Used 1 tool").last());
+  const reasoning = transcript.getByText("Reasoning").last();
+  await hui.scrollTo(transcript, reasoning);
+  await reasoning.tap();
   const read = transcript.getByRole("button", /^Read fixture\.txt/u);
   if (!(await read.isVisible())) await transcript.getByText("Used 1 tool").last().tap();
   await inOrder(transcript.getByText("Inspecting the fixture."), read);

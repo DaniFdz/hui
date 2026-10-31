@@ -59,15 +59,15 @@ test("an opened watcher shows its target, outcome, times, log, path and controls
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("posted /merge");
   await watchers.getByText("Post /merge when approved").tap();
 
-  await expect(screen.getByText("Then: post /merge")).toBeVisible();
+  await expect(watchers.getByText("Then: post /merge")).toBeVisible();
   await hui.expectLinkTo(watchers, "github.com/ddoghq/web-ui/pull/21532", "https://github.com/ddoghq/web-ui/pull/21532");
-  await expect(screen.getByText(/^Started .+ · ended /u)).toBeVisible();
+  await expect(watchers.getByText(/^Started .+ · ended /u)).toBeVisible();
   const log = screen.getByLabel("Watcher log");
   await expect(log.getByText("posted /merge")).toBeVisible();
-  const path = screen.getByText(/^PID \d+ · .+\.log$/u);
+  const path = watchers.getByText(/^PID \d+ · .+\.log$/u);
   await expect(path).toBeVisible();
-  await expect(screen.getByRole("button", "Restart")).toBeVisible();
-  await expect(screen.getByRole("button", "Dismiss")).toBeVisible();
+  await expect(watchers.getByRole("button", "Restart")).toBeVisible();
+  await expect(watchers.getByRole("button", "Dismiss")).toBeVisible();
   await expect(screen.getByRole("button", "Stop")).toBeHidden();
 
   await hui.prompt(session, start({ purpose: "Check the deploy", command: "exit 3" }));
@@ -103,12 +103,12 @@ test("Stop settles a running watcher, updates the summary and offers Restart and
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("None running");
   await expect(watchers.getByText(/^Stopped · /u)).toBeVisible();
   await expect(screen.getByRole("button", "Stop")).toBeHidden();
-  await expect(screen.getByRole("button", "Restart")).toBeVisible();
-  await expect(screen.getByRole("button", "Dismiss")).toBeVisible();
+  await expect(watchers.getByRole("button", "Restart")).toBeVisible();
+  await expect(watchers.getByRole("button", "Dismiss")).toBeVisible();
 
   await hui.reload();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("None running");
-  await screen.getByText("2 watchers").tap();
+  await watchers.getByText("2 watchers").tap();
   await expect(watchers.getByText(/^Stopped · /u)).toBeVisible();
 });
 
@@ -121,13 +121,13 @@ test("Restart runs a settled watcher's command again under a new process and a f
   await expect(watchers.getByText("Check the deploy")).toBeVisible();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Done · ");
   await watchers.getByText("Check the deploy").tap();
-  const path = screen.getByText(/^PID \d+ · .+\.log$/u);
+  const path = watchers.getByText(/^PID \d+ · .+\.log$/u);
   await expect(path).toBeVisible();
   const before = pidOf(String(await path.textContent()));
-  await expect(screen.getByText(/^Started \d+[sm] ago/u)).toBeVisible();
+  await expect(watchers.getByText(/^Started \d+[sm] ago/u)).toBeVisible();
 
-  await screen.getByRole("button", "Restart").tap();
-  await expect(screen.getByText(/^Started just now/u)).toBeVisible();
+  await watchers.getByRole("button", "Restart").tap();
+  await expect(watchers.getByText(/^Started just now/u)).toBeVisible();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Running · ");
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Done · ");
 
@@ -146,14 +146,14 @@ test("Dismiss removes a settled watcher and its log, folding the list back into 
   await watchers.getByText("2 watchers").tap();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("posted /merge");
   await watchers.getByText("Post /merge when approved").tap();
-  await expect(screen.getByLabel("Watcher log").getByText("posted /merge")).toBeVisible();
-  await screen.getByRole("button", "Dismiss").tap();
+  await expect(watchers.getByLabel("Watcher log").getByText("posted /merge")).toBeVisible();
+  await watchers.getByRole("button", "Dismiss").tap();
 
   await expect(watchers.getByText("Post /merge when approved")).toBeHidden();
   await expect(screen.getByText("2 watchers")).toBeHidden();
   await expect(watchers.getByText("Wait for #21532 review signals")).toBeVisible();
   await expect(watchers.getByText(/^Running · /u)).toBeVisible();
-  await expect(screen.getByLabel("Watcher log")).toBeHidden();
+  await expect(watchers.getByLabel("Watcher log")).toBeHidden();
 });
 
 test("a watcher keeps its real state across a gateway restart and a dead one says why", { tags: ["AGENT-043"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -164,8 +164,8 @@ test("a watcher keeps its real state across a gateway restart and a dead one say
   const watchers = screen.getByLabel("Background watchers");
   await expect(watchers.getByText("Wait for a review")).toBeVisible();
   await hui.prompt(session, start({ purpose: "Wait for the reboot", command: "kill -9 $$" }));
-  await expect(screen.getByText("2 watchers")).toBeVisible();
-  await screen.getByText("2 watchers").tap();
+  await expect(watchers.getByText("2 watchers")).toBeVisible();
+  await watchers.getByText("2 watchers").tap();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for the reboot Dead");
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("1 running · Wait for a review");
 
@@ -173,9 +173,9 @@ test("a watcher keeps its real state across a gateway restart and a dead one say
   await hui.reload();
   await hui.open(`/sessions/${session.id}`);
 
-  await expect(screen.getByText("2 watchers")).toBeVisible();
+  await expect(watchers.getByText("2 watchers")).toBeVisible();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("1 running · Wait for a review");
-  await screen.getByText("2 watchers").tap();
+  await watchers.getByText("2 watchers").tap();
   await expect(watchers.getByText("Dead", { exact: true })).toBeVisible();
   await expect(watchers.getByText(/^Running · /u)).toBeVisible();
   await watchers.getByText("Wait for the reboot").tap();
@@ -190,7 +190,7 @@ test("deleting a conversation stops its running watcher and forgets its log", { 
   const watchers = screen.getByLabel("Background watchers");
   await expect(watchers.getByText("Wait for a review")).toBeVisible();
   await watchers.getByText("Wait for a review").tap();
-  const path = String(await screen.getByText(/^PID \d+ · .+\.log$/u).textContent());
+  const path = String(await watchers.getByText(/^PID \d+ · .+\.log$/u).textContent());
   const pid = pidOf(path);
   expect(alive(pid)).toBe(true);
 

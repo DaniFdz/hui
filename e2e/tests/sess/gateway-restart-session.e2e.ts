@@ -12,11 +12,11 @@ test("an open session waits through a gateway restart and is idle again without 
   const reconnect = await hui.intercept("POST", /\/__hui\/sessions\/[^/]+\/connect$/u);
   await hui.restartGateway();
   await reconnect.arrived();
-  await expect(screen.getByText("Reconnecting — draft preserved.")).toBeVisible();
+  await expect(screen.getByText("Reconnecting…")).toBeVisible();
   await expect(rows).toHaveCount(1);
 
   await reconnect.deliver();
-  await expect(screen.getByText("Reconnecting — draft preserved.")).toBeHidden();
+  await expect(screen.getByText("Reconnecting…")).toBeHidden();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(rows).toHaveCount(1);
   await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${session.id}`);

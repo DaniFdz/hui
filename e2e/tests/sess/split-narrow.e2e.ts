@@ -6,6 +6,12 @@ test("a narrow split shows only the active pane, switches with the Active panel 
   const panes = screen.getByTestId("session-pane");
   const shown = () => screen.getByTestId("session-pane", { visible: true });
   const selector = screen.getByRole("button", { name: /^Active panel/u });
+  // On a phone the active pane's header carries the pane chooser in place of its title.
+  const shownTitle = async () => {
+    const picker = screen.getByRole("button", { name: /^Active panel:/u });
+    if (await picker.count() > 0) return (await picker.getAttribute("aria-label") ?? "").split(" · ").at(-1) ?? "";
+    return (await shown().getByTestId("session-title").textContent()) ?? "";
+  };
   await hui.wideScreen(2200);
   const first = await hui.createSession({ title: "Pane one" });
   await hui.createSession({ title: "Pane two" });
@@ -27,26 +33,26 @@ test("a narrow split shows only the active pane, switches with the Active panel 
   expect(await hui.overflowsSideways()).toBe(false);
 
   await selector.tap();
-  await screen.getByText("3 · Chat").first().tap();
+  await screen.getByTestId("picker-list").getByText("3 · Chat", { exact: true }).tap();
   await expect(shown()).toHaveCount(1);
-  await expect(shown().getByTestId("session-title")).toHaveText("Pane two");
+  await expect.poll(shownTitle).toBe("Pane two");
   await expect(shown().getByLabel("Message")).toHaveValue("Draft in the second chat");
 
   await hui.sessionList();
   await screen.getByLabel(/^Pane one, status running/u).tap();
   await expect(shown()).toHaveCount(1);
-  await expect(shown().getByTestId("session-title")).toHaveText("Pane one");
+  await expect.poll(shownTitle).toBe("Pane one");
   await expect(shown().getByLabel("Session status: Running")).toBeVisible();
   await expect(shown().getByText("Replay prefix —", { exact: false })).toBeVisible();
   await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${first.id}`);
 
   await selector.tap();
-  await screen.getByText("3 · Chat").first().tap();
+  await screen.getByTestId("picker-list").getByText("3 · Chat", { exact: true }).tap();
   await expect(shown().getByLabel("Message")).toHaveValue("Draft in the second chat");
   expect(await hui.overflowsSideways()).toBe(false);
 
   await hui.provider.release();
   await selector.tap();
-  await screen.getByText("1 · Chat").last().tap();
+  await screen.getByTestId("picker-list").getByText("1 · Chat", { exact: true }).tap();
   await expect(shown().getByLabel("Session status: Idle")).toBeVisible();
 });
