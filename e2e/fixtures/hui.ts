@@ -144,6 +144,10 @@ export type Hui = {
   deleteEntry(within: Locator, name: string): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
+  /** Holds every download of the app chunk until `deliver`, so the boot screen stays up; `reject` refuses them. */
+  holdAppChunks(): Promise<{ arrived(): Promise<void>; deliver(): Promise<void>; reject(status: number, error: string): Promise<void> }>;
+  /** Drops an installed offline worker and its caches before the next load. */
+  clearOffline(): Promise<void>;
   repository(): Promise<{ path: string; git(...args: string[]): string }>;
   stored(text: string): Promise<string[]>;
   secretDirectories(): Promise<string[]>;
@@ -742,6 +746,49 @@ export const test = base.extend<{ hui: Hui }>({
           const box = await target.boundingBox();
           if (!box) throw new Error("flip: the switch is not on screen");
           await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
+        },
+        clearOffline: () => browser().addInitScript(async () => {
+          try {
+            const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+            await Promise.all(registrations.map((registration) => registration.unregister()));
+            if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
+          } catch { /* the next page may not have these APIs */ }
+        }),
+        holdAppChunks: async () => {
+          // The production build may preload the app chunk and import it again; hold every copy, not the entry
+          // module, so the page still reaches `load` and the boot screen can be read.
+          let release!: () => void;
+          const gate = new Promise<void>((resolve) => { release = resolve; });
+          let arrive!: () => void;
+          const arrival = new Promise<void>((resolve) => { arrive = resolve; });
+          let rejectWith: { status: number; error: string } | undefined;
+          const pending = new Set<Promise<void>>();
+          const appChunk = /\/assets\/hui-app-[^/]+\.js$/u;
+          await browser().route(appChunk, (route) => {
+            if (route.request.method !== "GET") return route.fallback();
+            arrive();
+            const work = (async () => {
+              await gate;
+              try {
+                if (rejectWith) await route.fulfill({ status: rejectWith.status, json: { error: rejectWith.error } });
+                else await route.continue();
+              } catch { /* the page may have navigated away */ }
+            })();
+            pending.add(work);
+            void work.finally(() => pending.delete(work));
+            return work;
+          });
+          const drain = async () => { while (pending.size) await Promise.all([...pending]); };
+          return {
+            arrived: () => arrival,
+            deliver: async () => { release(); await drain(); await browser().unroute(appChunk); },
+            reject: async (status, error) => {
+              rejectWith = { status, error };
+              release();
+              await drain();
+              await browser().unroute(appChunk);
+            },
+          };
         },
         intercept: async (method, path) => {
           const { arrival, hold, settle } = holding<WebRoute>();

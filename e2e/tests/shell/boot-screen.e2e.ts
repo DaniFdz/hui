@@ -13,8 +13,9 @@ test("the boot screen shows HUI's name and loading bar on the background the sys
   const slow = screen.getByText(/^Still loading — the connection is slow\./u);
   const reload = screen.getByRole("link", "Reload");
 
+  await hui.clearOffline();
   await hui.deviceAppearance("dark");
-  let code = await hui.intercept("GET", /\/assets\/hui-app-[^/]+\.js$/u);
+  let code = await hui.holdAppChunks();
   const started = Date.now();
   await hui.open("/");
   await code.arrived();
@@ -31,7 +32,7 @@ test("the boot screen shows HUI's name and loading bar on the background the sys
   await expect(slow).toHaveCount(0);
 
   await hui.deviceAppearance("light");
-  code = await hui.intercept("GET", /\/assets\/hui-app-[^/]+\.js$/u);
+  code = await hui.holdAppChunks();
   await hui.reload();
   await code.arrived();
   await expect(name).toBeVisible();
@@ -47,6 +48,7 @@ test("a chosen theme and accent paint the boot screen of the next load in their 
   const title = screen.getByTestId("settings-page-title");
   const reload = screen.getByRole("link", "Reload");
 
+  await hui.clearOffline();
   await hui.deviceAppearance("dark");
   await hui.open("/settings/appearance");
   await screen.getByRole("button", "Miami").tap();
@@ -54,7 +56,7 @@ test("a chosen theme and accent paint the boot screen of the next load in their 
   await screen.getByLabel("Accent color").getByRole("button", "Blue").tap();
   await expect.poll(async () => (await hui.look(title)).color).toEqual(BLUE_ACCENT);
 
-  const code = await hui.intercept("GET", /\/assets\/hui-app-[^/]+\.js$/u);
+  const code = await hui.holdAppChunks();
   await hui.reload();
   await code.arrived();
   const boot = await hui.look(name);
@@ -72,7 +74,8 @@ test("code that never downloads swaps the loading bar for the connection message
   const failure = screen.getByText("HUI could not load over this connection.", { exact: true });
   const reload = screen.getByRole("button", "Reload");
 
-  const code = await hui.intercept("GET", /\/assets\/hui-app-[^/]+\.js$/u);
+  await hui.clearOffline();
+  const code = await hui.holdAppChunks();
   await hui.open("/");
   await code.arrived();
   await expect(bar).toBeVisible();
