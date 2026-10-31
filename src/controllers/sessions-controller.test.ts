@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import type { SessionGroup, SessionStatusUpdate, SessionView } from "../api/sessions.ts";
+import { GatewayHttpError } from "../api/request.ts";
 import type { WorktreeInventory } from "../lib/worktrees.ts";
 import { SessionsController } from "./sessions-controller.ts";
 
@@ -17,15 +18,27 @@ const fake = vi.hoisted(() => ({
   inventoryReads: 0,
   inventory: { worktrees: [] } as unknown as WorktreeInventory,
   removed: [] as string[][],
+  loadError: undefined as unknown,
+  gate: undefined as Promise<void> | undefined,
+  saved: async () => [] as SessionGroup[],
 }));
 vi.mock("../api/sessions.ts", () => ({
-  loadSessions: async () => fake.list,
+  loadSessions: async () => {
+    await fake.gate;
+    if (fake.loadError) throw fake.loadError;
+    return fake.list;
+  },
   deleteSession: async (id: string) => { fake.deleted.push(id); },
   subscribeSessionStatuses: (handlers: Handlers) => {
     const stream = { handlers, stopped: false };
     fake.streams.push(stream);
     return () => { stream.stopped = true; };
   },
+}));
+vi.mock("../lib/session/offline-store.ts", () => ({
+  savedConversationGroups: () => fake.saved(),
+  reconcileSavedConversations: async () => {},
+  forgetConversation: async () => {},
 }));
 vi.mock("../api/worktrees.ts", () => ({
   loadWorktrees: async () => { fake.inventoryReads += 1; return fake.inventory; },
@@ -44,7 +57,12 @@ beforeEach(() => {
   fake.inventoryReads = 0;
   fake.inventory = { worktrees: [] } as unknown as WorktreeInventory;
   fake.removed = [];
+  fake.loadError = undefined;
+  fake.gate = undefined;
+  fake.saved = async () => [];
 });
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 afterEach(() => { vi.useRealTimers(); });
 
@@ -53,14 +71,14 @@ const session = (id: string, extra: Partial<SessionView> = {}) => ({ id, title: 
 const group = (...sessions: SessionView[]) => ({ label: "ungrouped", sessions }) as unknown as SessionGroup;
 
 function controller(presented = "", worktreesShown = true) {
-  const calls = { received: [] as string[][], settled: 0, statuses: [] as string[], deleted: [] as string[][] };
+  const calls = { received: [] as string[][], settled: 0, statuses: [] as string[], deleted: [] as string[][], reported: [] as string[] };
   const sessions = new SessionsController(host, {
     presented: (id) => id === presented,
     listReceived: (ids) => calls.received.push([...ids]),
     listSettled: () => { calls.settled += 1; },
     statusesApplied: () => calls.statuses.push("snapshot"),
     statusApplied: ({ id }) => calls.statuses.push(id),
-    reportError: () => {},
+    reportError: (_error, message) => calls.reported.push(message),
     refreshSessions: async () => {},
     sessionsDeleted: (ids) => calls.deleted.push([...ids]),
     worktreesShown: () => worktreesShown,
@@ -171,4 +189,72 @@ test("deleting selected sessions removes their trees and the worktrees only they
   assert.equal(sessions.pageSelected.size, 0);
   assert.equal(sessions.deleting, false);
   assert.deepEqual(sessions.actionToast, { message: "Deleted 1 session. Removed 1 worktree.", failed: false });
+});
+
+test("an unreachable gateway lists the saved conversations instead of an error", async () => {
+  fake.loadError = new TypeError("Failed to fetch");
+  fake.saved = async () => [group(session("saved"))];
+  const { sessions, calls } = controller();
+  await sessions.refresh();
+  assert.deepEqual(sessions.groups.flatMap(({ sessions: rows }) => rows.map(({ id }) => id)), ["saved"]);
+  assert.equal(sessions.error, "");
+  assert.equal(sessions.loading, false);
+  assert.ok(calls.settled > 0, "a saved list still settles the sidebar");
+});
+
+test("a gateway that refuses the list shows its error, not the saved conversations", async () => {
+  for (const status of [403, 404, 500]) {
+    fake.loadError = new GatewayHttpError(status, `refused ${status}`);
+    fake.saved = async () => [group(session("saved"))];
+    const { sessions } = controller();
+    await sessions.refresh();
+    assert.deepEqual(sessions.groups, [], `${status} is a refusal, not an outage`);
+    assert.equal(sessions.error, `refused ${status}`);
+  }
+});
+
+test("a failed refresh keeps the live list and reports inline instead of clearing it", async () => {
+  fake.list = { revision: 3, groups: [group(session("live"))] };
+  const { sessions, calls } = controller();
+  await sessions.refresh();
+  for (const failure of [new TypeError("Failed to fetch"), new GatewayHttpError(500, "refused 500")]) {
+    fake.loadError = failure;
+    await sessions.refresh();
+    assert.ok(sessions.listed("live"), `${failure.message} leaves the confirmed list alone`);
+    assert.equal(sessions.revision, 3);
+    assert.equal(sessions.error, "", "a usable sidebar reports inline instead of replacing itself");
+    assert.equal(calls.reported.at(-1), failure.message);
+  }
+});
+
+test("a saved list does not settle the sidebar while the live one is still loading", async () => {
+  let showSaved!: (groups: SessionGroup[]) => void;
+  fake.saved = () => new Promise((resolve) => { showSaved = resolve; });
+  fake.list = { revision: 1, groups: [group(session("live"), session("new"))] };
+  let releaseLoad!: () => void;
+  fake.gate = new Promise((resolve) => { releaseLoad = resolve; });
+  const { sessions, calls } = controller();
+  const loading = sessions.refresh();
+  showSaved([group(session("saved"))]);
+  await settle();
+  assert.equal(calls.settled, 0, "a provisional saved list must not settle a session route");
+  assert.equal(sessions.listed("saved")?.id, "saved");
+  releaseLoad();
+  await loading;
+  assert.ok(calls.settled > 0);
+  assert.ok(sessions.listed("new"), "the live list replaces the saved one");
+  assert.equal(sessions.listed("saved"), undefined);
+});
+
+test("a saved list that arrives after the live one never replaces it", async () => {
+  let showSaved!: (groups: SessionGroup[]) => void;
+  fake.saved = () => new Promise((resolve) => { showSaved = resolve; });
+  fake.list = { revision: 3, groups: [group(session("live"))] };
+  const { sessions } = controller();
+  await sessions.refresh();
+  assert.equal(sessions.revision, 3);
+  showSaved([group(session("saved"))]);
+  await settle();
+  assert.ok(sessions.listed("live"));
+  assert.equal(sessions.listed("saved"), undefined);
 });

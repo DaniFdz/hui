@@ -108,7 +108,6 @@ async function createSession(
     await workers.get(worker);
     cwd = body["cwd"].trim();
     if (!cwd.startsWith("/") && cwd !== "~" && !cwd.startsWith("~/")) throw new Error("A remote directory must be absolute or start with ~/.");
-    if (body["worktree"] === true || body["baseRef"] !== undefined) throw new Error("Worktrees and branch checkouts are not available on remote workers yet.");
   } else {
     cwd = resolveWorkingDirectory(body["cwd"]);
     let info;
@@ -225,18 +224,23 @@ async function createSession(
   const effectiveBranchName = branchName
     ?? names?.branchName
     ?? (requestedWorktree ? fallbackBranchName(effectiveTitle) : undefined);
+  // The worktree, the branch switch and the rollback all belong to the machine the session works on.
+  const worktreeOptions = {
+    sourceDirectory: cwd,
+    title: effectiveTitle,
+    ...(effectiveBranchName ? { branchName: effectiveBranchName } : {}),
+    baseRef,
+    branchPrefix: settings.branchPrefix,
+    onProgress: onWorktreeProgress,
+  };
   const createdWorktree = requestedWorktree
-    ? await createSessionWorktree({
-        sourceDirectory: cwd,
-        title: effectiveTitle,
-        ...(effectiveBranchName ? { branchName: effectiveBranchName } : {}),
-        baseRef,
-        branchPrefix: settings.branchPrefix,
-        onProgress: onWorktreeProgress,
-      })
+    ? worker ? await workers.createWorktree(worker, worktreeOptions) : await createSessionWorktree(worktreeOptions)
     : undefined;
   if (createdWorktree) cwd = createdWorktree.cwd;
-  if (!createdWorktree && baseRef) await checkoutSessionRef(cwd, baseRef);
+  if (!createdWorktree && baseRef) {
+    if (worker) await workers.checkoutRef(worker, cwd, baseRef);
+    else await checkoutSessionRef(cwd, baseRef);
+  }
   const record = recordNamed(effectiveTitle);
   // Persisted before the runtime starts, so a second connection can find it
   // while pi is still booting.
@@ -294,15 +298,16 @@ async function forkFromSession(
   worktreesRoot?: string,
 ): Promise<SessionRecord> {
   if (!request.worktree) return forkSession(source, await fork(request.entryId), sessions, registryUpdater);
-  if (source.worker) throw new Error("Worktrees are not available on remote workers yet.");
-  const settings = await readHuiSettings();
-  const worktree = await createSessionWorktree({
+  // A fork's worktree is made where the source works, this machine or its worker.
+  const worktreeOptions = {
     sourceDirectory: source.cwd,
     title: forkTitle(source.title),
     branchName: request.branchName ?? `${fallbackBranchName(source.title)}-fork`,
-    branchPrefix: settings.branchPrefix,
-    ...(worktreesRoot ? { root: worktreesRoot } : {}),
-  });
+    branchPrefix: (await readHuiSettings()).branchPrefix,
+  };
+  const worktree = source.worker
+    ? await workers.createWorktree(source.worker, worktreeOptions)
+    : await createSessionWorktree({ ...worktreeOptions, ...(worktreesRoot ? { root: worktreesRoot } : {}) });
   try {
     const reference = await fork(request.entryId, { cwd: worktree.cwd });
     return await forkSession(source, reference, sessions, registryUpdater, worktree.cwd);

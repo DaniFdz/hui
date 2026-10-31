@@ -3,7 +3,7 @@
 The interface between the backend and the browser. Change it deliberately: it is
 the seam the whole app is built across.
 
-All routes live under `/__hui/` and require the `x-hui: 1` header. Expected
+Gateway API routes live under `/__hui/` and require the `x-hui: 1` header. Expected
 client errors use `{ "error": "message worth showing the user" }` with a 4xx
 status; storage/backend failures use the same shape with 500.
 
@@ -37,6 +37,32 @@ Run `npm run api:schema` to update the committed document and generated browser
 types. The browser types are generated from the JSON document, not imported
 from the server. This document remains the prose contract for behavior, errors
 and ordering.
+
+## Production offline files
+
+Production builds emit `/offline-build.json` with `{ "build": "<build id>" }`,
+`/offline-inventory.json` with the complete static-file URLs and SHA-384
+integrities, and `/offline-worker.js`. These are static build files, not API
+routes, and are served with `Cache-Control: no-store`. The browser checks the
+fresh build marker before mutations and connection tickets. A different or
+invalid build marker disables live actions and offers **Reload HUI**.
+
+On HTTPS or localhost, the worker installs the entire inventory before it can
+activate. A failed install discards only that partial build. Updates wait for
+old tabs to close; they never reload an active draft. Known app navigations try
+the network for up to four seconds before using the installed shell on a
+connection failure or HTTP 502/503/504. HTTP 403/404 are not replaced by the
+shell. Inventory assets are cache-first. API calls, mutations, external URLs,
+build markers and unknown navigation paths are never answered from that cache.
+
+The separate browser database `hui-saved-conversations` keeps reading copies of
+up to ten visited conversations for seven days, capped at 200 recent complete
+rows and 2 MiB per conversation. It saves text at confirmed history boundaries,
+not on token updates, and never saves questions, queues, attachments or tool
+arguments. Sidebar hydration reads metadata only and holds no gateway revision.
+A saved transcript does not adopt runtime state. Compatible live state replaces
+it; reconnecting never submits a draft. **Forget saved conversations** removes
+these copies without touching the existing composer-draft database.
 
 ## Desktop shell boundary
 
@@ -517,7 +543,10 @@ Settings → Models owns built-in connections separately from PI custom provider
 The add-provider modal offers OpenCode Go, OpenAI (ChatGPT account or API key),
 and Claude (Pro/Max or API key). The generic routes retain
 existing providers for backwards compatibility; custom setup UI is deferred.
-Only added connections have cards. Unauthenticated cards expose sign-in only;
+Only added connections have cards, inside Provider configuration, closed on each
+page visit with a provider count. Add provider and status/error messages stay
+outside; a confirmed connection save opens the group. Folding preserves model
+drafts and changes no settings. Unauthenticated cards expose sign-in only;
 authenticated cards load quotas independently and keep model lists collapsed.
 All routes retain the `x-hui` guard and `no-store` responses. Metadata never
 includes saved credentials; a login response may contain a short-lived device
@@ -790,6 +819,19 @@ Staying awake with the lid closed is never saved: it lasts one gateway run.
   the switch on reports it active and changes nothing, and turning it off
   reports that it is still on outside HUI.
 
+### `POST /__hui/app/open`
+
+Opens a chat in the installed HUI desktop app. A browser cannot start another
+program without a click, so a page carrying `?open=app` asks the gateway, which
+runs `open -a ~/Applications/HUI.app hui://<kind>/<id>`.
+
+- The body is `{ "path": "/sessions/<id>" }` or `{ "path": "/bots/<id>" }`.
+  Anything else is 400, and a method other than POST is 405.
+- It answers `{ "opened": true }` once macOS accepted the request. The app must
+  be the bundle HUI installed, recognized by its owner marker; without it, off
+  macOS, or when `open` fails, the answer is 503 with the reason, and the page
+  keeps the chat and offers the app as a button instead.
+
 ### `GET /__hui/host-metrics`
 
 Read-only resource use of the machine the gateway runs on, for the Dashboard
@@ -877,7 +919,10 @@ path with HTTP 200. Malformed bodies return 400.
 
 Returns the read-only Git context for New Session's checkout picker: whether the
 directory belongs to a repository with a commit, its current branch, the default
-base ref and at most 80 local/known remote branch suggestions. The base ref
+base ref and at most 80 local/known remote branch suggestions. With
+`&worker=<id>` the same question is answered on that machine, so the picker
+describes the folder the session will actually work in; an unreachable worker
+answers unavailable rather than this machine's view. The base ref
 prefers the locally recorded `origin/HEAD` (using the remote-tracking ref when no
 local branch exists), then local `main`/`master`, then the current branch or `HEAD`.
 The backlog dialog uses one shared searchable Branch picker in both checkout
@@ -1134,6 +1179,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
 | `goal` | HUI | Optional objective the conversation pursues: objective, status, timestamps, a note and how many automatic turns it spent. Only the operator starts, pauses, resumes and clears it (`POST …/goal`, `/goal`); the agent may only report `complete` or `blocked` through `update_goal`. |
+| `progress` | HUI | Optional Task progress card `{ markdown, steps }` that HUI's utility model last wrote. Additive, so existing registries need no migration; absent means no card yet. See [Task progress](#task-progress). |
 | `piSessionFile` | Runtime identity, HUI pointer | PI: learned from `get_state`, then stored by HUI for `--session` resume. Durable: `durable:<conversationId>`, replaced by a rewind's fork; a fork's session starts on its copy |
 | messages and tool results | PI | PI's JSONL only; never copied into `sessions.json` |
 | `status` | HUI process | Derived live state; never persisted |
@@ -1534,7 +1580,13 @@ session record names the worker; nothing on the remote is deleted.
 ### `POST /__hui/workers/:id/disconnect`
 
 `connect` and `sync` respond 202 and continue in the gateway (a first connect
-may install Node and HUI); follow `GET /__hui/workers`. Both sides ping every
+may install Node and HUI); follow `GET /__hui/workers`. A connected host also
+answers the Git questions New Session asks: `git.checkout {cwd}` (the same shape
+as `GET /__hui/git-checkout`), `git.checkout-ref {cwd, ref}`, `git.worktree.add
+{cwd, title, branchName?, baseRef?, branchPrefix, token}` with `git.progress
+{token, progress}` frames while it runs, and `git.worktree.remove {repository,
+path, branch}` for a rollback. Worktrees a worker makes live under its own data
+directory, not the mirrored config, which every sync replaces. Both sides ping every
 15 s and drop a connection that stays silent for 45 s. A worker whose lost
 connection had sessions attached reconnects after 5 s, 30 s, 1 min, then every
 5 min; sessions the loss interrupted are then reopened and reattach to their
@@ -2354,17 +2406,20 @@ unique per bot in any case; a summary carries no brackets of its own.
 it as they refuse other bots' turns, and an access request asked in it says
 "Asked while handling the trigger …".
 
-The operator may select `delivery: "steer"` for compact status notifications.
-These carry the same marker, operator prompt and external-information warning,
+A trigger steers unless the operator selects `delivery: "followUp"`. A created
+trigger without `delivery` is stored as `"steer"`: compact status notifications
+that carry the same marker, operator prompt and external-information warning,
 then event summaries, times and PR links only. Listener details and automatic
 GitHub reads are omitted. An idle bot starts a normal turn; a busy bot takes the
 notice through the existing steering path before its next model call, without
 aborting a tool. Blocking compaction may hold it as a follow-up, as with ordinary
 steering. This does not impose a queue bound or change cooldowns, caps or sender
-restrictions. The bot must read live evidence when needed. Missing `delivery`
-or `delivery: "followUp"` keeps the existing full-context behavior. The add form
-exposes compact steering and its trigger card names the selected mode. Templates
-preserve it on export/import; imported triggers still start disabled.
+restrictions. The bot must read live evidence when needed. `delivery:
+"followUp"`, and a trigger stored before the choice existed with no `delivery`,
+keeps the full-context behavior. The add form exposes compact steering, selected
+by default, and its trigger card names a follow-up when that is what the
+trigger does. Templates preserve it on export/import; imported triggers still
+start disabled.
 
 **Cooldown and caps.** `cooldownSeconds` (0–86,400, default 300): an event
 within that long of the trigger's last delivery waits, and when the cooldown
@@ -2754,9 +2809,9 @@ What creating does with a template, the same plan for the preview and the create
 - **Tools.** A Claude Code subagent's `tools` keep on only what they map to
   (Read → `read`, Write → `write`, Edit/MultiEdit → `edit`, Bash → `bash`,
   Grep/Glob/LS → `read`, WebFetch/WebSearch → `browser`, Task → `sessions_spawn`
-  and `subagents`, TodoWrite → `progress_card`) and turn the rest of the tools every
-  chat has off; a HUI export turns its own list off. An import never turns on
-  anything a new bot doesn't have.
+  and `subagents`) and turn the rest of the tools every chat has off; a HUI
+  export turns its own list off. An import never turns on anything a new bot
+  doesn't have.
 - **A HUI template's points.** `{{user}}` becomes Settings' profile name (*the
   operator* without one) in its name, title, description, Markdown (SOUL.md, its
   skills' Markdown and text files), routines' and triggers' prompts and open
@@ -2957,7 +3012,8 @@ any full list older than the revision they hold.
 Groups follow the registry's catalog order, which the user controls, with
 `ungrouped` last. New groups are appended; renames keep their position. Within each group pinned sessions come first, then
 sessions are ordered most-recently-updated first. A group may also carry HUI-owned
-`cwd`, `tool`, `workspaceMode` (`branch` or `worktree`) and `baseRef` defaults. Empty catalogued groups are returned with an empty
+`cwd`, `tool`, `workspaceMode` (`branch` or `worktree`) and `baseRef` defaults, and the `worker` id its
+sessions run on. Empty catalogued groups are returned with an empty
 `sessions` array.
 
 The browser displays group labels in uppercase, with `ungrouped` shown as
@@ -3001,6 +3057,7 @@ defaults:
 ```json
 { "name": "Projects" }
 { "cwd": "/abs/path", "workspaceMode": "worktree", "baseRef": "main" }
+{ "worker": "1f718aa4-b8b4-4284-957c-d59b716e8d9d" }
 ```
 
 `cwd` may be empty (choose it when creating the session) or an existing absolute
@@ -3012,8 +3069,16 @@ start in Branch with the repository default branch. Saving defaults never
 performs Git checkout or creates a worktree. PI configuration and transcripts
 are never changed.
 
-The group menu's **New session defaults** shows Environment and Base branch
-once its directory is recognized as Git. New sessions opened from that group
+`worker` is a remote worker's id (an empty string clears it), and the machine
+that group's sessions start on. Because that directory is on another machine,
+`cwd` is checked against a worker's rules instead (absolute or starting with
+`~/`), and its Git choices are read there rather than here. `workspaceMode` and
+`baseRef` apply to a worker group exactly as to a local one.
+
+The group menu's **New session defaults** shows Run on, Environment and Base
+branch once they apply: Run on offers Local and every remote worker, and
+Environment and Base branch appear once the group's directory is recognized as
+Git on the machine that will run the sessions. New sessions opened from that group
 prefill those values; changing their directory resets the checkout choices to
 the new repository's defaults. Both modes retain the selected ref when toggled.
 The worktree suffix belongs to each new session, not the group. Non-Git or empty
@@ -3036,8 +3101,10 @@ Registers a new session **and starts it**. Body:
 
 `cwd` must be an existing absolute directory. With `"worker": "<worker id>"`
 the session runs on that remote worker instead: `cwd` is a remote path that
-must be absolute or start with `~/`, it is checked when the runtime starts
-(not during this request), and `worktree`/`baseRef` are rejected. When supplied, `title` is trimmed
+must be absolute or start with `~/`, and it is checked when the runtime starts
+(not during this request). `worktree` and `baseRef` work there too: the worktree
+is made and rolled back on that machine, and `worktree` progress frames come from
+it. When supplied, `title` is trimmed
 and must be 1–200 characters; `group` is trimmed and may be empty but cannot
 exceed 200 characters. Responds `{ "session": SessionView }`.
 The id is HUI's own UUID. `tool` may be omitted or `pi`; other values are
@@ -3087,10 +3154,12 @@ than being stashed or forced. When `worktree` is true, `cwd` must be inside a Gi
 repository with at least one commit and `baseRef` defaults to `HEAD`. HUI creates
 a branch from `branchName` or the generated name above at that commit, prefixes it with the validated
 HUI setting (`feature/` by default), and places the checkout below
-`~/.config/hui/worktrees/<repository>/`. The registered session uses the matching
-subdirectory in that checkout. If session persistence fails, HUI rolls back only
-the branch and worktree created by this request. Deleting the session preserves
-both.
+`~/.config/hui/worktrees/<repository>/` on the machine the session runs on: with a
+`worker`, below its own `<worker data dir>/worktrees/<repository>/`, never the
+mirror of the gateway's config, which every sync replaces. The registered session
+uses the matching subdirectory in that checkout. If session persistence fails, HUI
+rolls back only the branch and worktree created by this request, there. Deleting
+the session preserves both.
 
 The backlog start dialog defaults to Branch as soon as repository inspection
 completes. Both modes share a ref picker initialized to `defaultBranch`; switching
@@ -3243,8 +3312,10 @@ prompt, steer and follow-up routes, waits for that first send and answers
 `{ "ok": true, "duplicate": true }` without sending anything again. A send that
 failed is forgotten, so its resend runs. The browser gives every composer send
 an id and reuses it when the operator sends the same text and attachments to the
-same session again after a failure (the browser stops waiting after five
-seconds, which a gateway that is slow to accept outlasts). On a duplicate it
+same session again after a failure. Five seconds without an HTTP answer starts
+a socket-liveness check, not a send failure: ten more seconds without an
+incoming frame reconnects only the event socket. The HTTP send keeps its own
+outcome and is never cancelled or replayed by that check. On a duplicate it
 drops its local copies of the message. The ids live in the gateway's memory: a
 resend that arrives after a gateway restart is sent again. Output arrives over the event stream. Prompts are rejected while a turn
 is pending or streaming, with a 409 and a message saying so. Images may form a
@@ -3563,7 +3634,7 @@ browsers allow only six HTTP/1.1 connections per origin and a few split panes
 would otherwise stall every other request. Like terminal and browser streams,
 the upgrade also requires a same-origin `Origin` and an allowed `Host`, and it
 is refused with 403 otherwise. Each text message is
-`{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "fast" | "closed", "data": … }`
+`{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "fast" | "heartbeat" | "closed", "data": … }`
 with the SSE payloads above, beginning with the snapshot. An upgrade URL with
 `&slim=1` asks for snapshots without `transcript` when it has not changed: one
 that only updates watchers, task suggestions, questions or subagents. With
@@ -3576,17 +3647,22 @@ since then (it drops frames a minute old when it sends new ones), it starts
 with the whole snapshot.
 The browser asks for both and keeps the transcript it has; its reconnects send
 no revision and get the whole snapshot. The server negotiates
-`permessage-deflate` (messages of at least 1 KiB, no context takeover in either
-direction), so the snapshot's transcript crosses a slow link compressed; a
+`permessage-deflate` (messages of at least 1 KiB, zlib level 4, no context
+takeover in either direction), so the snapshot's transcript crosses a slow link compressed; a
 client that does not offer it gets uncompressed frames. After `closed` the
 server closes normally; a session deleted before the upgrade closes with code
 4404. 429 means too many tickets are pending, so retry later.
 
-The browser gives ticket acquisition and the WebSocket handshake 20 seconds
-each. A timed-out attempt enters the same retry/backoff path as a dropped
-connection. The socket's deadline is cleared on `open`; it does not limit the
-time an established connection may take to deliver a large first snapshot or
-force a healthy idle stream to reconnect.
+Each socket receives `{ "event": "heartbeat", "data": {} }` every 15 seconds,
+independently of runtime state and transcript revisions. The browser bounds ticket
+acquisition and the WebSocket handshake to 20 seconds each. An established socket
+can take up to 60 seconds to deliver its first frame; a heartbeat cannot admit a
+saved conversation to live state. If a heartbeat arrives before state, the wait for
+state is limited to 20 seconds from socket establishment. Once live, the browser
+reconnects after 40 seconds without an incoming frame. Focus,
+visibility and online events may shorten a retry after a fresh health check, but
+never replace an established socket. Cleanup cancels each subscription's timers,
+probe and listeners; terminal HTTP refusals, code 4404 and runtime exit do not retry.
 
 ### `POST /__hui/sessions/:id/continue`
 
@@ -4689,8 +4765,10 @@ in its record): `[HUI watcher event]` with `id`, `purpose`, `state`, `note`
 (why it ended), `target`, `outcome`, `started_at`, `ended_at`, `exit_code`,
 `last_output`, `log` and the action that follows. An idle conversation runs it as
 its next turn, a running one is steered, and one that is not open is woken for
-it; a deleted conversation is left alone. `stopped` (an operator stop) and
-`dismissed` announce nothing. A settle found at the next gateway start is
+it; a deleted conversation is left alone. The chat projection reads the marker
+and renders the entry as a system note folded onto the wait, how it ended and
+what it reported, never as a user turn. `stopped` (an operator stop) and `dismissed`
+announce nothing. A settle found at the next gateway start is
 announced only when the record was marked `interrupted`, i.e. it was still
 running when the last gateway stopped.
 
@@ -4881,33 +4959,41 @@ Verifies the item with Jira, attaches it to the task and returns `{ issue, backl
 
 ### Task progress
 
-HUI starts PI with a bundled `progress_card` extension. The tool accepts optional
-Markdown and at most 50 ordered steps whose status is `pending`, `in_progress`
-or `completed`. PI remains the durable writer: the latest tool-call arguments in
-its transcript are the card state, and an empty call clears it. HUI hides the raw
-control call from transcript activity and renders the validated projection above
-the composer; it never derives progress from assistant prose. The card's refresh
-control reads the session again through `POST /__hui/sessions/:id/open`, then
-sends the agent an ordinary prompt asking it to update the card. A view that
-missed a streamed call and a card the agent stopped revising both come back
-current.
+HUI writes each conversation's Task progress card itself; no agent tool exists
+for it. `SessionProgress` (`server/sessions/session-progress.ts`) receives every
+settled turn with its final transcript, and a five-minute timer over the
+sessions whose turn is still going asks again. Each refresh builds the session
+digest (`sessionDigest`, the same bounded goal/follow-ups/changed-files/recent
+view `POST /__hui/sessions/:id/jira/draft` uses) and asks
+`settings.models.utility` for a `Summary:` line and a `done`/`doing`/`todo`
+plan with a 20-second timeout, tool-free and context-free. The answer is parsed
+into `{ markdown, steps }` (Markdown at most 8 KiB, at most 50 steps of 500
+characters, an unrecognized state dropped rather than guessed) and stored on the
+session record as `progress`. A missing utility model or an answer with neither
+a summary nor a plan leaves the stored card untouched; a failed call logs
+`session_progress_failed` and keeps it too. Nothing ever blocks the turn. Sessions with a `parentId` are skipped: a subagent's card is
+its parent's work. A remote session's utility call runs on this machine, in the
+gateway's home directory, because its checkout is not here.
+
+One refresh runs at a time, and a session with a refresh still waiting keeps
+only its newest transcript, so a slow model call delays cards without piling
+work up. A changed card is published to open browsers as
+`SessionStatusUpdate.progress`; an unchanged one writes nothing.
 
 ### Session-list progress
 
 Session rows use the original OpenClaw 2026.9.5 hovercard component and CSS,
 with HUI data adapters. Hover or keyboard focus reveals session age, workspace,
-the unfinished plan step/count and Markdown agent notepad. Idle unfinished plans
+the unfinished plan step/count and the card's Markdown summary. Idle unfinished plans
 use the original paused clock; completed plans have no heads-up. Notes-only cards
 have no invented percentage. Touch-only input does not open a hovercard. Runtime
 status remains independent of plan completion. No OpenClaw-only actor or PR
 metadata is fabricated. See the [port provenance](../src/components/openclaw/README.md).
-The optional `SessionView.progress` contains `{ markdown, steps }`, projected
-from the latest `progress_card` call in the live runtime transcript, never stored
-in the session registry. Background sessions refresh every three seconds while
-the page is visible. The shared sidebar refresh covers all panes; each pane's
-composer still uses its SSE transcript immediately.
-After a gateway restart, progress becomes available when that session is reopened
-and its runtime restores the transcript.
+The optional `SessionView.progress` contains `{ markdown, steps }`: the card HUI
+generated and stored on the record (see [Task progress](#task-progress)). It is
+registry state, so a cold session and a freshly restarted gateway answer it
+without opening a runtime. Background sessions refresh every three seconds while
+the page is visible, and the shared sidebar refresh covers all panes.
 
 The optional `SessionView.pullRequests` lists GitHub pull requests the session
 created:

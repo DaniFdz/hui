@@ -216,7 +216,7 @@ export class BotTriggerService {
       const created = {
         id: randomUUID(), botId: bot.id, name: input.name, source: input.source, filter: input.filter,
         ...(input.prompt ? { prompt: input.prompt } : {}),
-        ...(input.delivery ? { delivery: input.delivery } : {}),
+        delivery: input.delivery ?? "steer",
         enabled: input.enabled !== false,
         cooldownSeconds: input.cooldownSeconds ?? BOT_TRIGGER_LIMITS.cooldownDefault,
         createdBy: "operator", createdAt: now, updatedAt: now,

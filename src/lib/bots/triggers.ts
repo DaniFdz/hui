@@ -134,7 +134,7 @@ export type TriggerFormFields = {
   prLinks: boolean;
   external: boolean;
   bots: boolean;
-  steer?: boolean;
+  steer: boolean;
 };
 
 /** The add form's fields as a `POST /__hui/bots/:id/triggers` body. */
@@ -147,7 +147,7 @@ export function triggerFormInput(fields: TriggerFormFields): BotTriggerInput {
   return {
     name, source: "listener",
     ...(fields.prompt.trim() ? { prompt: fields.prompt.trim() } : {}),
-    ...(fields.steer ? { delivery: "steer" } : {}),
+    delivery: fields.steer ? "steer" : "followUp",
     cooldownSeconds: Number.isInteger(cooldown) && cooldown >= 0 ? cooldown : BOT_TRIGGER_LIMITS.cooldownDefault,
     filter: {
       ...(value ? { match: { field: fields.matchField.trim(), op: fields.matchOp === "contains" ? "contains" as const : "equals" as const, value } } : {}),

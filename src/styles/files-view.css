@@ -127,16 +127,19 @@ hui-files-view {
 .hui-files-main__header {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  row-gap: 2px;
   min-width: 0;
   min-height: 40px;
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
 }
-.hui-files-main__spacer { flex: 1; }
-/* Long paths keep their end (the file name) and lose their start. */
+/* Long paths keep their end (the file name) and lose their start. The path takes the free room on the first row, so
+   the header wraps its actions to a second row before it clips them. */
 .hui-files-path {
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
   direction: rtl;
@@ -202,6 +205,9 @@ hui-files-view {
 .hui-files-editor[hidden] { display: none; }
 .hui-files-markdown { flex: 1; min-height: 0; overflow: auto; padding: 16px 24px 32px; }
 .hui-files-markdown > :first-child { margin-top: 0; }
+.hui-files-markdown table { width: 100%; margin: 0.75em 0 0.95em; border-collapse: collapse; }
+.hui-files-markdown :is(th, td) { padding: 6px 10px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.hui-files-markdown th { background: var(--bg-hover); font-weight: 600; }
 .hui-files-empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 24px; color: var(--muted); font-size: 13px; text-align: center; }
 .hui-files-empty p { margin: 0; max-width: 420px; line-height: 1.5; }
 .hui-files-empty strong { color: var(--text); }
@@ -253,8 +259,6 @@ hui-files-view {
 .hui-files--narrow .btn--icon { width: 36px; min-width: 36px; height: 36px; padding: 9px; }
 .hui-files--narrow .hui-files-markdown { padding: 12px 14px 24px; font-size: 16px; }
 /* Path on the first row; status, display mode and actions on the second. */
-.hui-files--narrow .hui-files-main__header { flex-wrap: wrap; row-gap: 2px; }
-.hui-files--narrow .hui-files-path { flex: 1 1 0; }
 .hui-files--narrow .hui-files-main__spacer { flex: 1 0 100%; height: 0; }
 .hui-files--narrow .hui-files-main__spacer + .hui-files-status { margin-inline-start: 6px; }
 .hui-files--narrow .hui-files-segmented { margin-inline-start: auto; }

@@ -6,6 +6,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CONFIG_DIR } from "./paths.ts";
+import { isToolIconName } from "./tool-icons.ts";
 import { THINKING_LEVELS } from "./sessions/thinking.ts";
 import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "./api/settings.ts";
 export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "./api/settings.ts";
@@ -94,6 +95,7 @@ export const DEFAULT_SETTINGS: Settings = {
     githubEmbeds: true,
     datadogEmbeds: true,
     toolMarks: {},
+    toolIcons: {},
   },
   profileName: "HUI Operator",
   profileHandle: "",
@@ -270,6 +272,19 @@ function normalizeToolMarks(value: unknown): Settings["chat"]["toolMarks"] {
   return marks;
 }
 
+/** `chat.toolIcons`: a CLI or tool name to one flat icon file name the gateway can serve. */
+function normalizeToolIcons(value: unknown): Settings["chat"]["toolIcons"] {
+  if (!isRecord(value)) return {};
+  const icons: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = rawKey.trim().toLowerCase().slice(0, 40);
+    if (!key || /[\p{Cc}\s]/u.test(key) || !isToolIconName(rawValue)) continue;
+    icons[key] = rawValue;
+    if (Object.keys(icons).length >= 200) break;
+  }
+  return icons;
+}
+
 function normalizeChat(value: unknown): Settings["chat"] {
   const source = isRecord(value) ? value : {};
   const width = source["messageWidth"];
@@ -282,6 +297,7 @@ function normalizeChat(value: unknown): Settings["chat"] {
     githubEmbeds: source["githubEmbeds"] !== false,
     datadogEmbeds: source["datadogEmbeds"] !== false,
     toolMarks: normalizeToolMarks(source["toolMarks"]),
+    toolIcons: normalizeToolIcons(source["toolIcons"]),
   };
 }
 

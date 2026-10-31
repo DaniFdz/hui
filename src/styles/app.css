@@ -25,6 +25,7 @@ hui-app [hidden] { display: none !important; }
   background: var(--wa-color-overlay-modal, oklab(0% none none / .6));
   backdrop-filter: blur(4px);
 }
+.subagent-route-dialog .exec-approval-card { max-height: none; }
 .hui-update-status { overflow-wrap: anywhere; }
 .hui-update-dialog .exec-approval-title { margin: 0; }
 .pi-resource-reader-modal {

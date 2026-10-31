@@ -1,8 +1,8 @@
-/** Unread marks outlive a gateway restart, whether a background run settled them or a person marked them (SESS-067). */
+/** Unread marks outlive a gateway restart, whether a background run settled them or a person marked them (SESS-070). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("a session marked unread by a background run that settled, or by hand, is still unread after a gateway restart", { tags: ["SESS-067"] }, async ({ screen, hui }) => {
+test("a session marked unread by a background run that settled, or by hand, is still unread after a gateway restart", { tags: ["SESS-070"] }, async ({ screen, hui }) => {
   const unread = (title: string) => screen.getByLabel(`${title}, status idle, tool durable, stage investigation, unread`);
   const read = (title: string) => screen.getByLabel(`${title}, status idle, tool durable, stage investigation`);
   const settled = await hui.createSession({ title: "Settled elsewhere" });

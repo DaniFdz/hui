@@ -498,7 +498,7 @@ export function renderSessionsPage(props: SessionsPageProps): TemplateResult {
                 <button type="button" class="btn btn--sm" @click=${() => props.onSelect(selectedIds, false)}>Clear selection</button>
               </div>` : nothing}
               <div class="data-table-container">
-                <table class="data-table sessions-table">
+                <table class="data-table sessions-table" data-testid="session-data-table">
                   <thead>
                     <tr>
                       <th class="data-table-checkbox-col"><input type="checkbox" aria-label="Select all shown sessions"

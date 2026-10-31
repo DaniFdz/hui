@@ -3,7 +3,7 @@
  * revisioned update frames (`SessionListUpdate`) this module encodes. A screen
  * that joins after nobody listened waits for a fresh read, not the stale cache.
  * ponytail: timer-driven; hook registry/runtime events if 1 s lag matters. */
-type SessionListGroup<S> = { label: string; cwd?: string; workspaceMode?: "branch" | "worktree"; baseRef?: string; sessions: S[] };
+type SessionListGroup<S> = { label: string; cwd?: string; workspaceMode?: "branch" | "worktree"; baseRef?: string; worker?: string; sessions: S[] };
 type Layout = (Omit<SessionListGroup<never>, "sessions"> & { ids: string[] })[];
 /** `groups` (order and membership) is present only when it changed; `upserts`
  * holds every session whose view changed. */

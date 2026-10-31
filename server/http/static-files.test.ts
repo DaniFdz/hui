@@ -40,6 +40,9 @@ test("built files are compressed, hashed assets cached for good and the rest rev
   await writeFile(join(root, "assets", "app-abc123.js"), script);
   await writeFile(join(root, "assets", "tiny-abc123.js"), "export {};");
   await writeFile(join(root, "logo.png"), Buffer.alloc(4096, 7));
+  await writeFile(join(root, "offline-worker.js"), "self.addEventListener('install', () => {});");
+  await writeFile(join(root, "offline-build.json"), JSON.stringify({ build: "fixture" }));
+  await writeFile(join(root, "offline-inventory.json"), JSON.stringify({ build: "fixture", files: [] }));
   // A stand-in module: the magic number and version, then repetitive bytes like real code sections.
   const wasm = Buffer.concat([Buffer.from([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]), Buffer.alloc(8192, 0x41)]);
   await writeFile(join(root, "assets", "ghostty-vt-abc123.wasm"), wasm);
@@ -92,6 +95,12 @@ test("built files are compressed, hashed assets cached for good and the rest rev
   assert.equal(image.headers["content-encoding"], undefined, "already compressed");
   assert.equal(image.headers["cache-control"], "public, max-age=3600");
   assert.ok(image.headers["etag"]);
+
+  for (const path of ["/offline-worker.js", "/offline-build.json", "/offline-inventory.json"]) {
+    const offline = await raw(path);
+    assert.equal(offline.status, 200, path);
+    assert.equal(offline.headers["cache-control"], "no-store", path);
+  }
 
   // The page is compressed too, but never cached or revalidated: a release's
   // new asset names must load at once.

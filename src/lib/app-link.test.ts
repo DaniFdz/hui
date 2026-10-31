@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { appHandoffUrl } from "./app-link.ts";
+import { appHandoffPath, appHandoffUrl } from "./app-link.ts";
 
 const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36";
 const session = "/sessions/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f";
@@ -25,6 +25,12 @@ test("the desktop window and phones keep the page they have", () => {
   assert.equal(appHandoffUrl({ pathname: session, search: "?open=app", userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148" }), undefined);
   assert.equal(appHandoffUrl({ pathname: session, search: "?open=app", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Mobile/15E148" }), undefined);
   assert.equal(appHandoffUrl({ pathname: session, search: "?open=app", userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/141.0" }), undefined);
+});
+
+test("the gateway path names the chat the hand-off opens", () => {
+  assert.equal(appHandoffPath("hui://sessions/4f0c2d9e-7a1b"), "/sessions/4f0c2d9e-7a1b");
+  assert.equal(appHandoffPath("hui://bots/scout"), "/bots/scout");
+  assert.equal(appHandoffPath("hui://sessions/a%20b"), "/sessions/a%20b");
 });
 
 test("only a chat route hands off", () => {

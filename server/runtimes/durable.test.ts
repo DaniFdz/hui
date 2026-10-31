@@ -536,6 +536,26 @@ test("steering and follow-ups queue in the Durable inbox while a tool runs", { t
   assert.equal(await host.busy(), false, "an open store with nothing to run lets a worker host stop");
 });
 
+test("every steer waiting at a boundary goes in with the others, not one per turn", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-steer-together" }, f.host());
+  await session.prompt("E2E_COMMAND_RUNNING hold the command");
+  assert.equal((await f.control("/control/wait-replay-ready")).status, 200);
+  await session.steer("Steer note one");
+  await session.steer("Steer note two");
+  await f.control("/control/release-replay", "POST");
+  const entries = await transcriptWhere(session, (items) =>
+    items.filter((entry) => entry.kind === "message" && entry.role === "user").length === 3 && !session.isStreaming
+    && items.at(-1)?.kind === "message" && (items.at(-1) as { role: string }).role === "assistant");
+  const users = entries.flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []);
+  assert.deepEqual(users, ["E2E_COMMAND_RUNNING hold the command", "Steer note one", "Steer note two"]);
+  assert.equal(entries.filter((entry) => entry.kind === "message" && entry.role === "assistant").length, 1, "one answer: the second note did not wait for a turn of its own");
+  const requests = (await readFile(f.log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { messages?: unknown[] });
+  const carrying = requests.filter((request) => JSON.stringify(request.messages ?? []).includes("Steer note one"));
+  assert.ok(carrying.length > 0);
+  assert.ok(JSON.stringify(carrying[0]!.messages).includes("Steer note two"), "both notes reached the model in the same request");
+});
+
 test("HUI tools reach the gateway handler as the bound session, never a model-chosen one", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-tools" }, f.host());

@@ -59,6 +59,14 @@ export type RemoteState = {
 
 type RequestHandler = (params: Record<string, unknown>, signal: AbortSignal) => Promise<unknown> | unknown;
 
+/** Host → gateway progress while `git.worktree.add` runs there, matched by the token that request carried, so the
+ * launching session's own row shows it. In flight, outside any request or session stream. */
+export type GitProgressFrame = {
+  t: "git.progress";
+  token: string;
+  progress: { phase: string; percent?: number; completed?: number; total?: number };
+};
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

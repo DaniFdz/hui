@@ -36,6 +36,8 @@ export class LaunchController {
   #directoryRequest = 0;
   #checkoutRequest = 0;
   #inspectedDirectory = "";
+  /** The machine and directory whose checkout is loaded or loading, so a worker change re-inspects. */
+  #inspected = "";
 
   constructor(host: ReactiveControllerHost) {
     this.#host = host;
@@ -50,10 +52,13 @@ export class LaunchController {
           ...(group.baseRef ? { baseRef: group.baseRef } : {}),
         }
       : undefined;
+    // A group that names a machine runs there; the others keep the sticky choice.
+    if (group?.worker) this.worker = group.worker;
     this.resetWorkspace();
     this.branchSuggestionsOpen = false;
     this.checkout = undefined;
     this.#inspectedDirectory = "";
+    this.#inspected = "";
   }
 
   resetWorkspace(): void {
@@ -79,14 +84,16 @@ export class LaunchController {
 
   requestCheckout(input: string): void {
     const directory = input.trim() || "~/";
-    if (directory === this.#inspectedDirectory && this.checkout) return;
+    const inspected = `${this.worker ?? ""}|${directory}`;
+    if (inspected === this.#inspected) return;
+    this.#inspected = inspected;
     this.#inspectedDirectory = directory;
     const marker = ++this.#checkoutRequest;
     this.worktree = false;
     this.baseRef = "";
     this.checkoutLoading = true;
     this.#host.requestUpdate();
-    void loadGitCheckout(directory).then((checkout) => {
+    void loadGitCheckout(directory, this.worker).then((checkout) => {
       if (marker !== this.#checkoutRequest) return;
       this.checkout = checkout;
       const defaults = groupCheckoutDefaults(directory, checkout, this.defaults?.group ? this.defaults : undefined);
@@ -146,6 +153,8 @@ export class LaunchController {
         ++this.#directoryRequest;
         this.directorySuggestions = [];
         this.#set({ worker });
+        // The checkout belongs to a machine: inspecting it again there keeps the picker honest.
+        if (this.#inspectedDirectory) this.requestCheckout(this.#inspectedDirectory);
       },
       directorySuggestions: this.directorySuggestions,
       gitCheckout: this.checkout,

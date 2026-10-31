@@ -25,6 +25,7 @@ import type {
   TranscriptAttachment,
   SessionConnection,
   SessionGroup,
+  SessionGoal,
   SessionView,
   SubagentTaskView,
   TranscriptItem,
@@ -53,7 +54,6 @@ import "../components/widget-card.ts";
 import "../components/questionnaire-card.ts";
 import { markdownBlocks } from "../lib/markdown/blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
-import { progressCardFromTranscript } from "../lib/progress-card.ts";
 import { mediaSizeLabel, presentedMediaFromDetails, type PresentedMediaItem } from "../lib/presented-media.ts";
 import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
@@ -68,7 +68,7 @@ import { renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
 import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
 import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath } from "../lib/tool-cards.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
-import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
+import { renderWatcherActivity, renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
@@ -204,11 +204,17 @@ function focusComposerFromSurface(event: MouseEvent) {
   (event.currentTarget as HTMLElement).querySelector<HTMLTextAreaElement>("textarea")?.focus();
 }
 
+/** The goal pill's transient state: whether its detail block is open, whether the objective is being retyped, and a
+ * refused save. */
+export type GoalPanelState = { expanded: boolean; editing: boolean; error: string };
+
 export type HomeProps = {
   session: SessionView | undefined;
   /** File references in the agent's replies and tool cards may open in this conversation's Files view. */
   fileLinks?: boolean;
   mobileNavLayout?: boolean;
+  /** The destination chooser, when the phone layout puts it in this conversation's header instead of its own row. */
+  panelPicker?: TemplateResult;
   groups: readonly SessionGroup[];
   /** Any session by id, a bot's chat and subagents included (session lists leave those out): names and links the
    * session a message came from. */
@@ -219,10 +225,6 @@ export type HomeProps = {
   opening: boolean;
   /** The open request failed, so there is no transcript to show; onRetry asks again. */
   openError?: string;
-  /** A re-read of the open session is in flight. */
-  refreshing?: boolean;
-  /** Reads the open session again, for a card the stream left behind. */
-  onRefreshSession: () => void;
   /** A turn is in flight, so the composer is locked. */
   streaming: boolean;
   sending: boolean;
@@ -238,6 +240,8 @@ export type HomeProps = {
     datadogEmbeds: boolean;
     /** The user's own emoji per CLI or tool, over the built-in set (tool-call-group.ts). */
     toolMarks: Record<string, string>;
+    /** The user's own icon file per CLI or tool, served by the gateway (tool-call-group.ts). */
+    toolIcons: Record<string, string>;
   };
   queue: QueueSnapshot;
   thinking: string;
@@ -271,8 +275,11 @@ export type HomeProps = {
   };
   onCloseSideChat: () => void;
   onDismissNote: () => void;
-  /** A muted line about the event stream: reconnecting, or why it stopped. */
+  /** The composer status line under the editor: why the stream stopped, when it is not simply reconnecting. */
   connectionNote: string;
+  savedCopy?: { savedAt: number; truncated: boolean };
+  offlineSupported?: boolean;
+  onForgetSaved?: () => void;
   onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
   onSelectSession: (session: SessionView) => void;
   /** Pane identity keeps controls unique when the same session is split twice. */
@@ -306,6 +313,12 @@ export type HomeProps = {
   onContinueInterrupted: () => void;
   /** Pauses, resumes or clears the conversation's goal from the pill above the composer. */
   onGoalChange: (action: "pause" | "resume" | "clear") => void;
+  /** The goal pill's detail block: whether it is open, whether the objective is being retyped, and a refused save. */
+  goalPanel: GoalPanelState;
+  onGoalToggle: () => void;
+  onGoalEdit: () => void;
+  onGoalSave: (objective: string) => void;
+  onGoalCancelEdit: () => void;
   queueEditingId: string;
   queueEditingText: string;
   onQueueEdit: (id: string) => void;
@@ -464,7 +477,8 @@ function onSubmit(props: HomeProps) {
       ...(props.launchModel ? { model: modelValue(props.launchModel) } : {}),
       ...(props.launchThinking ? { thinking: props.launchThinking } : {}),
       ...(props.launchFast && props.launchModel?.fast ? { fast: true } : {}),
-      ...(props.launchWorker ? { worker: props.launchWorker } : props.workspaceWorktree ? {
+      ...(props.launchWorker ? { worker: props.launchWorker } : {}),
+      ...(props.workspaceWorktree ? {
         worktree: true,
         ...(props.workspaceBranch ? { branchName: props.workspaceBranch } : {}),
         ...(props.workspaceBaseRef ? { baseRef: props.workspaceBaseRef } : {}),
@@ -696,7 +710,7 @@ function renderLaunchForm(props: HomeProps) {
             </div>
           </details>
           <input id="launch-group" name="group" type="hidden" .value=${initialGroup} />
-          ${props.launchWorker ? nothing : renderCheckoutPicker(props)}
+          ${renderCheckoutPicker(props)}
         </div>
         <div class="agent-chat__composer-shell new-session-page__composer">
           <div class="agent-chat__input agent-chat__input--mobile-toolbar" data-testid="new-session-composer" @click=${focusComposerFromSurface}>
@@ -1219,6 +1233,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
   return html`${earlier}${repeat(rows.slice(start), (_row, index) => start + index, (row, index) => {
     const rowIndex = start + index;
     if (row.kind === "subagentEvent") return renderSubagentEvent(props, row);
+    if (row.kind === "watcherEvent") return renderWatcherEvent(row.event);
     if (row.kind === "botCreated") return renderBotCreated(props, row);
     if (row.kind === "compaction") return renderCompaction(row);
     if (row.kind === "call") return renderCallCard(row.item);
@@ -1240,27 +1255,30 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       if (handoff) return renderHandoff(props, row.id, handoff);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
       const open = props.expandedActivityIds.has(expansionId);
+      // Reasoning above the card keeps its own fold: opening the tools must not unfold the thinking with them.
+      const reasoningId = `${expansionId}:reasoning`;
+      const reasoningOpen = props.expandedActivityIds.has(reasoningId);
       // Tools read as one card of their own (tool-call-group.ts); reasoning and errors that share the row keep the
       // fold they had, above it.
       const tools = row.items.filter((item): item is ToolCallItem => item.kind === "tool");
       const others = row.items.filter((item) => item.kind !== "tool");
-      const running = tools.some((item) => (item.status ?? "running") === "running" && !item.failed);
-      const groupOpen = open || running;
+      // Folded until the person opens it: a live turn no longer forces the card open.
+      const groupOpen = open;
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
           ${others.length ? html`<details
             class="chat-activity-group"
-            .open=${open}
+            .open=${reasoningOpen}
             @toggle=${(event: Event) => {
               const details = event.currentTarget as HTMLDetailsElement;
-              props.onActivityExpanded(expansionId, details.open);
+              props.onActivityExpanded(reasoningId, details.open);
             }}
           >
             <summary class="chat-inline-disclosure chat-activity-group__summary">
               <span class="chat-activity-group__icon">${chevronDownIcon}</span>
               <span class="chat-activity-group__label">${activityLabel(others, props.streaming)}</span>
             </summary>
-            ${open ? html`<div class="chat-activity-group__body">${others.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
+            ${reasoningOpen ? html`<div class="chat-activity-group__body">${others.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
           </details>` : nothing}
           ${tools.length ? renderToolCallGroup(tools, {
             id: row.id,
@@ -1271,6 +1289,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
             onRowToggle: (id, next) => props.onActivityExpanded(id, next),
             onCopy: (text, key) => void props.onCopy(text, key),
             marks: props.chatPreferences.toolMarks,
+            icons: props.chatPreferences.toolIcons,
           }) : nothing}
           ${browserPreview?.index === rowIndex ? renderBrowserPreview(props, browserPreview) : nothing}
         </div>
@@ -1284,17 +1303,17 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     // none yet. A prompt PI refused (failed) was never persisted: no rewind.
     // A bot's chat is permanent: the gateway refuses rewinds, so none is offered.
     // Someone else's message was never the operator's to edit and send again.
-    const rewindTo: RewindTarget | undefined = row.role !== "user" || sender || !last || last.failed || props.session?.bot ? undefined
+    const rewindTo: RewindTarget | undefined = props.connection !== "live" || row.role !== "user" || sender || !last || last.failed || props.session?.bot ? undefined
       : last.entryId ?? { userFromEnd: new Set(props.transcript.slice(props.transcript.indexOf(last) + 1)
           .flatMap((item) => item.kind === "message" && item.role === "user" && !item.failed ? [item.entryId ?? item.id] : [])).size };
     const rewindTooltipId = sessionControlId(props, `rewind-tooltip-${row.id}`);
     // Only Pi Durable copies a history into a new conversation; a bot's chat is never forked.
-    const forkAt = props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
+    const forkAt = props.connection === "live" && props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
     const forkTooltipId = sessionControlId(props, `fork-tooltip-${row.id}`);
     return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-chat-row-key=${row.id}
       style=${sender?.color ? `--chat-sender-color: ${sender.color}` : nothing}>
       ${sender ? html`<span class="chat-sender-avatar" aria-hidden="true">${sender.avatar}</span>` : nothing}
-      <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, withEmbeds.includes(item), row.sender ? attributedMessage(item.text) : undefined))}</div>
+      <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, props.connection === "live" && withEmbeds.includes(item), row.sender ? attributedMessage(item.text) : undefined))}</div>
       ${last?.pending ? nothing : html`<div class="chat-group-footer ${row.role === "user" ? "chat-group-footer--persistent-identity" : ""}">
         <div class="chat-group-footer__meta">${sender ? renderSenderName(sender) : html`<span class="chat-sender-name">${row.role === "user" ? "You" : props.session?.bot?.name ?? "pi"}</span>`}
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
@@ -1679,8 +1698,17 @@ function renderComposer(props: HomeProps) {
   // Locked for the whole boot too: a prompt sent while pi is starting is rejected.
   const booting = props.opening || props.session?.status === "starting";
   // Unreachable, the session runs elsewhere: drafting stays open, sending waits.
-  const unreachable = props.session ? unreachableHost(props.session) : undefined;
+  const saved = props.connection === "saved" || props.connection === "outdated";
+  const unreachable = props.session && !saved ? unreachableHost(props.session) : undefined;
   const disconnected = props.connection !== "live" || unreachable !== undefined;
+  // One status lane under the composer: the chat never repeats it in the transcript.
+  const connectionStatus = saved
+    ? "Saved conversation · draft preserved. Send waits for a live connection."
+    : unreachable
+      ?? (props.connection === "reconnecting" ? "Reconnecting…" : props.connection === "stopped" ? props.connectionNote || "Stream stopped." : undefined);
+  // A saved copy offers no action it cannot honour, and nothing is retrying there.
+  const reconnecting = !saved && (props.session?.status === "reconnecting" || (unreachable === undefined && props.connection === "reconnecting"));
+  const reconnect = !saved && props.session?.status === "disconnected";
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
   return html`
@@ -1711,8 +1739,8 @@ function renderComposer(props: HomeProps) {
         </div>
       ` : nothing}
       ${renderTaskProgress(props)}
-      ${renderGoalPill(props)}
       ${renderQueue(props)}
+      ${renderGoalPill(props)}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
         @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
         @click=${focusComposerFromSurface}>
@@ -1742,8 +1770,6 @@ function renderComposer(props: HomeProps) {
               }}
               @paste=${onComposerPaste(props)}
               placeholder=${composerPlaceholder({
-                status: props.session?.status,
-                reconnecting: disconnected,
                 streaming: props.streaming,
                 coarsePointer: hasCoarsePointer(),
                 sendShortcut: props.chatPreferences.sendShortcut,
@@ -1771,24 +1797,24 @@ function renderComposer(props: HomeProps) {
           </div>
           <div class="agent-chat__composer-trail">
             <div class="agent-chat__composer-controls">
-          ${renderContextPicker(props.usage, props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot)}
+          ${renderContextPicker(props.usage, disconnected || props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot)}
           <div class="chat-controls__session chat-controls__model chat-controls__model-settings">${renderModelPicker({
             models: props.models,
             current: props.currentModel,
-            disabled: props.streaming,
+            disabled: disconnected || props.streaming,
             onSelect: props.onSelectModel,
           })}
           ${renderThinkingPicker({
             level: props.thinking,
             levels: props.currentModel?.thinkingLevels,
-            disabled: props.streaming || props.opening,
+            disabled: disconnected || props.streaming || props.opening,
             onSelect: props.onSelectThinking,
             ...(props.fast !== undefined && props.currentModel?.fast ? { fast: { on: props.fast, onSelect: props.onSelectFast } } : {}),
           })}</div>
             </div>
             <div class="agent-chat__composer-actions">
               <span class="chat-send-control chat-mobile-primary-action chat-desktop-primary-action">
-                ${showStop ? html`<button type="button" class="chat-send-btn chat-send-btn--stop" ?disabled=${props.stopping} @click=${props.onAbort} aria-label="Stop">${props.stopping ? html`<span class="btn__spinner"></span>` : stopIcon}</button>` : html`<button type="submit" class="chat-send-btn chat-send-btn--send" ?disabled=${!canSend}
+                ${showStop ? html`<button type="button" class="chat-send-btn chat-send-btn--stop" ?disabled=${props.stopping || disconnected} @click=${props.onAbort} aria-label="Stop">${props.stopping ? html`<span class="btn__spinner"></span>` : stopIcon}</button>` : html`<button type="submit" class="chat-send-btn chat-send-btn--send" ?disabled=${!canSend}
                   aria-label=${props.streaming ? "Steer message; touch and hold to enqueue" : "Send message"}
                   @pointerdown=${beginSendLongPress(props)} @pointerup=${endSendLongPress}
                   @pointercancel=${cancelSendLongPress} @pointerleave=${cancelSendLongPress}
@@ -1804,7 +1830,11 @@ function renderComposer(props: HomeProps) {
           </div>
         </div>
       </form>
-      ${disconnected ? html`<div class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status"><span class="agent-chat__composer-status-text">${unreachable ? `${unreachable.status.replace(/…$/u, "")} — draft preserved.` : props.connection === "reconnecting" ? "Reconnecting — draft preserved." : "Stream stopped — draft preserved."}</span></div></div>` : nothing}
+      ${connectionStatus === undefined ? nothing : html`<div class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status" data-testid="composer-status">
+        ${reconnecting ? html`<span class="agent-chat__composer-status-icon" aria-hidden="true"><span class="session-run-spinner"></span></span>` : nothing}
+        <span class="agent-chat__composer-status-text">${connectionStatus}</span>
+        ${reconnect ? html`<button type="button" class="btn btn--sm reconnect-session" @click=${props.onReconnect}>Reconnect</button>` : nothing}
+      </div></div>`}
     </div>
   `;
 }
@@ -1837,17 +1867,31 @@ const goalTargetIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><circle 
 const goalPauseIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5v14M14.5 5v14" /></svg>`;
 const goalPlayIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none" /></svg>`;
 
-/** The goal above the composer, in OpenClaw's own pill: status, objective, and the operator's controls. */
+/** The goal above the composer, in OpenClaw's own pill: status, objective, the operator's controls, and the detail
+ * block the row expands into. The detail carries the whole objective, why the goal stopped, and the objective's editor,
+ * so reading, retyping and acting on a goal all happen in the pill. */
 function renderGoalPill(props: HomeProps) {
-  const goal = props.session?.goal;
-  if (!goal) return nothing;
-  const label = { active: "Pursuing goal", paused: "Goal paused", blocked: "Goal blocked", complete: "Goal achieved" }[goal.status];
+  const session = props.session;
+  const goal = session?.goal;
+  if (!session || !goal) return nothing;
+  const label = goalStatusLabel(goal.status);
   const icon = goal.status === "complete" ? checkIcon
     : goal.status === "blocked" ? icons.alertTriangle
       : goal.status === "paused" ? goalPauseIcon
         : goalTargetIcon;
+  const { expanded, editing, error } = props.goalPanel;
+  // Starting a goal also sends its objective, so a turn in flight refuses it.
+  const editable = !props.sending && props.connection === "live" && !props.streaming && session.status === "idle";
+  const detailId = sessionControlId(props, "goal-detail");
+  const toggle = (event: Event) => {
+    if ((event.target as Element).closest("button, form")) return;
+    props.onGoalToggle();
+  };
+  const action = (kind: "pause" | "resume" | "clear", icon: unknown, disabled: boolean) => html`<button
+    type="button" class="agent-chat__goal-action" aria-label=${`${GOAL_ACTIONS[kind]} goal`} title=${`${GOAL_ACTIONS[kind]} goal`}
+    ?disabled=${disabled} @click=${() => props.onGoalChange(kind)}>${icon}<span class="agent-chat__goal-action-label">${GOAL_ACTIONS[kind]}</span></button>`;
   return html`<div class="agent-chat__goal-float">
-    <div class="agent-chat__goal agent-chat__goal--${goal.status}" data-expanded="false" title=${goal.note ?? goal.objective}>
+    <div class="agent-chat__goal agent-chat__goal--${goal.status}" data-expanded=${expanded} title=${goal.note ?? goal.objective} @click=${toggle}>
       <div class="agent-chat__goal-row">
         <span class="agent-chat__goal-icon" aria-hidden="true">${icon}</span>
         <span class="agent-chat__goal-copy">
@@ -1855,34 +1899,72 @@ function renderGoalPill(props: HomeProps) {
           <span class="agent-chat__goal-objective">${goal.objective}</span>
         </span>
         <span class="agent-chat__goal-actions">
-          ${goal.status === "active"
-            ? html`<button type="button" class="agent-chat__goal-action" aria-label="Pause goal" title="Pause goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("pause")}>${goalPauseIcon}</button>`
-            : goal.status === "complete"
-              ? nothing
-              : html`<button type="button" class="agent-chat__goal-action" aria-label="Resume goal" title="Resume goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("resume")}>${goalPlayIcon}</button>`}
-          <button type="button" class="agent-chat__goal-action" aria-label="Clear goal" title="Clear goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("clear")}>${icons.trash}</button>
+          <span class="agent-chat__goal-command-actions">
+            ${goal.status === "active"
+              ? action("pause", goalPauseIcon, props.sending)
+              : goal.status === "complete"
+                ? nothing
+                : action("resume", goalPlayIcon, props.sending)}
+            ${action("clear", icons.trash, props.sending)}
+            <button type="button" class="agent-chat__goal-action" aria-label="Edit goal objective" title="Edit goal objective"
+              ?disabled=${!editable || editing} @click=${props.onGoalEdit}>${icons.edit}<span class="agent-chat__goal-action-label">Edit</span></button>
+          </span>
+          <button type="button" class="agent-chat__goal-action agent-chat__goal-expand" aria-expanded=${expanded}
+            aria-controls=${detailId} aria-label=${expanded ? "Collapse goal" : "Expand goal"} title=${expanded ? "Collapse goal" : "Expand goal"}
+            @click=${props.onGoalToggle}>${expanded ? icons.chevronUp : icons.chevronDown}</button>
         </span>
+      </div>
+      <div class="agent-chat__goal-detail" id=${detailId} data-testid="goal-detail" data-expanded=${expanded} ?inert=${!expanded}>
+        <div class="agent-chat__goal-detail-content">
+          ${editing ? html`<form class="goal-edit" @submit=${(event: Event) => {
+            event.preventDefault();
+            const field = (event.currentTarget as HTMLFormElement).elements.namedItem("objective");
+            if (field instanceof HTMLTextAreaElement) props.onGoalSave(field.value);
+          }}>
+            <textarea name="objective" rows="3" aria-label="Goal objective" spellcheck="true"
+              ${ref((element) => mountEditor(element, goal.objective))}></textarea>
+            ${error ? html`<p class="goal-edit__error" role="alert">${error}</p>` : nothing}
+            <p class="goal-edit__hint">${editable
+              ? "Saving starts the goal again with this objective and sends it as the next turn."
+              : "Finish or stop the active turn before changing the objective."}</p>
+            <div class="goal-edit__actions">
+              <button type="submit" class="btn btn--sm primary" ?disabled=${!editable}>Save goal</button>
+              <button type="button" class="btn btn--sm" @click=${props.onGoalCancelEdit}>Cancel</button>
+            </div>
+          </form>` : html`<p class="agent-chat__goal-detail-objective">${goal.objective}</p>`}
+          ${goal.note ? html`<p class="agent-chat__goal-detail-note">${goal.note}</p>` : nothing}
+          ${editing ? nothing : html`<div class="agent-chat__goal-detail-meta">
+            <span class="agent-chat__goal-detail-duration">Set ${relativeTime(Date.parse(goal.createdAt))}</span>
+          </div>`}
+        </div>
       </div>
     </div>
   </div>`;
 }
 
+const GOAL_ACTIONS = { pause: "Pause", resume: "Resume", clear: "Clear" } as const;
+
+function goalStatusLabel(status: SessionGoal["status"]): string {
+  return { active: "Pursuing goal", paused: "Goal paused", blocked: "Goal blocked", complete: "Goal achieved" }[status];
+}
+
 function renderTaskProgress(props: HomeProps) {
-  const card = progressCardFromTranscript(props.transcript);
+  const card = props.session?.progress;
   if (!card) return nothing;
   const completed = card.steps.filter((step) => step.status === "completed").length;
   const current = card.steps.find((step) => step.status === "in_progress")
     ?? card.steps.find((step) => step.status === "pending")
     ?? card.steps.at(-1);
   const allComplete = card.steps.length > 0 && completed === card.steps.length;
+  // A phone's card sits over the conversation it documents, so it starts folded to its current step there.
+  const folded = props.chatPreferences.collapseTaskProgress || allComplete || Boolean(props.mobileNavLayout);
   return html`<div class="agent-chat__progress-float">
-    <details class="session-progress-card session-progress-card--composer" data-testid="task-progress" ?open=${!props.chatPreferences.collapseTaskProgress && !allComplete}>
+    <details class="session-progress-card session-progress-card--composer" data-testid="task-progress" ?open=${!folded}>
       <summary class="session-progress-card__summary" data-testid="task-progress-summary">
         <span class="session-progress-card__summary-indicator ${allComplete ? "session-progress-card__summary-indicator--complete" : ""}" data-status=${current?.status ?? "pending"} aria-hidden="true">${allComplete ? checkIcon : current?.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span>
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
         <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
         <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
-        <button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card" aria-busy=${props.refreshing} ?disabled=${props.refreshing} @click=${(event: Event) => refreshTaskProgress(event, props)}>${icons.refresh}</button>
         <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
       </summary>
       <div class="session-progress-card__body" role="region" aria-label="Task progress" data-testid="task-progress-steps">
@@ -1893,26 +1975,15 @@ function renderTaskProgress(props: HomeProps) {
   </div>`;
 }
 
-/** A control inside the summary asks for a fresh card instead of collapsing it. */
-function refreshTaskProgress(event: Event, props: HomeProps) {
-  event.preventDefault();
-  event.stopPropagation();
-  props.onRefreshSession();
-}
-
-function renderConnection(props: HomeProps) {
-  // Deliberately muted, not an error: a reconnect usually fixes itself, and a
-  // scary red row would be a lie about a stream that is already coming back.
-  // So is a session whose machine is out of reach: it goes on there.
-  const unreachable = props.session ? unreachableHost(props.session) : undefined;
-  if (unreachable) {
-    return html`<p class="transcript__note" role="status">${unreachable.notice}${props.session?.status === "disconnected"
-      ? html` <button type="button" class="btn btn--sm reconnect-session" @click=${props.onReconnect}>Reconnect</button>`
-      : nothing}</p>`;
-  }
-  return props.connectionNote
-    ? html`<p class="transcript__note" role="status">${props.connectionNote}</p>`
-    : nothing;
+/** The offline reading copy's own note: when it was saved, how much of it, and what to do about an old build. */
+function renderSavedNotice(props: HomeProps) {
+  if (!(props.savedCopy || props.connection === "saved" || props.connection === "outdated")) return nothing;
+  return html`<div class="transcript__note" role="status">
+    ${props.savedCopy ? html`Saved conversation · ${new Date(props.savedCopy.savedAt).toLocaleString()}. ${props.savedCopy.truncated ? "Only recent messages are saved." : "Message text is saved on this device."}` : nothing}
+    ${props.connectionNote}
+    ${props.connection === "outdated" ? html` <button type="button" class="btn btn--sm" @click=${() => window.location.reload()}>Reload HUI</button>` : nothing}
+    ${props.savedCopy && props.onForgetSaved ? html` <button type="button" class="btn btn--sm" @click=${props.onForgetSaved}>Forget saved conversations</button>` : nothing}
+  </div>`;
 }
 
 /** `provider/id`, which is how a model is addressed everywhere else. */
@@ -2158,11 +2229,12 @@ function renderThinkingPicker(options: ThinkingPickerOptions) {
 }
 
 const QUEUE_DRAG_MIME = "application/x-hui-queued-message";
-const mountedQueueEditors = new WeakSet<HTMLTextAreaElement>();
+/** One editor per element: Lit re-rendering around a textarea must not overwrite what the operator is typing. */
+const mountedEditors = new WeakSet<HTMLTextAreaElement>();
 
-function mountQueueEditor(element: Element | undefined, value: string) {
-  if (!(element instanceof HTMLTextAreaElement) || mountedQueueEditors.has(element)) return;
-  mountedQueueEditors.add(element);
+function mountEditor(element: Element | undefined, value: string) {
+  if (!(element instanceof HTMLTextAreaElement) || mountedEditors.has(element)) return;
+  mountedEditors.add(element);
   element.value = value;
   queueMicrotask(() => {
     if (!element.isConnected) return;
@@ -2230,7 +2302,7 @@ function renderQueue(props: HomeProps) {
             <span class="chat-queue__grip-state chat-queue__grip-state--active" aria-hidden="true">${gripIcon}</span>
           </button>` : html`<span class="chat-queue__leading chat-queue__icon" aria-hidden="true">${queueIcon}</span>`}
           ${editing ? html`<textarea class="chat-queue__edit-input" rows="1"
-            ${ref((element) => mountQueueEditor(element, props.queueEditingText))}
+            ${ref((element) => mountEditor(element, props.queueEditingText))}
             aria-label="Edit queued message"
             @input=${(event: Event) => props.onQueueEditChange((event.currentTarget as HTMLTextAreaElement).value)}
             @keydown=${(event: KeyboardEvent) => {
@@ -2475,11 +2547,11 @@ function renderHeader(props: HomeProps, session: SessionView) {
           aria-expanded="false"
           @click=${toggleNavigationDrawer}
         >${icons.menu}</button>` : nothing}
-        ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs">
+        ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs ${props.panelPicker ? "chat-pane__crumbs--picker" : ""}">
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
-          <h2 class="transcript__title chat-pane__session-title" data-testid="session-title" title=${session.title}>${session.title}</h2>
+          ${props.panelPicker ?? html`<h2 class="transcript__title chat-pane__session-title" data-testid="session-title" title=${session.title}>${session.title}</h2>`}
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(sessionStatusLabel(session))}
+            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(props.savedCopy ? "Saved copy" : sessionStatusLabel(session))}
           </span>
         </div>`}
         ${session.parentId ? html`<button
@@ -2498,9 +2570,9 @@ function renderHeader(props: HomeProps, session: SessionView) {
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
             @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
           ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}
-          ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser view" data-hui-tooltip="Open browser view" @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
-          ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
-          ${session.tool === "pi" ? html`<button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
+          ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser view" data-hui-tooltip="Open browser view" ?disabled=${props.connection !== "live"} @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
+          ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.connection !== "live" || props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
+          ${session.tool === "pi" ? html`<button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.connection !== "live" || props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
             <span class="session-history-action__icon">${continueIcon}</span><span class="session-history-action__label">${props.continuing ? "Continuing…" : "Continue"}</span>
           </button>` : nothing}
           ${props.onSplitPane ? props.onClosePane ? html`
@@ -2557,7 +2629,8 @@ function renderTranscript(props: HomeProps, session: SessionView) {
           <div class="chat-split-container">
             <div class="chat-main">
               <div class="chat-main__conversation-column">
-                ${renderNote(props)} ${renderConnection(props)}
+                ${renderNote(props)} ${renderSavedNotice(props)}
+                ${props.offlineSupported === false ? html`<p class="transcript__note" role="status">Offline reload needs HTTPS or localhost.</p>` : nothing}
                 ${session.status === "error" && !props.worktreeError
                   ? html`<div class="chat-error" role="alert"><div class="chat-error__content">The runtime could not start.</div><button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Retry session</button></div>`
                   : nothing}

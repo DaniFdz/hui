@@ -13,7 +13,7 @@ export const SIDEBAR_TABS: readonly SidebarTab[] = ["sessions", "bots"];
 export const SIDEBAR_TAB_KEY = "hui.sidebar-tab";
 
 export function normalizeSidebarTab(value: unknown): SidebarTab {
-  return value === "bots" ? "bots" : "sessions";
+  return value === "bots" ? value : "sessions";
 }
 
 export function readSidebarTab(): SidebarTab {

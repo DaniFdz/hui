@@ -252,11 +252,7 @@ export async function createSessionWorktree(options: {
     const rollback = async () => {
       if (rolledBack) return;
       rolledBack = true;
-      const removed = await git(repoRoot, ["worktree", "remove", "--force", "--", path]);
-      const deleted = await git(repoRoot, ["branch", "-D", "--", branch]);
-      if (removed.code !== 0 || deleted.code !== 0) {
-        throw gitFailure("Could not roll back Git workspace", removed.code !== 0 ? removed : deleted);
-      }
+      await removeSessionWorktree({ repository: repoRoot, path, branch, ...(options.git ? { git: options.git } : {}) });
     };
     const cwd = join(path, sourceRelative);
     try {
@@ -268,6 +264,22 @@ export async function createSessionWorktree(options: {
     }
   }
   throw new WorktreeInputError(`Could not find an available branch name for ${options.branchPrefix}${baseSlug}.`);
+}
+
+/** Undoes a worktree HUI made and its branch, before or after its session registered. Used by the rollback that
+ * follows a failed registry write, and by a worker host removing one the gateway asked for. */
+export async function removeSessionWorktree(options: {
+  repository: string;
+  path: string;
+  branch: string;
+  git?: GitRunner;
+}): Promise<void> {
+  const git = options.git ?? runGit;
+  const removed = await git(options.repository, ["worktree", "remove", "--force", "--", options.path]);
+  const deleted = await git(options.repository, ["branch", "-D", "--", options.branch]);
+  if (removed.code !== 0 || deleted.code !== 0) {
+    throw gitFailure("Could not roll back Git workspace", removed.code !== 0 ? removed : deleted);
+  }
 }
 
 export function isMergedCleanupCandidate(row: WorktreeRow): boolean {

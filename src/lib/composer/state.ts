@@ -9,6 +9,7 @@ import type {
   QueueSnapshot,
   RuntimeQuestion,
   SessionStatus,
+  SessionConnection,
 } from "../../api/sessions.ts";
 
 export const EMPTY_QUEUE: QueueSnapshot = { steering: [], followUp: [] };
@@ -55,15 +56,11 @@ export function composerEnterMode(input: {
  * offers Enqueue.
  */
 export function composerPlaceholder(input: {
-  status?: SessionStatus;
-  reconnecting: boolean;
   streaming: boolean;
   coarsePointer: boolean;
   sendShortcut?: "enter" | "modifierEnter";
   applePlatform: boolean;
 }): string {
-  if (input.status === "disconnected") return "Draft while disconnected…";
-  if (input.reconnecting) return "Draft while HUI reconnects…";
   if (!input.streaming) return "Send a message…";
   if (input.coarsePointer) return "Add to this run…";
   const queue = `${input.applePlatform ? "⌘↵" : "Ctrl+↵"} queues for later`;
@@ -94,7 +91,7 @@ export function canSubmitComposer(input: {
   hasImage: boolean;
   opening: boolean;
   sending: boolean;
-  connection: "live" | "reconnecting" | "stopped";
+  connection: SessionConnection;
 }): boolean {
   return Boolean(input.draft.trim() || input.hasImage) && !input.opening && !input.sending && input.connection === "live";
 }

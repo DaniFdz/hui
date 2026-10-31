@@ -296,7 +296,7 @@ test("session rows mirror OpenClaw run and attention states", () => {
   assert.match(styles, /\.sidebar-session-attention__icon--question \{ color: var\(--warn\)/);
   assert.match(styles, /\.sidebar-session-attention__icon--error \{ color: var\(--danger\)/);
   // A session out of reach is calm: its own muted mark, labelled by unreachableHost.
-  assert.match(glyph, /away \? \{ label: away\.status, tone: "away" as const \}/);
+  assert.match(glyph, /away \? \{ label: away, tone: "away" as const \}/);
   assert.match(source, /away: icons\.plug/);
   assert.match(styles, /\.sidebar-session-attention__icon--away \{ color: var\(--status-stopped\)/);
   assert.match(glyph, /const unread = session\.unread === true && !attention/);

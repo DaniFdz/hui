@@ -172,11 +172,11 @@ async function holdOperatorTurn(handle: string): Promise<void> {
   assert.deepEqual((await call(`/__hui/bots/${handle}/messages`, "POST", { text: "E2E_REPLAY the operator's own turn" })).body, { status: "sent" });
   await control("wait-replay-ready");
 }
-/** A message to a bot busy on the worker joins its run there: it waits in the worker's runtime, not in HUI's queue. */
+/** A message to a bot busy on the worker joins its run there: it steers the worker's runtime, not HUI's queue. */
 const joining = (sessionId: string, start: string) => waitFor(() => {
   const { queue } = liveSessions.snapshot(sessionId);
-  return queue.followUp.some((text) => text.startsWith(start)) && !queue.items?.length;
-}, `"${start}" to wait in the worker's runtime`);
+  return queue.steering.some((text) => text.startsWith(start)) && !queue.items?.length;
+}, `"${start}" to join the run on the worker`);
 
 const roverProfile = async () => { const bot = botOf(await call("/__hui/bots/rover")); return [bot.name, bot.handle, bot.title]; };
 const roverTrigger = async (name: string) => ((await call("/__hui/bots/rover/triggers")).body as { triggers: Array<{ name: string; filter: unknown }> }).triggers.find((each) => each.name === name);
@@ -503,8 +503,8 @@ test("on the worker too, write_soul refuses a turn that a routine, a trigger or 
   const joining = "[trigger: Soul hook · busy] ";
   await waitFor(() => {
     const { queue } = liveSessions.snapshot(rover.sessionId);
-    return queue.followUp.some((text) => text.startsWith(joining)) && !queue.items?.length;
-  }, "the trigger's message to wait in the worker's runtime, not in HUI's queue");
+    return queue.steering.some((text) => text.startsWith(joining)) && !queue.items?.length;
+  }, "the trigger's message to join the run on the worker, not to wait in HUI's queue");
   await control("release-replay", { method: "POST" });
   assert.equal(await answerTo(joining, "the trigger's message that joined the operator's turn"), refused);
 
@@ -586,7 +586,7 @@ test("on the worker too, another bot's message that joins the operator's turn ma
   });
   await holdOperatorTurn("rover");
   assert.equal((await call(`/__hui/automation/tasks/${task.id}/run`, "POST", {})).status, 202);
-  await joining(rover.sessionId, "[routine: Survey again] ");
+  await waitFor(() => liveSessions.snapshot(rover.sessionId).queue.followUp.some((text) => text.startsWith("[routine: Survey again] ")), "the routine to wait in the worker's runtime");
   await control("release-replay", { method: "POST" });
   const routine = await toolAnswer(rover.sessionId, "[routine: Survey again] ", "the routine's message that joined the operator's turn");
   assert.match(routine, /Only the operator changes your name, title or look/u, "a routine can't retitle it");

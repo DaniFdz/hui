@@ -9,6 +9,10 @@ export const CONFIG_DIR = process.env["HUI_CONFIG_DIR"]
 
 export const USER_THEME_DIR = join(CONFIG_DIR, "themes");
 
+/** Custom marks for tool rows (`chat.toolIcons` maps a CLI or tool to one of
+ * these files). HUI serves them read-only; nothing writes an icon here. */
+export const USER_TOOL_ICON_DIR = join(CONFIG_DIR, "tool-icons");
+
 /** Uploaded files are stored here and handed to the agent as paths, so an
  * upload never has to be inlined into a prompt or written into the user's
  * working directory. */

@@ -1,9 +1,9 @@
-/** With Group by Project, a dropped session row changes nothing: project groups follow each session's directory, so only custom groups take a drop (SESS-070). */
+/** With Group by Project, a dropped session row changes nothing: project groups follow each session's directory, so only custom groups take a drop (SESS-073). */
 import { basename, dirname } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("dropping a session row on a project group leaves it where it was", { tags: ["SESS-070"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("dropping a session row on a project group leaves it where it was", { tags: ["SESS-073"], platforms: ["web"] }, async ({ screen, hui }) => {
   const parent = dirname(hui.workspace);
   const there = basename(parent).toLocaleUpperCase();
   const heading = (label: string) => screen.getByText(label, { exact: true, visible: true });

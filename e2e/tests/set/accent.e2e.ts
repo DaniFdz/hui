@@ -1,4 +1,4 @@
-/** An accent recolours highlights and the keyboard focus ring over any theme and Current accent names it; Theme default restores the theme's own, and a colour too faint for the mode is moved until it reads (SET-007, SET-080). */
+/** An accent recolours highlights and the keyboard focus ring over any theme and Current accent names it; Theme default restores the theme's own, and a colour too faint for the mode is moved until it reads (SET-007, SET-083). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -93,7 +93,7 @@ test("an accent too faint for the page or its cards is darkened or lightened jus
   expect(luminance(lightened)).toBeGreaterThan(luminance(blue));
 });
 
-test("a control reached from the keyboard draws its focus ring in the accent over any theme, and in the theme's own after Theme default", { tags: ["SET-080"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a control reached from the keyboard draws its focus ring in the accent over any theme, and in the theme's own after Theme default", { tags: ["SET-083"], platforms: ["web"] }, async ({ screen, hui }) => {
   const accents = screen.getByLabel("Accent color");
   const rings = async () => {
     await accents.getByRole("button", "Blue").press("Tab");

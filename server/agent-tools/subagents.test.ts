@@ -455,6 +455,28 @@ test("session tools are bounded to one tree and can read and message a child", a
   state.manager.disposeAll();
 });
 
+test("a busy session takes an inter-session message in the turn going on", async () => {
+  const parent = record("parent", { title: "Parent" });
+  const sibling = record("sibling", { parentId: "parent" });
+  const state = harness([parent, sibling], { manualSessionId: "sibling" });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  state.manager.ensure(sibling);
+  await waitForStatus(state.manager, sibling.id, "idle");
+  await state.service.initialize();
+  await state.manager.prompt(sibling.id, "work on the task");
+
+  assert.deepEqual(
+    await state.service.handle(parent.id, "sessions_send", { sessionKey: sibling.id, message: "change of plan", timeoutSeconds: 0 }),
+    { status: "accepted", sessionKey: sibling.id },
+  );
+  assert.deepEqual(state.sessions.get(sibling.id)?.steered, ["[Inter-session message from Parent (parent)]\nchange of plan"]);
+  assert.deepEqual(state.sessions.get(sibling.id)?.followedUp, [], "it does not wait for the session's next turn");
+
+  state.service.dispose();
+  state.manager.disposeAll();
+});
+
 test("session history enforces its byte limit for multibyte and oversized entries", async () => {
   const parent = record("parent");
   const state = harness([parent]);

@@ -3,7 +3,7 @@
  * views and its Work view launchers. It reads what to list and reports a choice; which pane, view or destination is
  * shown stays with the layout's and the Work pane's owner (hui-app).
  */
-import { html, nothing, type TemplateResult } from "lit";
+import type { TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
 import type { SessionPane } from "../lib/session/multiplexer.ts";
 import { renderPicker } from "./settings-picker.ts";
@@ -53,26 +53,24 @@ export function panelSelectorOptions(props: Pick<PanelSelectorProps, "panes" | "
   ];
 }
 
-/** Narrow-layout switcher between the chat panes and the Work destination. Hidden on wide screens by CSS. */
-export function renderPanelSelector(props: PanelSelectorProps) {
-  if (!props.panes.length) return nothing;
+/** Narrow-layout switcher between the chat panes and the Work destination: a row of its own, or on a phone
+ * (hui-app) in the conversation's header. */
+export function renderPanelPicker(props: PanelSelectorProps) {
   const options = panelSelectorOptions(props);
   const value = props.workShown ? `work:${props.activeWorkKey ?? ""}` : `pane:${props.activePaneId}`;
-  return html`<div class="hui-panel-selector">
-    ${renderPicker({
-      label: "Active panel",
-      value: options.some((option) => option.value === value) ? value : options[0]!.value,
-      options,
-      className: "hui-panel-selector__picker",
-      showSelectedDescription: true,
-      showOptionTooltips: false,
-      renderLeading: (option) => (option as PanelOption).icon,
-      onChange: (choice) => {
-        if (choice.startsWith("pane:")) props.onSelectPane(choice.slice(5));
-        else if (choice === "work:") props.onShowWork();
-        else if (choice.startsWith("work:")) props.onSelectWork(choice.slice(5));
-        else if (choice.startsWith("launch:")) props.onLaunch(choice.slice(7));
-      },
-    })}
-  </div>`;
+  return renderPicker({
+    label: "Active panel",
+    value: options.some((option) => option.value === value) ? value : options[0]!.value,
+    options,
+    className: "hui-panel-selector__picker",
+    showSelectedDescription: true,
+    showOptionTooltips: false,
+    renderLeading: (option) => (option as PanelOption).icon,
+    onChange: (choice) => {
+      if (choice.startsWith("pane:")) props.onSelectPane(choice.slice(5));
+      else if (choice === "work:") props.onShowWork();
+      else if (choice.startsWith("work:")) props.onSelectWork(choice.slice(5));
+      else if (choice.startsWith("launch:")) props.onLaunch(choice.slice(7));
+    },
+  });
 }

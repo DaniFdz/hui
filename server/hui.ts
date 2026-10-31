@@ -38,6 +38,7 @@ import { AUTOMATION_ROUTE } from "./routes/automation.ts";
 import { handleApiSchemaRoute } from "./routes/api-schema.ts";
 import { DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { listThemes, THEME_FILE_ROUTE } from "./themes.ts";
+import { readToolIcon, TOOL_ICON_ROUTE } from "./tool-icons.ts";
 import { readRegistry, type SessionRecord } from "./sessions/sessions.ts";
 import { pendingSessions, pendingStatus, pendingStatusSubscribers, type PendingStatusUpdate } from "./sessions/views.ts";
 import {
@@ -60,6 +61,7 @@ import {
   managedBrowser,
   piRoutes,
   powerRoutes,
+  appRoutes,
   providerRoutes,
   sessionActionRoutes,
   sessionList,
@@ -287,6 +289,30 @@ async function handleRequest(
     return;
   }
 
+  // An <img> cannot send x-hui: accept the header or a browser-attested same-origin load, and refuse cross-site
+  // (the same rule an attachment and a bot's memory page follow).
+  if (path.startsWith(TOOL_ICON_ROUTE) && request.method === "GET") {
+    if (request.headers[CLIENT_HEADER] !== "1" && request.headers["sec-fetch-site"] !== "same-origin") {
+      sendJson(response, 403, { error: `missing ${CLIENT_HEADER} header` });
+      return;
+    }
+    const name = decodeURIComponent(path.slice(TOOL_ICON_ROUTE.length));
+    const icon = await readToolIcon(name);
+    if (!icon) {
+      sendJson(response, 404, { error: `unknown tool icon: ${name}` });
+      return;
+    }
+    response.statusCode = 200;
+    response.setHeader("content-type", icon.type);
+    response.setHeader("cache-control", "public, max-age=300");
+    response.setHeader("etag", icon.etag);
+    response.setHeader("x-content-type-options", "nosniff");
+    // Drawn in an <img>; if opened directly, an SVG still may not run script or fetch anything.
+    if (icon.type === "image/svg+xml") response.setHeader("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'");
+    response.end(icon.bytes);
+    return;
+  }
+
   if (request.method === "OPTIONS") {
     sendJson(response, 403, { error: "cross-origin requests are not accepted" });
     return;
@@ -368,6 +394,8 @@ async function handleRequest(
   if (answered(response, path, await providerRoutes.handle(routed))) return;
 
   if (answered(response, path, await powerRoutes.handle(routed))) return;
+
+  if (answered(response, path, await appRoutes.handle(routed))) return;
   if (answered(response, path, await hostMetricsRoutes.handle(routed))) return;
   if (answered(response, path, await handleApiSchemaRoute(routed))) return;
 

@@ -22,8 +22,11 @@ import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type Loc
 import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
 import { completeCommandReference, composerCommands, composerSendAction, filterSlashCommands, parseGoalCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
 import { appendPendingUser, dropDuplicateSend, failPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
-import type { HomeProps } from "../views/home.ts";
+import type { GoalPanelState, HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";
+
+/** The goal pill's detail block starts closed. */
+const CLOSED_GOAL_PANEL: GoalPanelState = { expanded: false, editing: false, error: "" };
 
 type ComposerDeps = {
   conversation: ConversationController;
@@ -131,7 +134,10 @@ export class ComposerController {
   switchDraft(key: string): void {
     if (!mayUseComposerDraftKey(this.#deps.embeddedPane(), key)) return;
     if (key === this.draftKey && this.draftHydrated) return;
-    if (key !== this.draftKey) void this.persistDraft();
+    if (key !== this.draftKey) {
+      void this.persistDraft();
+      this.goalPanel = CLOSED_GOAL_PANEL;
+    }
     this.draftKey = key;
     this.draftHydrated = true;
     const load = ++this.draftLoad;
@@ -467,7 +473,7 @@ export class ComposerController {
 
   #queueMutation(mutation: Parameters<typeof mutateQueuedMessage>[1], onSuccess?: () => void): void {
     const session = this.#conversation.selected;
-    if (!session) return;
+    if (!session || this.#conversation.connection !== "live") return;
     void mutateQueuedMessage(session.id, mutation)
       .then(() => {
         if (isSelectedSession(session.id, this.#conversation.selected?.id)) onSuccess?.();
@@ -722,7 +728,10 @@ export class ComposerController {
       });
   };
 
-  /** `/goal` and the goal pill both land here. `typed` is the command line to put back if the gateway refuses. */
+  /** The goal pill's detail block; the row and its chevron toggle it, and a session switch closes it. */
+  goalPanel: GoalPanelState = CLOSED_GOAL_PANEL;
+  /** `/goal`, the goal pill and the Goal dialog all land here. `typed` is the command line to put back if the gateway
+   * refuses, and a refusal answers where the operator made the change: in the dialog's own field while it edits. */
   changeGoal = (action: "start" | "pause" | "resume" | "clear", objective?: string, typed?: string) => {
     const session = this.#conversation.selected;
     if (!session || this.sending || this.#conversation.connection !== "live") return;
@@ -738,6 +747,7 @@ export class ComposerController {
     void setSessionGoal(session.id, action, objective)
       .then(() => {
         if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        if (this.goalPanel.editing) this.goalPanel = CLOSED_GOAL_PANEL;
         this.#deps.showNote({
           start: "Goal set. The agent keeps working until it is achieved or you pause it.",
           pause: "Goal paused.",
@@ -746,9 +756,11 @@ export class ComposerController {
         }[action], "info");
       })
       .catch(async (error: unknown) => {
-        if (typed === undefined || await this.#restoreSentDraft(session.id, typed, [])) {
-          this.#deps.showNote(error instanceof Error ? error.message : "Could not change the goal.", "error");
-        }
+        if (typed !== undefined && !await this.#restoreSentDraft(session.id, typed, [])) return;
+        const message = error instanceof Error ? error.message : "Could not change the goal.";
+        if (this.goalPanel.editing) this.goalPanel = { ...this.goalPanel, error: message };
+        else this.#deps.showNote(message, "error");
+        this.#host.requestUpdate();
       })
       .finally(() => {
         if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
@@ -758,9 +770,38 @@ export class ComposerController {
       });
   };
 
+  #setGoalPanel(goalPanel: GoalPanelState): void {
+    this.goalPanel = goalPanel;
+    this.#host.requestUpdate();
+  }
+
+  #toggleGoal = () => {
+    if (!this.#conversation.selected?.goal) return;
+    this.#setGoalPanel(this.goalPanel.expanded ? CLOSED_GOAL_PANEL : { expanded: true, editing: false, error: "" });
+  };
+
+  #editGoal = () => {
+    if (!this.#conversation.selected?.goal) return;
+    this.#setGoalPanel({ expanded: true, editing: true, error: "" });
+  };
+
+  #cancelGoalEdit = () => this.#setGoalPanel({ ...this.goalPanel, editing: false, error: "" });
+
+  /** Replacing the objective is the `/goal <objective>` path: the new objective starts the goal and is sent as its
+   * next turn. A refusal stays in the pill's editor, where the operator is still typing. */
+  #saveGoal = (objective: string) => {
+    const text = objective.trim();
+    if (!text) {
+      this.#setGoalPanel({ ...this.goalPanel, error: "A goal needs an objective." });
+      return;
+    }
+    this.#setGoalPanel({ ...this.goalPanel, error: "" });
+    this.changeGoal("start", text);
+  };
+
   abort = () => {
     const session = this.#conversation.selected;
-    if (!session || this.#conversation.stopping) {
+    if (!session || this.#conversation.connection !== "live" || this.#conversation.stopping) {
       return;
     }
     this.#conversation.stopping = true;
@@ -780,7 +821,7 @@ export class ComposerController {
   /** The outcome arrives as `compaction_end`: the divider then reads cancelled. */
   #cancelCompactionNow(): void {
     const session = this.#conversation.selected;
-    if (!session) return;
+    if (!session || this.#conversation.connection !== "live") return;
     void cancelCompaction(session.id).catch((error: unknown) => {
       if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
       this.#deps.showNote(error instanceof Error ? error.message : "Could not cancel that compaction.", "error");
@@ -790,7 +831,7 @@ export class ComposerController {
   /** `typed` is the `/compact` draft, cleared now and given back if HUI refuses. */
   #compactNow(instructions?: string, typed?: string) {
     const session = this.#conversation.selected;
-    if (!session || this.sending) return;
+    if (!session || this.sending || this.#conversation.connection !== "live") return;
     if (this.#conversation.streaming || session.status !== "idle") {
       this.#deps.showNote("Finish or stop active work before compacting the session.", "error");
       return;
@@ -838,7 +879,7 @@ export class ComposerController {
 
   #rewindToMessage = (target: RewindTarget, text: string, sent: readonly (string | TranscriptAttachment)[] = []) => {
     const session = this.#conversation.selected;
-    if (!session || this.#conversation.opening || this.rewindPending) return;
+    if (!session || this.#conversation.connection !== "live" || this.#conversation.opening || this.rewindPending) return;
     this.rewindPending = true;
     this.#host.requestUpdate();
     this.#deps.showNote("", "info");
@@ -873,7 +914,7 @@ export class ComposerController {
    * the copy. The source session is left running or idle as it was. */
   #forkFromMessage = (entryId: string) => {
     const session = this.#conversation.selected;
-    if (!session || this.#conversation.opening || this.forkTarget) return;
+    if (!session || this.#conversation.connection !== "live" || this.#conversation.opening || this.forkTarget) return;
     void import("../components/fork-dialog.ts").then(() => {
       this.forkTarget = { session, entryId };
       this.#host.requestUpdate();
@@ -883,7 +924,7 @@ export class ComposerController {
   #answerQuestion = (answer: QuestionResponse) => {
     const session = this.#conversation.selected;
     const question = this.#conversation.question;
-    if (!session || !question) return;
+    if (!session || !question || this.#conversation.connection !== "live") return;
     this.#conversation.question = undefined;
     this.#host.requestUpdate();
     void answerQuestionRequest(session.id, question.id, answer)
@@ -899,7 +940,7 @@ export class ComposerController {
       });
   };
 
-  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "sideChat" | "onCloseSideChat" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer"> {
+  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "sideChat" | "onCloseSideChat" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "onGoalToggle" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer"> {
     const conversation = this.#conversation;
     const sending = this.sending;
     return {
@@ -917,6 +958,11 @@ export class ComposerController {
       onCancelCompaction: () => this.#cancelCompactionNow(),
       onAnswerQuestion: this.#answerQuestion,
       onGoalChange: (action) => this.changeGoal(action),
+      goalPanel: this.goalPanel,
+      onGoalToggle: this.#toggleGoal,
+      onGoalEdit: this.#editGoal,
+      onGoalSave: this.#saveGoal,
+      onGoalCancelEdit: this.#cancelGoalEdit,
       draft: this.draft,
       attachments: this.attachments,
       onDraftChange: this.updateDraft,

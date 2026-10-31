@@ -30,7 +30,6 @@ export const CLAUDE_CODE_TOOLS: Readonly<Record<string, readonly string[]>> = {
   WebFetch: ["browser"],
   WebSearch: ["browser"],
   Task: ["sessions_spawn", "subagents"],
-  TodoWrite: ["progress_card"],
 };
 
 /** Claude Code's agent colors as HUI's palette. */

@@ -15,8 +15,10 @@ import type { TaskSuggestion } from "./schema/task-suggestions.ts";
 import type { Watcher } from "./schema/watchers.ts";
 import { CLIENT_HEADERS, fetchJson, RESPONSE_TIMEOUT_MS, trackedFetch } from "./request.ts";
 import { decodeSseFrame, reconnectDelay } from "../lib/event-stream.ts";
+import { OutdatedBuildError } from "./offline.ts";
+import { GatewayHttpError, isGatewayUnavailable } from "./gateway-error.ts";
 
-export type { SessionGroup, SessionList, SessionSearchResult, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
+export type { SessionGoal, SessionGroup, SessionList, SessionSearchResult, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
 export type {
   QueuedMessage, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SubagentTaskView,
 } from "./schema/session-events.ts";
@@ -176,7 +178,7 @@ export async function createSessionGroup(name: string): Promise<SessionList> {
 
 export async function updateSessionGroup(
   name: string,
-  patch: { name?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string },
+  patch: { name?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string; worker?: string },
 ): Promise<SessionList> {
   const body = await fetchJson<Partial<SessionList>>(
     `/__hui/session-groups/${encodeURIComponent(name)}`,
@@ -239,9 +241,9 @@ export async function createSession(input: {
   return body.session;
 }
 
-export async function loadGitCheckout(cwd: string): Promise<GitCheckoutInfo> {
+export async function loadGitCheckout(cwd: string, worker?: string): Promise<GitCheckoutInfo> {
   const body = await fetchJson<GitCheckoutResponse>(
-    `/__hui/git-checkout?cwd=${encodeURIComponent(cwd || "~/")}`,
+    `/__hui/git-checkout?cwd=${encodeURIComponent(cwd || "~/")}${worker ? `&worker=${encodeURIComponent(worker)}` : ""}`,
   );
   return body.checkout ?? {
     available: false,
@@ -332,6 +334,8 @@ export async function sendPrompt(
   return sendMessage(id, "prompt", text, attachments, requestId);
 }
 
+const liveStreams = new Map<string, Set<() => void>>();
+
 async function sendMessage(
   id: string,
   action: "prompt" | "steer" | "follow-up",
@@ -339,12 +343,20 @@ async function sendMessage(
   attachments: readonly Attachment[],
   requestId: string | undefined,
 ): Promise<SendOutcome> {
-  const body = await fetchJson<{ ok?: boolean; duplicate?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/${action}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text, ...(attachments.length ? { attachments } : {}), ...(requestId ? { requestId } : {}) }),
-  });
-  return { duplicate: body.duplicate === true };
+  const streams = [...liveStreams.get(id) ?? []];
+  const liveness = setTimeout(() => {
+    for (const check of streams) if (liveStreams.get(id)?.has(check)) check();
+  }, SEND_LIVENESS_MS);
+  try {
+    const body = await fetchJson<{ ok?: boolean; duplicate?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text, ...(attachments.length ? { attachments } : {}), ...(requestId ? { requestId } : {}) }),
+    });
+    return { duplicate: body.duplicate === true };
+  } finally {
+    clearTimeout(liveness);
+  }
 }
 
 export type { SideQuestionResult } from "./schema/session-events.ts";
@@ -522,8 +534,7 @@ export async function resumeSession(id: string): Promise<void> {
   });
 }
 
-/** How the client's stream to a session is doing. `stopped` is terminal. */
-export type SessionConnection = "live" | "reconnecting" | "stopped";
+export type SessionConnection = "live" | "reconnecting" | "stopped" | "saved" | "outdated";
 
 export type SessionStreamHandlers = {
   onSnapshot: (snapshot: SessionStreamSnapshot) => void;
@@ -542,9 +553,19 @@ export type SessionStreamHandlers = {
   onConnection: (state: SessionConnection, detail: string) => void;
 };
 
+const CONNECT_TIMEOUT_MS = 20_000;
+const FIRST_FRAME_TIMEOUT_MS = 60_000;
+const STREAM_SILENCE_MS = 40_000;
+const SEND_LIVENESS_MS = 5_000;
+const SEND_GRACE_MS = 10_000;
+const STUCK_OPENING_MS = 8_000;
+const HEALTH_TIMEOUT_MS = 5_000;
+const HEALTH_URL = "/__hui/health";
+
 type StreamOutcome =
   | { kind: "ended" }
   | { kind: "refused"; message: string }
+  | { kind: "outdated"; message: string }
   | { kind: "dropped" };
 
 export type SessionStatusesHandlers = {
@@ -579,55 +600,96 @@ export function subscribeSessionStatuses(
   return () => abort.abort();
 }
 
-/**
- * Subscribes to a session's event stream, reconnecting on its own when it
- * drops. Returns a function that ends it for good.
- *
- * Each view uses a WebSocket, not a streaming fetch: browsers allow only six
- * HTTP/1.1 connections per origin, so a few split panes would stall every other
- * request. WebSocket cannot set the `x-hui` header, so a guarded POST first
- * mints a one-use ticket for it.
- *
- * Only a network drop is retried. An `event: closed` from the server means the
- * runtime exited and there is nothing left to stream, and a 4xx (or the gone
- * close code) means the server will keep refusing this session; both stop the
- * loop rather than replaying a session that is gone.
- */
+/** Browsers allow only six HTTP/1.1 connections per origin, so split panes use
+ * WebSockets. A guarded POST mints a one-use ticket because WebSocket cannot
+ * set the `x-hui` header. */
 export function subscribeSession(id: string, handlers: SessionStreamHandlers, heldRevision?: number): () => void {
   const abort = new AbortController();
   let attempt = 0;
   let held = heldRevision;
+  let current: { startedAt: number; cancel: AbortController; established: boolean } | undefined;
+  let endBackoff: (() => void) | undefined;
+  let probing = false;
+
+  const stuck = () => current !== undefined && !current.established && Date.now() - current.startedAt >= STUCK_OPENING_MS;
+  const retryNow = () => {
+    if (abort.signal.aborted || probing || (!stuck() && !endBackoff)) return;
+    probing = true;
+    const opening = current;
+    const backoff = endBackoff;
+    void gatewayReachable(abort.signal).then((reachable) => {
+      if (!reachable || abort.signal.aborted) return;
+      if (backoff && endBackoff === backoff) backoff();
+      else if (opening && current === opening && stuck()) opening.cancel.abort();
+    }).finally(() => { probing = false; });
+  };
+  const onVisible = () => {
+    if (document.visibilityState === "visible") retryNow();
+  };
+  const browser = typeof window !== "undefined" && typeof document !== "undefined";
+  if (browser) {
+    window.addEventListener("online", retryNow);
+    window.addEventListener("focus", retryNow);
+    document.addEventListener("visibilitychange", onVisible);
+  }
+  const detach = () => {
+    if (!browser) return;
+    window.removeEventListener("online", retryNow);
+    window.removeEventListener("focus", retryNow);
+    document.removeEventListener("visibilitychange", onVisible);
+  };
 
   void (async () => {
-    while (!abort.signal.aborted) {
-      const outcome = await connectOnce(id, handlers, abort.signal, () => {
-        // A connection that delivered a frame is healthy, so the backoff
-        // restarts rather than growing across unrelated drops.
-        attempt = 0;
-      }, held);
-      held = undefined;
-      if (abort.signal.aborted) {
-        return;
+    try {
+      while (!abort.signal.aborted) {
+        const pending = { startedAt: Date.now(), cancel: new AbortController(), established: false };
+        current = pending;
+        const outcome = await connectOnce(id, handlers, AbortSignal.any([abort.signal, pending.cancel.signal]), () => {
+          attempt = 0;
+        }, () => { pending.established = true; }, held);
+        current = undefined;
+        held = undefined;
+        if (abort.signal.aborted) {
+          return;
+        }
+        if (outcome.kind === "ended") {
+          handlers.onConnection("stopped", "The runtime exited — this session is no longer streaming.");
+          return;
+        }
+        if (outcome.kind === "refused") {
+          handlers.onConnection("stopped", outcome.message);
+          return;
+        }
+        if (outcome.kind === "outdated") {
+          handlers.onConnection("outdated", outcome.message);
+          return;
+        }
+        attempt += 1;
+        handlers.onConnection("reconnecting", "");
+        const backoff = new AbortController();
+        endBackoff = () => backoff.abort();
+        await sleep(reconnectDelay(attempt), AbortSignal.any([abort.signal, backoff.signal]));
+        endBackoff = undefined;
       }
-      if (outcome.kind === "ended") {
-        handlers.onConnection("stopped", "The runtime exited — this session is no longer streaming.");
-        return;
-      }
-      if (outcome.kind === "refused") {
-        handlers.onConnection("stopped", outcome.message);
-        return;
-      }
-      attempt += 1;
-      handlers.onConnection("reconnecting", "");
-      await sleep(reconnectDelay(attempt), abort.signal);
+    } finally {
+      abort.abort();
+      current = undefined;
+      endBackoff = undefined;
+      detach();
     }
   })();
 
   return () => abort.abort();
 }
 
+function gatewayReachable(signal: AbortSignal): Promise<boolean> {
+  return fetch(HEALTH_URL, { headers: CLIENT_HEADERS, cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(HEALTH_TIMEOUT_MS)]) })
+    .then((response) => response.ok, () => false);
+}
+
 /** The timer resolves on abort too, so a deselected session is not left waiting. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
   return new Promise((resolve) => {
     const done = () => {
       clearTimeout(timer);
@@ -644,6 +706,7 @@ async function connectOnce(
   handlers: SessionStreamHandlers,
   signal: AbortSignal,
   onLive: () => void,
+  onEstablished: () => void,
   heldRevision: number | undefined,
 ): Promise<StreamOutcome> {
   let socket: WebSocket;
@@ -665,40 +728,77 @@ async function connectOnce(
     address.protocol = address.protocol === "https:" ? "wss:" : "ws:";
     address.searchParams.set("slim", "1");
     if (heldRevision !== undefined) address.searchParams.set("revision", String(heldRevision));
-    if (signal.aborted) return { kind: "dropped" };
+    if (signal.aborted || attempt.signal.aborted) return { kind: "dropped" };
     socket = new WebSocket(address);
-  } catch {
-    return { kind: "dropped" };
+  } catch (error) {
+    if (error instanceof OutdatedBuildError) return { kind: "outdated", message: error.message };
+    return error instanceof GatewayHttpError && !isGatewayUnavailable(error)
+      ? { kind: "refused", message: error.message } : { kind: "dropped" };
   } finally {
     clearTimeout(ticketDeadline);
   }
   return new Promise((resolve) => {
-    let live = false;
+    let settled = false;
+    let admitted = false;
+    let openedAt = 0;
+    let awaitingState = false;
+    let silence: ReturnType<typeof setTimeout> | undefined;
+    const expectFrame = (ms: number) => {
+      clearTimeout(silence);
+      silence = setTimeout(() => finish({ kind: "dropped" }), ms);
+    };
+    const proveAlive = () => expectFrame(SEND_GRACE_MS);
     const finish = (outcome: StreamOutcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(silence);
       clearTimeout(handshakeDeadline);
+      const streams = liveStreams.get(id);
+      streams?.delete(proveAlive);
+      if (!streams?.size) liveStreams.delete(id);
       signal.removeEventListener("abort", abort);
-      socket.onopen = socket.onmessage = socket.onclose = null;
+      socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null;
       socket.close();
       resolve(outcome);
     };
     const handshakeDeadline = setTimeout(() => finish({ kind: "dropped" }), RESPONSE_TIMEOUT_MS);
     const abort = () => finish({ kind: "dropped" });
     signal.addEventListener("abort", abort, { once: true });
-    socket.onopen = () => clearTimeout(handshakeDeadline);
+    let streams = liveStreams.get(id);
+    if (!streams) liveStreams.set(id, streams = new Set());
+    streams.add(proveAlive);
+    socket.onopen = () => {
+      clearTimeout(handshakeDeadline);
+      openedAt = Date.now();
+      expectFrame(FIRST_FRAME_TIMEOUT_MS);
+      onEstablished();
+    };
     socket.onmessage = (message) => {
-      if (!live) {
-        live = true;
-        onLive();
-        handlers.onConnection("live", "");
-      }
+      if (settled) return;
       try {
         const frame = JSON.parse(String(message.data)) as { event: string; data: unknown };
-        if (dispatch(frame.event, frame.data, handlers)) finish({ kind: "ended" });
+        const stateFrame = ["snapshot", "transcript", "event", "status", "model", "thinking_level", "fast"].includes(frame.event);
+        if (!admitted && (!stateFrame || (heldRevision === undefined && frame.event !== "snapshot"))) {
+          if (frame.event === "closed") finish({ kind: "ended" });
+          else if (frame.event === "heartbeat" && !awaitingState) {
+            awaitingState = true;
+            expectFrame(Math.max(1, CONNECT_TIMEOUT_MS - (Date.now() - openedAt)));
+          }
+          return;
+        }
+        expectFrame(STREAM_SILENCE_MS);
+        if (dispatch(frame.event, frame.data, handlers)) { finish({ kind: "ended" }); return; }
+        if (!settled && !admitted) {
+          admitted = true;
+          onLive();
+          handlers.onConnection("live", "");
+        }
       } catch {
         // A frame that cannot be applied is a drop; the reconnect snapshot resyncs.
         finish({ kind: "dropped" });
       }
     };
+    socket.onerror = () => finish({ kind: "dropped" });
     socket.onclose = (event) => finish(event.code === SESSION_STREAM_GONE
       ? { kind: "refused", message: "This session no longer exists." }
       : { kind: "dropped" });

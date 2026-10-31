@@ -11,6 +11,9 @@ This run used `npm run dev` on localhost:5178, a local fixture provider on port
 transcripts or external model requests were used. From Home, select the fixture
 workspace and start `E2E_PROGRESS` through the visible launch controls. The real
 PI SDK calls `progress_card` with a completed step, an unfinished step and notes.
+Since 2026-10-30 that tool is gone: HUI's utility model writes the card from the
+conversation, and the hovercard reads the stored card instead (see
+[session progress](session-progress.browser.md)).
 
 Start `reference-style-server.mjs` on port 43229 against the installed OpenClaw
 2026.9.5 distribution. With the session row focused, import

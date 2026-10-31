@@ -345,6 +345,45 @@ function lateRegistry() {
   };
 }
 
+test("a settled turn hands its final transcript to the progress refresher, without holding the settle", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const seen: { id: string; transcript: readonly TranscriptEntry[] }[] = [];
+  manager.setProgressRefresh((id, transcript) => { seen.push({ id, transcript }); });
+  const id = `progress-${crypto.randomUUID()}`;
+  manager.ensure(recordFor(id));
+  await waitForBoot(manager, id);
+  started[0]!.history = [{ kind: "message", role: "user", text: "Fix the build" }, { kind: "message", role: "assistant", text: "Found it" }];
+  started[0]!.emit({ type: "settled" });
+  await waitFor("the settled transcript", () => seen.length === 1);
+  assert.deepEqual(seen[0], {
+    id,
+    transcript: [
+      { kind: "message", role: "user", text: "Fix the build" },
+      { kind: "message", role: "assistant", text: "Found it" },
+    ],
+  });
+  manager.disposeAll();
+});
+
+test("a card written outside the run reaches every status subscriber", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const updates: SessionStatusUpdate[] = [];
+  const watching = manager.watchStatuses((update) => updates.push(update));
+  const id = `card-${crypto.randomUUID()}`;
+  manager.ensure(recordFor(id));
+  await waitForBoot(manager, id);
+  updates.length = 0;
+  const card = { markdown: "Halfway through", steps: [{ step: "Ship it", status: "in_progress" as const }] };
+  manager.publishProgress(id, card);
+  assert.deepEqual(updates.at(-1), { id, status: "idle", progress: card });
+  manager.publishProgress("cold", card);
+  assert.equal(updates.length, 1, "a session this gateway does not hold has no browser to tell");
+  watching.unsubscribe();
+  manager.disposeAll();
+});
+
 test("tool inspection never boots cold sessions and marks unsupported runtimes honestly", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

@@ -229,39 +229,28 @@ test("the composer send control uses OpenClaw's SVG geometry and state colors", 
   assert.match(styles, /\.agent-chat__input \.chat-send-btn\s*\{[^}]*height:\s*var\(--chat-composer-send-size\);[^}]*color:\s*var\(--primary-foreground\);[^}]*box-shadow:\s*none;/s);
 });
 
-test("Task progress projects the durable progress_card signal above the composer", () => {
+test("Task progress draws the card HUI's utility model wrote above the composer", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /progressCardFromTranscript\(props\.transcript\)/);
+  assert.match(source, /const card = props\.session\?\.progress;/);
   assert.match(source, /class="session-progress-card session-progress-card--composer"/);
+  // Calls an older transcript still holds are never drawn as activity.
   assert.match(source, /item\.name !== "progress_card"/);
   assert.match(styles, /\.agent-chat__progress-float\s*\{[^}]*--chat-progress-underlap:\s*18px;/s);
   assert.ok(source.indexOf("${renderTaskProgress(props)}") > source.indexOf('<div class="agent-chat__composer-shell'));
-  assert.match(source, /class="agent-chat__question-dock"/);
-  assert.match(source, /agent-chat__composer-shell--question-composer/);
-});
 
-test("Task progress offers a refresh control that asks for a new card without folding it, and turns busy meanwhile", async () => {
-  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const styles = readStyles("../styles/openclaw-chat.css");
-  const props = {
-    transcript: [
-      { kind: "message", role: "user", text: "long task" },
-      { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "Check the build", status: "in_progress" }] }, status: "running" },
-    ],
-  };
-  const idle = await renderWorkerSession("running", props);
-  const busy = await renderWorkerSession("running", { ...props, refreshing: true });
-
-  assert.match(idle, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card"/u);
-  assert.doesNotMatch(idle, /aria-busy=(?:true|"true")/u);
-  assert.match(idle, /Check the build/u);
-  assert.match(busy, /aria-busy=true \?disabled=true/u);
-  assert.match(source, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*props\.onRefreshSession\(\);/u);
-  assert.match(styles, /\.session-progress-card__refresh\s*\{[^}]*cursor:\s*var\(--cursor-action\);/s);
-  assert.match(styles, /\.session-progress-card__refresh\[aria-busy="true"\] > svg\s*\{[^}]*animation:\s*session-run-spin/s);
-  assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\.session-progress-card__refresh\[aria-busy="true"\]/s);
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status: "running", worker: { id: "w", name: "devbox" } };
+  const html = await renderWorkerSession("running", {
+    session: { ...session, progress: { markdown: "Wiring the card.", steps: [
+      { step: "Read the session", status: "completed" },
+      { step: "Check the build", status: "in_progress" },
+    ] } },
+  });
+  assert.match(html, /Check the build/u);
+  assert.match(html, /1 of 2/u);
+  assert.match(html, /Wiring the card\./u);
+  assert.doesNotMatch(await renderWorkerSession("idle"), /session-progress-card/u, "no card, nothing drawn");
 });
 
 test("model and thinking reuse one exclusive composer picker pattern", () => {
@@ -307,22 +296,26 @@ test("the launch directory picker uses the themed combobox instead of a native d
   assert.match(styles, /\.new-session-page__directory-menu/);
 });
 
-test("the composer exposes PI context usage beside the model", () => {
-  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const styles = readStyles("../styles/openclaw-chat.css");
+test("the composer shows context usage and only offers compaction on a live idle session", async () => {
+  const usage = { percent: 50, contextTokens: 5_000, contextWindow: 10_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.05, sessionCost: { usd: 1.23, source: "Metered", asOf: new Date().toISOString() } };
+  const ready = await renderWorkerSession("idle", { usage });
+  assert.match(ready, /aria-label=Context window: 50% used/u);
+  assert.match(ready, /Latest run tokens/u);
+  assert.match(ready, /<dt>Metered<\/dt><dd>\$1\.23<\/dd>/u);
+  assert.match(ready, /<dt>Checked<\/dt>/u);
+  assert.match(ready, /context-usage__compact" \?disabled=false/u);
+  for (const state of [{ streaming: true }, { compaction: { status: "running" } }, ...["saved", "reconnecting", "outdated"].map((connection) => ({ connection }))]) {
+    assert.match(await renderWorkerSession("idle", { usage, ...state }), /context-usage__compact" \?disabled=true/u);
+  }
+  assert.doesNotMatch(await renderWorkerSession("idle", { usage, session: { id: "bot", title: "Bot", tool: "pi", status: "idle", bot: "bot" } }), /Compact now/u);
+});
 
-  // Compact now waits while the session runs or a compaction already works,
-  // and is not offered at all in a bot's permanent chat (the gateway refuses it).
-  assert.match(source, /renderContextPicker\(props\.usage, props\.streaming \|\| props\.compaction\?\.status === "running" \? undefined : props\.onCompact, !props\.session\?\.bot\)/);
-  assert.match(source, /\$\{compactable \? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact"/);
-  assert.match(source, />Compact now<\/button>/);
-  assert.match(source, /Context window/);
-  assert.match(source, /Latest run tokens/);
-  // A cost an extension measured reaches the popover with its source and its age, beside the estimated latest run.
-  assert.match(source, /\$\{usage\?\.sessionCost \? html`<div class="context-usage__section-label">Session cost<\/div>/);
-  assert.match(source, /\$\{relativeTime\(usage\.sessionCost\.asOf\)\}/);
-  assert.match(styles, /\.context-ring__dial/);
-  assert.match(source, /stroke-dashoffset/);
+test("a saved PI conversation cannot continue or open a terminal", async () => {
+  const html = await renderWorkerSession("disconnected", {
+    connection: "saved", session: { id: "s", title: "Saved", tool: "pi", status: "disconnected" },
+  });
+  assert.match(html, /aria-label="Open terminal" title="Open terminal" \?disabled=true/u);
+  assert.match(html, /session-history-action" \?disabled=true[^>]*aria-label="Continue without a prompt"/u);
 });
 
 test("PI questions use the inline OpenClaw card instead of a modal", () => {
@@ -366,8 +359,11 @@ test("run details stay collapsed until the user asks to inspect them", () => {
   const styles = readStyles("../styles/openclaw-chat.css");
 
   assert.match(source, /const expansionId = `\$\{props\.session\?\.id/);
-  assert.match(source, /\.open=\$\{props\.expandedActivityIds\.has\(expansionId\)\}/);
-  assert.match(source, /props\.onActivityExpanded\(expansionId, details\.open\)/);
+  // Reasoning keeps its own fold: opening the tools must not unfold the thinking with them.
+  assert.match(source, /const reasoningId = `\$\{expansionId\}:reasoning`/);
+  assert.match(source, /\.open=\$\{reasoningOpen\}/);
+  assert.match(source, /props\.onActivityExpanded\(reasoningId, details\.open\)/);
+  assert.match(source, /const groupOpen = open;/);
   assert.doesNotMatch(source, /\?open=\$\{props\.streaming/);
   assert.match(styles, /\.chat-activity-group:not\(\[open\]\) \.chat-activity-group__body\s*\{\s*display: none;/);
 });
@@ -457,9 +453,9 @@ test("session rename mirrors the Control UI single title field without a group e
   assert.match(source, /onRename: \(title: string\) => void;/);
 });
 
-test("composer notices render above the progress card and queue, which underlap their next sibling", () => {
+test("composer notices render above the progress card, queue and goal, which underlap their next sibling", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const order = ["${renderRunError(", "agent-chat__interrupted-recovery\" role", "${renderTaskProgress(", "${renderQueue(", "<form class=\"agent-chat__input"]
+  const order = ["${renderRunError(", "agent-chat__interrupted-recovery\" role", "${renderTaskProgress(", "${renderQueue(", "${renderGoalPill(", "<form class=\"agent-chat__input"]
     .map((marker) => source.indexOf(marker));
   assert.ok(order.every((index, i) => index > 0 && (i === 0 || index > order[i - 1]!)), String(order));
 });
@@ -488,7 +484,8 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {} },
+    goalPanel: { expanded: false, editing: false, error: "" },
+    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
     commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
     findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
     ...overrides,
@@ -527,26 +524,44 @@ test("Ultra is the stop above Maximum where the runtime offers it, and both glow
 
 const sendButton = (html: string) => html.match(/<button type="submit" class="chat-send-btn chat-send-btn--send" \?disabled=(\w+)/u)?.[1];
 
-test("a worker session HUI is reconnecting to reads calm: a status, one notice, the draft kept and no failure", async () => {
+test("a worker session HUI is reconnecting to reads calm: one status under the composer, the draft kept and no failure", async () => {
   const html = await renderWorkerSession("reconnecting");
   assert.match(html, /durable on devbox · [^<]* · <span role="status" aria-label=Session status: Reconnecting to devbox…>Reconnecting to devbox…<\/span> </u);
-  assert.match(html, /Reconnecting to devbox — draft preserved\./u);
-  assert.equal(html.split("Connection to devbox lost — the session keeps running there. HUI reconnects automatically.").length, 2, "exactly one notice");
+  // The header's status label and text, then the one composer status: nowhere else.
+  assert.equal(html.split("Reconnecting to devbox…").length, 4, "one status in the header, one under the composer");
+  assert.match(html, /class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status" data-testid="composer-status"> <span class="agent-chat__composer-status-icon" aria-hidden="true"><span class="session-run-spinner"><\/span><\/span> <span class="agent-chat__composer-status-text">Reconnecting to devbox…<\/span> <\/div><\/div>/u);
+  assert.doesNotMatch(html, /transcript__note|draft preserved/u, "no second copy in the chat or under the composer");
   assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
   assert.doesNotMatch(html, /reconnect-session/u, "HUI reconnects by itself; there is nothing to click");
   assert.match(html, /\.value=keep this draft/u);
-  assert.match(html, /placeholder=Draft while HUI reconnects…/u);
+  assert.match(html, /placeholder=Send a message…/u);
   assert.equal(sendButton(html), "true", "sending waits for the worker");
 });
 
 test("a worker session HUI no longer retries says it is disconnected and offers Reconnect", async () => {
   const html = await renderWorkerSession("disconnected");
   assert.match(html, /· <span role="status" aria-label=Session status: Disconnected from devbox>Disconnected from devbox<\/span> </u);
-  assert.match(html, /Disconnected from devbox — draft preserved\./u);
-  assert.match(html, /Disconnected from devbox\. The session may still be running there\. <button type="button" class="btn btn--sm reconnect-session" @click=>Reconnect<\/button>/u);
+  assert.match(html, /<span class="agent-chat__composer-status-text">Disconnected from devbox<\/span> <button type="button" class="btn btn--sm reconnect-session" @click=>Reconnect<\/button>/u);
+  assert.doesNotMatch(html, /transcript__note|draft preserved|may still be running there/u);
   assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
   assert.match(html, /\.value=keep this draft/u);
   assert.equal(sendButton(html), "true");
+});
+
+test("a dropped stream says so once under the composer, and a stopped one keeps the runtime's own words", async () => {
+  const reconnecting = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status: "idle" }, connection: "reconnecting" });
+  assert.match(reconnecting, /<span class="agent-chat__composer-status-text">Reconnecting…<\/span>/u);
+  assert.doesNotMatch(reconnecting, /transcript__note|draft preserved/u);
+  const stopped = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status: "idle" }, connection: "stopped", connectionNote: "The runtime exited — this session is no longer streaming." });
+  assert.match(stopped, /<span class="agent-chat__composer-status-text">The runtime exited — this session is no longer streaming\.<\/span>/u);
+  assert.doesNotMatch(stopped, /session-run-spinner/u, "nothing is retrying, so nothing spins");
+});
+
+test("a saved offline copy says so once and offers no Reconnect it cannot honour", async () => {
+  const saved = await renderWorkerSession("disconnected", { connection: "saved", savedCopy: { savedAt: "2026-10-01T10:00:00.000Z", truncated: true } });
+  assert.match(saved, /<span class="agent-chat__composer-status-text">Saved conversation · draft preserved\. Send waits for a live connection\.<\/span>/u);
+  assert.doesNotMatch(saved, /reconnect-session|session-run-spinner/u, "nothing is retrying and there is no worker to reconnect");
+  assert.match(saved, /Only recent messages are saved\./u, "the reading copy still says how much of it was kept");
 });
 
 test("a reachable worker session shows neither notice, and a failed one keeps its error banner", async () => {
@@ -643,7 +658,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
 test("link previews and cards render on the latest user message and the latest reply only", async () => {
   const slack = "https://acme.slack.com/archives/C01234567/p1723456789012345";
   const html = await renderWorkerSession("idle", {
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {} },
+    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {}, toolIcons: {} },
     transcript: [
       { kind: "message", id: "u1", role: "user", text: slack },
       { kind: "message", id: "a1", role: "assistant", text: "https://x.com/openai/status/123456789" },
@@ -748,20 +763,51 @@ test("subagent and watcher cards blur nothing behind them, so a long chat keeps 
   for (const rule of cardRules) assert.doesNotMatch(rule, /backdrop-filter/u, rule.trim());
 });
 
-test("the goal sits above the composer with its status and the operator's controls", async () => {
+test("the goal sits above the composer with its status, its controls and a collapsed detail block", async () => {
   const goal = { objective: "get CI green on PR 1", status: "active", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 0 };
-  const active = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal } });
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal };
+  const active = await renderWorkerSession("idle", { session });
   assert.match(active, /class="agent-chat__goal-float"/u);
-  assert.match(active, /class="agent-chat__goal agent-chat__goal--active" data-expanded="false"/u);
+  assert.match(active, /class="agent-chat__goal agent-chat__goal--active" data-expanded=false/u);
   assert.match(active, /class="agent-chat__goal-label">Pursuing goal</u);
   assert.match(active, /class="agent-chat__goal-objective">get CI green on PR 1</u);
-  assert.match(active, /aria-label="Pause goal"/u);
-  assert.match(active, /aria-label="Clear goal"/u);
-  assert.doesNotMatch(active, /aria-label="Resume goal"/u);
-  const blocked = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal: { ...goal, status: "blocked", note: "waiting on review" } } });
-  assert.match(blocked, /agent-chat__goal--blocked" data-expanded="false" title=waiting on review>/u);
+  assert.match(active, /aria-label=Pause goal/u);
+  assert.match(active, /aria-label=Clear goal/u);
+  assert.match(active, /aria-label="Edit goal objective"/u);
+  assert.doesNotMatch(active, /aria-label=Resume goal/u);
+  assert.match(active, /class="agent-chat__goal-action agent-chat__goal-expand" aria-expanded=false aria-controls=goal-detail-s aria-label=Expand goal/u);
+  assert.match(active, /class="agent-chat__goal-detail" id=goal-detail-s data-testid="goal-detail" data-expanded=false \?inert=true>/u);
+  const blocked = await renderWorkerSession("idle", { session: { ...session, goal: { ...goal, status: "blocked", note: "waiting on review" } } });
+  assert.match(blocked, /class="agent-chat__goal agent-chat__goal--blocked" data-expanded=false title=waiting on review/u);
   assert.match(blocked, /class="agent-chat__goal-label">Goal blocked</u);
-  assert.match(blocked, /aria-label="Resume goal"/u);
+  assert.match(blocked, /aria-label=Resume goal/u);
+  assert.match(blocked, /class="agent-chat__goal-detail-note">waiting on review</u);
   const none = await renderWorkerSession("idle");
   assert.doesNotMatch(none, /agent-chat__goal-float/u);
+});
+
+test("an expanded goal reads the whole objective and edits it in place", async () => {
+  const objective = "Keep the release branch green through the migration, including the flaky integration suite.".repeat(3);
+  const goal = { objective, status: "paused", note: "Paused after 10 automatic turns.", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 10 };
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal };
+  const open = await renderWorkerSession("idle", { session, goalPanel: { expanded: true, editing: false, error: "" } });
+  assert.match(open, /data-expanded=true title=/u);
+  assert.match(open, /class="agent-chat__goal-detail" id=goal-detail-s data-testid="goal-detail" data-expanded=true \?inert=false>/u);
+  assert.ok(open.includes(`class="agent-chat__goal-detail-objective">${objective}<`), "the detail holds the whole objective");
+  assert.match(open, /class="agent-chat__goal-detail-note">Paused after 10 automatic turns\.</u);
+  assert.match(open, /class="agent-chat__goal-detail-duration">Set [^<]+</u);
+  assert.match(open, /aria-label=Collapse goal/u);
+  assert.doesNotMatch(open, /name="objective"/u, "the objective reads before it edits");
+
+  const editing = await renderWorkerSession("idle", { session, goalPanel: { expanded: true, editing: true, error: "Finish or stop the active turn before starting a goal." } });
+  assert.match(editing, /class="goal-edit"/u);
+  assert.match(editing, /name="objective" rows="3" aria-label="Goal objective"/u);
+  assert.match(editing, /class="goal-edit__error" role="alert">Finish or stop the active turn before starting a goal\.</u);
+  assert.match(editing, />Save goal</u);
+  assert.match(editing, />Cancel</u);
+  assert.doesNotMatch(editing, /agent-chat__goal-detail-objective/u, "the editor replaces the objective");
+
+  const busy = await renderWorkerSession("running", { session: { ...session, status: "running" }, streaming: true, goalPanel: { expanded: true, editing: true, error: "" } });
+  assert.match(busy, /Finish or stop the active turn before changing the objective\./u);
+  assert.match(busy, /<button type="submit" class="btn btn--sm primary" \?disabled=true>Save goal</u);
 });

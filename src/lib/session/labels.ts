@@ -23,7 +23,7 @@ export function sessionStatusText(status: SessionStatus): string {
 }
 
 export function sessionStatusLabel(session: Pick<SessionView, "status" | "worker">): string {
-  return unreachableHost(session)?.status ?? sessionStatusText(session.status);
+  return unreachableHost(session) ?? sessionStatusText(session.status);
 }
 
 export function sessionAccessibleName(session: SessionView, marks: readonly string[] = []): string {
@@ -56,7 +56,7 @@ export function sessionGlyph(session: SessionView): SessionGlyph {
     ? { label: "Waiting for your answer", tone: "question" as const }
     : session.status === "error"
       ? { label: "Session failed", tone: "error" as const }
-      : away ? { label: away.status, tone: "away" as const } : undefined;
+      : away ? { label: away, tone: "away" as const } : undefined;
   const background = session.status !== "running" && session.background === true && !attention;
   const busy = session.status === "running" || background;
   const unread = session.unread === true && !attention && !session.icon && !busy;

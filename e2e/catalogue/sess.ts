@@ -126,10 +126,10 @@ const cases: UseCase[] = [
   {
     id: "SESS-014",
     title: "Reconnect a session whose worker is unreachable",
-    behaviour: "While HUI retries a lost worker, the sidebar row and header read \"Reconnecting to <worker>…\" with a notice that the session keeps running there. When HUI is not retrying they read \"Disconnected from <worker>\" with Reconnect, which connects the worker; a failure is shown as a notice.",
+    behaviour: "When HUI is not retrying a lost worker, the header and one status line under the composer read \"Disconnected from <worker>\", the line offering Reconnect, which connects the worker. The composer keeps its draft while sending waits, and the chat itself carries no second copy of that status.",
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkersidconnect"],
     surfaces: ["route:POST /__hui/workers/:id/connect"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -414,11 +414,11 @@ const cases: UseCase[] = [
   {
     id: "SESS-043",
     title: "Follow a session's task progress without opening it",
-    behaviour: "A session's latest progress card shows in its row preview while another session or Home is open, and it updates in the background: clearing the plan removes it and a new plan brings it back. It survives a reload; after a gateway restart it returns once the session is reopened.",
+    behaviour: "A session's stored Task progress card shows in its row preview while another session or Home is open, and it updates there in the background as HUI rewrites it from the conversation. It survives a reload and a gateway restart, because HUI stores it with the session rather than projecting it from a runtime transcript.",
     spec: ["docs/api.md#session-list-progress"],
-    surfaces: ["tool:progress_card", "route:GET /__hui/sessions"],
+    surfaces: ["route:GET /__hui/sessions"],
     journeys: ["session-progress", "session-hovercard"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -610,6 +610,36 @@ const cases: UseCase[] = [
   },
   {
     id: "SESS-063",
+    title: "Run a group's sessions on a worker by default",
+    behaviour: "Group options, New session defaults offers Run on with Local and every remote worker alongside Working directory. A group on a worker has that machine check its directory (absolute or starting with ~/) and answer for its Git choices, which are kept like a local group's; choosing Local clears the worker. The saved machine survives a reload, and New Session opened from that group preselects it in Choose where the session runs with the group's directory filled in.",
+    spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisession-groupsname"],
+    surfaces: ["route:PATCH /__hui/session-groups/:name", "route:GET /__hui/workers", "page:new-session"],
+    journeys: ["session-groups"],
+    web: "required",
+    ios: "backlog",
+  },
+  {
+    id: "SESS-064",
+    title: "Make a new worktree on a worker",
+    behaviour: "With that worker chosen in Choose where the session runs, Project directory is a folder on it and the Checkout trigger reads that machine's branch. Choosing New worktree and starting makes the checkout under the worker's own worktrees folder on a new branch from the chosen ref, shows the same worktree progress, and the session runs there; the worker's copy of the folder is untouched.",
+    spec: ["SPEC.md#git-workspace-sessions", "SPEC.md#remote-workers", "docs/api.md#post-__huisessions", "docs/api.md#get-__huigit-checkoutcwddirectory"],
+    surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/git-checkout", "page:new-session"],
+    journeys: ["checkout-selector", "worktree-progress", "session-launch"],
+    web: "required",
+    ios: "backlog",
+  },
+  {
+    id: "SESS-065",
+    title: "Show a session while HUI retries its worker",
+    behaviour: "While HUI retries a lost worker, the sidebar row, the header and one status line under the composer read \"Reconnecting to <worker>…\" with a running mark, and the composer keeps its draft while sending waits. The chat itself carries no second copy of that status.",
+    spec: ["SPEC.md#remote-workers", "docs/api.md#get-__huiworkers"],
+    surfaces: ["route:GET /__hui/workers"],
+    journeys: ["session-lifecycle"],
+    web: "backlog",
+    ios: "backlog",
+  },
+  {
+    id: "SESS-066",
     title: "Rename a session without renaming PI's session file",
     behaviour: "Renaming a session changes only HUI's registry title: PI's own session file keeps its name and contents.",
     spec: ["docs/api.md#patch-__huisessionsid"],
@@ -619,7 +649,7 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "SESS-064",
+    id: "SESS-067",
     title: "Keep the archive toast while reading it",
     behaviour: "Left untouched, the archive toast stays for 15 seconds. While the pointer is over it or focus is inside it, it stays longer; leaving it starts the countdown again.",
     spec: ["SPEC.md#behaviour"],
@@ -629,7 +659,7 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "SESS-065",
+    id: "SESS-068",
     title: "Remove a session from HUI without deleting its transcripts or worktrees",
     behaviour: "Remove from HUI deletes only HUI's registry rows for the tree: PI transcripts and the sessions' Git worktrees stay on disk.",
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#delete-__huisessionsid"],
@@ -639,7 +669,7 @@ const cases: UseCase[] = [
     ios: "required",
   },
   {
-    id: "SESS-066",
+    id: "SESS-069",
     title: "See a removed session end in another tab",
     behaviour: "When a session is removed from HUI, another browser tab that shows it reports \"The runtime exited — this session is no longer streaming.\" without a reload.",
     spec: ["docs/api.md#delete-__huisessionsid"],
@@ -649,7 +679,7 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "SESS-067",
+    id: "SESS-070",
     title: "Keep unread marks across a gateway restart",
     behaviour: "A session marked unread, by a background run that settled or by hand, is still unread after the gateway restarts.",
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid"],
@@ -658,7 +688,7 @@ const cases: UseCase[] = [
     ios: "required",
   },
   {
-    id: "SESS-068",
+    id: "SESS-071",
     title: "Move a session to another group from the Kanban board",
     behaviour: "On the Kanban board with Custom groups lanes, dragging a card into another lane or the card's Options → Move to group moves the session to that group (OTHER clears it), together with any stage change, and announces \"Moved <title> to <GROUP>.\"",
     spec: ["SPEC.md#kanban", "docs/api.md#patch-__huisessionsid"],
@@ -668,7 +698,7 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "SESS-069",
+    id: "SESS-072",
     title: "See unavailable session-menu choices disabled",
     behaviour: "In a session's menu, Move to group shows the session's current group disabled, and Copy's Conversation as Markdown is disabled unless the session is the open one.",
     spec: ["SPEC.md#behaviour"],
@@ -678,7 +708,7 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "SESS-070",
+    id: "SESS-073",
     title: "Keep project groups closed to dropped sessions",
     behaviour: "With Group by Project, dropping a session row on a project group changes nothing: project groups follow the session's directory, so only custom groups accept a drop.",
     spec: ["SPEC.md#behaviour"],
@@ -687,7 +717,7 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "SESS-071",
+    id: "SESS-074",
     title: "Search sessions by pull request or Jira key",
     behaviour: "The Search sessions field also matches a session's linked pull requests (repository#number and title) and Jira work items (key and summary).",
     spec: ["SPEC.md#behaviour"],
@@ -696,7 +726,7 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "SESS-072",
+    id: "SESS-075",
     title: "See each sidebar row's status glyph",
     behaviour: "A running session's row shows the animated glyph, a waiting one's reads \"Waiting for your answer\", a failed one's \"Session failed\", and a parent whose watcher or subagent still works shows the animated \"Watcher or subagent running\" glyph; idle rows have no decoration.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisessionsevents"],
@@ -705,7 +735,7 @@ const cases: UseCase[] = [
     ios: "required",
   },
   {
-    id: "SESS-073",
+    id: "SESS-076",
     title: "See the session list load, come up empty or fail",
     behaviour: "The list shows \"Loading sessions…\", \"No sessions yet.\" when empty, and an error when the first load fails, retried when the gateway is back; a later refresh failure keeps the last list.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisessions"],

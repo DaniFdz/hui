@@ -18,10 +18,12 @@ Date: 2026-09-24. SDK: `@earendil-works/pi-coding-agent@0.87.1`.
 6. Send `E2E_SUBAGENTS_START`; observe the child and automatic completion.
    Send `E2E_SUBAGENTS_COORDINATE`; the parent lists sessions, reads child history,
    and receives a cross-session reply. All model traffic uses the local fixture.
-7. Send `E2E_PROGRESS`: a real HUI tool call updates the task progress card.
-8. Settings → Tools → select that session. Verify 10 active / 14 registered,
-   expand `progress_card` to inspect its JSON schema, and expand the effective
-   prompt. After a turn, it explicitly identifies the last-turn composition and
+7. Send `E2E_PROGRESS`: the card above the composer follows the turn. Since
+   2026-10-30 HUI's utility model writes it, not the agent (see
+   [session progress](session-progress.browser.md)).
+8. Settings → Tools → select that session. Verify the active and registered
+   counts, expand `show_widget` to inspect its JSON schema, and expand the
+   effective prompt. After a turn, it explicitly identifies the last-turn composition and
    includes HUI's active-tool guidance.
 9. Reload/restart the fixture gateway and inspect the now-cold session before
    opening it: Refresh does not start a worker. Open the chat to resume its

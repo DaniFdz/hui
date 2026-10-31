@@ -95,8 +95,10 @@ between turns.
 **Each request starts fresh** (spec section 7). OptChat's `beforeRequest` hook
 rebuilds Durable's request:
 
-1. every system message before the run's first input, in order: they carry the
-   prompt sections and the tool declarations;
+1. the current prompt and tool declarations, folded from every system message
+   before the run's first input (`getCurrentSystemMessage`): past system messages
+   are section and tool deltas, and replaying them all is where a long-lived
+   chat's request estimate grew past its context window;
 2. the run's first input, with the view as its first text block;
 3. every later message of the run verbatim: assistant steps with their thinking
    signatures, tool results, steering input, system deltas.

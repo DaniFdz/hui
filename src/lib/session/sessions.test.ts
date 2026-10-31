@@ -13,14 +13,8 @@ test("conversation Markdown preserves visible message, thinking, tool and error 
 
 test("a session on a machine HUI cannot reach reads as reconnecting or disconnected, by that machine's name", () => {
   const worker = { id: "w", name: "devbox" };
-  assert.deepEqual(unreachableHost({ status: "reconnecting", worker }), {
-    status: "Reconnecting to devbox…",
-    notice: "Connection to devbox lost — the session keeps running there. HUI reconnects automatically.",
-  });
-  assert.deepEqual(unreachableHost({ status: "disconnected", worker }), {
-    status: "Disconnected from devbox",
-    notice: "Disconnected from devbox. The session may still be running there.",
-  });
+  assert.equal(unreachableHost({ status: "reconnecting", worker }), "Reconnecting to devbox…");
+  assert.equal(unreachableHost({ status: "disconnected", worker }), "Disconnected from devbox");
   for (const status of ["idle", "running", "waiting", "starting", "error"] as const) {
     assert.equal(unreachableHost({ status, worker }), undefined, status);
   }

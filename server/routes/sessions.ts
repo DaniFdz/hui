@@ -16,11 +16,13 @@ import {
   createSessionGroup,
   deleteSessionGroup,
   readRegistry,
+  readSessionGroups,
   reorderSessionGroups,
   SessionNotFoundError,
   SessionRegistryError,
   updateSessionGroup,
 } from "../sessions/sessions.ts";
+import type { WorkerService } from "../workers.ts";
 import { type createSessionLifecycle, SESSION_GROUP_MAX, SESSION_TITLE_MAX, sessionText } from "../sessions/lifecycle.ts";
 import { type createSessionViews, pendingSessions } from "../sessions/views.ts";
 import { resolveWorkingDirectory } from "../git/working-directories.ts";
@@ -78,26 +80,44 @@ function sessionGroupOrder(body: Record<string, unknown>): string[] {
   });
 }
 
-export async function sessionGroupPatch(body: Record<string, unknown>): Promise<{
+export async function sessionGroupPatch(body: Record<string, unknown>, options: {
+  /** The worker the group runs on now; a patch that names none keeps it. */
+  currentWorker?: string;
+  hasWorker: (id: string) => Promise<boolean>;
+}): Promise<{
   label?: string;
   cwd?: string;
   workspaceMode?: "branch" | "worktree" | "";
   baseRef?: string;
+  worker?: string;
 }> {
-  const patch: { label?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string } = {};
+  const patch: { label?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string; worker?: string } = {};
   if ("name" in body) patch.label = sessionGroupName(body);
+  let worker = options.currentWorker;
+  if ("worker" in body) {
+    if (typeof body["worker"] !== "string") throw new Error("Worker must be a worker id.");
+    const value = body["worker"].trim();
+    if (value && !(await options.hasWorker(value))) throw new Error(`No worker named ${value}. See Settings → Workers.`);
+    patch.worker = value;
+    worker = value || undefined;
+  }
   if ("cwd" in body) {
     if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
     const entered = body["cwd"].trim();
-    const cwd = entered ? resolveWorkingDirectory(entered) : "";
+    // A worker's directory is on that machine: HUI can only check its shape here.
+    const cwd = entered && !worker ? resolveWorkingDirectory(entered) : entered;
     if (cwd) {
-      let info;
-      try {
-        info = await stat(cwd);
-      } catch {
-        throw new Error(`No such directory: ${cwd}`);
+      if (worker) {
+        if (!cwd.startsWith("/") && cwd !== "~" && !cwd.startsWith("~/")) throw new Error("A remote directory must be absolute or start with ~/.");
+      } else {
+        let info;
+        try {
+          info = await stat(cwd);
+        } catch {
+          throw new Error(`No such directory: ${cwd}`);
+        }
+        if (!info.isDirectory()) throw new Error(`Not a directory: ${cwd}`);
       }
-      if (!info.isDirectory()) throw new Error(`Not a directory: ${cwd}`);
     }
     patch.cwd = cwd;
   }
@@ -123,6 +143,7 @@ export function createSessionRoutes(deps: {
   lifecycle: Pick<ReturnType<typeof createSessionLifecycle>, "createSession" | "startWorktreeSession" | "deleteSession" | "updateSession">;
   views: Pick<ReturnType<typeof createSessionViews>, "toView">;
   bots: Pick<BotService, "botForSession">;
+  workers: Pick<WorkerService, "list">;
 }) {
   async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     const { method, path } = request;
@@ -161,9 +182,14 @@ export function createSessionRoutes(deps: {
         if (method === "DELETE") {
           await deleteSessionGroup(label);
         } else {
+          const body = (await request.json()) as Record<string, unknown>;
+          const current = (await readSessionGroups()).find((group) => group.label === label);
           await updateSessionGroup(
             label,
-            await sessionGroupPatch((await request.json()) as Record<string, unknown>),
+            await sessionGroupPatch(body, {
+              ...(current?.worker ? { currentWorker: current.worker } : {}),
+              hasWorker: async (id) => (await deps.workers.list()).some((worker) => worker.id === id),
+            }),
           );
         }
         return reply(SessionList, await sessionList.refresh());

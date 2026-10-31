@@ -11,6 +11,10 @@ const receipt = `http://127.0.0.1:12345/${'a'.repeat(64)}/`;
 const notificationUrl = (payload) => `hui-notification:${encodeURIComponent(typeof payload === 'string' ? payload : JSON.stringify(payload))}`;
 
 const leftBanner = (id) => Object.assign(new EventEmitter(), { id });
+const fakeDownload = (filename) => ({
+  getFilename: () => filename, saved: undefined, cancelled: false,
+  setSavePath(target) { this.saved = target; }, cancel() { this.cancelled = true; },
+});
 const bannerIds = async (t, ...chats) => {
   const writer = await shell(t);
   writer.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
@@ -35,10 +39,13 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
   const bounces = [];
   const nativeTheme = { shouldUseDarkColors: false, themeSource: 'dark' };
   const settingsRequests = [];
+  const saveDialogs = [];
+  let saveChoice = '';
+  const downloads = new EventEmitter();
   let onSettingsCompleted;
   let applicationMenu;
   app.setName = app.setPath = () => {};
-  app.getPath = () => '/fixture/home';
+  app.getPath = (name) => (name === 'downloads' ? '/fixture/downloads' : '/fixture/home');
   app.requestSingleInstanceLock = () => true;
   let ready = false;
   app.whenReady = () => new Promise((resolve) => setImmediate(() => { ready = true; resolve(); }));
@@ -74,7 +81,8 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
     constructor(options) { super(); this.options = options; notifications.push(this); }
     show() { this.shown = true; if (refusal) this.emit('failed', {}, refusal); else this.emit('show'); }
   }
-  const electron = { app, BrowserWindow: Window, Notification: NativeNotification, dialog: { showErrorBox: (...args) => errors.push(args) }, Menu: { buildFromTemplate: (menu) => menu, setApplicationMenu(menu) { applicationMenu = menu; } }, nativeTheme, shell: { openExternal: async () => {} } };
+  const dialog = { showErrorBox: (...args) => errors.push(args), showSaveDialogSync: (...args) => { saveDialogs.push(args); return saveChoice; } };
+  const electron = { app, BrowserWindow: Window, Notification: NativeNotification, dialog, session: { defaultSession: downloads }, Menu: { buildFromTemplate: (menu) => menu, setApplicationMenu(menu) { applicationMenu = menu; } }, nativeTheme, shell: { openExternal: async () => {} } };
   const modules = { electron, 'node:child_process': { execFile: (...args) => { startup.push('gateway'); launchArgs = args; complete = args[3]; } }, 'node:crypto': crypto, 'node:fs': {}, 'node:path': path, './policy.cjs': policy };
   t.onTestFinished(() => {});
   vm.runInNewContext(await readFile(new URL('./main.cjs', import.meta.url), 'utf8'), {
@@ -96,6 +104,9 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
     failNextLoad: (error) => { loadFailure = error; },
     refuseNotifications: (message) => { refusal = message; },
     bounces,
+    saveDialogs,
+    chooseSavePath: (target) => { saveChoice = target; },
+    download: (item) => downloads.emit('will-download', { preventDefault() {} }, item, {}),
     openUrl: (link) => app.emit('open-url', { preventDefault() {} }, link),
     startup,
     completeSettings: (method) => onSettingsCompleted.handler({ method }),
@@ -127,6 +138,56 @@ test('desktop starts or reuses the managed gateway and keeps window lifecycle in
   state.app.quit();
   assert.equal(state.quits(), 1);
   assert.deepEqual(state.errors, []);
+});
+
+test('a download asks where to save it, starting in Downloads, and saves to the chosen path', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.chooseSavePath('/fixture/chosen/report.md');
+  const item = fakeDownload('report.md');
+  state.download(item);
+  assert.equal(state.saveDialogs.length, 1);
+  const [[parent, options]] = state.saveDialogs;
+  assert.equal(parent, state.windows[0]);
+  assert.equal(options.defaultPath, '/fixture/downloads/report.md');
+  assert.equal(item.saved, '/fixture/chosen/report.md');
+  assert.equal(item.cancelled, false);
+  assert.deepEqual(state.errors, []);
+});
+
+test('cancelling the save dialog cancels the download', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  const item = fakeDownload('report.md');
+  state.download(item);
+  assert.equal(item.cancelled, true);
+  assert.equal(item.saved, undefined);
+});
+
+test('a download opens one save dialog, also after the window was closed and opened again', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.windows[0].emit('closed');
+  state.app.emit('activate');
+  state.chooseSavePath('/fixture/chosen/notes.txt');
+  state.download(fakeDownload('notes.txt'));
+  assert.equal(state.saveDialogs.length, 1);
+  assert.equal(state.saveDialogs[0][0], state.windows[1]);
+});
+
+test('a download that starts with no window open still asks where to save it', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.windows[0].emit('closed');
+  const item = fakeDownload('notes.txt');
+  state.download(item);
+  assert.equal(state.saveDialogs.length, 1);
+  assert.equal(state.saveDialogs[0].length, 1);
+  assert.equal(item.cancelled, true);
 });
 
 test('HUI asks macOS for notification permission at launch, not with the first alert', async (t) => {

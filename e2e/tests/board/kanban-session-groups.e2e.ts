@@ -1,8 +1,8 @@
-/** On the Kanban board grouped by custom lanes, a session card moves to another group by dragging it into a lane or through its Options → Move to group, together with any stage change, and the board announces where it went (SESS-068). */
+/** On the Kanban board grouped by custom lanes, a session card moves to another group by dragging it into a lane or through its Options → Move to group, together with any stage change, and the board announces where it went (SESS-071). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("dragging a session card into another custom lane moves it and its stage, and Move to group changes only the group", { tags: ["SESS-068"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("dragging a session card into another custom lane moves it and its stage, and Move to group changes only the group", { tags: ["SESS-071"], platforms: ["web"] }, async ({ screen, hui }) => {
   const board = screen.getByLabel("Kanban board");
   const cell = (lane: string, stage: string) => board.getByLabel(`${lane}, ${stage}`);
   const card = (title: string) => board.getByRole("listitem").filter({ hasText: title });

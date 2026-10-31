@@ -12,6 +12,7 @@ import { test } from "node:test";
 import { watch } from "node:fs";
 import { WebSocket } from "ws";
 import { releaseFixture } from "./fixtures/release-fixture.mjs";
+import { fixtureEnvironment } from "./visual-verification.mjs";
 
 const exec = promisify(execFile);
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -28,8 +29,8 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   const workspace = join(temporary, "workspace");
   await mkdir(agentDir); await mkdir(workspace);
   await writeFile(join(workspace, "fixture.txt"), "Installed SDK content\n");
-  const env = { ...process.env, XDG_CONFIG_HOME: join(temporary, "config"), XDG_DATA_HOME: join(temporary, "data"),
-    PI_CODING_AGENT_DIR: agentDir, HUI_PI_BACKEND: "sdk" };
+  const env = fixtureEnvironment(temporary, { ...process.env, HOME: temporary });
+  env.npm_config_cache = process.env.npm_config_cache ?? join(temporary, "npm-cache");
   const releases = await releaseFixture(temporary);
   Object.assign(env, releases.env);
   const cli = join(prefix, "lib/node_modules/hui/bin/hui.mjs");
@@ -98,7 +99,7 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
     const watcher = watch(temporary, (_event, name) => { if (name === "desktop-launch.json") { watcher.close(); resolve(); } });
   });
   await exec(process.execPath, [cli, "desktop"], {
-    cwd: temporary, env: { ...env, HOME: temporary, ELECTRON_OVERRIDE_DIST_PATH: desktopRuntime, HUI_DESKTOP_PROOF: desktopProof }, timeout: 10000,
+    cwd: temporary, env: { ...env, ELECTRON_OVERRIDE_DIST_PATH: desktopRuntime, HUI_DESKTOP_PROOF: desktopProof }, timeout: 10000,
   });
   await Promise.race([proofWritten, new Promise((_, reject) => setTimeout(() => reject(new Error("Desktop shell was not launched")), 10_000))]);
   const desktopLaunch = JSON.parse(await readFile(desktopProof, "utf8"));

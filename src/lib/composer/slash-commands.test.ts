@@ -62,6 +62,22 @@ test("search accepts skill names without their prefix and matches descriptions a
   assert.deepEqual(filterSlashCommands(commands, "absent"), []);
 });
 
+test("a name match outranks a description one, so an exact skill name is offered first", () => {
+  const commands: RuntimeCommand[] = [
+    { name: "view-pr", description: "Open the current branch's PR in the browser", source: "extension" },
+    { name: "skill:datadog-browser", description: "Open a page in the browser", source: "skill" },
+    { name: "skill:bro", description: "Restate the last message in plain human language", source: "skill" },
+  ];
+  const names = (query: string) => filterSlashCommands(composerCommands(commands), query).map((command) => command.name);
+  assert.deepEqual(names("bro"), ["skill:bro", "skill:datadog-browser", "view-pr"]);
+  assert.deepEqual(names("$bro"), ["skill:bro", "skill:datadog-browser", "view-pr"]);
+  assert.deepEqual(names("browser"), ["skill:datadog-browser", "view-pr"]);
+  assert.deepEqual(filterSlashCommands([
+    { name: "skill:archive", description: "Store finished work", source: "skill" },
+    { name: "skill:search", description: "Look something up", source: "skill" },
+  ], "s").map((command) => command.name), ["skill:search", "skill:archive"]);
+});
+
 test("completion preserves arguments without submitting", () => {
   const catalog: RuntimeCommand[] = [{ name: "skill:testing", source: "skill", description: "" }, { name: "review", source: "prompt", description: "" }];
   assert.deepEqual(completeCommandReference("/test", catalog[0]!, catalog), { text: "$testing ", caret: 9 });

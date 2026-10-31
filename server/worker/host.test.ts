@@ -314,3 +314,47 @@ test("a session's secret request is answered on the gateway, written here, and i
   await assert.rejects(pending, /cancelled/u);
   if (!held!.aborted) await new Promise((resolve) => held!.addEventListener("abort", resolve, { once: true }));
 });
+
+test("Git operations run on the worker, and a new worktree lands in its own folder, not the mirrored config", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const repo = join(root, "git-project");
+  await mkdir(repo, { recursive: true });
+  const git = (...args: string[]) => execFileSync("git", ["-C", repo, "-c", "user.email=e2e@example.test", "-c", "user.name=E2E", ...args]);
+  git("init", "-b", "main");
+  await writeFile(join(repo, "notes.txt"), "worker git\n");
+  git("add", ".");
+  git("commit", "-m", "Fixture commit");
+  git("branch", "release/1.0");
+
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  const frames: Frame[] = [];
+  peer.onFrame((frame) => frames.push(frame));
+  try {
+    const { checkout } = await peer.request<{ checkout: { available: boolean; headBranch: string; defaultBranch: string; branches: string[] } }>(
+      "git.checkout", { cwd: repo },
+    );
+    assert.deepEqual(
+      { available: checkout.available, headBranch: checkout.headBranch },
+      { available: true, headBranch: "main" },
+      "the checkout answers for the worker's own folder, which the gateway never sees",
+    );
+    assert.ok(checkout.branches.includes("release/1.0"));
+
+    const created = await peer.request<{ cwd: string; path: string; branch: string }>("git.worktree.add", {
+      token: "t1", cwd: repo, title: "Remote worktree", branchPrefix: "dani.fernandez/", baseRef: "release/1.0",
+    });
+    assert.equal(created.branch, "dani.fernandez/remote-worktree");
+    assert.equal(created.cwd, created.path);
+    const dataDir = join(root, "data", "hui-worker");
+    assert.ok(created.path.startsWith(join(dataDir, "worktrees")), created.path);
+    assert.equal(await readFile(join(created.path, "notes.txt"), "utf8"), "worker git\n", "the worktree is a real checkout");
+    assert.ok(frames.some((frame) => frame.t === "git.progress" && frame["token"] === "t1"), "progress is relayed for the launching row");
+
+    await peer.request("git.worktree.remove", { repository: repo, path: created.path, branch: created.branch });
+    assert.equal(existsSync(created.path), false, "the rollback removes the checkout it made");
+    assert.throws(() => git("rev-parse", "--verify", "--quiet", `refs/heads/${created.branch}`), "and its branch");
+  } finally {
+    socket.destroy();
+  }
+});

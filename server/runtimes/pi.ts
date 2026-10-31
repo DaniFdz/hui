@@ -1347,7 +1347,6 @@ async function startPi(options: {
   const huiSettings = options.safeProbe ? undefined : await readHuiSettings();
   const browserTool = !options.safeProbe && (hostLaunch ? hostLaunch.browserTool : huiSettings?.browser.enabled !== false);
   if (!options.safeProbe) {
-    args.push("--extension", fileURLToPath(new URL("./progress-card-extension.mjs", import.meta.url)));
     args.push("--extension", fileURLToPath(new URL("./agent-tools-extension.mjs", import.meta.url)));
     args.push("--extension", fileURLToPath(new URL("./show-widget-extension.mjs", import.meta.url)));
     if (browserTool) args.push("--extension", fileURLToPath(new URL("./browser-tool-extension.mjs", import.meta.url)));

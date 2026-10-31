@@ -105,6 +105,16 @@ Stop only the owned provider, gateway, browser and their fixture PI processes.
 Retain disposable data for inspection; no operator sessions, auth or model files
 are involved. The actual provider's credentials/access were not tested.
 
+## Models settings without PI configuration panels
+
+Use the default isolated visual-verification launcher for this check. Navigate
+through Settings → Models at 1440×900 and 390×844. PI defaults, Cycling models
+and PI credential sources must be absent. Providers, HUI model routing,
+Subagent routes and Calls stay available. Open Available catalog and check both
+fixture models and their limits, then reload and check the three sections remain
+absent. The shared regression is `e2e/tests/set/model-catalog.e2e.ts` (SET-050).
+This check does not exercise configuration failures or diagnostics (SET-080).
+
 ## Checks
 
 - `npm test -- server/runtimes/pi-models.test.ts server/runtimes/pi.test.ts server/pi/config.test.ts src/lib/model-selection.test.ts`: 34 passed.

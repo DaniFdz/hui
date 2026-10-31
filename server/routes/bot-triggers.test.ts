@@ -161,10 +161,9 @@ async function holdOperatorTurn(): Promise<void> {
   await control("wait-replay-ready");
 }
 
-/** Here a message to a busy bot waits in HUI's queue; the operator steers the one starting with `start` into the turn. */
+/** Here a message to a busy bot joins its running turn as steering, before the turn's next model call. */
 async function steerQueued(start: string): Promise<void> {
-  const item = await until(`"${start}" in HUI's queue`, async () => liveSessions.snapshot(ada.sessionId).queue.items?.find((each) => each.text.startsWith(start)));
-  assert.equal((await call(`/__hui/sessions/${ada.sessionId}/queue`, "POST", { operation: "steer", itemId: item.id })).status, 200);
+  await until(`"${start}" in the running turn's steering queue`, async () => liveSessions.snapshot(ada.sessionId).queue.steering.find((text) => text.startsWith(start)));
 }
 
 const soulOf = async () => (await call(`/__hui/bots/${ada.id}/soul`)).body["soul"];
@@ -200,7 +199,7 @@ test("a listener trigger: another program's reports reach the bot through the ga
   const refused = await call(`/__hui/bots/${ada.id}/triggers`, "POST", { name: "x", source: "github", filter: { repos: ["acme/widgets"], events: ["pr_opened"] } });
   assert.equal(refused.status, 400);
   assert.match(String(refused.body["error"]), /^source must be listener/u);
-  const made = await call(`/__hui/bots/${ada.handle}/triggers`, "POST", { name: "Pings", prompt: "E2E_LISTENER_PROMPT review it", filter: { match: { field: "fields.channel", op: "equals", value: "G01REVIEWS" } }, cooldownSeconds: 0 });
+  const made = await call(`/__hui/bots/${ada.handle}/triggers`, "POST", { name: "Pings", delivery: "followUp", prompt: "E2E_LISTENER_PROMPT review it", filter: { match: { field: "fields.channel", op: "equals", value: "G01REVIEWS" } }, cooldownSeconds: 0 });
   assert.equal(made.status, 201, JSON.stringify(made.body));
   expectSchema(BotTriggerCreated, made.body);
   const { hook: token, trigger } = made.body;

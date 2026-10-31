@@ -108,6 +108,7 @@ test("normalizes OpenClaw-compatible chat preferences", () => {
     githubEmbeds: false,
     datadogEmbeds: false,
     toolMarks: {},
+    toolIcons: {},
   });
   assert.deepEqual(normalizeSettings({ chat: {
     messageWidth: "huge",

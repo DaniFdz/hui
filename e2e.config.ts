@@ -12,10 +12,10 @@ if (process.env.E2E_IOS_DEVICE) process.env.AGENT_DEVICE_STATE_DIR ??= join(home
 
 const branch = execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim() || "HEAD";
 
-const launcher = (target: string, port: string) => ({
+const launcher = (target: string, port: string, production: boolean) => ({
   executable: "node",
-  args: ["e2e/visual-verification.mjs", "launch", "--branch", branch, "--port", port, "--receipt-dir", ".e2e/hui", "--fast-fixture"],
-  startupTimeout: 120_000,
+  args: ["e2e/visual-verification.mjs", "launch", "--branch", branch, ...(production ? ["--production"] : []), "--port", port, "--receipt-dir", ".e2e/hui", "--fast-fixture"],
+  startupTimeout: 300_000,
   log: `.e2e/logs/hui-${target}.log`,
 });
 
@@ -31,7 +31,7 @@ export default {
     {
       name: "web",
       engine: web({ viewport: { width: 1440, height: 900 } }),
-      app: { url: "http://127.0.0.1:0", command: launcher("web", "{port}") },
+      app: { url: "http://127.0.0.1:0", command: launcher("web", "{port}", true) },
     },
     {
       name: "ios",
@@ -39,7 +39,7 @@ export default {
       app: {
         bundleId: "dev.hui.ios",
         readyUrl: `http://127.0.0.1:${IOS_PORT}/`,
-        command: launcher("ios", String(IOS_PORT)),
+        command: launcher("ios", String(IOS_PORT), false),
       },
     },
   ],

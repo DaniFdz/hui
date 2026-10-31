@@ -21,10 +21,10 @@ fixed endpoints, response bounds and failure redaction), and
    Claude. OpenAI groups ChatGPT account and API key; Claude groups Pro/Max
    and API key. Escape closes the modal and restores focus.
 3. Choose OpenCode Go → API key. Submit the synthetic key in the password input.
-   The modal closes and an added card appears; quota loads independently and
+   The modal closes, Provider configuration opens and the added card appears; quota loads independently and
    truthfully reports unsupported. Models remain collapsed until opened.
    Open Models, select two entries, inspect context/output limits and save.
-4. Reload and reopen Models. Both selections persist. Search, change a selection
+4. Reload, open Provider configuration, then its Models dropdown. Both selections persist. Search, change a selection
    and cancel: reopening must retain the saved selection. Add Claude → API key,
    cancel the pending sign-in and close the modal: no Claude card is added.
 5. At 390×844, repeat add-dialog, model filtering and saving with the keyboard.
@@ -42,6 +42,20 @@ fixed endpoints, response bounds and failure redaction), and
    affected provider view at 1440×900 and 390×844, outside Git, from the committed
    PR HEAD; deliver through GitHub attachments and chat.
 
+## Collapsible provider configuration
+
+SET-081 owns the parent disclosure. Use `--quota-fixture` for the configured
+layout: Provider configuration shows four providers and starts closed. Add
+provider, status messages and HUI model routing remain outside it. Open the
+parent with Enter and inspect the unchanged accounts, quotas and model pickers.
+Open a Models dropdown, change its search and unsaved selections, fold the parent
+with Space, then reopen it. The dropdown and draft must stay intact, including
+after Refresh limits. From the folded state, Add provider can open and cancel
+without opening the group. A successful synthetic Claude API-key connection in
+the default fixture opens it automatically. Reload closes the parent again;
+with no configured connections there is no empty disclosure. Check desktop and
+390×844, plus the Add provider dialog at 844×390. Do not use real credentials.
+
 ## Boundaries of this proof
 
 The synthetic key proves UI/auth persistence, not external account validity.
@@ -57,7 +71,7 @@ Use synthetic credentials only. Settings → Models → Add provider → OpenCod
 name the first account Personal and submit a synthetic API key. Add account on
 its provider card, name it Backup and submit a different synthetic key. Verify
 both named accounts are retained, Personal is Next to use and Backup is Standby.
-Drag Backup by its grip above Personal, drop, reload and verify the order persists. Expand the shared model
+Drag Backup by its grip above Personal, drop, reload, open Provider configuration and verify the order persists. Expand the shared model
 dropdown, select two models and save. At 390×844, drag Personal above Backup and remove
 Backup using the confirmation: Personal and both selected models must remain.
 Re-add Backup for evidence. Exercise Add account → API key → Cancel sign-in and
@@ -94,8 +108,9 @@ test-only Vite entrypoint; the production parser and UI handle synthetic upstrea
 payloads. Other provider routes stay real, including unsupported API-key usage.
 No external credentials, OAuth, billing verification or provider requests occur.
 
-1. Navigate Settings → Models. Limits are visible immediately, not behind a
-   disclosure. Claude shows 5 hours, weekly, Sonnet weekly and monthly extra usage;
+1. Navigate Settings → Models and open Provider configuration. Within each
+   account, limits are visible without another disclosure. Claude shows 5 hours,
+   weekly, Sonnet weekly and monthly extra usage;
    absent plan/billing/reset data is explicitly not reported.
 2. OpenAI ChatGPT Personal shows plan plus, usage Available and five meters:
    5 hours, weekly, code review weekly, Spark 5 hours and monthly credits. Backup

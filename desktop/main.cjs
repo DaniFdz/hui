@@ -1,8 +1,9 @@
 /** Electron window shell around the gateway's web UI. It starts or reuses the gateway through the installed CLI, shows
  * one sandboxed window confined to that origin and hands every other link to the system browser. Closing or quitting
  * the window never stops the gateway or its runs. Native notification clicks open their originating chat, and so does
- * a `hui://sessions/<id>` link, which is what the web app's `?open=app` hand-off and any launcher send. */
-const { app, BrowserWindow, dialog, Menu, nativeTheme, shell, Notification } = require('electron');
+ * a `hui://sessions/<id>` link, which is what the web app's `?open=app` hand-off and any launcher send. Every download
+ * asks where to save it, because Electron would otherwise save it straight into Downloads. */
+const { app, BrowserWindow, dialog, Menu, nativeTheme, session, shell, Notification } = require('electron');
 const { execFile } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { readFileSync } = require('node:fs');
@@ -161,6 +162,12 @@ async function start() {
   // Closing a window must not interrupt agent runs. Quit is explicit.
   app.on('window-all-closed', () => {});
   await app.whenReady();
+  session.defaultSession.on('will-download', (event, item) => {
+    const options = { defaultPath: path.join(app.getPath('downloads'), item.getFilename()) };
+    const target = window ? dialog.showSaveDialogSync(window, options) : dialog.showSaveDialogSync(options);
+    if (target) item.setSavePath(target);
+    else item.cancel();
+  });
   // Electron asks macOS for notification permission when its first notification call creates the presenter, and an
   // alert sent while that prompt is open is never shown, so ask at launch:
   // https://github.com/electron/electron/blob/v44.4.5/shell/browser/notifications/mac/notification_presenter_mac.mm

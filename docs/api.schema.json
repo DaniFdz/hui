@@ -144,6 +144,40 @@
         }
       }
     },
+    "AppOpenError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "AppOpenRequest": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "AppOpenResponse": {
+      "type": "object",
+      "required": [
+        "opened"
+      ],
+      "properties": {
+        "opened": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
     "AutomationCancelResponse": {
       "type": "object",
       "required": [
@@ -8781,6 +8815,9 @@
         "baseRef": {
           "type": "string"
         },
+        "worker": {
+          "type": "string"
+        },
         "sessions": {
           "type": "array",
           "items": {
@@ -8863,6 +8900,9 @@
           ]
         },
         "baseRef": {
+          "type": "string"
+        },
+        "worker": {
           "type": "string"
         },
         "ids": {
@@ -9440,6 +9480,9 @@
         },
         "title": {
           "type": "string"
+        },
+        "progress": {
+          "$ref": "#/$defs/ProgressCard"
         }
       }
     },
@@ -9581,6 +9624,23 @@
                   "type": "boolean"
                 }
               }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "heartbeat"
+            },
+            "data": {
+              "type": "object",
+              "properties": {}
             }
           }
         },
@@ -10106,7 +10166,8 @@
             "sendShortcut",
             "githubEmbeds",
             "datadogEmbeds",
-            "toolMarks"
+            "toolMarks",
+            "toolIcons"
           ],
           "properties": {
             "messageWidth": {
@@ -10147,6 +10208,14 @@
               "type": "boolean"
             },
             "toolMarks": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "type": "string"
+                }
+              }
+            },
+            "toolIcons": {
               "type": "object",
               "patternProperties": {
                 "^.*$": {
@@ -13555,6 +13624,11 @@
       "ApiSchemaReference",
       "ApiSchemaRoute"
     ],
+    "app": [
+      "AppOpenError",
+      "AppOpenRequest",
+      "AppOpenResponse"
+    ],
     "power": [
       "PowerError",
       "PowerRequest",
@@ -14030,6 +14104,16 @@
       "path": "/__hui/api-schema",
       "response": {
         "$ref": "#/$defs/ApiSchemaDocument"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/app/open",
+      "request": {
+        "$ref": "#/$defs/AppOpenRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/AppOpenResponse"
       }
     },
     {

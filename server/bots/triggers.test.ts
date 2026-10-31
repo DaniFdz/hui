@@ -58,12 +58,14 @@ async function fixture(t: TestContext, options: { perHour?: number; file?: strin
   const bots: BotRecord[] = [bot("ada"), bot("bob")];
   /** The pull requests deliveries read, and the block each reads as. */
   const prs = { read: [] as string[][], block: (url: string) => `PR BLOCK for ${url}` };
+  const modes: Array<"followUp" | "steer" | undefined> = [];
   const service = new BotTriggerService({
     store: triggerStore(file),
     bots: {
       list: async () => bots,
-      deliver: async (botId, text) => {
+      deliver: async (botId, text, delivery) => {
         if (flags.delivering) await flags.delivering;
+        modes.push(delivery);
         delivered.push({ botId, text });
         return { status: "sent" };
       },
@@ -94,7 +96,7 @@ async function fixture(t: TestContext, options: { perHour?: number; file?: strin
   const settled = (count: number) => waitFor(async () => (await runs()).length >= count, `${count} runs`);
   /** The trigger's listener reports `events` to its URL. */
   const send = (token: string, events: unknown[], extra: Record<string, unknown> = {}) => service.hook(token, report({ events, ...extra }));
-  return { service, clock, scheduled, delivered, flags, bots, prs, advance, runs, settled, send, file };
+  return { service, clock, scheduled, delivered, modes, flags, bots, prs, advance, runs, settled, send, file };
 }
 
 /** A listener trigger, as the operator adds it. */
@@ -110,10 +112,11 @@ const listened = (id: string, extra: Record<string, unknown> = {}) => ({
 test("triggers are created, listed, changed and removed per bot, with their input checked", async (t) => {
   const f = await fixture(t);
   await f.service.start();
-  const created = await f.service.create("ada", reviews({ delivery: "steer" }));
-  assert.equal((await f.service.list("ada")).triggers[0]?.delivery, "steer", "compact delivery survives a store read");
+  const created = await f.service.create("ada", reviews());
+  assert.equal((await f.service.list("ada")).triggers[0]?.delivery, "steer", "a trigger added without a choice steers, and that survives a store read");
   await f.send(created.hook.token, [listened("compact")]);
   await f.settled(1);
+  assert.deepEqual(f.modes, ["steer"], "the delivery reaches the bot as steering");
   assert.deepEqual(f.prs.read, [], "compact notices do not make automatic GitHub reads");
   assert.ok(f.delivered[0]?.text.split("\n").some((line) => line === PR42), "the complete PR URL is retained on its own line");
   assert.ok(!f.delivered[0]?.text.includes("From Rodrigo"), "raw listener details are omitted");
@@ -159,7 +162,7 @@ test("a bot has at most twenty triggers", async (t) => {
 test("events inside the cooldown wait and arrive as one delivery that lists them, reading a pull request they share once", async (t) => {
   const f = await fixture(t);
   await f.service.start();
-  const { hook } = await f.service.create("ada", reviews());
+  const { hook } = await f.service.create("ada", reviews({ delivery: "followUp" }));
   f.clock.now = START + 30_000;
   assert.deepEqual(await f.send(hook.token, [listened("e1")]), { status: 202, body: { status: "fired" } });
   await f.settled(1);
@@ -219,7 +222,7 @@ test("events that waited when their bot was archived are skipped when they come 
 test("what waits for a cooldown survives a restart, its details and links with it, and goes out when it ends", async (t) => {
   const first = await fixture(t);
   await first.service.start();
-  const { hook } = await first.service.create("ada", reviews());
+  const { hook } = await first.service.create("ada", reviews({ delivery: "followUp" }));
   first.clock.now = START + 30_000;
   await first.send(hook.token, [listened("e1"), listened("e2", { details: `${"m".repeat(3_000)}\nthe rest` })]);
   await first.settled(1);
@@ -360,7 +363,7 @@ test("a delivery's text: the marker, the prompt, where it comes from, the events
 test("one delivery reads six pull requests at most, and names the rest", async (t) => {
   const f = await fixture(t);
   await f.service.start();
-  const { hook } = await f.service.create("ada", reviews({ cooldownSeconds: 0 }));
+  const { hook } = await f.service.create("ada", reviews({ delivery: "followUp", cooldownSeconds: 0 }));
   f.clock.now = START + 30_000;
   const links = (from: number) => [0, 1, 2].map((index) => `https://github.com/acme/widgets/pull/${from + index}`);
   await f.send(hook.token, [listened("a", { links: links(1) }), listened("b", { links: links(4) }), listened("c", { links: links(7) })], { catchUp: true });
@@ -376,7 +379,7 @@ test("one delivery reads six pull requests at most, and names the rest", async (
 test("a listener trigger: each event id wakes its bot once, across a restart too, never one from before the trigger; a report it can't read says what to fix", async (t) => {
   const f = await fixture(t);
   await f.service.start();
-  const { hook, trigger } = await f.service.create("ada", { name: "Reviews", source: "listener", filter: { prLinks: true }, prompt: "Review these.", cooldownSeconds: 0 });
+  const { hook, trigger } = await f.service.create("ada", { name: "Reviews", source: "listener", delivery: "followUp", filter: { prLinks: true }, prompt: "Review these.", cooldownSeconds: 0 });
   assert.equal(hook.path, `/__hui/hooks/${hook.token}`);
   f.clock.now = START + 30_000;
   assert.deepEqual(await f.service.hook(hook.token, report({ events: [listened("one")] })), { status: 202, body: { status: "fired" } });

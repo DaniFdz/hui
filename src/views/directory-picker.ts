@@ -78,6 +78,9 @@ export type DirectoryPickerProps = {
   externalLabel?: boolean;
   /** Shown while empty; the launch form's empty value means the home directory. */
   placeholder?: string;
+  /** A field inside a dialog opens its list as the user types, never on focus alone: a list that appears when the
+   * dialog opens moves the controls under the pointer and eats the first click. */
+  openOnFocus?: boolean;
   /** A bot's directory cannot move while it works. */
   disabled?: boolean;
 };
@@ -90,7 +93,7 @@ export function renderDirectoryPicker(props: DirectoryPickerProps) {
     <input id=${props.id} name="cwd" class=${props.inputClass} type="text" role="combobox" ?required=${props.required} ?disabled=${props.disabled} spellcheck="false" autocomplete="off"
       aria-autocomplete="list" aria-controls=${`${props.id}-options`} aria-expanded="false" placeholder=${props.placeholder ?? "~/"}
       .value=${props.value}
-      @focus=${(event: FocusEvent) => openDirectorySuggestions(event, props.onInput)}
+      @focus=${(event: FocusEvent) => { if (props.openOnFocus !== false) openDirectorySuggestions(event, props.onInput); }}
       @blur=${closeDirectorySuggestions}
       @input=${(event: InputEvent) => openDirectorySuggestions(event, props.onInput)}
       @keydown=${onDirectoryKeydown} />

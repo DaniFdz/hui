@@ -38,6 +38,7 @@ import { searchTranscripts } from "../runtimes/transcript-search.ts";
 import type { RuntimeSession, TranscriptEntry } from "../runtimes/types.ts";
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../git/working-directories.ts";
+import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, removeSessionWorktree } from "../git/worktrees.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
 import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE, hostBots } from "./host-bots.ts";
 import { GATEWAY_ONLY_TOOLS } from "./gateway-tools.ts";
@@ -248,6 +249,36 @@ export class WorkerHost {
       Array.isArray(params["sessionFiles"]) ? params["sessionFiles"].filter((file): file is string => typeof file === "string") : [],
       String(params["q"] ?? ""), signal).then((hits) => ({ hits })));
     peer.handle("directories", async (params) => ({ directories: await completeWorkingDirectories(String(params["q"] ?? "~/")) }));
+    // Git on this machine: New Session's checkout picker, its new worktrees and their rollback.
+    peer.handle("git.checkout", async (params) => ({ checkout: await inspectGitCheckout(resolveWorkingDirectory(String(params["cwd"] ?? "~/"))) }));
+    peer.handle("git.checkout-ref", async (params) => {
+      await checkoutSessionRef(resolveWorkingDirectory(String(params["cwd"] ?? "~")), String(params["ref"] ?? ""));
+      return { ok: true };
+    });
+    peer.handle("git.worktree.add", async (params) => {
+      const token = String(params["token"] ?? "");
+      const branchName = typeof params["branchName"] === "string" && params["branchName"].trim() ? params["branchName"].trim() : undefined;
+      const baseRef = typeof params["baseRef"] === "string" ? params["baseRef"] : undefined;
+      const created = await createSessionWorktree({
+        sourceDirectory: resolveWorkingDirectory(String(params["cwd"] ?? "~")),
+        title: String(params["title"] ?? ""),
+        ...(branchName ? { branchName } : {}),
+        ...(baseRef ? { baseRef } : {}),
+        branchPrefix: String(params["branchPrefix"] ?? ""),
+        // Its own folder, never the mirror of the gateway's config, which every sync replaces.
+        root: join(this.paths.dataDir, "worktrees"),
+        ...(token ? { onProgress: (progress) => { peer.send({ t: "git.progress", token, progress }); } } : {}),
+      });
+      return { cwd: created.cwd, path: created.path, branch: created.branch };
+    });
+    peer.handle("git.worktree.remove", async (params) => {
+      await removeSessionWorktree({
+        repository: resolveWorkingDirectory(String(params["repository"] ?? "~/")),
+        path: String(params["path"] ?? ""),
+        branch: String(params["branch"] ?? ""),
+      });
+      return { ok: true };
+    });
     // Bots whose chats run here: their conversations and memories in this host's store.
     for (const [op, handler] of Object.entries(this.#bots.handlers(peer))) peer.handle(op, handler);
     peer.handle("put-file", (params) => this.#putFile(params));

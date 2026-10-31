@@ -12,6 +12,8 @@ import { applySessionListUpdate } from "../api/session-list.ts";
 import type { SessionListUpdate } from "../api/schema/sessions.ts";
 import { deleteSession, loadSessions, renameSession, searchSessionTranscripts, subscribeSessionStatuses, type SessionGroup, type SessionStatus, type SessionStatusUpdate, type SessionView } from "../api/sessions.ts";
 import { loadWorktrees, removeWorktrees } from "../api/worktrees.ts";
+import { isGatewayUnavailable } from "../api/request.ts";
+import { forgetConversation, reconcileSavedConversations, savedConversationGroups } from "../lib/session/offline-store.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import { mergeSessionStatuses } from "../lib/session/ui-state.ts";
 import { sessionTreeIds } from "../lib/session/tree.ts";
@@ -125,18 +127,35 @@ export class SessionsController {
       this.loading = true;
       this.#host.requestUpdate();
     }
+    const pending = loadSessions();
+    let settled = false;
+    const saved = savedConversationGroups();
+    const showSaved = (groups: SessionGroup[]) => {
+      if (this.revision || this.groups.length || !groups.length) return;
+      this.groups = groups;
+      this.loading = false;
+      this.#host.requestUpdate();
+    };
+    void saved.then((groups) => { if (!settled) showSaved(groups); });
     try {
-      const { revision, groups } = await loadSessions();
+      const { revision, groups } = await pending;
+      settled = true;
       // The status stream may have delivered newer changes while this loaded.
       this.receive(revision, this.#hasStatusSnapshot ? mergeSessionStatuses(groups, this.statuses) : groups);
       this.error = "";
     } catch (error) {
+      settled = true;
+      if (isGatewayUnavailable(error)) {
+        const groups = await saved;
+        if (!this.revision) this.groups = [];
+        showSaved(groups);
+      } else if (!this.revision) {
+        this.groups = [];
+      }
       const message = error instanceof Error ? error.message : "Could not read sessions.";
       if (this.groups.length === 0) {
         this.error = message;
-      } else {
-        // A refresh failure must not replace a usable registry with a full
-        // sidebar error. Preserve the last confirmed list and report inline.
+      } else if (this.revision) {
         this.#deps.reportError(error, message);
       }
     } finally {
@@ -152,6 +171,7 @@ export class SessionsController {
     if (revision < this.revision) return;
     this.revision = revision;
     this.groups = groups;
+    void reconcileSavedConversations(groups);
     this.#host.requestUpdate();
     this.#deps.listReceived(new Set(groups.flatMap((group) => group.sessions.map(({ id }) => id))));
   }
@@ -428,7 +448,7 @@ export class SessionsController {
         if (deleted.has(id)) continue; // Already gone with its parent.
         try {
           await deleteSession(id);
-          for (const member of sessionTreeIds(all, id)) deleted.add(member);
+          for (const member of sessionTreeIds(all, id)) { deleted.add(member); void forgetConversation(member); }
         } catch (error) {
           failures.push(error instanceof Error ? error.message : `Could not delete ${id}.`);
         }
@@ -508,7 +528,7 @@ export class SessionsController {
   #applyListChange = (update: SessionListUpdate) => {
     if (update.revision <= this.revision) return;
     // Status events can overtake a list built a moment earlier.
-    this.receive(update.revision, mergeSessionStatuses(applySessionListUpdate(this.groups, update), this.statuses));
+    this.receive(update.revision, mergeSessionStatuses(applySessionListUpdate(this.revision ? this.groups : [], update), this.statuses));
     this.loading = false;
     this.error = "";
     this.#deps.listSettled();

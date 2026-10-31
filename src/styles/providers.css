@@ -44,9 +44,10 @@
 .hui-provider-choice > span:not([aria-hidden]) { flex: 1; min-width: 0; }
 .hui-provider-choice strong { display: block; font-size: 14px; }
 .hui-provider-choice small { display: block; color: var(--muted); font-size: 12px; line-height: 1.6; margin-top: 4px; }
-.hui-provider-choice:focus-visible, .hui-provider-picker > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.hui-provider-picker { border: 1px solid var(--border); border-radius: 8px; }
-.hui-provider-picker > summary { cursor: pointer; padding: 12px; font-size: 13px; }
+.hui-provider-choice:focus-visible, .hui-provider-picker > summary:focus-visible, .hui-provider-configuration > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.hui-provider-picker, .hui-provider-configuration { border: 1px solid var(--border); border-radius: 8px; }
+.hui-provider-picker > summary, .hui-provider-configuration > summary { cursor: pointer; padding: 12px; font-size: 13px; }
+.hui-provider-configuration > .hui-provider-cards { padding: 12px; border-top: 1px solid var(--border); }
 .hui-provider-picker > summary span { float: right; color: var(--muted); }
 .hui-provider-picker-panel { padding: 0 12px; border-top: 1px solid var(--border); }
 .hui-provider-picker-panel .hui-provider-models { max-height: min(300px, 40dvh); }

@@ -1,4 +1,4 @@
-/** Remove from HUI deletes only the tree's registry rows: the PI transcripts and the session's Git worktree stay on disk (SESS-065). */
+/** Remove from HUI deletes only the tree's registry rows: the PI transcripts and the session's Git worktree stay on disk (SESS-068). */
 import { stat } from "node:fs/promises";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
@@ -6,7 +6,7 @@ import { test } from "../../fixtures/hui.ts";
 type Session = { id: string; title: string; cwd: string; creating?: unknown };
 type Listed = { groups: { sessions: Session[] }[] };
 
-test("Remove from HUI deletes only the tree's registry rows, leaving the PI transcripts and the Git worktree on disk", { tags: ["SESS-065"] }, async ({ screen, hui }) => {
+test("Remove from HUI deletes only the tree's registry rows, leaving the PI transcripts and the Git worktree on disk", { tags: ["SESS-068"] }, async ({ screen, hui }) => {
   const listed = async () => (await hui.api<Listed>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions);
   const remove = async (title: string) => {
     await hui.sessionMenu(title);

@@ -211,7 +211,6 @@ test.each([
   ["src/lib/task-suggestions.fixture.json", "server/agent-tools/task-suggestions.fixture.json"],
   ["src/lib/backlog-start.fixture.json", "server/git/branch-names.fixture.json"],
   ["src/lib/worktrees.fixture.json", "server/git/worktrees.fixture.json"],
-  ["src/lib/progress-card.fixture.json", "server/sessions/progress-card.fixture.json"],
   ["src/lib/thinking.fixture.json", "server/sessions/thinking.fixture.json"],
   ["src/lib/bots/templates.fixture.json", "server/bots/templates/formats.fixture.json"],
   ["src/lib/bots/export-preview.fixture.json", "server/bots/export-format.fixture.json"],

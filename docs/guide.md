@@ -138,11 +138,11 @@ sandboxed without Node integration. Browser-local drafts have a separate Electro
 profile; HUI/PI storage remains shared through the existing gateway.
 
 The app also claims the `hui://` scheme, so a chat can be handed to it. A link
-carrying `?open=app`, which bots can mint, shows an **Open in HUI** button above
-the chat in a macOS browser; the button opens that chat in the app instead of
-the tab. The button is the hand-off because browsers only launch another program
-after a click. Other platforms and phones never show it and keep the chat in the
-browser.
+carrying `?open=app`, which bots can mint, asks the gateway to open that chat in
+the app, and the page falls back to an **Open in HUI** button when the app is not
+installed. A browser cannot start another program without a click, so the page
+asks the gateway (`POST /__hui/app/open`), which opens HUI itself. Other
+platforms and phones never ask and keep the chat in the browser.
 
 Installation is per-user, without sudo, and downloads the platform's Electron
 runtime. Reinstallation replaces only an HUI-owned bundle, never an unrelated
@@ -208,6 +208,27 @@ starting. For a one-off grant, `hui gateway restart --allow-host
 laptop.example.ts.net` (repeatable) or the comma-separated
 `HUI_GATEWAY_ALLOWED_HOSTS` last only until the gateway fully stops.
 
+## Offline reading
+
+A production build prepares its offline files in the background on HTTPS or
+localhost. A plain-HTTP tailnet address cannot install them. Use an HTTPS
+address for offline reload; HUI does not change your gateway's network settings.
+The first visit must finish downloading the files before a reload can work
+without the gateway.
+
+HUI keeps reading copies of up to ten opened conversations on this device for
+seven days. Each holds up to 200 recent complete rows within 2 MiB. Large copies
+say **Only recent messages are saved**. They include message and tool-output
+text, not attachments, tool arguments, questions or queued actions. Text can
+contain sensitive information, so use **Forget saved conversations** in the
+saved-copy notice to remove it. This does not remove your drafts or the runtime's
+history. Browser storage may be unavailable or evicted.
+
+A saved copy is labelled **Saved conversation**. You can edit a draft, but
+sending and runtime controls wait for a live connection. Reconnecting never
+sends the draft. A gateway update may offer **Reload HUI** before live controls
+can return; drafts survive that reload too.
+
 ## Model providers
 
 Open **Settings → Models** to connect a built-in provider using its API key or
@@ -230,9 +251,16 @@ fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Cal
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
 
-**Subagent routes** sit under the same page. A route is a name you choose, a
-one-line description and a model, and may pin a reasoning level. An agent that
-spawns a subagent can pass the name to `sessions_spawn` instead of a model id.
+**Subagent routes** sit under the same page. Choose **Add route** to open a
+form for its name, one-line description, model and optional reasoning level.
+The model starts on your primary model when available, and thinking inherits
+the parent's level. **Add route** saves the completed form; **Cancel** or Escape
+closes it without adding anything. A failed save keeps the form for retry.
+Saved routes show a brief summary of their description, model and thinking level.
+Choose **Edit** to open the same form with the current values. **Save changes**
+applies the edit; Cancel or Escape leaves the saved configuration unchanged.
+**Remove** stays beside Edit. An agent that spawns a subagent can pass the name
+to `sessions_spawn` instead of a model id.
 The prompt lists your names and descriptions. Raw model ids remain supported;
 routes do not restrict which models the tool can use. A spawn without a route or
 model inherits its parent's model and reasoning level. Its own `thinking`
@@ -1078,6 +1106,23 @@ never shows that link. **Settings → Appearance → Chat → Datadog link
 previews** turns the cards off. [docs/api.md](api.md#datadog-link-previews) has
 the full contract.
 
+## Custom marks for tool calls
+
+A turn's tool calls show a mark per row. HUI picks it in this order: your icon file, your emoji, the built-in emoji for that CLI or tool, then the tinted SVG mark.
+
+Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`):
+
+```json
+{
+  "chat": {
+    "toolIcons": { "git": "github.svg", "kubectl": "kubernetes.svg" },
+    "toolMarks": { "pup": "🐶" }
+  }
+}
+```
+
+Icon files go in `HUI_CONFIG_DIR/tool-icons/` and are served read-only at `/__hui/tool-icons/<file>`; the browser only ever draws them in an `<img>`, so an SVG cannot run script. Names are flat file names — no paths — with an `.svg`, `.png`, `.webp`, `.jpg` or `.jpeg` extension, at most 256 KB. Keys are a CLI binary or a tool name, lowercased. Restart the gateway after adding files or editing the maps.
+
 ## Codemode: one script, many tool calls
 
 Sessions can use PI's **codemode** tool: instead of calling tools one at a time,
@@ -1128,7 +1173,10 @@ finishing a docs pass.
   objective starts the goal and is sent as its first message, so the work
   begins at once.
 - A pill above the composer shows the goal: **Pursuing goal**, the objective,
-  and pause and clear buttons. Hover it to read why a goal is paused or blocked.
+  and pause and clear buttons. Click the pill, or its chevron, to expand it and
+  read the whole objective, why it paused or blocked itself, and when it was set.
+  The pencil button retypes the objective, and saving starts the goal again with
+  the new objective as its next message.
 - `/goal pause` keeps the objective but stops the automatic work; `/goal
   resume` picks it up again; `/goal clear` removes it. The pill's buttons do the
   same, and `/goal <new objective>` replaces the current goal.

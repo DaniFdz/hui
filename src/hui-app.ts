@@ -9,8 +9,9 @@ import { renderPicker } from "./views/settings-picker.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { renderSessionPane } from "./views/session-pane.ts";
 import { sessionTreeIds } from "./lib/session/tree.ts";
+import { forgetConversation } from "./lib/session/offline-store.ts";
 import { isSubagentActive } from "./lib/subagent-activity.ts";
-import { html, nothing, type PropertyValues } from "lit";
+import { html, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { icons } from "./lib/icons.ts";
 import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
 import { keyed } from "lit/directives/keyed.js";
@@ -89,7 +90,7 @@ import { UpdateController } from "./controllers/update-controller.ts";
 import { QUESTION_FOCUS_SELECTOR, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import "./components/contributions.ts";
 import "./components/usage.ts";
-import { renderPanelSelector } from "./views/panel-selector.ts";
+import { renderPanelPicker, type PanelSelectorProps } from "./views/panel-selector.ts";
 import { dedicatedPageRenderer, type DedicatedPageProps } from "./views/pages.ts";
 import { renderKanbanPage } from "./views/kanban.ts";
 import type { KanbanMove } from "./lib/kanban.ts";
@@ -140,7 +141,8 @@ import {
   settingsReturnTarget,
   type NavigationTarget,
 } from "./lib/navigation.ts";
-import { appHandoffUrl } from "./lib/app-link.ts";
+import { appHandoffPath, appHandoffUrl } from "./lib/app-link.ts";
+import { openChatInApp } from "./api/app.ts";
 
 const HUI_UPDATE_SESSION_TITLE = "HUI update";
 
@@ -262,6 +264,7 @@ export class HuiApp extends HuiElement {
   @state() private groupDefaultCwd = "";
   @state() private groupDefaultMode: "branch" | "worktree" = "branch";
   @state() private groupDefaultRef = "";
+  @state() private groupDefaultWorker = "";
   @state() private groupCheckout: GitCheckoutInfo | undefined;
   @state() private groupCheckoutLoading = false;
   @state() private groupCheckoutError = "";
@@ -285,6 +288,7 @@ export class HuiApp extends HuiElement {
   private renderedCompaction: RuntimeCompaction | undefined;
   private renderedQueueEditingId: string | undefined;
   private renderedDraftRevision = 0;
+  private renderedFilesConnection = "";
   private groupActionReturnFocus: HTMLElement | undefined;
 
   @state() private settingsOpen = false;
@@ -357,6 +361,8 @@ export class HuiApp extends HuiElement {
   @property({ type: Boolean }) paneVisible = true;
   @property({ type: Boolean }) paneNarrow = false;
   @property({ type: Boolean }) paneMobileNav = false;
+  /** The destination chooser a phone shows in this pane's header instead of a row of its own. */
+  @property({ attribute: false }) panePanelPicker?: TemplateResult;
   @property(paneCallback) onPaneClose: (() => void) | undefined;
   @property(paneCallback) onPaneSplit: ((direction: SplitDirection) => void) | undefined;
   @property(paneCallback) onPaneTerminal: (() => Promise<void>) | undefined;
@@ -392,6 +398,8 @@ export class HuiApp extends HuiElement {
     setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
   });
   private mobileNavMedia: MediaQueryList | undefined;
+  /** The destination chooser a phone renders in the active pane's header instead of a row of its own. */
+  private narrowPicker: TemplateResult | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
   private readonly onMobileNavChange = (event: MediaQueryListEvent) => {
     this.mobileNavLayout = event.matches;
@@ -505,7 +513,7 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) {
       if (this.paneSessionId) this.applyNavigation({ kind: "session", id: this.paneSessionId });
     } else {
-      this.appLink = appHandoffUrl({ pathname: window.location.pathname, search: window.location.search, userAgent: navigator.userAgent });
+      this.offerApp(appHandoffUrl({ pathname: window.location.pathname, search: window.location.search, userAgent: navigator.userAgent }));
       this.work.start();
       this.syncFromLocation();
       this.mobileNavMedia = window.matchMedia(APP_SHELL_DRAWER_MEDIA);
@@ -515,6 +523,7 @@ export class HuiApp extends HuiElement {
       document.addEventListener("keydown", this.onGlobalKeyDown);
       this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
       this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
+      this.addEventListener("hui-files-connection", this.onFilesConnection);
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -536,6 +545,7 @@ export class HuiApp extends HuiElement {
     window.removeEventListener("popstate", this.onPopState);
     this.removeEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
+    this.removeEventListener("hui-files-connection", this.onFilesConnection);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
     this.work.stop();
@@ -571,7 +581,7 @@ export class HuiApp extends HuiElement {
     }
   }
 
-  private followSessionStatus({ id, status, title, creationError }: SessionStatusUpdate) {
+  private followSessionStatus({ id, status, title, creationError, progress }: SessionStatusUpdate) {
     if (creationError && this.unlistedLaunch?.id === id) this.unlistedLaunch = undefined;
     const bot = this.bots.list.find((candidate) => candidate.sessionId === id);
     if (bot) {
@@ -582,7 +592,7 @@ export class HuiApp extends HuiElement {
     }
     if (!this.embeddedPane && this.conversation.selected?.id === id) {
       this.reopenIfRestarted(id, status);
-      this.conversation.select({ ...this.conversation.selected, status, ...(title ? { title } : {}) });
+      this.conversation.select({ ...this.conversation.selected, status, ...(title ? { title } : {}), ...(progress ? { progress } : {}) });
     }
   };
 
@@ -679,6 +689,13 @@ export class HuiApp extends HuiElement {
   /** Lit cannot autofocus a field that appears on a later render, and typing
    * straight into a rename is the whole point of an inline field. */
   override updated(changed: PropertyValues) {
+    if (this.embeddedPane) {
+      const connection = `${this.paneSessionId}\0${this.paneCanAccessFiles()}`;
+      if (connection !== this.renderedFilesConnection) {
+        this.renderedFilesConnection = connection;
+        this.dispatchEvent(new Event("hui-files-connection", { bubbles: true, composed: true }));
+      }
+    }
     // Session and bot panes measure their own composers.
     const textarea = !this.embeddedPane && ((this.view === "home" && this.conversation.selected) || this.view === "bot")
       ? null : this.renderRoot.querySelector<HTMLTextAreaElement>(".agent-chat__composer-combobox > textarea");
@@ -801,6 +818,13 @@ export class HuiApp extends HuiElement {
       window.history.replaceState({ ...window.history.state, huiSessionLayout: this.work.layout }, "", canonical);
     }
     this.applyNavigation(resolved.target);
+  }
+
+  /** A marked chat link opens the desktop app through the gateway, since a browser cannot start it without a click.
+   * The banner is the fallback for a host without the app. */
+  private offerApp(handoff: string | undefined) {
+    if (!handoff) return;
+    void openChatInApp(appHandoffPath(handoff)).catch(() => { this.appLink = handoff; });
   }
 
   private navigate(target: NavigationTarget, replace = false) {
@@ -1340,10 +1364,27 @@ export class HuiApp extends HuiElement {
    * Files view — the active one, else its first, else a new one — opening the Work pane (or, on narrow screens, the
    * Work destination) the way any Work view does.
    */
+  private paneCanAccessFiles(): boolean {
+    return !this.paneBot && this.conversation.selected?.id === this.paneSessionId
+      && !this.conversation.opening && this.conversation.connection === "live";
+  }
+
+  private canAccessFiles(sessionId: string): boolean {
+    if (!this.work.layout) return false;
+    const active = activeSessionPane(this.work.layout);
+    const root = active.sessionId === sessionId
+      ? this.renderRoot.querySelector(`[data-session-pane="${CSS.escape(active.id)}"]`)
+      : this.renderRoot;
+    return [...(root?.querySelectorAll<HuiApp>(".chat-pane-cache__pane > hui-app") ?? [])]
+      .some((app) => app.paneSessionId === sessionId && app.paneCanAccessFiles());
+  }
+
+  private readonly onFilesConnection = () => this.requestUpdate();
+
   private readonly onOpenFileRequest = (event: Event) => {
     const detail = (event as CustomEvent<OpenFileDetail>).detail;
     if (this.embeddedPane || !detail?.sessionId || !this.work.layout) return;
-    if (!sessionPanes(this.work.layout).some((pane) => isChatPane(pane) && pane.sessionId === detail.sessionId)) return;
+    if (!this.canAccessFiles(detail.sessionId)) return;
     event.stopPropagation();
     void this.work.openFile(detail);
   };
@@ -1357,6 +1398,7 @@ export class HuiApp extends HuiElement {
   }
 
   private openTerminal = async () => {
+    if (this.conversation.connection !== "live") return;
     this.terminalOpening = true;
     this.terminalError = "";
     try { await this.onPaneTerminal?.(); }
@@ -1541,7 +1583,7 @@ export class HuiApp extends HuiElement {
 
   private continueRun = () => {
     const session = this.conversation.selected;
-    if (!session || this.conversation.streaming || this.conversation.opening || this.continuing) return;
+    if (!session || this.conversation.connection !== "live" || this.conversation.streaming || this.conversation.opening || this.continuing) return;
     this.continuing = true;
     this.note = "";
     this.noteLevel = "info";
@@ -1675,8 +1717,10 @@ export class HuiApp extends HuiElement {
     }
     // A failed worktree launch hands its prompt back to New Session.
     const unsent = this.paneUnsentPrompt;
+    const tree = sessionTreeIds(this.sessions.groups.flatMap((group) => group.sessions), targetId);
     void deleteSession(targetId)
       .then(async () => {
+        await Promise.all([...tree].map((id) => forgetConversation(id)));
         if (unsent) {
           const stored = await readComposerDraft(NEW_SESSION_DRAFT_KEY);
           await writeComposerDraft(NEW_SESSION_DRAFT_KEY, mergeComposerDraft(stored, { text: unsent, attachments: [] }));
@@ -1772,9 +1816,13 @@ export class HuiApp extends HuiElement {
   };
 
   private requestDirectorySuggestions = (input: string) => {
-    this.launcher.loadDirectorySuggestions(input);
-    if (this.groupAction?.action === "defaults") this.requestGroupCheckout(input);
-    else this.launcher.requestCheckout(input);
+    if (this.groupAction?.action === "defaults") {
+      this.launcher.loadDirectorySuggestions(input, this.groupDefaultWorker || undefined);
+      this.requestGroupCheckout(input);
+    } else {
+      this.launcher.loadDirectorySuggestions(input, this.launcher.worker || undefined);
+      this.launcher.requestCheckout(input);
+    }
   };
 
   private clearSessionState() {
@@ -2391,7 +2439,9 @@ export class HuiApp extends HuiElement {
       this.groupDefaultCwd = next.group.cwd ?? next.group.sessions[0]?.cwd ?? "~/";
       this.groupDefaultMode = next.group.workspaceMode ?? "branch";
       this.groupDefaultRef = next.group.baseRef ?? "";
+      this.groupDefaultWorker = next.group.worker ?? "";
       this.groupCheckoutDirectory = "";
+      this.launcher.loadWorkers();
       this.requestGroupCheckout(this.groupDefaultCwd, true);
     }
   };
@@ -2410,7 +2460,8 @@ export class HuiApp extends HuiElement {
     }
     this.groupCheckoutLoading = Boolean(directory);
     if (!directory) return;
-    void loadGitCheckout(directory).then((checkout) => {
+    // The directory is on the group's machine, so that machine answers for its Git.
+    void loadGitCheckout(directory, this.groupDefaultWorker || undefined).then((checkout) => {
       if (marker !== this.groupCheckoutRequest) return;
       this.groupCheckout = checkout;
       if (!checkout.available) {
@@ -2454,14 +2505,14 @@ export class HuiApp extends HuiElement {
     const state = this.groupAction;
     this.groupMutationPending = true;
     this.groupMutationError = "";
+    const git = this.groupCheckout?.available;
     const operation = state.action === "new"
       ? createSessionGroup(value("name"))
       : state.action === "rename"
         ? updateSessionGroup(state.group.label, { name: value("name") })
         : state.action === "defaults"
-          ? updateSessionGroup(state.group.label, { cwd: value("cwd"),
-              workspaceMode: this.groupCheckout?.available ? this.groupDefaultMode : "",
-              baseRef: this.groupCheckout?.available ? this.groupDefaultRef : "" })
+          ? updateSessionGroup(state.group.label, { cwd: value("cwd"), worker: this.groupDefaultWorker,
+              workspaceMode: git ? this.groupDefaultMode : "", baseRef: git ? this.groupDefaultRef : "" })
           : deleteSessionGroup(state.group.label);
     void operation
       .then(({ revision, groups }) => {
@@ -2506,8 +2557,20 @@ export class HuiApp extends HuiElement {
         <div class="exec-approval-title" id="group-action-title">${title}</div>
         ${state.action === "defaults" ? html`
           <div class="exec-approval-sub">Choose where sessions created from this group start.</div>
+          ${this.launcher.workers.length ? html`<div class="field input-dialog__field"><span>Run on</span>
+            ${renderPicker({ label: "Run on", value: this.groupDefaultWorker, disabled: this.groupMutationPending,
+              options: [{ value: "", label: "Local", description: "This machine." },
+                ...this.launcher.workers.map((worker) => ({ value: worker.id, label: worker.name,
+                  description: worker.state === "connected" ? "Remote worker, connected." : `Remote worker, ${worker.state}.` }))],
+              showSelectedDescription: true,
+              onChange: (value) => {
+                this.groupDefaultWorker = value;
+                this.groupCheckoutDirectory = "";
+                this.requestGroupCheckout(this.groupDefaultCwd, true);
+              } })}
+          </div>` : null}
           <div class="field input-dialog__field"><label for="group-default-cwd">Working directory</label>
-            ${renderDirectoryPicker({ id: "group-default-cwd", label: "Working directory", value: this.groupDefaultCwd, suggestions: this.launcher.directorySuggestions, onInput: this.requestDirectorySuggestions, inputClass: "settings-input", externalLabel: true })}
+            ${renderDirectoryPicker({ id: "group-default-cwd", label: "Working directory", value: this.groupDefaultCwd, suggestions: this.launcher.directorySuggestionsFrom === this.groupDefaultWorker ? this.launcher.directorySuggestions : [], onInput: this.requestDirectorySuggestions, inputClass: "settings-input", externalLabel: true, openOnFocus: false })}
           </div>
           ${this.groupCheckoutLoading ? html`<p role="status">Checking repository…</p>` : null}
           ${this.groupCheckoutError ? html`<p role="alert">${this.groupCheckoutError}</p>` : null}
@@ -2552,8 +2615,9 @@ export class HuiApp extends HuiElement {
     return {
       session: this.conversation.selected,
       // File references open in the Work pane, which only multiplexed chat panes have (not a bot's chat).
-      fileLinks: this.embeddedPane && !this.paneBot,
+      fileLinks: this.embeddedPane && this.paneCanAccessFiles(),
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
+      ...(this.embeddedPane && this.panePanelPicker ? { panelPicker: this.panePanelPicker } : {}),
       controlScope: this.embeddedPane ? this.paneId : undefined,
       groups: this.listedGroups,
       findSession: (id) => this.listedSession(id),
@@ -2586,16 +2650,19 @@ export class HuiApp extends HuiElement {
       noteLevel: this.noteLevel,
       onDismissNote: () => { this.note = ""; this.noteLevel = "info"; },
       connectionNote: this.conversation.connectionNote,
+      savedCopy: this.conversation.savedCopy,
+      offlineSupported: typeof window === "undefined" || (window.isSecureContext && "serviceWorker" in navigator),
+      onForgetSaved: () => void this.conversation.forgetSaved(),
       onLaunch: this.launch,
       onSelectSession: this.selectSession,
       onClosePane: this.onPaneClose,
       paneMovable: Boolean(this.onPaneClose) && !this.paneNarrow,
       onSplitPane: this.paneNarrow ? undefined : this.onPaneSplit,
       onOpenTerminal: this.onPaneTerminal ? this.openTerminal : undefined,
-      onOpenBrowser: this.onPaneBrowser && this.control.settings.browser.enabled && this.conversation.transcript.some((item) => item.kind === "tool" && item.name === "browser")
-        ? () => this.onPaneBrowser?.()
+      onOpenBrowser: this.onPaneBrowser && this.conversation.connection === "live" && this.control.settings.browser.enabled && this.conversation.transcript.some((item) => item.kind === "tool" && item.name === "browser")
+        ? () => { if (this.conversation.connection === "live") this.onPaneBrowser?.(); }
         : undefined,
-      browserPreview: this.control.settings.browser.enabled
+      browserPreview: this.conversation.connection === "live" && this.control.settings.browser.enabled
         ? { visible: this.paneVisible, ...(this.onPaneBrowser ? { onExpand: () => this.onPaneBrowser?.() } : {}) }
         : undefined,
       terminalOpening: this.terminalOpening,
@@ -2659,7 +2726,7 @@ export class HuiApp extends HuiElement {
       launchModels,
       launchModel,
       // Git inspection reads this machine's disk; folder suggestions come from the worker.
-      onDirectoryInput: this.launcher.worker ? (input) => this.launcher.loadDirectorySuggestions(input, this.launcher.worker) : this.requestDirectorySuggestions,
+      onDirectoryInput: this.requestDirectorySuggestions,
       branchPrefix: this.control.settings.branchPrefix,
       worktreeProgress: this.paneCreating,
       worktreeError: this.paneCreationError,
@@ -2739,6 +2806,7 @@ export class HuiApp extends HuiElement {
       listed: this.listedSession(pane.sessionId),
       groups: this.sessions.revision ? this.sessions.groups : undefined,
       mobileNav: this.mobileNavLayout,
+      panelPicker: pane.id === this.work.layout?.activePaneId ? this.narrowPicker : undefined,
       bots: this.mentionable(),
       onClose: controls.close,
       onSplit: controls.split,
@@ -2768,8 +2836,9 @@ export class HuiApp extends HuiElement {
     // Maximized on desktop: the Work pane fills the row and the panel selector (the narrow chooser) leads back to
     // the chat; the chat columns stay mounted, hidden and inert, underneath.
     const maximized = workPaneMaximized(work, this.work.narrow);
-    return html`<div class="hui-workspace-panels ${workShown ? "hui-workspace-panels--work" : ""} ${maximized ? "hui-workspace-panels--maximized" : ""}">
-    ${renderPanelSelector({
+    // A phone gives the conversation its header row back: the chooser lives in that header while the chat is the
+    // destination shown, and keeps a row of its own once the chat gives way to the Work pane.
+    const selectorProps: PanelSelectorProps = {
       panes,
       activePaneId: this.work.layout.activePaneId,
       sessionTitle: (sessionId) => this.sessions.groups.flatMap((group) => group.sessions).find(({ id }) => id === sessionId)?.title,
@@ -2790,7 +2859,11 @@ export class HuiApp extends HuiElement {
       onSelectWork: (key) => { this.work.commit(activateWorkView(this.work.panes, workSessionId, key, false)); this.work.showNarrow(); },
       onShowWork: () => this.work.showNarrow(),
       onLaunch: (kind) => void this.work.launch(kind),
-    })}
+    };
+    const picker = panes.length ? renderPanelPicker(selectorProps) : undefined;
+    this.narrowPicker = this.mobileNavLayout && !workShown && !maximized ? picker : undefined;
+    return html`<div class="hui-workspace-panels ${workShown ? "hui-workspace-panels--work" : ""} ${maximized ? "hui-workspace-panels--maximized" : ""}">
+    ${this.narrowPicker ? nothing : html`<div class="hui-panel-selector">${picker}</div>`}
     <div class="hui-workspace-row">
     <hui-session-multiplexer
       ?inert=${maximized}
@@ -2815,6 +2888,7 @@ export class HuiApp extends HuiElement {
     <hui-work-pane
       .store=${this.work.panes}
       .sessionId=${workSessionId}
+      .canAccessFiles=${(id: string) => this.canAccessFiles(id)}
       .retained=${this.work.retained}
       .narrow=${this.work.narrow}
       .chatColumns=${this.work.layout.columns.length}

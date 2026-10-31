@@ -3,7 +3,9 @@
  * and browsers allow only six HTTP/1.1 connections per origin, so five open
  * views stalled every other request. WebSockets have a separate, far larger
  * limit. Same capability model as terminals: a guarded POST mints a
- * short-lived, single-use ticket bound to one session.
+ * short-lived, single-use ticket bound to one session. Each socket also gets an
+ * application heartbeat, because a browser cannot see the protocol pings that
+ * keep proxies from closing it.
  */
 import { randomBytes } from "node:crypto";
 import type { EventEmitter } from "node:events";
@@ -17,6 +19,7 @@ export const SESSION_STREAM_PATH = "/__hui/session-stream";
 export const SESSION_STREAM_GONE = 4404;
 const MAX_CLIENTS = 128;
 const TICKET_MS = 15_000;
+const HEARTBEAT_MS = 15_000;
 
 /** Starts forwarding `id`'s frames to `send` and returns its unsubscribe, or
  * undefined when the session no longer exists. */
@@ -44,6 +47,7 @@ export function attachSessionTransport(server: EventEmitter, source: SessionEven
   // each frame compresses alone, which keeps a view's memory flat.
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: {
     threshold: 1024, serverNoContextTakeover: true, clientNoContextTakeover: true, concurrencyLimit: 4,
+    zlibDeflateOptions: { level: 4 },
   } });
   const onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = new URL(request.url ?? "/", "http://localhost");
@@ -62,8 +66,12 @@ export function attachSessionTransport(server: EventEmitter, source: SessionEven
       ws.on("pong", () => { alive = true; });
       const heartbeat = setInterval(() => { if (!alive) ws.terminate(); else { alive = false; ws.ping(); } }, 30_000);
       heartbeat.unref();
+      const frames = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ event: "heartbeat", data: {} }));
+      }, HEARTBEAT_MS);
+      frames.unref();
       ws.on("error", () => ws.terminate());
-      ws.once("close", () => { clearInterval(heartbeat); stop?.(); });
+      ws.once("close", () => { clearInterval(heartbeat); clearInterval(frames); stop?.(); });
       void source(ticket.id, (event, data) => {
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ event, data }));

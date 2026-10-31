@@ -150,6 +150,7 @@ export const SessionStreamFrame = Type.Union([
   Type.Object({ event: Type.Literal("model"), data: RuntimeModel }),
   Type.Object({ event: Type.Literal("thinking_level"), data: Type.Object({ level: Type.String() }) }),
   Type.Object({ event: Type.Literal("fast"), data: Type.Object({ fast: Type.Boolean() }) }),
+  Type.Object({ event: Type.Literal("heartbeat"), data: Type.Object({}) }),
   Type.Object({ event: Type.Literal("closed"), data: Type.Object({}) }),
 ], { $id: "SessionStreamFrame" });
 export type SessionStreamFrame = Static<typeof SessionStreamFrame>;

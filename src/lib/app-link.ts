@@ -13,3 +13,9 @@ export function appHandoffUrl(location: { pathname: string; search: string; user
   if (!agent.includes("Macintosh") || agent.includes("Mobile") || agent.includes("Electron")) return;
   return `hui://${target.kind === "session" ? "sessions" : "bots"}/${encodeURIComponent(target.id)}`;
 }
+
+/** The gateway path that address opens, for the endpoint that shows it in the app. */
+export function appHandoffPath(handoff: string): string {
+  const address = new URL(handoff);
+  return `/${address.hostname}${address.pathname}`;
+}

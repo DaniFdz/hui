@@ -18,8 +18,9 @@ harnesses.** It gives you a focused workspace for sessions, transcripts, models,
 settings and gateway operations while leaving agent configuration and
 conversation history with [PI](https://pi.dev).
 
-HUI currently runs with full access. It does not add an approval layer or copy
-PI transcripts into its own storage.
+HUI currently runs with full access. It does not add an approval layer.
+Conversation history stays with the runtime; browser-local copies are for
+offline reading only.
 
 <p align="center">
   <a href="#install">Install</a> · <a href="#quick-start">Quick start</a> · <a href="docs/guide.md">User guide</a> · <a href="https://github.com/DaniFdz/hui/releases">Releases</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="SECURITY.md">Security</a>
@@ -135,6 +136,11 @@ hui ui
 
 Then open **Settings → Models** to connect a provider
 ([details](docs/guide.md#model-providers)) and start a session.
+
+Previously opened conversations can be read offline once HUI has prepared its
+files. Drafts stay on your device and are never sent automatically. Offline
+reload needs HTTPS or localhost, not a plain-HTTP tailnet address.
+See [offline reading](docs/guide.md#offline-reading).
 
 Useful lifecycle commands:
 
