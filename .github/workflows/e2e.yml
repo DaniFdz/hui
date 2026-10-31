@@ -3,6 +3,10 @@ name: E2E
 # "HUI iPhone" simulator.
 on:
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".agents/**"
   push:
     branches: [main]
   workflow_dispatch:
@@ -15,7 +19,7 @@ concurrency:
 jobs:
   web:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -32,7 +36,8 @@ jobs:
       - run: npx e2e-web install chromium --with-deps
       - run: npm run e2e -- --shard ${{ matrix.shard }}
       # The suite's traces and screenshots, and the launcher's gateway and provider logs.
-      - if: ${{ !cancelled() }}
+      # Traces and screenshots are only useful when a shard failed; a green run needs no artifact.
+      - if: ${{ failure() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-web-${{ strategy.job-index }}
