@@ -13,7 +13,7 @@ test("Answering its question with a name makes a new bot rename itself in the he
   await hui.api("POST", "/__hui/bots", { name: "Zeta", soul: "# Who I am\nA fixture bot.\n" });
   await screen.getByRole("tab", "Bots").tap();
   await screen.getByRole("button", "New bot", { visible: true }).first().tap();
-  await screen.getByText("New bot", { exact: true, visible: true }).tap();
+  await screen.getByText("New bot", { exact: true, visible: true }).first().tap();
   await expect(transcript.getByText("New Bot was created")).toBeVisible();
   await expect(transcript.getByText(NAME_QUESTION)).toBeVisible();
   const id = (await hui.url()).split("/").at(-1)!;
