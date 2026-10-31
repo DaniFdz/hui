@@ -49,6 +49,11 @@ function renderMermaid(code: string, target: HTMLElement): Promise<void> {
     // Mermaid owns the SVG insertion and its strict sanitizing; HUI only hands it text. Using its DOM entry point
     // keeps the diagram out of HUI's own HTML parsing.
     await mermaid.run({ nodes: [holder] });
+    // mermaid.run leaves its SVG inside the holder. The viewer reads a direct child, and the original renderer
+    // placed it there, so lift it out and drop the holder.
+    const diagram = holder.querySelector("svg");
+    if (diagram) target.append(diagram);
+    holder.remove();
     for (const status of target.querySelectorAll(".markdown-rich-embed__status")) status.remove();
   });
   mermaidQueue = task;
