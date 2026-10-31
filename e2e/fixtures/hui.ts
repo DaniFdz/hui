@@ -514,8 +514,9 @@ export const test = base.extend<{ hui: Hui }>({
           const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
           if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
             await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
-            // A row is tappable only once the drawer has taken the screen.
-            await expect(fixtures.screen.getByRole("button", "Close navigation", { visible: true })).toBeVisible();
+            // A row is tappable only once a drawer has taken the screen. A split renders one per pane, so wait for
+            // any of them instead of making a two-match locator an error.
+            await expect.poll(() => fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count()).toBeGreaterThan(0);
           }
         },
         settingsPages: async () => {

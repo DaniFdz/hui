@@ -14,7 +14,7 @@ test("Models keeps the catalog without PI defaults, cycling or credential sectio
   await expect(screen.getByRole("button", "Default GPT-Live voice: Cove (GPT-Live's default)")).toBeVisible();
   await expect(screen.getByText("hui-e2e/fixture", { exact: true })).toBeHidden();
   await catalog.tap();
-  for (const id of ["hui-e2e/fixture", "hui-e2e/fixture-deep", "anthropic/claude-opus-5-5"]) {
+  for (const id of ["hui-e2e/fixture", "hui-e2e/fixture-deep", "hui-e2e/anthropic/claude-opus-5-5"]) {
     await expect(screen.getByText(id, { exact: true })).toBeVisible();
   }
   await expect(screen.getByText("200,000 context · 4,096 max output", { exact: true })).toHaveCount(3);
