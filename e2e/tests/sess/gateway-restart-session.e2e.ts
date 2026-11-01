@@ -9,6 +9,8 @@ test("an open session waits through a gateway restart and is idle again without 
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(rows).toHaveCount(1);
 
+  // Wait for the open stream: restarting before it exists would hold the first connect and leave no reconnect to see.
+  await hui.streamOpen();
   const reconnect = await hui.intercept("POST", /\/__hui\/sessions\/[^/]+\/connect$/u);
   await hui.restartGateway();
   await reconnect.arrived();
