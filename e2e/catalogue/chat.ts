@@ -796,6 +796,15 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "CHAT-084",
+    title: "Show your own icon on a tool row",
+    behaviour: "A file in HUI's config directory under tool-icons/, named by chat.toolIcons for a CLI binary or a tool name (keys lowercased; flat .svg, .png, .webp, .jpg or .jpeg names up to 256 KB), replaces that call's built-in mark: the tool group's marks and its row draw the image served read-only at /__hui/tool-icons/<file>, and the image is never served as a page.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;
