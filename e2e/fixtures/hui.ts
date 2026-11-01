@@ -143,6 +143,8 @@ export type Hui = {
   /** Asks to delete a named file or folder row of a Files navigator, which the phone keeps in the row's menu. */
   deleteEntry(within: Locator, name: string): Promise<void>;
   flip(target: Locator): Promise<void>;
+  /** Replaces the user agent the next page sees, for the macOS-only app hand-off. */
+  spoofUserAgent(userAgent: string): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
   /** Holds every download of the app chunk until `deliver`, so the boot screen stays up; `reject` refuses them. */
   holdAppChunks(): Promise<{ arrived(): Promise<void>; deliver(): Promise<void>; reject(status: number, error: string): Promise<void> }>;
@@ -742,6 +744,9 @@ export const test = base.extend<{ hui: Hui }>({
           return holding.flat();
         },
         secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
+        spoofUserAgent: (userAgent) => browser().addInitScript((agent: string) => {
+          Object.defineProperty(navigator, "userAgent", { configurable: true, get: () => agent });
+        }, userAgent),
         flip: async (target) => {
           const box = await target.boundingBox();
           if (!box) throw new Error("flip: the switch is not on screen");
