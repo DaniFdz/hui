@@ -32,6 +32,9 @@ test("the boot screen shows HUI's name and loading bar on the background the sys
   await expect(slow).toHaveCount(0);
 
   await hui.deviceAppearance("light");
+  // The app registered its offline worker while it drew; a reload with it installed would be served from its cache and
+  // the held chunk would never be requested.
+  await hui.clearOffline();
   code = await hui.holdAppChunks();
   await hui.reload();
   await code.arrived();
@@ -56,6 +59,8 @@ test("a chosen theme and accent paint the boot screen of the next load in their 
   await screen.getByLabel("Accent color").getByRole("button", "Blue").tap();
   await expect.poll(async () => (await hui.look(title)).color).toEqual(BLUE_ACCENT);
 
+  // Reading the settings page installed the offline worker; drop it so the next load asks for the held chunk.
+  await hui.clearOffline();
   const code = await hui.holdAppChunks();
   await hui.reload();
   await code.arrived();
