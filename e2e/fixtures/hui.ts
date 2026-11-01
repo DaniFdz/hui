@@ -71,6 +71,8 @@ export type Hui = {
   offlineFilesReady(): Promise<boolean>;
   restartGateway(): Promise<void>;
   exitRuntimes(): Promise<void>;
+  /** Waits until the open conversation's stream holds an open WebSocket, so a drop lands on a live stream. */
+  streamOpen(): Promise<void>;
   dropStreams(): Promise<void>;
   open(path: string): Promise<void>;
   reload(): Promise<void>;
@@ -544,6 +546,10 @@ export const test = base.extend<{ hui: Hui }>({
           if (!indicator) throw new Error(`glyph: no sidebar row shows ${name}`);
           return { label: indicator.getAttribute("title") ?? "", animated: indicator.getAnimations({ subtree: true }).length > 0 };
         }, title),
+        streamOpen: () => expect.poll(() => browser().evaluate(() => {
+          const sockets = (window as unknown as { huiSockets?: Set<WebSocket> }).huiSockets;
+          return sockets ? [...sockets].filter((socket) => socket.readyState === WebSocket.OPEN).length : 0;
+        })).toBeGreaterThan(0),
         dropStreams: async () => {
           await browser().evaluate(() => {
             for (const socket of (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets) socket.close();
