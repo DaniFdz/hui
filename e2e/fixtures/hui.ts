@@ -76,6 +76,8 @@ export type Hui = {
   /** Waits until the open conversation's stream holds an open WebSocket, so a drop lands on a live stream. */
   streamOpen(): Promise<void>;
   dropStreams(): Promise<void>;
+  /** Focuses a sidebar row's link and activates it from the keyboard, clear of the drawer's moving backdrop. */
+  activateSidebarRow(title: string): Promise<void>;
   open(path: string): Promise<void>;
   reload(): Promise<void>;
   clearState(): Promise<void>;
@@ -532,6 +534,16 @@ export const test = base.extend<{ hui: Hui }>({
           const registration = await navigator.serviceWorker.getRegistration();
           return registration?.active?.state === "activated";
         }),
+        activateSidebarRow: async (title) => {
+          await browser().evaluate((name) => {
+            const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
+            const link = row?.querySelector("a");
+            if (!(link instanceof HTMLElement)) throw new Error(`activateSidebarRow: no link in the row for ${name}`);
+            link.focus();
+            return null;
+          }, title);
+          await browser().keyboard.press("Enter");
+        },
         sessionList: async () => {
           const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
           if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
