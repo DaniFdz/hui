@@ -457,7 +457,7 @@ export const test = base.extend<{ hui: Hui }>({
           };
           if (refused) {
             document.execCommand = ((command: string) => {
-              if (command === "copy") {
+              if (command === "copy" && legacy) {
                 const active = document.activeElement;
                 page.huiCopied = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
                   ? active.value
