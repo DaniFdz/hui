@@ -145,7 +145,7 @@ export type Hui = {
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
   /** Answers every request matching `method` and `path` with the same JSON until stopped. */
-  answerAll(method: string, path: RegExp, body: string): Promise<{ stop(): Promise<void> }>;
+  answerAll(method: string, path: RegExp, body: string, status?: number): Promise<{ stop(): Promise<void> }>;
   /** Holds every download of the app chunk until `deliver`, so the boot screen stays up; `reject` refuses them. */
   holdAppChunks(): Promise<{ arrived(): Promise<void>; deliver(): Promise<void>; reject(status: number, error: string): Promise<void> }>;
   /** Drops an installed offline worker and its caches before the next load. */
@@ -744,9 +744,9 @@ export const test = base.extend<{ hui: Hui }>({
           return holding.flat();
         },
         secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
-        answerAll: async (method, path, body) => {
+        answerAll: async (method, path, body, status = 200) => {
           await browser().route(path, (route) => (route.request.method === method
-            ? route.fulfill({ status: 200, contentType: "application/json", body })
+            ? route.fulfill({ status, contentType: "application/json", body })
             : route.fallback()));
           return { stop: () => browser().unroute(path) };
         },
