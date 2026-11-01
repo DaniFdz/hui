@@ -145,6 +145,8 @@ export type Hui = {
   /** Asks to delete a named file or folder row of a Files navigator, which the phone keeps in the row's menu. */
   deleteEntry(within: Locator, name: string): Promise<void>;
   flip(target: Locator): Promise<void>;
+  /** Replaces the user agent the next page sees, for the macOS-only app hand-off. */
+  spoofUserAgent(userAgent: string): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
   /** Answers every request matching `method` and `path` with the same JSON until stopped. */
   answerAll(method: string, path: RegExp, body: string, status?: number): Promise<{ stop(): Promise<void> }>;
@@ -750,6 +752,9 @@ export const test = base.extend<{ hui: Hui }>({
           return holding.flat();
         },
         secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
+        spoofUserAgent: (userAgent) => browser().addInitScript((agent: string) => {
+          Object.defineProperty(navigator, "userAgent", { configurable: true, get: () => agent });
+        }, userAgent),
         answerAll: async (method, path, body, status = 200) => {
           await browser().route(path, (route) => (route.request.method === method
             ? route.fulfill({ status, contentType: "application/json", body })
