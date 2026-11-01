@@ -245,7 +245,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: [],
     journeys: ["clipboard-fallback"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "A fallback for pages without the Clipboard API; the iOS app uses the system clipboard.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
