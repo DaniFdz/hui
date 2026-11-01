@@ -187,7 +187,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth", "docs/api.md#get-__huipi"],
     surfaces: ["settings-page:connection", "route:GET /__hui/health", "page:connection", "route:GET /__hui/pi"],
     journeys: ["gateway-settings"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -197,7 +197,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth"],
     surfaces: ["route:GET /__hui/health"],
     journeys: ["gateway-settings"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
