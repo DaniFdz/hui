@@ -771,13 +771,20 @@ export const test = base.extend<{ hui: Hui }>({
           if (!box) throw new Error("flip: the switch is not on screen");
           await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
         },
-        clearOffline: () => browser().addInitScript(async () => {
-          try {
-            const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
-            await Promise.all(registrations.map((registration) => registration.unregister()));
-            if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
-          } catch { /* the next page may not have these APIs */ }
-        }),
+        clearOffline: async () => {
+          // A worker installed by an earlier test can answer this navigation (and its app chunk) before an init
+          // script runs, so drop it in the page that is already open as well; the script covers later pages.
+          const clear = async () => {
+            try {
+              const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+              await Promise.all(registrations.map((registration) => registration.unregister()));
+              if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
+            } catch { /* the page may not have these APIs */ }
+            return null;
+          };
+          await browser().evaluate(clear);
+          await browser().addInitScript(clear);
+        },
         holdAppChunks: async () => {
           // The production build may preload the app chunk and import it again; hold every copy, not the entry
           // module, so the page still reaches `load` and the boot screen can be read.
