@@ -45,7 +45,7 @@ import { navigationPath, resolveNavigation } from "../../src/lib/navigation.ts";
 import { addWorkerOnThisMachine } from "./worker.ts";
 
 const MAX_SCROLL_SWIPES = 20;
-type Receipt = { url: string; providerUrl: string; workspace: string; receipt: string; serverPid: number; runnerPid: number };
+type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; runtime?: { active: true }; subagent?: { status: string; completionDelivery?: string } };
@@ -60,6 +60,8 @@ type Intercepted = {
 
 export type Hui = {
   workspace: string;
+  /** The gateway's own config directory, where its settings and tool icons live. */
+  configDir: string;
   gateway: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
@@ -74,6 +76,8 @@ export type Hui = {
   /** Waits until the open conversation's stream holds an open WebSocket, so a drop lands on a live stream. */
   streamOpen(): Promise<void>;
   dropStreams(): Promise<void>;
+  /** Focuses a sidebar row's link and activates it from the keyboard, clear of the drawer's moving backdrop. */
+  activateSidebarRow(title: string): Promise<void>;
   open(path: string): Promise<void>;
   reload(): Promise<void>;
   clearState(): Promise<void>;
@@ -145,6 +149,8 @@ export type Hui = {
   /** Asks to delete a named file or folder row of a Files navigator, which the phone keeps in the row's menu. */
   deleteEntry(within: Locator, name: string): Promise<void>;
   flip(target: Locator): Promise<void>;
+  /** Replaces the user agent the next page sees, for the macOS-only app hand-off. */
+  spoofUserAgent(userAgent: string): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
   /** Answers every request matching `method` and `path` with the same JSON until stopped. */
   answerAll(method: string, path: RegExp, body: string, status?: number): Promise<{ stop(): Promise<void> }>;
@@ -442,7 +448,7 @@ export const test = base.extend<{ hui: Hui }>({
       }
       const directories: string[] = [];
 
-      const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
+      const webSteps: Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
         url: () => browser().url(),
         clipboard: ({ refuse = false, legacyCopy = false } = {}) => browser().addInitScript(({ refused, legacy }: { refused: boolean; legacy: boolean }) => {
           const page = window as unknown as { huiCopied: string };
@@ -457,7 +463,17 @@ export const test = base.extend<{ hui: Hui }>({
             const sizes = await Promise.all(blobs.map(async (blob) => blob.type === "image/png" ? createImageBitmap(blob).then((bitmap) => ` ${bitmap.width}x${bitmap.height}`, () => "") : ""));
             page.huiCopied = blobs.map((blob, index) => `${blob.type}${sizes[index]}`).join(",");
           };
-          if (refused) document.execCommand = () => legacy;
+          if (refused) {
+            document.execCommand = ((command: string) => {
+              if (command === "copy" && legacy) {
+                const active = document.activeElement;
+                page.huiCopied = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
+                  ? active.value
+                  : String(document.getSelection() ?? "");
+              }
+              return legacy;
+            }) as typeof document.execCommand;
+          }
         }, { refused: refuse, legacy: legacyCopy }),
         copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
         keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
@@ -518,6 +534,16 @@ export const test = base.extend<{ hui: Hui }>({
           const registration = await navigator.serviceWorker.getRegistration();
           return registration?.active?.state === "activated";
         }),
+        activateSidebarRow: async (title) => {
+          await browser().evaluate((name) => {
+            const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
+            const link = row?.querySelector("a");
+            if (!(link instanceof HTMLElement)) throw new Error(`activateSidebarRow: no link in the row for ${name}`);
+            link.focus();
+            return null;
+          }, title);
+          await browser().keyboard.press("Enter");
+        },
         sessionList: async () => {
           const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
           if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
@@ -750,6 +776,9 @@ export const test = base.extend<{ hui: Hui }>({
           return holding.flat();
         },
         secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
+        spoofUserAgent: (userAgent) => browser().addInitScript((agent: string) => {
+          Object.defineProperty(navigator, "userAgent", { configurable: true, get: () => agent });
+        }, userAgent),
         answerAll: async (method, path, body, status = 200) => {
           await browser().route(path, (route) => (route.request.method === method
             ? route.fulfill({ status, contentType: "application/json", body })
@@ -1004,6 +1033,7 @@ export const test = base.extend<{ hui: Hui }>({
         ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
         ...(web ? {} : iosSteps),
         workspace: receipt.workspace,
+        configDir: receipt.huiConfig,
         gateway: receipt.url,
         api,
         createSession: async (input) =>
