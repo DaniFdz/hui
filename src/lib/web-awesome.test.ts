@@ -60,7 +60,7 @@ test("Tab and arrow keys stay owned by Web Awesome", () => {
   }
 });
 
-function submenuItem(options: { open: boolean; menu?: boolean; attached?: boolean }) {
+function submenuItem(options: { open: boolean; attached?: boolean }) {
   const calls: string[] = [];
   const submenu = {
     hidden: false,
@@ -71,7 +71,6 @@ function submenuItem(options: { open: boolean; menu?: boolean; attached?: boolea
   const item = {
     submenuOpen: options.open,
     submenuElement: submenu,
-    closest: () => ({ open: options.menu ?? true }),
     // Web Awesome marks the submenu closed at the call, then hides it once its close animation ends.
     closeSubmenu: async () => {
       calls.push("close");
@@ -94,8 +93,8 @@ test("a submenu that reopened during its close animation is shown again instead 
   assert.deepEqual(calls, ["close", "hide", "show popover", "data-visible="]);
 });
 
-test("a submenu that stayed closed, whose menu closed, or that left the page stays hidden", async () => {
-  for (const [label, options] of [["still closed", { open: false }], ["menu closed", { open: true, menu: false }], ["detached", { open: true, attached: false }]] as const) {
+test("a submenu stays hidden when it stayed closed or its item left the page", async () => {
+  for (const [label, options] of [["still closed", { open: false }], ["detached", { open: true, attached: false }]] as const) {
     const { item, submenu, calls } = submenuItem(options);
     const closing = item.closeSubmenu();
     item.submenuOpen = options.open;

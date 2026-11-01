@@ -1,6 +1,6 @@
 /** The update banner over every screen: dismissing it keeps the composer's draft and lasts only for that version until a reload, Review update opens the HUI update session and the Update HUI dialog without installing or starting a turn, and Escape leaves the dialog (SHELL-032 to SHELL-034). */
-import { expect } from "e2e";
-import { test } from "../../fixtures/hui.ts";
+import { expect, type Locator } from "e2e";
+import { test, type Hui } from "../../fixtures/hui.ts";
 
 const snapshot = (version: string) => JSON.stringify({
   currentVersion: "0.1.5",
@@ -9,14 +9,22 @@ const snapshot = (version: string) => JSON.stringify({
   job: null,
 });
 
+/** The check the next page load makes as it draws. A page still drawing when the check is held leaves that request
+ * held rather than the load the app shows, so let the app draw first and hold the reload's own check. */
+const checkOnNextLoad = async (drawn: Locator, hui: Hui) => {
+  await expect(drawn).toBeVisible();
+  const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
+  await hui.reload();
+  return check;
+};
+
 test("Dismiss update notification keeps the composer's draft, lasts for that version until the page reloads, and a newer version still appears", { tags: ["SHELL-032"], platforms: ["web"] }, async ({ screen, hui }) => {
   const banner = screen.getByLabel("HUI update available");
   const review = screen.getByRole("button", "Review update");
   const dismiss = screen.getByRole("button", "Dismiss update notification");
   const message = screen.getByPlaceholder("What should this session work on?");
 
-  const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
-  await hui.open("/");
+  const check = await checkOnNextLoad(message, hui);
   await check.answer(snapshot("99.0.0"));
   await expect(review).toBeVisible();
   await message.fill("A draft to keep through a dismissal");
@@ -48,8 +56,7 @@ test("Review update opens the HUI update session and the dialog on the latest re
   const message = screen.getByPlaceholder("What should this session work on?");
   const before = await hui.providerRequests();
 
-  const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
-  await hui.open("/");
+  const check = await checkOnNextLoad(message, hui);
   await check.answer(snapshot("99.0.0"));
   await expect(review).toBeVisible();
   await message.fill("A draft that Review update must keep");
@@ -82,8 +89,7 @@ test("Escape closes the Update HUI dialog with the draft unchanged and returns f
   const review = screen.getByRole("button", "Review update");
   const message = screen.getByPlaceholder("What should this session work on?");
 
-  const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
-  await hui.open("/");
+  const check = await checkOnNextLoad(message, hui);
   await check.answer(snapshot("99.0.0"));
   await expect(review).toBeVisible();
   await message.fill("A draft that Escape must keep");
