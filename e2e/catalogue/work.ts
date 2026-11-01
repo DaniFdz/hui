@@ -152,7 +152,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape to leave the pane is a keyboard key; an iPhone has no keyboard to press it.", decision: KEYBOARD },
   },
   {
