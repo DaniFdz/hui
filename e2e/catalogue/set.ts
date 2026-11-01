@@ -332,7 +332,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Worktrees “Default branch prefix” (feature/ by default) saves with Save, adding a trailing slash when missing; new worktree branches from New Session then start with it.",
     spec: ["SPEC.md#git-workspace-sessions", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["settings-page:worktrees", "setting:branchPrefix"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -512,7 +512,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#pi-package-and-skill-mutations", "docs/api.md#get-__huicalls", "SPEC.md#calls-talk-through-gpt-live-opendots-style-2026-10-06", "docs/api.md#gpt-live-calls"],
     surfaces: ["setting:calls.voice", "route:GET /__hui/calls", "settings-page:models", "route:PUT /__hui/settings"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -561,7 +561,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#structured-questions", "docs/api.md#structured-questions"],
     surfaces: ["setting:questions.timeoutMinutes"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
