@@ -55,21 +55,21 @@ test("Model Providers shows PI's primary model, thinking level, available models
   await expect(screen.getByText("Needs setup", { exact: true })).toHaveCount(providers.filter((provider) => !configured(provider) && modelsOf(pi, provider) === 0).length);
   await expect(screen.getByText(/e2e-not-a-secret/u)).toBeHidden();
 
-  const mixed = await hui.intercept("GET", /\/__hui\/pi$/u);
+  // The page can read PI more than once, so answer every read: a later one that reached the real gateway would
+  // put back the providers this snapshot takes away.
+  const mixed = await hui.answerAll("GET", /\/__hui\/pi$/u, withModel(pi, { defaultProvider: "gamma", defaultModel: "", authenticated: ["alpha"], catalog: [{ provider: "alpha", id: "one", name: "one" }, { provider: "beta", id: "two", name: "two" }] }));
   await hui.reload();
-  await mixed.arrived();
-  await mixed.answer(withModel(pi, { defaultProvider: "gamma", defaultModel: "", authenticated: ["alpha"], catalog: [{ provider: "alpha", id: "one", name: "one" }, { provider: "beta", id: "two", name: "two" }] }));
   await expect(screen.getByText("0 models · default", { exact: true })).toBeVisible();
   await expect(screen.getByText("Credential configured", { exact: true })).toBeVisible();
   await expect(screen.getByText("Available", { exact: true })).toBeVisible();
   await expect(screen.getByText("Needs setup", { exact: true })).toBeVisible();
 
-  const none = await hui.intercept("GET", /\/__hui\/pi$/u);
+  await mixed.stop();
+  const none = await hui.answerAll("GET", /\/__hui\/pi$/u, withModel(pi, { defaultProvider: "", defaultModel: "", authenticated: [], catalog: [] }));
   await hui.reload();
-  await none.arrived();
-  await none.answer(withModel(pi, { defaultProvider: "", defaultModel: "", authenticated: [], catalog: [] }));
   await expect(screen.getByText("No providers", { exact: true })).toBeVisible();
   await expect(screen.getByText("Credential configured", { exact: true })).toBeHidden();
+  await none.stop();
 });
 
 test("Model Setup shows the configured primary model and thinking level, the providers and every catalogue model as provider/id Available, and changes no PI configuration", { tags: ["PAGE-030"], platforms: ["web"] }, async ({ screen, hui }) => {
