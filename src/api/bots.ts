@@ -7,7 +7,8 @@ import type { BotInput, BotPatch, BotUsageResponse, BotView } from "./schema/bot
 import type { UsageTotals } from "./schema/diagnostics.ts";
 import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers } from "../lib/bots/bots.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
-import { readEventStream, reconnectDelay } from "./sessions.ts";
+import { readEventStream } from "./sessions.ts";
+import { reconnectDelay } from "../lib/event-stream.ts";
 
 const BOTS_URL = "/__hui/bots";
 

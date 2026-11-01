@@ -85,6 +85,20 @@ export const TYPEFACES = [
 
 export type TypefaceId = (typeof TYPEFACES)[number]["id"];
 
+/** The accent presets: an empty value hands the accent back to the theme. */
+export const ACCENTS = [
+  { id: "default", label: "Theme default", value: "" },
+  { id: "claw", label: "Claw red", value: "#ff5c5c" },
+  { id: "coral", label: "Coral", value: "#ff8066" },
+  { id: "amber", label: "Amber", value: "#f5b942" },
+  { id: "mint", label: "Mint", value: "#52c99a" },
+  { id: "teal", label: "Teal", value: "#35b9b0" },
+  { id: "blue", label: "Blue", value: "#5b9cf6" },
+  { id: "violet", label: "Violet", value: "#a78bfa" },
+  { id: "pink", label: "Pink", value: "#f472b6" },
+  { id: "slate", label: "Slate gray", value: "#8795a8" },
+] as const;
+
 /** Percentages. Same stops OpenClaw uses, so the two feel alike. */
 export const TEXT_SCALE_STOPS = [90, 100, 110, 125, 140] as const;
 
@@ -124,6 +138,11 @@ export function normalizeAppearance(fontUi: unknown, fontChat: unknown, textScal
 
 function typeface(id: TypefaceId): (typeof TYPEFACES)[number] {
   return TYPEFACES.find((face) => face.id === id) ?? TYPEFACES[0];
+}
+
+/** The font family a face draws with, or an empty string for the platform's own face. */
+export function typefaceFamily(id: string): string {
+  return /^"([^"]+)"/u.exec(typeface(id as TypefaceId).stack)?.[1] ?? "";
 }
 
 export function applyAppearance(value: Appearance): void {

@@ -7,14 +7,14 @@
    `media-notes.pdf` in the printed workspace (for example generated with
    ffmpeg); `E2E_PRESENT_MEDIA` presents those exact paths.
 2. Create a session with `E2E_RICH_EMBEDS`, then send `E2E_PRESENT_MEDIA`.
-3. Mermaid: click the rendered diagram, and separately its expand control and
-   Enter on the focused embed. Each opens the viewer with the diagram fitted.
-4. In the viewer, use Zoom in/out, the zoom level (fit), `+`/`-`/`0`/`1` and
-   arrow keys; wheel over a point, drag and double-click the drawing. Escape and
-   a click on the empty backdrop close it and return focus to the embed.
+3. Open the diagram's viewer. Opening it by click, its expand control or the
+   keyboard, its keys, closing it and Copy source are in the shared e2e suite
+   (`e2e/tests/rich/viewer.e2e.ts`, RICH-017, RICH-018, RICH-020, RICH-022).
+4. In the viewer, use Zoom in/out and the zoom level (fit); wheel over a point,
+   drag and double-click the drawing.
 5. Copy image reports **Image copied**. Save as SVG downloads
    `mermaid-diagram.svg`; rendering that file as a standalone image must show
-   unclipped labels. Copy source copies the fenced Mermaid text.
+   unclipped labels.
 6. Image: click the presented PNG. The page must not navigate or open a tab; the
    viewer fits the whole image, Save image downloads a byte-identical file and
    Open in new tab remains available for non-`data:` sources.

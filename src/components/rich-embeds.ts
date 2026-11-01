@@ -22,7 +22,6 @@ declare global {
   }
 }
 
-let mermaidSequence = 0;
 let mermaidQueue: Promise<void> = Promise.resolve();
 let twitterScript: Promise<TwitterWidgets> | undefined;
 
@@ -40,9 +39,22 @@ function renderMermaid(code: string, target: HTMLElement): Promise<void> {
       suppressErrorRendering: true,
       theme: prefersDark() ? "dark" : "default",
     });
-    const { svg, bindFunctions } = await mermaid.render(`hui-mermaid-${++mermaidSequence}`, code, target);
-    target.innerHTML = svg;
-    bindFunctions?.(target);
+    // Validate first, with mermaid's own parser, so an invalid diagram rejects here and the embed shows its reason
+    // instead of mermaid.run silently leaving the holder alone.
+    await mermaid.parse(code);
+    const holder = document.createElement("div");
+    holder.className = "mermaid";
+    holder.textContent = code;
+    target.append(holder);
+    // Mermaid owns the SVG insertion and its strict sanitizing; HUI only hands it text. Using its DOM entry point
+    // keeps the diagram out of HUI's own HTML parsing.
+    await mermaid.run({ nodes: [holder] });
+    // mermaid.run leaves its SVG inside the holder. The viewer reads a direct child, and the original renderer
+    // placed it there, so lift it out and drop the holder.
+    const diagram = holder.querySelector("svg");
+    if (diagram) target.append(diagram);
+    holder.remove();
+    for (const status of target.querySelectorAll(".markdown-rich-embed__status")) status.remove();
   });
   mermaidQueue = task;
   return task;
@@ -70,6 +82,7 @@ async function renderVegaChart(source: string, target: HTMLElement): Promise<() 
   if (spec["width"] === undefined || spec["width"] === "container") spec["width"] = Math.max(240, Math.min(640, target.clientWidth - 32));
   if (spec["height"] === undefined) spec["height"] = 280;
   spec["background"] ??= "transparent";
+  spec["description"] ??= target.getAttribute("aria-label");
   spec["config"] = {
     axis: { gridColor: border, labelColor: muted, titleColor: foreground },
     legend: { labelColor: muted, titleColor: foreground },

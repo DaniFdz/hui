@@ -9,7 +9,7 @@ const cases: UseCase[] = [
     behaviour: "Automations (and Tasks, the same surface under its own title) reads *Reading automation state…* until the snapshot arrives, then shows Scheduler with *Next wake* and *Idle.* or *N runs in flight*, the Tasks table and Run history. With nothing stored, Tasks reads *No tasks configured.* with *Nothing scheduled*, and Run history *No runs recorded yet.* with *No runs*.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huiautomation"],
     surfaces: ["page:cron", "page:tasks", "route:GET /__hui/automation"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -54,7 +54,7 @@ const cases: UseCase[] = [
     behaviour: "Activity lists recent gateway, session, runtime and automation events, newest first, each expanding to show its area, level, time, session and detail. With none it reads *No activity yet. Events appear after this gateway handles session or automation work.*; the list lives in memory, so a gateway restart empties it.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huiobservability"],
     surfaces: ["page:activity", "route:GET /__hui/observability"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -63,7 +63,7 @@ const cases: UseCase[] = [
     behaviour: "Logs shows each warning, error and lifecycle event with its time, level, area, action, summary and detail, with secret-shaped values redacted. With none it reads *No logs yet. Events appear after this gateway handles session or automation work.*",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huiobservability"],
     surfaces: ["page:logs", "route:GET /__hui/observability"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -72,7 +72,7 @@ const cases: UseCase[] = [
     behaviour: "Activity, Logs, Debug and Usage read *Reading HUI diagnostics…* until the snapshot arrives; **Refresh** reads *Refreshing…* while it reloads. A failed read shows the error with **Retry**, which loads the page once the gateway answers.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huiobservability"],
     surfaces: ["page:activity", "page:logs", "page:debug", "page:usage", "route:GET /__hui/observability"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -81,7 +81,7 @@ const cases: UseCase[] = [
     behaviour: "Debug's Snapshots lists Gateway status and transport, the Node runtime and platform, memory in use and the event count since the gateway started, with a note that exports exclude prompts, tool payloads and secrets.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huiobservability", "docs/api.md#get-__huihealth"],
     surfaces: ["page:debug", "route:GET /__hui/observability", "route:GET /__hui/health"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -99,7 +99,7 @@ const cases: UseCase[] = [
     behaviour: "Turning on *Dense observability* in Labs shows more Activity and Logs rows at once; turning it off restores the normal spacing. The switch keeps its state after a reload.",
     spec: ["SPEC.md#behaviour", "docs/api.md#put-__huisettings"],
     surfaces: ["page:labs", "setting:labs.denseObservability", "route:PUT /__hui/settings"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -108,7 +108,7 @@ const cases: UseCase[] = [
     behaviour: "Turning on *Detailed debug* in Labs adds a Runtime detail section with the heap total and snapshot time to Debug; turning it off removes it. The switch keeps its state after a reload and never changes PI.",
     spec: ["SPEC.md#behaviour", "docs/api.md#put-__huisettings"],
     surfaces: ["page:labs", "page:debug", "setting:labs.detailedDebug", "route:PUT /__hui/settings"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -117,7 +117,7 @@ const cases: UseCase[] = [
     behaviour: "On Profile, editing Display name and Handle and pressing **Save profile** updates the card's initials, name and handle (*No handle set* when empty), and the values are still there after a reload.",
     spec: ["SPEC.md#behaviour", "docs/api.md#put-__huisettings"],
     surfaces: ["page:profile", "setting:profileName", "setting:profileHandle", "route:PUT /__hui/settings"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -126,7 +126,7 @@ const cases: UseCase[] = [
     behaviour: "About shows HUI's description and a Runtime list: Gateway status, Transport, Access mode (*Full Access*) and PI ownership. Gateway reads *Unavailable* when health could not be read.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth"],
     surfaces: ["page:about", "route:GET /__hui/health"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -145,7 +145,7 @@ const cases: UseCase[] = [
     behaviour: "Config splits HUI-owned settings from PI-owned ones and shows PI's settings file path with *PI settings file detected.* or *PI is using defaults.* **Open Appearance**, **Open Skills**, **Open Plugins** and **Open Models** open those Settings pages.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huipi"],
     surfaces: ["page:config", "route:GET /__hui/pi"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -154,7 +154,7 @@ const cases: UseCase[] = [
     behaviour: "Model Providers shows the Primary default model, the default Thinking level and the number of available models, then each provider with its model count, *default* on the primary one, and *Credential configured*, *Available* or *Needs setup*. With none it reads *No providers*, and no credential value is ever shown.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huipi"],
     surfaces: ["page:model-providers", "route:GET /__hui/pi"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -163,7 +163,7 @@ const cases: UseCase[] = [
     behaviour: "Model Setup shows the configured Primary model and Thinking level, the providers, and a Model catalog listing each model PI returns as *provider/id*, *Available*. It changes nothing: models are picked per session in the composer.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huipi"],
     surfaces: ["page:model-setup", "route:GET /__hui/pi"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -182,7 +182,7 @@ const cases: UseCase[] = [
     behaviour: "Pressing Escape in the reader closes it and returns focus to the Read button that opened it.",
     spec: ["SPEC.md#pi-package-and-skill-mutations"],
     surfaces: ["page:skills", "page:plugins"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape is a keyboard key; Close reader is the visible equivalent.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
@@ -191,7 +191,7 @@ const cases: UseCase[] = [
     behaviour: "Skill Workshop says creating, revising and publishing skills stays disabled, and lists PI's skill roots as read-only *Discovered* sources.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huipi"],
     surfaces: ["page:skill-workshop", "route:GET /__hui/pi"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

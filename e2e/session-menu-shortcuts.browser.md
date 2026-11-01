@@ -1,48 +1,17 @@
-# Direct session-menu mnemonics and archive recovery toast
+# Archive toast stays while you read it
 
-Verified 2026-09-25 using Browser-tool keyboard input against the real HUI app at
-`http://localhost:5200`, with disposable HUI/PI directories under
-`/tmp/hui-menu-browser`. The fixture is the five-session tree from
-`session-tree-lifecycle.browser.md`; no model calls or operator data are needed.
+The session menu's single keys, the archive toast's Restore (with Enter and on a phone screen too), a failed restore
+and the toast expiring are proven by the shared tests `e2e/tests/sess/session-menu-keys.e2e.ts` and
+`e2e/tests/sess/archive-restore.e2e.ts` (SESS-034, SESS-035, SESS-040). What is left here is SESS-064, which needs
+more than 15 seconds of observation and so stays an agent-run check until a fixture can control the page's clock.
 
 ## Browser journey
 
-1. Open Independent conversation at 1440x1000. Open **Actions for Plan website**
-   and press native `a` with Browser `act:press`, without Enter. The menu closes,
-   the parent and its three descendants leave the sidebar, and a toast reads
-   `Archived “Plan website”.` with **Restore** and a dismiss control.
-2. Focus Restore, capture the rendered desktop view, and press Enter. The toast
-   disappears and all five session rows return. Registry flags confirm all four
-   archived records are restored. Focus keeps the toast alive during inspection.
-3. Reopen the parent menu for each native key: `p` sets pinned, `u` marks unread,
-   `d` opens the existing destructive confirmation without deleting any record.
-   Cancel with Escape; `r` opens the Session name/Session group editor. Cancel it
-   with Escape. The letters activate actions rather than selecting menu items.
-4. Reopen the menu and press `Shift+A`. The current parent archives and Home
-   opens, retaining the recovery toast. Resize to 390x844 and inspect/capture
-   the mobile toast; Restore and dismiss remain accessible.
-5. For a controlled failure, replace only the next fixture restore PATCH response
-   in page fetch with HTTP 503 and an explicit fixture error. Activate Restore
-   with Enter. The toast retains an alert and an enabled Restore button; nothing
-   is falsely reported as restored. Click Restore again, using the real endpoint,
-   and verify all four registry flags return to false.
-6. Archive once more without hovering/focusing the toast. Wait for its text to
-   disappear as an observable condition (20-second timeout, no fixed sleep).
-   The toast expires and the session tree remains archived.
+1. Launch the isolated app with `node e2e/visual-verification.mjs launch` and open it at 1440x1000 with two sessions.
+2. Open **Actions for** one of them and choose **Archive session**. The toast reads `Archived “<title>”.` with
+   **Restore** and **Dismiss archive notification**.
+3. Focus **Restore** without pressing it and wait 20 seconds. The toast is still there.
+4. Move focus out of the toast, then hover it with the pointer and wait 20 seconds. The toast is still there.
+5. Move the pointer away. Within 20 seconds the toast disappears and the session stays archived.
 
-Snapshots established controls before actions. Menu triggers were clicked through
-Browser evaluate; the mnemonic and confirmation keys used actual Browser press
-input. No direct HUI API mutation replaced the user journey. Browser page errors:
-zero. Failure injection is intentionally synthetic; it does not indicate a
-backend outage.
-
-## Automated coverage
-
-`src/lib/session/menu-shortcuts.test.ts` covers mappings, uppercase letters,
-modified/repeated/composing input, capture-time activation, disabled/closed menus,
-editable targets and nested submenu isolation. Existing menu structure and Escape
-checks remain passing. No new dependencies or persisted formats were introduced;
-the toast uses the existing archive/restore API and OpenClaw-derived toast CSS.
-
-Validation: `npm test` (640 passed), `npm run typecheck`, `npm run build`, and
-`git diff --check`. The build retains its existing large-chunk advisory.
+Browser page errors: zero. Use a Browser wait on the toast's text disappearing, not a fixed sleep, for step 5.

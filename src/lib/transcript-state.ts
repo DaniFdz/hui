@@ -273,3 +273,19 @@ export function settlePendingUser(
     item.kind === "message" ? { ...item, pending: false, failed: !accepted } : item,
   );
 }
+
+/** A send that failed shows its message failed, added again when a gateway snapshot replaced it meanwhile. */
+export function failPendingUser(
+  items: readonly TranscriptItem[],
+  id: string,
+  text: string,
+  attachments: readonly (string | TranscriptAttachment)[],
+): TranscriptItem[] {
+  const shown = items.some((item) => item.id === id) ? items : appendPendingUser(items, id, text, attachments);
+  return settlePendingUser(shown, id, false);
+}
+
+/** The gateway had a resent send's first attempt all along: its message is in the session, so drop the local copies. */
+export function dropDuplicateSend(items: readonly TranscriptItem[], pendingId: string, earlierRow?: string): TranscriptItem[] {
+  return items.filter((item) => item.id !== pendingId && item.id !== earlierRow);
+}

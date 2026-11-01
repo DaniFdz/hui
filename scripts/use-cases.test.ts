@@ -38,6 +38,7 @@ const sourcesIn = async (directory: string, keep: (name: string) => boolean) => 
 const testSources = await sourcesIn("e2e/tests", (name) => name.endsWith(".ts"));
 const fixtureSource = await read("e2e/fixtures/hui.ts");
 const appSources = [...(await sourcesIn("src", (name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))).values()].join("\n");
+const iosSources = await sourcesIn("ios/HUI", (name) => name.endsWith(".swift")).then((map) => [...map.values()].join("\n"), () => "");
 const withoutCommentsAndStrings = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|(["'`])(?:\\.|(?!\1)[^\\])*\1|\/(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[dgimsuyv]*/gu, (match) => (match.startsWith("/") ? "" : '""'));
 
@@ -122,12 +123,13 @@ test("every shared test names known use cases, and a skipped one covers only use
   assert.deepEqual(problems, []);
 });
 
-test("shared tests use no agent steps, retries, skips, platform reads or sleeps, and the fixture doesn't sleep", () => {
+test("shared tests use no agent steps, retries, skips, platform reads, app.clearState() or sleeps, and the fixture doesn't sleep", () => {
   const sleep: [RegExp, string] = [/\b(?:setTimeout|setInterval|waitForTimeout|sleep|delay)\s*\(/u, "a sleep"];
   const forbidden: [RegExp, string][] = [
     [/\bagent\b/u, "an agent step"],
     [/\bretries\b/u, "retries"],
     [/\.skip\(/u, "test.skip("],
+    [/\bapp\.clearState\(/u, "app.clearState(), which leaves the iOS app's preferences behind; use hui.clearState()"],
     [/\b(?:platform|device|browser)\b/u, "a platform, device or browser read, which only e2e/fixtures/hui.ts may do"],
     sleep,
   ];
@@ -136,16 +138,32 @@ test("shared tests use no agent steps, retries, skips, platform reads or sleeps,
   assert.deepEqual(problems, []);
 });
 
-test("shared tests find controls by roles iOS has too, and by test ids the web app sets", () => {
+test("shared tests find controls by roles iOS has too, and by test ids the web app sets and, when they run on iOS, the app too", () => {
   const portable = new Set(["button", "textbox", "switch", "tab", "listitem"]);
-  const webOnly = (file: string) => pairs.filter((pair) => pair.file === file).flatMap((pair) => pair.tags.filter((tag) => ID_TAG.test(tag)))
-    .every((id) => typeof byId.get(id)?.ios === "object");
-  const problems = [...testSources].flatMap(([file, source]) => [
-    ...[...source.matchAll(/getByRole\(\s*["'`]([a-z]+)["'`]/gu)].map(([, role]) => role!)
-      .filter((role) => !portable.has(role) && !webOnly(file)).map((role) => `${file} finds a ${role}, which iOS doesn't expose`),
-    ...[...source.matchAll(/getByTestId\(\s*["'`]([^"'`]+)["'`]/gu)].map(([, id]) => id!)
-      .filter((id) => !appSources.includes(`data-testid="${id}"`)).map((id) => `${file} finds test id ${id}, which no data-testid in src/ sets`),
-  ]);
+  const parts = [...testSources].flatMap(([file, source]) => {
+    const inFile = pairs.filter((pair) => pair.file === file && pair.source);
+    const pairLines = [...new Set(inFile.map((pair) => pair.source!.line))].sort((a, b) => a - b);
+    const lines = source.split("\n");
+    const starts = lines.flatMap((line, index) => (line.startsWith("test(") ? [index] : []));
+    assert.equal(starts.length, pairLines.length, `${file}: every test starts a line with test(`);
+    return [0, ...starts].map((start, index) => ({
+      file,
+      source: lines.slice(start, starts[index]).join("\n"),
+      pairs: index === 0 ? inFile : inFile.filter((pair) => pair.source!.line === pairLines[index - 1]),
+    }));
+  });
+  const problems = parts.flatMap(({ file, source, pairs: covered }) => {
+    const testIds = [...source.matchAll(/getByTestId\(\s*["'`]([^"'`]+)["'`]/gu)].map(([, id]) => id!);
+    const onIos = covered.some((pair) => pair.target === "ios" && pair.disposition === "run");
+    const webOnly = covered.flatMap((pair) => pair.tags.filter((tag) => ID_TAG.test(tag))).every((id) => typeof byId.get(id)?.ios === "object");
+    return [
+      ...[...source.matchAll(/getByRole\(\s*["'`]([a-z]+)["'`]/gu)].map(([, role]) => role!)
+        .filter((role) => !portable.has(role) && !webOnly).map((role) => `${file} finds a ${role}, which iOS doesn't expose`),
+      ...testIds.filter((id) => !appSources.includes(`data-testid="${id}"`)).map((id) => `${file} finds test id ${id}, which no data-testid in src/ sets`),
+      ...(iosSources ? testIds.filter((id) => onIos && !iosSources.includes(`.accessibilityIdentifier("${id}")`))
+        .map((id) => `${file} runs on iOS and finds test id ${id}, which no .accessibilityIdentifier under ios/HUI sets`) : []),
+    ];
+  });
   assert.deepEqual(problems, []);
 });
 

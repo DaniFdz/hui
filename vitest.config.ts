@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["{bin,cli,desktop,evals,scripts,server,src}/**/*.test.{ts,mjs,js}"],
+    include: ["{bin,cli,desktop,evals,ios,scripts,server,src}/**/*.test.{ts,mjs,js}"],
     // A test or hook that never ends fails after five minutes, far past the slowest one, and the log names it.
     testTimeout: 300_000,
     hookTimeout: 300_000,

@@ -1,19 +1,29 @@
 name: E2E
-# The shared e2e suite on the web: e2e/tests/ against a disposable gateway, in headless Chromium.
+# The shared e2e suite: e2e/tests/ against a disposable gateway, on the web in headless Chromium and on iOS in the
+# "HUI iPhone" simulator.
 on:
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".agents/**"
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  # A newer push to the same branch or pull request supersedes a run in progress.
-  group: e2e-${{ github.ref }}
+  # A newer push to the same branch or pull request supersedes a run in progress; a manual run supersedes nothing.
+  group: e2e-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || '' }}
   cancel-in-progress: true
 jobs:
   web:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/4", "2/4", "3/4", "4/4"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -24,12 +34,13 @@ jobs:
       - run: npm install -g npm@11
       - run: npm ci --ignore-scripts
       - run: npx e2e-web install chromium --with-deps
-      - run: npm run e2e
+      - run: npm run e2e -- --shard ${{ matrix.shard }}
       # The suite's traces and screenshots, and the launcher's gateway and provider logs.
-      - if: ${{ !cancelled() }}
+      # Traces and screenshots are only useful when a shard failed; a green run needs no artifact.
+      - if: ${{ failure() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: e2e-web
+          name: e2e-web-${{ strategy.job-index }}
           path: |
             .e2e/
             /tmp/hui-visual-*/artifacts/

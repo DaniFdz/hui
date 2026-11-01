@@ -26,7 +26,6 @@ import type {
   SessionConnection,
   SessionGroup,
   SessionGoal,
-  SessionStatus,
   SessionView,
   SubagentTaskView,
   TranscriptItem,
@@ -36,9 +35,10 @@ import type {
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
-import { composerEnterMode, composerPlaceholder } from "../lib/composer/state.ts";
+import { composerEnterMode, composerPlaceholder, queueRows } from "../lib/composer/state.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
+import { sessionStatusLabel } from "../lib/session/labels.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer/textarea.ts";
 import { icons } from "../lib/icons.ts";
 import { isThinkingLevel, PI_THINKING_LEVELS, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../lib/thinking.ts";
@@ -52,7 +52,6 @@ import "../components/datadog-embeds.ts";
 import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
 import "../components/questionnaire-card.ts";
-import type { QuestionnaireQuestion, QuestionnaireResult } from "../api/schema/sessions.ts";
 import { markdownBlocks } from "../lib/markdown/blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { mediaSizeLabel, presentedMediaFromDetails, type PresentedMediaItem } from "../lib/presented-media.ts";
@@ -60,13 +59,14 @@ import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { parseSlackLink } from "../lib/markdown/slack-link.ts";
-import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "./chat/projection.ts";
+import { activityLabel, attributedMessage, questionnaireSummary, type QuestionnaireSummary, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../lib/chat-projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
-import { readToolPresentation, renderReadToolCard, renderToolFileReference, toolFilePath } from "./chat/read-tool-card.ts";
-import { commandToolPresentation, renderCommandToolCard } from "./chat/command-tool-card.ts";
-import { codemodeToolPresentation, renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
+import { renderReadToolCard, renderToolFileReference } from "./chat/read-tool-card.ts";
+import { renderCommandToolCard } from "./chat/command-tool-card.ts";
+import { renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
 import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
+import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath } from "../lib/tool-cards.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { renderWatcherActivity, renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
@@ -101,16 +101,6 @@ if (typeof document !== "undefined") {
     document.querySelectorAll<HTMLDetailsElement>(".agent-chat__input details[open]").forEach(positionNativePicker);
   });
 }
-
-const STATUS_TEXT: Record<SessionStatus, string> = {
-  idle: "Idle",
-  running: "Running",
-  waiting: "Waiting for your answer",
-  starting: "Starting",
-  error: "Error",
-  reconnecting: "Reconnecting",
-  disconnected: "Disconnected",
-};
 
 const SEND_LONG_PRESS_MS = 450;
 export const TRANSCRIPT_SCROLLER_SELECTOR = ".chat-thread";
@@ -451,7 +441,7 @@ function renderLaunchFeedback(props: HomeProps) {
   if (!props.note) return nothing;
   const failed = props.noteLevel === "error";
   return html`
-    <div id="launch-feedback"
+    <div id="launch-feedback" data-testid="launch-feedback"
       class="callout ${failed ? "danger" : ""} new-session-page__alert new-session-page__feedback"
       role=${noteAnnouncement(props.noteLevel)} aria-atomic="true">
       ${failed ? html`<span class="new-session-page__alert-icon" aria-hidden="true">${icons.alertTriangle}</span>` : nothing}
@@ -723,7 +713,7 @@ function renderLaunchForm(props: HomeProps) {
           ${renderCheckoutPicker(props)}
         </div>
         <div class="agent-chat__composer-shell new-session-page__composer">
-          <div class="agent-chat__input agent-chat__input--mobile-toolbar" @click=${focusComposerFromSurface}>
+          <div class="agent-chat__input agent-chat__input--mobile-toolbar" data-testid="new-session-composer" @click=${focusComposerFromSurface}>
             ${renderLocalPathMenu({ ...props.localPathMenu, id: sessionControlId(props, LOCAL_PATH_MENU_ID) })}
             ${renderSlashMenu({ ...props.commandMenu, id: sessionControlId(props, SLASH_MENU_ID), loading: false, error: "", streaming: false,
               commands: props.commandMenu.commands, browseSession: !props.launching && commandQuery?.start === 0,
@@ -846,11 +836,6 @@ function renderMessageAttachment(attachment: string | { name: string; kind?: str
     </a>
     <div class="hui-message-attachment-image__fallback">${attachmentCard(attachment)}</div>
   </figure>`;
-}
-
-function printable(value: unknown): string {
-  if (typeof value === "string") return value;
-  try { return JSON.stringify(value, null, 2); } catch { return String(value); }
 }
 
 /** One hover/focus/dismiss contract for every transcript footer action. */
@@ -1038,24 +1023,6 @@ function widgetActivity(items: readonly ChatActivity[]): WidgetView | undefined 
   const item = items.length === 1 ? items[0] : undefined;
   const view = item?.kind === "tool" ? widgetView(item) : undefined;
   return view?.state === "failed" ? undefined : view;
-}
-
-type QuestionnaireSummary = QuestionnaireResult & { asked: readonly QuestionnaireQuestion[] };
-
-/** An ended `ask_user_question` call, kept in sight like the card it replaced: what the operator chose, or, when
- * nobody answered in time, what was asked. A running or failed one stays an ordinary tool row. */
-function questionnaireSummary(items: readonly ChatActivity[]): QuestionnaireSummary | undefined {
-  const item = items.length === 1 ? items[0] : undefined;
-  if (item?.kind !== "tool" || item.name !== "ask_user_question" || item.status !== "succeeded") return undefined;
-  const details = item.details as Partial<QuestionnaireResult> | undefined;
-  // Only HUI's own result: a PI extension's call of the same name (older transcripts) has another shape.
-  const answers = details?.answers;
-  if (!Array.isArray(answers) || !answers.every((answer) => typeof answer?.header === "string" && Array.isArray(answer.selected))) return undefined;
-  if (details?.timedOut !== true) return { cancelled: details?.cancelled === true, answers, asked: [] };
-  // The call's own input as the model wrote it, before PI's argument conversion took a lone question for a list of one.
-  const raw = (item.args as { questions?: unknown } | undefined)?.questions;
-  const asked = [raw ?? []].flat().filter((question): question is QuestionnaireQuestion => Array.isArray((question as Partial<QuestionnaireQuestion> | null)?.options));
-  return { cancelled: true, answers: [], timedOut: true, timeoutMinutes: details.timeoutMinutes, asked };
 }
 
 function renderQuestionnaireSummary(id: string, result: QuestionnaireSummary): TemplateResult {
@@ -1436,11 +1403,12 @@ function renderLiveCompaction(compaction: RuntimeCompaction | undefined, onCance
 
 function renderWorkingIndicator(props: HomeProps) {
   if (!props.streaming || props.question || compactionBlocks(props.compaction)) return nothing;
+  const label = workingLabel(props.transcript);
   return html`<div class="chat-group assistant chat-group--working" aria-live="polite">
     <div class="chat-group-messages">
-      <div class="chat-working-indicator" role="status">
+      <div class="chat-working-indicator" role="status" aria-label=${`Agent activity: ${label}`}>
         <span class="chat-working-indicator__mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="chat-working-indicator__label">${workingLabel(props.transcript)}</span>
+        <span class="chat-working-indicator__label">${label}</span>
       </div>
     </div>
   </div>`;
@@ -1991,17 +1959,17 @@ function renderTaskProgress(props: HomeProps) {
   // A phone's card sits over the conversation it documents, so it starts folded to its current step there.
   const folded = props.chatPreferences.collapseTaskProgress || allComplete || Boolean(props.mobileNavLayout);
   return html`<div class="agent-chat__progress-float">
-    <details class="session-progress-card session-progress-card--composer" ?open=${!folded}>
-      <summary class="session-progress-card__summary">
+    <details class="session-progress-card session-progress-card--composer" data-testid="task-progress" ?open=${!folded}>
+      <summary class="session-progress-card__summary" data-testid="task-progress-summary">
         <span class="session-progress-card__summary-indicator ${allComplete ? "session-progress-card__summary-indicator--complete" : ""}" data-status=${current?.status ?? "pending"} aria-hidden="true">${allComplete ? checkIcon : current?.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span>
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
         <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
         <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
         <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
       </summary>
-      <div class="session-progress-card__body" role="region" aria-label="Task progress">
+      <div class="session-progress-card__body" role="region" aria-label="Task progress" data-testid="task-progress-steps">
         ${card.markdown ? html`<div class="session-progress-card__markdown">${renderMarkdown(card.markdown)}</div>` : nothing}
-        ${card.steps.length ? html`<ol class="session-progress-card__steps">${card.steps.map((step) => html`<li class="session-progress-card__step session-progress-card__step--${step.status}" data-status=${step.status}><span class="session-progress-card__step-marker" aria-hidden="true">${step.status === "completed" ? checkIcon : step.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span><span>${step.step}</span></li>`)}</ol>` : nothing}
+        ${card.steps.length ? html`<ol class="session-progress-card__steps">${card.steps.map((step) => html`<li class="session-progress-card__step session-progress-card__step--${step.status}" data-testid="task-progress-step" data-status=${step.status}><span class="session-progress-card__step-marker" aria-hidden="true">${step.status === "completed" ? checkIcon : step.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span><span>${step.step}</span></li>`)}</ol>` : nothing}
       </div>
     </details>
   </div>`;
@@ -2276,13 +2244,8 @@ function mountEditor(element: Element | undefined, value: string) {
 }
 
 function renderQueue(props: HomeProps) {
-  const editable = [...(props.queue.items ?? [])];
-  const runtimeFollowUps = props.queue.followUp.slice(0, Math.max(0, props.queue.followUp.length - editable.length));
-  const rows = [
-    ...props.queue.steering.map((text) => ({ id: "", text, label: "Steer", editable: false })),
-    ...runtimeFollowUps.map((text) => ({ id: "", text, label: "Follow up", editable: false })),
-    ...editable.map((item) => ({ ...item, label: "Follow up", editable: true })),
-  ];
+  const editable = props.queue.items ?? [];
+  const rows = queueRows(props.queue);
   if (!rows.length) return nothing;
   return html`<section
     class="chat-queue"
@@ -2415,7 +2378,7 @@ function renderQuestion(props: HomeProps) {
   const titleId = sessionControlId(props, "question-title");
   const reasonId = sessionControlId(props, "question-reason");
   return html`<div class="agent-chat__question-dock" aria-live="polite">
-    <form class="session-question-card chat-question-panel" aria-labelledby=${titleId} @submit=${submit}
+    <form class="session-question-card chat-question-panel" data-testid="question-card" aria-labelledby=${titleId} @submit=${submit}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key === "Escape") {
           // Consumed either way, or the page's Escape would stop the run. Password
@@ -2556,7 +2519,7 @@ function botFaceState(props: HomeProps): BotFaceState {
 
 /** A bot's chat names the bot, its role, the worker it runs on and whether it is summarizing memory. */
 function renderBotIdentity(bot: HomeBot, session: SessionView, face: BotFaceState) {
-  const status = bot.bot.memory?.waiting ? "Summarizing memory…" : unreachableHost(session) ?? STATUS_TEXT[session.status];
+  const status = bot.bot.memory?.waiting ? "Summarizing memory…" : sessionStatusLabel(session);
   const worker = bot.bot.worker;
   return html`<div class="transcript__identity chat-pane__crumbs bot-chat-identity">
     ${renderBotAvatar(bot.bot, "md", { state: face })}
@@ -2573,7 +2536,7 @@ function renderSessionStatus(status: string) {
 
 function renderHeader(props: HomeProps, session: SessionView) {
   return html`
-    <header class="transcript__head chat-pane__header" tabindex="-1" draggable=${props.paneMovable ? "true" : "false"}>
+    <header class="transcript__head chat-pane__header" tabindex="-1" data-testid="chat-header" draggable=${props.paneMovable ? "true" : "false"}>
       <div class="chat-pane__header-leading">
         ${renderPaneMoveHandle(props.paneMovable)}
         ${props.mobileNavLayout ? html`<button
@@ -2586,9 +2549,9 @@ function renderHeader(props: HomeProps, session: SessionView) {
         >${icons.menu}</button>` : nothing}
         ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs ${props.panelPicker ? "chat-pane__crumbs--picker" : ""}">
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
-          ${props.panelPicker ?? html`<h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>`}
+          ${props.panelPicker ?? html`<h2 class="transcript__title chat-pane__session-title" data-testid="session-title" title=${session.title}>${session.title}</h2>`}
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(props.savedCopy ? "Saved copy" : unreachableHost(session) ?? STATUS_TEXT[session.status])}
+            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(props.savedCopy ? "Saved copy" : sessionStatusLabel(session))}
           </span>
         </div>`}
         ${session.parentId ? html`<button

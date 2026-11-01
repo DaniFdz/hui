@@ -3,6 +3,9 @@ import { test } from "vitest";
 import { groupCheckoutDefaults } from "./group-session-defaults.ts";
 
 const checkout = { available: true, headBranch: "feature/current", defaultBranch: "main", branches: ["main", "release"] };
+test("without a group, New Session stays on the current checkout instead of the default branch", () => {
+  assert.deepEqual(groupCheckoutDefaults("/repo", checkout), { worktree: false, baseRef: "" });
+});
 test("legacy groups start in Branch on the repository default", () => {
   assert.deepEqual(groupCheckoutDefaults("/repo", checkout, { cwd: "/repo" }), { worktree: false, baseRef: "main" });
 });

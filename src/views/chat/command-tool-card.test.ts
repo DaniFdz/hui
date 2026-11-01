@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { commandToolPresentation } from "./command-tool-card.ts";
+import { commandToolPresentation } from "../../lib/tool-cards.ts";
 import { renderHighlightedCommand } from "./command-highlight.ts";
 
 test("command rows use the original compact preamble while preserving full input", () => {

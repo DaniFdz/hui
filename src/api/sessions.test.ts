@@ -5,8 +5,8 @@ import type { Duplex } from "node:stream";
 import { test, vi } from "vitest";
 import { WebSocketServer } from "ws";
 
+import { reconnectDelay } from "../lib/event-stream.ts";
 import {
-  reconnectDelay,
   STATUS_STREAM_STALL_MS,
   subscribeSessionStatuses,
   subscribeSession,

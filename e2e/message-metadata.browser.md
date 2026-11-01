@@ -16,9 +16,9 @@ Browser-tool viewports: desktop 1440×1000 and mobile 390×844.
 - Expanded activity: model-call and read-tool durations were separate; only the
   model call carried tokens. Expanded final measurements showed input/output,
   zero-valued cache counters and zero reported cost.
-- Entered an existing draft, activated Reply, and verified the original draft
-  plus a multiline Markdown quote. Focus and selection moved to the end of the
-  composer; no prompt was sent. Keyboard-focused Reply + Enter also worked.
+- The shared test `e2e/tests/chat/message-actions.e2e.ts` covers Reply's quote,
+  focus and caret, and Copy turning to Copied (CHAT-030, CHAT-032).
+  Keyboard-focused Reply + Enter also worked.
 - Reloaded: the draft and live duration remained. Observed `just now` advancing
   to `1m ago`; time tooltips distinguish completion from creation timestamps.
 - Vite runtime restarts while editing server code dropped live duration but

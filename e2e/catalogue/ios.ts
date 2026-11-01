@@ -1,0 +1,16 @@
+/** The IOS use cases: what only the iPhone app does, such as connecting to a gateway by its address and checking its version. */
+import type { UseCase } from "./types.ts";
+
+const cases: UseCase[] = [
+  {
+    id: "IOS-001",
+    title: "Connect to a gateway and see its version",
+    behaviour: "With no remembered gateway the app opens on Connect to HUI, and Connect with an empty Gateway URL asks for the gateway's address. An address that answers but isn't a HUI gateway is refused with \"This address doesn't answer as a HUI gateway.\". A HUI gateway's address, typed there or given by the -HUIGatewayURL launch argument, opens the session list with the gateway's sessions and is remembered for the next launch. A development gateway, which has no version, shows \"Development gateway: its version is unverified.\". The notices for a gateway older or newer than the app need a released gateway, so the app's unit tests cover them.",
+    spec: ["SPEC.md#the-ios-app-connects-to-one-gateway-2026-10-21"],
+    surfaces: [],
+    web: { excluded: "The web UI is served by the gateway it talks to, so it never connects to one by address.", decision: "SPEC.md#the-ios-app-connects-to-one-gateway-2026-10-21" },
+    ios: "required",
+  },
+];
+
+export default cases;

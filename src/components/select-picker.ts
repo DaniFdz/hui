@@ -294,6 +294,7 @@ export class SelectPicker<
               role="listbox"
               id=${this.listboxId}
               aria-label=${this.params.label}
+              data-testid="picker-list"
               ?data-picker-focus=${this.mode === "compact"}
               tabindex=${this.mode === "compact" ? 0 : -1}
               aria-activedescendant=${this.mode === "compact" && active >= 0 ? `${this.listboxId}-${active}` : nothing}

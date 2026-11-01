@@ -1,41 +1,19 @@
-# Terminal font preference
+# Terminal font in shared terminals
 
-Verified 2026-09-25 using the Browser tool and the isolated SDK fixture:
-`HUI_E2E_PORT=43415 NO_PROXY=localhost,127.0.0.1 npm run e2e:sdk`.
-No operator sessions or settings were used.
+The Terminal font picker, a typed local family, its persistence, the bundled Nerd Font symbols in the stack and the
+fallback to JetBrains Mono are proven by the shared test `e2e/tests/set/typography.e2e.ts` (SET-010). What is left
+here is SET-077: a shared terminal draws on a canvas in a worker, which no shared test reads yet.
 
-1. At 1440×1000, open Settings from the sidebar, then Appearance → Typography.
-2. Open the **Terminal font** picker. It uses the same themed picker as the
-   Interface and Chat prose fonts and lists every suggested font, not only the
-   current value. Type `DejaVu Sans Mono`, choose its "Use this local font" row,
-   and reload. The value survives and the preview's computed font stack starts
-   with it.
-3. Exit Settings, create a fixture session in its disposable workspace, and use
-   **Open terminal**. The real Ghostty canvas connects to a native PTY and its
-   font option starts with `DejaVu Sans Mono`.
-4. Return to Settings, choose `MesloLGS NF` from the picker, exit Settings and reopen
-   the terminal. The same terminal ID is connected with the new font stack;
-   changing the preference does not restart the shell.
-5. Inspect Typography at 390×844 and 844×390. The field remains accessible and
-   main, sections and settings rows have no horizontal overflow.
-6. Capture and inspect desktop/mobile screenshots outside the repository;
-   include them in the PR description. Browser reports zero page errors.
+Run it with the default launcher (`node e2e/visual-verification.mjs launch --branch "$(git branch --show-current)"`)
+and the Browser tool. No operator sessions or settings are used.
 
-DejaVu Sans Mono is installed on the test browser host. MesloLGS NF is not:
-its name persists correctly and the monospace fallback renders, but this run
-cannot prove the appearance of that font's private-use Nerd Font glyphs.
-The preview deliberately includes those glyphs so the user can check their font.
-
-Validation: 678 tests passed; typecheck, production build and diff check passed.
-Stop the isolated launcher after verification; its temporary state is disposable.
-
-## Bundled Nerd Font symbols
-
-Verified 2026-09-25 with the same isolated fixture (`HUI_E2E_PORT=43419`) on a
-browser host with no Nerd Font installed. With **FiraCode Nerd Font Mono**
-selected, the Typography preview draws its Powerline, folder and prompt icons from
-the bundled `HUI Nerd Font Symbols` face (`document.fonts` reports it loaded). In
-a real terminal, `cat` of a file containing U+E0B0, U+F07C, U+F120, U+F0001 and
-U+E0A0 renders all five icons on the Ghostty canvas while text keeps the chosen
-font stack. The desktop app loads the same gateway-served stylesheet and has no
-font policy of its own; it was not launched in this headless run.
+1. In Settings → Appearance → Typography, type `DejaVu Sans Mono` in the **Terminal font** picker and choose its
+   "Use this local font" row.
+2. Exit Settings, create a fixture session in the launcher's workspace, and use **Open terminal**. The Ghostty
+   canvas connects to a native PTY and its font option starts with `DejaVu Sans Mono`.
+3. Return to Settings, choose `MesloLGS NF`, exit Settings and reopen the terminal. The same terminal ID is
+   connected with the new font stack; changing the preference does not restart the shell.
+4. With **FiraCode Nerd Font Mono** chosen on a browser host with no Nerd Font installed, `cat` a file holding
+   U+E0B0, U+F07C, U+F120, U+F0001 and U+E0A0: the canvas draws all five icons from the bundled
+   `HUI Nerd Font Symbols` face while text keeps the chosen font stack.
+5. Browser page errors: none.

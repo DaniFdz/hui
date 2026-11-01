@@ -87,6 +87,8 @@ export class TerminalPane extends HuiElement {
   private generation = 0;
   private replaying = false;
   private ready = false;
+  /** Typed input held while the socket connects or the replay is written, then sent in order. */
+  private pendingInput: string[] = [];
   private retry: ReturnType<typeof setTimeout> | undefined;
   private retries = 0;
   /** The size the PTY was last given (by a snapshot, a state frame or this view). */
@@ -132,6 +134,7 @@ export class TerminalPane extends HuiElement {
     this.themeObserver = undefined;
     this.touch.cancel();
     this.ready = false;
+    this.pendingInput = [];
     if (this.socket) { this.socket.onclose = null; this.socket.close(); this.socket = undefined; }
     this.terminal?.dispose();
     this.terminal = undefined;
@@ -215,8 +218,19 @@ export class TerminalPane extends HuiElement {
   }
 
   private send(input: TerminalInput) {
-    if (!this.ready || this.socket?.readyState !== WebSocket.OPEN || this.terminalView?.status !== "running" || this.replaying) return;
+    if (this.terminalView && this.terminalView.status !== "running") return;
+    if (!this.ready || this.socket?.readyState !== WebSocket.OPEN || this.replaying) {
+      // Keys typed before the terminal has attached are held for its shell instead of vanishing.
+      if (input.action === "input") this.pendingInput.push(input.data);
+      return;
+    }
     this.socket.send(JSON.stringify(input));
+  }
+
+  /** Sends what was typed while the terminal attached, in the order it was typed. */
+  private flushInput() {
+    const data = this.pendingInput.splice(0).join("");
+    if (data) this.send({ action: "input", data });
   }
 
   private sendText(data: string) {
@@ -375,6 +389,7 @@ export class TerminalPane extends HuiElement {
           this.replaying = false;
           this.ready = true;
           this.fitTerminal();
+          this.flushInput();
         });
         this.status = frame.terminal.status === "running" ? "Connected" : "Exited";
         this.error = "";

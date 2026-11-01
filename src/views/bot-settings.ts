@@ -129,7 +129,7 @@ function renderRow(props: BotSettingsProps, options: RowOptions) {
   const title = options.labelFor
     ? html`<label class="settings-row__title" for=${options.labelFor}>${options.title}</label>`
     : html`<span class="settings-row__title">${options.title}</span>`;
-  return html`<div class="settings-row bot-setting ${options.stacked ? "bot-setting--stacked" : ""}" data-setting=${options.setting} aria-busy=${pending ? "true" : "false"}>
+  return html`<div class="settings-row bot-setting ${options.stacked ? "bot-setting--stacked" : ""}" data-setting=${options.setting} data-testid="bot-setting" aria-busy=${pending ? "true" : "false"}>
     <div class="settings-row__text">
       <div class="bot-setting__title">${title}<span class="bot-setting__status" role="status">${pending ? "Saving…" : ""}</span></div>
       ${options.desc ? html`<span class="settings-row__desc">${options.desc}</span>` : nothing}

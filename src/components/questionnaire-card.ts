@@ -172,7 +172,7 @@ export class QuestionnaireCard extends HuiElement {
       if (!question.options[index]?.preview || this.previewed[this.step] === index) return;
       this.previewed = this.previewed.map((each, step) => step === this.step ? index : each);
     };
-    return html`<form class="session-question-card chat-question-panel questionnaire-card" aria-labelledby=${titleId}
+    return html`<form class="session-question-card chat-question-panel questionnaire-card" data-testid="question-card" aria-labelledby=${titleId}
       @submit=${(event: SubmitEvent) => { event.preventDefault(); this.#advance(); }}
       @keydown=${(event: KeyboardEvent) => this.#keydown(event)}>
       <header class="chat-question-panel__topline">
@@ -194,7 +194,7 @@ export class QuestionnaireCard extends HuiElement {
         <div class="chat-question-panel__options questionnaire-card__options" role=${multi ? "group" : "radiogroup"} aria-labelledby=${titleId}>
           ${question.options.map((option, index) => {
             const selected = draft.selected.includes(option.label);
-            return html`<button type="button" data-row data-option=${option.label}
+            return html`<button type="button" data-row data-option=${option.label} data-testid="question-option"
               class="chat-question-panel__option ${selected ? "chat-question-panel__option--selected" : ""}"
               role=${multi ? "checkbox" : "radio"} aria-checked=${String(selected)} tabindex=${index === focusIndex ? "0" : "-1"}
               @click=${() => this.#pick(option.label)}

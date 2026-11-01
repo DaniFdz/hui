@@ -17,8 +17,14 @@ export function normalizeTerminalFont(value: unknown): string {
 /** Bundled icon face (public/fonts/symbols-nerd-font-mono.css), limited to Nerd Font code points. */
 export const NERD_FONT_SYMBOLS = "HUI Nerd Font Symbols";
 
+/** The families a terminal draws with, in order: the chosen one, HUI's symbols and the bundled monospace behind it. */
+export function terminalFontFamilies(value: unknown): string[] {
+  return [normalizeTerminalFont(value), NERD_FONT_SYMBOLS, DEFAULT_TERMINAL_FONT, "ui-monospace", "monospace"];
+}
+
 export function terminalFontStack(value: unknown): string {
-  return `"${normalizeTerminalFont(value)}", "${NERD_FONT_SYMBOLS}", "JetBrains Mono", ui-monospace, monospace`;
+  const [chosen, symbols, bundled] = terminalFontFamilies(value);
+  return `"${chosen}", "${symbols}", "${bundled}", ui-monospace, monospace`;
 }
 
 /**

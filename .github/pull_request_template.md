@@ -13,11 +13,22 @@ Follow .agents/skills/hui-visual-verification/SKILL.md for UI work. -->
 - [ ] `npm run typecheck`
 - [ ] `npm run build`
 - [ ] `npm run test:package` (package or lifecycle changes)
+- [ ] `npm run e2e`
+- [ ] `npm run e2e:ios` (after `npm run ios:build`)
 - [ ] Browser-tool E2E (user-visible changes)
 
 - Verified commit:
 - Fixture / proof scope:
 - Browser actions and observed results:
+
+## Use cases
+
+<!-- The e2e/catalogue/ IDs this PR adds or changes, and the platforms where each
+is required. If a test changed but the behaviour it proves didn't, or a new
+accessible name labels a control that already existed, put the IDs, and the names
+in quotes, separated by commas, on the line below. The E2E catalogue job reads it. -->
+
+Unchanged behaviour:
 
 ## Visual evidence
 
@@ -34,6 +45,12 @@ still require the desktop/mobile smoke. -->
 ### Mobile — 390×844
 
 <!-- Attach the affected rendered state; include landscape when relevant. -->
+
+### iPhone
+
+<!-- Attach the iOS app's affected screens: the screenshots the tests take,
+copied out of .e2e/results/, or `xcrun simctl io booted screenshot <path>`.
+Say why when the change doesn't reach the app. -->
 
 ## Proof gaps
 

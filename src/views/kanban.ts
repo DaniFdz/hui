@@ -444,7 +444,7 @@ export function renderKanbanPage(props: KanbanPageProps): TemplateResult {
     <section class="settings-workspace hui-workspace-page kanban-workspace">
       <header class="content-header content-header--settings content-header--page kanban-header">
         <div>
-          <div class="page-title">Kanban</div>
+          <div class="page-title" data-testid="page-title">Kanban</div>
           <div class="page-subtitle">Backlog items and where each session is in development. Drag a backlog item to a stage to start a session; drag a session to change stage or group.</div>
         </div>
         <div class="kanban-header__actions">

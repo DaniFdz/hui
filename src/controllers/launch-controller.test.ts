@@ -59,6 +59,14 @@ test("New Session starts from its group's checkout defaults, and choosing a mode
   assert.deepEqual([launch.branch, launch.worktree, launch.baseRef], ["", false, ""]);
 });
 
+test("New Session from Ungrouped or a project row keeps the current checkout instead of the default branch", async () => {
+  const launch = new LaunchController(host);
+  launch.open({ label: "ungrouped", cwd: "/repo", sessions: [] } as unknown as SessionGroup);
+  launch.requestCheckout("/repo");
+  await settle();
+  assert.deepEqual([launch.baseRef, launch.worktree], ["", false]);
+});
+
 test("folder suggestions say which machine they came from, and a newer request or a worker change drops an older answer", async () => {
   const launch = new LaunchController(host);
   launch.loadDirectorySuggestions("~/", "w1");

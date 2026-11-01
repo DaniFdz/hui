@@ -36,9 +36,6 @@ Keep fresh screenshots outside Git and include them in the PR description.
 - Turning **Run headless** off stopped the running browser and removed its tab.
   **Start** then reported "A visible browser window needs a display, and the HUI
   gateway has none." Turning headless back on restored the default.
-- Turning **Browser tool** off showed "Off" and disabled **Start**; a new
-  `E2E_BROWSER` session replied "The browser tool is not available in this
-  session." because PI no longer offered the tool. Turning it on restored it.
 - Saving `/nope/chrome` as the executable showed "No executable browser was
   found at /nope/chrome." with a "Browser not found" status; clearing it
   returned to "Detected Brave · <path>".

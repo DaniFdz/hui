@@ -17,6 +17,7 @@ import { tags } from "@lezer/highlight";
 import type { FileTextChange } from "../editable-text.ts";
 import { loadLanguage } from "../code-languages.ts";
 import { fileLanguage } from "./languages.ts";
+import { filesEditorLabel } from "./copy.ts";
 
 /** Token colors come from the same variables that color Markdown code blocks in the chat. */
 const highlightStyle = HighlightStyle.define([
@@ -141,7 +142,7 @@ export async function createFileEditor(options: FileEditorOptions): Promise<File
         language,
         fileLanguage(options.path) === "markdown" || fileLanguage(options.path) === "plain" ? EditorView.lineWrapping : [],
         editable.of(editableState(options.readOnly)),
-        EditorView.contentAttributes.of({ "aria-label": `Contents of ${options.path}` }),
+        EditorView.contentAttributes.of({ "aria-label": filesEditorLabel(options.path) }),
         EditorView.updateListener.of((update) => {
           if (!update.docChanged || applying) return;
           const changes: FileTextChange[] = [];

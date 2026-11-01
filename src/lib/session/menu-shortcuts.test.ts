@@ -18,28 +18,63 @@ test("modified, composing and repeated keys do not activate menu actions", () =>
   }
 });
 
-function menuEvent(options: { open?: boolean; disabled?: boolean; path?: unknown[] } = {}) {
+function menu(options: { open?: boolean; disabled?: boolean; path?: unknown[] } = {}) {
   let clicks = 0;
   let prevented = 0;
   let stopped = 0;
-  const event = {
-    ...key("a"),
-    currentTarget: { open: options.open ?? true, querySelector: (selector: string) => {
-      assert.equal(selector, ':scope > wa-dropdown-item[value="archive"]');
-      return { disabled: options.disabled, click: () => clicks++ };
-    } },
-    composedPath: () => options.path ?? [],
-    preventDefault: () => prevented++,
-    stopImmediatePropagation: () => stopped++,
-  } as unknown as KeyboardEvent;
-  return { event, result: () => ({ clicks, prevented, stopped }) };
+  const dropdown = { open: options.open ?? true, querySelector: (selector: string) => {
+    assert.equal(selector, ':scope > wa-dropdown-item[value="archive"]');
+    return { disabled: options.disabled, click: () => clicks++ };
+  } };
+  return {
+    dropdown,
+    send: (type: string) => sessionMenuShortcuts.handleEvent({ type, currentTarget: dropdown } as unknown as Event),
+    press: () => sessionMenuShortcuts.handleEvent({
+      ...key("a"),
+      type: "keydown",
+      currentTarget: dropdown,
+      composedPath: () => options.path ?? [],
+      preventDefault: () => prevented++,
+      stopImmediatePropagation: () => stopped++,
+    } as unknown as KeyboardEvent),
+    result: () => ({ clicks, prevented, stopped }),
+  };
 }
 
 test("the capture handler activates the item once and prevents typeahead", () => {
-  const fixture = menuEvent();
+  const opened = menu();
   assert.equal(sessionMenuShortcuts.capture, true);
-  sessionMenuShortcuts.handleEvent(fixture.event);
-  assert.deepEqual(fixture.result(), { clicks: 1, prevented: 1, stopped: 1 });
+  opened.send("wa-after-show");
+  opened.press();
+  assert.deepEqual(opened.result(), { clicks: 1, prevented: 1, stopped: 1 });
+});
+
+test("a key pressed while the menu opens runs its item once the menu is open, and not after it closed", () => {
+  const opening = menu();
+  opening.press();
+  assert.deepEqual(opening.result(), { clicks: 0, prevented: 1, stopped: 1 });
+  opening.send("wa-after-show");
+  assert.deepEqual(opening.result(), { clicks: 1, prevented: 1, stopped: 1 });
+
+  const reopenedWhileClosing = menu();
+  reopenedWhileClosing.send("wa-hide");
+  reopenedWhileClosing.press();
+  reopenedWhileClosing.send("wa-after-hide");
+  assert.equal(reopenedWhileClosing.result().clicks, 1);
+
+  const closedFirst = menu();
+  closedFirst.press();
+  closedFirst.send("wa-hide");
+  closedFirst.send("wa-after-show");
+  assert.equal(closedFirst.result().clicks, 0);
+
+  for (const type of ["wa-after-show", "wa-after-hide"]) {
+    const shownAfterClosing = menu({ open: false });
+    shownAfterClosing.send(type);
+    shownAfterClosing.dropdown.open = true;
+    shownAfterClosing.press();
+    assert.equal(shownAfterClosing.result().clicks, 0);
+  }
 });
 
 test("closed menus, disabled actions, text entry and submenus keep their native keys", () => {
@@ -48,8 +83,9 @@ test("closed menus, disabled actions, text entry and submenus keep their native 
     { path: [{ isContentEditable: true }] },
     { path: [{ getAttribute: (name: string) => name === "slot" ? "submenu" : null }] },
   ]) {
-    const fixture = menuEvent(options);
-    sessionMenuShortcuts.handleEvent(fixture.event);
+    const fixture = menu(options);
+    fixture.send("wa-after-show");
+    fixture.press();
     assert.deepEqual(fixture.result(), { clicks: 0, prevented: 0, stopped: 0 });
   }
 });

@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("only an SDK-worker session offers Continue, and after a finished reply it sends the continuation prompt", { tags: ["CHAT-022"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("only an SDK-worker session offers Continue, and after a finished reply it sends the continuation prompt", { tags: ["CHAT-022"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const idle = screen.getByLabel("Session status: Idle");

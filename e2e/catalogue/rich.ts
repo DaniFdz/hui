@@ -32,8 +32,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["markdown-formatting"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "RICH-004",
@@ -41,8 +41,8 @@ const cases: UseCase[] = [
     behaviour: "A pipe table renders with header cells, inline code and bold intact, and each column follows its alignment (left, center or right), so a numeric column lines up on the right. Every row and number of the source is kept.",
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
-    journeys: ["markdown-tables", "markdown-formatting"],
-    web: "backlog",
+    journeys: ["markdown-formatting"],
+    web: "required",
     ios: "backlog",
   },
   {
@@ -51,8 +51,8 @@ const cases: UseCase[] = [
     behaviour: "At 390 px wide a table that fits stays inside the content area, and a wider one scrolls sideways inside its own *Table* region while the page itself has no horizontal scroll.",
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
-    journeys: ["markdown-tables"],
-    web: "backlog",
+    journeys: [],
+    web: "required",
     ios: "backlog",
   },
   {
@@ -61,8 +61,8 @@ const cases: UseCase[] = [
     behaviour: "Clicking a wide table focuses its *Table* region, and ArrowRight scrolls the table sideways while the page stays where it is.",
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
-    journeys: ["markdown-tables"],
-    web: "backlog",
+    journeys: [],
+    web: "required",
     ios: { excluded: "Arrow-key scrolling needs a hardware keyboard; on iOS the same table scrolls by swiping (RICH-005).", decision: KEYBOARD_ONLY },
   },
   {
@@ -71,7 +71,7 @@ const cases: UseCase[] = [
     behaviour: "A fenced code block shows its language and a **Copy code** button; pressing it copies the code without a trailing newline and the button reads **Copied** for a moment (**Copy failed** when the clipboard refuses), then returns to **Copy code**.",
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -80,7 +80,7 @@ const cases: UseCase[] = [
     behaviour: "**Enable word wrap** wraps the block's long lines and becomes **Disable word wrap**, which restores horizontal scrolling. A block taller than its limit shows **Show N hidden lines**, which reveals the rest.",
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -90,7 +90,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["markdown-formatting"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -100,7 +100,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["rich-embeds"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -110,7 +110,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["rich-embeds"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -130,7 +130,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["rich-embeds"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -159,8 +159,8 @@ const cases: UseCase[] = [
     behaviour: "A canonical Slack message or channel permalink alone in a user or assistant message shows a **Slack message** or **Slack channel** card with the workspace and channel taken from the link and an **Open in Slack** link to the original, without any request to Slack or private content. The cards are back after a reload; labeled, mixed-prose, http or non-canonical Slack links stay ordinary.",
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#rich-markdown-embeds"],
     surfaces: [],
-    journeys: ["slack-links"],
-    web: "backlog",
+    journeys: [],
+    web: "required",
     ios: "backlog",
   },
   {
@@ -170,7 +170,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -180,7 +180,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds", KEYBOARD_ONLY],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Enter on a focused embed needs a hardware keyboard; tapping the diagram or its Open viewer control does the same (RICH-017).", decision: KEYBOARD_ONLY },
   },
   {
@@ -190,7 +190,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -200,7 +200,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds", KEYBOARD_ONLY],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "These are key presses with visible equivalents: the zoom controls, Copy image and Close viewer (RICH-017, RICH-019, RICH-021).", decision: KEYBOARD_ONLY },
   },
   {
@@ -210,7 +210,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -220,7 +220,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -259,7 +259,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#agent-presented-media"],
     surfaces: ["tool:present_media", "route:GET /__hui/media/:id/:name"],
     journeys: ["presented-media", "media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -279,7 +279,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#agent-presented-media"],
     surfaces: ["tool:present_media", "route:GET /__hui/media/:id/:name"],
     journeys: ["presented-media"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

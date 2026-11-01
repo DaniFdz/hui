@@ -1,8 +1,10 @@
 name: E2E catalogue
 # Compares the use-case catalogue with the pull request's base: the baseline grows only for use cases the base
-# already documented, and a use case the pull request changes leaves the web backlog.
+# already documented, a use case the pull request changes leaves the web and iOS backlogs, and a new accessible name
+# has a test on both targets. It runs again when the description, with its Unchanged behaviour: line, is edited.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 permissions:
   contents: read
 concurrency:

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { SETTINGS_COPY } from "../lib/settings/pages.ts";
 import { test } from "vitest";
 
 const settingsSource = readFileSync(new URL("./settings.ts", import.meta.url), "utf8");
@@ -58,7 +59,7 @@ test("plugins settings can disable packages and direct extensions without removi
   assert.match(settingsSource, /aria-label=\$\{`Read \$\{skill\.name\}`\}/);
   assert.match(settingsSource, /aria-label=\$\{`Read \$\{resource\.label\}`\}/);
   assert.match(settingsSource, /\$\{icons\.eye\}/);
-  assert.match(settingsSource, /exclude it from new HUI SDK runtimes without uninstalling it/);
+  assert.match(SETTINGS_COPY.intros.plugins, /exclude it from new HUI SDK runtimes without uninstalling it/);
   assert.match(pluginsCss, /@media \(max-width: 768px\)[\s\S]*\.plugins-item > \.settings-row__control[\s\S]*width: auto;[\s\S]*margin-left: auto;[\s\S]*flex-wrap: nowrap;[\s\S]*justify-content: flex-end;/);
   assert.match(pluginsCss, /@media \(pointer: coarse\), \(max-width: 640px\)[\s\S]*\.plugins-item wa-switch\.settings-toggle::part\(base\)[\s\S]*min-height: 44px;/);
 });

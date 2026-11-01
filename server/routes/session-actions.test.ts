@@ -10,6 +10,7 @@ import { afterAll, beforeAll, expectTypeOf, test } from "vitest";
 import { waitFor } from "../test-support/wait-for.ts";
 import { RuntimeInspection, SessionTools } from "../api/tools.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
+import type { SessionStatusUpdate } from "../api/sessions.ts";
 import { SessionClearResponse, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionOpenResponse, SessionStreamFrame, SessionThinkingResponse, SideQuestionResult } from "../api/session-events.ts";
 
 // One isolated gateway on Pi Durable: its home, HUI's directory, PI's agent directory and a deterministic provider,
@@ -152,6 +153,54 @@ test("writing to an archived conversation restores it", { timeout: 60_000 }, asy
   assert.deepEqual(sent, { status: 200, body: { ok: true } });
   assert.equal((await readRegistry()).find((record) => record.id === id)?.archived, undefined);
   await answered(id, "BACK_AGAIN");
+});
+
+test("opening a live session after a rename answers with the new title", { timeout: 60_000 }, async () => {
+  const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Before rename" });
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  const id = (created.body["session"] as { id: string }).id;
+  assert.equal((await call(`/__hui/sessions/${id}/open`, "POST", {})).status, 200);
+  await liveSessions.booted(id);
+  assert.equal((await call(`/__hui/sessions/${id}`, "PATCH", { title: "After rename", pinned: true })).status, 200);
+
+  const opened = await call(`/__hui/sessions/${id}/open`, "POST", {});
+  assert.equal(opened.status, 200);
+  assert.deepEqual({ title: (opened.body["session"] as { title: string }).title, pinned: (opened.body["session"] as { pinned?: boolean }).pinned }, { title: "After rename", pinned: true });
+});
+
+test("opening a live session clears an unread mark set by hand", { timeout: 60_000 }, async () => {
+  const { readRegistry } = await import("../sessions/sessions.ts");
+  const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Marked by hand" });
+  const id = (created.body["session"] as { id: string }).id;
+  assert.equal((await call(`/__hui/sessions/${id}/open`, "POST", {})).status, 200);
+  await liveSessions.booted(id);
+  assert.equal((await call(`/__hui/sessions/${id}`, "PATCH", { unread: true })).status, 200);
+
+  const opened = await call(`/__hui/sessions/${id}/open`, "POST", {});
+  assert.equal((opened.body["session"] as { unread?: boolean }).unread, undefined);
+  assert.equal((await readRegistry()).find((record) => record.id === id)?.unread, undefined);
+});
+
+test("marking a settled background session read by hand reaches the status stream", { timeout: 60_000 }, async () => {
+  const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Read by hand" });
+  const id = (created.body["session"] as { id: string }).id;
+  assert.equal((await call(`/__hui/sessions/${id}/open`, "POST", {})).status, 200);
+  await liveSessions.booted(id);
+  await waitFor("the session's runtime", () => liveSessions.hasRuntime(id), { state: () => liveSessions.status(id) });
+  const updates: SessionStatusUpdate[] = [];
+  const stream = liveSessions.watchStatuses((update) => { if (update.id === id) updates.push(update); });
+  try {
+    assert.equal((await call(`/__hui/sessions/${id}/prompt`, "POST", { text: "UNSEEN_RUN" })).status, 200);
+    await answered(id, "UNSEEN_RUN");
+    await waitFor("the unread mark", () => updates.at(-1)?.unread === true, { state: () => updates });
+    assert.equal((await call(`/__hui/sessions/${id}`, "PATCH", { unread: false })).status, 200);
+    assert.deepEqual(updates.at(-1), { id, status: "idle", unread: false });
+  } finally {
+    stream.unsubscribe();
+  }
+  const reconnected = liveSessions.watchStatuses(() => {});
+  reconnected.unsubscribe();
+  assert.deepEqual(reconnected.statuses.find((status) => status.id === id), { id, status: "idle" });
 });
 
 test("session catalogs, preferences and side answers match their published schemas", { timeout: 60_000 }, async () => {

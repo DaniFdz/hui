@@ -1390,17 +1390,6 @@ thinking disabled. The question and answer never enter PI's durable session or
 the main transcript, so they cannot influence later turns. Examples include
 `/btw which file are we editing?` and `/btw summarize the current task in one sentence`.
 
-<<<<<<< HEAD
-HUI also supplies PI with a session-scoped `progress_card` presentation tool.
-PI persists its ordinary tool call in the transcript; HUI projects only the
-latest validated call into a collapsible Task progress card attached above the
-composer. On a phone the card starts folded to its current step and its count,
-because the unfolded plan would cover the conversation it documents; opening it
-by hand keeps it open. An empty call clears the card. HUI never infers plan state from prose.
-A refresh control on the card reads the session again and asks the agent to
-update the card, so a missed stream update and a plan the agent stopped
-revising both end current.
-=======
 HUI keeps each conversation's Task progress card itself, not the agent. A
 session's turn settling, and every five minutes while one is still running, send
 a bounded digest of the conversation to the configured utility model; its
@@ -1410,7 +1399,6 @@ utility model, on a failure, or on an answer with neither a summary nor a plan,
 the previous card stays and the turn is unaffected. Subagent sessions get no
 card of their own; their work is the parent's. HUI never infers plan state from
 prose in the transcript, and the agent has no tool for it.
->>>>>>> 736f82b6 (feat: let HUI write each session's task progress card)
 Session rows retain OpenClaw’s single-line layout. Hover or keyboard focus opens
 the ported OpenClaw 2026.9.5 hovercard: session age, workspace, current unfinished
 step/count and the card's Markdown summary. Idle unfinished plans show the
@@ -2496,6 +2484,18 @@ layout HUI shows from 1100px, such as collapsing the sidebar. The iPhone app
 ships its code, uses the system clipboard, has no tabs, has no older version and
 is always narrow, so these are web-only use cases.
 
+### The iPhone app follows the phone's text size (2026-10-26)
+
+The web's Appearance page offers five Text size stops that scale every text size
+in the interface together, and SET-011 proves that. The iPhone app does not
+offer the option: the owner decided it should draw at the phone's own text size
+instead. "I'm okay with using the default font size from iphone, I wouldn't add
+that option there." So Text size stays a web-only use case, the app has no Text
+size control, and every style it draws scales with the phone's text size setting
+through iOS's own type scaling. An app that read `~/.config/hui/settings.json`'s
+`textScale` on the phone would apply a setting the phone's user cannot see or
+change there.
+
 ### On a touch screen, a tap opens a preview (2026-10-21)
 
 Some previews open only on hover: the card of a pull request mark or of a pull
@@ -2517,6 +2517,21 @@ popover, and if they click on the popover they navigate to the link".
   on the web and a tap on iOS, and follows the link by clicking the mark on the
   web and tapping the preview on iOS, so these use cases stay ordinary, not
   excluded.
+
+### The iOS app connects to one gateway (2026-10-21)
+
+The iPhone app is a client of one HUI gateway at a time. Its address comes from
+the Connect screen or the `-HUIGatewayURL` launch argument, and the app
+remembers the last one that answered. Before it shows the session list, it asks
+the gateway for its version: a gateway older or newer than the app gets a notice
+naming both versions, and a development gateway, which has no version, gets
+"Development gateway: its version is unverified." An address that answers with
+something else is refused with "This address doesn't answer as a HUI gateway."
+Versions compare as `hui update` compares them, so a prerelease is older than
+its release. A development gateway can't produce the older and newer notices, so
+the app's unit tests cover them. The web UI needs none of this, because the
+gateway that serves the page is the one it talks to, so these are iOS-only use
+cases.
 
 ### Bots are always on (2026-10-20)
 

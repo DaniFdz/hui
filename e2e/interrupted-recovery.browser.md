@@ -8,30 +8,16 @@ or transcript was read or changed.
 
 ## Journey
 
-1. Created a session through **New session** and sent `E2E_REPLAY`. The provider
-   emitted `Replay prefix` and held the response open.
-2. Confirmed the isolated registry contained `runStartedAt` and the temporary
-   `runPrompt: "E2E_REPLAY"`, then stopped and restarted the real Vite/HUI
-   gateway without releasing the provider barrier.
-3. The existing browser reconnected without an error state or manual action.
-   HUI booted the interrupted PI session and automatically sent a continuation
-   containing the original request plus the instruction to inspect transcript
-   and workspace state before repeating work. The provider log contained the
-   recovered request and the UI returned to Running.
-4. Left the chat through the visible **New session** action, then released the
-   provider. The durable registry settled to `unread: true`, the sidebar row
-   changed to `status idle, ... unread`, and its `.session-unread-dot` rendered
-   as `rgb(189, 69, 49)`, exactly the resolved `--accent: #bd4531`.
-5. Repeated the visual check at 390×844 with the navigation drawer open.
+The shared tests `e2e/tests/chat/gateway-restart.e2e.ts` and `e2e/tests/chat/reconnect.e2e.ts`
+cover the restart mid-turn on Pi Durable and on PI's worker, the recovery turn, leaving the
+running chat, the accent unread dot surviving a restart and clearing on open, and drafting
+through a dropped stream (CHAT-016 to CHAT-018). This journey keeps the check no shared
+test makes yet: the unread dot on a phone.
+
+1. Created a session through **New session** and sent `E2E_REPLAY`, left the
+   chat through the visible **New session** action, then released the
+   provider. The sidebar row changed to `status idle, ... unread`, and its
+   unread dot rendered in the accent colour.
+2. Repeated the visual check at 390×844 with the navigation drawer open.
    `innerWidth`, `body.scrollWidth` and `documentElement.scrollWidth` were all
    390, with the same accent unread dot.
-6. Opened the session through its sidebar row. The completed transcript showed
-   `Replay prefix — replay suffix`, the registry cleared `unread`, and the dot
-   disappeared.
-
-The Browser controller proved the create, restart and automatic continuation
-steps on the live page. Its external control channel later timed out twice, so
-the remaining navigation, DOM/computed-style inspection and screenshots used
-CDP against that same already-observed tab; no synthetic page or image was
-created. Expected event-stream request failures occurred only while the gateway
-was deliberately offline.

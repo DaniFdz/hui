@@ -8,8 +8,9 @@
 3. Activate **Copy response** with a real pointer event and verify the fallback
    receives the exact assistant text, the button reports **Copied**, and the
    temporary textarea is removed.
-4. Verify the latest assistant copy action is directly interactive on touch and
-   narrow layouts, with no desktop or mobile overflow.
+4. Verify there is no desktop or mobile overflow. The shared test
+   `e2e/tests/chat/message-actions.e2e.ts` covers the latest reply's Copy
+   response on a phone screen (CHAT-030).
 
 ## Evidence
 

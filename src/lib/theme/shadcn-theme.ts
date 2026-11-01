@@ -15,12 +15,16 @@
  * without a browser. Every value it emits is a bare color, because the pairing
  * step wraps them in `light-dark()`, which accepts nothing else.
  *
+ * For a client that paints colors itself (the iOS app), `themePalettes` gives each
+ * mode's page, text, card and accent as #rrggbb from the same mapping, a user
+ * accent moved to read on that mode's page and card as the web moves it.
+ *
  * It also owns the contrast contract (`CONTRAST_RULES`): where a theme's colors
  * meet, the foreground must stay readable. A theme color that falls short keeps
  * its hue and moves only its lightness, through `color-contrast.ts`.
  */
 import type { ThemeVariant } from "./theme.ts";
-import { parseColor, mixRgb, readableOn, toHex, worstContrast, TEXT_CONTRAST, UI_CONTRAST, type Rgb } from "./color-contrast.ts";
+import { parseColor, mixRgb, readableAccent, readableOn, toHex, worstContrast, TEXT_CONTRAST, UI_CONTRAST, type Rgb } from "./color-contrast.ts";
 
 export type ThemeBlock = Record<string, string>;
 
@@ -354,4 +358,33 @@ export function swatchesFor(theme: ShadcnTheme): ThemeSwatches | undefined {
     raised: tokens["--card"],
     background: tokens["--bg"],
   };
+}
+
+/** The page surfaces a user accent must read on, per mode the active theme carries. */
+export type AccentSurfaces = { light?: readonly Rgb[]; dark?: readonly Rgb[] };
+
+/** A mode's page and card colors, the surfaces accent text appears on. */
+export function accentSurfaces(modes: { light?: ThemeTokens; dark?: ThemeTokens }): AccentSurfaces {
+  const read = (tokens: ThemeTokens | undefined) => {
+    const surfaces = tokens ? [themeColor(tokens["--bg"]), themeColor(tokens["--card"])] : [];
+    return surfaces.every((surface): surface is Rgb => surface !== undefined) && surfaces.length ? surfaces : undefined;
+  };
+  const light = read(modes.light);
+  const dark = read(modes.dark);
+  return { ...(light ? { light } : {}), ...(dark ? { dark } : {}) };
+}
+
+export type NativePalette = { background: string; foreground: string; card: string; accent: string };
+
+export function themePalettes(theme: ShadcnTheme, accent = ""): { variant: ThemeVariant; light?: NativePalette; dark?: NativePalette } | undefined {
+  const mapped = mapTheme(theme);
+  if (!mapped) return undefined;
+  const surfaces = accentSurfaces(mapped.modes);
+  const palette = (mode: "light" | "dark"): NativePalette | undefined => {
+    const [background, foreground, card, own] = (["--bg", "--text", "--card", "--accent"] as const).map((token) => themeColor(mapped.modes[mode]?.[token]));
+    if (!background || !foreground) return undefined;
+    const chosen = accent ? themeColor(readableAccent(accent, surfaces[mode])) : undefined;
+    return { background: toHex(background), foreground: toHex(foreground), card: toHex(card ?? background), accent: toHex(chosen ?? own ?? foreground) };
+  };
+  return { variant: mapped.variant, light: palette("light"), dark: palette("dark") };
 }

@@ -96,7 +96,7 @@ export class LaunchController {
     void loadGitCheckout(directory, this.worker).then((checkout) => {
       if (marker !== this.#checkoutRequest) return;
       this.checkout = checkout;
-      const defaults = groupCheckoutDefaults(directory, checkout, this.defaults);
+      const defaults = groupCheckoutDefaults(directory, checkout, this.defaults?.group ? this.defaults : undefined);
       this.baseRef = defaults.baseRef;
       this.worktree = defaults.worktree;
     }).catch(() => {

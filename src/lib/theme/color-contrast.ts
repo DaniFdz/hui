@@ -207,3 +207,11 @@ export function readableOn(source: Rgb, surfaces: readonly Rgb[], ratio: number)
   }
   return lighterFirst ? WHITE : BLACK;
 }
+
+/** The accent as chosen, or moved to the lightness that reads on these surfaces (hue kept). */
+export function readableAccent(accent: string, surfaces: readonly Rgb[] | undefined): string {
+  const source = parseColor(accent);
+  if (!source || !surfaces?.length) return accent;
+  const solved = readableOn(source, surfaces, TEXT_CONTRAST);
+  return solved === source ? accent : toHex(solved);
+}

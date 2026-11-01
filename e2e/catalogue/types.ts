@@ -16,5 +16,5 @@ export type UseCase = {
   ios: Status;
 };
 
-export const AREAS = ["SHELL", "SESS", "CHAT", "RICH", "AGENT", "WORK", "BOARD", "SET", "PAGE", "BOT", "CALL"] as const;
+export const AREAS = ["SHELL", "SESS", "CHAT", "RICH", "AGENT", "WORK", "BOARD", "SET", "PAGE", "BOT", "CALL", "IOS"] as const;
 export type Area = (typeof AREAS)[number];

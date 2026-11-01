@@ -18,7 +18,7 @@ export function renderAutomationSurface(props: AutomationProps, title: string) {
     </section>`;
   return html`
     <header class="content-header content-header--settings content-header--page">
-      <div><div class="page-title">${title}</div><div class="page-subtitle">Scheduled tasks and run history.</div></div>
+      <div><div class="page-title" data-testid="page-title">${title}</div><div class="page-subtitle">Scheduled tasks and run history.</div></div>
       <button class="btn" @click=${props.onRetryAutomation}>${icons.refresh} Refresh</button>
     </header>
     <div class="settings-page settings-page--wide">${renderAutomationPage(props, section)}</div>`;

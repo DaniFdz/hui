@@ -4,6 +4,7 @@
  * HUI owns the worktree inventory and every removal.
  */
 import { html, nothing, type TemplateResult } from "lit";
+import { SETTINGS_COPY } from "../lib/settings/pages.ts";
 
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
 import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
@@ -334,7 +335,7 @@ export function renderWorktreesPage(props: WorktreesPageProps): TemplateResult {
   const candidates = rows.filter((row) => isMergedCleanupCandidate(row) && !removalState(props, row));
   const managed = rows.filter((row) => row.managed).length;
   return html`
-    <p class="settings-page__intro">Linked worktrees of the Git repositories your HUI sessions use, plus those New Session created in ~/.config/hui/worktrees. Main checkouts are not listed.</p>
+    <p class="settings-page__intro">${SETTINGS_COPY.intros.worktrees}</p>
           <section class="settings-section worktrees-section">
             <div class="settings-section__header">
               <div class="settings-section__copy">

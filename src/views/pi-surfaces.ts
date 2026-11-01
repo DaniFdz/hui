@@ -84,7 +84,7 @@ function section(title: string, description: TemplateResult | string, body: Temp
 function pageHeader(props: PiSurfaceProps, title: string, subtitle: string, tabs?: TemplateResult) {
   return html`<header class="content-header content-header--settings content-header--page ${tabs ? "hub-page-header" : ""}">
     <div class=${tabs ? "hub-page-header__title" : ""}>
-      <div class="page-title">${title}</div>
+      <div class="page-title" data-testid="page-title">${title}</div>
       <div class="page-subtitle">${subtitle}</div>
     </div>
     ${tabs ? html`<div class="hub-page-header__tabs">${tabs}</div>` : nothing}

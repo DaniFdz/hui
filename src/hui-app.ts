@@ -40,7 +40,7 @@ import {
   type GitCheckoutInfo,
   type WorktreeProgress,
 } from "./api/sessions.ts";
-import { sessionGroupLabel, transcriptAsMarkdown } from "./lib/session/sessions.ts";
+import { sessionCopiedNotice, sessionGroupLabel, transcriptAsMarkdown } from "./lib/session/sessions.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { parseUpdateCommand, skillCommands } from "./lib/composer/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
@@ -250,6 +250,8 @@ export class HuiApp extends HuiElement {
   @state() private expandedActivityIds: ReadonlySet<string> = new Set();
   @state() private showScrollToBottom = false;
   @state() private launching = false;
+  /** A launch whose session the gateway lists only once its worktree exists. */
+  private unlistedLaunch: { id: string; open: (app: HuiApp) => void } | undefined;
   @state() private note = "";
   @state() private noteLevel: NoteLevel = "info";
   /** The runtime warning (provider retry, model fallback) the current run is narrating. */
@@ -579,7 +581,8 @@ export class HuiApp extends HuiElement {
     }
   }
 
-  private followSessionStatus({ id, status, title, progress }: SessionStatusUpdate) {
+  private followSessionStatus({ id, status, title, creationError, progress }: SessionStatusUpdate) {
+    if (creationError && this.unlistedLaunch?.id === id) this.unlistedLaunch = undefined;
     const bot = this.bots.list.find((candidate) => candidate.sessionId === id);
     if (bot) {
       this.bots.adopt(this.withLiveBotState(this.bots.list));
@@ -610,9 +613,19 @@ export class HuiApp extends HuiElement {
     await this.sessions.refresh(background);
   }
 
+  /** Opens a launch once the registry lists its session: a worktree session is unlisted until the gateway has made its checkout. */
+  private openLaunchedSession(): void {
+    const launch = this.unlistedLaunch;
+    const listed = launch && this.sessions.groups.flatMap((group) => group.sessions).find(({ id }) => id === launch.id);
+    if (!listed) return;
+    this.unlistedLaunch = undefined;
+    void this.withSessionPane(listed, launch.open);
+  }
+
   private followSessionList(ids: ReadonlySet<string>) {
     // Removed conversations take their Work pane record with them (their terminals end with them).
     if (!this.embeddedPane) this.work.commit(pruneWorkPaneStore(this.work.panes, ids));
+    this.openLaunchedSession();
     if (!this.work.layout) return;
     for (const pane of sessionPanes(this.work.layout)) {
       if (!ids.has(pane.sessionId)) this.work.layout = closeSessionPane(this.work.layout, pane.id);
@@ -1121,7 +1134,7 @@ export class HuiApp extends HuiElement {
     }
     void writeClipboardText(text).then((copied) => {
       if (!copied) throw new Error("Clipboard write failed");
-      this.sessions.notify(action === "id" ? "Session ID copied." : action === "jira" ? "Jira link copied." : action === "link" ? "Session link copied." : "Conversation copied as Markdown.");
+      this.sessions.notify(sessionCopiedNotice(action));
     }).catch(() => {
       this.sessions.notify("Could not copy to the clipboard.", true);
     });
@@ -1764,19 +1777,26 @@ export class HuiApp extends HuiElement {
         this.composer.attachments = [];
         if (commandDraft !== undefined) void this.composer.persistDraft();
         this.launcher.resetWorkspace();
-        this.conversation.select(session);
+        // A worktree session is listed once the gateway has made its checkout,
+        // and opening it before that closes its pane again: it opens with the
+        // list instead.
+        if (!session.creating) this.conversation.select(session);
         await this.refreshSessions();
-        this.navigate({ kind: "session", id: session.id });
+        if (!session.creating) this.navigate({ kind: "session", id: session.id });
         // The gateway sends a worktree session's prompt once its checkout exists.
         const pendingPrompt = session.creating ? "" : this.composer.pendingLaunchPrompt;
         this.composer.pendingLaunchPrompt = "";
-        await this.withSessionPane(session, (app) => {
+        const openPane = (app: HuiApp) => {
           app.composer.pendingLaunchPrompt = pendingPrompt;
           app.composer.pendingLaunchAttachments = pendingPrompt ? launchAttachments : [];
           app.composer.pendingCommandBrowse = commandDraft !== undefined;
           if (commandDraft !== undefined) app.composer.updateDraft(commandDraft);
           app.composer.flushLaunchPrompt();
-        });
+        };
+        if (session.creating) {
+          this.unlistedLaunch = { id: session.id, open: openPane };
+          this.openLaunchedSession();
+        } else await this.withSessionPane(session, openPane);
         this.composer.draftKey = NEW_SESSION_DRAFT_KEY;
         this.composer.setDraft("");
       })
