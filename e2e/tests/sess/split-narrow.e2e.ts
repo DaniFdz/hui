@@ -39,7 +39,9 @@ test("a narrow split shows only the active pane, switches with the Active panel 
   await expect(shown().getByLabel("Message")).toHaveValue("Draft in the second chat");
 
   await hui.sessionList();
-  await screen.getByLabel(/^Pane one, status running/u).tap();
+  // A click waits for the row to stop moving as the drawer slides in; a raw tap could land on the backdrop and
+  // only close the drawer, leaving the previous pane active.
+  await screen.getByLabel(/^Pane one, status running/u).click();
   await expect(shown()).toHaveCount(1);
   await expect.poll(shownTitle).toBe("Pane one");
   await expect(shown().getByLabel("Session status: Running")).toBeVisible();
