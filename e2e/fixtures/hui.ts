@@ -45,7 +45,7 @@ import { navigationPath, resolveNavigation } from "../../src/lib/navigation.ts";
 import { addWorkerOnThisMachine } from "./worker.ts";
 
 const MAX_SCROLL_SWIPES = 20;
-type Receipt = { url: string; providerUrl: string; workspace: string; receipt: string; serverPid: number; runnerPid: number };
+type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; runtime?: { active: true }; subagent?: { status: string; completionDelivery?: string } };
@@ -60,6 +60,8 @@ type Intercepted = {
 
 export type Hui = {
   workspace: string;
+  /** The gateway's own config directory, where its settings and tool icons live. */
+  configDir: string;
   gateway: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
@@ -444,7 +446,7 @@ export const test = base.extend<{ hui: Hui }>({
       }
       const directories: string[] = [];
 
-      const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
+      const webSteps: Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
         url: () => browser().url(),
         clipboard: ({ refuse = false, legacyCopy = false } = {}) => browser().addInitScript(({ refused, legacy }: { refused: boolean; legacy: boolean }) => {
           const page = window as unknown as { huiCopied: string };
@@ -1019,6 +1021,7 @@ export const test = base.extend<{ hui: Hui }>({
         ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
         ...(web ? {} : iosSteps),
         workspace: receipt.workspace,
+        configDir: receipt.huiConfig,
         gateway: receipt.url,
         api,
         createSession: async (input) =>

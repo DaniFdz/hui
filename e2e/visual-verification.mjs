@@ -230,7 +230,7 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
   await copyFile(join(repo, "e2e/fixtures/slash-commands-extension.ts"), join(agentDir, "extensions/commands.ts"));
   await copyFile(join(repo, "e2e/fixtures/compaction-extension.ts"), join(agentDir, "extensions/compaction.ts"));
   const receiptPath = join(dir, "receipt.json");
-  const receipt = { version: 1, state: "starting", production, runId: randomUUID(), token: randomUUID(), runnerPid: process.pid, checkout, workspace, artifacts, receipt: receiptPath, startedAt: new Date().toISOString() };
+  const receipt = { version: 1, state: "starting", production, runId: randomUUID(), token: randomUUID(), runnerPid: process.pid, checkout, workspace, huiConfig: join(dir, "config", "hui"), artifacts, receipt: receiptPath, startedAt: new Date().toISOString() };
   const save = async () => {
     const temporary = `${receiptPath}.${randomUUID()}.tmp`;
     await writeFile(temporary, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });

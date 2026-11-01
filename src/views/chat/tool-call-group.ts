@@ -299,7 +299,7 @@ export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCal
   const kinds = [...distinct];
   const marks = kinds.slice(0, 4).map(([key, mark]) => html`<span class="tool-call-group__mark" title=${key.replace(/^cli:/u, "")}
     style=${mark.color ? `--tool-mark:${mark.color}` : nothing}>${mark.icon
-      ? html`<img class="tool-call-group__icon" src=${`${TOOL_ICON_BASE}${encodeURIComponent(mark.icon)}`} alt="" />`
+      ? html`<img class="tool-call-group__icon" data-testid="tool-mark-icon" src=${`${TOOL_ICON_BASE}${encodeURIComponent(mark.icon)}`} alt="" />`
       : mark.emoji ? html`<span class="tool-call-group__emoji" aria-hidden="true">${mark.emoji}</span>` : mark.glyph}</span>`);
   return html`<div class="tool-call-group">
     <details class="tool-call-group__disclosure" .open=${options.expanded}
@@ -326,7 +326,7 @@ export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCal
               @click=${() => options.onRowToggle(expansionId, !open)}>
               <span class="tool-call-row__icon${iconName ? " tool-call-row__icon--image" : emoji ? " tool-call-row__icon--emoji" : icon.color ? " tool-call-row__icon--brand" : ""}"
                 style=${icon.color ? `--tool-mark:${icon.color}` : nothing} aria-hidden="true">${iconName
-                  ? html`<img class="tool-call-row__icon-img" src=${`${TOOL_ICON_BASE}${encodeURIComponent(iconName)}`} alt="" />`
+                  ? html`<img class="tool-call-row__icon-img" data-testid="tool-icon" src=${`${TOOL_ICON_BASE}${encodeURIComponent(iconName)}`} alt="" />`
                   : emoji ?? icon.glyph}</span>
               <span class=${status === "running" ? "tool-call-row__title tool-call-row__title--live" : "tool-call-row__title"}>${title}</span>
               ${meta ? html`<span class="tool-call-row__meta">${meta}</span>` : nothing}
