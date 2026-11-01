@@ -459,7 +459,17 @@ export const test = base.extend<{ hui: Hui }>({
             const sizes = await Promise.all(blobs.map(async (blob) => blob.type === "image/png" ? createImageBitmap(blob).then((bitmap) => ` ${bitmap.width}x${bitmap.height}`, () => "") : ""));
             page.huiCopied = blobs.map((blob, index) => `${blob.type}${sizes[index]}`).join(",");
           };
-          if (refused) document.execCommand = () => legacy;
+          if (refused) {
+            document.execCommand = ((command: string) => {
+              if (command === "copy" && legacy) {
+                const active = document.activeElement;
+                page.huiCopied = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
+                  ? active.value
+                  : String(document.getSelection() ?? "");
+              }
+              return legacy;
+            }) as typeof document.execCommand;
+          }
         }, { refused: refuse, legacy: legacyCopy }),
         copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
         keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
