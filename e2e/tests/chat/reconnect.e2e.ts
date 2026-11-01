@@ -11,6 +11,7 @@ test("a dropped stream keeps the draft and holds sending until it is back, and a
   const session = await hui.createSession({ title: "Dropped stream" });
   await hui.open(`/sessions/${session.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await hui.streamOpen();
   const reconnect = await hui.intercept("POST", /\/__hui\/sessions\/[^/]+\/connect$/u);
   await hui.dropStreams();
   await reconnect.arrived();
