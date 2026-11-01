@@ -27,7 +27,7 @@ const cases: UseCase[] = [
     behaviour: "With no session to target, New task reads *Start a session first: automation runs inside a session HUI already owns.*, and the Session picker and **Create task** are disabled. Bot chats are never offered as targets.",
     spec: ["SPEC.md#behaviour", "SPEC.md#bots"],
     surfaces: ["page:cron"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -36,7 +36,7 @@ const cases: UseCase[] = [
     behaviour: "Each run names its task and status and reads *Manual* or *Scheduled* with when it started and finished, plus its summary or error. A run waiting to retry reads *Retry scheduled* with *Attempt n/3 · Next retry <time>* (the task's column becomes *Next retry*), and one that needs the operator reads *Needs attention* with guidance for its kind of failure.",
     spec: ["SPEC.md#bots", "docs/api.md#get-__huiautomation"],
     surfaces: ["page:cron", "route:GET /__hui/automation"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -45,7 +45,7 @@ const cases: UseCase[] = [
     behaviour: "A task that runs in a bot's chat is labelled *Bot · <name>* and its schedule reads as the bot's panel writes it (*Daily at 08:00*). A task a bot made shows *made by @handle*, and a temporary one shows *until <time>* or *N runs left*.",
     spec: ["SPEC.md#bots", "SPEC.md#schedules-are-a-cli-and-bots-schedule-their-own-routines-2026-10-07"],
     surfaces: ["page:cron"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
