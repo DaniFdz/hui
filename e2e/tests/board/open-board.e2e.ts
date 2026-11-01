@@ -53,11 +53,11 @@ test("while sessions load the board says Loading sessions…, and a failed load 
   await expect(screen.getByLabel("Kanban board").getByText("Loaded card")).toBeVisible();
 
   const statuses = await hui.intercept("GET", /\/__hui\/sessions\/events$/u);
-  const failing = await hui.intercept("GET", /\/__hui\/sessions$/u);
+  const failing = await hui.answerAll("GET", /\/__hui\/sessions$/u, JSON.stringify({ error: "The session registry is unavailable." }), 503);
   await hui.reload();
-  await failing.reject(503, "The session registry is unavailable.");
   await expect(screen.getByText("The session registry is unavailable.", { visible: true }).last()).toBeVisible();
   await statuses.deliver();
+  await failing.stop();
 });
 
 test("on a narrow screen the header controls wrap and the board scrolls sideways", { tags: ["BOARD-001"], platforms: ["web"] }, async ({ screen, hui }) => {

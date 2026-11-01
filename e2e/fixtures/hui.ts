@@ -146,6 +146,8 @@ export type Hui = {
   /** Replaces the user agent the next page sees, for the macOS-only app hand-off. */
   spoofUserAgent(userAgent: string): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
+  /** Answers every request matching `method` and `path` with the same JSON until stopped. */
+  answerAll(method: string, path: RegExp, body: string, status?: number): Promise<{ stop(): Promise<void> }>;
   /** Holds every download of the app chunk until `deliver`, so the boot screen stays up; `reject` refuses them. */
   holdAppChunks(): Promise<{ arrived(): Promise<void>; deliver(): Promise<void>; reject(status: number, error: string): Promise<void> }>;
   /** Drops an installed offline worker and its caches before the next load. */
@@ -747,6 +749,12 @@ export const test = base.extend<{ hui: Hui }>({
         spoofUserAgent: (userAgent) => browser().addInitScript((agent: string) => {
           Object.defineProperty(navigator, "userAgent", { configurable: true, get: () => agent });
         }, userAgent),
+        answerAll: async (method, path, body, status = 200) => {
+          await browser().route(path, (route) => (route.request.method === method
+            ? route.fulfill({ status, contentType: "application/json", body })
+            : route.fallback()));
+          return { stop: () => browser().unroute(path) };
+        },
         flip: async (target) => {
           const box = await target.boundingBox();
           if (!box) throw new Error("flip: the switch is not on screen");
