@@ -52,7 +52,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: chord("Moving between, reordering and closing tabs with the arrow keys and Delete"),
   },
   {
