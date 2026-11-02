@@ -372,7 +372,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers"],
     surfaces: [],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape is a keyboard chord; the dialog's close button and “Cancel sign-in” do the same on iOS.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
