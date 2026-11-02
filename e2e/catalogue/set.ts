@@ -591,7 +591,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huitools", "docs/api.md#get-__huisessionsidtools", "SPEC.md#hui-owns-an-isolated-pi-sdk-backend-not-a-pi-fork"],
     surfaces: ["route:GET /__hui/tools", "route:GET /__hui/sessions/:id/tools", "settings-page:tools"],
     journeys: ["sdk-backend"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
