@@ -627,7 +627,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["work-view:diff", "route:GET /__hui/sessions/:id/diff", "route:GET /__hui/sessions/:id/diff/changes", "route:GET /__hui/sessions/:id/diff/file"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
