@@ -93,7 +93,7 @@ const cases: UseCase[] = [
     behaviour: "On a phone screen (390 × 844, and turned to 844 × 390), Settings → Appearance fits the width in light and dark mode: its theme cards, font pickers and terminal font field stay reachable, and neither the page nor its sections and rows scroll sideways.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["settings-page:appearance"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -167,7 +167,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#github-link-previews"],
     surfaces: ["setting:chat.githubEmbeds", "settings-page:appearance"],
     journeys: ["github-embeds"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -177,7 +177,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#datadog-link-previews"],
     surfaces: ["setting:chat.datadogEmbeds", "settings-page:appearance"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -472,7 +472,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#pi-package-and-skill-mutations"],
     surfaces: ["setting:models.primary", "setting:models.fallback"],
     journeys: ["model-routing"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -492,7 +492,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#model-catalog-selection", "docs/api.md#get-__huipi", "docs/api.md#get-__huisessionsidmodels"],
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/sessions/:id/models"],
     journeys: ["configured-models"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -532,7 +532,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["setting:browser.headless", "setting:browser.executablePath", "route:GET /__hui/browser"],
     journeys: ["browser-tool"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -542,7 +542,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser", "docs/api.md#get-__huibrowser", "docs/api.md#post-__huibrowser", "docs/api.md#get-__huibrowsertabstabpreview", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["route:GET /__hui/browser", "route:POST /__hui/browser", "route:GET /__hui/browser/tabs/:tab/preview"],
     journeys: ["browser-tool"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -571,7 +571,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#vs-code", "docs/api.md#get-__huivscode-server", "docs/api.md#vs-code-view-api"],
     surfaces: ["setting:vscode.provider", "setting:vscode.executable", "route:GET /__hui/vscode-server"],
     journeys: ["vscode-view", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -591,7 +591,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huitools", "docs/api.md#get-__huisessionsidtools", "SPEC.md#hui-owns-an-isolated-pi-sdk-backend-not-a-pi-fork"],
     surfaces: ["route:GET /__hui/tools", "route:GET /__hui/sessions/:id/tools", "settings-page:tools"],
     journeys: ["sdk-backend"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -601,7 +601,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#pi-package-and-skill-mutations", "docs/api.md#pi-package-and-skill-mutations", "docs/api.md#put-__huisettings"],
     surfaces: ["settings-page:skills", "setting:disabledSkills", "route:PUT /__hui/settings", "route:GET /__hui/sessions/:id/commands", "page:skills"],
     journeys: ["skill-disable"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -670,7 +670,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Automation and the Automations page have a task form taking a name, an existing session, a prompt, a schedule (cron with timezone, a repeat interval or once at a time) and a timeout, defaulting to a cron expression in the browser's zone and 900 seconds; “Create task” adds it to Tasks with its schedule and next run, kept after a reload, and the form clears back to its defaults. Schedules read as “Cron <expression> (<zone>)”, in words such as “Every 15 minutes”, or as “Once at <time>”. A missing field, invalid schedule, timeout outside 10 to 86400 or gateway rejection shows why under the form (such as “Name the task.”) with the typed input kept and nothing created; the Scheduler section shows the next wake and how many runs are in flight.",
     spec: ["docs/api.md#get-__huiautomation", "docs/api.md#post-__huiautomationtasks", "SPEC.md#behaviour"],
     surfaces: ["settings-page:automation", "route:GET /__hui/automation", "route:POST /__hui/automation/tasks", "page:cron"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -679,7 +679,7 @@ const cases: UseCase[] = [
     behaviour: "Choosing a task's name or Edit in its actions menu loads it into the form as “Edit task” with its values filled in; “Update task” saves the change and “Cancel edit” discards it. Changing the target, name or prompt while its run is in flight is refused with the reason under the form.",
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -688,7 +688,7 @@ const cases: UseCase[] = [
     behaviour: "Turning off “Enable <task>” pauses the task so it no longer runs on schedule, dimming its row with Next run “—”; turning it on schedules it again, and the state is kept after a reload.",
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -697,7 +697,7 @@ const cases: UseCase[] = [
     behaviour: "“Run now: <task>” starts a manual run that appears in Run history as Manual with its start time and moves from Queued or Running to Completed or Failed with its summary or error without a manual refresh, and the row's Last run follows it; running a task that is already running is refused with the reason above the list. A queued or running run offers Cancel, which turns it Cancelled, and a settled run offers none.",
     spec: ["docs/api.md#post-__huiautomationtasksidrun", "docs/api.md#post-__huiautomationrunsidcancel", "SPEC.md#behaviour"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run", "route:POST /__hui/automation/runs/:id/cancel", "page:cron", "route:GET /__hui/automation"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
