@@ -679,7 +679,7 @@ const cases: UseCase[] = [
     behaviour: "Choosing a task's name or Edit in its actions menu loads it into the form as “Edit task” with its values filled in; “Update task” saves the change and “Cancel edit” discards it. Changing the target, name or prompt while its run is in flight is refused with the reason under the form.",
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
