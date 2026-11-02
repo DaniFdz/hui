@@ -717,7 +717,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "required",
+    web: "backlog",
     ios: "backlog",
   },
   {
