@@ -571,7 +571,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#vs-code", "docs/api.md#get-__huivscode-server", "docs/api.md#vs-code-view-api"],
     surfaces: ["setting:vscode.provider", "setting:vscode.executable", "route:GET /__hui/vscode-server"],
     journeys: ["vscode-view", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
