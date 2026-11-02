@@ -492,7 +492,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#model-catalog-selection", "docs/api.md#get-__huipi", "docs/api.md#get-__huisessionsidmodels"],
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/sessions/:id/models"],
     journeys: ["configured-models"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
