@@ -485,7 +485,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/files/raw"],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
