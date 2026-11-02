@@ -532,7 +532,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["setting:browser.headless", "setting:browser.executablePath", "route:GET /__hui/browser"],
     journeys: ["browser-tool"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
