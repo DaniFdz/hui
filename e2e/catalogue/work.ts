@@ -52,7 +52,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: chord("Moving between, reordering and closing tabs with the arrow keys and Delete"),
   },
   {
@@ -92,7 +92,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-work-pane"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"Below 1100px the pane is a full-screen destination\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
@@ -122,7 +122,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -283,7 +283,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: ["route:GET /__hui/sessions/:owner/terminals"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -373,7 +373,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: [],
     journeys: ["shared-terminal"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
 
@@ -425,7 +425,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["work-view:files", "route:GET /__hui/sessions/:id/files/file"],
     journeys: ["files-view", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -545,7 +545,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -627,7 +627,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["work-view:diff", "route:GET /__hui/sessions/:id/diff", "route:GET /__hui/sessions/:id/diff/changes", "route:GET /__hui/sessions/:id/diff/file"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -727,7 +727,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/diff"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
 
