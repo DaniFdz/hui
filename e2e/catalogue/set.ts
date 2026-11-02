@@ -670,7 +670,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Automation and the Automations page have a task form taking a name, an existing session, a prompt, a schedule (cron with timezone, a repeat interval or once at a time) and a timeout, defaulting to a cron expression in the browser's zone and 900 seconds; “Create task” adds it to Tasks with its schedule and next run, kept after a reload, and the form clears back to its defaults. Schedules read as “Cron <expression> (<zone>)”, in words such as “Every 15 minutes”, or as “Once at <time>”. A missing field, invalid schedule, timeout outside 10 to 86400 or gateway rejection shows why under the form (such as “Name the task.”) with the typed input kept and nothing created; the Scheduler section shows the next wake and how many runs are in flight.",
     spec: ["docs/api.md#get-__huiautomation", "docs/api.md#post-__huiautomationtasks", "SPEC.md#behaviour"],
     surfaces: ["settings-page:automation", "route:GET /__hui/automation", "route:POST /__hui/automation/tasks", "page:cron"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -688,7 +688,7 @@ const cases: UseCase[] = [
     behaviour: "Turning off “Enable <task>” pauses the task so it no longer runs on schedule, dimming its row with Next run “—”; turning it on schedules it again, and the state is kept after a reload.",
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -697,7 +697,7 @@ const cases: UseCase[] = [
     behaviour: "“Run now: <task>” starts a manual run that appears in Run history as Manual with its start time and moves from Queued or Running to Completed or Failed with its summary or error without a manual refresh, and the row's Last run follows it; running a task that is already running is refused with the reason above the list. A queued or running run offers Cancel, which turns it Cancelled, and a settled run offers none.",
     spec: ["docs/api.md#post-__huiautomationtasksidrun", "docs/api.md#post-__huiautomationrunsidcancel", "SPEC.md#behaviour"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run", "route:POST /__hui/automation/runs/:id/cancel", "page:cron", "route:GET /__hui/automation"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
