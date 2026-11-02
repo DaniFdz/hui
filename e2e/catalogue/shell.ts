@@ -315,7 +315,7 @@ const cases: UseCase[] = [
       "The outcome of an action such as copying a session link, moving a session or a bulk delete shows in one toast: a success clears itself after 6 seconds, while a failure, announced as an alert with a triangle, and an in-progress message ending in *…* stay until replaced or dismissed with **Dismiss notification**.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
