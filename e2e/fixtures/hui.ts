@@ -101,7 +101,7 @@ export type Hui = {
   sessionList(): Promise<void>;
   settingsPages(): Promise<void>;
   appChrome(): Locator;
-  sessionMenu(title: string): Promise<Pick<Locator, "getByText">>;
+  sessionMenu(title: string): Promise<Pick<Locator, "getByText" | "getByTestId">>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   faces(): Promise<{ size: string; shape: string; ears: string; emoji: string; color: string }[]>;
   zone(): Promise<string>;

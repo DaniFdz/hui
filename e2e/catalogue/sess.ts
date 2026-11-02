@@ -645,7 +645,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -704,7 +704,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-move", "session-menu-parity"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

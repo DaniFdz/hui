@@ -495,7 +495,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
         <wa-dropdown-item class="session-menu__item session-menu__move-root">
           <span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.folder}</span><span class="session-menu__text">Move to group</span>
           ${sessionMoveGroupOptions(props.groups).map((group) => html`<wa-dropdown-item slot="submenu" value=${`move:${group.value}`}
-            class="session-menu__item session-menu__move-item" type="checkbox" .checked=${storedSessionGroup(session.group) === group.value}
+            data-testid="session-move-group" class="session-menu__item session-menu__move-item" type="checkbox" .checked=${storedSessionGroup(session.group) === group.value}
             ?disabled=${storedSessionGroup(session.group) === group.value || props.sessionMovePendingId === session.id}>
             <span class="session-menu__text">${group.label}</span>
           </wa-dropdown-item>`)}
@@ -504,7 +504,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
         <wa-dropdown-item class="session-menu__item">
           <span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.copy}</span><span class="session-menu__text">Copy</span>
           <wa-dropdown-item slot="submenu" value="copy:link" class="session-menu__item"><span slot="icon" class="session-menu__icon">${icons.externalLink}</span><span class="session-menu__text">Session link</span></wa-dropdown-item>
-          <wa-dropdown-item slot="submenu" value="copy:markdown" class="session-menu__item" ?disabled=${props.selectedSessionId !== session.id}><span slot="icon" class="session-menu__icon">${icons.fileText}</span><span class="session-menu__text">Conversation as Markdown</span></wa-dropdown-item>
+          <wa-dropdown-item slot="submenu" value="copy:markdown" data-testid="session-copy-markdown" class="session-menu__item" ?disabled=${props.selectedSessionId !== session.id}><span slot="icon" class="session-menu__icon">${icons.fileText}</span><span class="session-menu__text">Conversation as Markdown</span></wa-dropdown-item>
           <wa-dropdown-item slot="submenu" value="copy:id" class="session-menu__item"><span slot="icon" class="session-menu__icon">${icons.copy}</span><span class="session-menu__text">Session ID</span></wa-dropdown-item>
           ${linkedJira ? html`<wa-dropdown-item slot="submenu" value="copy:jira" class="session-menu__item"><span slot="icon" class="session-menu__icon session-menu__icon--jira">${brandIcons.jira}</span><span class="session-menu__text">Jira link · ${linkedJira.key}</span></wa-dropdown-item>` : nothing}
         </wa-dropdown-item>
