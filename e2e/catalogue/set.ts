@@ -372,7 +372,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers"],
     surfaces: [],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape is a keyboard chord; the dialog's close button and “Cancel sign-in” do the same on iOS.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
@@ -611,7 +611,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#pi-package-and-skill-mutations", "docs/api.md#get-__huipi", "docs/api.md#get-__huipiresourceskindid", "SPEC.md#behaviour"],
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/pi/resources/:kind/:id", "page:skills", "page:plugins"],
     journeys: ["resource-reader"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -715,7 +715,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Memory and the Memory Import page list the context and memory files found in workspaces HUI's sessions use, each with its workspace, kind and size, read-only; with none it says “No workspace memory sources found.” (“Nothing to import” for a workspace on Memory Import). While reading it says “Reading workspace inventory…”, problems inspecting a workspace show as warnings, and a failed read shows the error with Retry.",
     spec: ["docs/api.md#get-__huiworkspaces", "SPEC.md#behaviour"],
     surfaces: ["settings-page:memory", "route:GET /__hui/workspaces", "page:memory-import"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
