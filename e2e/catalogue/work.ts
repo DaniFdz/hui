@@ -545,7 +545,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
