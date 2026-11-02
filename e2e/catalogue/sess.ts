@@ -32,7 +32,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huidirectoriesqprefixworkerid"],
     surfaces: ["page:new-session", "route:GET /__hui/directories"],
     journeys: ["session-launch", "checkout-selector"],
-    web: "required",
+    web: "backlog",
     ios: "backlog",
   },
   {
