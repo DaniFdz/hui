@@ -18,7 +18,7 @@ const cases: UseCase[] = [
     behaviour: "When the first read fails, the page shows the error with **Retry**, and Retry loads the snapshot once the gateway answers. When a later refresh fails, the last tasks and runs stay on screen with *Refresh failed: <reason>*.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huiautomation"],
     surfaces: ["page:cron", "route:GET /__hui/automation"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -136,7 +136,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huipi", "SPEC.md#pi-package-and-skill-mutations"],
     surfaces: ["page:config", "page:skills", "page:plugins", "page:model-providers", "route:GET /__hui/pi", "page:connection", "page:model-setup", "page:plugin", "page:skill-workshop", "page:memory-import", "route:GET /__hui/health", "route:GET /__hui/workspaces"],
     journeys: ["pi-control-surfaces"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
