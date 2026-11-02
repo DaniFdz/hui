@@ -21,7 +21,7 @@ test("images preview while binary and oversized text files explain themselves an
   await screen.getByRole("button", { name: /^Files/u }).tap();
 
   await screen.getByText("pixel.png", { exact: true }).tap();
-  await expect(screen.getByRole("img", "pixel.png")).toBeVisible();
+  await expect(screen.getByTestId("files-preview-image")).toBeVisible();
 
   await screen.getByText("blob.bin", { exact: true }).tap();
   await expect(screen.getByText("Binary file: it has no text to show here.", { exact: true })).toBeVisible();

@@ -1033,7 +1033,7 @@ export class HuiFilesView extends HuiElement {
     } else if (this.fileLoading || !file) other = html`<div class="hui-files-empty"><p>Opening ${nameOf(this.selected)}…</p></div>`;
     else if (file.kind === "image") {
       other = this.previewUrl
-        ? html`<div class="hui-files-preview"><img src=${this.previewUrl} alt=${file.name} /></div>`
+        ? html`<div class="hui-files-preview"><img data-testid="files-preview-image" src=${this.previewUrl} alt=${file.name} /></div>`
         : html`<div class="hui-files-empty"><p>Loading preview…</p></div>`;
     } else if (file.kind === "pdf") {
       other = this.previewUrl
