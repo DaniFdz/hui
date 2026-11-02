@@ -611,7 +611,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#pi-package-and-skill-mutations", "docs/api.md#get-__huipi", "docs/api.md#get-__huipiresourceskindid", "SPEC.md#behaviour"],
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/pi/resources/:kind/:id", "page:skills", "page:plugins"],
     journeys: ["resource-reader"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
