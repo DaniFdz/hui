@@ -93,7 +93,7 @@ const cases: UseCase[] = [
     behaviour: "On a phone screen (390 × 844, and turned to 844 × 390), Settings → Appearance fits the width in light and dark mode: its theme cards, font pickers and terminal font field stay reachable, and neither the page nor its sections and rows scroll sideways.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["settings-page:appearance"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -167,7 +167,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#github-link-previews"],
     surfaces: ["setting:chat.githubEmbeds", "settings-page:appearance"],
     journeys: ["github-embeds"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -177,7 +177,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#datadog-link-previews"],
     surfaces: ["setting:chat.datadogEmbeds", "settings-page:appearance"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -601,7 +601,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#pi-package-and-skill-mutations", "docs/api.md#pi-package-and-skill-mutations", "docs/api.md#put-__huisettings"],
     surfaces: ["settings-page:skills", "setting:disabledSkills", "route:PUT /__hui/settings", "route:GET /__hui/sessions/:id/commands", "page:skills"],
     journeys: ["skill-disable"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
