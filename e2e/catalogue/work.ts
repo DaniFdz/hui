@@ -92,7 +92,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-work-pane"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"Below 1100px the pane is a full-screen destination\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
