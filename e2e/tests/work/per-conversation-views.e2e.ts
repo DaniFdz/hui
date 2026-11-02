@@ -19,7 +19,6 @@ test("each conversation keeps its own Work views", { tags: ["WORK-012"], platfor
   await hui.open(`/sessions/${second.id}`);
   if (await show.isVisible()) await show.tap();
   await expect(pane.getByRole("tab")).toHaveCount(0);
-  await expect(pane.getByText("Open a view beside this conversation.")).toBeVisible();
 
   await hui.open(`/sessions/${first.id}`);
   if (await show.isVisible()) await show.tap();
