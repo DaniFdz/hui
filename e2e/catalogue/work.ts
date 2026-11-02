@@ -212,7 +212,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:vscode"],
     journeys: ["work-pane", "vscode-view"],
-    web: "backlog",
+    web: "required",
     ios: chord("Opening VS Code with Ctrl+Alt+Shift+C"),
   },
   {
@@ -435,7 +435,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:PUT /__hui/sessions/:id/files/file"],
     journeys: ["files-view", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -485,7 +485,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/files/raw"],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -637,7 +637,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/diff/changes"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -667,7 +667,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/diff/file"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
