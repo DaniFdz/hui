@@ -212,7 +212,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:vscode"],
     journeys: ["work-pane", "vscode-view"],
-    web: "backlog",
+    web: "required",
     ios: chord("Opening VS Code with Ctrl+Alt+Shift+C"),
   },
   {
