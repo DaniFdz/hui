@@ -715,7 +715,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Memory and the Memory Import page list the context and memory files found in workspaces HUI's sessions use, each with its workspace, kind and size, read-only; with none it says “No workspace memory sources found.” (“Nothing to import” for a workspace on Memory Import). While reading it says “Reading workspace inventory…”, problems inspecting a workspace show as warnings, and a failed read shows the error with Retry.",
     spec: ["docs/api.md#get-__huiworkspaces", "SPEC.md#behaviour"],
     surfaces: ["settings-page:memory", "route:GET /__hui/workspaces", "page:memory-import"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
