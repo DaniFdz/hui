@@ -472,7 +472,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#pi-package-and-skill-mutations"],
     surfaces: ["setting:models.primary", "setting:models.fallback"],
     journeys: ["model-routing"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
