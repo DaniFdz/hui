@@ -965,14 +965,21 @@ Markdown files have a **Markdown display mode**, **Source** or **Rendered**
 (HUI's chat Markdown renderer); the mode never decides whether the file is
 writable. **Copy Markdown** beside the mode copies the file's Markdown text as
 the view holds it, unsaved edits included, and shows **Copied**. Images and PDFs show as previews; other binary files and text over
-the limit show their size and modification time with **Download**.
+the limit show their size and modification time with **Download**. A file's
+bytes stream both ways, so its size never decides whether it can be opened or
+downloaded; only an image or PDF over 64 MiB, which the browser would hold as a
+blob, is refused with "That file is too large to preview here."
 
 The navigator refreshes open folders and the selected file when the
 conversation's agent turn ends, when the view becomes visible again and on
 **Refresh**. The filter searches paths: Git's tracked and unignored files in a
 repository, a bounded walk elsewhere. Uploads go to the selected file's folder
 (or a folder row they are dropped on) and replace an existing file only after a
-confirmation listing each path. Deleting a file, link or folder asks first,
+confirmation listing each path. The bytes stream to a temporary name beside the
+target and replace it only once the whole file arrived, so a cancelled or
+failed upload leaves the folder as it was; each upload is at most 2 GB and the
+navigator shows its progress and **Cancel upload** while one is in flight.
+Files upload one at a time. Deleting a file, link or folder asks first,
 listing what goes — a folder with everything inside it, unsaved edits, the open
 file — and states that it does not use the trash; the gateway deletes a
 non-empty folder only with that confirmation, and never the root. On narrow
@@ -2550,6 +2557,18 @@ zone. The catalogue records that page's outcomes as web use cases, and none of
 them is proven on iOS. When the iPhone app gets its own Usage screen, that
 screen is its own use case with its own shared test; until then PAGE-021 is
 excluded on iOS rather than left on its backlog.
+
+### The web's upload progress and Cancel stay on the web (2026-11-03)
+
+A Files upload in the web app can take a long time: the body streams to the
+gateway and a video may be a gigabyte. Only the browser knows how much of it it
+has sent, so the navigator draws **Upload progress** and **Cancel upload** while
+a file is in flight. The iPhone app imports files through its native file
+importer (`fileImporter`, `docs/native-ios-plan.md`), which draws the system's
+own progress and has no in-app Cancel; a second progress bar there would
+reproduce a control the phone already shows. Watching a web upload and stopping
+it is therefore a web-only use case, while the gateway's larger cap applies to
+both clients and the upload itself is WORK-054 on each.
 
 ### The iPhone app follows the phone's text size (2026-10-26)
 

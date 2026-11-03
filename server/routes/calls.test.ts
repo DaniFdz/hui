@@ -57,6 +57,7 @@ function fixture(options: { settings?: Settings; voice?: Settings["calls"]["voic
   const call = (method: string, path: string, body?: unknown, raw?: string) => routes.handle({
     method, path, query: new URLSearchParams(), headers: {}, signal: new AbortController().signal,
     bytes: () => Promise.reject(new Error("no bytes")),
+    stream: () => (async function* () { throw new Error("no bytes"); })(),
     json: async (maxBytes = 64 * 1024) => {
       const text = raw ?? (body === undefined ? "" : JSON.stringify(body));
       if (Buffer.byteLength(text, "utf8") > maxBytes) throw new Error("request body too large");

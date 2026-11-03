@@ -15,7 +15,7 @@ import { WORKERS_ROUTE } from "./routes/workers.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE } from "./routes/bots.ts";
 import { BOT_TRIGGERS_ROUTE } from "./routes/bot-triggers.ts";
 import { isHookPath } from "./bots/triggers-listener.ts";
-import { CLIENT_HEADER, responseFailures, routeRequest, sendFile, sendJson, type RouteRequest, type RouteResult } from "./http/route.ts";
+import { CLIENT_HEADER, responseFailures, routeRequest, sendFile, sendJson, sendStream, type RouteRequest, type RouteResult } from "./http/route.ts";
 import { HEARTBEAT_MS, watchSessionEvents, writeEvent } from "./http/events.ts";
 import { CALLS_ROUTE } from "./routes/calls.ts";
 import type { BotsUpdate } from "./bots-format.ts";
@@ -106,6 +106,7 @@ function sendHtml(response: ServerResponse, status: number, html: string): void 
 /** A route module's answer, or its 404 when no route of the module matched. */
 function sendRouteResult(response: ServerResponse, path: string, result: RouteResult | undefined): void {
   if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else if ("stream" in result) sendStream(response, result.status, result.stream);
   else if ("file" in result) sendFile(response, result.status, result.file);
   else if ("html" in result) sendHtml(response, result.status, result.html);
   else {
