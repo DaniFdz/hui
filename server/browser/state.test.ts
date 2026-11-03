@@ -137,6 +137,8 @@ test("a fresh profile seeded by the mirror is signed in: cookie, localStorage an
   assert.equal(stored.indexedDB.length, 1);
   assert.deepEqual(stored.indexedDB[0]!.stores[0]!.records.map(({ key }) => key), ["\"user\""], "the record's key travels as the page encoded it");
 
+  // One browser at a time: the second seeds a profile of its own, and CI runners have little to spare.
+  await first.stop();
   await second.tool("alpha", { action: "open", url: `${origin}/` }, { cwd: dir });
   let page = "";
   for (let attempt = 0; ; attempt += 1) {
