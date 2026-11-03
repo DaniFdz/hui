@@ -28,6 +28,8 @@ import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { ManagedBrowser } from "../browser/manager.ts";
+import { BrowserStateFile } from "../browser/mirror.ts";
+import { EMPTY_BROWSER_STATE, mergeBrowserState, sizeOf, type BrowserState } from "../browser/state.ts";
 import type { BotTurnOrigin } from "../runtimes/turn-origins.ts";
 import { registerAgentToolHandler, stopAgentToolBridge } from "../agent-tools/bridge.ts";
 import { operatorName } from "../bots/home.ts";
@@ -134,14 +136,23 @@ export class WorkerHost {
   /** This machine's browser for its sessions, with a profile of its own: no page, cookie or login here is the
    * gateway's, whose browser serves the sessions on that machine. Stopped when the last tab closes, as there. */
   readonly #browser: ManagedBrowser;
+  /** This worker's mirrored browser state, kept beside its profile. */
+  readonly #browserState: BrowserStateFile;
 
   constructor(paths: WorkerPaths) {
     this.paths = paths;
+    this.#browserState = new BrowserStateFile(join(paths.dataDir, "browser", "state.json"));
     this.#browser = new ManagedBrowser({
       profileDir: join(paths.dataDir, "browser", "profile"),
       // The mirrored settings carry the operator's choices; an executable path from the gateway's machine would name
       // no file here, so this machine finds its own.
       readSettings: async () => (await readHuiSettings()).browser,
+      // With Settings → Tools → Browser mirroring, a login made here and a login made on the machine HUI runs on are
+      // the same login: the merged document is what both browsers seed from.
+      mirror: {
+        read: async () => (await readHuiSettings()).browser.mirrorState ? this.#browserStateIn() : EMPTY_BROWSER_STATE,
+        write: (state) => { void this.#browserStateOut(state); },
+      },
     });
     this.#callersFile = join(paths.stateDir, "conversations.json");
     this.#piRunsFile = join(paths.stateDir, "pi-runs.json");
@@ -560,6 +571,26 @@ export class WorkerHost {
     // session's commands run, and only its path goes on to the agent.
     const answer = await peer.request<SecretAnswer>("secret-request", { key, params }, SECRET_REQUEST_TIMEOUT_MS + 60_000, signal);
     return this.#secretFiles.deliver(answer);
+  }
+
+  /** What this worker's browser seeds itself with: what it holds here, and what the gateway's browser holds there. */
+  async #browserStateIn(): Promise<BrowserState> {
+    const local = await this.#browserState.read();
+    const peer = this.#gateway();
+    if (!peer) return local;
+    const reply = await peer.request<{ state?: BrowserState }>("browser.state", { state: local }, 15_000).catch(() => undefined);
+    const merged = reply?.state ? mergeBrowserState(local, reply.state) : local;
+    await this.#browserState.merge(merged).catch(() => EMPTY_BROWSER_STATE);
+    return merged;
+  }
+
+  /** What this worker's browser holds now: kept here for its next launch, and lent to the gateway while it is
+   * connected. A gateway that is away learns it at the next launch. */
+  async #browserStateOut(state: BrowserState): Promise<void> {
+    const merged = await this.#browserState.merge(state).catch(() => state);
+    if (sizeOf(merged) > 8 * 1024 * 1024) return;
+    const peer = this.#gateway();
+    await peer?.request("browser.state", { state: merged }, 15_000).catch(() => undefined);
   }
 
   /** Gateway credentials, cached in memory until they expire so runs keep

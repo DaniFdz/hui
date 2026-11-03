@@ -85,6 +85,7 @@ type OriginalBrowserSettings = {
   headless: boolean;
 
   executablePath: string;
+  mirrorState: boolean;
 };
 
 type OriginalVscodeSettings = {
