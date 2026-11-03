@@ -11,7 +11,7 @@ import { resolveBrowserExecutable } from "./executable.ts";
 import { browserLaunchArguments, BrowserToolError, ManagedBrowser, normalizeBrowserUrl, type BrowserViewFrame } from "./manager.ts";
 import type { BrowserViewAction, BrowserViewState } from "../api/browser.ts";
 
-const noBrowser = { platform: "linux" as const, env: { PATH: "/nowhere" }, home: "/home/nobody", isExecutable: async () => false };
+const noBrowser = { platform: "linux" as const, env: { PATH: "/nowhere" }, home: "/home/nobody", isExecutable: async () => false, readdir: async () => [] as string[] };
 
 test("URLs are normalized for agents and dangerous schemes are refused", () => {
   assert.equal(normalizeBrowserUrl("example.com/docs"), "https://example.com/docs");

@@ -40,6 +40,8 @@ export type RemoteLaunch = Record<string, unknown> & {
   cwd: string;
   sessionFile?: string;
   disabledSkills?: { name: string; path: string }[];
+  /** Settings → Tools → Browser: the host's own browser serves a PI session when this is on. */
+  browserTool?: boolean;
 };
 
 /** Everything a gateway reads synchronously from a runtime, sent with each
