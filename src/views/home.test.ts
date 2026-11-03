@@ -558,10 +558,22 @@ test("a dropped stream says so once under the composer, and a stopped one keeps 
 });
 
 test("a saved offline copy says so once and offers no Reconnect it cannot honour", async () => {
-  const saved = await renderWorkerSession("disconnected", { connection: "saved", savedCopy: { savedAt: "2026-10-01T10:00:00.000Z", truncated: true } });
+  const saved = await renderWorkerSession("disconnected", { connection: "saved", connectionNote: "Reconnecting; your draft stays on this device.", savedCopy: { savedAt: "2026-10-01T10:00:00.000Z", truncated: true } });
   assert.match(saved, /<span class="agent-chat__composer-status-text">Saved conversation · draft preserved\. Send waits for a live connection\.<\/span>/u);
   assert.doesNotMatch(saved, /reconnect-session|session-run-spinner/u, "nothing is retrying and there is no worker to reconnect");
-  assert.match(saved, /Only recent messages are saved\./u, "the reading copy still says how much of it was kept");
+  assert.match(saved, /<div class="chat-composer-neighbor-card chat-composer-neighbor-card--info chat-saved-copy-notice" role="status">/u, "the copy is a neighbor card above the composer, not text over the chat");
+  assert.match(saved, /<strong>Saved conversation · [^<]+<\/strong>/u);
+  assert.match(saved, /<span>Only recent messages are saved\.<\/span>/u, "the reading copy still says how much of it was kept");
+  assert.match(saved, /<button type="button" class="btn btn--sm" @click=>Forget saved conversations<\/button>/u);
+  assert.doesNotMatch(saved, /Reconnecting; your draft stays on this device/u, "the band under the composer already says the draft stays");
+  assert.doesNotMatch(saved, /transcript__note--status/u, "nothing sits above the transcript");
+});
+
+test("a saved copy taken today says when, without repeating today's date", async () => {
+  const savedAt = new Date().setHours(12, 0, 0, 0);
+  const saved = await renderWorkerSession("disconnected", { connection: "saved", savedCopy: { savedAt, truncated: false } });
+  const time = new Date(savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  assert.match(saved, new RegExp(`<strong>Saved conversation · ${time}</strong>`, "u"));
 });
 
 test("a reachable worker session shows neither notice, and a failed one keeps its error banner", async () => {
