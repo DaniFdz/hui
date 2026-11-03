@@ -32,6 +32,7 @@ import type {
   GitCheckoutInfo,
   WorktreeProgress,
 } from "../api/sessions.ts";
+import type { WorkerView } from "../api/workers.ts";
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
@@ -365,10 +366,14 @@ export type HomeProps = {
   onReconnect: () => void;
   launchDefaults?: { group: string; cwd: string };
   /** Remote workers a new session can run on; none hides the picker. */
-  launchWorkers?: readonly { id: string; name: string; state: string }[];
+  launchWorkers?: readonly WorkerView[];
   /** Selected worker id; absent runs the session on this machine. */
   launchWorker?: string;
   onSelectLaunchWorker?: (id: string | undefined) => void;
+  /** Connects a worker from the picker; its state then follows in `launchWorkers`. */
+  onConnectLaunchWorker?: (id: string) => void;
+  /** The picker opened: read the worker list again, since their state changes on its own. */
+  onRefreshLaunchWorkers?: () => void;
   launchModels: readonly RuntimeModel[];
   launchModel: RuntimeModel | undefined;
   launchThinking: string;
@@ -489,27 +494,55 @@ function onSubmit(props: HomeProps) {
   };
 }
 
+/** The one line under a worker's name: its state, and what it is doing or where it lives. */
+function workerStateLine(worker: WorkerView): string {
+  if (worker.state === "connected") return worker.host ? `Connected · ${worker.host.hostname}` : "Connected";
+  if (worker.state === "connecting") return `${worker.phase ?? "Connecting"}…`;
+  // `ssh exited with code 255.` says nothing the command does not; its output does.
+  if (worker.state === "error") return `Offline · ${(worker.error ?? "connection failed").replace(/^.*?exited with code \d+\.\s*/u, "").split("\n")[0]?.slice(0, 100)}`;
+  return `Not connected · ${worker.command}`;
+}
+
+/** One remote worker: where it lives, how it is doing, and a Connect action while it is not connected. */
+function renderWorkerOption(props: HomeProps, worker: WorkerView) {
+  const connecting = worker.state === "connecting";
+  return html`<div class="new-session-page__worker-row" role="none">
+    <button type="button" role="menuitemradio" aria-checked=${String(worker.id === props.launchWorker)} class="new-session-page__worker-choice"
+      data-worker-state=${worker.state} title=${worker.command} @click=${(event: Event) => {
+        (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open");
+        props.onSelectLaunchWorker?.(worker.id);
+      }}>
+      <span class="new-session-page__target-icon">${icons.globe}</span>
+      <span class="new-session-page__worker-copy">
+        <span class="new-session-page__worker-name">${worker.name}</span>
+        <span class="new-session-page__worker-state" title=${worker.error ?? worker.command}>${workerStateLine(worker)}</span>
+      </span>
+    </button>
+    ${worker.state === "connected" ? nothing : html`<button type="button" role="menuitem" class="new-session-page__worker-connect"
+      aria-label=${`Connect ${worker.name}`} ?disabled=${connecting} @click=${() => props.onConnectLaunchWorker?.(worker.id)}>${connecting ? "Connecting" : "Connect"}</button>`}
+  </div>`;
+}
+
 /** Where the session runs: this machine or a remote worker. */
 function renderWorkerPicker(props: HomeProps) {
   const workers = props.launchWorkers ?? [];
   const selected = workers.find((worker) => worker.id === props.launchWorker);
   const local = html`<span class="new-session-page__target-icon">${icons.terminal}</span>`;
   if (!workers.length) return html`<span class="new-session-page__trigger new-session-page__runtime">${local}Local</span>`;
-  const choose = (event: Event, id: string | undefined) => {
-    (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open");
-    props.onSelectLaunchWorker?.(id);
-  };
-  return html`<details class="new-session-page__group-picker new-session-page__worker-picker" @keydown=${closeComposerPicker}>
+  return html`<details class="new-session-page__group-picker new-session-page__worker-picker" @keydown=${closeComposerPicker}
+    @toggle=${(event: Event) => { if ((event.currentTarget as HTMLDetailsElement).open) props.onRefreshLaunchWorkers?.(); }}>
     <summary class="new-session-page__trigger new-session-page__runtime" aria-label="Choose where the session runs">
       <span class="new-session-page__target-icon">${selected ? icons.globe : icons.terminal}</span><span data-launch-worker>${selected?.name ?? "Local"}</span>
       <span class="new-session-page__trigger-chevron" aria-hidden="true">${chevronDownIcon}</span>
     </summary>
     <div class="new-session-page__group-menu new-session-page__worker-menu" role="menu" aria-label="Run on">
-      <button type="button" role="menuitemradio" aria-checked=${String(!selected)} @click=${(event: Event) => choose(event, undefined)}>${local}Local</button>
+      <button type="button" role="menuitemradio" aria-checked=${String(!selected)} @click=${(event: Event) => {
+        (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open");
+        props.onSelectLaunchWorker?.(undefined);
+      }}>${local}Local</button>
       <div class="session-menu__separator" role="separator"></div>
       <div class="new-session-page__menu-note">Remote workers</div>
-      ${workers.map((worker) => html`<button type="button" role="menuitemradio" aria-checked=${String(worker.id === selected?.id)}
-        @click=${(event: Event) => choose(event, worker.id)}><span class="new-session-page__target-icon">${icons.globe}</span>${worker.name}${worker.state === "connected" ? "" : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</button>`)}
+      ${workers.map((worker) => renderWorkerOption(props, worker))}
     </div>
   </details>`;
 }

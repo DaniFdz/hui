@@ -34,4 +34,16 @@
 .new-session-page__composer > .new-session-page__feedback { width: 100%; max-width: none; margin: 4px 0 0; }
 .new-session-page__feedback .new-session-page__alert-message { display: grid; gap: 2px; }
 .new-session-page__feedback-detail { color: var(--text); }
-.new-session-page__worker-menu > button { display: flex; align-items: center; gap: 8px; }
+.new-session-page__worker-menu > button, .new-session-page__worker-menu .new-session-page__worker-choice { display: flex; align-items: start; gap: 8px; }
+.new-session-page__worker-row { display: flex; align-items: center; gap: 2px; }
+.new-session-page__worker-choice { flex: 1 1 auto; white-space: normal; }
+.new-session-page__worker-choice > .new-session-page__target-icon { margin-top: 2px; }
+.new-session-page__worker-copy { display: grid; min-width: 0; gap: 1px; }
+.new-session-page__worker-name { overflow: hidden; color: var(--text); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.new-session-page__worker-state { display: -webkit-box; max-width: min(280px, 45vw); overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--muted); font-size: 11px; line-height: 1.35; white-space: normal; }
+.new-session-page__worker-choice[data-worker-state="connected"] .new-session-page__worker-state { color: var(--ok); }
+.new-session-page__worker-choice[data-worker-state="connecting"] .new-session-page__worker-state { color: var(--warn); }
+.new-session-page__worker-choice[data-worker-state="error"] .new-session-page__worker-state { color: var(--danger); }
+.new-session-page__worker-menu .new-session-page__worker-connect { flex: none; min-height: 22px; margin-right: 6px; padding: 0 8px; overflow: visible; border: 1px solid var(--border-strong); border-radius: 999px; color: var(--accent); font-size: 11px; }
+.new-session-page__worker-menu .new-session-page__worker-connect:hover:not(:disabled) { border-color: var(--accent); background: var(--menu-selected); }
+.new-session-page__worker-menu .new-session-page__worker-connect:disabled { border-color: var(--border); color: var(--muted); }
