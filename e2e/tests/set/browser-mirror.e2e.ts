@@ -6,7 +6,7 @@ test("Mirror browser state is off by default and stays on", { tags: ["SET-082"],
   await hui.open("/settings/tools");
   const toggle = screen.getByRole("switch", { name: "Mirror browser state" });
   await expect(toggle).not.toBeChecked();
-  await toggle.tap();
+  await toggle.press("Space");
   await expect(toggle).toBeChecked();
   await expect.poll(async () => (await hui.api<Record<string, { mirrorState?: boolean }>>("GET", "/__hui/settings"))["browser"]?.mirrorState).toBe(true);
   await hui.reload();
