@@ -992,6 +992,43 @@
   font-size: var(--control-ui-text-sm);
 }
 
+/* 150ms of opacity 0 for the placeholder rows: a fast registry read resolves
+   before they show, so the list never flashes grey and then jumps. */
+.app-shell .sidebar-placeholder {
+  --skeleton-base: color-mix(in srgb, var(--muted) 18%, transparent);
+  --skeleton-highlight: color-mix(in srgb, var(--text) 12%, transparent);
+  opacity: 0;
+  animation: fade-in 0s 150ms forwards;
+}
+
+.app-shell .sidebar-placeholder__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sidebar-row-gap);
+  min-height: var(--sidebar-session-row-min-height);
+  padding-inline-start: var(--sidebar-inset);
+}
+
+.app-shell .sidebar-placeholder__lead {
+  flex: 0 0 10px;
+  height: 10px;
+  margin-inline: 5px;
+  border-radius: var(--radius-full);
+}
+
+.app-shell .sidebar-placeholder__title {
+  width: 62%;
+  height: 9px;
+}
+
+.app-shell .sidebar-placeholder__row:nth-child(3n + 2) .sidebar-placeholder__title { width: 48%; }
+.app-shell .sidebar-placeholder__row:nth-child(3n) .sidebar-placeholder__title { width: 55%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .sidebar-placeholder { opacity: 1; animation: none; }
+  .app-shell .sidebar-placeholder .skeleton::after { animation: none; }
+}
+
 .app-shell .shell-chrome-controls {
   position: fixed;
   z-index: 45;

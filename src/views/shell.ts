@@ -711,6 +711,17 @@ function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: 
   `;
 }
 
+/** Rows in the list's shape while the registry read is pending, so the list
+ * does not jump from one line of text to rows. */
+function renderSessionPlaceholder() {
+  return html`<div class="sidebar-placeholder session-group__rows sidebar-recent-sessions__list" role="status" aria-label="Loading sessions…">
+    ${Array.from({ length: 6 }, () => html`<span class="sidebar-placeholder__row">
+      <span class="sidebar-placeholder__lead skeleton"></span>
+      <span class="sidebar-placeholder__title skeleton"></span>
+    </span>`)}
+  </div>`;
+}
+
 function renderImportNote(props: ShellProps) {
   if (!props.importNote) {
     return nothing;
@@ -896,7 +907,7 @@ export function renderSidebar(props: ShellProps) {
           props.error
             ? html`<p class="sidebar-list__note is-error">${props.error}</p>`
             : props.loading
-              ? html`<p class="sidebar-list__note">Loading sessions…</p>`
+              ? renderSessionPlaceholder()
             : visibleGroups.length === 0
               ? html`
                     <div class="sidebar-empty">
