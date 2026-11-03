@@ -27,6 +27,7 @@ test("a conversation saved on this device opens again without the gateway", { ta
   await hui.reload();
 
   await expect(screen.getByText("Message text is saved on this device.", { exact: false })).toBeVisible();
+  await expect(screen.getByText("Reconnecting; your draft stays on this device.", { exact: false })).toBeHidden();
   await expect(transcript.getByText(MESSAGE)).toBeVisible();
   await expect(screen.getByLabel("Sessions").getByText("Saved offline", { exact: true })).toBeVisible();
   await expect(screen.getByRole("button", "Group options for")).toHaveCount(0);
