@@ -65,6 +65,8 @@ export const MAX_TABS_PER_CONVERSATION = 8;
 export const MAX_TABS_TOTAL = 32;
 /** A capture reads the whole cookie jar and a tab's storage: at most this often per origin. */
 const CAPTURE_INTERVAL_MS = 5_000;
+/** A mirror captures what its tabs hold this often while it runs: a page signs in after a fetch, not on load. */
+const MIRROR_CAPTURE_MS = 20_000;
 const DEFAULT_WINDOW = { width: 1280, height: 800 } as const;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 60_000;
@@ -419,6 +421,7 @@ export class ManagedBrowser {
   readonly #window: { width: number; height: number };
   readonly #idleTabMs: number;
   readonly #mirror: BrowserStateMirror | undefined;
+  #mirrorTimer: ReturnType<typeof setInterval> | undefined;
   #instance: Instance | undefined;
   #starting: Promise<Instance> | undefined;
   #stopping: Promise<void> | undefined;
@@ -570,6 +573,7 @@ export class ManagedBrowser {
    * signal makes it prompt even if the event loop is about to end. */
   dispose(): void {
     this.#generation += 1;
+    this.#stopMirrorClock();
     const instance = this.#instance;
     this.#instance = undefined;
     this.#forgetTabs();
@@ -847,6 +851,11 @@ export class ManagedBrowser {
     if (!this.#mirror) return;
     const state = await this.#mirror.read().catch(() => EMPTY_BROWSER_STATE);
     instance.state = state;
+    this.#mirrorTimer ??= setInterval(() => {
+      const running = this.#instance;
+      if (running) for (const tab of this.#tabs.values()) void this.#capture(running, tab);
+    }, MIRROR_CAPTURE_MS);
+    this.#mirrorTimer.unref();
     if (!state.cookies.length) return;
     await instance.connection.send("Storage.setCookies", {
       cookies: state.cookies.map(({ at: _captured, ...cookie }) => cookie),
@@ -918,6 +927,7 @@ export class ManagedBrowser {
   }
 
   async #shutdown(instance: Instance): Promise<void> {
+    this.#stopMirrorClock();
     // What this profile holds is the last thing the mirror can learn from it.
     await Promise.all([...this.#tabs.values()].map((tab) => this.#capture(instance, tab, true)));
     if (this.#instance === instance) this.#instance = undefined;
@@ -944,6 +954,12 @@ export class ManagedBrowser {
     this.#fail(`The managed browser exited unexpectedly (${code !== null ? `code ${code}` : signal ?? "no exit status"}). It starts again on the next browser action.`, {
       enabled: true, headless: instance.headless, executablePath: instance.configuredPath,
     });
+  }
+
+  #stopMirrorClock(): void {
+    if (!this.#mirrorTimer) return;
+    clearInterval(this.#mirrorTimer);
+    this.#mirrorTimer = undefined;
   }
 
   #fail(message: string, settings: LaunchSettings): void {
