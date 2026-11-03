@@ -803,6 +803,16 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "SET-082",
+    title: "Mirror browser state with your workers",
+    behaviour: "“Mirror browser state” is off until it is switched on. On, the browser here and the browser on each worker start from what the other one holds — cookies, localStorage and IndexedDB — so a login made on either machine works on the other; the switch keeps its state across a reload. Off again, nothing more is captured or lent, and the documents already mirrored stay where they are until the worker they belong to is removed.",
+    spec: ["SPEC.md#managed-browser"],
+    surfaces: ["setting:browser.mirrorState", "settings-page:tools"],
+    journeys: ["browser-tool"],
+    web: "required",
+    ios: { excluded: "The iPhone has no Settings → Tools and no worker browsers to mirror with.", decision: "SPEC.md#managed-browser" },
+  },
 ];
 
 export default cases;

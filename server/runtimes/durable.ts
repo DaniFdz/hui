@@ -10,10 +10,11 @@
 import { createHash } from "node:crypto";
 import type { ImageContent, Message, ModelThinkingLevel, TextContent } from "@earendil-works/pi-ai";
 import {
-  CompactionEntry, InboxDoc, LiveDoc, ResetEntry, SystemEntry, UserEntry, watchEvents,
-  type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
+  CompactionEntry, InboxDoc, LiveDoc, ResetEntry, SystemEntry, UserEntry,
+  type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
   type EntryId, type EntryRecord, type Harness, type SubmissionRecord, type TaskId, type ToolRegistration,
 } from "@earendil-works/pi-durable";
+import { watchEvents, type AgentEvent } from "./durable-events.ts";
 import { CODEMODE_TOOL_NAME, type CodemodeNestedCall } from "@earendil-works/pi-durable/codemode";
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
@@ -47,8 +48,6 @@ const HISTORY_PAGE = 200;
 /** How Durable wraps a summary for the model (`harness/compaction.js`). */
 export const SUMMARY_PREFIX = "The conversation history before this point was compacted into the following summary:\n\n<summary>\n";
 export const SUMMARY_SUFFIX = "\n</summary>";
-/** The kind of Durable's compaction task, as `task_failed` reports it. */
-const COMPACTION_TASK = "pi.compaction";
 /** Longest a Stop waits for Durable to report that its run and compactions ended. */
 const QUIET_TIMEOUT_MS = 30_000;
 
@@ -81,8 +80,8 @@ const endedCall = (call: CodemodeCall, end?: { isError: boolean; durationMs?: nu
  * runs beside the conversation, and Stop cancels it; a threshold one Durable starts by itself runs in the background
  * and survives Stop. Only a blocking one holds anything, and only its own run: Durable admits input throughout.
  */
-function compactionOf(status: { reason: CompactionReason; blocking: boolean }): Compaction {
-  return { reason: status.reason, blocking: status.blocking, background: !status.blocking && status.reason !== "manual" };
+function compactionOf(status: { trigger: CompactionReason; blocking: boolean }): Compaction {
+  return { reason: status.trigger, blocking: status.blocking, background: !status.blocking && status.trigger !== "manual" };
 }
 
 function startOf(compaction: Compaction): CompactionStart {
@@ -483,11 +482,6 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       else if (event.type === "run_end") run.going = false;
       else if (event.type === "message_end" || event.type === "entry_appended") saw(event.entry);
       else if (event.type === "tool_execution_end" && event.entry) saw(event.entry);
-      else if (event.type === "snapshot") {
-        // The stream fell behind: what it skipped and the run still has is in the newest view.
-        run.going = event.run !== undefined;
-        for (const entry of [...event.entries].sort((a, b) => a.id - b.id)) saw(entry);
-      }
     }
     if (!run.going) run.origins = [];
   }
@@ -697,10 +691,6 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   async #handle(event: AgentEvent): Promise<void> {
     if (this.#disposed) return;
     switch (event.type) {
-      case "snapshot":
-        // The stream fell more than 100 commits behind and restarted from a snapshot.
-        await this.#resync(event);
-        return;
       case "run_start":
         this.#streaming = true;
         return;
@@ -718,8 +708,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
             this.#streamedText.set(change.contentIndex, (this.#streamedText.get(change.contentIndex) ?? "") + change.delta);
             this.#emit({ type: "text", delta: change.delta });
           } else if (change.type === "thinking_delta" && change.delta) this.#emit({ type: "thinking", delta: change.delta });
-          else if (change.type === "text_start" || change.type === "block") this.#streamBlock(change.contentIndex, change.block);
-          else if (change.type === "message") change.message.content.forEach((block, index) => this.#streamBlock(index, block));
+          else if (change.type === "text_start" || change.type === "block") this.#streamBlock(change.contentIndex, change.block as { type: string; text?: unknown });
         }
         return;
       case "message_end":
@@ -784,14 +773,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       case "auto_retry_start":
         this.#emit({ type: "notice", level: "warning", message: `Retrying after a provider error (attempt ${event.attempt}): ${event.errorMessage}`, recovery: true });
         return;
-      case "task_failed":
-        // A failed compaction's divider shows its reason instead.
-        if (event.kind !== COMPACTION_TASK) this.#emit({ type: "notice", level: "error", message: event.message });
-        return;
       case "compaction_start":
         this.#requested.delete(event.taskId);
         if (this.#superseded.has(event.taskId) || this.#compactions.has(event.taskId)) return;
-        this.#compactions.set(event.taskId, compactionOf(event));
+        this.#compactions.set(event.taskId, compactionOf({ trigger: event.reason, blocking: event.blocking }));
         this.#announce();
         return;
       case "compaction_end":
@@ -910,30 +895,6 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     if (outcome.status === "failed") return { outcome: "failed", message: outcome.error.message };
     const detail = (outcome as { reason?: unknown }).reason;
     return { outcome: "failed", message: typeof detail === "string" && detail ? detail : "Durable could not finish the compaction." };
-  }
-
-  /** A fresh snapshot after the stream fell behind: adopt it, report the compactions that started or ended in the
-   * gap, and read the history it skipped. */
-  async #resync(snapshot: SnapshotEvent): Promise<void> {
-    const running = this.#streaming;
-    this.#syncSnapshot(snapshot);
-    const live = new Set<TaskId>(snapshot.compactions.map((status) => status.taskId));
-    let started = false;
-    for (const status of snapshot.compactions) {
-      this.#requested.delete(status.taskId);
-      if (this.#compactions.has(status.taskId) || this.#superseded.has(status.taskId)) continue;
-      this.#compactions.set(status.taskId, compactionOf(status));
-      started = true;
-    }
-    if (started) this.#announce();
-    for (const [taskId, { reason }] of [...this.#compactions]) {
-      if (!live.has(taskId)) await this.#compactionEnded(taskId, reason);
-    }
-    for (const taskId of [...this.#superseded]) {
-      if (!live.has(taskId)) this.#superseded.delete(taskId);
-    }
-    if (running && !this.#streaming) await this.#settle();
-    else await this.#read().catch(() => {});
   }
 
   /** A run or a starting prompt, or a compaction of Durable's ordinary scope (blocking or manual, which Stop cancels),
@@ -1524,7 +1485,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   onExit(listener: (unreachable?: RuntimeUnreachableError) => void): () => void {
     let listening = true;
     void this.#harness.closed.then((end) => {
-      if (!listening || this.#disposed || end.reason !== "failed") return;
+      if (!listening || this.#disposed || end.kind !== "failed") return;
       listener(new RuntimeUnreachableError("HUI's Durable store failed; HUI is reopening it.", true));
       this.dispose();
     });

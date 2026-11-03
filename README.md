@@ -88,7 +88,10 @@ Requirements:
 - Node.js **24 or newer** and npm.
 - Git for source checkouts.
 - Optional: Google Chrome, Brave, Microsoft Edge or Chromium for the agent
-  browser tool. HUI launches it with its own profile; nothing is downloaded.
+  browser tool, on each machine that runs sessions (a remote worker included).
+  HUI launches it with its own profile; nothing is downloaded. A container with
+  none can get one with `npx playwright install --with-deps chromium`: HUI finds
+  that Chromium too.
 
 HUI is distributed as npm archives (`.tgz`), not through the public npm
 registry.

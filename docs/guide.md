@@ -592,16 +592,23 @@ drops the note.
 Its **Tools** tab shows what a bot there can have: the tools of a session on that
 worker, its extensions' included, and its skills where the worker keeps them, your
 skills by their mirrored copies there (`~/.local/share/hui-worker/mirror/agent/skills`).
-It doesn't list the terminal, the browser or watchers: they stay on this machine,
-so the bot isn't offered them and there is nothing to turn off. What you turn off is
+It doesn't list the terminal or watchers: they stay on this machine, so the bot
+isn't offered them and there is nothing to turn off. What you turn off is
 kept and enforced on the worker; when the bot asks for something back, you
 answer here, and its Tools & skills page and roster row follow. While the worker is offline
 its Tools & skills page says so.
 
+Its **browser** is the worker's own: a separate profile under the worker's data
+directory, so pages it signs in to stay on that machine, and no preview or
+browser view streamed here. The worker needs a Chromium-family browser for it:
+`npx playwright install --with-deps chromium` on that machine is enough (a
+Chromium in PATH, Chrome, Brave or Edge are found too), and the tool says when
+there is none.
+
 **Limits.** A bot on a worker has the limits of any session on a worker: the
-terminal, the managed browser and watchers act on this machine, so it can't use
-them, and it can't use worktrees. A worker can't be removed while bots run on
-it; delete them first.
+terminal and watchers act on this machine, so it can't use them, and it can't
+use worktrees. A worker can't be removed while bots run on it; delete them
+first.
 
 ### Talking to a bot
 

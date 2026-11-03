@@ -1762,6 +1762,7 @@ function renderComposer(props: HomeProps) {
       }}>
       ${renderQuestion(props)}
       ${renderRunError(props, booting || disconnected)}
+      ${renderSavedNotice(props)}
       ${props.session?.interrupted && !booting ? html`
         <div class="agent-chat__interrupted-recovery" role="status">
           <span class="agent-chat__run-status agent-chat__run-status--interrupted">
@@ -2008,14 +2009,32 @@ function renderTaskProgress(props: HomeProps) {
   </div>`;
 }
 
+/** The time a saved copy was taken; today's copies leave out the date. */
+function savedCopyTime(savedAt: number): string {
+  const at = new Date(savedAt);
+  return at.toLocaleString([], at.toDateString() === new Date().toDateString()
+    ? { hour: "numeric", minute: "2-digit" }
+    : { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
 /** The offline reading copy's own note: when it was saved, how much of it, and what to do about an old build. */
 function renderSavedNotice(props: HomeProps) {
   if (!(props.savedCopy || props.connection === "saved" || props.connection === "outdated")) return nothing;
-  return html`<div class="transcript__note" role="status">
-    ${props.savedCopy ? html`Saved conversation · ${new Date(props.savedCopy.savedAt).toLocaleString()}. ${props.savedCopy.truncated ? "Only recent messages are saved." : "Message text is saved on this device."}` : nothing}
-    ${props.connectionNote}
-    ${props.connection === "outdated" ? html` <button type="button" class="btn btn--sm" @click=${() => window.location.reload()}>Reload HUI</button>` : nothing}
-    ${props.savedCopy && props.onForgetSaved ? html` <button type="button" class="btn btn--sm" @click=${props.onForgetSaved}>Forget saved conversations</button>` : nothing}
+  const detail = props.savedCopy
+    ? props.savedCopy.truncated ? "Only recent messages are saved." : "Message text is saved on this device."
+    : props.connectionNote;
+  const outdatedNote = props.savedCopy && props.connection === "outdated" ? props.connectionNote : "";
+  return html`<div class="chat-composer-neighbor-card chat-composer-neighbor-card--info chat-saved-copy-notice" role="status">
+    <span class="chat-composer-neighbor-card__icon" aria-hidden="true">${icons.eye}</span>
+    <span class="chat-composer-neighbor-card__copy">
+      ${props.savedCopy ? html`<strong>Saved conversation · ${savedCopyTime(props.savedCopy.savedAt)}</strong>` : nothing}
+      ${detail ? html`<span>${detail}</span>` : nothing}
+      ${outdatedNote ? html`<span>${outdatedNote}</span>` : nothing}
+    </span>
+    ${props.connection === "outdated" || (props.savedCopy && props.onForgetSaved) ? html`<span class="chat-composer-neighbor-card__actions">
+      ${props.connection === "outdated" ? html`<button type="button" class="btn btn--sm" @click=${() => window.location.reload()}>Reload HUI</button>` : nothing}
+      ${props.savedCopy && props.onForgetSaved ? html`<button type="button" class="btn btn--sm" @click=${props.onForgetSaved}>Forget saved conversations</button>` : nothing}
+    </span>` : nothing}
   </div>`;
 }
 
@@ -2662,7 +2681,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
           <div class="chat-split-container">
             <div class="chat-main">
               <div class="chat-main__conversation-column">
-                ${renderNote(props)} ${renderSavedNotice(props)}
+                ${renderNote(props)}
                 ${props.offlineSupported === false ? html`<p class="transcript__note" role="status">Offline reload needs HTTPS or localhost.</p>` : nothing}
                 ${session.status === "error" && !props.worktreeError
                   ? html`<div class="chat-error" role="alert"><div class="chat-error__content">The runtime could not start.</div><button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Retry session</button></div>`

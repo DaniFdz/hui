@@ -278,6 +278,11 @@
   .session-history-action__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 .chat .transcript__note { width: calc(100% - 36px); max-width: 48rem; margin: 6px auto; }
+.chat-composer-neighbor-card__actions { display: inline-flex; align-items: center; gap: 8px; }
+@media (max-width: 560px) {
+  .chat-saved-copy-notice { grid-template-columns: 18px minmax(0, 1fr); }
+  .chat-saved-copy-notice .chat-composer-neighbor-card__actions { grid-column: 2; justify-self: end; }
+}
 .agent-chat__empty { display: flex; min-height: 40dvh; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted); text-align: center; }
 .agent-chat__empty strong { color: var(--text-strong); font-size: var(--control-ui-text-lg); font-weight: 600; }
 .agent-chat__empty span { font-size: var(--control-ui-text-sm); }

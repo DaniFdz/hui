@@ -24,7 +24,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -90,7 +91,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -156,7 +158,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -222,7 +225,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -294,7 +298,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -362,7 +367,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -430,7 +436,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -504,7 +511,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -572,7 +580,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -640,7 +649,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -708,7 +718,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -776,7 +787,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -847,7 +859,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -920,7 +933,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -988,7 +1002,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1058,7 +1073,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1128,7 +1144,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": false
@@ -1196,7 +1213,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1264,7 +1282,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1332,7 +1351,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1402,7 +1422,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1472,7 +1493,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1542,7 +1564,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1612,7 +1635,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1682,7 +1706,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1752,7 +1777,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1822,7 +1848,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1892,7 +1919,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1962,7 +1990,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2032,7 +2061,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2078,7 +2108,8 @@
       "browser": {
         "enabled": "no",
         "headless": 0,
-        "executablePath": 7
+        "executablePath": 7,
+        "mirrorState": false
       }
     },
     "expected": {
@@ -2104,7 +2135,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2150,7 +2182,8 @@
       "browser": {
         "enabled": false,
         "headless": false,
-        "executablePath": "  /Applications/Brave Browser.app  "
+        "executablePath": "  /Applications/Brave Browser.app  ",
+        "mirrorState": false
       }
     },
     "expected": {
@@ -2176,7 +2209,8 @@
       "browser": {
         "enabled": false,
         "headless": false,
-        "executablePath": "/Applications/Brave Browser.app"
+        "executablePath": "/Applications/Brave Browser.app",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2220,7 +2254,8 @@
   {
     "input": {
       "browser": {
-        "executablePath": "/usr/bin/chrome\n--flag"
+        "executablePath": "/usr/bin/chrome\n--flag",
+        "mirrorState": false
       }
     },
     "expected": {
@@ -2246,7 +2281,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2290,7 +2326,8 @@
   {
     "input": {
       "browser": {
-        "executablePath": "/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "executablePath": "/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "mirrorState": false
       }
     },
     "expected": {
@@ -2316,7 +2353,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2389,7 +2427,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2459,7 +2498,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2529,7 +2569,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2599,7 +2640,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2669,7 +2711,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2739,7 +2782,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2809,7 +2853,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2879,7 +2924,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2952,7 +2998,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3022,7 +3069,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3093,7 +3141,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3169,7 +3218,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3243,7 +3293,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3314,7 +3365,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3386,7 +3438,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3454,7 +3507,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3522,7 +3576,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3590,7 +3645,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3658,7 +3714,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3726,7 +3783,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3794,7 +3852,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3862,7 +3921,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3930,7 +3990,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4016,7 +4077,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4110,7 +4172,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4184,7 +4247,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4252,7 +4316,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4320,7 +4385,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4388,7 +4454,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4456,7 +4523,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4524,7 +4592,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4592,7 +4661,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4660,7 +4730,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4735,7 +4806,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4805,7 +4877,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4875,7 +4948,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4945,7 +5019,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5015,7 +5090,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5085,7 +5161,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5155,7 +5232,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5225,7 +5303,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5295,7 +5374,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5365,7 +5445,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5435,7 +5516,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5505,7 +5587,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5575,7 +5658,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5645,7 +5729,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5717,7 +5802,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5785,7 +5871,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5853,7 +5940,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5921,7 +6009,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5989,7 +6078,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6057,7 +6147,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6125,7 +6216,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6193,7 +6285,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6261,7 +6354,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6329,7 +6423,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6397,7 +6492,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6465,7 +6561,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6533,7 +6630,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6601,7 +6699,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6669,7 +6768,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6737,7 +6837,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6805,7 +6906,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6873,7 +6975,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6941,7 +7044,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7009,7 +7113,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7077,7 +7182,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7145,7 +7251,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7213,7 +7320,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7281,7 +7389,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7354,7 +7463,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7427,7 +7537,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7495,7 +7606,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7605,7 +7717,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true

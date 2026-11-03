@@ -8,7 +8,7 @@ export const VscodeProviderPreference = Type.Union([
 export type VscodeProviderPreference = Static<typeof VscodeProviderPreference>;
 
 export const BrowserSettings = Type.Object({
-  enabled: Type.Boolean(), headless: Type.Boolean(), executablePath: Type.String(),
+  enabled: Type.Boolean(), headless: Type.Boolean(), executablePath: Type.String(), mirrorState: Type.Boolean(),
 }, { $id: "BrowserSettings" });
 export type BrowserSettings = Static<typeof BrowserSettings>;
 

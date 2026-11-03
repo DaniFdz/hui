@@ -786,12 +786,12 @@ function markup(value: unknown): string {
   return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
 }
 
-function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents"): string {
+function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents", loading = false): string {
   const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
   if (open) sessions.push(session(open, "Open", "Work"));
   const data = {
     view: "home", pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
-    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading, error: "",
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: open,
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
     groupDropTarget: undefined, groupReorderPending: false,
@@ -807,4 +807,12 @@ test("a session row draws its actions menu only once it opens, so a long list st
   assert.doesNotMatch(closed, /value="pin"/u, "a closed row's menu has no items");
   assert.ok(perRow > 5 && perRow <= 40, `each session row draws ${perRow} elements; draw what a row only shows on demand when it is asked for`);
   assert.equal(sidebar(100, `open-${crypto.randomUUID()}`).split('value="pin"').length - 1, 1, "the open row's menu has its items");
+});
+
+test("the session list draws placeholder rows until its first read answers", () => {
+  const loading = sidebar(0, "", "agents", true);
+  assert.match(loading, /role="status" aria-label="Loading sessions…"/u);
+  assert.equal(loading.split('class="sidebar-placeholder__row"').length - 1, 6, "the placeholder keeps the list's shape");
+  assert.doesNotMatch(loading, /sidebar-list__note/u, "no loading note stands beside the placeholder");
+  assert.doesNotMatch(sidebar(2), /sidebar-placeholder/u, "rows replace the placeholder");
 });
