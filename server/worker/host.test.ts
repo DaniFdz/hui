@@ -327,6 +327,60 @@ test("a real browser on the host opens a page for its session, with a profile of
   }
 });
 
+test("a worker's browser starts from the state the mirror lends it and hands back what it captured", {
+  skip: !(await resolveBrowserExecutable("")).executable,
+  timeout: 120_000,
+}, async (t) => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end("<!doctype html><title>mirror</title><script>document.title = [document.cookie.includes('lent=gateway') ? 'cookie' : 'no-cookie', localStorage.getItem('lentToken') ?? 'no-token', localStorage.getItem('seen') ? 'seen' : 'unseen'].join('|'); localStorage.setItem('seen', 'yes');</script>");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.onTestFinished(() => { server.close(); });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  // Settings → Tools → Browser, as the gateway mirrors it here.
+  const settingsFile = join(root, "config", "hui", "settings.json");
+  await mkdir(join(root, "config", "hui"), { recursive: true });
+  await writeFile(settingsFile, JSON.stringify({ browser: { mirrorState: true } }));
+  t.onTestFinished(() => rm(settingsFile, { force: true }));
+
+  const sent: Array<{ cookies: Array<{ name: string; value: string }>; origins: Array<{ origin: string; localStorage: Array<{ key: string; value: string | null }> }> }> = [];
+  const lent = {
+    cookies: [{ name: "lent", value: "gateway", domain: "127.0.0.1", path: "/", at: Date.now() }],
+    origins: [{ origin, at: Date.now(), localStorage: [{ key: "lentToken", value: "from-gateway", at: Date.now() }], indexedDB: [], skipped: [] }],
+  };
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  t.onTestFinished(() => { socket.destroy(); });
+  peer.handle("browser.state", (params) => {
+    sent.push(params["state"] as typeof sent[number]);
+    return { state: lent };
+  });
+  await peer.request("hello");
+
+  await invokeAgentTool({ callerSessionId: "remote-key", action: "browser", params: { action: "open", url: `${origin}/` } });
+  let title = "";
+  for (let attempt = 0; ; attempt += 1) {
+    const text = (await invokeAgentTool({ callerSessionId: "remote-key", action: "browser", params: { action: "snapshot" } }) as { text: string }).text;
+    title = /Tab t\d+ · (.*)/u.exec(text)?.[1] ?? "";
+    // "seen" is the page's own write, running in the seeding tab first: it proves the origin was loaded for the seed.
+    if (title === "cookie|from-gateway|seen") break;
+    if (attempt > 100) throw new Error(`the worker's browser was not seeded with the gateway's state: ${text}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  await invokeAgentTool({ callerSessionId: "remote-key", action: "browser", params: { action: "close" } });
+  for (let attempt = 0; ; attempt += 1) {
+    const last = sent.at(-1);
+    const stored = last?.origins.find((entry) => entry.origin === origin)?.localStorage.find((entry) => entry.key === "seen");
+    if (stored?.value === "yes") break;
+    if (attempt > 100) throw new Error(`what the worker captured never reached the gateway: ${JSON.stringify(sent.at(-1))}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.ok(existsSync(join(host.paths.dataDir, "browser", "state.json")), "the worker keeps its own copy");
+});
+
 test("a session's secret request is answered on the gateway, written here, and its Stop reaches the gateway", async (t) => {
   const socket = connect(host.paths.socket);
   const peer = attachPeer(socket, socket);

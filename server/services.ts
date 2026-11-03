@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir, hostname, userInfo } from "node:os";
 
-import { workers } from "./workers.ts";
+import { browserMirror, workers } from "./workers.ts";
 import { createWorkerRoutes } from "./routes/workers.ts";
 import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots/bots.ts";
 import { BotService } from "./bots/service.ts";
@@ -303,10 +303,22 @@ export const watchers = new WatcherService({
   onChange: (id) => liveSessions.notifySnapshot(id),
 });
 export const watcherRoutes = createWatcherRoutes({ watchers, readRegistry });
-/** One managed browser per gateway; its settings are re-read on every call. */
+/** One managed browser per gateway; its settings are re-read on every call. With mirroring on it seeds itself from
+ * what any worker sent, and hands what it captured to every worker's document. State goes through this machine: a
+ * worker's document never reaches another worker. */
 export const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
   readSettings: async () => (await readHuiSettings()).browser,
+  mirror: {
+    read: async () => (await readHuiSettings()).browser.mirrorState ? browserMirror.everything() : { cookies: [], origins: [] },
+    write: (state) => {
+      void (async () => {
+        if (!(await readHuiSettings()).browser.mirrorState) return;
+        const ids = [...new Set([...(await workers.list()).map((worker) => worker.id), ...(await browserMirror.workers())])];
+        for (const id of ids) await browserMirror.merge(id, state).catch(() => undefined);
+      })();
+    },
+  },
 });
 /** One VS Code server per gateway for every VS Code view, started on the first open (`vscode.ts`). Nothing runs or
  * downloads before that; an openvscode-server install happens only when the operator asks for it. */

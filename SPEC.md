@@ -841,6 +841,22 @@ the session runs there. It never attaches to, reads or drives the operator's own
 browser, windows, cookies or passwords. Each machine's browser keeps its own
 profile, so a login made from a session on a worker stays on that worker.
 
+**Mirrored state, if the operator asks for it.** Settings → Tools → Browser →
+*Mirror browser state* (off by default) makes the browser on this machine and
+the browser on a worker start from what the other one holds: cookies, and each
+visited origin's localStorage and IndexedDB — the whole state a login can live
+in, except the service-worker caches the network rebuilds — are captured as
+pages are used, merged by newest value, and seeded into the next browser that
+launches. The document is per worker
+(`$XDG_CONFIG_HOME/hui/browser-mirror/<worker>.json`, mode 0600, and the
+worker's own copy beside its profile): a login made on a worker therefore
+reaches this machine, and one made here reaches every worker. State only ever
+travels through this machine, so two workers never share with each other; a
+document is dropped with its worker. Signing out on one machine does not sign
+out the other, since a missing cookie cannot be told apart from one never set.
+These documents hold live credentials: mirroring is the one thing HUI writes on
+a worker on purpose, and it is off until the operator turns it on.
+
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
 to a visible window for watching the agent work, set the executable, start or
@@ -2094,7 +2110,10 @@ leaves worker records unchanged.
   machine (a Chromium-family browser on PATH, Chrome, Brave or Edge where they
   install, or the Chromium from `npx playwright install chromium`); the
   gateway's executable path is not mirrored, and the tool names the missing
-  browser when there is none. A host from before this says so in `hello`, and the
+  browser when there is none. With Settings → Tools → Browser → *Mirror browser
+  state* on, that browser starts from the cookies and per-origin storage this
+  machine's browser holds, and what it captures comes back here (see *Managed
+  browser*). A host from before this says so in `hello`, and the
   gateway keeps refusing browser calls from it. Not yet available remotely:
   terminals, watchers, a worker's worktrees in Settings → Worktrees, and
   multi-account quota rotation (the default account is used). Usage totals skip

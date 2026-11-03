@@ -474,7 +474,7 @@ test("a Durable session on the worker honors HUI's settings and providers, whose
   await mkdir(cwd, { recursive: true });
   await workers.sync(workerId);
   const mirrored = JSON.parse(await readFile(join(remoteHome, ".local", "share", "hui-worker", "mirror", "hui", "settings.json"), "utf8")) as { browser: unknown };
-  assert.deepEqual(mirrored.browser, { enabled: true, headless: true, executablePath: "" }, "the operator's browser choice travels; the gateway's executable path does not");
+  assert.deepEqual(mirrored.browser, { enabled: true, headless: true, executablePath: "", mirrorState: false }, "the operator's browser choice travels; the gateway's executable path does not");
   const session = await remoteRuntime("durable").start({ cwd, worker: workerId, huiSessionId: "remote-durable-parity" });
   try {
     const { prompt, tools } = await session.inspect!();

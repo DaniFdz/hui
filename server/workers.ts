@@ -37,6 +37,8 @@ import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "
 import { parseRunOrigins } from "./runtimes/turn-origins.ts";
 import { invokeAgentTool } from "./agent-tools/bridge.ts";
 import { GATEWAY_ONLY_TOOLS, HOST_BROWSER_FEATURE } from "./worker/gateway-tools.ts";
+import { BrowserMirrorStore } from "./browser/mirror.ts";
+import { normalizeBrowserState, sizeOf } from "./browser/state.ts";
 import { readRegistry } from "./sessions/sessions.ts";
 import type { TranscriptHit } from "./runtimes/transcript-search.ts";
 import type { GitCheckoutInfo } from "./api/local-paths.ts";
@@ -46,6 +48,12 @@ import type { WorktreeProgress } from "./api/sessions.ts";
 const GIT_REQUEST_TIMEOUT_MS = 45 * 60_000;
 
 export const WORKERS_FILE = join(CONFIG_DIR, "workers.json");
+/** The browser state mirrored with each worker (Settings → Tools → Browser): one document per worker, holding the
+ * cookies and per-origin storage this machine's browser and that worker's lend each other. State goes through this
+ * machine and never from one worker to another. */
+export const browserMirror = new BrowserMirrorStore(CONFIG_DIR);
+/** What a worker may send at once; a mirror stays small. */
+const MAX_MIRRORED_STATE_BYTES = 8 * 1024 * 1024;
 const MAX_WORKERS = 32;
 const SYNC_BATCH_BYTES = 8 * 1024 * 1024;
 /** A session start re-checks the mirror at most this often. */
@@ -290,6 +298,14 @@ class WorkerConnection {
       peer.handle("credential", (params) => this.#credential(params));
       peer.handle("bridge", (params, signal) => this.#bridge(params, signal));
       peer.handle("secret-request", (params, signal) => this.#secretRequest(params, signal));
+      /** Browser state a session there captured, or the state to seed its next browser with: the answer is what both
+       * sides hold, so a login made on either machine reaches the other. */
+      peer.handle("browser.state", async (params) => {
+        if (!(await readHuiSettings()).browser.mirrorState) return {};
+        const state = normalizeBrowserState(params["state"]);
+        if (sizeOf(state) > MAX_MIRRORED_STATE_BYTES) throw new Error("That browser state is too large to mirror.");
+        return { state: await browserMirror.merge(this.worker.id, state) };
+      });
       for (const [op, handler] of this.#hooks.served()) this.serve(op, handler);
       peer.onFrame((frame) => this.#frame(frame));
       transport.on("error", (error) => fail(`Could not run ${command[0]}: ${error.message}`));
@@ -704,6 +720,8 @@ export class WorkerService {
     if (!workers.some((item) => item.id === id)) throw new WorkerNotFoundError("That worker no longer exists.");
     this.disconnect(id);
     await writeWorkers(workers.filter((item) => item.id !== id));
+    // A removed worker's mirrored cookies do not outlive it.
+    await browserMirror.forget(id).catch(() => undefined);
     this.#status.delete(id);
     this.#changed();
     for (const listener of this.#removedListeners) listener(id);

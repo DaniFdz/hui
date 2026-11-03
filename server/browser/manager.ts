@@ -5,7 +5,9 @@
  * Headless by default, so it never opens a window, takes focus or touches the
  * operator's own browser, cookies or tabs. Tabs belong to the conversation
  * that opened them, like shared terminals: a conversation can neither list
- * nor drive another conversation's tabs.
+ * nor drive another conversation's tabs. With a mirror (`state.ts`), it seeds a
+ * launching profile from another machine's cookies and per-origin storage and
+ * hands back what it captured, so a login made once works on both.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -18,6 +20,7 @@ import { CdpConnection, CdpError, type CdpEvent } from "./cdp.ts";
 import { defaultExecutableProbe, resolveBrowserExecutable, type BrowserExecutable, type ExecutableProbe } from "./executable.ts";
 import { KeyParseError, parseKey, type KeyStroke } from "./keys.ts";
 import { clampSnapshotChars, renderSnapshot, SnapshotRefs, type AxNode, type SnapshotOptions, type SnapshotResult, type SnapshotTarget } from "./snapshot.ts";
+import { EMPTY_BROWSER_STATE, isHttpOrigin, mergeBrowserState, STATE_CAPTURE, STATE_SEED, trimBrowserState, type BrowserState, type StoredCookie, type StoredDatabase, type StoredOrigin } from "./state.ts";
 
 export class BrowserToolError extends Error {
   readonly status: number;
@@ -60,6 +63,10 @@ export type BrowserActKind = (typeof BROWSER_ACT_KINDS)[number];
 
 export const MAX_TABS_PER_CONVERSATION = 8;
 export const MAX_TABS_TOTAL = 32;
+/** A capture reads the whole cookie jar and a tab's storage: at most this often per origin. */
+const CAPTURE_INTERVAL_MS = 5_000;
+/** A mirror captures what its tabs hold this often while it runs: a page signs in after a fetch, not on load. */
+const MIRROR_CAPTURE_MS = 20_000;
 const DEFAULT_WINDOW = { width: 1280, height: 800 } as const;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 60_000;
@@ -118,13 +125,29 @@ type Instance = {
   /** The blank page Chromium opens at launch; closed once an agent tab exists. */
   startup: Set<string>;
   startupCleaned: boolean;
+  /** This profile's state, as it was seeded and as it has been captured since. */
+  state: BrowserState;
+  /** Origins whose stored state has been written into this profile. */
+  seeded: Set<string>;
+  /** When each origin's storage, and the cookie jar, were last captured. */
+  capturedAt: Map<string, number>;
 };
 
 type NavigationOutcome = { navigated: boolean; loaded: boolean; sameDocument: boolean };
 
+/** Where a browser's state goes and comes from when Settings → Tools → Browser mirrors it; absent, that browser
+ * keeps its own state to itself. */
+export type BrowserStateMirror = {
+  /** What this browser seeds a new profile with, read before its first page. */
+  read: () => Promise<BrowserState>;
+  /** What this browser holds now, merged by the store. */
+  write: (state: BrowserState) => void;
+};
+
 export type ManagedBrowserOptions = {
   profileDir: string;
   readSettings: () => Promise<BrowserSettings>;
+  mirror?: BrowserStateMirror;
   probe?: ExecutableProbe;
   env?: NodeJS.ProcessEnv;
   window?: { width: number; height: number };
@@ -204,7 +227,9 @@ export function normalizeBrowserUrl(raw: unknown): string {
 }
 
 /** The configuration a failure belongs to; a later change makes it stale. */
-function settingsKey(settings: BrowserSettings): string {
+type LaunchSettings = Pick<BrowserSettings, "enabled" | "headless" | "executablePath">;
+
+function settingsKey(settings: LaunchSettings): string {
   return JSON.stringify([settings.enabled, settings.headless, settings.executablePath]);
 }
 
@@ -278,6 +303,38 @@ function screenshotPath(cwd: string, raw: unknown): string {
   const path = isAbsolute(raw) ? raw : resolve(cwd, raw);
   if (extname(path).toLowerCase() !== ".png") throw new BrowserToolError("path must end in .png.");
   return path;
+}
+
+/** The cookie jar as the mirror carries it, dropping what only describes this machine. */
+function capturedCookies(cookies: Record<string, unknown>[], at: number): StoredCookie[] {
+  const sameSite = (value: unknown): StoredCookie["sameSite"] => value === "Strict" || value === "Lax" || value === "None" ? value : undefined;
+  return cookies.map((cookie) => ({
+    name: str(cookie["name"]), value: str(cookie["value"]), domain: str(cookie["domain"]), path: str(cookie["path"]) || "/",
+    ...(num(cookie["expires"]) >= 0 ? { expires: num(cookie["expires"]) } : {}),
+    ...(cookie["httpOnly"] === true ? { httpOnly: true } : {}),
+    ...(cookie["secure"] === true ? { secure: true } : {}),
+    ...(sameSite(cookie["sameSite"]) ? { sameSite: sameSite(cookie["sameSite"]) } : {}),
+    at,
+  }));
+}
+
+/** One origin's localStorage and IndexedDB as STATE_CAPTURE returned them. */
+function capturedOrigin(origin: string, at: number, value: Record<string, unknown>): StoredOrigin {
+  const strings = (item: unknown) => Array.isArray(item) ? item.filter((entry): entry is string => typeof entry === "string") : [];
+  const indexedDB: StoredDatabase[] = (Array.isArray(value["indexedDB"]) ? value["indexedDB"] : []).filter(isRecord).flatMap((database) => {
+    if (typeof database["name"] !== "string") return [];
+    const stores = (Array.isArray(database["stores"]) ? database["stores"] : []).filter(isRecord).flatMap((store) => typeof store["name"] !== "string" ? [] : [{
+      name: store["name"],
+      records: (Array.isArray(store["records"]) ? store["records"] : []).filter(isRecord).flatMap((record) =>
+        typeof record["key"] === "string" && typeof record["value"] === "string" ? [{ key: record["key"], value: record["value"], at }] : []),
+    }]);
+    return [{ name: database["name"], version: num(database["version"]), stores }];
+  });
+  return {
+    origin, at, indexedDB, skipped: strings(value["skipped"]).slice(0, 20),
+    localStorage: (Array.isArray(value["localStorage"]) ? value["localStorage"] : []).flatMap((entry) =>
+      Array.isArray(entry) && typeof entry[0] === "string" ? [{ key: entry[0], value: typeof entry[1] === "string" ? entry[1] : null, at }] : []),
+  };
 }
 
 const CONTAINS_HIT = String.raw`function (other, x, y) {
@@ -363,6 +420,8 @@ export class ManagedBrowser {
   readonly #env: NodeJS.ProcessEnv;
   readonly #window: { width: number; height: number };
   readonly #idleTabMs: number;
+  readonly #mirror: BrowserStateMirror | undefined;
+  #mirrorTimer: ReturnType<typeof setInterval> | undefined;
   #instance: Instance | undefined;
   #starting: Promise<Instance> | undefined;
   #stopping: Promise<void> | undefined;
@@ -398,6 +457,7 @@ export class ManagedBrowser {
     this.#env = options.env ?? process.env;
     this.#window = options.window ?? { ...DEFAULT_WINDOW };
     this.#idleTabMs = options.idleTabMs ?? IDLE_TAB_MS;
+    this.#mirror = options.mirror;
   }
 
   get running(): boolean {
@@ -513,6 +573,7 @@ export class ManagedBrowser {
    * signal makes it prompt even if the event loop is about to end. */
   dispose(): void {
     this.#generation += 1;
+    this.#stopMirrorClock();
     const instance = this.#instance;
     this.#instance = undefined;
     this.#forgetTabs();
@@ -737,6 +798,9 @@ export class ManagedBrowser {
       startedAt: new Date().toISOString(),
       startup: new Set(),
       startupCleaned: false,
+      state: EMPTY_BROWSER_STATE,
+      seeded: new Set(),
+      capturedAt: new Map(),
     };
     // Subscribe before discovery: Chromium reports existing targets immediately.
     connection.on((event) => this.#onEvent(instance, event));
@@ -749,6 +813,7 @@ export class ManagedBrowser {
       for (const info of Array.isArray(targets["targetInfos"]) ? targets["targetInfos"].filter(isRecord) : []) {
         if (info["type"] === "page" && str(info["url"]) === "about:blank") instance.startup.add(str(info["targetId"]));
       }
+      await this.#seed(instance);
       if (generation !== this.#generation) throw new BrowserToolError("The managed browser was stopped while it was starting.", 409);
     } catch (error) {
       const connectionDied = connection.closed;
@@ -778,7 +843,93 @@ export class ManagedBrowser {
     return instance;
   }
 
+  // ── Mirrored state ─────────────────────────────────────────────────────────
+
+  /** A launching profile starts from what the mirror holds: every cookie now, each origin's storage when that origin is
+   * first visited. Best effort throughout: a mirror that cannot answer never keeps a page from loading. */
+  async #seed(instance: Instance): Promise<void> {
+    if (!this.#mirror) return;
+    const state = await this.#mirror.read().catch(() => EMPTY_BROWSER_STATE);
+    instance.state = state;
+    this.#mirrorTimer ??= setInterval(() => {
+      const running = this.#instance;
+      if (running) for (const tab of this.#tabs.values()) void this.#capture(running, tab);
+    }, MIRROR_CAPTURE_MS);
+    this.#mirrorTimer.unref();
+    if (!state.cookies.length) return;
+    await instance.connection.send("Storage.setCookies", {
+      cookies: state.cookies.map(({ at: _captured, ...cookie }) => cookie),
+    }, undefined, 10_000).catch(() => undefined);
+  }
+
+  /** Writes one origin's stored state into a hidden tab of that origin, before the agent's tab goes there. */
+  async #seedOrigin(instance: Instance, origin: string | undefined): Promise<void> {
+    if (!origin || !this.#mirror || instance.seeded.has(origin)) return;
+    instance.seeded.add(origin);
+    const stored = instance.state.origins.find((entry) => entry.origin === origin);
+    if (!stored || (!stored.localStorage.length && !stored.indexedDB.length)) return;
+    let targetId = "";
+    try {
+      const created = await instance.connection.send("Target.createTarget", { url: "about:blank", newWindow: true });
+      targetId = str(created["targetId"]);
+      const attached = await instance.connection.send("Target.attachToTarget", { targetId, flatten: true });
+      const session = str(attached["sessionId"]);
+      await instance.connection.send("Page.navigate", { url: origin }, session, 20_000);
+      // Storage belongs to the document's origin: writing before this tab holds that origin writes nowhere.
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const href = await instance.connection.send("Runtime.evaluate", { expression: "location.href", returnByValue: true }, session, 5_000)
+          .then((result) => str((isRecord(result["result"]) ? result["result"]["value"] : undefined)))
+          .catch(() => "");
+        if (isHttpOrigin(href) === origin) break;
+        await delay(100);
+      }
+      const payload = { localStorage: stored.localStorage.map(({ key, value }) => [key, value ?? ""]), indexedDB: stored.indexedDB };
+      await instance.connection.send("Runtime.evaluate", {
+        expression: `(${STATE_SEED})(${JSON.stringify(payload)})`,
+        awaitPromise: true, returnByValue: true,
+      }, session, 20_000);
+    } catch {
+      // A page that refuses storage still browses; this origin is simply not seeded.
+    } finally {
+      if (targetId) await instance.connection.send("Target.closeTarget", { targetId }).catch(() => undefined);
+    }
+  }
+
+  /** Reads what this browser holds — the cookie jar, and one tab's localStorage and IndexedDB — into its state, and
+   * hands that to the mirror. */
+  async #capture(instance: Instance, tab: Tab, force = false): Promise<void> {
+    if (!this.#mirror || this.#instance !== instance) return;
+    const at = Date.now();
+    const origin = isHttpOrigin(tab.url);
+    if (!force && at - (instance.capturedAt.get(origin ?? "") ?? 0) < CAPTURE_INTERVAL_MS) return;
+    instance.capturedAt.set(origin ?? "", at);
+    const origins: StoredOrigin[] = [];
+    if (origin) {
+      try {
+        const result = await instance.connection.send("Runtime.evaluate", {
+          expression: `(${STATE_CAPTURE})()`, awaitPromise: true, returnByValue: true,
+        }, tab.session, 20_000);
+        const value = isRecord(result["result"]) ? result["result"]["value"] : undefined;
+        if (isRecord(value)) origins.push(capturedOrigin(origin, at, value));
+      } catch {
+        // A page mid-navigation has no storage to read yet.
+      }
+    }
+    let cookies = instance.state.cookies;
+    try {
+      const result = await instance.connection.send("Storage.getCookies", {}, undefined, 5_000);
+      cookies = capturedCookies((Array.isArray(result["cookies"]) ? result["cookies"] : []).filter(isRecord), at);
+    } catch {
+      // The browser may have gone between the call and the capture; what it had stays.
+    }
+    instance.state = trimBrowserState(mergeBrowserState(instance.state, { cookies, origins }));
+    this.#mirror.write(instance.state);
+  }
+
   async #shutdown(instance: Instance): Promise<void> {
+    this.#stopMirrorClock();
+    // What this profile holds is the last thing the mirror can learn from it.
+    await Promise.all([...this.#tabs.values()].map((tab) => this.#capture(instance, tab, true)));
     if (this.#instance === instance) this.#instance = undefined;
     this.#forgetTabs();
     this.#changed();
@@ -805,7 +956,13 @@ export class ManagedBrowser {
     });
   }
 
-  #fail(message: string, settings: BrowserSettings): void {
+  #stopMirrorClock(): void {
+    if (!this.#mirrorTimer) return;
+    clearInterval(this.#mirrorTimer);
+    this.#mirrorTimer = undefined;
+  }
+
+  #fail(message: string, settings: LaunchSettings): void {
     this.#lastError = message;
     this.#lastErrorKey = settingsKey(settings);
   }
@@ -1291,6 +1448,7 @@ export class ManagedBrowser {
   }
 
   async #navigate(instance: Instance, tab: Tab, url: string, timeoutMs: number): Promise<NavigationOutcome> {
+    await this.#seedOrigin(instance, isHttpOrigin(url));
     const watch = this.#watch(instance, tab);
     try {
       const result = await instance.connection.send("Page.navigate", { url }, tab.session, timeoutMs + 5_000);
@@ -1302,7 +1460,9 @@ export class ManagedBrowser {
       const loaderId = str(result["loaderId"]);
       if (!loaderId) return { navigated: true, loaded: true, sameDocument: true };
       watch.expect(loaderId);
-      return { navigated: true, loaded: await watch.settled(timeoutMs), sameDocument: false };
+      const outcome = { navigated: true, loaded: await watch.settled(timeoutMs), sameDocument: false };
+      void this.#capture(instance, tab);
+      return outcome;
     } finally {
       watch.dispose();
     }
@@ -1868,6 +2028,7 @@ export class ManagedBrowser {
   async #close(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
     const tab = this.#tabFor(owner, params["tabId"]);
     const instance = this.#instance;
+    if (instance) await this.#capture(instance, tab, true);
     this.#drop(tab.targetId);
     if (instance) await instance.connection.send("Target.closeTarget", { targetId: tab.targetId }).catch(() => undefined);
     const current = this.#current.get(owner);

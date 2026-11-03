@@ -3617,7 +3617,8 @@
       "required": [
         "enabled",
         "headless",
-        "executablePath"
+        "executablePath",
+        "mirrorState"
       ],
       "properties": {
         "enabled": {
@@ -3628,6 +3629,9 @@
         },
         "executablePath": {
           "type": "string"
+        },
+        "mirrorState": {
+          "type": "boolean"
         }
       }
     },
