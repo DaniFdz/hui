@@ -17,8 +17,9 @@ import { isDeepStrictEqual } from "node:util";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
-  clampThinkingLevel, getCurrentSystemMessage, getSupportedThinkingLevels, Type, type Api, type Message, type Model, type Models, type ModelThinkingLevel, type Usage, type UserMessage,
+  clampThinkingLevel, getCurrentSystemMessage, getSupportedThinkingLevels, type Api, type Message, type Model, type Models, type ModelThinkingLevel, type Usage, type UserMessage,
 } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import {
   AgentDoc, AssistantEntry, CompactionTask, defineDoc, defineExtension, defineTool, GenerationTask, hook, LiveDoc, section, ToolResultEntry, UserEntry,
   type CommitPublication, type Conversation, type ConversationId, type Cursor, type EntryId, type EntryRecord, type Extension, type Harness,
@@ -454,7 +455,8 @@ export class OptChatManager {
     this.#closing = false;
     this.#harness = harness;
     if (!options.follow) return;
-    this.#unsubscribe = harness.subscribeCommits((publication) => this.#observe(publication));
+    const observation = harness.observeCommits({ advance: (publication) => this.#observe(publication), end: () => {} });
+    this.#unsubscribe = () => observation.detach();
     void this.#reopen();
   }
 

@@ -24,9 +24,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
   CompactionEntry, CompactionTask, defineEntry, defineExtension, defineTool, GenerationTask, hook, ResetEntry, SystemEntry, ToolTask,
-  type AgentEvent, type CompactionReason, type Conversation, type EntryId, type EntryRecord, type Extension, type NestedToolExecutionResult,
+  type CompactionReason, type Conversation, type EntryId, type EntryRecord, type Extension, type NestedToolExecutionResult,
   type ToolExecutionApi, type ToolExecutionResult, type ToolRegistration,
 } from "@earendil-works/pi-durable";
+import type { AgentEvent } from "./durable-events.ts";
 import { safeSourceLabel } from "../pi/source-label.ts";
 import { createPolicySettingsManager } from "./resource-policy.ts";
 import type { RuntimeCommand, RuntimeEvent, RuntimeQuestion, RuntimeQuestionResponse, RuntimeUsage } from "./types.ts";
@@ -240,8 +241,8 @@ export class DurableExtensions {
   #writes = new Set<Promise<unknown>>();
   /** `ctx.compact()` calls waiting for their own summary, each with its cancel: a new conversation or instances end it. */
   #compactions = new Set<() => void>();
-  /** Compaction tasks whose summary a `session_before_compact` handler supplied, as `compaction:<task>`. */
-  #suppliedBy = new Set<string>();
+  /** Summaries a `session_before_compact` handler supplied, so the entry Durable places for one is flagged as its. */
+  #suppliedSummaries = new Set<string>();
   /** Summary entries in the history that `session_compact` reported, or that were there before. */
   #summaries = new Set<EntryId>();
   // `ctx.sessionManager`: an in-memory PI session projected from the Durable history.
@@ -677,7 +678,7 @@ export class DurableExtensions {
         },
       }),
       hook(CompactionTask, {
-        beforeCompact: async (compaction, api, hookContext) => {
+        beforeCompact: async (compaction, _api, hookContext) => {
           if (!this.#runner.hasHandlers("session_before_compact")) return undefined;
           const manager = this.#project();
           const result = await this.#runner.emit({
@@ -697,7 +698,7 @@ export class DurableExtensions {
           } as never) as { cancel?: boolean; compaction?: { summary?: string } } | undefined;
           if (result?.cancel) return { decline: true as const };
           if (!result?.compaction?.summary) return undefined;
-          this.#suppliedBy.add(`compaction:${api.taskId}`);
+          this.#suppliedSummaries.add(result.compaction.summary);
           return { summary: result.compaction.summary };
         },
       }),
@@ -963,40 +964,27 @@ export class DurableExtensions {
   }
 
   /**
-   * Emits the batch the session just processed in PI's order. Durable commits the input of a run with its start but
-   * lists the start last, so that input's messages follow `agent_start` and `turn_start` here, as in PI.
+   * Emits the batch the session just processed in PI's order. The stream puts a run's start and its turn before the
+   * messages that turn added, as PI does, so the extensions' `agent_start` and `turn_start` lead them.
    */
   flush(): void {
     const batch = this.#batch.splice(0);
-    const start = batch.find((event): event is Extract<AgentEvent, { type: "run_start" }> => event.type === "run_start");
-    const inputs = new Set<EntryId>(start ? batch.flatMap((event) =>
-      event.type === "submission" && start.inputs.includes(event.record.id) && "entry" in event.record && event.record.entry !== undefined ? [event.record.entry] : []) : []);
-    // A run defers a conversation's summary: the write Durable admitted for it (`compaction:<task>`) places it.
-    const writers = new Map(batch.flatMap((event) => event.type === "submission" && event.record.type === "write" && event.record.status === "done"
-      && event.record.requestId !== undefined ? [[event.record.entry, event.record.requestId] as const] : []));
-    let held: EntryRecord[] = [];
-    const release = () => { for (const entry of held) this.#messageEvents(entry); held = []; };
     for (const event of batch) {
       switch (event.type) {
-        case "run_start": {
-          const rows = this.#session.rows();
-          const first = rows.findIndex((entry) => inputs.has(entry.id));
-          this.#run = { controller: new AbortController(), start: first === -1 ? rows.length : first, turn: 0, ...(this.#pendingPrompt ? { prompt: this.#pendingPrompt } : {}) };
+        case "run_start":
+          // The run's own entries follow in this batch: the history ends where the run starts.
+          this.#run = { controller: new AbortController(), start: this.#session.rows().length, turn: 0, ...(this.#pendingPrompt ? { prompt: this.#pendingPrompt } : {}) };
           this.#pendingPrompt = undefined;
           this.#emit({ type: "agent_start" });
-          if (!batch.some((each) => each.type === "turn_start")) release();
           break;
-        }
         case "turn_start":
           this.#emit({ type: "turn_start", turnIndex: this.#run?.turn ?? 0, timestamp: Date.now() });
-          release();
           break;
         case "turn_end":
           this.#turnEnd();
           break;
         case "message_end":
-          if (CompactionEntry.is(event.entry)) this.#compacted(event.entry, writers.get(event.entry.id));
-          else if (inputs.has(event.entry.id)) held.push(event.entry);
+          if (CompactionEntry.is(event.entry)) this.#compacted(event.entry);
           else this.#messageEvents(event.entry);
           break;
         case "tool_execution_start":
@@ -1012,15 +1000,10 @@ export class DurableExtensions {
         case "run_settled":
           this.#runSettled(event.done);
           break;
-        case "snapshot":
-          // The stream fell behind and skipped commits, the summaries they placed among them; the session read them.
-          for (const entry of this.#session.rows()) if (CompactionEntry.is(entry)) this.#compacted(entry);
-          break;
         default:
           break;
       }
     }
-    release();
   }
 
   /** `turn_end` for the newest answer and its tool results. Durable decides continuation itself, so results are ignored. */
@@ -1066,15 +1049,18 @@ export class DurableExtensions {
   }
 
   /** A summary Durable placed is `session_compact`, with the entry it placed; a compaction that placed none has none. */
-  #compacted(entry: EntryRecord, writer?: string): void {
+  #compacted(entry: EntryRecord): void {
     if (this.#summaries.has(entry.id)) return;
     this.#summaries.add(entry.id);
     this.#project();
     const piId = this.#piIds.get(entry.id);
     const compactionEntry = piId === undefined ? undefined : this.#manager.getEntry(piId);
     if (compactionEntry?.type !== "compaction") return;
-    // A blocking compaction appends its summary itself. After a skipped stream the write that placed one is unknown.
-    const fromExtension = this.#suppliedBy.delete(writer ?? `compaction:${entry.byTaskId}`);
+    // A summary a `session_before_compact` handler supplied is its, whichever commit Durable placed it through. The
+    // projection holds the placed summary inside Durable's wrapper, so compare by containment either way.
+    const supplied = [...this.#suppliedSummaries].find((summary) => compactionEntry.summary === summary || compactionEntry.summary.includes(summary));
+    if (supplied !== undefined) this.#suppliedSummaries.delete(supplied);
+    const fromExtension = supplied !== undefined;
     const reason = (entry.data as { reason?: CompactionReason } | undefined)?.reason ?? "manual";
     this.#emit({ type: "session_compact", compactionEntry, fromExtension, reason, willRetry: reason !== "manual" });
   }
