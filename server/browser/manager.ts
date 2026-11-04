@@ -85,6 +85,10 @@ const OBJECT_GROUP = "hui-browser-tool";
  * acknowledged; delaying the ack caps a busy page at about ten frames a second. */
 const FRAME_INTERVAL_MS = 100;
 const SCREENCAST = { format: "jpeg", quality: 70, maxWidth: 1600, maxHeight: 1600, everyNthFrame: 1 } as const;
+/** A tab that is not its window's active page yet refuses a screencast with
+ * "Not attached to an active page", and accepts the same request moments later. */
+const SCREENCAST_START_MS = 5_000;
+const SCREENCAST_RETRY_MS = 100;
 const TRUNCATED_NOTE = "[Snapshot truncated. Use snapshot with query, interactive: true or a larger maxChars to see more.]";
 
 type ConsoleEntry = { level: string; text: string };
@@ -1061,11 +1065,19 @@ export class ManagedBrowser {
   }
 
   async #startCast(instance: Instance, tab: Tab): Promise<void> {
+    const cast = this.#casts.get(tab.id);
+    if (!cast) return;
     // A hidden tab paints nothing. Keep the agent's own tab in front, but only
     // headless: in a visible window this would switch the operator's tab.
     if (instance.headless && this.#current.get(tab.owner) === tab.id) await this.#ensureVisible(instance, tab);
-    if (!this.#casts.has(tab.id)) return;
-    await instance.connection.send("Page.startScreencast", SCREENCAST, tab.session).catch(() => undefined);
+    const deadline = Date.now() + SCREENCAST_START_MS;
+    while (this.#casts.get(tab.id) === cast) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return;
+      const started = await instance.connection.send("Page.startScreencast", SCREENCAST, tab.session, remaining).then(() => true, () => false);
+      if (started) return;
+      await delay(SCREENCAST_RETRY_MS);
+    }
   }
 
   #onScreencastFrame(instance: Instance, tab: Tab, params: Record<string, unknown>): void {
