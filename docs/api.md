@@ -4403,13 +4403,20 @@ relative to it, `/`-separated, with `""` for the root. Shapes live in
 
 ### `POST /__hui/sessions/:id/files/upload?dir=&name=[&overwrite=1]`
 
-Raw body, at most 64 MiB → 201 `FileEntryResponse` `{ entry }`. The request bytes are outside the JSON schema.
+Raw body, at most 2 GiB → 201 `FileEntryResponse` `{ entry }`. The request bytes are outside the JSON schema.
+
+The body streams to a temporary file beside the target and is renamed over it only once it arrived whole, keeping the
+replaced file's mode; a body past the cap, a client that goes away or a full disk removes it and leaves the target
+unchanged, answering 413 (or 507 when the disk is full). A `content-length` already past the cap is refused before any
+of the body is read.
 
 ### `POST /__hui/sessions/:id/files/resolve`
 
 `FilesResolveRequest` `{ paths: string[] }` (at most 100, each at most 1,024 characters) → `FilesResolve` `{ entries: ({ path, kind: "file" | "directory" } | null)[] }`, one per path in order.
 
-`GET /__hui/sessions/:id/files/raw?path=` returns the file's bytes, at most 64 MiB; this response is outside the JSON schema.
+`GET /__hui/sessions/:id/files/raw?path=` returns the file's bytes, streamed, and `content-length` with its size; this
+response is outside the JSON schema. Only an image or PDF over 64 MiB — which the browser holds as a blob to show it —
+is refused, with 413.
 
 `resolve` answers which paths the agent wrote in the chat exist inside the root,
 so the chat can link them to the Files view. A path may be relative (`./` and
@@ -4445,9 +4452,11 @@ repository (cached for 3 seconds) and otherwise walks at most 20,000 files and
 query must appear in the path; names that start with it rank first.
 
 The raw route sends `content-type` by extension (`application/octet-stream`
-otherwise), `x-content-type-options: nosniff`, `content-security-policy:
-default-src 'none'; sandbox`, and `content-disposition: attachment` for anything
-that is not an image or PDF.
+otherwise), `content-length`, `x-content-type-options: nosniff`,
+`content-security-policy: default-src 'none'; sandbox`, and
+`content-disposition: attachment` for anything that is not an image or PDF.
+The bytes are piped from the disk, so a video or archive is served without
+being held in memory.
 
 Refusals: 400 for malformed input, absolute paths or NUL bytes; 403 for a path
 that leaves the root (`code: "outside"`), a permission error or a read-only file

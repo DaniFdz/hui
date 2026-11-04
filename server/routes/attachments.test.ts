@@ -50,7 +50,7 @@ test("a stored file attachment opens inline as a PDF and downloads under its nam
     session: async () => ({}),
     liveSessions: { attachmentFile: (_id, _message, file) => files[file], attachmentImage: async () => undefined },
   });
-  const get = (file: number) => routes.handle({ method: "GET", path: `/__hui/sessions/alpha/attachments/0/files/${file}`, query: new URLSearchParams(), headers: { "x-hui": "1" }, json: async () => ({}), bytes: async () => Buffer.alloc(0), signal: new AbortController().signal });
+  const get = (file: number) => routes.handle({ method: "GET", path: `/__hui/sessions/alpha/attachments/0/files/${file}`, query: new URLSearchParams(), headers: { "x-hui": "1" }, json: async () => ({}), bytes: async () => Buffer.alloc(0), stream: () => (async function* () {})(), signal: new AbortController().signal });
 
   const pdf = await get(0);
   assert.ok(pdf && "file" in pdf);
