@@ -151,6 +151,30 @@ test("a baseline read slower than the gap it needs is not padded, and its rates 
   }
 });
 
+test("a sampler keeps the samples its chart asks for, oldest first", async () => {
+  vi.useFakeTimers();
+  try {
+    let reads = 0;
+    const hostMetrics = createHostMetrics(async () => raw(Date.now(), { cpu: { idle: ++reads * 50, total: reads * 100 } }), "darwin");
+    const first = hostMetrics();
+    await vi.advanceTimersByTimeAsync(250);
+    await first;
+    await vi.advanceTimersByTimeAsync(2_500);
+    await hostMetrics();
+    await vi.advanceTimersByTimeAsync(2_500);
+    await hostMetrics();
+    const kept = hostMetrics.history(5);
+    assert.equal(kept.length, 3, "one sample per read, and the baseline is not one");
+    assert.deepEqual(kept.map((sample) => sample.cpu.percent), [50, 50, 50]);
+    assert.ok(Date.parse(kept[0]!.sampledAt) < Date.parse(kept.at(-1)!.sampledAt), "oldest first");
+    await vi.advanceTimersByTimeAsync(31 * 60_000);
+    await hostMetrics();
+    assert.equal(hostMetrics.history(30).length, 1, "a sample older than half an hour is dropped");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("one sample serves every caller for two seconds, and a read in flight is shared", async () => {
   vi.useFakeTimers();
   try {

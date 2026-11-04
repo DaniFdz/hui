@@ -2,18 +2,19 @@
  * The Dashboard page (Labs → Dashboard): a summary of the sessions in flight by status with a count of the finished
  * ones, their Kanban stages, the sessions waiting for the operator in priority order with the longest wait first, the
  * ones still in flight grouped by status with their subagents (three rows per list until its Show all button opens
- * it), and the activity monitor: a card per host metric with its value, a bar and a sparkline of the samples the
- * browser kept, for this gateway's host and for every worker it holds a connection to, three to a row. A metric that
- * reads above 85% is marked; one the host can't report says so. A value too long for its card wraps between its
- * parts, and the disk path keeps its end on one line.
+ * it), and the activity monitor: one chart with a line per selected machine over the last 5, 15 or 30 minutes, a
+ * switch for the metric it draws, chips that choose the machines it and the cards show, and a card per host metric for
+ * each of them with its value and a bar. A metric that reads above 85% is marked; one the host can't report says so.
+ * A value too long for its card wraps between its parts, and the disk path keeps its end on one line.
  */
-import { html, nothing, type TemplateResult } from "lit";
+import { html, nothing, svg, type TemplateResult } from "lit";
 import type { HostMetrics } from "../api/schema/host.ts";
 import type { SessionGroup, SessionView } from "../api/schema/sessions.ts";
 import type { WorkerMetrics } from "../api/workers.ts";
 import { DASHBOARD_ROWS, DASHBOARD_STATUSES, DASHBOARD_STATUS_LABELS, NEEDS_YOU_LIST, summarizeSessions, type SessionSummary } from "../lib/dashboard.ts";
 import { SESSION_STAGES, SESSION_STAGE_LABELS, isSessionStage } from "../lib/kanban.ts";
 import { relativeTime } from "../lib/message-metadata.ts";
+import { CHART_METRICS, CHART_METRIC_KEYS, CHART_WINDOWS, chartSeries, type ChartMetric, type ChartWindow } from "../lib/metric-chart.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { pullRequestAccessibleLabel, pullRequestStateLabel } from "../lib/pull-requests.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
@@ -22,17 +23,30 @@ import { formatBytes } from "../lib/worktrees.ts";
 loadViewAssets(() => import("../styles/dashboard.css"));
 
 const HIGH_PERCENT = 85;
+/** One colour per machine, in the order its chip appears. */
+const SERIES_COLORS = ["var(--session-color-blue)", "var(--session-color-green)", "var(--session-color-purple)", "var(--session-color-orange)", "var(--session-color-pink)", "var(--session-color-cyan)", "var(--session-color-yellow)", "var(--session-color-red)"];
+
+export type DashboardChartProps = {
+  /** The machine this gateway runs on, which the controller keys its samples by. */
+  gateway: string;
+  metric: ChartMetric;
+  window: ChartWindow;
+  hidden: ReadonlySet<string>;
+  samples: ReadonlyMap<string, readonly HostMetrics[]>;
+  onMetric: (metric: ChartMetric) => void;
+  onWindow: (minutes: ChartWindow) => void;
+  onToggleMachine: (machine: string) => void;
+};
 
 export type DashboardProps = {
   groups: readonly SessionGroup[];
   sessionsLoading: boolean;
   sessionsError: string;
   metrics: HostMetrics | undefined;
-  history: readonly HostMetrics[];
   metricsError: string;
   workers: readonly WorkerMetrics[];
-  workerHistory: ReadonlyMap<string, readonly HostMetrics[]>;
   workersError: string;
+  chart: DashboardChartProps;
   expandedLists: ReadonlySet<string>;
   now: number;
   onRetry: () => void;
@@ -40,7 +54,7 @@ export type DashboardProps = {
   onOpenSession: (session: SessionView) => void;
 };
 
-type Metric = { value: string; detail: string; path?: string; percent?: number; series: number[] };
+type Metric = { value: string; detail: string; path?: string; percent?: number };
 
 const percentLabel = (value: number) => `${Math.round(value)}%`;
 const share = (used: number, total: number) => (total > 0 ? (used / total) * 100 : 0);
@@ -50,12 +64,23 @@ const updatedAgo = (updatedAt: string, now: number) => {
   return Number.isNaN(updated) ? nothing : html`<time class="dashboard-session__time" datetime=${updatedAt}>${relativeTime(updated, now)}</time>`;
 };
 
-function sparkline(series: readonly number[], max?: number) {
-  if (series.length < 2) return nothing;
-  const top = Math.max(max ?? 0, ...series) || 1;
-  const points = series.map((value, index) => `${((index / (series.length - 1)) * 100).toFixed(1)},${(24 - (value / top) * 22).toFixed(1)}`).join(" ");
-  return html`<svg class="dashboard-metric__spark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><polyline points=${points}></polyline></svg>`;
-}
+/** What a machine is called here, and what this page knows about it. */
+type Machine = { id: string; name: string; metrics?: HostMetrics; note?: string };
+
+const WORKER_STATE_NOTES: Record<WorkerMetrics["state"], string> = {
+  connected: "Reading this machine's metrics…",
+  connecting: "Connecting…",
+  disconnected: "HUI is not connected to this worker, so its activity is not read here.",
+  error: "HUI cannot reach this worker.",
+};
+
+const machines = (props: DashboardProps, gateway: string): Machine[] => [
+  { id: gateway, name: "This gateway", metrics: props.metrics, note: props.metricsError ? `Could not read this machine: ${props.metricsError}` : props.metrics ? undefined : "Reading this machine's metrics…" },
+  ...props.workers.map((worker) => ({ id: worker.id, name: worker.name, metrics: worker.metrics, note: worker.metrics ? undefined : worker.error ?? WORKER_STATE_NOTES[worker.state] })),
+];
+
+const valueLabel = (metric: ChartMetric, value: number | null) => value === null ? "—"
+  : metric === "network" ? `${formatBytes(value)}/s` : percentLabel(value);
 
 function card(id: string, title: string, metric: Metric | null) {
   if (!metric) {
@@ -66,71 +91,84 @@ function card(id: string, title: string, metric: Metric | null) {
     <div class="dashboard-metric__head"><span class="dashboard-metric__title">${title}</span><strong class="dashboard-metric__value">${metric.value}</strong></div>
     ${metric.percent === undefined ? nothing : html`<div class="dashboard-metric__bar" role="meter" aria-label=${`${title} use`} aria-valuemin="0" aria-valuemax="100" aria-valuenow=${Math.round(metric.percent)}><span style=${`width: ${Math.min(100, metric.percent)}%`}></span></div>`}
     <small class="dashboard-metric__detail">${metric.detail}${metric.path ? html`<span class="dashboard-metric__path" title=${metric.path}><span dir="ltr">${metric.path}</span></span>` : nothing}</small>
-    ${sparkline(metric.series, metric.percent === undefined ? undefined : 100)}
   </article>`;
 }
 
-function hostCards(metrics: HostMetrics, history: readonly HostMetrics[], processTitle: string) {
-  const series = (read: (sample: HostMetrics) => number | null | undefined) =>
-    history.map(read).filter((value): value is number => typeof value === "number");
+function hostCards(metrics: HostMetrics, processTitle: string) {
   const { cpu, memory, disk, network, gpu, gateway } = metrics;
   const memoryPercent = share(memory.usedBytes, memory.totalBytes);
   return [
     card("cpu", "CPU", {
-      value: percentLabel(cpu.percent), percent: cpu.percent, series: series((sample) => sample.cpu.percent),
+      value: percentLabel(cpu.percent), percent: cpu.percent,
       detail: `Load ${cpu.load.map((value) => value.toFixed(2)).join(" · ")} · ${metrics.host.cores} cores`,
     }),
     card("memory", "Memory", {
-      value: percentLabel(memoryPercent), percent: memoryPercent, series: series((sample) => share(sample.memory.usedBytes, sample.memory.totalBytes)),
+      value: percentLabel(memoryPercent), percent: memoryPercent,
       detail: `${formatBytes(memory.usedBytes)} of ${formatBytes(memory.totalBytes)}${memory.swapUsedBytes === undefined ? "" : ` · swap ${formatBytes(memory.swapUsedBytes)}`}`,
     }),
     card("disk", "Disk", disk && {
       value: percentLabel(share(disk.usedBytes, disk.totalBytes)), percent: share(disk.usedBytes, disk.totalBytes),
-      series: series((sample) => sample.disk && share(sample.disk.usedBytes, sample.disk.totalBytes)),
       detail: `${formatBytes(disk.usedBytes)} of ${formatBytes(disk.totalBytes)}`, path: disk.path,
     }),
-    card("gpu", "GPU", gpu && { value: percentLabel(gpu.percent), percent: gpu.percent, series: series((sample) => sample.gpu?.percent), detail: "Busiest accelerator" }),
+    card("gpu", "GPU", gpu && { value: percentLabel(gpu.percent), percent: gpu.percent, detail: "Busiest accelerator" }),
     card("network", "Network", network && {
       value: `${rate("↓", network.rxBytesPerSecond)} ${rate("↑", network.txBytesPerSecond)}`,
-      series: series((sample) => sample.network && sample.network.rxBytesPerSecond + sample.network.txBytesPerSecond),
       detail: "Physical interfaces",
     }),
     card("gateway", processTitle, {
-      value: percentLabel(gateway.cpuPercent), series: series((sample) => sample.gateway.cpuPercent),
+      value: percentLabel(gateway.cpuPercent),
       detail: `CPU of one core · ${formatBytes(gateway.rssBytes)} resident`,
     }),
   ];
 }
 
-function hostSection(props: DashboardProps) {
-  const { metrics, metricsError } = props;
-  const retry = html`<button class="btn btn--sm" type="button" @click=${props.onRetry}>Retry</button>`;
-  return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Gateway host</h2><p class="settings-section__desc">${metrics ? `${metrics.host.platform} · sampled ${new Date(metrics.sampledAt).toLocaleTimeString()} · every 5 seconds while this page is open` : "Every 5 seconds while this page is open"}</p></div></header>
-    ${metricsError ? html`<div class="callout ${metrics ? "warning" : "danger"} dashboard-callout" role="alert">${metrics ? `The last read failed: ${metricsError}. Showing the one before.` : `Could not read the host's metrics: ${metricsError}`}${retry}</div>` : nothing}
-    ${metrics ? html`<div class="dashboard-metrics" data-testid="dashboard-metrics">${hostCards(metrics, props.history, "Gateway process")}</div>`
-      : metricsError ? nothing : html`<div role="status">Reading the host's metrics…</div>`}
-  </section>`;
+/** The one chart: a line per shown machine, over the window, for the metric the switch picks. */
+function chart(props: DashboardProps, shown: readonly Machine[]) {
+  const { chart: state } = props;
+  const sampled = shown.map((machine) => state.samples.get(machine.id) ?? []);
+  const { top, series } = chartSeries(sampled, state.metric, state.window, props.now);
+  const colored = shown.map((machine, index) => ({ machine, series: series[index], color: SERIES_COLORS[index % SERIES_COLORS.length]! }));
+  const y = (share: number) => 35.5 - Math.min(1, Math.max(0, share)) * 35;
+  const lines = colored.filter((line) => line.series && line.series.points.length > 1);
+  return html`<figure class="dashboard-chart" data-testid="dashboard-chart">
+    <div class="dashboard-chart__plot">
+      ${svg`<svg viewBox="0 0 100 36" preserveAspectRatio="none" role="img" aria-label=${`${CHART_METRICS[state.metric].label} over the last ${state.window} minutes: ${colored.map((line) => `${line.machine.name} ${valueLabel(state.metric, line.series?.latest ?? null)}`).join(", ") || "no machine shown"}`}>
+        <line class="dashboard-chart__grid" x1="0" x2="100" y1=${y(0.5)} y2=${y(0.5)}></line>
+        ${lines.map((line) => svg`<polyline class="dashboard-chart__line" points=${line.series!.points.map((point) => `${(point.x * 100).toFixed(2)},${y(point.y).toFixed(2)}`).join(" ")} style=${`stroke: ${line.color}`}></polyline>`)}
+      </svg>`}
+      <span class="dashboard-chart__top">${valueLabel(state.metric, top)}</span>
+    </div>
+    <figcaption class="dashboard-legend dashboard-legend--chart">${colored.map((line) => html`<span class="dashboard-chart__key"><span class="dashboard-chart__swatch" style=${`background: ${line.color}`}></span>${line.machine.name}<strong>${valueLabel(state.metric, line.series?.latest ?? null)}</strong></span>`)}</figcaption>
+  </figure>`;
 }
 
-const WORKER_STATE_NOTES: Record<WorkerMetrics["state"], string> = {
-  connected: "Reading this machine's metrics…",
-  connecting: "Connecting…",
-  disconnected: "HUI is not connected to this worker, so its activity is not read here.",
-  error: "HUI cannot reach this worker.",
-};
+function machineChip(props: DashboardProps, machine: Machine, index: number) {
+  const shown = !props.chart.hidden.has(machine.id);
+  return html`<button type="button" class="dashboard-machine ${shown ? "dashboard-machine--on" : ""}" aria-pressed=${shown} @click=${() => props.chart.onToggleMachine(machine.id)}><span class="dashboard-chart__swatch" style=${`background: ${shown ? SERIES_COLORS[index % SERIES_COLORS.length] : "transparent"}`}></span>${machine.name}</button>`;
+}
 
-/** One block per worker that names the machine and shows the same cards as this gateway's host. */
-function workersSection(props: DashboardProps) {
-  const { workers } = props;
-  if (!workers.length && !props.workersError) return nothing;
-  return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Workers</h2><p class="settings-section__desc">Each worker's own machine, sampled every 5 seconds while this page is open. Opening this page never wakes a worker.</p></div></header>
+function machineBlock(machine: Machine, processTitle: string) {
+  return html`<article class="dashboard-host" data-testid="dashboard-machine">
+    <header class="dashboard-host__head"><h3 class="dashboard-host__name">${machine.name}</h3><p class="dashboard-host__note">${machine.metrics ? `${machine.metrics.host.platform} · sampled ${new Date(machine.metrics.sampledAt).toLocaleTimeString()}` : machine.note}</p></header>
+    ${machine.metrics ? html`<div class="dashboard-metrics">${hostCards(machine.metrics, processTitle)}</div>` : nothing}
+  </article>`;
+}
+
+function activitySection(props: DashboardProps) {
+  const { chart: state } = props;
+  const all = machines(props, state.gateway);
+  const shown = all.filter((machine) => !state.hidden.has(machine.id));
+  const retry = html`<button class="btn btn--sm" type="button" @click=${props.onRetry}>Retry</button>`;
+  return html`<section class="settings-section" data-testid="dashboard-activity"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Activity</h2><p class="settings-section__desc">This gateway's host and every worker's own machine, sampled every 15 seconds, and every 5 while this page is open. Opening this page never wakes a worker.</p></div></header>
+    ${props.metricsError && props.metrics ? html`<div class="callout warning dashboard-callout" role="alert">The last read of this machine failed: ${props.metricsError}. Showing the one before.${retry}</div>` : nothing}
     ${props.workersError ? html`<div class="callout warning dashboard-callout" role="alert">Could not read the workers: ${props.workersError}</div>` : nothing}
-    <div class="dashboard-hosts">${workers.map((worker) => html`<article class="dashboard-host" data-testid="dashboard-worker">
-      <header class="dashboard-host__head"><h3 class="dashboard-host__name">${worker.name}</h3><p class="dashboard-host__note">${worker.metrics
-        ? `${worker.metrics.host.platform} · sampled ${new Date(worker.metrics.sampledAt).toLocaleTimeString()}`
-        : worker.error ?? WORKER_STATE_NOTES[worker.state]}</p></header>
-      ${worker.metrics ? html`<div class="dashboard-metrics">${hostCards(worker.metrics, props.workerHistory.get(worker.id) ?? [], "Host process")}</div>` : nothing}
-    </article>`)}</div>
+    <div class="dashboard-machines" role="group" aria-label="Machines">${all.map((machine, index) => machineChip(props, machine, index))}</div>
+    <div class="dashboard-chart-controls">
+      <div class="settings-segmented" role="group" aria-label="Metric">${CHART_METRIC_KEYS.map((key) => html`<button type="button" class="settings-segmented__btn ${state.metric === key ? "settings-segmented__btn--active" : ""}" aria-pressed=${state.metric === key} @click=${() => state.onMetric(key)}>${CHART_METRICS[key].label}</button>`)}</div>
+      <div class="settings-segmented" role="group" aria-label="Window">${CHART_WINDOWS.map((minutes) => html`<button type="button" class="settings-segmented__btn ${state.window === minutes ? "settings-segmented__btn--active" : ""}" aria-pressed=${state.window === minutes} @click=${() => state.onWindow(minutes)}>${minutes}m</button>`)}</div>
+    </div>
+    ${shown.length ? chart(props, shown) : html`<p class="dashboard-empty">Pick a machine to chart.</p>`}
+    <div class="dashboard-hosts">${shown.map((machine) => machineBlock(machine, machine.id === state.gateway ? "Gateway process" : "Host process"))}</div>
   </section>`;
 }
 
@@ -209,5 +247,5 @@ function sessionsSection(props: DashboardProps) {
 
 export function renderDashboard(props: DashboardProps): TemplateResult {
   return html`<header class="content-header content-header--settings"><div><div class="page-title">Dashboard</div><div class="page-subtitle">The sessions in flight and the resource use of the machines that run them.</div></div></header>
-    <main class="settings-page settings-page--wide dashboard-page" data-testid="dashboard">${sessionsSection(props)}${hostSection(props)}${workersSection(props)}</main>`;
+    <main class="settings-page settings-page--wide dashboard-page" data-testid="dashboard">${sessionsSection(props)}${activitySection(props)}</main>`;
 }

@@ -9,7 +9,8 @@ import { SettingsError } from "../api/settings.ts";
 import { SessionError } from "../api/sessions.ts";
 import { AutomationError, AutomationSnapshot } from "../api/automation.ts";
 import { UpdateError, UpdateSnapshot } from "../api/updates.ts";
-import { WorkerError, WorkerMetricsResponse, WorkersResponse } from "../api/workers.ts";
+import { WorkerError, WorkerMetricsHistoryResponse, WorkerMetricsResponse, WorkersResponse } from "../api/workers.ts";
+import { HostMetricsHistory } from "../api/host.ts";
 import { TerminalError } from "../api/terminals.ts";
 import { BacklogError } from "../api/backlog.ts";
 import { TaskSuggestionError } from "../api/task-suggestions.ts";
@@ -82,6 +83,8 @@ const CASES: Case[] = [
   [`GET /__hui/pi/resources/skill/${"0".repeat(24)}`, 404, ["error"], true],
   ["GET /__hui/workers", 200, ["workers"], false],
   ["GET /__hui/workers/metrics", 200, ["workers"], false],
+  ["GET /__hui/workers/metrics/history", 200, ["workers"], false],
+  ["GET /__hui/workers/metrics/history?minutes=1", 400, ["error"], true],
   ["POST /__hui/workers/metrics", 405, ["error"], true],
   ["GET /__hui/workers/missing", 404, ["error"], true],
   ["GET /__hui/bots/events", 200, null, false],
@@ -92,6 +95,10 @@ const CASES: Case[] = [
   ["GET /__hui/providers/a/b/c/d", 405, ["error"], true],
   ["POST /__hui/pi", 405, ["error"], true],
   ["PUT /__hui/power", 400, ["error"], true],
+  ["GET /__hui/host-metrics/history", 200, ["history"], false],
+  ["GET /__hui/host-metrics/history?minutes=30", 200, ["history"], false],
+  ["GET /__hui/host-metrics/history?minutes=7", 400, ["error"], true],
+  ["POST /__hui/host-metrics/history", 405, ["error"], true],
   ["POST /__hui/host-metrics", 405, ["error"], true],
   ["POST /__hui/api-schema", 405, ["error"], true],
   ["POST /__hui/health", 405, ["error"], false],
@@ -190,6 +197,8 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
     if (path === "/__hui/update") expectSchema(UpdateSnapshot, body);
     if (path === "/__hui/workers") expectSchema(WorkersResponse, body);
     if (path === "/__hui/workers/metrics") expectSchema(WorkerMetricsResponse, body);
+    if (path === "/__hui/workers/metrics/history") expectSchema(WorkerMetricsHistoryResponse, body);
+    if (path === "/__hui/host-metrics/history") expectSchema(HostMetricsHistory, body);
   }
   return [response.status, body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).sort() : null];
 }

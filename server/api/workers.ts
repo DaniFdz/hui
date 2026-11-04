@@ -33,9 +33,16 @@ export type WorkerMetrics = Static<typeof WorkerMetrics>;
 export const WorkerMetricsResponse = Type.Object({ workers: Type.Array(WorkerMetrics) }, { $id: "WorkerMetricsResponse" });
 export type WorkerMetricsResponse = Static<typeof WorkerMetricsResponse>;
 
+/** One worker's own samples for the chart; `error` when this read failed. */
+export const WorkerMetricsHistory = Type.Object({ id: Type.String(), history: Type.Array(HostMetrics), error: Type.Optional(Type.String()) }, { $id: "WorkerMetricsHistory" });
+export type WorkerMetricsHistory = Static<typeof WorkerMetricsHistory>;
+export const WorkerMetricsHistoryResponse = Type.Object({ workers: Type.Array(WorkerMetricsHistory) }, { $id: "WorkerMetricsHistoryResponse" });
+export type WorkerMetricsHistoryResponse = Static<typeof WorkerMetricsHistoryResponse>;
+
 export const routeSchemas = [
   { method: "GET", path: "/__hui/workers", response: WorkersResponse },
   { method: "GET", path: "/__hui/workers/metrics", response: WorkerMetricsResponse },
+  { method: "GET", path: "/__hui/workers/metrics/history", response: WorkerMetricsHistoryResponse },
   { method: "POST", path: "/__hui/workers", request: WorkerInput, response: WorkerResponse },
   { method: "PATCH", path: "/__hui/workers/:id", request: WorkerPatch, response: WorkerResponse },
   { method: "DELETE", path: "/__hui/workers/:id", response: WorkerActionResponse },

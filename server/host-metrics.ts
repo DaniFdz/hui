@@ -3,7 +3,9 @@
  * percentages are deltas against the previous sample this module keeps; one sample serves every caller for
  * `MIN_INTERVAL_MS`, and concurrent callers share the read in flight, so open tabs don't multiply the cost. Child
  * processes run asynchronously with a timeout, and a metric the host can't report is `null`. The GPU gauge is read
- * on its own slower cadence, since one `ioreg` run there costs more than every other read together.
+ * on its own slower cadence, since one `ioreg` run there costs more than every other read together. The last
+ * `HISTORY_MS` of samples stays here for the Dashboard's chart: the reads a page asks for fill it, and
+ * `sampleInBackground` keeps it filling when no page is open.
  */
 import { execFile } from "node:child_process";
 import { readFile, statfs } from "node:fs/promises";
@@ -20,6 +22,10 @@ const STALE_BASELINE_MS = 30_000;
 const FIRST_GAP_MS = 250;
 const COMMAND_TIMEOUT_MS = 2_000;
 const GPU_INTERVAL_MS = 20_000;
+/** What the Dashboard's chart can show, per host. */
+export const HISTORY_MS = 30 * 60_000;
+/** How often a host samples itself with no page watching, so a chart opened later has a past to draw. */
+export const BACKGROUND_SAMPLE_MS = 15_000;
 const VIRTUAL_DARWIN = /^(lo|utun|bridge|awdl|llw)/u;
 const VIRTUAL_LINUX = /^(lo|veth|docker|br-|virbr)/u;
 
@@ -211,10 +217,22 @@ export function metricsBetween(previous: RawSample, current: RawSample, platform
   };
 }
 
+/** Keeps a host's samples coming with no page asking. The timer is unref'd: it never holds the process open by itself. */
+export function sampleInBackground(hostMetrics: () => Promise<HostMetrics>, intervalMs = BACKGROUND_SAMPLE_MS): void {
+  setInterval(() => { void hostMetrics().catch(() => undefined); }, intervalMs).unref();
+}
+
 export function createHostMetrics(read: () => Promise<RawSample> = collect, platform: string = process.platform) {
   let previous: RawSample | undefined;
   let last: { at: number; metrics: HostMetrics } | undefined;
   let pending: Promise<HostMetrics> | undefined;
+  const samples: HostMetrics[] = [];
+
+  /** The samples of the last `minutes`, oldest first. */
+  function history(minutes: number): HostMetrics[] {
+    const since = Date.now() - Math.min(minutes, HISTORY_MS / 60_000) * 60_000;
+    return samples.filter((sample) => Date.parse(sample.sampledAt) >= since);
+  }
 
   async function sample(): Promise<HostMetrics> {
     if (!previous || Date.now() - previous.at > STALE_BASELINE_MS) {
@@ -227,11 +245,17 @@ export function createHostMetrics(read: () => Promise<RawSample> = collect, plat
     const metrics = metricsBetween(previous, current, platform);
     previous = current;
     last = { at: Date.now(), metrics };
+    if (samples.at(-1)?.sampledAt !== metrics.sampledAt) {
+      samples.push(metrics);
+      while (samples.length > 1 && Date.parse(samples[0]!.sampledAt) < Date.parse(metrics.sampledAt) - HISTORY_MS) samples.shift();
+    }
     return metrics;
   }
 
-  return function hostMetrics(): Promise<HostMetrics> {
+  function hostMetrics(): Promise<HostMetrics> {
     if (last && Date.now() - last.at < MIN_INTERVAL_MS) return Promise.resolve(last.metrics);
     return pending ??= sample().finally(() => { pending = undefined; });
-  };
+  }
+
+  return Object.assign(hostMetrics, { history });
 }

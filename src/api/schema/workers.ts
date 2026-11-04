@@ -9,6 +9,10 @@ export type WorkerInput = { "name": string; "command": string; "extraPaths"?: Ar
 
 export type WorkerMetrics = { "id": string; "name": string; "state": WorkerState; "metrics"?: HostMetrics; "error"?: string; };
 
+export type WorkerMetricsHistory = { "id": string; "history": Array<HostMetrics>; "error"?: string; };
+
+export type WorkerMetricsHistoryResponse = { "workers": Array<WorkerMetricsHistory>; };
+
 export type WorkerMetricsResponse = { "workers": Array<WorkerMetrics>; };
 
 export type WorkerPatch = { "name"?: string; "command"?: string; "extraPaths"?: Array<string>; };

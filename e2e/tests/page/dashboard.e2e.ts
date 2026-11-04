@@ -57,24 +57,38 @@ test("Dashboard lists a running session, opens it, and shows the host's metrics"
   await expect(active).toContainText("Investigation");
   await expect(needsYou).toBeHidden();
 
-  const metrics = screen.getByTestId("dashboard-metrics");
-  await expect(metrics).toBeVisible();
-  for (const title of ["CPU", "Memory", "Disk", "GPU", "Network", "Gateway process"]) await expect(metrics.getByText(title)).toBeVisible();
-  await expect(metrics).toContainText(/\d+%/u);
-  await expect(metrics).toContainText(/Load [\d.]+ · [\d.]+ · [\d.]+ · \d+ cores/u);
-  await expect(metrics).toContainText(/ of /u);
+  const machines = screen.getByTestId("dashboard-machine");
+  const gateway = machines.filter({ hasText: "This gateway" });
+  for (const title of ["CPU", "Memory", "Disk", "GPU", "Network", "Gateway process"]) await expect(gateway.getByText(title)).toBeVisible();
+  await expect(gateway).toContainText(/\d+%/u);
+  await expect(gateway).toContainText(/Load [\d.]+ · [\d.]+ · [\d.]+ · \d+ cores/u);
+  await expect(gateway).toContainText(/ of /u);
 
-  // Every worker's own machine gets the same cards, and one HUI holds no connection to says so.
+  // One chart over every machine the chips show, for the metric and window their switches name.
+  await expect(screen.getByLabel("Machines").getByRole("button", "This gateway")).toHaveAttribute("aria-pressed", "true");
+  await expect(screen.getByLabel("Metric").getByRole("button", "CPU")).toHaveAttribute("aria-pressed", "true");
+  await expect(screen.getByLabel("Window").getByRole("button", "5m")).toHaveAttribute("aria-pressed", "true");
+  const chart = screen.getByTestId("dashboard-chart");
+  await expect(chart).toContainText("This gateway");
+  await screen.getByLabel("Window").getByRole("button", "15m").tap();
+  await expect(screen.getByLabel("Window").getByRole("button", "15m")).toHaveAttribute("aria-pressed", "true");
+  await screen.getByLabel("Metric").getByRole("button", "Memory").tap();
+  await expect(screen.getByLabel("Metric").getByRole("button", "Memory")).toHaveAttribute("aria-pressed", "true");
+
+  // Every worker's own machine gets the same cards and a line, and one HUI holds no connection to says so.
   const offline = await hui.api<{ worker: { id: string } }>("POST", "/__hui/workers", { name: "Offline box", command: "ssh nowhere" });
   const remote = await hui.addWorker("E2E remote");
   try {
     await hui.open("/dashboard");
-    const blocks = screen.getByTestId("dashboard-worker");
-    const remoteCards = blocks.filter({ hasText: "E2E remote" });
+    const remoteCards = screen.getByTestId("dashboard-machine").filter({ hasText: "E2E remote" });
     await expect(remoteCards).toBeVisible();
     for (const title of ["CPU", "Memory", "Disk", "GPU", "Network", "Host process"]) await expect(remoteCards.getByText(title)).toBeVisible();
     await expect(remoteCards).toContainText(/sampled \d/u);
-    await expect(blocks.filter({ hasText: "Offline box" })).toContainText("HUI is not connected to this worker");
+    await expect(screen.getByTestId("dashboard-chart")).toContainText("E2E remote");
+    await expect(screen.getByTestId("dashboard-machine").filter({ hasText: "Offline box" })).toContainText("HUI is not connected to this worker");
+    await screen.getByLabel("Machines").getByRole("button", "E2E remote").tap();
+    await expect(screen.getByLabel("Machines").getByRole("button", "E2E remote")).toHaveAttribute("aria-pressed", "false");
+    await expect(screen.getByTestId("dashboard-machine").filter({ hasText: "E2E remote" })).toBeHidden();
   } finally {
     await hui.api("DELETE", `/__hui/workers/${remote.id}`);
     await hui.api("DELETE", `/__hui/workers/${offline.worker.id}`);

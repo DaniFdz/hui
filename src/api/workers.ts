@@ -3,7 +3,8 @@
  * disconnect. Those operations run in the gateway; the UI polls the list for progress.
  */
 import { fetchJson } from "./request.ts";
-import type { WorkerInput, WorkerMetrics, WorkerMetricsResponse, WorkerView, WorkersResponse, WorkerResponse } from "./schema/workers.ts";
+import type { WorkerInput, WorkerMetrics, WorkerMetricsHistoryResponse, WorkerMetricsResponse, WorkerView, WorkersResponse, WorkerResponse } from "./schema/workers.ts";
+import type { HostMetrics } from "./schema/host.ts";
 
 export type { WorkerInput, WorkerMetrics, WorkerView };
 
@@ -18,6 +19,13 @@ export async function loadWorkers(): Promise<WorkerView[]> {
 /** Each worker's own machine: resource use for a connected one, its state and why for the rest. */
 export async function loadWorkerMetrics(): Promise<WorkerMetrics[]> {
   return (await fetchJson<WorkerMetricsResponse>(`${WORKERS_URL}/metrics`)).workers ?? [];
+}
+
+/** The samples the given workers kept for the last `minutes`, for the Dashboard's chart, by worker id. */
+export async function loadWorkerMetricsHistory(minutes: number, ids: readonly string[]): Promise<Map<string, readonly HostMetrics[]>> {
+  const query = new URLSearchParams({ minutes: String(minutes), ids: ids.join(",") });
+  const { workers } = await fetchJson<WorkerMetricsHistoryResponse>(`${WORKERS_URL}/metrics/history?${query}`);
+  return new Map((workers ?? []).map((worker) => [worker.id, worker.history] as const));
 }
 
 export async function createWorker(input: WorkerInput): Promise<WorkerView> {

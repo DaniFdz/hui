@@ -6,7 +6,7 @@ import type { SessionView } from "../api/schema/sessions.ts";
 import type { WorkerMetrics } from "../api/workers.ts";
 import { HUI_PAGES, availablePages, isPageAvailable } from "../lib/pages.ts";
 import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
-import { renderDashboard, type DashboardProps } from "./dashboard.ts";
+import { renderDashboard, type DashboardChartProps, type DashboardProps } from "./dashboard.ts";
 
 /** A template's text with every nested template and value in place; handlers and directives drop out. */
 function text(value: unknown): string {
@@ -42,10 +42,18 @@ function metrics(overrides: Partial<HostMetrics> = {}): HostMetrics {
   };
 }
 
+function chart(overrides: Partial<DashboardChartProps> = {}): DashboardChartProps {
+  return {
+    gateway: "gateway", metric: "cpu", window: 5, hidden: new Set(), samples: new Map(),
+    onMetric: () => {}, onWindow: () => {}, onToggleMachine: () => {},
+    ...overrides,
+  };
+}
+
 function page(overrides: Partial<DashboardProps> = {}): string {
   return text(renderDashboard({
-    groups: [], sessionsLoading: false, sessionsError: "", metrics: undefined, history: [], metricsError: "", expandedLists: new Set(), now: NOW,
-    workers: [], workerHistory: new Map(), workersError: "",
+    groups: [], sessionsLoading: false, sessionsError: "", metrics: undefined, metricsError: "", expandedLists: new Set(), now: NOW,
+    workers: [], workersError: "", chart: chart(),
     onRetry: () => {}, onOpenSession: () => {}, onToggleList: () => {},
     ...overrides,
   }));
@@ -217,12 +225,11 @@ test("an idle session that is not finished needs you, and the list waits for the
 });
 
 test("each host metric shows its value, marks one above 85% and says when the host can't report it", () => {
-  const markup = page({ metrics: metrics(), history: [metrics({ cpu: { percent: 10, load: [1, 1, 1] } }), metrics()] });
+  const markup = page({ metrics: metrics() });
   const cpu = part(markup, "metric-cpu");
   assert.match(cpu, /42%/u);
   assert.match(cpu, /Load 2\.00 · 1\.50 · 1\.00 · 10 cores/u);
   assert.match(cpu, /aria-valuenow=42/u);
-  assert.match(cpu, /<polyline points=0\.0,21\.8 100\.0,14\.8>/u, "the sparkline draws the kept samples");
   assert.doesNotMatch(cpu, /dashboard-metric--high/u);
   const memory = part(markup, "metric-memory");
   assert.match(memory, /dashboard-metric--high/u, "94% memory is marked");
@@ -275,17 +282,16 @@ test("a session row keeps its full title and worker in tooltips and drops a time
   assert.equal(active.match(/<time /gu)?.length, 1);
 });
 
-test("the host section shows its loading and error states", () => {
-  assert.match(page(), /Reading the host's metrics…/u);
+test("the activity monitor shows what it read, what it is reading, and why a read failed", () => {
+  assert.match(page(), /This gateway[\s\S]*Reading this machine/u);
   const failed = page({ metricsError: "answered 500" });
-  assert.match(failed, /Could not read the host's metrics: answered 500[\s\S]*Retry/u);
-  assert.doesNotMatch(failed, /Reading the host's metrics…/u);
+  assert.match(failed, /Could not read this machine: answered 500/u);
   const stale = page({ metrics: metrics(), metricsError: "answered 500" });
-  assert.match(stale, /The last read failed: answered 500\. Showing the one before\./u);
-  assert.match(stale, /data-testid="dashboard-metrics"/u);
+  assert.match(stale, /The last read of this machine failed: answered 500\. Showing the one before\.[\s\S]*Retry/u);
+  assert.match(stale, /data-testid=dashboard-metric-cpu/u);
 });
 
-test("every worker gets its own cards, and one HUI cannot read says why instead", () => {
+test("every machine the operator shows gets its own cards, and one HUI cannot read says why instead", () => {
   const worker = (id: string, overrides: Partial<WorkerMetrics> = {}): WorkerMetrics => ({ id, name: `Worker ${id}`, state: "connected", metrics: metrics(), ...overrides });
   const markup = page({
     metrics: metrics(),
@@ -294,25 +300,53 @@ test("every worker gets its own cards, and one HUI cannot read says why instead"
       worker("b", { state: "disconnected", metrics: undefined }),
       worker("c", { state: "connected", metrics: undefined, error: "This worker runs an older HUI release." }),
     ],
-    workerHistory: new Map([["a", [metrics(), metrics({ sampledAt: "2026-10-23T12:00:05Z", cpu: { percent: 55, load: [2, 1.5, 1] } })]]]),
     workersError: "gateway unreachable",
+    chart: chart({ samples: new Map([["a", [metrics(), metrics({ sampledAt: "2026-10-23T12:00:05Z", cpu: { percent: 55, load: [2, 1.5, 1] } })]]]) }),
   });
   const first = block(markup, "Worker a");
   for (const title of ["CPU", "Memory", "Disk", "GPU", "Network", "Host process"]) assert.match(first, new RegExp(title, "u"));
   assert.doesNotMatch(first, /Gateway process/u, "a worker's card names its own host process");
-  assert.match(first, /polyline/u, "a worker's cards draw the samples the browser kept");
   assert.match(block(markup, "Worker b"), /not connected to this worker/u);
   assert.match(block(markup, "Worker c"), /runs an older HUI release/u);
   assert.match(markup, /Could not read the workers: gateway unreachable/u);
-  assert.match(page({ workers: [worker("a")] }), /dashboard-host/u, "the section is there once a worker exists");
-  assert.doesNotMatch(page(), /dashboard-host/u, "no workers, no workers section");
+  const names = (text_: string) => [...text_.matchAll(/dashboard-host__name">([^<]+)</gu)].map((match) => match[1]);
+  assert.deepEqual(names(page({ metrics: metrics(), workers: [worker("a")] })), ["This gateway", "Worker a"], "this machine comes first");
 });
 
-/** One worker's whole block, found by the machine it names. */
+test("the chart draws one line per shown machine, and a hidden one leaves both the chart and the cards", () => {
+  const samples = new Map([
+    ["gateway", [metrics({ sampledAt: "2026-10-23T11:59:58Z" }), metrics()]],
+    ["w", [metrics({ sampledAt: "2026-10-23T11:59:58Z", cpu: { percent: 90, load: [1, 1, 1] } }), metrics({ cpu: { percent: 70, load: [1, 1, 1] } })]],
+  ]);
+  const workers = [{ id: "w", name: "Worker w", state: "connected" as const, metrics: metrics() }];
+  const shown = part(page({ metrics: metrics(), workers, chart: chart({ samples }) }), "chart");
+  assert.equal(shown.match(/<polyline/gu)?.length, 2, "a line per machine");
+  assert.match(shown, /Worker w/u);
+  assert.match(shown, /70%/, "the legend carries each machine's latest value");
+  assert.match(shown, /aria-label=CPU over the last 5 minutes: This gateway 42%, Worker w 70%>/u);
+
+  const markup = page({ metrics: metrics(), workers, chart: chart({ samples, hidden: new Set(["w"]) }) });
+  assert.equal(part(markup, "chart").match(/<polyline/gu)?.length, 1, "the hidden machine is off the chart");
+  assert.doesNotMatch(part(markup, "chart"), /Worker w/u);
+  assert.deepEqual([...markup.matchAll(/dashboard-host__name">([^<]+)</gu)].map((match) => match[1]), ["This gateway"], "and its cards are gone too");
+  assert.match(page({ metrics: metrics(), chart: chart({ hidden: new Set(["gateway"]) }) }), /Pick a machine to chart\./u);
+});
+
+test("a line needs two samples, and the switch says which metric and window it draws", () => {
+  const one = new Map([["gateway", [metrics()]]]);
+  assert.doesNotMatch(part(page({ metrics: metrics(), chart: chart({ samples: one }) }), "chart"), /<polyline/u);
+  const chartMarkup = part(page({ metrics: metrics(), chart: chart({ metric: "network", window: 15, samples: one }) }), "chart");
+  assert.match(chartMarkup, /aria-label=Network over the last 15 minutes/u);
+  const controls = part(page({ metrics: metrics(), chart: chart({ metric: "network", window: 15 }) }), "activity");
+  assert.match(controls, /settings-segmented__btn--active"[^>]*>Network</u, "the metric switch names the metric it draws");
+  assert.match(controls, /settings-segmented__btn--active"[^>]*>15m</u, "and the window");
+});
+
+/** One machine's whole block, found by the name it shows. */
 function block(markup: string, name: string): string {
   const start = markup.indexOf(`dashboard-host__name">${name}<`);
   assert.ok(start >= 0, name);
-  const from = markup.lastIndexOf('data-testid="dashboard-worker"', start);
-  const next = markup.indexOf('data-testid="dashboard-worker"', start);
+  const from = markup.lastIndexOf('data-testid="dashboard-machine"', start);
+  const next = markup.indexOf('data-testid="dashboard-machine"', start);
   return markup.slice(from, next < 0 ? undefined : next);
 }

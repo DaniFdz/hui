@@ -24,7 +24,7 @@ import { credentialStore, ProviderAccounts, type CredentialStore } from "./pi/pr
 import { PROVIDERS_DIR, readProviderSelections } from "./runtimes/hui-models.ts";
 import { attachPeer, HOST_METRICS_FEATURE, isRecord, PROTOCOL_VERSION, type Frame, type Peer } from "./worker/protocol.ts";
 import type { HostMetrics } from "./api/host.ts";
-import type { WorkerMetrics } from "./api/workers.ts";
+import type { WorkerMetrics, WorkerMetricsHistory } from "./api/workers.ts";
 import { BROKERED_PROVIDER_FILE } from "./worker/credentials.ts";
 import { writeAtomic, type SyncResult } from "./worker/sync-apply.ts";
 import { bundledSkills, enabledBundledSkillPaths, isBundledSkillPreference } from "./pi/bundled-skills.ts";
@@ -710,6 +710,22 @@ export class WorkerService {
         return { id, name, state, error: error instanceof Error ? error.message : String(error) };
       }
     }));
+  }
+
+  /** The samples each connected worker's own host kept for the last `minutes`, for the Dashboard's chart. `ids`
+   * narrows the request to the machines that chart draws; nothing here connects a worker. */
+  async metricsHistory(minutes: number, ids?: readonly string[]): Promise<WorkerMetricsHistory[]> {
+    const wanted = ids && new Set(ids);
+    return await Promise.all((await this.list())
+      .filter(({ id, state }) => state === "connected" && (!wanted || wanted.has(id)) && this.features(id)?.includes(HOST_METRICS_FEATURE))
+      .map(async ({ id }): Promise<WorkerMetricsHistory> => {
+        try {
+          const { history } = await this.hostRequest<{ history: HostMetrics[] }>(id, "host.metrics", { history: minutes }, METRICS_REQUEST_TIMEOUT_MS);
+          return { id, history };
+        } catch (error) {
+          return { id, history: [], error: error instanceof Error ? error.message : String(error) };
+        }
+      }));
   }
 
   async create(input: WorkerInput): Promise<WorkerView> {

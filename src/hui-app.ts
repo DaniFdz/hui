@@ -83,7 +83,7 @@ import {
 } from "./lib/session/ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
-import { DashboardController } from "./controllers/dashboard-controller.ts";
+import { DashboardController, GATEWAY_MACHINE } from "./controllers/dashboard-controller.ts";
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
@@ -2933,11 +2933,19 @@ export class HuiApp extends HuiElement {
         sessionsLoading: this.sessions.loading,
         sessionsError: this.sessions.error,
         metrics: this.dashboard.metrics,
-        history: this.dashboard.history,
         metricsError: this.dashboard.error,
         workers: this.dashboard.workers,
-        workerHistory: this.dashboard.workerHistory,
         workersError: this.dashboard.workersError,
+        chart: {
+          gateway: GATEWAY_MACHINE,
+          metric: this.dashboard.chartMetric,
+          window: this.dashboard.chartWindow,
+          hidden: this.dashboard.hiddenMachines,
+          samples: this.dashboard.samples,
+          onMetric: this.dashboard.setChartMetric,
+          onWindow: this.dashboard.setChartWindow,
+          onToggleMachine: this.dashboard.toggleMachine,
+        },
         expandedLists: this.dashboard.expandedLists,
         now: Date.now(),
         onRetry: this.dashboard.refresh,

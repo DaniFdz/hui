@@ -6265,6 +6265,20 @@
         }
       }
     },
+    "HostMetricsHistory": {
+      "type": "object",
+      "required": [
+        "history"
+      ],
+      "properties": {
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HostMetrics"
+          }
+        }
+      }
+    },
     "JiraConnection": {
       "type": "object",
       "required": [
@@ -13095,6 +13109,41 @@
         }
       }
     },
+    "WorkerMetricsHistory": {
+      "type": "object",
+      "required": [
+        "id",
+        "history"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HostMetrics"
+          }
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "WorkerMetricsHistoryResponse": {
+      "type": "object",
+      "required": [
+        "workers"
+      ],
+      "properties": {
+        "workers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkerMetricsHistory"
+          }
+        }
+      }
+    },
     "WorkerMetricsResponse": {
       "type": "object",
       "required": [
@@ -13681,7 +13730,8 @@
     ],
     "host": [
       "HostMetrics",
-      "HostMetricsError"
+      "HostMetricsError",
+      "HostMetricsHistory"
     ],
     "github": [
       "ActivityBlock",
@@ -13869,6 +13919,8 @@
       "WorkerError",
       "WorkerInput",
       "WorkerMetrics",
+      "WorkerMetricsHistory",
+      "WorkerMetricsHistoryResponse",
       "WorkerMetricsResponse",
       "WorkerPatch",
       "WorkerResponse",
@@ -14750,6 +14802,13 @@
       "path": "/__hui/host-metrics",
       "response": {
         "$ref": "#/$defs/HostMetrics"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/host-metrics/history",
+      "response": {
+        "$ref": "#/$defs/HostMetricsHistory"
       }
     },
     {
@@ -15639,6 +15698,13 @@
       "path": "/__hui/workers/metrics",
       "response": {
         "$ref": "#/$defs/WorkerMetricsResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/workers/metrics/history",
+      "response": {
+        "$ref": "#/$defs/WorkerMetricsHistoryResponse"
       }
     },
     {

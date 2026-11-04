@@ -209,6 +209,12 @@ test("a worker reports its own machine's resources, and one HUI holds no connect
     assert.deepEqual(seen.find((each) => each.id === offline.id), { id: offline.id, name: "offline", state: "disconnected" }, "nothing connects it");
     const again = (await workers.metrics()).find((each) => each.id === workerId)!;
     assert.ok(Date.parse(again.metrics!.sampledAt) >= Date.parse(remote.metrics!.sampledAt));
+    const [history] = await workers.metricsHistory(5);
+    assert.equal(history?.id, workerId);
+    assert.equal(history?.error, undefined);
+    assert.ok((history?.history.length ?? 0) >= 1, "the remote kept the sample it just took");
+    assert.equal(history?.history.at(-1)?.host.platform, process.platform);
+    assert.deepEqual(await workers.metricsHistory(5, [offline.id]), [], "an offline worker is never asked for samples");
   } finally {
     await workers.remove(offline.id);
   }

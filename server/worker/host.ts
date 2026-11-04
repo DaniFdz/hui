@@ -52,10 +52,11 @@ import { GATEWAY_ONLY_TOOLS, HOST_BROWSER_FEATURE } from "./gateway-tools.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
 import type { WorkerPaths } from "./paths.ts";
-import { createHostMetrics } from "../host-metrics.ts";
+import { createHostMetrics, sampleInBackground } from "../host-metrics.ts";
 
-/** This machine's resources, sampled when a gateway asks (the Dashboard's poll) and cached here meanwhile. */
+/** This machine's resources, sampled when a gateway asks (the Dashboard's poll) and kept for its chart meanwhile. */
 const hostMetrics = createHostMetrics();
+sampleInBackground(hostMetrics);
 
 /** Detached, idle sessions are stopped after this; their transcript stays on disk. */
 const DETACHED_IDLE_MS = 10 * 60_000;
@@ -270,7 +271,11 @@ export class WorkerHost {
       socket.destroy();
     });
     peer.handle("hello", () => this.info());
-    peer.handle("host.metrics", () => hostMetrics());
+    peer.handle("host.metrics", async (params) => {
+      const metrics = await hostMetrics();
+      const minutes = Number(params["history"]);
+      return Number.isFinite(minutes) && minutes > 0 ? { metrics, history: hostMetrics.history(minutes) } : metrics;
+    });
     peer.handle("session.start", (params) => this.#start(peer, params));
     peer.handle("session.call", (params) => this.#call(params));
     peer.handle("session.transcript", (params) => this.#transcriptPage(params));

@@ -882,6 +882,13 @@ nothing private and starts nothing until it is asked.
   only the first reading of a gateway process waits for one.
 - Any method other than `GET` is 405.
 
+### `GET /__hui/host-metrics/history`
+
+`{ "history": HostMetrics[] }`: the samples the gateway kept for its own machine, oldest first, for the Dashboard's
+chart. `minutes` is `5`, `15` or `30` (the default is 5) and anything else is 400; the sampler keeps at most 30
+minutes. Samples come from the reads `GET /__hui/host-metrics` makes and from the sampler's own every 15 seconds, so a
+chart opened after the gateway has run a while has a past to draw; a gateway that just started has none yet.
+
 ### `GET /__hui/workspaces`
 
 Returns a read-only inventory derived solely from canonical working directories
@@ -1589,6 +1596,13 @@ Body `{ name, command, extraPaths? }`; `command` is parsed like a shell would
 split plain words and quotes, without expansion. `POST` responds 201 `{ worker
 }`. A new command applies to the next connection. `DELETE` returns 409 while any
 session record names the worker; nothing on the remote is deleted.
+
+### `GET /__hui/workers/metrics/history?minutes=&ids=`
+
+`{ "workers": [{ id, history, error? }] }`: the same samples, from each connected worker's own host, for the
+Dashboard's chart. `minutes` is `5`, `15` or `30` (default 5, anything else 400). `ids` narrows it to those workers,
+comma-separated; a worker HUI holds no connection to, or whose host is older, is left out and never connected, and a
+read that fails answers with `error` and no samples.
 
 ### `POST /__hui/workers/:id/connect`
 ### `POST /__hui/workers/:id/sync`
