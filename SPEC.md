@@ -3988,3 +3988,11 @@ This supersedes the *newest first* order of the *Needs you* rows in [Dashboard
 lists show three rows each](#dashboard-lists-show-three-rows-each-2026-10-27)
 and in [Needs you counts every session that
 stopped](#needs-you-counts-every-session-that-stopped-2026-10-27).
+
+### The Dashboard is proven in the browser (2026-11-04)
+
+`/dashboard`, its Labs switch and the host metrics behind it are the gateway's
+web page: the iOS app has no screen for them. Its outcomes are therefore web use
+cases, and PAGE-044 and PAGE-045 are excluded on iOS rather than left on its
+backlog, as the Usage page is. When the iPhone app gets a Dashboard of its own,
+that screen is its own use case with its own shared test.

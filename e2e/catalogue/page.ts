@@ -201,7 +201,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23", "docs/api.md#put-__huisettings"],
     surfaces: ["page:labs", "page:dashboard", "setting:labs.dashboard", "route:PUT /__hui/settings"],
     web: "required",
-    ios: "backlog",
+    ios: { excluded: "The Dashboard and its Labs switch are the gateway's web page; no iOS screen renders them.", decision: "SPEC.md#the-dashboard-is-proven-in-the-browser-2026-11-04" },
   },
   {
     id: "PAGE-045",
@@ -210,7 +210,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23", "SPEC.md#dashboard-counts-the-sessions-in-flight-2026-10-27", "SPEC.md#dashboard-lists-show-three-rows-each-2026-10-27", "SPEC.md#needs-you-counts-every-session-that-stopped-2026-10-27", "SPEC.md#needs-you-leads-with-the-longest-wait-2026-11-04", "docs/api.md#get-__huihost-metrics"],
     surfaces: ["page:dashboard", "route:GET /__hui/host-metrics"],
     web: "required",
-    ios: "backlog",
+    ios: { excluded: "The Dashboard is the gateway's web page; no iOS screen renders it. The app's own Dashboard proves its use case there when it exists.", decision: "SPEC.md#the-dashboard-is-proven-in-the-browser-2026-11-04" },
   },
 ];
 
