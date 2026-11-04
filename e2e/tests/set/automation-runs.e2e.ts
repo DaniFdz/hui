@@ -32,7 +32,10 @@ test("Run now records a manual run that finishes on its own", { tags: ["SET-070"
   await screen.getByPlaceholder("0 9 * * 1-5").fill("*/5 * * * *");
   await screen.getByRole("button", "Create task").tap();
 
+  // Run history lists every task's runs and one fixture keeps them across the
+  // suite, so read this task's newest entry instead of any "Manual · started" row.
+  const run = screen.getByTestId("automation-run").filter({ hasText: "Runnable prompt" }).first();
   await screen.getByRole("button", "Run now: Runnable prompt").tap();
-  await expect(screen.getByText(/Manual · started /u)).toBeVisible();
-  await expect.poll(() => screen.getByText("Completed", { exact: true }).count(), { timeout: 60_000 }).toBeGreaterThan(0);
+  await expect(run.getByText(/Manual · started /u)).toBeVisible();
+  await expect(run.getByText("Completed", { exact: true })).toBeVisible({ timeout: 60_000 });
 });
