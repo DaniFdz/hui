@@ -3,7 +3,7 @@
  * workspace inspection of context files, memory and worktrees. The gateway gathers all of it; this module only fetches
  * and types the results.
  */
-import type { HostMetrics } from "./schema/host.ts";
+import type { HostMetrics, HostMetricsHistory } from "./schema/host.ts";
 import type { PowerResponse, PowerStatus } from "./schema/power.ts";
 import type { WorkspaceInspection } from "./schema/worktrees.ts";
 import { fetchJson } from "./request.ts";
@@ -36,4 +36,9 @@ export function loadWorkspaceInspection(): Promise<WorkspaceInspection> {
 
 export function loadHostMetrics(): Promise<HostMetrics> {
   return fetchJson<HostMetrics>("/__hui/host-metrics");
+}
+
+/** The samples this machine kept for the last `minutes`, for the Dashboard's chart. */
+export async function loadHostMetricsHistory(minutes: number): Promise<HostMetrics[]> {
+  return (await fetchJson<HostMetricsHistory>(`/__hui/host-metrics/history?minutes=${minutes}`)).history ?? [];
 }

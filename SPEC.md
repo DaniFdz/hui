@@ -543,26 +543,50 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   cannot be mistaken for spend outside the entries.
   It is never folded into the ranged totals or the chart. Legacy PI compaction
   records do carry usage and count on their own day.
-- A summary shows tokens, recorded PI cost estimates and sessions. Missing or
-  invalid prices show Unpriced, a recorded numeric zero remains $0.00, and a mix
-  of priced and unpriced calls labels cost as partial. HUI never adds external
-  session cost reports to PI estimates or presents either as a provider bill.
+- A headline strip shows tokens, recorded PI cost estimates, sessions and error
+  rate, each with the same window's earlier half as a change when it has one, so
+  a range reads against itself. Missing or invalid prices show Unpriced, a
+  recorded numeric zero remains $0.00, and a mix of priced and unpriced calls
+  labels cost as partial. HUI never adds external session cost reports to PI
+  estimates or presents either as a provider bill.
+- The chart and a model donut share a row on wide screens and stack on narrow
+  ones. The donut names the five biggest models and the rest as one slice, its
+  centre holds the token total, and each legend row filters the page the way a
+  ranked model does.
 - Usage switches between tokens and recorded cost. Token bars can show the
-  input, output, cache-read and cache-write shares. Empty days remain visible; a
-  period with usage but no price is unpriced rather than free. Selecting a bar
-  narrows the report to its period, drawn as one bar per day up to 32 days, per
-  week up to 32 weeks, and per month beyond. A token-type bar and legend show the
-  same range.
-- Overview cards show recorded messages, tool results, errors, average tokens per
-  usage record and cache hit rate. Ranked model, provider and tool lists use the
-  same period. Unknown model/provider labels stay unknown rather than being
-  guessed from the session's current model.
+  input, output, cache-read and cache-write shares. Empty days remain visible as a
+  quiet baseline; a period with usage but no price is unpriced rather than free.
+  Pointing at or focusing a bar names its period, tokens, recorded price, type
+  split and record count. Selecting a bar selects its period and offers **Show
+  only <period>**; narrowing the report is explicit, so exploring the chart never
+  changes the range. The chart draws one bar per day up to 32 days, per week up to
+  32 weeks, and per month beyond. A token-type bar and legend show the same range.
+- Overview cards show recorded messages, tool results, errors, error rate,
+  average tokens and average recorded cost per usage record, and cache hit rate.
+  Ranked model, provider and tool lists use the same period, and a model or
+  provider names its share of the range's recorded cost. A further list names the
+  days whose messages failed most often. Unknown model/provider labels stay
+  unknown rather than being guessed from the session's current model.
+- A range of at least 60 days also draws a daily calendar: one cell per day of
+  the last 52 weeks, shaded by that day's tokens, with the same hover detail and
+  day selection as the bars. Days outside the range stay empty rather than being
+  drawn as zero. It is a pointer affordance, marked decorative for assistive
+  technology; the bars and the date fields keep every one of its actions
+  reachable by keyboard.
+- The page hands out what it shows: **Daily CSV** downloads the ranged daily
+  counters and **Sessions CSV** the ranged session rows, titles included.
 - A plain-text search narrows sessions by title, identifier or recorded model and
-  updates all displayed summaries and charts. Sessions sort by recent activity,
-  tokens or cost, with unknown prices last. At most 50 rows draw initially;
-  Show more reveals the next page. Each row can open its conversation.
-- Loading, no matching data, partial data and read failures are explicit. Controls
-  work with the keyboard and fit phone widths. No provider credentials, prompts,
+  updates all displayed summaries and charts. A ranked model or provider also
+  applies that search, so a ranking is a way into its sessions. Sessions sort by
+  recent activity, tokens or cost, with unknown prices last. At most 50 rows draw
+  initially; Show more reveals the next page. Each row states when it was last
+  active and can open its conversation.
+- A first read shows a skeleton, and a read that has not answered after six
+  seconds says so and offers **Cancel**; cancelling keeps the last report and
+  leaves a stopped first read distinct from an unavailable one. No matching data,
+  partial data and read failures are explicit: an empty range offers **Show all
+  time** and a failed read offers Retry. Controls work with the keyboard and fit
+  phone widths. No provider credentials, prompts,
   message bodies, tool arguments or tool output enter the usage response.
 - The gateway keeps one range-independent scan per time zone and answers range,
   zone and filter changes from it, so those interactions stay responsive on a
@@ -842,11 +866,31 @@ and HUI's durable registry format remain unchanged.
 ## Managed browser
 
 HUI gives agents a dedicated browser through the HUI-owned **browser** tool,
-modeled on OpenClaw's managed `openclaw` profile. The gateway launches one
-Chromium-family process (Chrome, Brave, Edge or Chromium, auto-detected or an
+modeled on OpenClaw's managed `openclaw` profile. The machine a session runs on
+launches one Chromium-family process (Chrome, Brave, Edge or Chromium,
+auto-detected — the Chromium Playwright's `npx playwright install chromium` put
+under `~/.cache/ms-playwright` or `$PLAYWRIGHT_BROWSERS_PATH` included — or an
 absolute executable path) with its own user-data directory under
-`$XDG_CONFIG_HOME/hui/browser/profile`. It never attaches to, reads or drives the
-operator's own browser, windows, cookies or passwords.
+`$XDG_CONFIG_HOME/hui/browser/profile`, or under the worker's data directory when
+the session runs there. It never attaches to, reads or drives the operator's own
+browser, windows, cookies or passwords. Each machine's browser keeps its own
+profile, so a login made from a session on a worker stays on that worker.
+
+**Mirrored state, if the operator asks for it.** Settings → Tools → Browser →
+*Mirror browser state* (off by default) makes the browser on this machine and
+the browser on a worker start from what the other one holds: cookies, and each
+visited origin's localStorage and IndexedDB — the whole state a login can live
+in, except the service-worker caches the network rebuilds — are captured as
+pages are used, merged by newest value, and seeded into the next browser that
+launches. The document is per worker
+(`$XDG_CONFIG_HOME/hui/browser-mirror/<worker>.json`, mode 0600, and the
+worker's own copy beside its profile): a login made on a worker therefore
+reaches this machine, and one made here reaches every worker. State only ever
+travels through this machine, so two workers never share with each other; a
+document is dropped with its worker. Signing out on one machine does not sign
+out the other, since a missing cookie cannot be told apart from one never set.
+These documents hold live credentials: mirroring is the one thing HUI writes on
+a worker on purpose, and it is off until the operator turns it on.
 
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
@@ -886,7 +930,9 @@ Follow agent. Both are
 read-only. Frames come from a CDP screencast that runs only while someone
 watches and only when the page repaints (at most about ten frames a second).
 Headless tabs each get their own window, so conversations never hide each
-other's pages.
+other's pages. A browser on a worker is not streamed here: its tabs stay on that
+machine, no preview or browser view shows them, and what the agent sees arrives
+as tool results, a screenshot included (which `present_media` shows in the chat).
 
 No new dependency is added: HUI speaks CDP directly. Browser settings are an
 additive `browser` block in `settings.json`; the browser view is a
@@ -930,14 +976,21 @@ Markdown files have a **Markdown display mode**, **Source** or **Rendered**
 (HUI's chat Markdown renderer); the mode never decides whether the file is
 writable. **Copy Markdown** beside the mode copies the file's Markdown text as
 the view holds it, unsaved edits included, and shows **Copied**. Images and PDFs show as previews; other binary files and text over
-the limit show their size and modification time with **Download**.
+the limit show their size and modification time with **Download**. A file's
+bytes stream both ways, so its size never decides whether it can be opened or
+downloaded; only an image or PDF over 64 MiB, which the browser would hold as a
+blob, is refused with "That file is too large to preview here."
 
 The navigator refreshes open folders and the selected file when the
 conversation's agent turn ends, when the view becomes visible again and on
 **Refresh**. The filter searches paths: Git's tracked and unignored files in a
 repository, a bounded walk elsewhere. Uploads go to the selected file's folder
 (or a folder row they are dropped on) and replace an existing file only after a
-confirmation listing each path. Deleting a file, link or folder asks first,
+confirmation listing each path. The bytes stream to a temporary name beside the
+target and replace it only once the whole file arrived, so a cancelled or
+failed upload leaves the folder as it was; each upload is at most 2 GB and the
+navigator shows its progress and **Cancel upload** while one is in flight.
+Files upload one at a time. Deleting a file, link or folder asks first,
 listing what goes — a folder with everything inside it, unsaved edits, the open
 file — and states that it does not use the trash; the gateway deletes a
 non-empty folder only with that confirmation, and never the root. On narrow
@@ -2091,8 +2144,20 @@ leaves worker records unchanged.
   session's: the checkout picker reads that machine's branches, the worktree goes
   under the worker's own data directory (never the mirrored config, which each
   sync replaces), its progress arrives like a local one, and a failed registry
-  write rolls it back there. Not yet available remotely: terminals, watchers, the
-  managed browser, a worker's worktrees in Settings → Worktrees, and
+  write rolls it back there. The **browser** tool works there too: the worker host
+  runs its own managed browser, with a profile under the worker's data directory
+  (so its logins stay on that machine), offered to a session, a subagent and a
+  bot's chat there as Settings → Tools → Browser decides, and its calls answered
+  on the worker even with no gateway connected. Its executable is found on that
+  machine (a Chromium-family browser on PATH, Chrome, Brave or Edge where they
+  install, or the Chromium from `npx playwright install chromium`); the
+  gateway's executable path is not mirrored, and the tool names the missing
+  browser when there is none. With Settings → Tools → Browser → *Mirror browser
+  state* on, that browser starts from the cookies and per-origin storage this
+  machine's browser holds, and what it captures comes back here (see *Managed
+  browser*). A host from before this says so in `hello`, and the
+  gateway keeps refusing browser calls from it. Not yet available remotely:
+  terminals, watchers, a worker's worktrees in Settings → Worktrees, and
   multi-account quota rotation (the default account is used). Usage totals skip
   remote transcripts.
 
@@ -2494,6 +2559,27 @@ saved in the browser, and resizing the window. Others exist only in the wide
 layout HUI shows from 1100px, such as collapsing the sidebar. The iPhone app
 ships its code, uses the system clipboard, has no tabs, has no older version and
 is always narrow, so these are web-only use cases.
+
+### Usage is proven in the browser (2026-11-04)
+
+`/usage` is a page of the gateway's web UI: it reads the gateway's own recorded
+local histories and draws its chart against the browser's calendar and time
+zone. The catalogue records that page's outcomes as web use cases, and none of
+them is proven on iOS. When the iPhone app gets its own Usage screen, that
+screen is its own use case with its own shared test; until then PAGE-021 is
+excluded on iOS rather than left on its backlog.
+
+### The web's upload progress and Cancel stay on the web (2026-11-03)
+
+A Files upload in the web app can take a long time: the body streams to the
+gateway and a video may be a gigabyte. Only the browser knows how much of it it
+has sent, so the navigator draws **Upload progress** and **Cancel upload** while
+a file is in flight. The iPhone app imports files through its native file
+importer (`fileImporter`, `docs/native-ios-plan.md`), which draws the system's
+own progress and has no in-app Cancel; a second progress bar there would
+reproduce a control the phone already shows. Watching a web upload and stopping
+it is therefore a web-only use case, while the gateway's larger cap applies to
+both clients and the upload itself is WORK-054 on each.
 
 ### The iPhone app follows the phone's text size (2026-10-26)
 
@@ -3444,10 +3530,11 @@ session on that worker, as any remote session's.
   per connection, so an offline worker never slows or fails the roster. Offline,
   a bot shows its session's state; its memory and messages fail with a reason
   naming the worker; a worker host from before bots is told apart.
-- **A remote session's limits.** The terminal, the managed browser and
-  watchers act on the gateway's machine, so a bot on a worker has none of them,
-  and no worktrees. Its secret requests work as a worker session's: the card is
-  answered on the gateway and the worker host writes the file.
+- **A remote session's limits.** The terminal and watchers act on the gateway's
+  machine, so a bot on a worker has neither, and no worktrees. The browser is its
+  own, as for any session on that worker, and the gateway's sits out. Its secret
+  requests work as a worker session's: the card is answered on the gateway and
+  the worker host writes the file.
 
 ### Bots are set up like Grok Bot (2026-10-06)
 
@@ -3905,3 +3992,37 @@ ones are silent. A gateway on another platform sends none. On macOS, when the
 gateway isn't the managed one or the desktop app can't show a notification,
 HUI skips it and records why in diagnostics. Scheduled tasks you set up in a
 regular session count as runs you started; a bot's routines don't.
+
+### Needs you leads with the longest wait (2026-11-04)
+
+The Dashboard's *Needs you* list was newest first, so a session that had just
+asked a question sat below one that had already been answered, and an answer
+nobody had read looked the same as parked work.
+
+- **What stopped the session sets its tier**: one waiting for the operator
+  (*Needs input*, a question or a secret) first, then one that errored, then one
+  that disconnected, then an idle session whose answer is unread (including one
+  the operator marked unread by hand), and last an idle session whose answer was
+  read.
+- **Each tier leads with its longest wait**, by the time of the session's last
+  message, so the top of the list is what has waited on the operator the most. A
+  time HUI can't read sorts last within its tier.
+- **An unread row says so**: an *Unread* chip beside its status, stage, worker,
+  subagent and pull request chips.
+- **A finished session stays out**, unread or not: one idle in Done is only
+  counted after the total.
+- The *Running*, *Starting* and *Reconnecting* groups keep their own headings and
+  their newest-first order.
+
+This supersedes the *newest first* order of the *Needs you* rows in [Dashboard
+lists show three rows each](#dashboard-lists-show-three-rows-each-2026-10-27)
+and in [Needs you counts every session that
+stopped](#needs-you-counts-every-session-that-stopped-2026-10-27).
+
+### The Dashboard is proven in the browser (2026-11-04)
+
+`/dashboard`, its Labs switch and the host metrics behind it are the gateway's
+web page: the iOS app has no screen for them. Its outcomes are therefore web use
+cases, and PAGE-044 and PAGE-045 are excluded on iOS rather than left on its
+backlog, as the Usage page is. When the iPhone app gets a Dashboard of its own,
+that screen is its own use case with its own shared test.

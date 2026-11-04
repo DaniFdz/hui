@@ -64,6 +64,7 @@
 .dashboard-chip--stage[data-tone="done"] { --stage-color: var(--stage-done); }
 .dashboard-chip--status[data-tone="waiting"] { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); color: var(--warn); }
 .dashboard-chip--status:is([data-tone="error"], [data-tone="disconnected"]) { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
+.dashboard-chip--unread { border-color: color-mix(in srgb, var(--info) 45%, var(--border)); color: var(--info); }
 .dashboard-chip--pr[data-tone="open"] { color: var(--ok); }
 .dashboard-chip--pr[data-tone="merged"] { color: var(--pr-merged); }
 .dashboard-chip--pr[data-tone="closed"] { color: var(--danger); }
@@ -76,7 +77,45 @@
   .dashboard-session { gap: var(--space-1) var(--space-2); padding: var(--space-2) var(--space-3); }
 }
 
-.dashboard-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
+/* The machines the monitor shows, the one chart over them, and their cards (three to a row, so they always form
+ * whole rows). */
+.dashboard-machines { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-block-end: var(--space-3); }
+.dashboard-machine { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-full); background: transparent; color: var(--muted); font: inherit; font-size: var(--control-ui-text-xs); cursor: pointer; }
+.dashboard-machine--on { border-color: var(--border-strong); background: var(--card); color: var(--text); }
+.dashboard-machine:hover { background: var(--bg-hover); }
+.dashboard-machine:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.dashboard-chart__swatch { flex: none; width: 9px; height: 9px; border: 1px solid var(--border-strong); border-radius: 50%; }
+.dashboard-chart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-block-end: var(--space-3); }
+.dashboard-chart { margin: 0 0 var(--space-4); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); }
+.dashboard-chart__plot { position: relative; height: 148px; margin-block: 14px 0; border-radius: var(--radius-sm); cursor: crosshair; touch-action: pan-y; }
+.dashboard-chart__plot:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; }
+.dashboard-chart__plot svg { display: block; width: 100%; height: 100%; }
+.dashboard-chart__grid { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.dashboard-chart__line { fill: none; stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.dashboard-chart__crosshair { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+/* A zero-length line with a round cap is a dot that keeps its size in the stretched plot, unlike a circle. */
+.dashboard-chart__dot, .dashboard-chart__dot-halo { stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.dashboard-chart__dot { stroke-width: 7; }
+.dashboard-chart__dot-halo { stroke: var(--card); stroke-width: 11; }
+.dashboard-chart__tip { position: absolute; inset-block-start: 0; translate: -50% 0; min-width: 148px; max-width: min(240px, 88%); padding: var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--card); box-shadow: var(--shadow-md); color: var(--text); font-size: var(--control-ui-text-xs); font-variant-numeric: tabular-nums; pointer-events: none; }
+.dashboard-chart__tip-time { display: block; margin-block-end: var(--space-1); color: var(--muted); }
+.dashboard-chart__tip ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.dashboard-chart__tip li { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+.dashboard-chart__tip li strong { margin-inline-start: auto; color: var(--text-strong); }
+.dashboard-chart__top { position: absolute; inset-block-start: -14px; inset-inline-start: 0; translate: 0 -50%; color: var(--muted); font-size: var(--control-ui-text-xs); font-variant-numeric: tabular-nums; pointer-events: none; }
+.dashboard-legend--chart { gap: var(--space-1) var(--space-4); margin-block-start: var(--space-3); }
+.dashboard-chart__key { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--control-ui-text-xs); }
+.dashboard-chart__key strong { color: var(--text-strong); font-variant-numeric: tabular-nums; }
+.dashboard-hosts { display: grid; gap: var(--space-5); }
+.dashboard-host__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); margin-block-end: var(--space-2); }
+.dashboard-host__name { margin: 0; color: var(--text-strong); font-size: var(--text-base); }
+.dashboard-host__note { margin: 0; color: var(--muted); font-size: var(--control-ui-text-xs); }
+.dashboard-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+@media (max-width: 1100px) { .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .dashboard-metrics { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-chart__plot { height: 190px; }
+}
 .dashboard-metric { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); color: var(--info); }
 .dashboard-metric--high { border-color: var(--danger); color: var(--danger); }
 .dashboard-metric__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-2); min-block-size: 1.25lh; }
@@ -87,7 +126,5 @@
 .dashboard-metric__bar span { display: block; height: 100%; background: currentColor; }
 .dashboard-metric__detail { color: var(--muted); overflow-wrap: anywhere; }
 .dashboard-metric__path { display: block; overflow: hidden; direction: rtl; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-.dashboard-metric__spark { width: 100%; height: 32px; margin-block-start: auto; }
-.dashboard-metric__spark polyline { fill: none; stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .dashboard-metric__unavailable { margin: 0; color: var(--muted); }
 .dashboard-callout .btn { margin-inline-start: var(--space-3); }

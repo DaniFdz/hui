@@ -1,5 +1,6 @@
 /** Public remote-worker views and management requests, separate from the host protocol. */
 import { Type, type Static } from "typebox";
+import { HostMetrics } from "./host.ts";
 
 export const WorkerState = Type.Union([
   Type.Literal("disconnected"), Type.Literal("connecting"), Type.Literal("connected"), Type.Literal("error"),
@@ -22,8 +23,26 @@ export const WorkerResponse = Type.Object({ worker: WorkerView }, { $id: "Worker
 export const WorkerActionResponse = Type.Object({ ok: Type.Literal(true) }, { $id: "WorkerActionResponse" });
 export const WorkerError = Type.Object({ error: Type.String() }, { $id: "WorkerError" });
 
+/** One worker's own machine, as the Dashboard's activity monitor shows it. */
+export const WorkerMetrics = Type.Object({
+  id: Type.String(), name: Type.String(), state: WorkerState,
+  metrics: Type.Optional(HostMetrics),
+  error: Type.Optional(Type.String()),
+}, { $id: "WorkerMetrics" });
+export type WorkerMetrics = Static<typeof WorkerMetrics>;
+export const WorkerMetricsResponse = Type.Object({ workers: Type.Array(WorkerMetrics) }, { $id: "WorkerMetricsResponse" });
+export type WorkerMetricsResponse = Static<typeof WorkerMetricsResponse>;
+
+/** One worker's own samples for the chart; `error` when this read failed. */
+export const WorkerMetricsHistory = Type.Object({ id: Type.String(), history: Type.Array(HostMetrics), error: Type.Optional(Type.String()) }, { $id: "WorkerMetricsHistory" });
+export type WorkerMetricsHistory = Static<typeof WorkerMetricsHistory>;
+export const WorkerMetricsHistoryResponse = Type.Object({ workers: Type.Array(WorkerMetricsHistory) }, { $id: "WorkerMetricsHistoryResponse" });
+export type WorkerMetricsHistoryResponse = Static<typeof WorkerMetricsHistoryResponse>;
+
 export const routeSchemas = [
   { method: "GET", path: "/__hui/workers", response: WorkersResponse },
+  { method: "GET", path: "/__hui/workers/metrics", response: WorkerMetricsResponse },
+  { method: "GET", path: "/__hui/workers/metrics/history", response: WorkerMetricsHistoryResponse },
   { method: "POST", path: "/__hui/workers", request: WorkerInput, response: WorkerResponse },
   { method: "PATCH", path: "/__hui/workers/:id", request: WorkerPatch, response: WorkerResponse },
   { method: "DELETE", path: "/__hui/workers/:id", response: WorkerActionResponse },

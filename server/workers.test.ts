@@ -15,7 +15,7 @@ import { afterAll, beforeAll, test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { completeLines } from "./test-support/json-lines.ts";
 import { expectSchema } from "./test-support/api-schema.ts";
-import { WorkerView } from "./api/workers.ts";
+import { WorkerMetricsResponse, WorkerView } from "./api/workers.ts";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const root = await mkdtemp(join(tmpdir(), "hui-workers-"));
@@ -175,7 +175,7 @@ test("a remote session runs with gateway credentials and mirrored resources, lea
     const inspection = await session.inspect!();
     assert.match(inspection.prompt, /gateway-skill/u);
     assert.match(inspection.prompt, /package-skill/u);
-    assert.ok(!inspection.tools.some((tool) => tool.name === "browser"), "the gateway's browser is not offered remotely");
+    assert.ok(inspection.tools.some((tool) => tool.name === "browser"), "the browser runs on the worker, so a PI session there is offered it");
     const done = settled(session);
     await session.prompt("hello from the gateway");
     await done;
@@ -189,6 +189,34 @@ test("a remote session runs with gateway credentials and mirrored resources, lea
     assert.ok(view.sync && view.sync.files > 0 && view.sync.errors.length === 0, JSON.stringify(view.sync));
   } finally {
     session.dispose();
+  }
+});
+
+test("a worker reports its own machine's resources, and one HUI holds no connection to is not woken for them", async () => {
+  await workers.connect(workerId);
+  const offline = await workers.create({ name: "offline", command: "ssh nowhere" });
+  try {
+    const seen = await workers.metrics();
+    const remote = seen.find((each) => each.id === workerId)!;
+    expectSchema(WorkerMetricsResponse, { workers: seen });
+    assert.equal(remote.state, "connected");
+    assert.equal(remote.error, undefined);
+    assert.equal(remote.metrics?.host.platform, process.platform);
+    assert.ok((remote.metrics?.host.cores ?? 0) > 0);
+    assert.ok((remote.metrics?.gateway.rssBytes ?? 0) > 0, "the host process on the remote");
+    // The disk is the remote's own config volume, not the gateway's.
+    assert.ok(remote.metrics?.disk?.path.startsWith(remoteHome), String(remote.metrics?.disk?.path));
+    assert.deepEqual(seen.find((each) => each.id === offline.id), { id: offline.id, name: "offline", state: "disconnected" }, "nothing connects it");
+    const again = (await workers.metrics()).find((each) => each.id === workerId)!;
+    assert.ok(Date.parse(again.metrics!.sampledAt) >= Date.parse(remote.metrics!.sampledAt));
+    const [history] = await workers.metricsHistory(5);
+    assert.equal(history?.id, workerId);
+    assert.equal(history?.error, undefined);
+    assert.ok((history?.history.length ?? 0) >= 1, "the remote kept the sample it just took");
+    assert.equal(history?.history.at(-1)?.host.platform, process.platform);
+    assert.deepEqual(await workers.metricsHistory(5, [offline.id]), [], "an offline worker is never asked for samples");
+  } finally {
+    await workers.remove(offline.id);
   }
 });
 
@@ -462,14 +490,19 @@ test("a Durable session on the worker honors HUI's settings and providers, whose
   await mkdir(join(hui, "providers"), { recursive: true });
   await writeFile(join(hui, "providers", "models.json"), JSON.stringify({ openai: { models: ["gpt-4o"] } }));
   await writeFile(join(hui, "providers", "auth.json"), JSON.stringify({ openai: { type: "api_key", key: managedKey } }));
-  await writeFile(join(hui, "settings.json"), JSON.stringify({ disabledSkills: [
-    { name: "gateway-skill", path: join(agentDir, "skills", "gateway-skill", "SKILL.md") },
-    { name: "create-verification-skill", path: "hui:skill:create-verification-skill" },
-  ] }));
+  await writeFile(join(hui, "settings.json"), JSON.stringify({
+    disabledSkills: [
+      { name: "gateway-skill", path: join(agentDir, "skills", "gateway-skill", "SKILL.md") },
+      { name: "create-verification-skill", path: "hui:skill:create-verification-skill" },
+    ],
+    browser: { enabled: true, headless: true, executablePath: "/Applications/Google Chrome.app" },
+  }));
   // A directory no earlier session loaded resources for.
   const cwd = join(remoteHome, "parity");
   await mkdir(cwd, { recursive: true });
   await workers.sync(workerId);
+  const mirrored = JSON.parse(await readFile(join(remoteHome, ".local", "share", "hui-worker", "mirror", "hui", "settings.json"), "utf8")) as { browser: unknown };
+  assert.deepEqual(mirrored.browser, { enabled: true, headless: true, executablePath: "", mirrorState: false }, "the operator's browser choice travels; the gateway's executable path does not");
   const session = await remoteRuntime("durable").start({ cwd, worker: workerId, huiSessionId: "remote-durable-parity" });
   try {
     const { prompt, tools } = await session.inspect!();
@@ -477,7 +510,7 @@ test("a Durable session on the worker honors HUI's settings and providers, whose
     assert.match(prompt, /package-skill/u);
     assert.doesNotMatch(prompt, /create-verification-skill/u);
     assert.match(prompt, /git-selective-staging/u);
-    assert.ok(!tools.some((tool) => tool.name === "browser"), "the gateway's browser is not offered remotely");
+    assert.ok(tools.some((tool) => tool.name === "browser"), "the browser runs on the worker, so it is offered there");
     assert.ok((await session.listModels!()).some((model) => model.provider === "openai" && model.id === "gpt-4o"), "the HUI-managed model is available with its brokered key");
     for (const [file, text] of await remoteContents()) {
       assert.ok(!text.includes(managedKey), `${file} holds the HUI provider key`);
@@ -564,9 +597,9 @@ test("a Durable session on the worker calls HUI tools on the gateway as itself, 
 });
 
 test("the gateway refuses a worker session's calls to the tools that stay on its machine, before HUI's tool handler sees them", async () => {
-  // The list a bot's chat on a worker isn't offered, too. The browser is already off there (Settings mirrored to the
-  // worker turn it off), so the model can't call it; terminal and watcher are still offered to an ordinary session.
-  assert.deepEqual(GATEWAY_ONLY_TOOLS, ["terminal", "browser", "watcher"]);
+  // The list a bot's chat on a worker isn't offered, too. The browser is not one of them: it runs where the session
+  // runs, so a session here calls its own and the gateway hears of it only from a host without one.
+  assert.deepEqual(GATEWAY_ONLY_TOOLS, ["terminal", "watcher"]);
   const key = "remote-durable-gateway-only";
   await registerRemote(key);
   const calls: string[] = [];
@@ -579,6 +612,24 @@ test("the gateway refuses a worker session's calls to the tools that stay on its
     const answer = lastAnswer(session) ?? "";
     for (const name of ["terminal", "watcher"]) assert.ok(answer.includes(`The ${name} tool is not available to sessions on a remote worker yet.`), answer);
     assert.deepEqual(calls, [], "refused at the bridge");
+  } finally {
+    session.dispose();
+  }
+});
+
+test("a worker session's browser is the worker's own: its call is answered there and never reaches the gateway", async () => {
+  const key = "remote-durable-browser";
+  await registerRemote(key);
+  const calls: string[] = [];
+  registerAgentToolHandler(async ({ action }) => { calls.push(action); return { ok: true }; });
+  const session = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
+  try {
+    const done = settled(session);
+    await session.prompt(`E2E_CALL:${Buffer.from(JSON.stringify({ name: "browser", input: { action: "status" } })).toString("base64url")}`);
+    await done;
+    const answer = lastAnswer(session) ?? "";
+    assert.match(answer, /The managed browser is stopped; open starts it headless\./u, answer);
+    assert.deepEqual(calls, [], "nothing crossed to the gateway's handler");
   } finally {
     session.dispose();
   }

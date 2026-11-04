@@ -853,8 +853,9 @@ nothing private and starts nothing until it is asked.
 
 - `cpu.percent`, the network rates and `gateway.cpuPercent` are deltas against
   the previous sample the gateway keeps. The first read, and a read more than
-  30 seconds after the last, takes a baseline 250 ms earlier, so every answer
-  holds a rate. `gateway.cpuPercent` is the gateway process's CPU time as a share
+  30 seconds after the last, takes a baseline at least 250 ms earlier (longer
+  when the baseline read itself took that long), so every answer holds a rate.
+  `gateway.cpuPercent` is the gateway process's CPU time as a share
   of one core (above 100 when it uses more than one).
 - One sample serves every caller for two seconds, and concurrent reads share the
   one in flight, so many open tabs cost one sample. Child processes run
@@ -874,8 +875,19 @@ nothing private and starts nothing until it is asked.
   also crosses a physical interface.
 - GPU is the busiest accelerator: `ioreg -r -d 1 -c IOAccelerator`'s
   "Device Utilization %" on macOS (no administrator rights needed on Apple
-  Silicon), `nvidia-smi` on Linux when it is installed, `null` otherwise.
+  Silicon), `nvidia-smi` on Linux when it is installed, `null` otherwise. It is
+  a gauge read on its own slower cadence (20 seconds), because one `ioreg` run
+  costs more than every other read together: a fresh reading answers at once, an
+  expired one answers at once with the last value while the next read runs, and
+  only the first reading of a gateway process waits for one.
 - Any method other than `GET` is 405.
+
+### `GET /__hui/host-metrics/history`
+
+`{ "history": HostMetrics[] }`: the samples the gateway kept for its own machine, oldest first, for the Dashboard's
+chart. `minutes` is `5`, `15` or `30` (the default is 5) and anything else is 400; the sampler keeps at most 30
+minutes. Samples come from the reads `GET /__hui/host-metrics` makes and from the sampler's own every 15 seconds, so a
+chart opened after the gateway has run a while has a past to draw; a gateway that just started has none yet.
 
 ### `GET /__hui/workspaces`
 
@@ -1566,6 +1578,16 @@ Node.js 24 or newer.
 hostname, platform, arch, node, home, release }, sync?: { at, files, uploaded,
 deleted, installed, skipped, errors } }`. Connection state is gateway memory.
 
+### `GET /__hui/workers/metrics`
+
+`{ "workers": [{ id, name, state, metrics?, error? }] }`: each configured
+worker's own machine, for the Dashboard's activity monitor. `metrics` is the
+payload of `GET /__hui/host-metrics` as that worker's host sampled it, for a
+connected host that lists `host-metrics` in its `features`. A worker HUI holds
+no connection to answers with its `state` alone, and this request never connects
+one; a host that is older or does not answer in four seconds says why in
+`error`.
+
 ### `POST /__hui/workers`
 ### `PATCH /__hui/workers/:id`
 ### `DELETE /__hui/workers/:id`
@@ -1574,6 +1596,13 @@ Body `{ name, command, extraPaths? }`; `command` is parsed like a shell would
 split plain words and quotes, without expansion. `POST` responds 201 `{ worker
 }`. A new command applies to the next connection. `DELETE` returns 409 while any
 session record names the worker; nothing on the remote is deleted.
+
+### `GET /__hui/workers/metrics/history?minutes=&ids=`
+
+`{ "workers": [{ id, history, error? }] }`: the same samples, from each connected worker's own host, for the
+Dashboard's chart. `minutes` is `5`, `15` or `30` (default 5, anything else 400). `ids` narrows it to those workers,
+comma-separated; a worker HUI holds no connection to, or whose host is older, is left out and never connected, and a
+read that fails answers with `error` and no samples.
 
 ### `POST /__hui/workers/:id/connect`
 ### `POST /__hui/workers/:id/sync`
@@ -4021,6 +4050,13 @@ because no valid recorded timestamp was available. Missing data never becomes
 an inferred free call. Prompts, message bodies, tool arguments, tool output,
 credentials and provider requests are excluded.
 
+The page waits up to two minutes for this response instead of the shared 20-second
+header deadline: a cold scan has no progress to report, so the shorter deadline
+reported a healthy but large history as a timeout. The page shows a skeleton
+meanwhile, names a read that has not answered after six seconds, and offers
+**Cancel**, which aborts the request and keeps the last report. A replaced range
+aborts its predecessor the same way.
+
 ### `GET /__hui/diagnostics/export`
 
 Returns the same bounded observability snapshot with a JSON attachment header.
@@ -4396,13 +4432,20 @@ relative to it, `/`-separated, with `""` for the root. Shapes live in
 
 ### `POST /__hui/sessions/:id/files/upload?dir=&name=[&overwrite=1]`
 
-Raw body, at most 64 MiB → 201 `FileEntryResponse` `{ entry }`. The request bytes are outside the JSON schema.
+Raw body, at most 2 GiB → 201 `FileEntryResponse` `{ entry }`. The request bytes are outside the JSON schema.
+
+The body streams to a temporary file beside the target and is renamed over it only once it arrived whole, keeping the
+replaced file's mode; a body past the cap, a client that goes away or a full disk removes it and leaves the target
+unchanged, answering 413 (or 507 when the disk is full). A `content-length` already past the cap is refused before any
+of the body is read.
 
 ### `POST /__hui/sessions/:id/files/resolve`
 
 `FilesResolveRequest` `{ paths: string[] }` (at most 100, each at most 1,024 characters) → `FilesResolve` `{ entries: ({ path, kind: "file" | "directory" } | null)[] }`, one per path in order.
 
-`GET /__hui/sessions/:id/files/raw?path=` returns the file's bytes, at most 64 MiB; this response is outside the JSON schema.
+`GET /__hui/sessions/:id/files/raw?path=` returns the file's bytes, streamed, and `content-length` with its size; this
+response is outside the JSON schema. Only an image or PDF over 64 MiB — which the browser holds as a blob to show it —
+is refused, with 413.
 
 `resolve` answers which paths the agent wrote in the chat exist inside the root,
 so the chat can link them to the Files view. A path may be relative (`./` and
@@ -4438,9 +4481,11 @@ repository (cached for 3 seconds) and otherwise walks at most 20,000 files and
 query must appear in the path; names that start with it rank first.
 
 The raw route sends `content-type` by extension (`application/octet-stream`
-otherwise), `x-content-type-options: nosniff`, `content-security-policy:
-default-src 'none'; sandbox`, and `content-disposition: attachment` for anything
-that is not an image or PDF.
+otherwise), `content-length`, `x-content-type-options: nosniff`,
+`content-security-policy: default-src 'none'; sandbox`, and
+`content-disposition: attachment` for anything that is not an image or PDF.
+The bytes are piped from the disk, so a video or archive is served without
+being held in memory.
 
 Refusals: 400 for malformed input, absolute paths or NUL bytes; 403 for a path
 that leaves the root (`code: "outside"`), a permission error or a read-only file

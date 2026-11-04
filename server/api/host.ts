@@ -13,9 +13,14 @@ export const HostMetrics = Type.Object({
 }, { $id: "HostMetrics" });
 export type HostMetrics = Static<typeof HostMetrics>;
 
+/** The samples a chart draws, oldest first, bounded by `history` minutes. */
+export const HostMetricsHistory = Type.Object({ history: Type.Array(HostMetrics) }, { $id: "HostMetricsHistory" });
+export type HostMetricsHistory = Static<typeof HostMetricsHistory>;
+
 export const HostMetricsError = Type.Object({ error: Type.String() }, { $id: "HostMetricsError" });
 export type HostMetricsError = Static<typeof HostMetricsError>;
 
 export const routeSchemas = [
   { method: "GET", path: "/__hui/host-metrics", response: HostMetrics },
+  { method: "GET", path: "/__hui/host-metrics/history", response: HostMetricsHistory },
 ];

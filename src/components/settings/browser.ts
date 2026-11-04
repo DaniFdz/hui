@@ -234,6 +234,13 @@ export class HuiBrowserSettings extends LitElement {
             </div>
             <div class="settings-row__control">${renderSettingsToggle("Run headless", settings.headless, (checked) => void this.#save({ ...settings, headless: checked }))}</div>
           </div>
+          <div class="settings-row">
+            <div class="settings-row__text">
+              <span class="settings-row__title">Mirror browser state</span>
+              <span class="settings-row__desc">A session on a worker starts with the cookies, localStorage and IndexedDB this machine's browser holds, and the worker's own state comes back here. Log in once instead of twice; signing out on one machine does not sign out the other.</span>
+            </div>
+            <div class="settings-row__control">${renderSettingsToggle("Mirror browser state", settings.mirrorState, (checked) => void this.#save({ ...settings, mirrorState: checked }))}</div>
+          </div>
           ${this.#renderExecutable(status)}
           ${status ? this.#renderProcess(status) : nothing}
           ${status?.profileDir ? html`<div class="settings-row">

@@ -22,7 +22,9 @@ import { CONFIG_DIR } from "./paths.ts";
 import { resolvePiAgentDir } from "./pi/paths.ts";
 import { credentialStore, ProviderAccounts, type CredentialStore } from "./pi/provider-accounts.ts";
 import { PROVIDERS_DIR, readProviderSelections } from "./runtimes/hui-models.ts";
-import { attachPeer, isRecord, PROTOCOL_VERSION, type Frame, type Peer } from "./worker/protocol.ts";
+import { attachPeer, HOST_METRICS_FEATURE, isRecord, PROTOCOL_VERSION, type Frame, type Peer } from "./worker/protocol.ts";
+import type { HostMetrics } from "./api/host.ts";
+import type { WorkerMetrics, WorkerMetricsHistory } from "./api/workers.ts";
 import { BROKERED_PROVIDER_FILE } from "./worker/credentials.ts";
 import { writeAtomic, type SyncResult } from "./worker/sync-apply.ts";
 import { bundledSkills, enabledBundledSkillPaths, isBundledSkillPreference } from "./pi/bundled-skills.ts";
@@ -36,16 +38,27 @@ import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from
 import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "./worker/workers.ts";
 import { parseRunOrigins } from "./runtimes/turn-origins.ts";
 import { invokeAgentTool } from "./agent-tools/bridge.ts";
-import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
+import { GATEWAY_ONLY_TOOLS, HOST_BROWSER_FEATURE } from "./worker/gateway-tools.ts";
+import { BrowserMirrorStore } from "./browser/mirror.ts";
+import { normalizeBrowserState, sizeOf } from "./browser/state.ts";
 import { readRegistry } from "./sessions/sessions.ts";
 import type { TranscriptHit } from "./runtimes/transcript-search.ts";
 import type { GitCheckoutInfo } from "./api/local-paths.ts";
 import type { WorktreeProgress } from "./api/sessions.ts";
 
+/** A worker's own resources are one small request to its host; a wedged remote must not hold the Dashboard. */
+const METRICS_REQUEST_TIMEOUT_MS = 4_000;
+
 /** Git on a worker can take as long as a large monorepo does, like the local run's own ceiling. */
 const GIT_REQUEST_TIMEOUT_MS = 45 * 60_000;
 
 export const WORKERS_FILE = join(CONFIG_DIR, "workers.json");
+/** The browser state mirrored with each worker (Settings → Tools → Browser): one document per worker, holding the
+ * cookies and per-origin storage this machine's browser and that worker's lend each other. State goes through this
+ * machine and never from one worker to another. */
+export const browserMirror = new BrowserMirrorStore(CONFIG_DIR);
+/** What a worker may send at once; a mirror stays small. */
+const MAX_MIRRORED_STATE_BYTES = 8 * 1024 * 1024;
 const MAX_WORKERS = 32;
 const SYNC_BATCH_BYTES = 8 * 1024 * 1024;
 /** A session start re-checks the mirror at most this often. */
@@ -179,6 +192,7 @@ type SyncState = NonNullable<WorkerView["sync"]> & { pluginIds: Map<string, stri
 async function sessionSettings() {
   const settings = await readHuiSettings();
   return {
+    browser: settings.browser,
     disabledSkills: settings.disabledSkills.filter((entry) => !isBundledSkillPreference(entry)),
     bundledSkillPaths: enabledBundledSkillPaths(settings.disabledSkills),
     disabledPluginIds: settings.disabledPlugins.map((plugin) => plugin.id),
@@ -289,6 +303,14 @@ class WorkerConnection {
       peer.handle("credential", (params) => this.#credential(params));
       peer.handle("bridge", (params, signal) => this.#bridge(params, signal));
       peer.handle("secret-request", (params, signal) => this.#secretRequest(params, signal));
+      /** Browser state a session there captured, or the state to seed its next browser with: the answer is what both
+       * sides hold, so a login made on either machine reaches the other. */
+      peer.handle("browser.state", async (params) => {
+        if (!(await readHuiSettings()).browser.mirrorState) return {};
+        const state = normalizeBrowserState(params["state"]);
+        if (sizeOf(state) > MAX_MIRRORED_STATE_BYTES) throw new Error("That browser state is too large to mirror.");
+        return { state: await browserMirror.merge(this.worker.id, state) };
+      });
       for (const [op, handler] of this.#hooks.served()) this.serve(op, handler);
       peer.onFrame((frame) => this.#frame(frame));
       transport.on("error", (error) => fail(`Could not run ${command[0]}: ${error.message}`));
@@ -389,12 +411,14 @@ class WorkerConnection {
   }
 
   /** HUI's settings as the host reads them: skills and plugins named by their
-   * mirrored paths, and no managed browser, which runs on this machine. */
+   * mirrored paths, and the browser's settings for that machine, which finds its
+   * own executable. */
   async #remoteSettings(pluginIds: Map<string, string>): Promise<Settings> {
     const settings = await readHuiSettings();
     return {
       ...settings,
-      browser: { ...settings.browser, enabled: false },
+      // The operator's choice, but not the gateway's browser: the executable is a file of the machine that runs it.
+      browser: { ...settings.browser, executablePath: "" },
       disabledSkills: settings.disabledSkills.map((skill) => ({ ...skill, path: this.skillPath(skill.path) })),
       disabledPlugins: settings.disabledPlugins.map((plugin) => ({ ...plugin, id: pluginIds.get(plugin.id) ?? plugin.id })),
     };
@@ -405,9 +429,8 @@ class WorkerConnection {
     return {
       disabledPluginIds: settings.disabledPluginIds.map((id) => pluginIds.get(id) ?? id),
       bundledSkillPaths: settings.bundledSkillPaths.flatMap((path) => remoteReleasePath(this.release, this.host.releaseDir, path) ?? []),
-      // The managed browser runs on the gateway machine; remote sessions
-      // cannot hand it their files yet.
-      browserTool: false,
+      // The browser runs where the session runs, so it goes with it, as Settings → Tools → Browser decides.
+      browserTool: settings.browser.enabled !== false,
       disabledSkills: settings.disabledSkills.map((skill) => ({ name: skill.name, path: this.skillPath(skill.path) })),
     };
   }
@@ -505,8 +528,12 @@ class WorkerConnection {
     const caller = await this.#caller(params);
     const key = caller.id;
     if (!action) throw new Error("That conversation does not run on this worker.");
-    // These act on the gateway's machine, not the worker's (a bot's chat there isn't even offered them).
+    // These act on the gateway's machine, not the worker's (a bot's chat there isn't even offered them). A browser is
+    // the session machine's own, which a host only has from the release that runs it.
     if (GATEWAY_ONLY_TOOLS.includes(action)) throw new Error(`The ${action} tool is not available to sessions on a remote worker yet.`);
+    if (action === "browser" && !this.host.features?.includes(HOST_BROWSER_FEATURE)) {
+      throw new Error("This worker runs an older HUI release with no browser of its own; it updates once its sessions are idle.");
+    }
     // Not one of them: a secret's file is written where the session's commands run, so a current host asks with
     // `secret-request`, and one that asks through the bridge predates it.
     if (action === "secret_request") throw new Error("This worker runs an older HUI release without secret requests; it updates once its sessions are idle.");
@@ -671,6 +698,36 @@ export class WorkerService {
     };
   }
 
+  /** Every configured worker's own resource use. Never connects: a worker HUI holds no connection to answers with its
+   * state alone, and one whose host is older or unreachable with the reason. */
+  async metrics(): Promise<WorkerMetrics[]> {
+    return await Promise.all((await this.list()).map(async ({ id, name, state }): Promise<WorkerMetrics> => {
+      if (state !== "connected") return { id, name, state };
+      if (!this.features(id)?.includes(HOST_METRICS_FEATURE)) return { id, name, state, error: "This worker runs an older HUI release." };
+      try {
+        return { id, name, state, metrics: await this.hostRequest<HostMetrics>(id, "host.metrics", {}, METRICS_REQUEST_TIMEOUT_MS) };
+      } catch (error) {
+        return { id, name, state, error: error instanceof Error ? error.message : String(error) };
+      }
+    }));
+  }
+
+  /** The samples each connected worker's own host kept for the last `minutes`, for the Dashboard's chart. `ids`
+   * narrows the request to the machines that chart draws; nothing here connects a worker. */
+  async metricsHistory(minutes: number, ids?: readonly string[]): Promise<WorkerMetricsHistory[]> {
+    const wanted = ids && new Set(ids);
+    return await Promise.all((await this.list())
+      .filter(({ id, state }) => state === "connected" && (!wanted || wanted.has(id)) && this.features(id)?.includes(HOST_METRICS_FEATURE))
+      .map(async ({ id }): Promise<WorkerMetricsHistory> => {
+        try {
+          const { history } = await this.hostRequest<{ history: HostMetrics[] }>(id, "host.metrics", { history: minutes }, METRICS_REQUEST_TIMEOUT_MS);
+          return { id, history };
+        } catch (error) {
+          return { id, history: [], error: error instanceof Error ? error.message : String(error) };
+        }
+      }));
+  }
+
   async create(input: WorkerInput): Promise<WorkerView> {
     const workers = await this.#read();
     if (workers.length >= MAX_WORKERS) throw new WorkerInputError(`HUI holds at most ${MAX_WORKERS} workers.`);
@@ -698,6 +755,8 @@ export class WorkerService {
     if (!workers.some((item) => item.id === id)) throw new WorkerNotFoundError("That worker no longer exists.");
     this.disconnect(id);
     await writeWorkers(workers.filter((item) => item.id !== id));
+    // A removed worker's mirrored cookies do not outlive it.
+    await browserMirror.forget(id).catch(() => undefined);
     this.#status.delete(id);
     this.#changed();
     for (const listener of this.#removedListeners) listener(id);

@@ -85,6 +85,7 @@ type OriginalBrowserSettings = {
   headless: boolean;
 
   executablePath: string;
+  mirrorState: boolean;
 };
 
 type OriginalVscodeSettings = {
@@ -113,6 +114,7 @@ test("settings routes describe normalized saved settings without validating the 
     method: "PUT", path: "/__hui/settings", query: new URLSearchParams(), headers: {}, signal: new AbortController().signal,
     json: async () => ({ browser: { headless: false }, disabledPlugins: [{ id: "a".repeat(24), name: "plugin", kind: "extension" }] }),
     bytes: async () => Buffer.alloc(0),
+    stream: () => (async function* () {})(),
   };
   const saved = await routes.handle(request);
   assert.equal(saved?.status, 200);

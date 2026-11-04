@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
-import { fileExtension, MAX_RESOLVE_PATHS, contentEtag, decodeText, FilesError, FilesRoot, normalizeFilesPath, parseIfMatch, searchRank, validEntryName } from "./files.ts";
+import { fileExtension, MAX_RESOLVE_PATHS, MAX_RAW_FILE_BYTES, contentEtag, decodeText, FilesError, FilesRoot, normalizeFilesPath, parseIfMatch, searchRank, validEntryName } from "./files.ts";
 
 test("file extensions and resolve limits match the portable fixtures", async () => {
   const fixture = JSON.parse(await readFile(new URL("./files.fixture.json", import.meta.url), "utf8"));
@@ -37,6 +37,19 @@ async function refused(promise: Promise<unknown>, status: number, code?: string)
     if (code) assert.equal(error.code, code);
     return true;
   });
+}
+
+/** A request body as the gateway reads it: the chunks it arrived in. */
+function bodyOf(...parts: Uint8Array[]): AsyncIterable<Uint8Array> {
+  return (async function* () {
+    for (const part of parts) yield part;
+  })();
+}
+
+async function streamed(readable: AsyncIterable<Uint8Array>): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of readable) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
 }
 
 test("relative paths are normalized and escapes refused before touching the disk", () => {
@@ -117,7 +130,7 @@ test("reads tell text, images, PDFs, binary and oversized files apart", async ()
   assert.equal(image.kind, "image");
   assert.equal(image.mimeType, "image/png");
   assert.equal(image.content, undefined);
-  assert.equal((await files.raw("logo.png")).data.length, 7);
+  assert.equal((await streamed((await files.raw("logo.png")).body)).length, 7);
   await writeFile(join(root, "doc.pdf"), "%PDF-1.4");
   assert.equal((await files.read("doc.pdf")).kind, "pdf");
   await writeFile(join(root, "blob.bin"), Buffer.from([1, 0, 2, 3]));
@@ -190,19 +203,60 @@ test("create refuses existing names and paths outside the root", async () => {
 
 test("uploads land in a folder, never replace without overwrite and never write through a link", async () => {
   const { files, root, outside } = await fixture();
-  const entry = await files.upload("src", "data.bin", Buffer.from([1, 2, 3]), false);
+  const entry = await files.upload("src", "data.bin", bodyOf(Buffer.from([1, 2, 3])), false);
   assert.equal(entry.path, "src/data.bin");
+  assert.equal(entry.size, 3);
   assert.deepEqual([...await readFile(join(root, "src", "data.bin"))], [1, 2, 3]);
-  await refused(files.upload("src", "data.bin", Buffer.from([4]), false), 409, "exists");
-  await files.upload("src", "data.bin", Buffer.from([4]), true);
+  await refused(files.upload("src", "data.bin", bodyOf(Buffer.from([4])), false), 409, "exists");
+  await files.upload("src", "data.bin", bodyOf(Buffer.from([4])), true);
   assert.deepEqual([...await readFile(join(root, "src", "data.bin"))], [4]);
-  await refused(files.upload("", "src", Buffer.from([1]), true), 422);
-  await refused(files.upload("src", "../x", Buffer.from([1]), false), 422);
+  await refused(files.upload("", "src", bodyOf(Buffer.from([1])), true), 422);
+  await refused(files.upload("src", "../x", bodyOf(Buffer.from([1])), false), 422);
   await symlink(join(outside, "secret.txt"), join(root, "link.txt"));
-  await refused(files.upload("", "link.txt", Buffer.from("pwned"), true), 422);
+  await refused(files.upload("", "link.txt", bodyOf(Buffer.from("pwned")), true), 422);
   await symlink(outside, join(root, "escape"));
-  await refused(files.upload("escape", "x.txt", Buffer.from("pwned"), true), 403, "outside");
+  await refused(files.upload("escape", "x.txt", bodyOf(Buffer.from("pwned")), true), 403, "outside");
   assert.equal(await readFile(join(outside, "secret.txt"), "utf8"), "do not read");
+});
+
+test("an upload past its cap or interrupted mid-body leaves the folder as it was", async () => {
+  const { files, root } = await fixture();
+  await writeFile(join(root, "src", "keep.bin"), Buffer.from("before"));
+  await chmod(join(root, "src", "keep.bin"), 0o640);
+  // The bytes arrive in pieces, so the cap is met partway through.
+  await files.upload("src", "exact.bin", bodyOf(Buffer.alloc(8)), false, 8);
+  await refused(files.upload("src", "big.bin", bodyOf(Buffer.alloc(6), Buffer.alloc(6)), false, 8), 413);
+  await refused(files.upload("src", "big.bin", bodyOf(Buffer.alloc(8), Buffer.alloc(1)), false, 8), 413);
+  const gone = async function* () {
+    yield Buffer.from("half");
+    throw new Error("the client went away");
+  };
+  await assert.rejects(files.upload("src", "gone.bin", gone(), false), /the client went away/u);
+  await assert.rejects(files.upload("src", "keep.bin", gone(), true), /the client went away/u);
+  assert.equal(await readFile(join(root, "src", "keep.bin"), "utf8"), "before");
+  assert.equal((await stat(join(root, "src", "keep.bin"))).mode & 0o777, 0o640);
+  // No temporary file is left beside the target, and nothing half-written appears in a listing.
+  assert.deepEqual((await readdir(join(root, "src"))).filter((name) => name.startsWith(".hui-files-")), []);
+  await files.upload("src", "keep.bin", bodyOf(Buffer.from("after")), true);
+  assert.equal(await readFile(join(root, "src", "keep.bin"), "utf8"), "after");
+  assert.equal((await stat(join(root, "src", "keep.bin"))).mode & 0o777, 0o640, "a replaced file keeps its mode");
+});
+
+test("raw streams any file and only caps what a browser shows inline", async () => {
+  const { files, root } = await fixture();
+  const sparse = async (name: string) => {
+    const handle = await open(join(root, name), "w");
+    await handle.truncate(MAX_RAW_FILE_BYTES + 1);
+    await handle.close();
+  };
+  await sparse("clip.mov");
+  const clip = await files.raw("clip.mov");
+  assert.equal(clip.preview, false);
+  assert.equal(clip.mimeType, "application/octet-stream");
+  assert.equal(clip.size, MAX_RAW_FILE_BYTES + 1);
+  clip.body.destroy();
+  await sparse("huge.png");
+  await refused(files.raw("huge.png"), 413);
 });
 
 test("delete removes a link rather than its target, needs consent for a full folder and never the root", async () => {
