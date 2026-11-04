@@ -9,7 +9,7 @@ import { SettingsError } from "../api/settings.ts";
 import { SessionError } from "../api/sessions.ts";
 import { AutomationError, AutomationSnapshot } from "../api/automation.ts";
 import { UpdateError, UpdateSnapshot } from "../api/updates.ts";
-import { WorkerError, WorkersResponse } from "../api/workers.ts";
+import { WorkerError, WorkerMetricsResponse, WorkersResponse } from "../api/workers.ts";
 import { TerminalError } from "../api/terminals.ts";
 import { BacklogError } from "../api/backlog.ts";
 import { TaskSuggestionError } from "../api/task-suggestions.ts";
@@ -81,6 +81,8 @@ const CASES: Case[] = [
   ["POST /__hui/tools", 405, ["error"], true],
   [`GET /__hui/pi/resources/skill/${"0".repeat(24)}`, 404, ["error"], true],
   ["GET /__hui/workers", 200, ["workers"], false],
+  ["GET /__hui/workers/metrics", 200, ["workers"], false],
+  ["POST /__hui/workers/metrics", 405, ["error"], true],
   ["GET /__hui/workers/missing", 404, ["error"], true],
   ["GET /__hui/bots/events", 200, null, false],
   ["POST /__hui/calls", 405, ["error"], true],
@@ -187,6 +189,7 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
     if (path === "/__hui/automation") expectSchema(AutomationSnapshot, body);
     if (path === "/__hui/update") expectSchema(UpdateSnapshot, body);
     if (path === "/__hui/workers") expectSchema(WorkersResponse, body);
+    if (path === "/__hui/workers/metrics") expectSchema(WorkerMetricsResponse, body);
   }
   return [response.status, body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).sort() : null];
 }

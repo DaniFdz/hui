@@ -15,7 +15,7 @@ import { afterAll, beforeAll, test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { completeLines } from "./test-support/json-lines.ts";
 import { expectSchema } from "./test-support/api-schema.ts";
-import { WorkerView } from "./api/workers.ts";
+import { WorkerMetricsResponse, WorkerView } from "./api/workers.ts";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const root = await mkdtemp(join(tmpdir(), "hui-workers-"));
@@ -189,6 +189,28 @@ test("a remote session runs with gateway credentials and mirrored resources, lea
     assert.ok(view.sync && view.sync.files > 0 && view.sync.errors.length === 0, JSON.stringify(view.sync));
   } finally {
     session.dispose();
+  }
+});
+
+test("a worker reports its own machine's resources, and one HUI holds no connection to is not woken for them", async () => {
+  await workers.connect(workerId);
+  const offline = await workers.create({ name: "offline", command: "ssh nowhere" });
+  try {
+    const seen = await workers.metrics();
+    const remote = seen.find((each) => each.id === workerId)!;
+    expectSchema(WorkerMetricsResponse, { workers: seen });
+    assert.equal(remote.state, "connected");
+    assert.equal(remote.error, undefined);
+    assert.equal(remote.metrics?.host.platform, process.platform);
+    assert.ok((remote.metrics?.host.cores ?? 0) > 0);
+    assert.ok((remote.metrics?.gateway.rssBytes ?? 0) > 0, "the host process on the remote");
+    // The disk is the remote's own config volume, not the gateway's.
+    assert.ok(remote.metrics?.disk?.path.startsWith(remoteHome), String(remote.metrics?.disk?.path));
+    assert.deepEqual(seen.find((each) => each.id === offline.id), { id: offline.id, name: "offline", state: "disconnected" }, "nothing connects it");
+    const again = (await workers.metrics()).find((each) => each.id === workerId)!;
+    assert.ok(Date.parse(again.metrics!.sampledAt) >= Date.parse(remote.metrics!.sampledAt));
+  } finally {
+    await workers.remove(offline.id);
   }
 });
 

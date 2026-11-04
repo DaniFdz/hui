@@ -13070,6 +13070,45 @@
         }
       }
     },
+    "WorkerMetrics": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/WorkerState"
+        },
+        "metrics": {
+          "$ref": "#/$defs/HostMetrics"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "WorkerMetricsResponse": {
+      "type": "object",
+      "required": [
+        "workers"
+      ],
+      "properties": {
+        "workers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkerMetrics"
+          }
+        }
+      }
+    },
     "WorkerPatch": {
       "type": "object",
       "properties": {
@@ -13829,6 +13868,8 @@
       "WorkerActionResponse",
       "WorkerError",
       "WorkerInput",
+      "WorkerMetrics",
+      "WorkerMetricsResponse",
       "WorkerPatch",
       "WorkerResponse",
       "WorkerState",
@@ -15591,6 +15632,13 @@
       "path": "/__hui/workers/:id/sync",
       "response": {
         "$ref": "#/$defs/WorkerActionResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/workers/metrics",
+      "response": {
+        "$ref": "#/$defs/WorkerMetricsResponse"
       }
     },
     {

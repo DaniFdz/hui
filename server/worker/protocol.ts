@@ -11,6 +11,8 @@ import type { Readable, Writable } from "node:stream";
 import type { RuntimeModel, RuntimeQueue, RuntimeQuestion, RuntimeUsage } from "../runtimes/types.ts";
 
 export const PROTOCOL_VERSION = 1;
+/** A host that answers `host.metrics` with its own machine's resources. */
+export const HOST_METRICS_FEATURE = "host-metrics";
 /** A frame larger than this is a protocol error, not something to buffer.
  * Large enough for a 100 MB file in base64 or a long, image-heavy history. */
 export const MAX_FRAME_BYTES = 256 * 1024 * 1024;

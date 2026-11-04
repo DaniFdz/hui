@@ -1,14 +1,16 @@
 /**
  * The Dashboard page (Labs → Dashboard): a summary of the sessions in flight by status with a count of the finished
  * ones, their Kanban stages, the sessions waiting for the operator in priority order with the longest wait first, the
- * ones still in flight grouped by status with their subagents (three rows per list until its Show all button opens it),
- * and a card per host metric with its value, a bar and a sparkline of the samples the browser kept. A metric that reads
- * above 85% is marked; one the host can't report says so. A value too long for its card wraps between its parts, and the
- * disk path keeps its end on one line.
+ * ones still in flight grouped by status with their subagents (three rows per list until its Show all button opens
+ * it), and the activity monitor: a card per host metric with its value, a bar and a sparkline of the samples the
+ * browser kept, for this gateway's host and for every worker it holds a connection to, three to a row. A metric that
+ * reads above 85% is marked; one the host can't report says so. A value too long for its card wraps between its
+ * parts, and the disk path keeps its end on one line.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import type { HostMetrics } from "../api/schema/host.ts";
 import type { SessionGroup, SessionView } from "../api/schema/sessions.ts";
+import type { WorkerMetrics } from "../api/workers.ts";
 import { DASHBOARD_ROWS, DASHBOARD_STATUSES, DASHBOARD_STATUS_LABELS, NEEDS_YOU_LIST, summarizeSessions, type SessionSummary } from "../lib/dashboard.ts";
 import { SESSION_STAGES, SESSION_STAGE_LABELS, isSessionStage } from "../lib/kanban.ts";
 import { relativeTime } from "../lib/message-metadata.ts";
@@ -28,6 +30,9 @@ export type DashboardProps = {
   metrics: HostMetrics | undefined;
   history: readonly HostMetrics[];
   metricsError: string;
+  workers: readonly WorkerMetrics[];
+  workerHistory: ReadonlyMap<string, readonly HostMetrics[]>;
+  workersError: string;
   expandedLists: ReadonlySet<string>;
   now: number;
   onRetry: () => void;
@@ -65,7 +70,7 @@ function card(id: string, title: string, metric: Metric | null) {
   </article>`;
 }
 
-function hostCards(metrics: HostMetrics, history: readonly HostMetrics[]) {
+function hostCards(metrics: HostMetrics, history: readonly HostMetrics[], processTitle: string) {
   const series = (read: (sample: HostMetrics) => number | null | undefined) =>
     history.map(read).filter((value): value is number => typeof value === "number");
   const { cpu, memory, disk, network, gpu, gateway } = metrics;
@@ -90,7 +95,7 @@ function hostCards(metrics: HostMetrics, history: readonly HostMetrics[]) {
       series: series((sample) => sample.network && sample.network.rxBytesPerSecond + sample.network.txBytesPerSecond),
       detail: "Physical interfaces",
     }),
-    card("gateway", "Gateway process", {
+    card("gateway", processTitle, {
       value: percentLabel(gateway.cpuPercent), series: series((sample) => sample.gateway.cpuPercent),
       detail: `CPU of one core · ${formatBytes(gateway.rssBytes)} resident`,
     }),
@@ -102,8 +107,30 @@ function hostSection(props: DashboardProps) {
   const retry = html`<button class="btn btn--sm" type="button" @click=${props.onRetry}>Retry</button>`;
   return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Gateway host</h2><p class="settings-section__desc">${metrics ? `${metrics.host.platform} · sampled ${new Date(metrics.sampledAt).toLocaleTimeString()} · every 5 seconds while this page is open` : "Every 5 seconds while this page is open"}</p></div></header>
     ${metricsError ? html`<div class="callout ${metrics ? "warning" : "danger"} dashboard-callout" role="alert">${metrics ? `The last read failed: ${metricsError}. Showing the one before.` : `Could not read the host's metrics: ${metricsError}`}${retry}</div>` : nothing}
-    ${metrics ? html`<div class="dashboard-metrics" data-testid="dashboard-metrics">${hostCards(metrics, props.history)}</div>`
+    ${metrics ? html`<div class="dashboard-metrics" data-testid="dashboard-metrics">${hostCards(metrics, props.history, "Gateway process")}</div>`
       : metricsError ? nothing : html`<div role="status">Reading the host's metrics…</div>`}
+  </section>`;
+}
+
+const WORKER_STATE_NOTES: Record<WorkerMetrics["state"], string> = {
+  connected: "Reading this machine's metrics…",
+  connecting: "Connecting…",
+  disconnected: "HUI is not connected to this worker, so its activity is not read here.",
+  error: "HUI cannot reach this worker.",
+};
+
+/** One block per worker that names the machine and shows the same cards as this gateway's host. */
+function workersSection(props: DashboardProps) {
+  const { workers } = props;
+  if (!workers.length && !props.workersError) return nothing;
+  return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Workers</h2><p class="settings-section__desc">Each worker's own machine, sampled every 5 seconds while this page is open. Opening this page never wakes a worker.</p></div></header>
+    ${props.workersError ? html`<div class="callout warning dashboard-callout" role="alert">Could not read the workers: ${props.workersError}</div>` : nothing}
+    <div class="dashboard-hosts">${workers.map((worker) => html`<article class="dashboard-host" data-testid="dashboard-worker">
+      <header class="dashboard-host__head"><h3 class="dashboard-host__name">${worker.name}</h3><p class="dashboard-host__note">${worker.metrics
+        ? `${worker.metrics.host.platform} · sampled ${new Date(worker.metrics.sampledAt).toLocaleTimeString()}`
+        : worker.error ?? WORKER_STATE_NOTES[worker.state]}</p></header>
+      ${worker.metrics ? html`<div class="dashboard-metrics">${hostCards(worker.metrics, props.workerHistory.get(worker.id) ?? [], "Host process")}</div>` : nothing}
+    </article>`)}</div>
   </section>`;
 }
 
@@ -181,6 +208,6 @@ function sessionsSection(props: DashboardProps) {
 }
 
 export function renderDashboard(props: DashboardProps): TemplateResult {
-  return html`<header class="content-header content-header--settings"><div><div class="page-title">Dashboard</div><div class="page-subtitle">The sessions in flight and the gateway host's resource use.</div></div></header>
-    <main class="settings-page settings-page--wide dashboard-page" data-testid="dashboard">${sessionsSection(props)}${hostSection(props)}</main>`;
+  return html`<header class="content-header content-header--settings"><div><div class="page-title">Dashboard</div><div class="page-subtitle">The sessions in flight and the resource use of the machines that run them.</div></div></header>
+    <main class="settings-page settings-page--wide dashboard-page" data-testid="dashboard">${sessionsSection(props)}${hostSection(props)}${workersSection(props)}</main>`;
 }

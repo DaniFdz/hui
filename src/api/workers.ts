@@ -3,9 +3,9 @@
  * disconnect. Those operations run in the gateway; the UI polls the list for progress.
  */
 import { fetchJson } from "./request.ts";
-import type { WorkerInput, WorkerView, WorkersResponse, WorkerResponse } from "./schema/workers.ts";
+import type { WorkerInput, WorkerMetrics, WorkerMetricsResponse, WorkerView, WorkersResponse, WorkerResponse } from "./schema/workers.ts";
 
-export type { WorkerInput, WorkerView };
+export type { WorkerInput, WorkerMetrics, WorkerView };
 
 const WORKERS_URL = "/__hui/workers";
 const JSON_HEADERS = { "content-type": "application/json" } as const;
@@ -13,6 +13,11 @@ const workerUrl = (id: string, suffix = "") => `${WORKERS_URL}/${encodeURICompon
 
 export async function loadWorkers(): Promise<WorkerView[]> {
   return (await fetchJson<WorkersResponse>(WORKERS_URL)).workers ?? [];
+}
+
+/** Each worker's own machine: resource use for a connected one, its state and why for the rest. */
+export async function loadWorkerMetrics(): Promise<WorkerMetrics[]> {
+  return (await fetchJson<WorkerMetricsResponse>(`${WORKERS_URL}/metrics`)).workers ?? [];
 }
 
 export async function createWorker(input: WorkerInput): Promise<WorkerView> {

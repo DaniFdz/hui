@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "vitest";
 import type { HostMetrics } from "../api/schema/host.ts";
 import type { SessionView } from "../api/schema/sessions.ts";
+import type { WorkerMetrics } from "../api/workers.ts";
 import { HUI_PAGES, availablePages, isPageAvailable } from "../lib/pages.ts";
 import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 import { renderDashboard, type DashboardProps } from "./dashboard.ts";
@@ -44,6 +45,7 @@ function metrics(overrides: Partial<HostMetrics> = {}): HostMetrics {
 function page(overrides: Partial<DashboardProps> = {}): string {
   return text(renderDashboard({
     groups: [], sessionsLoading: false, sessionsError: "", metrics: undefined, history: [], metricsError: "", expandedLists: new Set(), now: NOW,
+    workers: [], workerHistory: new Map(), workersError: "",
     onRetry: () => {}, onOpenSession: () => {}, onToggleList: () => {},
     ...overrides,
   }));
@@ -282,3 +284,35 @@ test("the host section shows its loading and error states", () => {
   assert.match(stale, /The last read failed: answered 500\. Showing the one before\./u);
   assert.match(stale, /data-testid="dashboard-metrics"/u);
 });
+
+test("every worker gets its own cards, and one HUI cannot read says why instead", () => {
+  const worker = (id: string, overrides: Partial<WorkerMetrics> = {}): WorkerMetrics => ({ id, name: `Worker ${id}`, state: "connected", metrics: metrics(), ...overrides });
+  const markup = page({
+    metrics: metrics(),
+    workers: [
+      worker("a"),
+      worker("b", { state: "disconnected", metrics: undefined }),
+      worker("c", { state: "connected", metrics: undefined, error: "This worker runs an older HUI release." }),
+    ],
+    workerHistory: new Map([["a", [metrics(), metrics({ sampledAt: "2026-10-23T12:00:05Z", cpu: { percent: 55, load: [2, 1.5, 1] } })]]]),
+    workersError: "gateway unreachable",
+  });
+  const first = block(markup, "Worker a");
+  for (const title of ["CPU", "Memory", "Disk", "GPU", "Network", "Host process"]) assert.match(first, new RegExp(title, "u"));
+  assert.doesNotMatch(first, /Gateway process/u, "a worker's card names its own host process");
+  assert.match(first, /polyline/u, "a worker's cards draw the samples the browser kept");
+  assert.match(block(markup, "Worker b"), /not connected to this worker/u);
+  assert.match(block(markup, "Worker c"), /runs an older HUI release/u);
+  assert.match(markup, /Could not read the workers: gateway unreachable/u);
+  assert.match(page({ workers: [worker("a")] }), /dashboard-host/u, "the section is there once a worker exists");
+  assert.doesNotMatch(page(), /dashboard-host/u, "no workers, no workers section");
+});
+
+/** One worker's whole block, found by the machine it names. */
+function block(markup: string, name: string): string {
+  const start = markup.indexOf(`dashboard-host__name">${name}<`);
+  assert.ok(start >= 0, name);
+  const from = markup.lastIndexOf('data-testid="dashboard-worker"', start);
+  const next = markup.indexOf('data-testid="dashboard-worker"', start);
+  return markup.slice(from, next < 0 ? undefined : next);
+}

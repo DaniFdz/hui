@@ -1,10 +1,15 @@
 /** Generated from docs/api.schema.json by scripts/api-schema.ts. Do not edit. */
+import type { HostMetrics } from "./host.ts";
 
 export type WorkerActionResponse = { "ok": true; };
 
 export type WorkerError = { "error": string; };
 
 export type WorkerInput = { "name": string; "command": string; "extraPaths"?: Array<string>; };
+
+export type WorkerMetrics = { "id": string; "name": string; "state": WorkerState; "metrics"?: HostMetrics; "error"?: string; };
+
+export type WorkerMetricsResponse = { "workers": Array<WorkerMetrics>; };
 
 export type WorkerPatch = { "name"?: string; "command"?: string; "extraPaths"?: Array<string>; };
 

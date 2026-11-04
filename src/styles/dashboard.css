@@ -77,7 +77,14 @@
   .dashboard-session { gap: var(--space-1) var(--space-2); padding: var(--space-2) var(--space-3); }
 }
 
-.dashboard-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
+/* Six cards sit three to a row, so every machine's cards form whole rows at every width. */
+.dashboard-hosts { display: grid; gap: var(--space-5); }
+.dashboard-host__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); margin-block-end: var(--space-2); }
+.dashboard-host__name { margin: 0; color: var(--text-strong); font-size: var(--text-base); }
+.dashboard-host__note { margin: 0; color: var(--muted); font-size: var(--control-ui-text-xs); }
+.dashboard-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+@media (max-width: 1100px) { .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .dashboard-metrics { grid-template-columns: minmax(0, 1fr); } }
 .dashboard-metric { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); color: var(--info); }
 .dashboard-metric--high { border-color: var(--danger); color: var(--danger); }
 .dashboard-metric__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-2); min-block-size: 1.25lh; }

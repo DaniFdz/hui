@@ -1571,6 +1571,16 @@ Node.js 24 or newer.
 hostname, platform, arch, node, home, release }, sync?: { at, files, uploaded,
 deleted, installed, skipped, errors } }`. Connection state is gateway memory.
 
+### `GET /__hui/workers/metrics`
+
+`{ "workers": [{ id, name, state, metrics?, error? }] }`: each configured
+worker's own machine, for the Dashboard's activity monitor. `metrics` is the
+payload of `GET /__hui/host-metrics` as that worker's host sampled it, for a
+connected host that lists `host-metrics` in its `features`. A worker HUI holds
+no connection to answers with its `state` alone, and this request never connects
+one; a host that is older or does not answer in four seconds says why in
+`error`.
+
 ### `POST /__hui/workers`
 ### `PATCH /__hui/workers/:id`
 ### `DELETE /__hui/workers/:id`

@@ -2,6 +2,7 @@
  * `/__hui/workers` routes.
  *
  *   GET    /__hui/workers                       list with live state
+ *   GET    /__hui/workers/metrics               each worker's own resources
  *   POST   /__hui/workers                       add { name, command, extraPaths? }
  *   PATCH  /__hui/workers/:id                   edit
  *   DELETE /__hui/workers/:id                   remove (no sessions may use it)
@@ -10,12 +11,13 @@
  *   POST   /__hui/workers/:id/disconnect
  */
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
-import { WorkersResponse, WorkerResponse, WorkerActionResponse, WorkerError } from "../api/workers.ts";
+import { WorkersResponse, WorkerResponse, WorkerActionResponse, WorkerError, WorkerMetricsResponse } from "../api/workers.ts";
 export { routeSchemas } from "../api/workers.ts";
 import type { SessionRecord } from "../sessions/sessions.ts";
 import { WorkerInputError, WorkerNotFoundError, type WorkerService } from "../workers.ts";
 
 export const WORKERS_ROUTE = "/__hui/workers";
+const METRICS_ROUTE = `${WORKERS_ROUTE}/metrics`;
 const ROUTE = /^\/__hui\/workers(?:\/([0-9a-f-]{36})(?:\/(connect|sync|disconnect))?)?$/u;
 
 type Deps = {
@@ -33,6 +35,10 @@ export function createWorkerRoutes(deps: Deps) {
 
   async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     const { method } = request;
+    if (request.path === METRICS_ROUTE) {
+      if (method !== "GET") return reply(WorkerError, { error: "method not allowed" }, 405);
+      return reply(WorkerMetricsResponse, { workers: await service.metrics() });
+    }
     const match = ROUTE.exec(request.path);
     if (!match) return undefined;
     const [, id, action] = match;

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test, vi } from "vitest";
 import type { HostMetrics } from "../api/schema/host.ts";
 import type { SessionGroup, SessionView } from "../api/schema/sessions.ts";
+import type { WorkerMetrics } from "../api/workers.ts";
 import { DASHBOARD_HISTORY, DASHBOARD_POLL_MS, DashboardController } from "./dashboard-controller.ts";
 
 function sample(sampledAt: string): HostMetrics {
@@ -17,12 +18,18 @@ function sample(sampledAt: string): HostMetrics {
   };
 }
 
-function setup() {
+type WorkerRead = { resolve: (value: readonly WorkerMetrics[]) => void; reject: (error: Error) => void };
+
+function setup(options: { controlledWorkers?: boolean } = {}) {
   const reads: Array<{ resolve: (value: HostMetrics) => void; reject: (error: Error) => void }> = [];
+  const workerReads: WorkerRead[] = [];
   const host = { updates: 0, requestUpdate() { this.updates += 1; }, addController() {} };
   const page = { shown: true, groups: [] as readonly SessionGroup[] };
-  const controller = new DashboardController(host, () => page.shown, () => page.groups, () => new Promise((resolve, reject) => reads.push({ resolve, reject })));
-  return { controller, host, reads, page };
+  const workers = options.controlledWorkers
+    ? () => new Promise<readonly WorkerMetrics[]>((resolve, reject) => workerReads.push({ resolve, reject }))
+    : () => Promise.resolve([] as readonly WorkerMetrics[]);
+  const controller = new DashboardController(host, () => page.shown, () => page.groups, () => new Promise((resolve, reject) => reads.push({ resolve, reject })), workers);
+  return { controller, host, reads, workerReads, page };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -111,6 +118,56 @@ test("the sparklines keep the last sixty samples", async () => {
   }
   assert.equal(controller.history.length, DASHBOARD_HISTORY);
   assert.equal(controller.history[0]?.sampledAt, "t5");
+});
+
+test("a worker's samples arrive beside the host's, keep their own history, and a failed read keeps the last answer", async () => {
+  const { controller, host, reads, workerReads } = setup({ controlledWorkers: true });
+  const worker = (sampledAt: string, state: WorkerMetrics["state"] = "connected"): WorkerMetrics => ({ id: "w", name: "Box", state, metrics: sample(sampledAt) });
+  controller.refresh();
+  reads[0]!.resolve(sample("t1"));
+  workerReads[0]!.resolve([worker("w1")]);
+  await settle();
+  assert.deepEqual(controller.workerHistory.get("w")?.map((entry) => entry.sampledAt), ["w1"]);
+  const updates = host.updates;
+  controller.refresh();
+  reads[1]!.resolve(sample("t1"));
+  workerReads[1]!.resolve([worker("w2")]);
+  await settle();
+  assert.equal(host.updates, updates + 1, "a worker's newer sample redraws even when the host's didn't move");
+  assert.deepEqual(controller.workerHistory.get("w")?.map((entry) => entry.sampledAt), ["w1", "w2"]);
+  controller.refresh();
+  reads[2]!.resolve(sample("t1"));
+  workerReads[2]!.reject(new Error("workers unreachable"));
+  await settle();
+  assert.equal(controller.workersError, "workers unreachable");
+  assert.equal(controller.workers.length, 1, "the last answer stays on screen");
+  controller.refresh();
+  reads[3]!.resolve(sample("t1"));
+  workerReads[3]!.resolve([{ id: "w", name: "Box", state: "disconnected" }]);
+  await settle();
+  assert.equal(controller.workersError, "");
+  assert.equal(controller.workers[0]?.state, "disconnected");
+  assert.deepEqual(controller.workerHistory.get("w")?.map((entry) => entry.sampledAt), ["w1", "w2"], "the samples it had stay while it cannot report");
+  controller.refresh();
+  reads[4]!.resolve(sample("t1"));
+  workerReads[4]!.resolve([{ id: "w", name: "Renamed box", state: "disconnected" }]);
+  await settle();
+  assert.equal(host.updates, updates + 4, "a renamed worker redraws");
+  assert.equal(controller.workers[0]?.name, "Renamed box");
+});
+
+test("a worker that is slow to answer neither holds back this gateway's cards nor its next poll", async () => {
+  const { controller, host, reads } = setup({ controlledWorkers: true });
+  controller.refresh();
+  reads[0]!.resolve(sample("t1"));
+  await settle();
+  assert.equal(controller.metrics?.sampledAt, "t1");
+  assert.equal(host.updates, 1, "the host draws while the worker is still being asked");
+  controller.refresh();
+  assert.equal(reads.length, 2, "the host is asked again while the worker read stays in flight");
+  reads[1]!.resolve(sample("t2"));
+  await settle();
+  assert.equal(controller.metrics?.sampledAt, "t2");
 });
 
 function running(count: number, status: SessionView["status"] = "running"): SessionView[] {
