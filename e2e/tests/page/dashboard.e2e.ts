@@ -1,4 +1,6 @@
 /** Labs → Dashboard adds the Dashboard page, which shows the sessions in flight and the host's metrics (PAGE-044, PAGE-045). */
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -66,4 +68,46 @@ test("Dashboard lists a running session, opens it, and shows the host's metrics"
   await expect(screen.getByTestId("transcript").getByText("Replay prefix —", { exact: false })).toBeVisible();
   await hui.provider.release();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+});
+
+test("Needs you leads with a question, then an unread answer, then parked work, each longest wait first", { tags: ["PAGE-045"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const settings = await hui.api<Labs>("GET", "/__hui/settings");
+  await hui.api("PUT", "/__hui/settings", { ...settings, labs: { ...settings.labs, dashboard: true } });
+  await writeFile(join(hui.workspace, "ask-order.json"), JSON.stringify({ questions: [{
+    header: "Priority",
+    question: "Which session should I look at first?",
+    options: [{ label: "The one asking", description: "It cannot move until you answer." }, { label: "The newest", description: "Something in flight." }],
+  }] }));
+
+  const parked = ["Parked oldest", "Parked newest"];
+  const unread = ["Unread oldest", "Unread newest"];
+  for (const title of [...parked, ...unread]) await hui.createSession({ title });
+  const asking = await hui.createSession({ title: "Waiting question" });
+
+  await hui.open("/");
+  for (const title of unread) {
+    await screen.getByText(title).first().hover();
+    await screen.getByRole("button", `Actions for ${title}`).tap();
+    await screen.getByText("Mark as unread").tap();
+    await expect(screen.getByText("Marked as unread.")).toBeVisible();
+  }
+
+  await hui.open(`/sessions/${asking.id}`);
+  await screen.getByLabel("Message").fill("E2E_ASK_USER:order");
+  await screen.getByRole("button", "Send message").tap();
+  await expect(screen.getByText("Which session should I look at first?")).toBeVisible();
+
+  await hui.open("/dashboard");
+  const needsYou = screen.getByTestId("dashboard-needs-you");
+  await needsYou.getByRole("button", "Show all 5").tap();
+  await expect(needsYou.getByRole("link")).toHaveText([
+    /^Waiting question/u,
+    /^Unread oldest/u,
+    /^Unread newest/u,
+    /^Parked oldest/u,
+    /^Parked newest/u,
+  ]);
+  await expect(needsYou.getByRole("link").nth(0)).toContainText("Needs input");
+  await expect(needsYou.getByRole("link").nth(1)).toContainText("Unread");
+  await expect(needsYou.getByRole("link").nth(3)).not.toContainText("Unread");
 });

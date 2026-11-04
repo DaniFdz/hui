@@ -3962,3 +3962,29 @@ ones are silent. A gateway on another platform sends none. On macOS, when the
 gateway isn't the managed one or the desktop app can't show a notification,
 HUI skips it and records why in diagnostics. Scheduled tasks you set up in a
 regular session count as runs you started; a bot's routines don't.
+
+### Needs you leads with the longest wait (2026-11-04)
+
+The Dashboard's *Needs you* list was newest first, so a session that had just
+asked a question sat below one that had already been answered, and an answer
+nobody had read looked the same as parked work.
+
+- **What stopped the session sets its tier**: one waiting for the operator
+  (*Needs input*, a question or a secret) first, then one that errored, then one
+  that disconnected, then an idle session whose answer is unread (including one
+  the operator marked unread by hand), and last an idle session whose answer was
+  read.
+- **Each tier leads with its longest wait**, by the time of the session's last
+  message, so the top of the list is what has waited on the operator the most. A
+  time HUI can't read sorts last within its tier.
+- **An unread row says so**: an *Unread* chip beside its status, stage, worker,
+  subagent and pull request chips.
+- **A finished session stays out**, unread or not: one idle in Done is only
+  counted after the total.
+- The *Running*, *Starting* and *Reconnecting* groups keep their own headings and
+  their newest-first order.
+
+This supersedes the *newest first* order of the *Needs you* rows in [Dashboard
+lists show three rows each](#dashboard-lists-show-three-rows-each-2026-10-27)
+and in [Needs you counts every session that
+stopped](#needs-you-counts-every-session-that-stopped-2026-10-27).

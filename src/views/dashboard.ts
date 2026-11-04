@@ -1,9 +1,10 @@
 /**
  * The Dashboard page (Labs → Dashboard): a summary of the sessions in flight by status with a count of the finished
- * ones, their Kanban stages, the sessions waiting for the operator, the ones still in flight grouped by status with
- * their subagents (three rows per list until its Show all button opens it), and a card per host metric with its value,
- * a bar and a sparkline of the samples the browser kept. A metric that reads above 85% is marked; one the host can't report
- * says so. A value too long for its card wraps between its parts, and the disk path keeps its end on one line.
+ * ones, their Kanban stages, the sessions waiting for the operator in priority order with the longest wait first, the
+ * ones still in flight grouped by status with their subagents (three rows per list until its Show all button opens it),
+ * and a card per host metric with its value, a bar and a sparkline of the samples the browser kept. A metric that reads
+ * above 85% is marked; one the host can't report says so. A value too long for its card wraps between its parts, and the
+ * disk path keeps its end on one line.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import type { HostMetrics } from "../api/schema/host.ts";
@@ -123,6 +124,7 @@ function sessionRow(session: SessionView, summary: SessionSummary, showStatus: b
     ${updatedAgo(session.updatedAt, props.now)}
     <span class="dashboard-session__meta">
       ${showStatus ? chip("status", DASHBOARD_STATUS_LABELS[session.status], session.status) : nothing}
+      ${session.unread ? chip("unread", "Unread") : nothing}
       ${isSessionStage(session.stage) ? chip("stage", SESSION_STAGE_LABELS[session.stage], session.stage) : nothing}
       ${session.worker ? chip("worker", session.worker.name, undefined, session.worker.name) : nothing}
       ${subagents ? chip("subagent", `${subagents.total} subagent${subagents.total === 1 ? "" : "s"}${subagents.active ? ` · ${subagents.active} running` : ""}`) : nothing}
@@ -161,7 +163,7 @@ function sessionsSection(props: DashboardProps) {
     return html`<ul id=${id} class=${className}>${shown.map((session) => sessionRow(session, summary, showStatus, props))}</ul>
       ${sessions.length > DASHBOARD_ROWS ? html`<button class="dashboard-more" type="button" aria-controls=${id} aria-expanded=${String(expanded)} @click=${() => props.onToggleList(key)}>${expanded ? "Show fewer" : `Show all ${sessions.length}`}</button>` : nothing}`;
   };
-  return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Sessions</h2><p class="settings-section__desc">A session idle in Done counts as finished and is not listed; one that stopped anywhere else needs you. Subagents show on their parent; archived sessions are left out.</p></div></header>
+  return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Sessions</h2><p class="settings-section__desc">A session idle in Done counts as finished and is not listed; one that stopped anywhere else needs you, a question first, then a stopped session, an unread answer and parked work, each longest wait first. Subagents show on their parent; archived sessions are left out.</p></div></header>
     ${props.sessionsError ? html`<div class="callout danger" role="alert">${props.sessionsError}</div>` : nothing}
     ${empty && props.sessionsLoading ? html`<div role="status">Reading sessions…</div>` : html`
       ${summaryCard(summary)}
