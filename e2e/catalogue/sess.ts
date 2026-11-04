@@ -743,6 +743,16 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "SESS-077",
+    title: "Open a session's actions with a right-click",
+    behaviour: "Right-clicking a session row's name opens the same Actions for menu as the row's ⋯ button, which reads as expanded with the same items, and choosing an item there runs it as it does from the button. The row is neither selected nor opened.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["session-menu-parity"],
+    web: "required",
+    ios: { excluded: "A touch screen has no secondary click; the iPhone app opens the same row menu by long-pressing the row.", decision: "SPEC.md#a-secondary-click-is-the-webs-way-into-a-rows-menu-2026-11-04" },
+  },
 ];
 
 export default cases;

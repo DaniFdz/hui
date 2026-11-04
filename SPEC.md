@@ -140,6 +140,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   state is persisted so it survives a gateway restart. A settled background
   session shows the reference accent-colored unread dot until its conversation
   is opened.
+- Right-clicking a session row asks for the same **Actions for** menu as the
+  row's ⋯ button, in the same place and with the same items and keys, instead
+  of the browser's link menu; the row is neither selected nor opened. The phone
+  app, which has no secondary click, opens that menu by long-pressing the row.
 - A session that created GitHub pull requests shows one state-colored pull
   request mark per PR beside its title (open green, draft gray, merged purple,
   closed red). The marks form a strip whose newest mark sits at the trailing
@@ -2580,6 +2584,13 @@ own progress and has no in-app Cancel; a second progress bar there would
 reproduce a control the phone already shows. Watching a web upload and stopping
 it is therefore a web-only use case, while the gateway's larger cap applies to
 both clients and the upload itself is WORK-054 on each.
+
+### A secondary click is the web's way into a row's menu (2026-11-04)
+
+A mouse or trackpad's secondary click on a session row opens the row's
+**Actions for** menu on the web. A touch screen has no secondary click: the
+iPhone app opens the same menu by long-pressing the row, so the gesture is a web
+use case and the menu and its items stay shared ones.
 
 ### The iPhone app follows the phone's text size (2026-10-26)
 

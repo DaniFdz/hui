@@ -422,6 +422,13 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
           closeContainingDrawer(event, false, true);
           props.onSelectSession(session);
         }}
+        @contextmenu=${(event: MouseEvent) => {
+          // The row's actions button opens this menu; a right click asks for the
+          // same one instead of the browser's link menu, which the menu's Copy
+          // and Open in submenus already cover.
+          event.preventDefault();
+          props.onToggleMenu(session.id);
+        }}
       >
         <span class="sidebar-session-indicator" title=${glyph.label || nothing} aria-hidden="true">
           ${attention ? html`<span class="session-glyph"><span class="session-glyph__content"><span class="sidebar-session-attention__icon sidebar-session-attention__icon--${attention.tone}">${attention.icon}</span></span></span>` : nothing}
