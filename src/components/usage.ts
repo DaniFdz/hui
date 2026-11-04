@@ -1,9 +1,10 @@
 /** The Usage page: reporting controls and charts over recorded local conversation histories, never provider billing. */
-import { LitElement, html, nothing } from "lit";
+import { LitElement, html, nothing, svg } from "lit";
 import { live } from "lit/directives/live.js";
 import type { UsageMetrics, UsageReport } from "../api/schema/diagnostics.ts";
 import { UsageController } from "../controllers/usage-controller.ts";
-import { usageChartDays, usageCost, usageDetail, usageOverview, type UsageSort } from "../lib/usage.ts";
+import { usageChartDays, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageOverview, usageSessionCsv, type UsageSort } from "../lib/usage.ts";
+import { downloadTextFile } from "../lib/download.ts";
 import { icons } from "../lib/icons.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
@@ -19,8 +20,15 @@ const dayLabel = new Intl.DateTimeFormat(undefined, { timeZone: "UTC", month: "s
 const monthLabel = new Intl.DateTimeFormat(undefined, { timeZone: "UTC", month: "short", year: "numeric" });
 const labelDate = (date: string) => (date.length === 7 ? monthLabel : dayLabel).format(new Date(`${date.length === 7 ? `${date}-01` : date}T12:00:00Z`));
 const CHART_SCOPE = { day: "Daily", week: "Weekly", month: "Monthly" } as const;
-
-type Bar = ReturnType<typeof usageChartDays>["days"][number];
+const HEATMAP_CELL = 11;
+const HEATMAP_PITCH = 14;
+const HEATMAP_LEFT = 30;
+const HEATMAP_TOP = 16;
+const HEATMAP_MIN_DAYS = 60;
+const WEEKDAY_ROWS = [[1, Date.UTC(2024, 0, 1)], [3, Date.UTC(2024, 0, 3)], [5, Date.UTC(2024, 0, 5)]] as const;
+const stamp = (date: string) => new Date(`${date}T12:00:00Z`).getTime();
+const spanDays = (from: string, to: string) => Math.round((stamp(to) - stamp(from)) / 86_400_000) + 1;
+const percent = (part: number, whole: number) => `${(part / whole * 100).toFixed(whole > 100 ? 0 : 1)}%`;
 
 /** The period a bar selects, ready to become the reporting range. */
 type Selection = { from: string; to: string; label: string; metrics: UsageMetrics; report: UsageReport };
@@ -64,7 +72,7 @@ export class HuiUsagePage extends LitElement {
     this.#tip = undefined;
   }
 
-  #showTip(target: HTMLElement, text: string) {
+  #showTip(target: Element, text: string) {
     const tip = this.#tip ??= (() => {
       const element = document.createElement("div");
       element.className = "usage-tip";
@@ -102,14 +110,13 @@ export class HuiUsagePage extends LitElement {
     this.requestUpdate();
   }
 
-  #select(bar: Bar, label: string) {
+  #select(from: string, to: string, label: string, metrics: UsageMetrics) {
     const state = this.#usage;
     if (!state.report) return;
-    const from = bar.date.length === 7 ? `${bar.date}-01` : bar.date;
     this.#hideTip();
-    this.#selection = this.#selection?.report === state.report && this.#selection.from === from && this.#selection.to === bar.end
+    this.#selection = this.#selection?.report === state.report && this.#selection.from === from && this.#selection.to === to
       ? undefined
-      : { from, to: bar.end, label, metrics: bar.metrics, report: state.report };
+      : { from, to, label, metrics, report: state.report };
     this.requestUpdate();
   }
 
@@ -148,7 +155,7 @@ export class HuiUsagePage extends LitElement {
           return html`<button type="button" class="daily-bar-wrapper usage-report__day ${chosen ? "selected" : ""} ${empty ? "usage-report__day--empty" : ""}" aria-pressed=${chosen} aria-label=${hint.replace(/\n/gu, " · ")} tabindex=${index === Math.min(this.#chartFocus, days.days.length - 1) ? 0 : -1}
             @pointerenter=${(event: PointerEvent) => { if (event.pointerType !== "touch") this.#showTip(event.currentTarget as HTMLElement, hint); }} @pointerleave=${this.#hideTip}
             @focus=${(event: FocusEvent) => this.#showTip(event.currentTarget as HTMLElement, hint)} @blur=${this.#hideTip}
-            @keydown=${(event: KeyboardEvent) => this.#chartKey(event, index, days.days.length)} @click=${() => this.#select(bar, shown)}><span class="daily-bar ${byType ? "daily-bar--stacked" : ""} ${unpriced ? "usage-report__unpriced" : ""}" style=${`height: ${max ? value(metrics) / max * 200 : 0}px; opacity: ${empty ? 0.25 : 1}`}>
+            @keydown=${(event: KeyboardEvent) => this.#chartKey(event, index, days.days.length)} @click=${() => this.#select(date.length === 7 ? `${date}-01` : date, end, shown, metrics)}><span class="daily-bar ${byType ? "daily-bar--stacked" : ""} ${unpriced ? "usage-report__unpriced" : ""}" style=${`height: ${max ? value(metrics) / max * 200 : 0}px; opacity: ${empty ? 0.25 : 1}`}>
               ${byType ? this.#segments(metrics) : nothing}</span>
               <span class="daily-bar-label">${days.days.length <= 10 || index % Math.ceil(days.days.length / 6) === 0 || index === days.days.length - 1 ? labelDate(date) : ""}</span><span class="daily-bar-total">${unpriced ? "?" : ""}</span></button>`;
         })}
@@ -159,15 +166,46 @@ export class HuiUsagePage extends LitElement {
     </section>`;
   }
 
+  #heatmap(report: UsageReport, overview: ReturnType<typeof usageOverview>, selection: Selection | undefined) {
+    if (spanDays(report.range.from, report.range.to) < HEATMAP_MIN_DAYS) return nothing;
+    const { weeks, monthLabels } = usageHeatmap(overview.days, report.range.from, report.range.to);
+    const width = HEATMAP_LEFT + weeks.length * HEATMAP_PITCH + 24;
+    const height = HEATMAP_TOP + 7 * HEATMAP_PITCH;
+    const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short", timeZone: "UTC" });
+    return html`<section class="settings-group usage-panel usage-heatmap-section" data-testid="usage-heatmap">
+      <div class="daily-chart-header"><div><h2 class="settings-section__heading">Daily activity</h2><p class="settings-section__desc">One cell per day · pick a day to inspect it</p></div>
+        <div class="usage-heatmap__legend" aria-hidden="true"><span>Less</span>${[0, 1, 2, 3, 4].map((level) => html`<span class="usage-heatmap__swatch usage-heatmap__cell--l${level}"></span>`)}<span>More</span></div></div>
+      <div class="usage-heatmap">${svg`<svg class="usage-heatmap__svg" viewBox="0 0 ${width} ${height}" style=${`--usage-heatmap-width: ${width}px`} aria-hidden="true">
+        ${monthLabels.map((label, index) => label ? svg`<text class="usage-heatmap__month" x=${HEATMAP_LEFT + index * HEATMAP_PITCH} y="10">${label}</text>` : nothing)}
+        ${WEEKDAY_ROWS.map(([row, day]) => svg`<text class="usage-heatmap__weekday" x=${HEATMAP_LEFT - 6} y=${HEATMAP_TOP + row * HEATMAP_PITCH + HEATMAP_CELL - 2}>${weekday.format(new Date(day))}</text>`)}
+        ${weeks.map((week, column) => week.map((cell, row) => {
+          if (!cell) return nothing;
+          const hint = `${labelDate(cell.date)}\n${usageDetail(cell.metrics).join("\n")}`;
+          const chosen = selection?.from === cell.date && selection.to === cell.date;
+          return svg`<rect class="usage-heatmap__cell usage-heatmap__cell--l${cell.level} ${chosen ? "usage-heatmap__cell--selected" : ""}" x=${HEATMAP_LEFT + column * HEATMAP_PITCH} y=${HEATMAP_TOP + row * HEATMAP_PITCH} width=${HEATMAP_CELL} height=${HEATMAP_CELL} rx="2.5"
+            @pointerenter=${(event: PointerEvent) => { if (event.pointerType !== "touch") this.#showTip(event.currentTarget as Element, hint); }} @pointerleave=${this.#hideTip}
+            @click=${() => this.#select(cell.date, cell.date, labelDate(cell.date), cell.metrics)}></rect>`;
+        }))}
+      </svg>`}</div>
+    </section>`;
+  }
+
   #rankings(overview: ReturnType<typeof usageOverview>) {
+    const totalCost = overview.totals.costUsd;
+    const spending = (metrics: UsageMetrics) => {
+      const share = totalCost && metrics.costUsd !== null ? ` · ${percent(metrics.costUsd, totalCost)} of cost` : "";
+      return `${compact(metrics.totalTokens)} tokens${share}`;
+    };
+    const failures = usageErrorDays(overview.days);
     const rankings = [
-      { title: "Top models", search: true, rows: overview.models.map((row) => ({ label: `${row.provider}/${row.model}`, detail: `${compact(row.metrics.totalTokens)} tokens`, value: cost(row.metrics) })) },
-      { title: "Top providers", search: true, rows: overview.providers.map((row) => ({ label: row.provider, detail: `${compact(row.metrics.totalTokens)} tokens`, value: cost(row.metrics) })) },
+      { title: "Top models", search: true, rows: overview.models.map((row) => ({ label: `${row.provider}/${row.model}`, detail: spending(row.metrics), value: cost(row.metrics) })) },
+      { title: "Top providers", search: true, rows: overview.providers.map((row) => ({ label: row.provider, detail: spending(row.metrics), value: cost(row.metrics) })) },
       { title: "Top tools", search: false, rows: overview.tools.map((row) => ({ label: row.name, detail: `${count(row.errors, "error")}`, value: count(row.calls, "result") })) },
+      { title: "Days with errors", search: false, empty: "No recorded failures in these sessions.", rows: failures.map((row) => ({ label: labelDate(row.date), detail: `${count(row.errors, "error")} · ${count(row.messages, "message")}`, value: `${(row.rate * 100).toFixed(1)}%` })) },
     ];
-    return html`<section class="usage-insights-grid">${rankings.map(({ title, search, rows }) => html`<article class="usage-insight-card"><h2 class="usage-insight-title">${title}</h2><div class="usage-list">${rows.slice(0, 5).map((row) => html`${search
+    return html`<section class="usage-insights-grid">${rankings.map(({ title, search, rows, empty }) => html`<article class="usage-insight-card"><h2 class="usage-insight-title">${title}</h2><div class="usage-list">${rows.slice(0, 5).map((row) => html`${search
       ? html`<button type="button" class="usage-list-item usage-rank" title=${`Show only sessions with ${row.label}`} @click=${() => this.#usage.search(row.label)}><span class="usage-report__rank-name">${row.label}<span class="usage-list-sub">${row.detail}</span></span><span class="usage-list-value">${row.value}</span></button>`
-      : html`<div class="usage-list-item"><span class="usage-report__rank-name">${row.label}<span class="usage-list-sub">${row.detail}</span></span><span class="usage-list-value">${row.value}</span></div>`}`)}${rows.length === 0 ? html`<p class="usage-summary-sub">No recorded data.</p>` : nothing}</div></article>`)}</section>`;
+      : html`<div class="usage-list-item"><span class="usage-report__rank-name">${row.label}<span class="usage-list-sub">${row.detail}</span></span><span class="usage-list-value">${row.value}</span></div>`}`)}${rows.length === 0 ? html`<p class="usage-summary-sub">${empty ?? "No recorded data."}</p>` : nothing}</div></article>`)}</section>`;
   }
 
   override render() {
@@ -180,7 +218,7 @@ export class HuiUsagePage extends LitElement {
     const totals = overview?.totals;
     const active = this.#usage.query.trim().length > 0;
     const lastActive = report ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: report.range.timeZone }) : undefined;
-    return html`<header class="content-header content-header--settings"><div><div class="page-title" data-testid="page-title">Usage</div><div class="page-subtitle">Recorded tokens and PI cost estimates.</div></div><div class="page-header-actions">${state.slow && report ? html`<button class="btn" type="button" @click=${() => state.cancel()}>Cancel</button>` : nothing}<button class="btn" type="button" @click=${() => state.refresh()}>${icons.refresh}<span>${state.loading ? "Refreshing…" : "Refresh"}</span></button></div></header>
+    return html`<header class="content-header content-header--settings"><div><div class="page-title" data-testid="page-title">Usage</div><div class="page-subtitle">Recorded tokens and PI cost estimates.</div></div><div class="page-header-actions">${state.slow && report ? html`<button class="btn" type="button" @click=${() => state.cancel()}>Cancel</button>` : nothing}${report && overview ? html`<button class="btn" type="button" title="Download these days as a CSV" @click=${() => downloadTextFile(`hui-usage-daily-${report.range.from}-${report.range.to}.csv`, usageDailyCsv(overview.days.toSorted((left, right) => left.date.localeCompare(right.date))))}>${icons.download}<span>Daily CSV</span></button>` : nothing}<button class="btn" type="button" @click=${() => state.refresh()}>${icons.refresh}<span>${state.loading ? "Refreshing…" : "Refresh"}</span></button></div></header>
     <main class="settings-page settings-page--wide usage-page usage-report" data-testid="usage-report" aria-busy=${state.loading}>
       <section class="settings-section"><h2 class="settings-section__heading">Reporting range</h2><div class="settings-group usage-panel usage-report__controls">
         <div class="usage-controls"><div class="settings-segmented usage-presets" role="group" aria-label="Range presets">${PRESETS.map(([preset, label]) => html`<button type="button" class="settings-segmented__btn ${state.preset === preset ? "settings-segmented__btn--active" : ""}" aria-pressed=${state.preset === preset} @click=${() => state.selectPreset(preset)}>${label}</button>`)}</div>
@@ -204,7 +242,7 @@ export class HuiUsagePage extends LitElement {
       ${!report ? state.loading ? html`${skeleton()}<div class="usage-loading-status" role="status"><span class="usage-loading-note">${state.slow ? "Still reading local histories. This can take a while the first time." : "Reading HUI diagnostics…"}</span>${state.slow ? html`<button class="btn btn--sm" type="button" @click=${() => state.cancel()}>Cancel</button>` : nothing}</div>` : html`<div class="settings-group usage-panel usage-empty-state" role="status"><strong class="usage-empty-state__title">${state.stopped ? "Reading stopped." : "Usage is unavailable."}</strong><p class="usage-summary-sub">${state.stopped ? "The report has not been read yet." : "The gateway has not reported usage yet."}</p><div class="usage-empty-state__actions"><button class="btn btn--sm" type="button" @click=${() => state.refresh()}>Read histories again</button></div></div>` : nothing}
       ${report && (report.coverage.unavailable.length || report.coverage.undatedRecords) ? html`<div class="callout warning">Totals are partial. ${number(report.coverage.unavailable.length)} histories unavailable; ${number(report.coverage.undatedRecords)} records without valid dates were excluded.</div>` : nothing}
       ${report && totals && overview ? html`
-        ${overview.sessions.length ? this.#chart(usageChartDays(overview.days, report.range.from, report.range.to), totals) : html`<div class="settings-group usage-panel usage-empty-state"><strong class="usage-empty-state__title">${active ? "No sessions match your search." : "No usage in this range."}</strong><p class="usage-summary-sub">${active ? "Try a title, session ID or model name, or clear the search above." : "Choose another range or start a conversation."}</p>${active ? nothing : html`<div class="usage-empty-state__actions"><button class="btn btn--sm" type="button" @click=${() => state.selectPreset("all")}>Show all time</button></div>`}</div>`}
+        ${overview.sessions.length ? html`${this.#chart(usageChartDays(overview.days, report.range.from, report.range.to), totals)}${this.#heatmap(report, overview, this.#selection?.report === report ? this.#selection : undefined)}` : html`<div class="settings-group usage-panel usage-empty-state"><strong class="usage-empty-state__title">${active ? "No sessions match your search." : "No usage in this range."}</strong><p class="usage-summary-sub">${active ? "Try a title, session ID or model name, or clear the search above." : "Choose another range or start a conversation."}</p>${active ? nothing : html`<div class="usage-empty-state__actions"><button class="btn btn--sm" type="button" @click=${() => state.selectPreset("all")}>Show all time</button></div>`}</div>`}
         <section class="settings-section"><h2 class="settings-section__heading">Usage overview</h2><div class="usage-summary-grid">
           ${summary("Messages", number(totals.userMessages + totals.assistantMessages), `${number(totals.userMessages)} user · ${number(totals.assistantMessages)} assistant`)}
           ${summary("Tool results", number(totals.toolResults), `${count(overview.tools.length, "tool")} recorded`)}
@@ -212,10 +250,12 @@ export class HuiUsagePage extends LitElement {
           ${summary("Cache hit rate", totals.inputTokens + totals.cacheReadTokens + totals.cacheWriteTokens ? `${(totals.cacheReadTokens / (totals.inputTokens + totals.cacheReadTokens + totals.cacheWriteTokens) * 100).toFixed(1)}%` : "Unavailable", `${compact(totals.cacheReadTokens)} cache-read tokens`)}
           ${summary("Errors", number(totals.errors), "Recorded model and tool failures")}
           ${summary("Priced records", totals.calls ? `${number(totals.calls - totals.unpricedCalls)} / ${number(totals.calls)}` : "Unavailable", "A recorded zero is included")}
+          ${summary("Error rate", totals.userMessages + totals.assistantMessages ? percent(totals.errors, totals.userMessages + totals.assistantMessages) : "Unavailable", `${count(totals.errors, "error")} across recorded messages`)}
+          ${summary("Avg cost / record", totals.calls && totals.costUsd !== null ? usageCost({ costUsd: totals.costUsd / totals.calls, unpricedCalls: totals.unpricedCalls }) : "Unavailable", "Recorded price per usage record")}
         </div></section>
         ${this.#rankings(overview)}
-        <section class="settings-group usage-panel sessions-card" data-testid="usage-sessions"><div class="sessions-card-header"><div><h2 class="settings-section__heading">Sessions</h2><p class="usage-summary-sub">${Math.min(state.limit, overview.sessions.length)} shown · ${overview.sessions.length} in range</p></div><label class="sessions-sort">Sort sessions<select .value=${state.sort} @change=${(event: Event) => { const value = (event.currentTarget as HTMLSelectElement).value; state.sort = value === "tokens" || value === "cost" ? value : "recent"; this.requestUpdate(); }}><option value="recent">Recent</option><option value="tokens">Tokens</option><option value="cost">Cost</option></select></label></div>
-          <div class="session-bars">${overview.sessions.slice(0, state.limit).map((session) => html`<article class="session-bar-row"><button class="session-bar-selection" type="button" @click=${() => this.onOpenSession?.(session.id)}><span class="session-bar-title">${session.title}</span><span class="session-bar-meta">${session.models.map(({ model }) => model).join(", ") || "Unknown model"}${session.parentId ? " · Child session" : ""} · ${lastActive && session.lastActivityAt ? `Active ${lastActive.format(session.lastActivityAt)} · ` : ""}${count(session.metrics.userMessages + session.metrics.assistantMessages, "message")} · ${count(session.metrics.toolResults, "tool result")}</span></button><div class="usage-report__session-values"><strong>${compact(session.metrics.totalTokens)}</strong><span class="usage-summary-sub">${cost(session.metrics)}</span></div></article>`)}</div>
+        <section class="settings-group usage-panel sessions-card" data-testid="usage-sessions"><div class="sessions-card-header"><div><h2 class="settings-section__heading">Sessions</h2><p class="usage-summary-sub">${Math.min(state.limit, overview.sessions.length)} shown · ${overview.sessions.length} in range</p></div><div class="usage-card-actions"><button class="btn btn--sm" type="button" title="Download these sessions as a CSV" @click=${() => downloadTextFile(`hui-usage-sessions-${report.range.from}-${report.range.to}.csv`, usageSessionCsv(overview.sessions))}>Sessions CSV</button><label class="sessions-sort">Sort sessions<select .value=${state.sort} @change=${(event: Event) => { const value = (event.currentTarget as HTMLSelectElement).value; state.sort = value === "tokens" || value === "cost" ? value : "recent"; this.requestUpdate(); }}><option value="recent">Recent</option><option value="tokens">Tokens</option><option value="cost">Cost</option></select></label></div></div>
+          <div class="session-bars" data-testid="usage-session-rows">${overview.sessions.slice(0, state.limit).map((session) => html`<article class="session-bar-row"><button class="session-bar-selection" type="button" @click=${() => this.onOpenSession?.(session.id)}><span class="session-bar-title">${session.title}</span><span class="session-bar-meta">${session.models.map(({ model }) => model).join(", ") || "Unknown model"}${session.parentId ? " · Child session" : ""} · ${lastActive && session.lastActivityAt ? `Active ${lastActive.format(session.lastActivityAt)} · ` : ""}${count(session.metrics.userMessages + session.metrics.assistantMessages, "message")} · ${count(session.metrics.toolResults, "tool result")}</span></button><div class="usage-report__session-values"><strong>${compact(session.metrics.totalTokens)}</strong><span class="usage-summary-sub">${cost(session.metrics)}</span></div></article>`)}</div>
           ${overview.sessions.length > state.limit ? html`<button class="btn usage-more-sessions" type="button" @click=${() => { state.limit += 50; this.requestUpdate(); }}>Show more</button>` : nothing}
         </section>` : nothing}
     </main>`;

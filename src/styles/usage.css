@@ -33,6 +33,13 @@
 .usage-selection__text strong { color: var(--text-strong); font-size: var(--control-ui-text-sm); }
 .usage-selection__actions { display: flex; gap: var(--space-2); }
 
+.usage-heatmap-section { display: grid; gap: 12px; }
+.usage-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-inline-start: auto; }
+.usage-heatmap__cell { cursor: var(--cursor-action); }
+.usage-heatmap__cell:hover, .usage-heatmap__cell:focus-visible { stroke: var(--text-strong); stroke-width: 1; }
+.usage-heatmap__cell--selected { stroke: var(--text-strong); stroke-width: 1.5; }
+.usage-heatmap { overflow-x: auto; }
+
 .usage-loading-note { margin: 0; color: var(--muted); font-size: var(--control-ui-text-xs); }
 .usage-loading-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 

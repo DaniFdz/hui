@@ -47,7 +47,15 @@ with no matching sessions.
    <day>** and **Clear**. Choose it again to deselect. Use **Show only <day>**
    and confirm the range narrows and focus moves to **Apply range**. Use Tab to
    enter the chart once, arrow keys to move between bars, and Enter to select.
-5. Filter by title, ID and recorded model. Totals, rankings and chart must follow
+5. Confirm the overview adds **Error rate** and **Avg cost / record**, that a
+   ranked model and provider name their share of the range's cost, and that
+   **Days with errors** lists the fixture's failed day with its rate. **Daily
+   CSV** and **Sessions CSV** must each download a file whose header and first
+   row match the range shown.
+6. Choose **1y** and confirm **Daily activity** draws one cell per day, with
+   month and weekday labels; hovering a cell names its day, and selecting it
+   offers **Show only <day>**. A 30d range must not draw the calendar.
+7. Filter by title, ID and recorded model. Totals, rankings and chart must follow
    the same subset. A ranked model or provider applies the same search. Enter a
    nonmatching query, confirm **No sessions match your search.**, then **Clear
    search** beside the field. Try all **Sort sessions**
@@ -55,19 +63,19 @@ with no matching sessions.
    they were last active. The amount outside the entries remains unchanged by the
    session search. Open a Durable session and **Design notes** from their rows.
    Both must show recorded messages and an Idle status.
-6. Choose an empty day, confirm its selection says no recorded usage, and
+8. Choose an empty day, confirm its selection says no recorded usage, and
    **Show only** it: confirm **No usage in this range.** and **Show all time**.
    Return to 30d. Submit a reversed range; the error must name the attempted
    range while the last successful chart retains its own dates. Fix the fields
    and apply them. **Refresh** must keep successful data on screen while reading
    again.
-7. Hold the first report back with a delayed or blocked request. Confirm the
+9. Hold the first report back with a delayed or blocked request. Confirm the
    skeleton, the **Reading HUI diagnostics…** status and, after six seconds, the
    slow-read note with **Cancel**. Cancel must leave either the last report or
    **Reading stopped.** with **Read histories again**, never a timeout error or an
    unavailable report. A blocked read must fail on the page's own cancel, not
    before.
-8. Inspect 1440×900, 1024×900 and 390×844, including controls and lower session
+10. Inspect 1440×900, 1024×900 and 390×844, including controls and lower session
    rows. The selection stacks at phone width. The controls must align within each wrapped row. The top metrics must
    align with the search field's left edge and keep space between their columns,
    including **Unavailable** beside zero sessions in an empty range. Repeat a

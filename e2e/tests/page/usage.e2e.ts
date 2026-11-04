@@ -86,8 +86,12 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
   await chooseRange("1y", 366);
   await expect(chart).toContainText("Monthly token usage", { ignoreCase: true });
   await expect(chart.getByRole("button", /^[A-Z][a-z]{2} \d{4} · [\d,]+ tokens · /u).first()).toBeVisible();
+  const calendar = screen.getByTestId("usage-heatmap");
+  await expect(calendar).toBeVisible();
+  await expect(calendar.getByRole("heading", "Daily activity")).toBeVisible();
   await chooseRange("90d", 90);
   await expect(chart).toContainText("Weekly token usage", { ignoreCase: true });
+  await expect(calendar).toBeVisible();
   const selection = screen.getByTestId("usage-selection");
   const beforeSelection = await shownRange(screen);
   await chart.getByRole("button", / to [A-Z][a-z]{2} \d{1,2} · [\d,]+ tokens · /u).last().tap();
@@ -99,6 +103,7 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
   await expect(chart).toContainText(`${grouped.from} to ${grouped.to}`);
   const month = await chooseRange("30d", 30);
   await expect(chart).toContainText("Daily token usage", { ignoreCase: true });
+  await expect(screen.getByTestId("usage-heatmap")).toBeHidden();
   await screen.getByLabel("From").fill(month.to);
   await chooseRange("30d", 30);
   await expect(screen.getByLabel("From")).toHaveValue(month.from);
@@ -148,7 +153,7 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
 });
 
 test("Usage searches its sessions by title, id or model, sorts them and reads them again", { tags: ["PAGE-021"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const sessions = screen.getByTestId("usage-sessions");
+  const sessions = screen.getByTestId("usage-session-rows");
   const totals = screen.getByTestId("usage-totals");
   const filter = screen.getByLabel("Filter sessions");
   const clear = screen.getByRole("button", "Clear search");

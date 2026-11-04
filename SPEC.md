@@ -555,10 +555,20 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   only <period>**; narrowing the report is explicit, so exploring the chart never
   changes the range. The chart draws one bar per day up to 32 days, per week up to
   32 weeks, and per month beyond. A token-type bar and legend show the same range.
-- Overview cards show recorded messages, tool results, errors, average tokens per
-  usage record and cache hit rate. Ranked model, provider and tool lists use the
-  same period. Unknown model/provider labels stay unknown rather than being
-  guessed from the session's current model.
+- Overview cards show recorded messages, tool results, errors, error rate,
+  average tokens and average recorded cost per usage record, and cache hit rate.
+  Ranked model, provider and tool lists use the same period, and a model or
+  provider names its share of the range's recorded cost. A further list names the
+  days whose messages failed most often. Unknown model/provider labels stay
+  unknown rather than being guessed from the session's current model.
+- A range of at least 60 days also draws a daily calendar: one cell per day of
+  the last 52 weeks, shaded by that day's tokens, with the same hover detail and
+  day selection as the bars. Days outside the range stay empty rather than being
+  drawn as zero. It is a pointer affordance, marked decorative for assistive
+  technology; the bars and the date fields keep every one of its actions
+  reachable by keyboard.
+- The page hands out what it shows: **Daily CSV** downloads the ranged daily
+  counters and **Sessions CSV** the ranged session rows, titles included.
 - A plain-text search narrows sessions by title, identifier or recorded model and
   updates all displayed summaries and charts. A ranked model or provider also
   applies that search, so a ranking is a way into its sessions. Sessions sort by

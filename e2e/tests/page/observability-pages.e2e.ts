@@ -111,6 +111,11 @@ test("Usage shows total tokens, PI cost estimate and sessions, the chart's input
   await expect(screen.getByText("1 tool recorded", { exact: true })).toBeVisible();
   await expect(screen.getByText("18.6%", { exact: true })).toBeVisible();
   await expect(screen.getByText("2 / 5", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Error rate", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Avg cost / record", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Days with errors", { exact: true })).toBeVisible();
+  await expect(screen.getByRole("button", "Daily CSV")).toBeVisible();
+  await expect(screen.getByRole("button", "Sessions CSV")).toBeVisible();
   await expect(screen.getByText(/^hui-e2e\/fixture/u)).toBeVisible();
   await expect(screen.getByText("88 tokens", { exact: true }).first()).toBeVisible();
   await expect(screen.getByText("Totals are partial. 1 histories unavailable; 0 records without valid dates were excluded.", { exact: true })).toBeVisible();
