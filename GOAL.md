@@ -209,6 +209,7 @@ gateway's strip-only TypeScript loader (`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`), wh
 | URL | https://github.com/DaniFdz/hui/pull/408 |
 | Checks | `npm test` — 33 baseline failures, 0 new · `npm run typecheck` — pass · `npm run build` — pass · `npm run test:package` — not run (no packaging change) · `npm run e2e` — not run (no browser surface changed) |
 | Screenshots | Not applicable: no browser surface changed. Stated in the PR body. |
+| CI | all required checks pass on the PR HEAD: Analyze, CodeQL, catalogue, lockfile, package, plan, test, web (1/4–4/4); nix, package (release) and publish are skipped by the workflow for a non-release PR |
 | Proof gaps | §7 |
 | Merged | No — the owner reviews and merges |
 
