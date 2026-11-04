@@ -11,6 +11,8 @@
   "files": [
     "bin/hui.mjs",
     "build/",
+    "cli/completion-install.mjs",
+    "cli/completions/",
     "dist/",
     "THIRD_PARTY_NOTICES.md",
     "desktop/*.cjs",
@@ -35,7 +37,7 @@
     "e2e:package": "node e2e/package-browser.mjs",
     "eval:jira-draft": "node evals/jira-draft/run.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.server.json",
-    "postinstall": "node desktop/install.mjs --postinstall"
+    "postinstall": "node desktop/install.mjs --postinstall && node cli/completion-install.mjs"
   },
   "dependencies": {
     "@awesome.me/webawesome": "3.14.0",

@@ -188,6 +188,50 @@ the managed gateway and the current app: `hui update` reinstalls an app left on
 an older version, and a window that was already open needs quitting and
 reopening. Quitting HUI clears its notifications from Notification Center.
 
+## Shell completion
+
+`hui` completes its commands, its subcommands and its flags in bash and zsh.
+Tab on a flag it validates, such as `--shape`, `--thinking` or `--color`, also
+lists the values that flag takes; flags taking a path, such as `--from` and
+`--out`, keep the shell's own file names.
+
+Each Tab asks the CLI itself for the words it accepts (`hui __complete <words…>`),
+so completion never goes stale: a command added by an update is completable at
+once, and an old release does not advertise one it lacks.
+
+A global npm install writes the programs into the prefix it installed into, and
+the Nix package does the same for its own store path:
+
+```
+<prefix>/share/bash-completion/completions/hui
+<prefix>/share/zsh/site-functions/_hui
+```
+
+bash-completion loads its directory on demand, so bash needs nothing else.
+zsh finds the file through `fpath`; when the prefix is not already in `fpath`
+(for example `~/.local`), put the directory there in `~/.zshrc` before
+`compinit`:
+
+```sh
+fpath=("$HOME/.local/share/zsh/site-functions" $fpath)
+```
+
+An installation that had no writable prefix, or a shell you configure yourself,
+can take the program directly instead. In bash it is one line in `~/.bashrc`; in
+zsh the line goes **after** `compinit`, because `compinit` resets earlier
+registrations:
+
+```sh
+eval "$(hui completion bash)"   # ~/.bashrc
+
+# ~/.zshrc
+autoload -Uz compinit && compinit
+eval "$(hui completion zsh)"
+```
+
+`hui completion bash` and `hui completion zsh` print the program, and
+`HUI_SKIP_COMPLETIONS=1` keeps the npm postinstall from writing them.
+
 ## Remote access through a reverse proxy
 
 [Security and data](../README.md#security-and-data) covers binding the gateway

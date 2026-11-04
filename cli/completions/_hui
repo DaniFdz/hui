@@ -1,0 +1,14 @@
+#compdef hui
+# hui's zsh completion: it asks the CLI for the words it accepts, so a new command needs no change here. The
+# installed package leaves it in share/zsh/site-functions/_hui, which compinit finds when that directory is in
+# fpath; otherwise add `eval "$(hui completion zsh)"` to ~/.zshrc after compinit.
+_hui() {
+  local output
+  local -a matches
+  output=$(command hui __complete "${(@)words[2,CURRENT]}" 2>/dev/null) || return 1
+  [[ -n $output ]] || return 1
+  matches=(${(f)output})
+  compadd -Q -- "${matches[@]}"
+}
+# compinit runs this file as _hui when fpath holds it, and sourcing it registers the same function instead.
+if [[ ${funcstack[1]} == _hui ]]; then _hui "$@"; else compdef _hui hui; fi

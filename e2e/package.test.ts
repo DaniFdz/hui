@@ -65,7 +65,7 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   for (const path of ["desktop/main.cjs", "desktop/launch.mjs", "desktop/install.mjs", "desktop/icon.mjs", "desktop/policy.cjs"]) {
     assert(packed.files.some((file: { path: string }) => file.path === path), `Desktop package contains ${path}`);
   }
-  for (const path of ["LICENSE", "README.md", "THIRD_PARTY_NOTICES.md", "build/package-lock.json"]) {
+  for (const path of ["LICENSE", "README.md", "THIRD_PARTY_NOTICES.md", "build/package-lock.json", "cli/completions/hui.bash", "cli/completions/_hui", "cli/completion-install.mjs"]) {
     assert(packed.files.some((file: { path: string }) => file.path === path), `Package contains ${path}`);
   }
   for (const path of ["SKILL.md", "references/LICENSE", "references/UPSTREAM.md", "references/agent-compatibility.md", "references/evidence-delivery.md", "references/feature-map-example/README.md", "references/feature-map-example/search.md", "references/feature-map-example/create-note.md"]) {
@@ -85,6 +85,17 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   assert.equal(await command("--version"), baseline);
   assert.match(await command("--help"), /gateway start/u);
   assert.match(await command("--help"), /hui desktop/u);
+  assert.match(await command("--help"), /hui completion <bash\|zsh>/u);
+  // Shell completion ships in the archive and asks the installed CLI, so a Tab
+  // offers the package's own words instead of a list frozen at build time.
+  const bashProgram = await command("completion", "bash");
+  assert.match(bashProgram, /complete -o default -F _hui_completions hui/u);
+  assert.match(await command("completion", "zsh"), /^#compdef hui$/mu);
+  // The shell finds `hui` through PATH, and this host's bash sources the system profile before -c runs, so the
+  // probe names the installed prefix itself instead of trusting the environment it inherits.
+  const completed = await exec("bash", ["-c", `PATH=${JSON.stringify(join(prefix, "bin"))}:"$PATH"\n${bashProgram}\nCOMP_WORDS=(hui gateway '')\nCOMP_CWORD=2\n_hui_completions\nprintf '%s\\n' "\${COMPREPLY[@]}"`],
+    { cwd: temporary, env, timeout: 30_000 });
+  for (const word of ["start", "status", "stop"]) assert.match(completed.stdout, new RegExp(`^${word}$`, "mu"), `completes ${word}`);
   // Exercise the installed CLI's Electron dispatch without claiming a native
   // window on headless/NixOS CI. The executable fixture records its handoff.
   const desktopRuntime = join(temporary, "desktop-runtime");

@@ -262,3 +262,12 @@ test("--allow-host is repeatable, validated and remembered with the binding", ()
   }
   for (const command of ["stop", "status", "logs"]) assert.throws(() => parseCli(["gateway", command, "--allow-host", "laptop"], {}));
 });
+
+test("CLI parses the shell completion program it prints, and nothing else for it", () => {
+  const parsed = parseCli(["completion", "zsh"]);
+  assert.equal(parsed.command, "completion");
+  assert.ok("shell" in parsed && parsed.shell === "zsh");
+  for (const args of [["completion"], ["completion", "fish"], ["completion", "bash", "--json"], ["completion", "bash", "extra"]]) {
+    assert.throws(() => parseCli(args), Error, args.join(" "));
+  }
+});

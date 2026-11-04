@@ -618,6 +618,17 @@ prints the existing gateway URL without starting another process. The default
 binding is `127.0.0.1:4173`. `HUI_GATEWAY_HOST` and `HUI_GATEWAY_PORT` configure
 startup/restart defaults (also inherited by the desktop shell); explicit CLI flags
 win. Invalid environment defaults are rejected before stopping a gateway.
+
+`hui completion <bash|zsh>` prints a completion program that asks the installed
+CLI for candidates (`hui __complete <words…>`), so the words offered are the
+words `parseCli` accepts and never a list a release could leave behind. The
+command and flag table is one module both read, so a new command is valid,
+validated and completable in one edit; a flag the CLI validates also offers its
+values. Both programs are installed into a writable installation prefix
+(`share/bash-completion/completions/hui`, `share/zsh/site-functions/_hui`) by the
+npm postinstall and the Nix package, and an operator can source them instead.
+They only print candidates: completion never writes state, starts a gateway or
+calls a model.
 `--allow-host <name>`, repeatable, and `HUI_GATEWAY_ALLOWED_HOSTS` list the extra
 host names accepted in the `Host` header, which is what a reverse proxy fronting
 the loopback gateway needs. Both are persisted with the binding while a gateway

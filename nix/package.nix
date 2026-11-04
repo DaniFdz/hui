@@ -99,6 +99,9 @@ buildNpmPackage {
           -exec rm -rf {} +
       fi
     done
+    # bash-completion and compinit find these in the profile's share directories, so a Nix install completes `hui`
+    # without an rc line.
+    "${nodejs_24}/bin/node" "$out/lib/node_modules/hui/cli/completion-install.mjs" "$out"
     wrapProgram "$out/bin/hui" \
       ${lib.optionalString (!withDesktop) "--run "}${
         lib.optionalString (!withDesktop) (
