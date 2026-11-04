@@ -2,7 +2,8 @@
  * Samples the gateway host's CPU, memory, disk, network and GPU use and the gateway process's own share. Rates and
  * percentages are deltas against the previous sample this module keeps; one sample serves every caller for
  * `MIN_INTERVAL_MS`, and concurrent callers share the read in flight, so open tabs don't multiply the cost. Child
- * processes run asynchronously with a timeout, and a metric the host can't report is `null`.
+ * processes run asynchronously with a timeout, and a metric the host can't report is `null`. The GPU gauge is read
+ * on its own slower cadence, since one `ioreg` run there costs more than every other read together.
  */
 import { execFile } from "node:child_process";
 import { readFile, statfs } from "node:fs/promises";
@@ -18,6 +19,7 @@ const MIN_INTERVAL_MS = 2_000;
 const STALE_BASELINE_MS = 30_000;
 const FIRST_GAP_MS = 250;
 const COMMAND_TIMEOUT_MS = 2_000;
+const GPU_INTERVAL_MS = 20_000;
 const VIRTUAL_DARWIN = /^(lo|utun|bridge|awdl|llw)/u;
 const VIRTUAL_LINUX = /^(lo|veth|docker|br-|virbr)/u;
 
@@ -112,6 +114,31 @@ async function readText(path: string): Promise<string | undefined> {
 const parsed = <T>(text: string | undefined, parse: (text: string) => T | null): T | null =>
   text === undefined ? null : parse(text);
 
+/** A reading taken on its own cadence: one that is fresh answers at once, one that expired answers at once too while
+ * the next read runs, and only a reading never taken waits for one. */
+export function createGauge<T>(read: () => Promise<T>, intervalMs: number): () => Promise<T | null> {
+  let known: { value: T; at: number } | undefined;
+  let pending: Promise<void> | undefined;
+  return () => {
+    if (known && Date.now() - known.at < intervalMs) return Promise.resolve(known.value);
+    pending ??= read().then((value) => { known = { value, at: Date.now() }; }, () => undefined).finally(() => { pending = undefined; });
+    return known ? Promise.resolve(known.value) : pending.then(() => known?.value ?? null);
+  };
+}
+
+let gpu: { platform: NodeJS.Platform; read: () => Promise<number | null> } | undefined;
+
+function gpuReader(platform: NodeJS.Platform): () => Promise<number | null> {
+  if (gpu?.platform !== platform) {
+    const darwin = platform === "darwin";
+    gpu = { platform, read: createGauge(async () => parsed(await (darwin
+      ? run("/usr/sbin/ioreg", ["-r", "-d", "1", "-c", "IOAccelerator"])
+      : platform === "linux" ? run("nvidia-smi", ["--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"]) : undefined),
+    darwin ? parseIoregGpu : parseNvidiaSmi), GPU_INTERVAL_MS) };
+  }
+  return gpu.read;
+}
+
 async function disk(path: string): Promise<HostMetrics["disk"]> {
   try {
     const stats = await statfs(path);
@@ -124,24 +151,26 @@ async function disk(path: string): Promise<HostMetrics["disk"]> {
 
 export async function collect(platform: NodeJS.Platform = process.platform): Promise<RawSample> {
   const darwin = platform === "darwin", linux = platform === "linux";
+  // Every counter and the stamp that dates it are taken together, before the
+  // child processes answer, so all three deltas cover the same window.
+  const at = Date.now();
+  const cores = cpus();
+  const usage = process.cpuUsage();
   const [vmStat, swap, network, gpu, diskUsage] = await Promise.all([
     darwin ? run("/usr/bin/vm_stat", []) : undefined,
     darwin ? run("/usr/sbin/sysctl", ["vm.swapusage"]) : linux ? readText("/proc/meminfo") : undefined,
     darwin ? run("/usr/sbin/netstat", ["-ib"]) : linux ? readText("/proc/net/dev") : undefined,
-    darwin ? run("/usr/sbin/ioreg", ["-r", "-d", "1", "-c", "IOAccelerator"])
-      : linux ? run("nvidia-smi", ["--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"]) : undefined,
+    gpuReader(platform)(),
     disk(CONFIG_DIR),
   ]);
-  const cores = cpus();
   const cpu = cores.reduce((sum, core) => {
     const { idle, user, nice, sys, irq } = core.times;
     return { idle: sum.idle + idle, total: sum.total + idle + user + nice + sys + irq };
   }, { idle: 0, total: 0 });
   const totalBytes = totalmem();
   const swapUsedBytes = parsed(swap, darwin ? parseSwapUsage : parseMeminfoSwap);
-  const usage = process.cpuUsage();
   return {
-    at: Date.now(),
+    at,
     cpu,
     load: loadavg(),
     cores: cores.length,
@@ -152,7 +181,7 @@ export async function collect(platform: NodeJS.Platform = process.platform): Pro
     },
     disk: diskUsage,
     network: parsed(network, darwin ? parseNetstat : parseProcNetDev),
-    gpuPercent: parsed(gpu, darwin ? parseIoregGpu : parseNvidiaSmi),
+    gpuPercent: gpu,
     process: { cpuMicros: usage.user + usage.system, rssBytes: process.memoryUsage.rss() },
   };
 }
@@ -190,7 +219,9 @@ export function createHostMetrics(read: () => Promise<RawSample> = collect, plat
   async function sample(): Promise<HostMetrics> {
     if (!previous || Date.now() - previous.at > STALE_BASELINE_MS) {
       previous = await read();
-      await delay(FIRST_GAP_MS);
+      // A slow read (macOS commands take a while) already spans the gap the rates need.
+      const waited = Date.now() - previous.at;
+      if (waited < FIRST_GAP_MS) await delay(FIRST_GAP_MS - waited);
     }
     const current = await read();
     const metrics = metricsBetween(previous, current, platform);

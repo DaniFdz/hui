@@ -853,8 +853,9 @@ nothing private and starts nothing until it is asked.
 
 - `cpu.percent`, the network rates and `gateway.cpuPercent` are deltas against
   the previous sample the gateway keeps. The first read, and a read more than
-  30 seconds after the last, takes a baseline 250 ms earlier, so every answer
-  holds a rate. `gateway.cpuPercent` is the gateway process's CPU time as a share
+  30 seconds after the last, takes a baseline at least 250 ms earlier (longer
+  when the baseline read itself took that long), so every answer holds a rate.
+  `gateway.cpuPercent` is the gateway process's CPU time as a share
   of one core (above 100 when it uses more than one).
 - One sample serves every caller for two seconds, and concurrent reads share the
   one in flight, so many open tabs cost one sample. Child processes run
@@ -874,7 +875,11 @@ nothing private and starts nothing until it is asked.
   also crosses a physical interface.
 - GPU is the busiest accelerator: `ioreg -r -d 1 -c IOAccelerator`'s
   "Device Utilization %" on macOS (no administrator rights needed on Apple
-  Silicon), `nvidia-smi` on Linux when it is installed, `null` otherwise.
+  Silicon), `nvidia-smi` on Linux when it is installed, `null` otherwise. It is
+  a gauge read on its own slower cadence (20 seconds), because one `ioreg` run
+  costs more than every other read together: a fresh reading answers at once, an
+  expired one answers at once with the last value while the next read runs, and
+  only the first reading of a gateway process waits for one.
 - Any method other than `GET` is 405.
 
 ### `GET /__hui/workspaces`
