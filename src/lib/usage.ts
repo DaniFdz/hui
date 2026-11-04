@@ -93,3 +93,17 @@ export function usageChartDays(days: readonly UsageDay[], from: string, to: stri
 export function usageCost(value: Pick<UsageMetrics, "costUsd" | "unpricedCalls">): string {
   return value.costUsd === null ? "Unpriced" : `${value.unpricedCalls ? "≥ " : ""}${usd.format(value.costUsd)}`;
 }
+
+const exact = new Intl.NumberFormat().format;
+const TYPE_PARTS = [["inputTokens", "Input"], ["outputTokens", "Output"], ["cacheWriteTokens", "Cache write"], ["cacheReadTokens", "Cache read"]] as const;
+
+/** What one chart bucket recorded, as the lines a bar's hover and selection show. */
+export function usageDetail(value: UsageMetrics): string[] {
+  const types = TYPE_PARTS.filter(([key]) => value[key] > 0).map(([key, label]) => `${label} ${exact(value[key])}`);
+  const records = `${exact(value.calls)} usage ${value.calls === 1 ? "record" : "records"}`;
+  return [
+    `${exact(value.totalTokens)} tokens · ${value.calls ? usageCost(value) : "No recorded usage"}`,
+    ...(types.length ? [types.join(" · ")] : []),
+    [records, ...(value.unpricedCalls ? [`${exact(value.unpricedCalls)} unpriced`] : []), ...(value.errors ? [`${exact(value.errors)} ${value.errors === 1 ? "error" : "errors"}`] : [])].join(" · "),
+  ];
+}

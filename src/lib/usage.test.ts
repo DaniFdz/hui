@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { UsageMetrics, UsageReport, UsageSession } from "../api/schema/diagnostics.ts";
-import { sumUsage, usageChartDays, usageCost, usageOverview } from "./usage.ts";
+import { sumUsage, usageChartDays, usageCost, usageDetail, usageOverview } from "./usage.ts";
 
 const metrics = (tokens: number, costUsd: number | null): UsageMetrics => ({ inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: tokens, costUsd, calls: 1, unpricedCalls: costUsd === null ? 1 : 0, userMessages: 1, assistantMessages: 1, toolResults: 1, errors: 0 });
 const session = (id: string, model: string, usage: UsageMetrics): UsageSession => ({ id, title: id, lastActivityAt: 1, metrics: usage, models: [{ provider: "fixture", model, metrics: usage }], days: [{ date: "2026-10-01", metrics: usage }], tools: [{ name: "read", calls: 1, errors: 0 }] });
@@ -65,4 +65,11 @@ test("the chart keeps empty days and leap days, groups wide ranges by week and l
   assert.equal(usageChartDays([], "2024-01-01", "2024-08-11").bucket, "week", "32 weeks stay weekly");
   assert.equal(usageChartDays([], "2024-01-01", "2024-08-12").bucket, "month", "33 weeks group by month");
   assert.equal(usageChartDays([], "2024-01-01", "2024-12-31").bucket, "month", "366 days group by month");
+});
+
+test("a bar's detail names its tokens, price, type split and records", () => {
+  const mixed = { ...metrics(2048, 0.5), inputTokens: 1000, outputTokens: 400, cacheReadTokens: 648, cacheWriteTokens: 0, calls: 3, unpricedCalls: 1, errors: 1 };
+  assert.deepEqual(usageDetail(mixed), ["2,048 tokens · ≥ $0.50", "Input 1,000 · Output 400 · Cache read 648", "3 usage records · 1 unpriced · 1 error"]);
+  assert.deepEqual(usageDetail({ ...metrics(0, null), calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, unpricedCalls: 0 }), ["0 tokens · No recorded usage", "0 usage records"]);
+  assert.deepEqual(usageDetail({ ...metrics(7, 0), calls: 1, inputTokens: 7, outputTokens: 0, errors: 2 }), ["7 tokens · $0.00", "Input 7", "1 usage record · 2 errors"]);
 });

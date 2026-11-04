@@ -11,16 +11,38 @@
 .usage-report .daily-chart-bars { padding-inline: var(--space-4); }
 .usage-report .daily-bar-wrapper:first-child .daily-bar-label { justify-self: start; }
 .usage-report .daily-bar-wrapper:last-child .daily-bar-label { justify-self: end; }
-.usage-report__day { border: 0; background: transparent; padding: 0; font: inherit; cursor: var(--cursor-action); color: inherit; }
+.usage-report__day { border: 0; border-radius: var(--radius-sm); background: transparent; padding: 0; font: inherit; cursor: var(--cursor-action); color: inherit; }
 .usage-report .daily-bar-wrapper { grid-template-columns: minmax(0, 1fr); }
+.usage-report__day:hover, .usage-report__day:focus-visible { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.usage-report__day.selected { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.usage-report__day--empty .daily-bar { min-height: 2px; border: 0; background: var(--border); }
 .usage-report__unpriced { border: 2px dashed var(--warn); background: var(--warn-subtle); }
 .usage-report__rank-name { min-width: 0; overflow-wrap: anywhere; }
 .usage-report__session-values { display: grid; gap: var(--space-1); text-align: right; flex-shrink: 0; }
 .usage-report .session-bar-meta { white-space: normal; overflow-wrap: anywhere; }
 .usage-report .session-bar-title { white-space: normal; }
 .usage-report .callout .btn { margin-inline-start: var(--space-3); }
+
+/* A bar's details follow the pointer; the native title is too slow to read at a glance. */
+.usage-tip { position: fixed; z-index: var(--z-toast); display: none; max-width: min(320px, calc(100vw - 16px)); padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-elevated); color: var(--text); font-size: 12px; line-height: 1.45; white-space: pre-line; box-shadow: var(--shadow-md); pointer-events: none; }
+.usage-tip[data-open="true"] { display: block; }
+
+/* A selected bar offers narrowing the report instead of applying it on click. */
+.usage-selection { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); padding: var(--space-2) var(--space-3); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: var(--radius-md); background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
+.usage-selection__text { display: grid; gap: 1px; min-width: 0; color: var(--muted); font-size: var(--control-ui-text-xs); font-variant-numeric: tabular-nums; }
+.usage-selection__text strong { color: var(--text-strong); font-size: var(--control-ui-text-sm); }
+.usage-selection__actions { display: flex; gap: var(--space-2); }
+
+.usage-loading-note { margin: 0; color: var(--muted); font-size: var(--control-ui-text-xs); }
+.usage-loading-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+
+.usage-rank { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; padding: var(--space-2); margin-inline: calc(var(--space-2) * -1); border: 0; border-radius: var(--radius-sm); background: transparent; color: inherit; font: inherit; text-align: left; cursor: var(--cursor-action); }
+.usage-rank:hover, .usage-rank:focus-visible { background: var(--bg-hover); }
+
 @container (max-width: 600px) {
   .usage-report__totals { flex-direction: column; gap: var(--space-2); }
   .usage-query-bar { grid-template-columns: minmax(0, 1fr); }
   .usage-report .daily-chart-bars { grid-auto-columns: minmax(14px, 1fr); gap: 2px; }
+  .usage-selection { flex-direction: column; align-items: stretch; }
+  .usage-selection__actions { justify-content: flex-end; }
 }

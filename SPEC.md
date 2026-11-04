@@ -548,21 +548,28 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   of priced and unpriced calls labels cost as partial. HUI never adds external
   session cost reports to PI estimates or presents either as a provider bill.
 - Usage switches between tokens and recorded cost. Token bars can show the
-  input, output, cache-read and cache-write shares. Empty days remain visible; a
-  period with usage but no price is unpriced rather than free. Selecting a bar
-  narrows the report to its period, drawn as one bar per day up to 32 days, per
-  week up to 32 weeks, and per month beyond. A token-type bar and legend show the
-  same range.
+  input, output, cache-read and cache-write shares. Empty days remain visible as a
+  quiet baseline; a period with usage but no price is unpriced rather than free.
+  Pointing at or focusing a bar names its period, tokens, recorded price, type
+  split and record count. Selecting a bar selects its period and offers **Show
+  only <period>**; narrowing the report is explicit, so exploring the chart never
+  changes the range. The chart draws one bar per day up to 32 days, per week up to
+  32 weeks, and per month beyond. A token-type bar and legend show the same range.
 - Overview cards show recorded messages, tool results, errors, average tokens per
   usage record and cache hit rate. Ranked model, provider and tool lists use the
   same period. Unknown model/provider labels stay unknown rather than being
   guessed from the session's current model.
 - A plain-text search narrows sessions by title, identifier or recorded model and
-  updates all displayed summaries and charts. Sessions sort by recent activity,
-  tokens or cost, with unknown prices last. At most 50 rows draw initially;
-  Show more reveals the next page. Each row can open its conversation.
-- Loading, no matching data, partial data and read failures are explicit. Controls
-  work with the keyboard and fit phone widths. No provider credentials, prompts,
+  updates all displayed summaries and charts. A ranked model or provider also
+  applies that search, so a ranking is a way into its sessions. Sessions sort by
+  recent activity, tokens or cost, with unknown prices last. At most 50 rows draw
+  initially; Show more reveals the next page. Each row states when it was last
+  active and can open its conversation.
+- A first read shows a skeleton, and a read that has not answered after six
+  seconds says so and offers **Cancel**; cancelling keeps the last report and
+  leaves a stopped first read distinct from an unavailable one. No matching data,
+  partial data and read failures are explicit and carry an action. Controls work
+  with the keyboard and fit phone widths. No provider credentials, prompts,
   message bodies, tool arguments or tool output enter the usage response.
 - The gateway keeps one range-independent scan per time zone and answers range,
   zone and filter changes from it, so those interactions stay responsive on a
