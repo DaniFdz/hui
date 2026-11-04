@@ -53,6 +53,7 @@ import {
   datadogRoutes,
   diagnosticsRoutes,
   diffRoutes,
+  extensionRoutes,
   fileRoutes,
   githubRoutes,
   hostMetricsRoutes,
@@ -368,6 +369,9 @@ async function handleRequest(
   if (answered(response, path, await settingsRoutes.handle(routed))) return;
 
   if (answered(response, path, await piRoutes.handle(routed))) return;
+
+  // Gateway extensions (`routes/extensions.ts`): a path-confined namespace, so it cannot shadow any HUI route above.
+  if (answered(response, path, await extensionRoutes.handle(routed))) return;
 
   if (path === WORKERS_ROUTE || path.startsWith(`${WORKERS_ROUTE}/`)) {
     const result = await workerRoutes.handle(routed);

@@ -26,6 +26,7 @@ import {
   triggers,
   vscode,
   watchers,
+  extensions,
 } from "./services.ts";
 
 durableHost().storeFailed = async () => reattachAfterStoreFailure(await readRegistry());
@@ -62,6 +63,8 @@ export async function startBackend(): Promise<void> {
   // gateway appends it to gateway.log and a development server prints it.
   mirrorDiagnosticLogs((line) => process.stderr.write(line));
   await ensureConfigDir();
+  // Gateway extensions (docs/api.md, "Extension routes"): the enabled ones import once, before any browser asks.
+  await extensions.reconcile();
   void macPower?.start((await readHuiSettings()).power.keepAwake);
   await automation.start();
   // Session views name bots' chats from this list; a broken bots.json is reported by the bot routes.
