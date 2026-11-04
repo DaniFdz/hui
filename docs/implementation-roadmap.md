@@ -1344,3 +1344,15 @@ Verified desktop/mobile behavior and checks are recorded in
   multi-account quota rotation and usage totals. A session there browses in the
   worker's own managed browser (`server/browser/`, a profile under its data
   directory, no live view here), found with the same executable detection.
+
+## Gateway extensions
+
+The first extendability seam beside PI's own packages and skills: a trusted local
+module under `HUI_CONFIG_DIR/extensions/<id>/` answers JSON routes below
+`/__hui/ext/<id>/`, enabled over `PUT /__hui/ext/:id` and listed by
+`GET /__hui/ext`. The namespace is path-confined, so an extension cannot shadow a
+HUI route; payloads stay generic (`PluginPayload`) because only the two fixed
+routes can join the build-time generated browser types. Shipped without a Settings
+page: the HTTP surface and `extensions.json` are the operator interface
+(`docs/guide.md`). Follow-ups: a Settings page and its use case, per-extension
+generated payload types, SSE routes, and an out-of-process host.

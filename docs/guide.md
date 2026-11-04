@@ -1174,6 +1174,68 @@ Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`):
 
 Icon files go in `HUI_CONFIG_DIR/tool-icons/` and are served read-only at `/__hui/tool-icons/<file>`; the browser only ever draws them in an `<img>`, so an SVG cannot run script. Names are flat file names — no paths — with an `.svg`, `.png`, `.webp`, `.jpg` or `.jpeg` extension, at most 256 KB. Keys are a CLI binary or a tool name, lowercased. Restart the gateway after adding files or editing the maps.
 
+## Gateway extensions
+
+A gateway extension is a small local module that answers JSON routes under
+`/__hui/ext/`. HUI ships none and enables none: you install one by putting it in
+`HUI_CONFIG_DIR/extensions/<id>/` and turn it on over HTTP. The extension runs
+**inside the gateway process** with the gateway's full access to your machine,
+credentials and data — the same trust as a PI extension and no sandbox. Only add
+code you would run yourself.
+
+An extension directory holds a manifest and its entry module:
+
+```
+HUI_CONFIG_DIR/extensions/hello/
+  extension.json
+  index.mjs
+```
+
+```json
+{ "apiVersion": 1, "name": "Hello", "description": "Greets people.", "main": "index.mjs" }
+```
+
+```js
+// index.mjs: one route per method and path below /__hui/ext/hello/
+export const routes = [
+  {
+    method: "GET",
+    path: "hello",
+    description: "Greets a name from the query.",
+    handle: async ({ query }) => ({ body: { greeting: `hello, ${query.get("name") ?? "world"}` } }),
+  },
+];
+```
+
+An id is a lowercase directory name (letters, digits and `-`, at most 32
+characters), `apiVersion` must be `1`, and `main` must stay inside the extension's
+directory. A route path is one to four clean segments. A handler gets
+`{ method, path, query, body, signal, extension }` and returns
+`{ status?, body }` where `body` is a JSON object (at most 256 KiB); there are no
+response headers, files, redirects or streams, and a request body follows the
+ordinary 64 KiB JSON limit. The same `x-hui` gate as every other route applies.
+
+Installed extensions start out off. List them and turn one on (the gateway must
+be running; replace the port with your own):
+
+```sh
+curl -sS http://127.0.0.1:5173/__hui/ext -H 'x-hui: 1'
+curl -sS -X PUT http://127.0.0.1:5173/__hui/ext/hello \
+  -H 'x-hui: 1' -H 'content-type: application/json' -d '{"enabled":true}'
+curl -sS 'http://127.0.0.1:5173/__hui/ext/hello/hello?name=Ada' -H 'x-hui: 1'
+```
+
+The choice is saved in `HUI_CONFIG_DIR/extensions.json` (`{ "version": 1,
+"enabled": ["hello"] }`) and applies immediately: enabling imports the module,
+disabling withdraws its routes at once (Node keeps the module cached). The same
+call with `"enabled":false` turns it off. A manifest or import failure answers
+200 with `state: "failed"` and an `error`, is listed by the first route above and
+is reported once as a gateway diagnostic; other extensions and the rest of HUI keep
+working. A changed manifest is read again when the extension is toggled off and
+on; changing a module's code takes effect when the gateway restarts. HUI 0.1.5 has
+no Settings page for extensions yet; the HTTP surface in the [API contract](api.md)
+is the operator interface.
+
 ## Codemode: one script, many tool calls
 
 Sessions can use PI's **codemode** tool: instead of calling tools one at a time,

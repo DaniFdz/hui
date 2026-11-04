@@ -1,0 +1,6 @@
+{
+  "apiVersion": 1,
+  "name": "Hello",
+  "description": "Documentation fixture: greets a name, echoes a body and fails on purpose.",
+  "main": "index.mjs"
+}
