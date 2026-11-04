@@ -91,7 +91,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#usage-reporting", "docs/api.md#get-__huiusage"],
     surfaces: ["page:usage", "route:GET /__hui/usage"],
     web: "required",
-    ios: "backlog",
+    ios: { excluded: "The Usage page is the gateway's web page; no iOS screen renders it. The app's own Usage screen proves its use case there when it exists.", decision: "SPEC.md#usage-is-proven-in-the-browser-2026-11-04" },
   },
   {
     id: "PAGE-022",

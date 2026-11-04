@@ -62,7 +62,7 @@ with no matching sessions.
    and apply them. **Refresh** must keep successful data on screen while reading
    again.
 7. Hold the first report back with a delayed or blocked request. Confirm the
-   skeleton, the **Reading local histories…** status and, after six seconds, the
+   skeleton, the **Reading HUI diagnostics…** status and, after six seconds, the
    slow-read note with **Cancel**. Cancel must leave either the last report or
    **Reading stopped.** with **Read histories again**, never a timeout error or an
    unavailable report. A blocked read must fail on the page's own cancel, not

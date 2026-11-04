@@ -2526,6 +2526,15 @@ layout HUI shows from 1100px, such as collapsing the sidebar. The iPhone app
 ships its code, uses the system clipboard, has no tabs, has no older version and
 is always narrow, so these are web-only use cases.
 
+### Usage is proven in the browser (2026-11-04)
+
+`/usage` is a page of the gateway's web UI: it reads the gateway's own recorded
+local histories and draws its chart against the browser's calendar and time
+zone. The catalogue records that page's outcomes as web use cases, and none of
+them is proven on iOS. When the iPhone app gets its own Usage screen, that
+screen is its own use case with its own shared test; until then PAGE-021 is
+excluded on iOS rather than left on its backlog.
+
 ### The iPhone app follows the phone's text size (2026-10-26)
 
 The web's Appearance page offers five Text size stops that scale every text size
