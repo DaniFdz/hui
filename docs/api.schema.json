@@ -5171,6 +5171,107 @@
         }
       }
     },
+    "ExtensionRouteInfo": {
+      "type": "object",
+      "required": [
+        "method",
+        "path",
+        "description"
+      ],
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "ExtensionsResponse": {
+      "type": "object",
+      "required": [
+        "extensions"
+      ],
+      "properties": {
+        "extensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionStatus"
+          }
+        },
+        "storeError": {
+          "type": "string"
+        }
+      }
+    },
+    "ExtensionStatus": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "description",
+        "enabled",
+        "state",
+        "routes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "loaded"
+            },
+            {
+              "type": "string",
+              "const": "disabled"
+            },
+            {
+              "type": "string",
+              "const": "failed"
+            },
+            {
+              "type": "string",
+              "const": "missing"
+            }
+          ]
+        },
+        "error": {
+          "type": "string"
+        },
+        "routes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionRouteInfo"
+          }
+        }
+      }
+    },
+    "ExtensionToggleRequest": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
     "FileCreateRequest": {
       "type": "object",
       "required": [
@@ -7217,6 +7318,22 @@
           "type": "string"
         }
       }
+    },
+    "PluginError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "PluginPayload": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
     },
     "PowerError": {
       "type": "object",
@@ -14193,6 +14310,14 @@
       "ThemeImportResponse",
       "ThemeRef",
       "ThemesResponse"
+    ],
+    "extensions": [
+      "ExtensionRouteInfo",
+      "ExtensionStatus",
+      "ExtensionToggleRequest",
+      "ExtensionsResponse",
+      "PluginError",
+      "PluginPayload"
     ]
   },
   "x-hui-routes": [
@@ -14746,6 +14871,23 @@
       "path": "/__hui/directories",
       "response": {
         "$ref": "#/$defs/DirectoriesResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/ext",
+      "response": {
+        "$ref": "#/$defs/ExtensionsResponse"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/ext/:id",
+      "request": {
+        "$ref": "#/$defs/ExtensionToggleRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/ExtensionStatus"
       }
     },
     {

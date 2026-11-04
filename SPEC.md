@@ -2381,7 +2381,66 @@ everything the Bots tab can, through the same routes.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
+## Gateway extensions
+
+HUI's first extendability seam beside PI's own packages, extensions and skills: a
+trusted local module can answer JSON routes on the gateway.
+
+- **Installed, not built in.** An extension is a directory
+  `$XDG_CONFIG_HOME/hui/extensions/<id>/` holding `extension.json`
+  (`apiVersion: 1`, `name`, `description`, relative `main`) and an ESM entry
+  module exporting `routes`. HUI ships none and enables none.
+- **Path-confined namespace.** The status route is `GET /__hui/ext`; the enable
+  switch is `PUT /__hui/ext/:id` with `{ "enabled": boolean }`; an extension's own
+  routes live below `/__hui/ext/<id>/` and can never shadow a HUI route. A route
+  path is one to four clean segments; a handler receives
+  `{ method, path, query, body, signal, extension }` and answers
+  `{ status?, body }`.
+- **Generic payloads on purpose.** An extension route answers `PluginPayload` (a
+  JSON object HUI does not type) or `PluginError`; only the two fixed routes join
+  the build-time generated browser types. Extension payloads never enter
+  `docs/api.schema.json`. No headers, files, redirects, SSE or WebSocket; request
+  bodies keep the ordinary 64 KiB JSON limit and an answer is at most 256 KiB.
+- **The ordinary gate and diagnostics.** Every extension route sits behind the
+  `x-hui` header and the diagnostics hook. A handler that throws or answers with
+  something that is not a JSON object produces `500 { "error": "extension
+  failed" }`; a failing extension never affects another route or the gateway.
+- **Enablement is data.** `$XDG_CONFIG_HOME/hui/extensions.json`
+  (`{ "version": 1, "enabled": [] }`) records the choice; enabling imports the
+  module and registers its routes without a restart, disabling withdraws them at
+  once while Node keeps the module cached. A missing directory reads `missing`, a
+  bad manifest or import reads `failed` with its error and one warning diagnostic.
+- **Trusted code, stated plainly.** An extension runs in the gateway process with
+  the gateway's access to the machine, its credentials and its data, exactly like
+  a PI extension: no sandbox, no permission prompt, no timeout. `apiVersion`
+  refuses anything but `1`.
+- **No UI in this version.** The operator interface is HTTP and
+  `extensions.json` (`docs/guide.md`); a Settings page, per-extension generated
+  types, SSE routes and an out-of-process host are follow-ups.
+
 ## Decisions
+
+### Gateway extensions are path-confined and payload-silent (2026-11-04)
+
+The owner asked how far HUI could open its harness to people, and chose the
+gateway route seam as the first step. The shape follows from HUI's own contracts:
+the browser's payload types are generated at build time, the `/__hui/` dispatch is
+hand-ordered and pinned by tests, and every route needs a schema and a documented
+heading. So an extension is confined to a namespace HUI names, answers a generic
+JSON envelope instead of adding generated types, and reaches the operator as
+`extensions.json` plus two fixed routes rather than a new UI surface.
+
+- **No privileged placement.** Path confinement replaces ordering negotiation: a
+  plugin cannot claim `/__hui/settings` or race another route, so the dispatch
+  chain and `routes/order.test.ts` stay meaningful.
+- **Scriptable without a build step.** A plugin payload is untyped on purpose;
+  its own schemas stay in the extension and out of `docs/api.schema.json`, so a
+  third-party route can never break the generated browser contract.
+- **Trust before breadth.** Extensions are trusted code in the gateway process,
+  documented as such. The alternative — a sandbox or a child process — would need
+  its own IPC contract, streaming and supervision before it could carry a first
+  route, and was deliberately left to a later decision.
+
 
 ### A bot's prompt is four files, and only two of them travel (2026-10-25)
 

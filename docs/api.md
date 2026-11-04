@@ -4118,6 +4118,46 @@ Missing or invalid fields use their defaults rather than the previous values.
 The gateway applies the settings to its running services. Neither route changes
 PI's configuration.
 
+### `GET /__hui/ext`
+
+Returns `ExtensionsResponse`: every directory under `$XDG_CONFIG_HOME/hui/extensions`
+plus every id the enable store lists, sorted by id. Each `ExtensionStatus` carries
+the extension's `id`, `name`, `description`, `enabled`, its `routes` metadata and a
+`state` of `loaded`, `disabled`, `failed` or `missing`; `error` explains a failure.
+`storeError` appears when `extensions.json` cannot be read; the list then behaves as
+if nothing is enabled. Listing rescans the directory, but it never imports an
+extension: a disabled extension stays `disabled` and its module is never loaded.
+
+### `PUT /__hui/ext/:id`
+
+Accepts `ExtensionToggleRequest` (`{ "enabled": boolean }`), persists the choice to
+`extensions.json` (atomic write, mode 0600) and reconciles the running set before
+answering `ExtensionStatus`. Enabling imports the module and registers its routes
+without a restart; disabling removes them immediately, although Node keeps the
+module cached. The choice is recorded, not a promise it loaded: an extension whose
+manifest or import fails answers 200 with `state: "failed"` and its `error`. An id
+with no directory returns 404, a malformed body 400, any other method 405.
+
+### Extension routes
+
+An installed extension answers under `/__hui/ext/<id>/<path>`, where `<path>` is one
+to four `/`-separated segments it declares. Any of the five JSON methods is allowed.
+The `x-hui` gate applies unchanged: a request without the header is rejected before
+extension code runs, and the same diagnostics hook records the outcome. Each answer
+is a `PluginPayload` (a JSON object HUI does not type) or a `PluginError`
+(`{ "error": string }`); extension payloads are deliberately absent from
+`docs/api.schema.json` because they exist only at runtime. Request bodies are the
+ordinary 64 KiB JSON body; an answer is at most 256 KiB and cannot set headers,
+stream, redirect or return a file. Unknown ids and paths return 404, a wrong method
+405, invalid JSON 400, an oversized request 413, and a handler that throws or
+returns something other than a JSON object 500 `{ "error": "extension failed" }`.
+
+Extensions are trusted local code: they run in the gateway process with the
+gateway's access to the machine, its credentials and its data, exactly like a PI
+extension. There is no sandbox, no permission prompt and no timeout. The manifest's
+`apiVersion` must be `1`; any other value refuses to load with a named reason. HUI
+ships no extension and enables none until the operator asks.
+
 ### HUI-owned presentation state
 
 `PUT /__hui/settings` also persists the validated `#rrggbb` accent override,
