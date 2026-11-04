@@ -18,7 +18,8 @@
  * gateway, which owns the roster. Sessions here browse in this machine's own
  * managed browser (`browser/manager.ts`), one profile under the data
  * directory, so a page a session opens is that machine's and its tabs never
- * leave it.
+ * leave it. It also samples its own machine's resources (`host.metrics`) for
+ * the gateway's Dashboard.
  */
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -45,12 +46,17 @@ import type { RuntimeSession, TranscriptEntry } from "../runtimes/types.ts";
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../git/working-directories.ts";
 import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, removeSessionWorktree } from "../git/worktrees.ts";
-import { attachPeer, isRecord, PROTOCOL_VERSION, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
+import { attachPeer, HOST_METRICS_FEATURE, isRecord, PROTOCOL_VERSION, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
 import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE, hostBots } from "./host-bots.ts";
 import { GATEWAY_ONLY_TOOLS, HOST_BROWSER_FEATURE } from "./gateway-tools.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
 import type { WorkerPaths } from "./paths.ts";
+import { createHostMetrics, sampleInBackground } from "../host-metrics.ts";
+
+/** This machine's resources, sampled when a gateway asks (the Dashboard's poll) and kept for its chart meanwhile. */
+const hostMetrics = createHostMetrics();
+sampleInBackground(hostMetrics);
 
 /** Detached, idle sessions are stopped after this; their transcript stays on disk. */
 const DETACHED_IDLE_MS = 10 * 60_000;
@@ -182,7 +188,7 @@ export class WorkerHost {
 
   info(): HostInfo {
     return {
-      version: PROTOCOL_VERSION, release: this.#release, features: [BOT_FACTS_FEATURE, BOTS_FEATURE, BOT_ACCESS_FEATURE, BOT_SKILLS_FEATURE, BOT_SKILL_FILES_FEATURE, HOST_BROWSER_FEATURE], pid: process.pid, hostname: hostname(),
+      version: PROTOCOL_VERSION, release: this.#release, features: [BOT_FACTS_FEATURE, BOTS_FEATURE, BOT_ACCESS_FEATURE, BOT_SKILLS_FEATURE, BOT_SKILL_FILES_FEATURE, HOST_BROWSER_FEATURE, HOST_METRICS_FEATURE], pid: process.pid, hostname: hostname(),
       platform: process.platform, arch: process.arch, node: process.version, home: this.paths.home,
       dataDir: this.paths.dataDir, mirrorDir: this.paths.mirrorDir, agentDir: this.paths.agentDir,
       providersDir: this.paths.providersDir, releaseDir: this.releaseDir,
@@ -265,6 +271,11 @@ export class WorkerHost {
       socket.destroy();
     });
     peer.handle("hello", () => this.info());
+    peer.handle("host.metrics", async (params) => {
+      const metrics = await hostMetrics();
+      const minutes = Number(params["history"]);
+      return Number.isFinite(minutes) && minutes > 0 ? { metrics, history: hostMetrics.history(minutes) } : metrics;
+    });
     peer.handle("session.start", (params) => this.#start(peer, params));
     peer.handle("session.call", (params) => this.#call(params));
     peer.handle("session.transcript", (params) => this.#transcriptPage(params));

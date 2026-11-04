@@ -853,8 +853,9 @@ nothing private and starts nothing until it is asked.
 
 - `cpu.percent`, the network rates and `gateway.cpuPercent` are deltas against
   the previous sample the gateway keeps. The first read, and a read more than
-  30 seconds after the last, takes a baseline 250 ms earlier, so every answer
-  holds a rate. `gateway.cpuPercent` is the gateway process's CPU time as a share
+  30 seconds after the last, takes a baseline at least 250 ms earlier (longer
+  when the baseline read itself took that long), so every answer holds a rate.
+  `gateway.cpuPercent` is the gateway process's CPU time as a share
   of one core (above 100 when it uses more than one).
 - One sample serves every caller for two seconds, and concurrent reads share the
   one in flight, so many open tabs cost one sample. Child processes run
@@ -874,8 +875,19 @@ nothing private and starts nothing until it is asked.
   also crosses a physical interface.
 - GPU is the busiest accelerator: `ioreg -r -d 1 -c IOAccelerator`'s
   "Device Utilization %" on macOS (no administrator rights needed on Apple
-  Silicon), `nvidia-smi` on Linux when it is installed, `null` otherwise.
+  Silicon), `nvidia-smi` on Linux when it is installed, `null` otherwise. It is
+  a gauge read on its own slower cadence (20 seconds), because one `ioreg` run
+  costs more than every other read together: a fresh reading answers at once, an
+  expired one answers at once with the last value while the next read runs, and
+  only the first reading of a gateway process waits for one.
 - Any method other than `GET` is 405.
+
+### `GET /__hui/host-metrics/history`
+
+`{ "history": HostMetrics[] }`: the samples the gateway kept for its own machine, oldest first, for the Dashboard's
+chart. `minutes` is `5`, `15` or `30` (the default is 5) and anything else is 400; the sampler keeps at most 30
+minutes. Samples come from the reads `GET /__hui/host-metrics` makes and from the sampler's own every 15 seconds, so a
+chart opened after the gateway has run a while has a past to draw; a gateway that just started has none yet.
 
 ### `GET /__hui/workspaces`
 
@@ -1566,6 +1578,16 @@ Node.js 24 or newer.
 hostname, platform, arch, node, home, release }, sync?: { at, files, uploaded,
 deleted, installed, skipped, errors } }`. Connection state is gateway memory.
 
+### `GET /__hui/workers/metrics`
+
+`{ "workers": [{ id, name, state, metrics?, error? }] }`: each configured
+worker's own machine, for the Dashboard's activity monitor. `metrics` is the
+payload of `GET /__hui/host-metrics` as that worker's host sampled it, for a
+connected host that lists `host-metrics` in its `features`. A worker HUI holds
+no connection to answers with its `state` alone, and this request never connects
+one; a host that is older or does not answer in four seconds says why in
+`error`.
+
 ### `POST /__hui/workers`
 ### `PATCH /__hui/workers/:id`
 ### `DELETE /__hui/workers/:id`
@@ -1574,6 +1596,13 @@ Body `{ name, command, extraPaths? }`; `command` is parsed like a shell would
 split plain words and quotes, without expansion. `POST` responds 201 `{ worker
 }`. A new command applies to the next connection. `DELETE` returns 409 while any
 session record names the worker; nothing on the remote is deleted.
+
+### `GET /__hui/workers/metrics/history?minutes=&ids=`
+
+`{ "workers": [{ id, history, error? }] }`: the same samples, from each connected worker's own host, for the
+Dashboard's chart. `minutes` is `5`, `15` or `30` (default 5, anything else 400). `ids` narrows it to those workers,
+comma-separated; a worker HUI holds no connection to, or whose host is older, is left out and never connected, and a
+read that fails answers with `error` and no samples.
 
 ### `POST /__hui/workers/:id/connect`
 ### `POST /__hui/workers/:id/sync`

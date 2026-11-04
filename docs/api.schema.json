@@ -6265,6 +6265,20 @@
         }
       }
     },
+    "HostMetricsHistory": {
+      "type": "object",
+      "required": [
+        "history"
+      ],
+      "properties": {
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HostMetrics"
+          }
+        }
+      }
+    },
     "JiraConnection": {
       "type": "object",
       "required": [
@@ -13070,6 +13084,80 @@
         }
       }
     },
+    "WorkerMetrics": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/WorkerState"
+        },
+        "metrics": {
+          "$ref": "#/$defs/HostMetrics"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "WorkerMetricsHistory": {
+      "type": "object",
+      "required": [
+        "id",
+        "history"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HostMetrics"
+          }
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "WorkerMetricsHistoryResponse": {
+      "type": "object",
+      "required": [
+        "workers"
+      ],
+      "properties": {
+        "workers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkerMetricsHistory"
+          }
+        }
+      }
+    },
+    "WorkerMetricsResponse": {
+      "type": "object",
+      "required": [
+        "workers"
+      ],
+      "properties": {
+        "workers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkerMetrics"
+          }
+        }
+      }
+    },
     "WorkerPatch": {
       "type": "object",
       "properties": {
@@ -13642,7 +13730,8 @@
     ],
     "host": [
       "HostMetrics",
-      "HostMetricsError"
+      "HostMetricsError",
+      "HostMetricsHistory"
     ],
     "github": [
       "ActivityBlock",
@@ -13829,6 +13918,10 @@
       "WorkerActionResponse",
       "WorkerError",
       "WorkerInput",
+      "WorkerMetrics",
+      "WorkerMetricsHistory",
+      "WorkerMetricsHistoryResponse",
+      "WorkerMetricsResponse",
       "WorkerPatch",
       "WorkerResponse",
       "WorkerState",
@@ -14712,6 +14805,13 @@
       }
     },
     {
+      "method": "GET",
+      "path": "/__hui/host-metrics/history",
+      "response": {
+        "$ref": "#/$defs/HostMetricsHistory"
+      }
+    },
+    {
       "method": "DELETE",
       "path": "/__hui/jira",
       "response": {
@@ -15591,6 +15691,20 @@
       "path": "/__hui/workers/:id/sync",
       "response": {
         "$ref": "#/$defs/WorkerActionResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/workers/metrics",
+      "response": {
+        "$ref": "#/$defs/WorkerMetricsResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/workers/metrics/history",
+      "response": {
+        "$ref": "#/$defs/WorkerMetricsHistoryResponse"
       }
     },
     {

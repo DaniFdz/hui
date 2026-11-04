@@ -22,7 +22,9 @@ import { CONFIG_DIR } from "./paths.ts";
 import { resolvePiAgentDir } from "./pi/paths.ts";
 import { credentialStore, ProviderAccounts, type CredentialStore } from "./pi/provider-accounts.ts";
 import { PROVIDERS_DIR, readProviderSelections } from "./runtimes/hui-models.ts";
-import { attachPeer, isRecord, PROTOCOL_VERSION, type Frame, type Peer } from "./worker/protocol.ts";
+import { attachPeer, HOST_METRICS_FEATURE, isRecord, PROTOCOL_VERSION, type Frame, type Peer } from "./worker/protocol.ts";
+import type { HostMetrics } from "./api/host.ts";
+import type { WorkerMetrics, WorkerMetricsHistory } from "./api/workers.ts";
 import { BROKERED_PROVIDER_FILE } from "./worker/credentials.ts";
 import { writeAtomic, type SyncResult } from "./worker/sync-apply.ts";
 import { bundledSkills, enabledBundledSkillPaths, isBundledSkillPreference } from "./pi/bundled-skills.ts";
@@ -43,6 +45,9 @@ import { readRegistry } from "./sessions/sessions.ts";
 import type { TranscriptHit } from "./runtimes/transcript-search.ts";
 import type { GitCheckoutInfo } from "./api/local-paths.ts";
 import type { WorktreeProgress } from "./api/sessions.ts";
+
+/** A worker's own resources are one small request to its host; a wedged remote must not hold the Dashboard. */
+const METRICS_REQUEST_TIMEOUT_MS = 4_000;
 
 /** Git on a worker can take as long as a large monorepo does, like the local run's own ceiling. */
 const GIT_REQUEST_TIMEOUT_MS = 45 * 60_000;
@@ -691,6 +696,36 @@ export class WorkerService {
       } } : {}),
       ...(sync ? { sync: (({ pluginIds: _ids, ...view }) => view)(sync) } : {}),
     };
+  }
+
+  /** Every configured worker's own resource use. Never connects: a worker HUI holds no connection to answers with its
+   * state alone, and one whose host is older or unreachable with the reason. */
+  async metrics(): Promise<WorkerMetrics[]> {
+    return await Promise.all((await this.list()).map(async ({ id, name, state }): Promise<WorkerMetrics> => {
+      if (state !== "connected") return { id, name, state };
+      if (!this.features(id)?.includes(HOST_METRICS_FEATURE)) return { id, name, state, error: "This worker runs an older HUI release." };
+      try {
+        return { id, name, state, metrics: await this.hostRequest<HostMetrics>(id, "host.metrics", {}, METRICS_REQUEST_TIMEOUT_MS) };
+      } catch (error) {
+        return { id, name, state, error: error instanceof Error ? error.message : String(error) };
+      }
+    }));
+  }
+
+  /** The samples each connected worker's own host kept for the last `minutes`, for the Dashboard's chart. `ids`
+   * narrows the request to the machines that chart draws; nothing here connects a worker. */
+  async metricsHistory(minutes: number, ids?: readonly string[]): Promise<WorkerMetricsHistory[]> {
+    const wanted = ids && new Set(ids);
+    return await Promise.all((await this.list())
+      .filter(({ id, state }) => state === "connected" && (!wanted || wanted.has(id)) && this.features(id)?.includes(HOST_METRICS_FEATURE))
+      .map(async ({ id }): Promise<WorkerMetricsHistory> => {
+        try {
+          const { history } = await this.hostRequest<{ history: HostMetrics[] }>(id, "host.metrics", { history: minutes }, METRICS_REQUEST_TIMEOUT_MS);
+          return { id, history };
+        } catch (error) {
+          return { id, history: [], error: error instanceof Error ? error.message : String(error) };
+        }
+      }));
   }
 
   async create(input: WorkerInput): Promise<WorkerView> {
