@@ -19,7 +19,7 @@ finished.
 | Updated | 2026-11-04 |
 | Commit | see §6 |
 | Branch | `danifdz/gateway-extensions` |
-| PR | see §5 |
+| PR | https://github.com/DaniFdz/hui/pull/408 |
 | Checks | 3 pass · 0 fail · 2 not run (recorded, see §7) |
 
 ## 2. How to keep this file honest
@@ -206,7 +206,7 @@ gateway's strip-only TypeScript loader (`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`), wh
 
 | Field | Value |
 |---|---|
-| URL | see §6 |
+| URL | https://github.com/DaniFdz/hui/pull/408 |
 | Checks | `npm test` — 33 baseline failures, 0 new · `npm run typecheck` — pass · `npm run build` — pass · `npm run test:package` — not run (no packaging change) · `npm run e2e` — not run (no browser surface changed) |
 | Screenshots | Not applicable: no browser surface changed. Stated in the PR body. |
 | Proof gaps | §7 |
@@ -223,7 +223,7 @@ gateway's strip-only TypeScript loader (`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`), wh
 | M4 routes + dispatch | done | `feat(gateway): serve and toggle extensions` |
 | M5 docs + catalogue | done | `docs: document gateway extensions` |
 | M6 verification | done | `docs: record gateway extension verification` |
-| M7 PR | open | — |
+| M7 PR | open | PR #408 |
 
 ## 7. Proof gaps
 
