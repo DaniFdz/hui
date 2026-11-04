@@ -49,8 +49,8 @@ with no matching sessions.
    enter the chart once, arrow keys to move between bars, and Enter to select.
 5. Filter by title, ID and recorded model. Totals, rankings and chart must follow
    the same subset. A ranked model or provider applies the same search. Enter a
-   nonmatching query, confirm **No sessions match your search.** and its **Clear
-   search**, then **Clear search** beside the field. Try all **Sort sessions**
+   nonmatching query, confirm **No sessions match your search.**, then **Clear
+   search** beside the field. Try all **Sort sessions**
    options. Recorded zero sorts before unknown prices. Session rows state when
    they were last active. The amount outside the entries remains unchanged by the
    session search. Open a Durable session and **Design notes** from their rows.

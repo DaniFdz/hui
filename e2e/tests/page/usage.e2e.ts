@@ -39,7 +39,7 @@ test("Usage reports a real turn's tokens, its recorded PI cost and its session",
   await expect(totals).toContainText("$0.00");
   await expect(totals).toContainText("Sessions", { ignoreCase: true });
   await expect(totals).not.toContainText("Unavailable", { ignoreCase: true });
-  await expect(chart.getByRole("button", /: [1-9][\d,]* tokens · \$0\.00$/u)).toBeVisible();
+  await expect(chart.getByRole("button", /· [1-9][\d,]* tokens · \$0\.00 · /u)).toBeVisible();
   await expect(screen.getByText("hui-e2e/fixture", { exact: false })).toBeVisible();
 
   const beforeCompaction = await totals.allTextContents();
@@ -54,12 +54,13 @@ test("Usage reports a real turn's tokens, its recorded PI cost and its session",
   await expect(outsideEntries).toContainText("2 tokens, $0.00, for all recorded time");
   await expect.poll(() => totals.allTextContents()).toEqual(beforeCompaction);
   await screen.getByRole("button", /No recorded usage/u).first().tap();
+  await screen.getByTestId("usage-selection").getByRole("button", /^Show only/u).tap();
   await expect(screen.getByText("No usage in this range.")).toBeVisible();
   await expect(outsideEntries).toContainText("2 tokens, $0.00, for all recorded time");
   await screen.getByRole("button", "All").tap();
   await expect(sessions.getByRole("button", /Usage coverage/u)).toBeVisible();
   await expect(outsideEntries).toContainText("2 tokens, $0.00, for all recorded time");
-  await screen.getByPlaceholder("Title, ID or model").fill("no matching session");
+  await screen.getByPlaceholder("Search sessions by title, ID or model").fill("no matching session");
   await expect(screen.getByText("No sessions match your search.")).toBeVisible();
   await expect(outsideEntries).toContainText("2 tokens, $0.00, for all recorded time");
 });
@@ -84,10 +85,15 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
   for (const [preset, days] of [["Today", 1], ["7d", 7], ["90d", 90], ["1y", 366], ["All", 1]] as const) await chooseRange(preset, days);
   await chooseRange("1y", 366);
   await expect(chart).toContainText("Monthly token usage", { ignoreCase: true });
-  await expect(chart.getByRole("button", /^[A-Z][a-z]{2} \d{4}: /u).first()).toBeVisible();
+  await expect(chart.getByRole("button", /^[A-Z][a-z]{2} \d{4} · [\d,]+ tokens · /u).first()).toBeVisible();
   await chooseRange("90d", 90);
   await expect(chart).toContainText("Weekly token usage", { ignoreCase: true });
-  await chart.getByRole("button", / to [A-Z][a-z]{2} \d{1,2}: [\d,]+ tokens · /u).last().tap();
+  const selection = screen.getByTestId("usage-selection");
+  const beforeSelection = await shownRange(screen);
+  await chart.getByRole("button", / to [A-Z][a-z]{2} \d{1,2} · [\d,]+ tokens · /u).last().tap();
+  await expect(selection).toBeVisible();
+  await expect.poll(() => shownRange(screen)).toEqual(beforeSelection);
+  await selection.getByRole("button", /^Show only/u).tap();
   await expect.poll(async () => { const { from, to } = await shownRange(screen); return (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1; }).toBeLessThanOrEqual(7);
   const grouped = await shownRange(screen);
   await expect(chart).toContainText(`${grouped.from} to ${grouped.to}`);
@@ -115,14 +121,16 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
   await expect(screen.getByRole("button", "By type")).toHaveAttribute("aria-pressed", "true");
   await screen.getByRole("button", "Total").tap();
   await expect(screen.getByRole("button", "Total")).toHaveAttribute("aria-pressed", "true");
-  const days = chart.getByRole("button", /: [\d,]+ tokens ·/u);
+  const days = chart.getByRole("button", / · [\d,]+ tokens · /u);
   await days.first().press("End");
   await expect(days.last()).toBeFocused();
   await days.last().press("Home");
   await expect(days.first()).toBeFocused();
   await expect.poll(() => screen.getByTestId("usage-totals").allTextContents()).toEqual(beforeDisplay);
 
-  await screen.getByRole("button", /: [1-9][\d,]* tokens · \$0\.00$/u).tap();
+  await screen.getByRole("button", /· [1-9][\d,]* tokens · \$0\.00 · /u).tap();
+  await expect(screen.getByTestId("usage-selection")).toBeVisible();
+  await screen.getByTestId("usage-selection").getByRole("button", /^Show only/u).tap();
   await expect.poll(async () => { const { from, to } = await shownRange(screen); return from === to; }).toBe(true);
   const day = await shownRange(screen);
   await expect(chart).toContainText(`${day.from} to ${day.to}`);
@@ -135,6 +143,7 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
   await chooseRange("30d", 30);
   await expect(screen.getByRole("button", /No recorded usage/u).first()).toBeVisible();
   await screen.getByRole("button", /No recorded usage/u).first().tap();
+  await screen.getByTestId("usage-selection").getByRole("button", /^Show only/u).tap();
   await expect(screen.getByText("No usage in this range.")).toBeVisible();
 });
 

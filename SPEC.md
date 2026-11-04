@@ -568,8 +568,9 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
 - A first read shows a skeleton, and a read that has not answered after six
   seconds says so and offers **Cancel**; cancelling keeps the last report and
   leaves a stopped first read distinct from an unavailable one. No matching data,
-  partial data and read failures are explicit and carry an action. Controls work
-  with the keyboard and fit phone widths. No provider credentials, prompts,
+  partial data and read failures are explicit: an empty range offers **Show all
+  time** and a failed read offers Retry. Controls work with the keyboard and fit
+  phone widths. No provider credentials, prompts,
   message bodies, tool arguments or tool output enter the usage response.
 - The gateway keeps one range-independent scan per time zone and answers range,
   zone and filter changes from it, so those interactions stay responsive on a
