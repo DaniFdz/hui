@@ -543,10 +543,16 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   cannot be mistaken for spend outside the entries.
   It is never folded into the ranged totals or the chart. Legacy PI compaction
   records do carry usage and count on their own day.
-- A summary shows tokens, recorded PI cost estimates and sessions. Missing or
-  invalid prices show Unpriced, a recorded numeric zero remains $0.00, and a mix
-  of priced and unpriced calls labels cost as partial. HUI never adds external
-  session cost reports to PI estimates or presents either as a provider bill.
+- A headline strip shows tokens, recorded PI cost estimates, sessions and error
+  rate, each with the same window's earlier half as a change when it has one, so
+  a range reads against itself. Missing or invalid prices show Unpriced, a
+  recorded numeric zero remains $0.00, and a mix of priced and unpriced calls
+  labels cost as partial. HUI never adds external session cost reports to PI
+  estimates or presents either as a provider bill.
+- The chart and a model donut share a row on wide screens and stack on narrow
+  ones. The donut names the five biggest models and the rest as one slice, its
+  centre holds the token total, and each legend row filters the page the way a
+  ranked model does.
 - Usage switches between tokens and recorded cost. Token bars can show the
   input, output, cache-read and cache-write shares. Empty days remain visible as a
   quiet baseline; a period with usage but no price is unpriced rather than free.

@@ -128,6 +128,24 @@ export function usageHeatmap(days: readonly UsageDay[], from: string, to: string
   return { weeks, monthLabels };
 }
 
+/** The range's last week against the week before it, for a "since last week" delta. */
+export function usageComparison(days: readonly UsageDay[], from: string, to: string): { window: number; recent: UsageMetrics; previous: UsageMetrics } {
+  const end = Date.parse(`${to}T12:00:00Z`);
+  const window = Math.min(7, Math.floor((Math.round((end - Date.parse(`${from}T12:00:00Z`)) / DAY_MS) + 1) / 2));
+  if (window < 1) return { window: 0, recent: sumUsage([]), previous: sumUsage([]) };
+  const recorded = new Map(days.map((day) => [day.date, day.metrics]));
+  const collect = (first: number, last: number) => {
+    const rows: UsageMetrics[] = [];
+    for (let at = first; at <= last; at += DAY_MS) {
+      const metrics = recorded.get(new Date(at).toISOString().slice(0, 10));
+      if (metrics) rows.push(metrics);
+    }
+    return sumUsage(rows);
+  };
+  const recentStart = end - (window - 1) * DAY_MS;
+  return { window, recent: collect(recentStart, end), previous: collect(recentStart - window * DAY_MS, recentStart - DAY_MS) };
+}
+
 /** The days where recorded failures were most common, as an insight list. */
 export function usageErrorDays(days: readonly UsageDay[], limit = 5): { date: string; rate: number; errors: number; messages: number }[] {
   return days

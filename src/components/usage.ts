@@ -3,7 +3,7 @@ import { LitElement, html, nothing, svg } from "lit";
 import { live } from "lit/directives/live.js";
 import type { UsageMetrics, UsageReport } from "../api/schema/diagnostics.ts";
 import { UsageController } from "../controllers/usage-controller.ts";
-import { usageChartDays, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageOverview, usageSessionCsv, type UsageSort } from "../lib/usage.ts";
+import { sumUsage, usageChartDays, usageComparison, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageOverview, usageSessionCsv, type UsageSort } from "../lib/usage.ts";
 import { downloadTextFile } from "../lib/download.ts";
 import { icons } from "../lib/icons.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
@@ -26,6 +26,7 @@ const HEATMAP_LEFT = 30;
 const HEATMAP_TOP = 16;
 const HEATMAP_MIN_DAYS = 60;
 const WEEKDAY_ROWS = [[1, Date.UTC(2024, 0, 1)], [3, Date.UTC(2024, 0, 3)], [5, Date.UTC(2024, 0, 5)]] as const;
+const PALETTE = ["var(--accent)", "var(--accent-2)", "var(--info)", "var(--warn)", "var(--ok)"] as const;
 const stamp = (date: string) => new Date(`${date}T12:00:00Z`).getTime();
 const spanDays = (from: string, to: string) => Math.round((stamp(to) - stamp(from)) / 86_400_000) + 1;
 const percent = (part: number, whole: number) => `${(part / whole * 100).toFixed(whole > 100 ? 0 : 1)}%`;
@@ -33,18 +34,21 @@ const percent = (part: number, whole: number) => `${(part / whole * 100).toFixed
 /** The period a bar selects, ready to become the reporting range. */
 type Selection = { from: string; to: string; label: string; metrics: UsageMetrics; report: UsageReport };
 
+function statCard(label: string, value: string, detail: string, delta?: { change: number; against: string }) {
+  const tone = delta === undefined || delta.change === 0 ? "flat" : delta.change > 0 ? "up" : "down";
+  const marker = delta === undefined || delta.change === 0 ? "•" : delta.change > 0 ? "▲" : "▼";
+  return html`<article class="usage-stat"><span class="usage-stat__label">${label}</span><strong class="usage-stat__value">${value}</strong><small class="usage-stat__detail">${detail}</small>
+    ${delta ? html`<span class="usage-stat__delta usage-stat__delta--${tone}">${marker} ${(Math.abs(delta.change) * 100).toFixed(delta.change > 0.095 ? 0 : 1)}% <span>${delta.against}</span></span>` : nothing}</article>`;
+}
+
 function summary(title: string, value: string, description: string) {
   return html`<article class="stat usage-summary-card"><span class="usage-summary-title">${title}</span><strong class="usage-summary-value">${value}</strong><small class="usage-summary-sub">${description}</small></article>`;
 }
 
-function metric(value: string, name: string, detail: string) {
-  return html`<div class="usage-metric"><strong class="usage-metric__value">${value}</strong><span class="usage-metric__name">${name}</span><small class="usage-summary-sub">${detail}</small></div>`;
-}
-
 function skeleton() {
   return html`<section class="settings-group usage-panel usage-loading-card" data-testid="usage-loading">
-    <div class="usage-loading-grid">${[0, 1, 2].map(() => html`<div class="skeleton usage-skeleton-block"></div>`)}</div>
-    <div class="skeleton usage-skeleton-block usage-skeleton-block--tall"></div>
+    <div class="usage-stats">${[0, 1, 2, 3].map(() => html`<div class="skeleton usage-skeleton-stat"></div>`)}</div>
+    <div class="usage-dashboard"><div class="skeleton usage-skeleton-block usage-skeleton-block--tall"></div><div class="skeleton usage-skeleton-block usage-skeleton-block--tall"></div></div>
     <div class="usage-loading-grid">${[0, 1, 2].map(() => html`<div class="skeleton usage-skeleton-block"></div>`)}</div>
     <div class="skeleton usage-skeleton-block"></div>
   </section>`;
@@ -139,9 +143,14 @@ export class HuiUsagePage extends LitElement {
     const selection = this.#selection?.report === state.report ? this.#selection : undefined;
     const value = (metrics: UsageMetrics) => state.metric === "cost" ? metrics.costUsd ?? 0 : metrics.totalTokens;
     const max = Math.max(0, ...days.days.map(({ metrics }) => value(metrics)));
-    return html`<section class="settings-group usage-panel daily-chart-compact" data-testid="usage-chart">
-      <div class="daily-chart-header"><div><h2 class="settings-section__heading">${CHART_SCOPE[days.bucket]} ${state.metric === "cost" ? "cost estimates" : "token usage"}</h2><p class="settings-section__desc">${state.report?.range.from} to ${state.report?.range.to} · ${state.report?.range.timeZone}</p></div>
-        ${state.metric === "tokens" ? html`<div class="settings-segmented" role="group" aria-label="Token breakdown">${(["total", "types"] as const).map((mode) => html`<button type="button" class="settings-segmented__btn ${state.chart === mode ? "settings-segmented__btn--active" : ""}" aria-pressed=${state.chart === mode} @click=${() => { state.chart = mode; this.requestUpdate(); }}>${mode === "total" ? "Total" : "By type"}</button>`)}</div>` : html`<span class="usage-summary-sub">PI estimates · unpriced calls excluded</span>`}
+    return html`<section class="settings-group usage-panel usage-card daily-chart-compact" data-testid="usage-chart">
+      <div class="usage-card__header">
+        <div class="usage-card__headline">
+          <h2 class="usage-card__title">${CHART_SCOPE[days.bucket]} ${state.metric === "cost" ? "cost estimates" : "token usage"}</h2>
+          <div class="usage-card__figure"><strong>${state.metric === "cost" ? usageCost(totals) : compact(totals.totalTokens)}</strong>${state.metric === "cost" ? html`<span class="usage-summary-sub">PI estimate</span>` : html`<span class="usage-summary-sub">tokens</span>`}</div>
+          <p class="usage-card__meta">${state.report?.range.from} to ${state.report?.range.to} · ${state.report?.range.timeZone}</p>
+        </div>
+        ${state.metric === "tokens" ? html`<div class="settings-segmented" role="group" aria-label="Token breakdown">${(["total", "types"] as const).map((mode) => html`<button type="button" class="settings-segmented__btn ${state.chart === mode ? "settings-segmented__btn--active" : ""}" aria-pressed=${state.chart === mode} @click=${() => { state.chart = mode; this.requestUpdate(); }}>${mode === "total" ? "Total" : "By type"}</button>`)}</div>` : html`<span class="usage-summary-sub">Unpriced calls excluded</span>`}
       </div>
       <div class="daily-chart-plot"><div class="daily-chart-scale"><span>${state.metric === "cost" ? usageCost({ costUsd: max, unpricedCalls: 0 }) : compact(max)}</span><span>0</span></div><div class="daily-chart-bars">
         ${days.days.map((bar, index) => {
@@ -172,8 +181,8 @@ export class HuiUsagePage extends LitElement {
     const width = HEATMAP_LEFT + weeks.length * HEATMAP_PITCH + 24;
     const height = HEATMAP_TOP + 7 * HEATMAP_PITCH;
     const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short", timeZone: "UTC" });
-    return html`<section class="settings-group usage-panel usage-heatmap-section" data-testid="usage-heatmap">
-      <div class="daily-chart-header"><div><h2 class="settings-section__heading">Daily activity</h2><p class="settings-section__desc">One cell per day · pick a day to inspect it</p></div>
+    return html`<section class="settings-group usage-panel usage-card usage-heatmap-section" data-testid="usage-heatmap">
+      <div class="usage-card__header"><div class="usage-card__headline"><h2 class="usage-card__title">Daily activity</h2><p class="usage-card__meta">One cell per day · pick a day to inspect it</p></div>
         <div class="usage-heatmap__legend" aria-hidden="true"><span>Less</span>${[0, 1, 2, 3, 4].map((level) => html`<span class="usage-heatmap__swatch usage-heatmap__cell--l${level}"></span>`)}<span>More</span></div></div>
       <div class="usage-heatmap">${svg`<svg class="usage-heatmap__svg" viewBox="0 0 ${width} ${height}" style=${`--usage-heatmap-width: ${width}px`} aria-hidden="true">
         ${monthLabels.map((label, index) => label ? svg`<text class="usage-heatmap__month" x=${HEATMAP_LEFT + index * HEATMAP_PITCH} y="10">${label}</text>` : nothing)}
@@ -190,6 +199,55 @@ export class HuiUsagePage extends LitElement {
     </section>`;
   }
 
+  #stats(report: UsageReport, overview: ReturnType<typeof usageOverview>, totals: UsageMetrics) {
+    const compared = usageComparison(overview.days, report.range.from, report.range.to);
+    const delta = (recent: number | null, previous: number | null) => {
+      if (!compared.window || recent === null || previous === null || previous <= 0) return undefined;
+      return { change: (recent - previous) / previous, against: `vs previous ${compared.window} ${compared.window === 1 ? "day" : "days"}` };
+    };
+    const messages = totals.userMessages + totals.assistantMessages;
+    const rate = messages ? totals.errors / messages : null;
+    const previousRate = compared.previous.userMessages + compared.previous.assistantMessages
+      ? compared.previous.errors / (compared.previous.userMessages + compared.previous.assistantMessages)
+      : null;
+    return html`<section class="usage-stats" data-testid="usage-totals">
+      ${statCard("Total tokens", compact(totals.totalTokens), count(totals.calls, "usage record"), delta(totals.totalTokens, compared.previous.totalTokens))}
+      ${statCard("PI cost estimate", cost(totals), totals.unpricedCalls ? `${count(totals.unpricedCalls, "unpriced record")}${totals.costUsd === null ? "" : " · partial estimate"}` : "Recorded prices, not a provider bill", delta(totals.costUsd, compared.previous.costUsd))}
+      ${statCard("Sessions", number(overview.sessions.length), `${number(report.coverage.readSessions)} local ${report.coverage.readSessions === 1 ? "history" : "histories"} read · ${count(report.coverage.registeredSessions, "registered session")}`)}
+      ${statCard("Error rate", rate === null ? "Unavailable" : percent(rate, 1), `${count(totals.errors, "error")} across ${count(messages, "message")}`, delta(rate, previousRate))}
+    </section>`;
+  }
+
+  #donut(overview: ReturnType<typeof usageOverview>) {
+    const top = overview.models.slice(0, 5).map((row) => ({ label: `${row.provider}/${row.model}`, metrics: row.metrics }));
+    const rest = overview.models.slice(5);
+    const rows = rest.length ? [...top, { label: "Other models", metrics: sumUsage(rest.map((row) => row.metrics)) }] : top;
+    const total = overview.totals.totalTokens;
+    if (!total || rows.length === 0) return nothing;
+    let offset = 0;
+    const segments = rows.map((row, index) => {
+      const share = row.metrics.totalTokens / total;
+      const segment = { ...row, share, color: PALETTE[index % PALETTE.length], offset };
+      offset += share * 100;
+      return segment;
+    });
+    return html`<section class="settings-group usage-panel usage-card usage-donut-card" data-testid="usage-models">
+      <div class="usage-card__header"><div class="usage-card__headline"><h2 class="usage-card__title">Usage by model</h2><p class="usage-card__meta">Recorded tokens, ranked</p></div></div>
+      <div class="usage-donut-layout">
+        <div class="usage-donut">
+          ${svg`<svg viewBox="0 0 42 42" aria-hidden="true"><circle class="usage-donut__track" cx="21" cy="21" r="15.9155" fill="none" pathLength="100" stroke-width="5"></circle>${segments.map((segment) => svg`<circle cx="21" cy="21" r="15.9155" fill="none" pathLength="100" stroke=${segment.color} stroke-width="5" stroke-dasharray="${(segment.share * 100).toFixed(2)} ${(100 - segment.share * 100).toFixed(2)}" stroke-dashoffset=${(25 - segment.offset).toFixed(2)}></circle>`)}</svg>`}
+          <div class="usage-donut__center"><strong>${compact(total)}</strong><span>tokens</span></div>
+        </div>
+        <div class="usage-donut__legend">${segments.map((segment) => html`<button type="button" class="usage-donut__row" title=${`Show only sessions with ${segment.label}`} @click=${() => this.#usage.search(segment.label)}>
+          <span class="usage-donut__dot" style=${`background: ${segment.color}`} aria-hidden="true"></span>
+          <span class="usage-donut__name">${segment.label}</span>
+          <span class="usage-donut__value">${compact(segment.metrics.totalTokens)} tokens</span>
+          <span class="usage-donut__share">${Math.round(segment.share * 100)}%</span>
+        </button>`)}</div>
+      </div>
+    </section>`;
+  }
+
   #rankings(overview: ReturnType<typeof usageOverview>) {
     const totalCost = overview.totals.costUsd;
     const spending = (metrics: UsageMetrics) => {
@@ -198,7 +256,6 @@ export class HuiUsagePage extends LitElement {
     };
     const failures = usageErrorDays(overview.days);
     const rankings = [
-      { title: "Top models", search: true, rows: overview.models.map((row) => ({ label: `${row.provider}/${row.model}`, detail: spending(row.metrics), value: cost(row.metrics) })) },
       { title: "Top providers", search: true, rows: overview.providers.map((row) => ({ label: row.provider, detail: spending(row.metrics), value: cost(row.metrics) })) },
       { title: "Top tools", search: false, rows: overview.tools.map((row) => ({ label: row.name, detail: `${count(row.errors, "error")}`, value: count(row.calls, "result") })) },
       { title: "Days with errors", search: false, empty: "No recorded failures in these sessions.", rows: failures.map((row) => ({ label: labelDate(row.date), detail: `${count(row.errors, "error")} · ${count(row.messages, "message")}`, value: `${(row.rate * 100).toFixed(1)}%` })) },
@@ -231,7 +288,6 @@ export class HuiUsagePage extends LitElement {
           <select class="usage-select" aria-label="Time zone" .value=${state.zone} @change=${(event: Event) => state.setZone((event.currentTarget as HTMLSelectElement).value === "utc" ? "utc" : "local")}><option value="local">Local</option><option value="utc">UTC</option></select>
           <div class="settings-segmented" role="group" aria-label="Chart metric">${(["tokens", "cost"] as const).map((metric) => html`<button class="settings-segmented__btn ${state.metric === metric ? "settings-segmented__btn--active" : ""}" type="button" aria-pressed=${state.metric === metric} @click=${() => { state.metric = metric; this.requestUpdate(); }}>${metric === "tokens" ? "Tokens" : "Cost"}</button>`)}</div>
         </div>
-        ${report && overview && totals ? html`<div class="usage-report__totals" data-testid="usage-totals">${metric(compact(totals.totalTokens), "Total tokens", count(totals.calls, "usage record"))}${metric(cost(totals), "PI cost estimate", totals.unpricedCalls ? `${count(totals.unpricedCalls, "unpriced record")}${totals.costUsd === null ? "" : " · partial estimate"}` : "Recorded prices, not a provider bill")}${metric(number(overview.sessions.length), "Sessions", `${number(report.coverage.readSessions)} local ${report.coverage.readSessions === 1 ? "history" : "histories"} read · ${count(report.coverage.registeredSessions, "registered session")}`)}</div>` : nothing}
         <div class="usage-query-bar"><input class="usage-query-input" type="search" placeholder="Search sessions by title, ID or model" aria-label="Filter sessions" .value=${state.query} @input=${(event: Event) => state.search((event.currentTarget as HTMLInputElement).value)}>${active ? html`<button class="btn btn--sm" type="button" @click=${() => state.search("")}>Clear search</button>` : html`<span class="usage-query-hint">${report ? `${count(report.sessions.length, "session")} in range` : ""}</span>`}</div>
       </div></section>
       <div class="usage-report__notes">
@@ -242,7 +298,8 @@ export class HuiUsagePage extends LitElement {
       ${!report ? state.loading ? html`${skeleton()}<div class="usage-loading-status" role="status"><span class="usage-loading-note">${state.slow ? "Still reading local histories. This can take a while the first time." : "Reading HUI diagnostics…"}</span>${state.slow ? html`<button class="btn btn--sm" type="button" @click=${() => state.cancel()}>Cancel</button>` : nothing}</div>` : html`<div class="settings-group usage-panel usage-empty-state" role="status"><strong class="usage-empty-state__title">${state.stopped ? "Reading stopped." : "Usage is unavailable."}</strong><p class="usage-summary-sub">${state.stopped ? "The report has not been read yet." : "The gateway has not reported usage yet."}</p><div class="usage-empty-state__actions"><button class="btn btn--sm" type="button" @click=${() => state.refresh()}>Read histories again</button></div></div>` : nothing}
       ${report && (report.coverage.unavailable.length || report.coverage.undatedRecords) ? html`<div class="callout warning">Totals are partial. ${number(report.coverage.unavailable.length)} histories unavailable; ${number(report.coverage.undatedRecords)} records without valid dates were excluded.</div>` : nothing}
       ${report && totals && overview ? html`
-        ${overview.sessions.length ? html`${this.#chart(usageChartDays(overview.days, report.range.from, report.range.to), totals)}${this.#heatmap(report, overview, this.#selection?.report === report ? this.#selection : undefined)}` : html`<div class="settings-group usage-panel usage-empty-state"><strong class="usage-empty-state__title">${active ? "No sessions match your search." : "No usage in this range."}</strong><p class="usage-summary-sub">${active ? "Try a title, session ID or model name, or clear the search above." : "Choose another range or start a conversation."}</p>${active ? nothing : html`<div class="usage-empty-state__actions"><button class="btn btn--sm" type="button" @click=${() => state.selectPreset("all")}>Show all time</button></div>`}</div>`}
+        ${this.#stats(report, overview, totals)}
+        ${overview.sessions.length ? html`<div class="usage-dashboard">${this.#chart(usageChartDays(overview.days, report.range.from, report.range.to), totals)}${this.#donut(overview)}</div>${this.#heatmap(report, overview, this.#selection?.report === report ? this.#selection : undefined)}` : html`<div class="settings-group usage-panel usage-empty-state"><strong class="usage-empty-state__title">${active ? "No sessions match your search." : "No usage in this range."}</strong><p class="usage-summary-sub">${active ? "Try a title, session ID or model name, or clear the search above." : "Choose another range or start a conversation."}</p>${active ? nothing : html`<div class="usage-empty-state__actions"><button class="btn btn--sm" type="button" @click=${() => state.selectPreset("all")}>Show all time</button></div>`}</div>`}
         <section class="settings-section"><h2 class="settings-section__heading">Usage overview</h2><div class="usage-summary-grid">
           ${summary("Messages", number(totals.userMessages + totals.assistantMessages), `${number(totals.userMessages)} user · ${number(totals.assistantMessages)} assistant`)}
           ${summary("Tool results", number(totals.toolResults), `${count(overview.tools.length, "tool")} recorded`)}
@@ -250,7 +307,6 @@ export class HuiUsagePage extends LitElement {
           ${summary("Cache hit rate", totals.inputTokens + totals.cacheReadTokens + totals.cacheWriteTokens ? `${(totals.cacheReadTokens / (totals.inputTokens + totals.cacheReadTokens + totals.cacheWriteTokens) * 100).toFixed(1)}%` : "Unavailable", `${compact(totals.cacheReadTokens)} cache-read tokens`)}
           ${summary("Errors", number(totals.errors), "Recorded model and tool failures")}
           ${summary("Priced records", totals.calls ? `${number(totals.calls - totals.unpricedCalls)} / ${number(totals.calls)}` : "Unavailable", "A recorded zero is included")}
-          ${summary("Error rate", totals.userMessages + totals.assistantMessages ? percent(totals.errors, totals.userMessages + totals.assistantMessages) : "Unavailable", `${count(totals.errors, "error")} across recorded messages`)}
           ${summary("Avg cost / record", totals.calls && totals.costUsd !== null ? usageCost({ costUsd: totals.costUsd / totals.calls, unpricedCalls: totals.unpricedCalls }) : "Unavailable", "Recorded price per usage record")}
         </div></section>
         ${this.#rankings(overview)}

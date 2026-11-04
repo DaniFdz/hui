@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { UsageMetrics, UsageReport, UsageSession } from "../api/schema/diagnostics.ts";
-import { sumUsage, usageChartDays, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageOverview, usageSessionCsv } from "./usage.ts";
+import { sumUsage, usageChartDays, usageComparison, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageOverview, usageSessionCsv } from "./usage.ts";
 
 const metrics = (tokens: number, costUsd: number | null): UsageMetrics => ({ inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: tokens, costUsd, calls: 1, unpricedCalls: costUsd === null ? 1 : 0, userMessages: 1, assistantMessages: 1, toolResults: 1, errors: 0 });
 const session = (id: string, model: string, usage: UsageMetrics): UsageSession => ({ id, title: id, lastActivityAt: 1, metrics: usage, models: [{ provider: "fixture", model, metrics: usage }], days: [{ date: "2026-10-01", metrics: usage }], tools: [{ name: "read", calls: 1, errors: 0 }] });
@@ -110,4 +110,20 @@ test("days with errors rank by failure rate, and CSVs quote what a spreadsheet w
   const sessions = usageSessionCsv([{ ...session("a", "swift", metrics(1, 0)), title: 'Hello, "world"' }]);
   assert.match(sessions, /"Hello, ""world"""/u, "a comma and quote survive the round trip");
   assert.equal(sessions.split("\n")[0], "id,title,parentId,lastActive,models,inputTokens,outputTokens,cacheReadTokens,cacheWriteTokens,totalTokens,costUsd,unpricedCalls,calls,userMessages,assistantMessages,toolResults,errors");
+});
+
+test("the last week is compared with the week before it, inside the range", () => {
+  const day = (date: string, tokens: number, extra: Partial<UsageMetrics> = {}) => ({ date, metrics: { ...metrics(tokens, tokens ? 1 : null), ...extra } });
+  const days = [
+    day("2024-03-01", 10), day("2024-03-02", 20), day("2024-03-03", 30), day("2024-03-04", 40), day("2024-03-05", 50),
+    day("2024-03-06", 60), day("2024-03-07", 70), day("2024-03-08", 80), day("2024-03-09", 90), day("2024-03-10", 100),
+    day("2024-03-11", 110, { errors: 2 }), day("2024-03-12", 120), day("2024-03-13", 130), day("2024-03-14", 140),
+  ];
+  const compared = usageComparison(days, "2024-03-01", "2024-03-14");
+  assert.equal(compared.window, 7);
+  assert.equal(compared.recent.totalTokens, 770, "the range's last seven days");
+  assert.equal(compared.previous.totalTokens, 280, "the seven days before them");
+  assert.equal(compared.recent.errors, 2);
+  assert.equal(usageComparison(days, "2024-03-14", "2024-03-14").window, 0, "a single day has no baseline");
+  assert.equal(usageComparison(days, "2024-03-08", "2024-03-14").window, 3, "a week compares three days with three");
 });

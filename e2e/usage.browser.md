@@ -26,8 +26,10 @@ with no matching sessions.
 ## Visible journey
 
 1. Open `/usage`. Confirm **30d**, inclusive **From**/**To**, **Time zone** set
-   to Local, the scope note, token/PI estimate/session summaries, a usage chart,
-   the overview, rankings and session rows. Partial pricing must identify unpriced
+   to Local, the scope note, the headline strip (tokens, PI estimate, sessions,
+   error rate) with a change against the range's earlier half, the chart and
+   model donut side by side on a wide screen, the overview, rankings and session
+   rows. A donut legend row must filter the page like a ranked model. Partial pricing must identify unpriced
    records, not make them free. The line for spend outside the entries gives its
    tokens and recorded cost and says it covers all recorded time; neither the
    summaries nor the chart may include it. A cost with no recorded tokens must
