@@ -75,9 +75,10 @@ export function formatImportPreview(preview: BotImportPreview): string {
       : "No persona: it starts with its first conversation and writes its own SOUL.md.",
   ];
   if (preview.memory) lines.push("", `MEMORY.md (${preview.memory.length.toLocaleString("en-US")} characters, never exported${preview.memories.total > preview.memories.included ? `, with ${preview.memories.included} of ${plural(preview.memories.total, "memory", "memories")}` : ""}):\n${indent(preview.memory)}`);
-  if (preview.bootstrap) lines.push("", `BOOTSTRAP.md (${preview.bootstrap.length.toLocaleString("en-US")} characters, used while it has no SOUL.md):\n${indent(preview.bootstrap)}`);
+  if (preview.bootstrap) lines.push("", `BOOTSTRAP.md (${preview.bootstrap.length.toLocaleString("en-US")} characters, its setup: what it needs from you and what to agree):\n${indent(preview.bootstrap)}`);
   if (preview.opener) lines.push("", `First message (it sends this in a first turn HUI starts):\n${indent(preview.opener)}`);
-  if (preview.open.length) {
+  // A HUI export's points travel in its setup document; a template without one closes its soul under "Not agreed yet".
+  if (preview.open.length && !preview.bootstrap) {
     lines.push("", "Not agreed yet (it goes through these with you in its first chat, then rewrites its SOUL.md):");
     for (const point of preview.open) lines.push(`  ${point.kind === "ask" ? "Ask" : "Confirm"} (${point.where}${point.operator ? ", only you can change it" : ""}): ${point.question}${point.excerpt ? ` “${point.excerpt}”` : ""}`);
   }
