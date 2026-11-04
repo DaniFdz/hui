@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { HostMetrics } from "../api/schema/host.ts";
-import { CHART_METRICS, CHART_METRIC_KEYS, chartSeries } from "./metric-chart.ts";
+import { CHART_METRICS, CHART_METRIC_KEYS, chartSeries, snapTime, valueAt } from "./metric-chart.ts";
 
 const NOW = Date.parse("2026-11-04T12:00:00Z");
 
@@ -22,7 +22,9 @@ function sample(secondsAgo: number, overrides: Partial<HostMetrics> = {}): HostM
 test("a point sits where its sample is in the window and how full the axis it is", () => {
   const { top, series } = chartSeries([[sample(300), sample(150), sample(0, { cpu: { percent: 80, load: [1, 1, 1] } })]], "cpu", 5, NOW);
   assert.equal(top, 80, "a utilization axis follows the busiest sample");
-  assert.deepEqual(series[0]?.points, [{ x: 0, y: 0.5 }, { x: 0.5, y: 0.5 }, { x: 1, y: 1 }]);
+  assert.deepEqual(series[0]?.points, [
+    { x: 0, y: 0.5, at: NOW - 300_000 }, { x: 0.5, y: 0.5, at: NOW - 150_000 }, { x: 1, y: 1, at: NOW },
+  ]);
   assert.equal(series[0]?.latest, 80);
   assert.equal(chartSeries([[sample(0, { cpu: { percent: 3, load: [1, 1, 1] } })]], "cpu", 5, NOW).top, 10, "an idle machine's axis stops at a tenth, not at its noise");
   assert.equal(chartSeries([[sample(0, { memory: { totalBytes: 100, usedBytes: 12 } })]], "memory", 5, NOW).top, 100, "how full a disk is keeps its full scale");
@@ -66,4 +68,17 @@ test("every metric offers a label and a reading for the switch", () => {
     const value = CHART_METRICS[key].read(one);
     assert.ok(value === null || Number.isFinite(value), key);
   }
+});
+
+test("a hover names a time something was read at, and each line answers with its nearest sample", () => {
+  const quiet = chartSeries([[sample(300), sample(60)]], "cpu", 5, NOW).series[0]!;
+  const busy = chartSeries([[sample(240), sample(15, { cpu: { percent: 90, load: [1, 1, 1] } })]], "cpu", 5, NOW).series[0]!;
+  assert.equal(snapTime([quiet, busy], NOW - 59_000), NOW - 60_000, "the nearest sample across the machines");
+  assert.equal(snapTime([quiet, busy], NOW - 20_000), NOW - 15_000);
+  assert.equal(snapTime([], NOW), null, "nothing to snap to");
+  const snapped = snapTime([quiet, busy], NOW - 20_000)!;
+  assert.equal(valueAt(quiet, snapped)?.at, NOW - 60_000, "a line answers with its own nearest sample");
+  assert.equal(valueAt(busy, snapped)?.at, NOW - 15_000);
+  assert.equal(valueAt(quiet, NOW - 180_000), null, "a line with nothing near that instant says nothing");
+  assert.equal(valueAt(undefined, NOW), null);
 });

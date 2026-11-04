@@ -2942,6 +2942,8 @@ export class HuiApp extends HuiElement {
           window: this.dashboard.chartWindow,
           hidden: this.dashboard.hiddenMachines,
           samples: this.dashboard.samples,
+          hover: this.dashboard.chartHover,
+          onHover: this.dashboard.setChartHover,
           onMetric: this.dashboard.setChartMetric,
           onWindow: this.dashboard.setChartWindow,
           onToggleMachine: this.dashboard.toggleMachine,

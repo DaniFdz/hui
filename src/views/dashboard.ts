@@ -14,7 +14,7 @@ import type { WorkerMetrics } from "../api/workers.ts";
 import { DASHBOARD_ROWS, DASHBOARD_STATUSES, DASHBOARD_STATUS_LABELS, NEEDS_YOU_LIST, summarizeSessions, type SessionSummary } from "../lib/dashboard.ts";
 import { SESSION_STAGES, SESSION_STAGE_LABELS, isSessionStage } from "../lib/kanban.ts";
 import { relativeTime } from "../lib/message-metadata.ts";
-import { CHART_METRICS, CHART_METRIC_KEYS, CHART_WINDOWS, chartSeries, type ChartMetric, type ChartWindow } from "../lib/metric-chart.ts";
+import { CHART_METRICS, CHART_METRIC_KEYS, CHART_WINDOWS, chartSeries, snapTime, valueAt, type ChartMetric, type ChartWindow } from "../lib/metric-chart.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { pullRequestAccessibleLabel, pullRequestStateLabel } from "../lib/pull-requests.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
@@ -33,9 +33,12 @@ export type DashboardChartProps = {
   window: ChartWindow;
   hidden: ReadonlySet<string>;
   samples: ReadonlyMap<string, readonly HostMetrics[]>;
+  /** The instant the pointer or the keyboard is on, or none. */
+  hover: number | null;
   onMetric: (metric: ChartMetric) => void;
   onWindow: (minutes: ChartWindow) => void;
   onToggleMachine: (machine: string) => void;
+  onHover: (at: number | null) => void;
 };
 
 export type DashboardProps = {
@@ -122,23 +125,72 @@ function hostCards(metrics: HostMetrics, processTitle: string) {
   ];
 }
 
-/** The one chart: a line per shown machine, over the window, for the metric the switch picks. */
+/** Every point of one line, as the SVG path data the plot draws. */
+const y = (share: number) => 35.5 - Math.min(1, Math.max(0, share)) * 35;
+
+/** The instant a pointer at this x of the plot names. */
+function timeFromPointer(event: PointerEvent, window: ChartWindow, now: number): number | null {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  if (!rect.width) return null;
+  const share = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+  return now - window * 60_000 + share * window * 60_000;
+}
+
+/** The plot's own key handling: the arrow keys step through the window, Home and End jump to its ends. */
+function hoverKey(event: KeyboardEvent, state: DashboardChartProps, now: number): number | null | undefined {
+  const step = (state.window * 60_000) / 50;
+  if (event.key === "Escape") return null;
+  if (event.key === "Home") return now - state.window * 60_000;
+  if (event.key === "End") return now;
+  if (event.key === "ArrowLeft") return (state.hover ?? now) - step;
+  if (event.key === "ArrowRight") return Math.min(now, (state.hover ?? now) + step);
+  return undefined;
+}
+
+/** The one chart: a line per shown machine over the window for the metric the switch picks, with the reading under the
+ * pointer (or the keyboard) marked and listed. */
 function chart(props: DashboardProps, shown: readonly Machine[]) {
   const { chart: state } = props;
+  const start = props.now - state.window * 60_000;
   const sampled = shown.map((machine) => state.samples.get(machine.id) ?? []);
   const { top, series } = chartSeries(sampled, state.metric, state.window, props.now);
-  const colored = shown.map((machine, index) => ({ machine, series: series[index], color: SERIES_COLORS[index % SERIES_COLORS.length]! }));
-  const y = (share: number) => 35.5 - Math.min(1, Math.max(0, share)) * 35;
-  const lines = colored.filter((line) => line.series && line.series.points.length > 1);
+  const colored = shown.map((machine, index) => ({ machine, series: series[index]!, color: SERIES_COLORS[index % SERIES_COLORS.length]! }));
+  const lines = colored.filter((line) => line.series.points.length > 1);
+  const snapped = state.hover === null ? null : snapTime(series, state.hover);
+  const picked = snapped === null ? [] : colored
+    .map((line) => ({ ...line, point: valueAt(line.series, snapped) }))
+    .sort((one, other) => (other.point?.y ?? -1) - (one.point?.y ?? -1));
+  const crosshair = snapped === null ? null : ((snapped - start) / (props.now - start)) * 100;
+  const shownValue = (value: number | null) => valueLabel(state.metric, value);
+  const summary = picked.map((line) => `${line.machine.name} ${shownValue(line.point ? line.point.y * top : null)}`).join(", ");
   return html`<figure class="dashboard-chart" data-testid="dashboard-chart">
-    <div class="dashboard-chart__plot">
-      ${svg`<svg viewBox="0 0 100 36" preserveAspectRatio="none" role="img" aria-label=${`${CHART_METRICS[state.metric].label} over the last ${state.window} minutes: ${colored.map((line) => `${line.machine.name} ${valueLabel(state.metric, line.series?.latest ?? null)}`).join(", ") || "no machine shown"}`}>
+    <div class="dashboard-chart__plot" data-testid="dashboard-chart-plot" tabindex="0" role="img"
+      aria-label=${`${CHART_METRICS[state.metric].label} over the last ${state.window} minutes: ${colored.map((line) => `${line.machine.name} ${shownValue(line.series.latest)}`).join(", ") || "no machine shown"}. Arrow keys read the values under a time.`}
+      @pointermove=${(event: PointerEvent) => state.onHover(timeFromPointer(event, state.window, props.now))}
+      @pointerdown=${(event: PointerEvent) => state.onHover(timeFromPointer(event, state.window, props.now))}
+      @pointerleave=${(event: PointerEvent) => { if (event.pointerType === "mouse") state.onHover(null); }}
+      @pointercancel=${() => state.onHover(null)}
+      @keydown=${(event: KeyboardEvent) => {
+        const at = hoverKey(event, state, props.now);
+        if (at === undefined) return;
+        event.preventDefault();
+        state.onHover(at);
+      }}
+      @blur=${() => state.onHover(null)}>
+      ${svg`<svg viewBox="0 0 100 36" preserveAspectRatio="none" aria-hidden="true">
         <line class="dashboard-chart__grid" x1="0" x2="100" y1=${y(0.5)} y2=${y(0.5)}></line>
-        ${lines.map((line) => svg`<polyline class="dashboard-chart__line" points=${line.series!.points.map((point) => `${(point.x * 100).toFixed(2)},${y(point.y).toFixed(2)}`).join(" ")} style=${`stroke: ${line.color}`}></polyline>`)}
+        ${lines.map((line) => svg`<polyline class="dashboard-chart__line" points=${line.series.points.map((point) => `${(point.x * 100).toFixed(2)},${y(point.y).toFixed(2)}`).join(" ")} style=${`stroke: ${line.color}`}></polyline>`)}
+        ${crosshair === null ? nothing : svg`<line class="dashboard-chart__crosshair" data-testid="dashboard-chart-crosshair" x1=${crosshair} x2=${crosshair} y1="0" y2="36"></line>`}
+        ${picked.map((line) => line.point ? svg`<line class="dashboard-chart__dot-halo" x1=${line.point.x * 100} x2=${line.point.x * 100} y1=${y(line.point.y)} y2=${y(line.point.y)}></line><line class="dashboard-chart__dot" x1=${line.point.x * 100} x2=${line.point.x * 100} y1=${y(line.point.y)} y2=${y(line.point.y)} style=${`stroke: ${line.color}`}></line>` : nothing)}
       </svg>`}
-      <span class="dashboard-chart__top">${valueLabel(state.metric, top)}</span>
+      <span class="dashboard-chart__top">${shownValue(top)}</span>
+      ${snapped === null ? nothing : html`<div class="dashboard-chart__tip" data-testid="dashboard-chart-tip" style=${`left: ${Math.min(88, Math.max(12, crosshair ?? 0))}%`}>
+        <span class="dashboard-chart__tip-time">${new Date(snapped).toLocaleTimeString()}</span>
+        <ul>${picked.map((line) => html`<li><span class="dashboard-chart__swatch" style=${`background: ${line.color}`}></span>${line.machine.name}<strong>${line.point ? shownValue(line.point.y * top) : "—"}</strong></li>`)}</ul>
+      </div>`}
     </div>
-    <figcaption class="dashboard-legend dashboard-legend--chart">${colored.map((line) => html`<span class="dashboard-chart__key"><span class="dashboard-chart__swatch" style=${`background: ${line.color}`}></span>${line.machine.name}<strong>${valueLabel(state.metric, line.series?.latest ?? null)}</strong></span>`)}</figcaption>
+    <figcaption class="dashboard-legend dashboard-legend--chart">${colored.map((line) => html`<span class="dashboard-chart__key"><span class="dashboard-chart__swatch" style=${`background: ${line.color}`}></span>${line.machine.name}<strong>${shownValue(line.series.latest)}</strong></span>`)}</figcaption>
+    <p class="sr-only" aria-live="polite">${crosshair === null ? "" : `${new Date(snapped!).toLocaleTimeString()}: ${summary}`}</p>
   </figure>`;
 }
 

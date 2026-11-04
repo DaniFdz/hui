@@ -32,8 +32,32 @@ export const CHART_METRIC_KEYS = Object.keys(CHART_METRICS) as ChartMetric[];
 export const CHART_WINDOWS = [5, 15, 30] as const;
 export type ChartWindow = (typeof CHART_WINDOWS)[number];
 
-export type Point = { x: number; y: number };
+export type Point = { x: number; y: number; at: number };
 export type Series = { points: Point[]; latest: number | null };
+/** How far from a hovered instant a sample still counts as that instant's reading. */
+export const HOVER_TOLERANCE_MS = 60_000;
+
+/** The sample closest to `at` across the machines shown, so a pointer anywhere in the plot names a time something was
+ * actually read at. */
+export function snapTime(series: readonly Series[], at: number): number | null {
+  let closest: number | null = null;
+  for (const line of series) {
+    for (const point of line.points) {
+      if (closest === null || Math.abs(point.at - at) < Math.abs(closest - at)) closest = point.at;
+    }
+  }
+  return closest;
+}
+
+/** A line's reading at `at`: its nearest sample, or nothing when the line has none near enough. */
+export function valueAt(series: Series | undefined, at: number, toleranceMs = HOVER_TOLERANCE_MS): Point | null {
+  let closest: Point | null = null;
+  for (const point of series?.points ?? []) {
+    if (Math.abs(point.at - at) > toleranceMs) continue;
+    if (closest === null || Math.abs(point.at - at) < Math.abs(closest.at - at)) closest = point;
+  }
+  return closest;
+}
 
 /** `x` and `y` are shares of the plot, so the view maps them onto whatever size it draws at. */
 export function chartSeries(samples: readonly (readonly HostMetrics[])[], metric: ChartMetric, minutes: number, now: number): { top: number; series: Series[] } {
@@ -50,7 +74,7 @@ export function chartSeries(samples: readonly (readonly HostMetrics[])[], metric
     series: all.map((entries) => {
       const shown = entries.filter((entry) => entry.at >= start);
       return {
-        points: shown.map((entry) => ({ x: (entry.at - start) / (now - start), y: entry.value / top })),
+        points: shown.map((entry) => ({ x: (entry.at - start) / (now - start), y: entry.value / top, at: entry.at })),
         latest: entries.at(-1)?.value ?? null,
       };
     }),

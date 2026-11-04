@@ -70,6 +70,21 @@ test("Dashboard lists a running session, opens it, and shows the host's metrics"
   await expect(screen.getByLabel("Window").getByRole("button", "5m")).toHaveAttribute("aria-pressed", "true");
   const chart = screen.getByTestId("dashboard-chart");
   await expect(chart).toContainText("This gateway");
+  // Hovering the plot names the time and every machine's reading at it and lets go when the pointer leaves; the
+  // keyboard reads the newest one and Escape lets go.
+  const plot = screen.getByTestId("dashboard-chart-plot");
+  const tip = screen.getByTestId("dashboard-chart-tip");
+  await plot.hover();
+  await expect(tip).toContainText("This gateway");
+  await expect(screen.getByTestId("dashboard-chart-crosshair")).toBeAttached();
+  await screen.getByTestId("dashboard-summary").hover();
+  await expect(tip).toBeHidden();
+  await plot.focus();
+  await plot.press("End");
+  await expect(tip).toContainText(/\d+%/u);
+  await expect(tip).toContainText("This gateway");
+  await plot.press("Escape");
+  await expect(tip).toBeHidden();
   await screen.getByLabel("Window").getByRole("button", "15m").tap();
   await expect(screen.getByLabel("Window").getByRole("button", "15m")).toHaveAttribute("aria-pressed", "true");
   await screen.getByLabel("Metric").getByRole("button", "Memory").tap();

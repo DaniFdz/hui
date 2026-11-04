@@ -44,8 +44,8 @@ function metrics(overrides: Partial<HostMetrics> = {}): HostMetrics {
 
 function chart(overrides: Partial<DashboardChartProps> = {}): DashboardChartProps {
   return {
-    gateway: "gateway", metric: "cpu", window: 5, hidden: new Set(), samples: new Map(),
-    onMetric: () => {}, onWindow: () => {}, onToggleMachine: () => {},
+    gateway: "gateway", metric: "cpu", window: 5, hidden: new Set(), samples: new Map(), hover: null,
+    onMetric: () => {}, onWindow: () => {}, onToggleMachine: () => {}, onHover: () => {},
     ...overrides,
   };
 }
@@ -57,6 +57,14 @@ function page(overrides: Partial<DashboardProps> = {}): string {
     onRetry: () => {}, onOpenSession: () => {}, onToggleList: () => {},
     ...overrides,
   }));
+}
+
+/** The chart, its plot and its legend, up to the first machine's cards. */
+function chartPart(markup: string): string {
+  const start = markup.indexOf('data-testid="dashboard-chart"');
+  assert.ok(start >= 0, "chart");
+  const next = markup.indexOf('data-testid="dashboard-machine"', start);
+  return markup.slice(start, next < 0 ? undefined : next);
 }
 
 /** The markup of one `data-testid` element up to the next element with a test id. */
@@ -319,27 +327,47 @@ test("the chart draws one line per shown machine, and a hidden one leaves both t
     ["w", [metrics({ sampledAt: "2026-10-23T11:59:58Z", cpu: { percent: 90, load: [1, 1, 1] } }), metrics({ cpu: { percent: 70, load: [1, 1, 1] } })]],
   ]);
   const workers = [{ id: "w", name: "Worker w", state: "connected" as const, metrics: metrics() }];
-  const shown = part(page({ metrics: metrics(), workers, chart: chart({ samples }) }), "chart");
+  const shown = chartPart(page({ metrics: metrics(), workers, chart: chart({ samples }) }));
   assert.equal(shown.match(/<polyline/gu)?.length, 2, "a line per machine");
   assert.match(shown, /Worker w/u);
   assert.match(shown, /70%/, "the legend carries each machine's latest value");
-  assert.match(shown, /aria-label=CPU over the last 5 minutes: This gateway 42%, Worker w 70%>/u);
+  assert.match(shown, /aria-label=CPU over the last 5 minutes: This gateway 42%, Worker w 70%\. Arrow keys/u);
 
   const markup = page({ metrics: metrics(), workers, chart: chart({ samples, hidden: new Set(["w"]) }) });
-  assert.equal(part(markup, "chart").match(/<polyline/gu)?.length, 1, "the hidden machine is off the chart");
-  assert.doesNotMatch(part(markup, "chart"), /Worker w/u);
+  assert.equal(chartPart(markup).match(/<polyline/gu)?.length, 1, "the hidden machine is off the chart");
+  assert.doesNotMatch(chartPart(markup), /Worker w/u);
   assert.deepEqual([...markup.matchAll(/dashboard-host__name">([^<]+)</gu)].map((match) => match[1]), ["This gateway"], "and its cards are gone too");
   assert.match(page({ metrics: metrics(), chart: chart({ hidden: new Set(["gateway"]) }) }), /Pick a machine to chart\./u);
 });
 
 test("a line needs two samples, and the switch says which metric and window it draws", () => {
   const one = new Map([["gateway", [metrics()]]]);
-  assert.doesNotMatch(part(page({ metrics: metrics(), chart: chart({ samples: one }) }), "chart"), /<polyline/u);
-  const chartMarkup = part(page({ metrics: metrics(), chart: chart({ metric: "network", window: 15, samples: one }) }), "chart");
+  assert.doesNotMatch(chartPart(page({ metrics: metrics(), chart: chart({ samples: one }) })), /<polyline/u);
+  const chartMarkup = chartPart(page({ metrics: metrics(), chart: chart({ metric: "network", window: 15, samples: one }) }));
   assert.match(chartMarkup, /aria-label=Network over the last 15 minutes/u);
   const controls = part(page({ metrics: metrics(), chart: chart({ metric: "network", window: 15 }) }), "activity");
   assert.match(controls, /settings-segmented__btn--active"[^>]*>Network</u, "the metric switch names the metric it draws");
   assert.match(controls, /settings-segmented__btn--active"[^>]*>15m</u, "and the window");
+});
+
+test("the reading under the pointer is marked and listed, busiest first, and goes away with the pointer", () => {
+  const samples = new Map([
+    ["gateway", [metrics({ sampledAt: "2026-10-23T11:58:00Z" }), metrics({ sampledAt: "2026-10-23T11:59:30Z" })]],
+    ["w", [metrics({ sampledAt: "2026-10-23T11:58:00Z" }), metrics({ sampledAt: "2026-10-23T11:59:30Z", cpu: { percent: 90, load: [1, 1, 1] } })]],
+  ]);
+  const workers = [{ id: "w", name: "Worker w", state: "connected" as const, metrics: metrics() }];
+  const markup = page({ metrics: metrics(), workers, chart: chart({ samples, hover: Date.parse("2026-10-23T11:59:20Z") }) });
+  const tip = markup.slice(markup.indexOf('data-testid="dashboard-chart-tip"'));
+  assert.match(markup.slice(0, markup.indexOf('data-testid="dashboard-chart-tip"')), /dashboard-chart__crosshair/u, "the crosshair marks the time");
+  assert.equal(markup.match(/class="dashboard-chart__dot"/gu)?.length, 2, "a dot per machine at its reading");
+  assert.match(tip, /dashboard-chart__tip-time">11:59:30/u);
+  assert.ok(tip.indexOf("Worker w") < tip.indexOf("This gateway"), "the busiest machine comes first");
+  assert.match(tip, /Worker w<strong>90%<\/strong>/u);
+  assert.match(tip, /This gateway<strong>42%<\/strong>/u);
+  const spoken = markup.slice(markup.indexOf('aria-live="polite"'));
+  assert.match(spoken, /^aria-live="polite">11:59:30[^:]*: Worker w 90%, This gateway 42%/u, "and a screen reader hears the same");
+  const away = page({ metrics: metrics(), workers, chart: chart({ samples, hover: null }) });
+  assert.doesNotMatch(away, /dashboard-chart__crosshair|dashboard-chart-tip/u);
 });
 
 /** One machine's whole block, found by the name it shows. */

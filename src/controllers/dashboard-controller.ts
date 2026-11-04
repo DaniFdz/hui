@@ -48,6 +48,8 @@ export class DashboardController implements ReactiveController {
   hiddenMachines: ReadonlySet<string> = new Set();
   /** Each machine's samples, this gateway's under `GATEWAY_MACHINE`. */
   samples: ReadonlyMap<string, readonly HostMetrics[]> = new Map();
+  /** The instant the pointer (or the keyboard) is on in the chart, or none. */
+  chartHover: number | null = null;
   expandedLists: ReadonlySet<string> = new Set();
   readonly #host: Pick<ReactiveControllerHost, "requestUpdate">;
   readonly #shown: () => boolean;
@@ -117,6 +119,12 @@ export class DashboardController implements ReactiveController {
     this.hiddenMachines = next;
     this.#host.requestUpdate();
     void this.#readHistory();
+  };
+
+  setChartHover = (at: number | null): void => {
+    if (at === this.chartHover) return;
+    this.chartHover = at;
+    this.#host.requestUpdate();
   };
 
   setChartMetric = (metric: ChartMetric): void => {
