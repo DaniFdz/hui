@@ -64,6 +64,7 @@
 .dashboard-chip--stage[data-tone="done"] { --stage-color: var(--stage-done); }
 .dashboard-chip--status[data-tone="waiting"] { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); color: var(--warn); }
 .dashboard-chip--status:is([data-tone="error"], [data-tone="disconnected"]) { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
+.dashboard-chip--unread { border-color: color-mix(in srgb, var(--info) 45%, var(--border)); color: var(--info); }
 .dashboard-chip--pr[data-tone="open"] { color: var(--ok); }
 .dashboard-chip--pr[data-tone="merged"] { color: var(--pr-merged); }
 .dashboard-chip--pr[data-tone="closed"] { color: var(--danger); }

@@ -90,8 +90,8 @@ test("the sessions summary counts every status that is present and the pipeline 
   const stages = part(markup, "stage-counts");
   assert.deepEqual([...stages.matchAll(/class="dashboard-stage ([\w-]*)" data-stage=(\w+)><strong>(\d+)/gu)].map((match) => `${match[2]} ${match[3]}${match[1] ? " zero" : ""}`),
     ["investigation 2", "implementation 1", "testing 1", "done 1"], "Done counts only a session still in flight");
-  assert.deepEqual([...part(markup, "needs-you").matchAll(/__name" title=[^>]*>Session ([\w-]+)</gu)].map((match) => match[1]), ["c", "d"],
-    "every session that stopped outside Done is waiting for the operator");
+  assert.deepEqual([...part(markup, "needs-you").matchAll(/__name" title=[^>]*>Session ([\w-]+)</gu)].map((match) => match[1]), ["d", "c"],
+    "every session that stopped outside Done is waiting for the operator, an error before parked work");
   assert.deepEqual([...part(markup, "active-sessions").matchAll(/__name" title=[^>]*>Session ([\w-]+)</gu)].map((match) => match[1]).sort(), ["a", "b", "f"],
     "no subagent or finished session is listed");
   assert.match(page({ groups: [{ label: "", sessions: [session("x")] }] }), /dashboard-stage--zero" data-stage=done><strong>0/u);
@@ -117,7 +117,7 @@ test("a session that stopped anywhere but Done needs you, and the rest of what i
   assert.match(needsYou, /Session wait<\/span>[\s\S]*5m ago[\s\S]*dashboard-chip--status" data-tone=waiting title=>Needs input<[\s\S]*>Testing<[\s\S]*>Workspace One</u,
     "a waiting session says why and keeps its stage and worker");
   assert.deepEqual([...needsYou.matchAll(/__name" title=[^>]*>Session (\w+)</gu)].map((match) => match[1]), ["wait", "err", "off"],
-    "the first three rows are the newest");
+    "a question, an error and a disconnect come first, the longest wait at the top");
   assert.match(needsYou, /Show all 4</u);
   const all = part(page({ groups, expandedLists: new Set(["needs-you"]) }), "needs-you");
   assert.deepEqual([...all.matchAll(/__name" title=[^>]*>Session (\w+)</gu)].map((match) => match[1]), ["wait", "err", "off", "idle"],
@@ -155,7 +155,7 @@ test("each list shows three rows and a button that shows all of them, and every 
   const collapsed = page({ groups });
   assert.match(part(collapsed, "summary"), /17 sessions/u);
   assert.match(part(collapsed, "needs-you"), /Needs you <span class="dashboard-subheading__count">9/u, "the error sessions wait for the operator too, so they are in Needs you");
-  assert.deepEqual(names(part(collapsed, "needs-you")), ["w0", "e0", "w1"]);
+  assert.deepEqual(names(part(collapsed, "needs-you")), ["w3", "w2", "w1"], "the questions have waited longest, so they come first");
   assert.equal(button(part(collapsed, "needs-you")), `<button class="dashboard-more" type="button" aria-controls=dashboard-list-needs-you aria-expanded=false @click=>Show all 9`);
   assert.match(part(collapsed, "needs-you"), /<ul id=dashboard-list-needs-you /u);
   const closed = sections(collapsed);
@@ -171,9 +171,31 @@ test("each list shows three rows and a button that shows all of them, and every 
   assert.deepEqual(names(open.Running!), ["r0", "r1", "r2", "r3", "r4"]);
   assert.equal(button(open.Running!), `<button class="dashboard-more" type="button" aria-controls=dashboard-list-running aria-expanded=true @click=>Show fewer`);
   assert.equal(button(part(expanded, "needs-you")), `<button class="dashboard-more" type="button" aria-controls=dashboard-list-needs-you aria-expanded=false @click=>Show all 9`, "opening one list leaves the others folded");
-  assert.deepEqual(names(part(expanded, "needs-you")), ["w0", "e0", "w1"]);
+  assert.deepEqual(names(part(expanded, "needs-you")), ["w3", "w2", "w1"]);
   assert.match(part(expanded, "summary"), /17 sessions/u);
   assert.match(open.Running!, /^>Running <span class="dashboard-subheading__count">5/u);
+});
+
+test("Needs you puts a question first, then a stopped session, an unread answer and parked work, each longest wait first", () => {
+  const groups = [{ label: "", sessions: [
+    session("idle-new", { updatedAt: "2026-10-23T11:59:00Z" }),
+    session("idle-old", { updatedAt: "2026-10-23T10:00:00Z" }),
+    session("unread-new", { unread: true, updatedAt: "2026-10-23T11:58:00Z" }),
+    session("unread-old", { unread: true, updatedAt: "2026-10-23T09:00:00Z" }),
+    session("asking", { status: "waiting", updatedAt: "2026-10-23T11:57:00Z" }),
+    session("broken", { status: "error", updatedAt: "2026-10-23T11:56:00Z" }),
+    session("offline", { status: "disconnected", updatedAt: "2026-10-23T11:55:00Z" }),
+    session("shipped", { stage: "done", unread: true }),
+  ] }];
+  const markup = part(page({ groups, expandedLists: new Set(["needs-you"]) }), "needs-you");
+  assert.deepEqual([...markup.matchAll(/__name" title=[^>]*>Session ([a-z-]+)</gu)].map((match) => match[1]),
+    ["asking", "broken", "offline", "unread-old", "unread-new", "idle-old", "idle-new"],
+    "a question outranks a stopped session, an unread answer and parked work, and the longest wait leads its tier");
+  const row = (name: string) => markup.slice(markup.indexOf(`>Session ${name}<`), markup.indexOf("</li>", markup.indexOf(`>Session ${name}<`)));
+  assert.match(row("unread-old"), /dashboard-chip--unread" data-tone= title=>Unread</u, "an unread row says why it sits above the parked ones");
+  assert.doesNotMatch(row("idle-old"), /dashboard-chip--unread/u);
+  assert.doesNotMatch(markup, /Session shipped/u, "an unread session in Done is still finished, so it is only counted");
+  assert.match(part(page({ groups }), "summary"), /7 sessions <span class="dashboard-summary__finished">· 1 finished<\/span>/u);
 });
 
 test("an idle session that is not finished needs you, and the list waits for the first session read", () => {

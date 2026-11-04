@@ -201,16 +201,16 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23", "docs/api.md#put-__huisettings"],
     surfaces: ["page:labs", "page:dashboard", "setting:labs.dashboard", "route:PUT /__hui/settings"],
     web: "required",
-    ios: "backlog",
+    ios: { excluded: "The Dashboard and its Labs switch are the gateway's web page; no iOS screen renders them.", decision: "SPEC.md#the-dashboard-is-proven-in-the-browser-2026-11-04" },
   },
   {
     id: "PAGE-045",
     title: "See the sessions in flight and the host's resource use on the Dashboard",
-    behaviour: "Dashboard counts the top-level sessions in flight by status (*Needs input*, *Error*, *Disconnected*, *Reconnecting*, *Running*, *Starting*, *Idle*) and by stage, with the finished ones (idle in Done) only counted after the total, and lists under *Needs you* every session that stopped outside Done, saying why it waits (*Needs input*, *Error*, *Disconnected* or *Idle*), then the running, reconnecting and starting ones by status, each with its stage, when it changed and how many subagents it has; a row opens its session, each list shows its first three rows and **Show all** opens it, and with every session running it reads *Nothing needs you.* Below, *Gateway host* shows CPU, Memory, Disk, GPU, Network and Gateway process cards, refreshed every five seconds, each with its value and a sparkline, marked above 85%, or *Not available on this host*. A failed read shows the error with **Retry**.",
-    spec: ["SPEC.md#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23", "SPEC.md#dashboard-counts-the-sessions-in-flight-2026-10-27", "SPEC.md#dashboard-lists-show-three-rows-each-2026-10-27", "SPEC.md#needs-you-counts-every-session-that-stopped-2026-10-27", "docs/api.md#get-__huihost-metrics"],
+    behaviour: "Dashboard counts the top-level sessions in flight by status (*Needs input*, *Error*, *Disconnected*, *Reconnecting*, *Running*, *Starting*, *Idle*) and by stage, with the finished ones (idle in Done) only counted after the total, and lists under *Needs you* every session that stopped outside Done, saying why it waits (*Needs input*, *Error*, *Disconnected* or *Idle*, plus *Unread* for an answer nobody read): a question first, then an error, a disconnect, an unread answer and parked work, each longest wait first, then the running, reconnecting and starting ones by status, each with its stage, when it changed and how many subagents it has; a row opens its session, each list shows its first three rows and **Show all** opens it, and with every session running it reads *Nothing needs you.* Below, *Gateway host* shows CPU, Memory, Disk, GPU, Network and Gateway process cards, refreshed every five seconds, each with its value and a sparkline, marked above 85%, or *Not available on this host*. A failed read shows the error with **Retry**.",
+    spec: ["SPEC.md#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23", "SPEC.md#dashboard-counts-the-sessions-in-flight-2026-10-27", "SPEC.md#dashboard-lists-show-three-rows-each-2026-10-27", "SPEC.md#needs-you-counts-every-session-that-stopped-2026-10-27", "SPEC.md#needs-you-leads-with-the-longest-wait-2026-11-04", "docs/api.md#get-__huihost-metrics"],
     surfaces: ["page:dashboard", "route:GET /__hui/host-metrics"],
     web: "required",
-    ios: "backlog",
+    ios: { excluded: "The Dashboard is the gateway's web page; no iOS screen renders it. The app's own Dashboard proves its use case there when it exists.", decision: "SPEC.md#the-dashboard-is-proven-in-the-browser-2026-11-04" },
   },
 ];
 
