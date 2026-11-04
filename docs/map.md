@@ -123,7 +123,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 
 | Path | Owns |
 |---|---|
-| `cli/` | The `hui` command: gateway lifecycle (`gateway*.ts`, `state.ts`), installed releases and updates (`releases.ts`, `update*.ts`, `installation.ts`), `hui doctor` (`doctor*.ts`), the `/__hui/` client of `hui bot` and `hui schedule` (`gateway-client.ts`); `doctor-bots.ts` splits an old single-file soul and names `hui bot split` |
+| `cli/` | The `hui` command: gateway lifecycle (`gateway*.ts`, `state.ts`), installed releases and updates (`releases.ts`, `update*.ts`, `installation.ts`), `hui doctor` (`doctor*.ts`), the `/__hui/` client of `hui bot` and `hui schedule` (`gateway-client.ts`); `doctor-bots.ts` splits an old single-file soul and names `hui bot split`; `commands.ts` is the command and flag table `main.ts` validates against and `completion.ts` offers to bash and zsh, whose programs live in `cli/completions/` and are installed by `completion-install.mjs` |
 | `desktop/` | Electron wrapper, native notification click handling and the save dialog for downloads (`main.cjs`, `policy.cjs`), macOS app registration, reinstalling it after an update and its notification capability marker (`install.mjs`) |
 | `bin/` | Entry points: `hui.mjs` (installed CLI), `hui-dev.mjs` (`npm run dev`) |
 | `scripts/` | Build, release and nightly versioning |

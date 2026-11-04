@@ -161,6 +161,21 @@ failures the browser reported, across restarts.
 Settings → Logs shows the running gateway's entries, and **Export diagnostics**
 saves them as JSON.
 
+Tab completion for bash and zsh covers every command and flag, because the
+program asks the CLI instead of keeping its own list. A global npm install (and
+the Nix package) writes it where each shell finds it; if you installed another
+way, add one line:
+
+```sh
+# bash: ~/.bashrc
+eval "$(hui completion bash)"
+
+# zsh: ~/.zshrc, after compinit
+eval "$(hui completion zsh)"
+```
+
+See [shell completion](docs/guide.md#shell-completion).
+
 Remote workers (Settings → Workers) can be managed from a terminal too, through
 the running gateway. A new worker connects at once; edit changes only the fields
 given (a new command applies on the next connect), and `--extra-path`,
