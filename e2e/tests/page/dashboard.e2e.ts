@@ -100,14 +100,14 @@ test("Needs you leads with a question, then an unread answer, then parked work, 
   await hui.open("/dashboard");
   const needsYou = screen.getByTestId("dashboard-needs-you");
   await needsYou.getByRole("button", "Show all 5").tap();
-  await expect(needsYou.getByRole("link")).toHaveText([
+  await expect(needsYou.getByRole("listitem")).toHaveText([
     /^Waiting question/u,
     /^Unread oldest/u,
     /^Unread newest/u,
     /^Parked oldest/u,
     /^Parked newest/u,
   ]);
-  await expect(needsYou.getByRole("link").nth(0)).toContainText("Needs input");
-  await expect(needsYou.getByRole("link").nth(1)).toContainText("Unread");
-  await expect(needsYou.getByRole("link").nth(3)).not.toContainText("Unread");
+  await expect(needsYou.getByRole("listitem").nth(0)).toContainText("Needs input");
+  await expect(needsYou.getByRole("listitem").nth(1)).toContainText("Unread");
+  await expect(needsYou.getByRole("listitem").nth(3)).not.toContainText("Unread");
 });
