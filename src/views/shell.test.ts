@@ -786,6 +786,34 @@ function markup(value: unknown): string {
   return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
 }
 
+/** The handlers a rendered view binds to one template attribute, in render order. */
+function handlers(value: unknown, attribute: string): ((event: { preventDefault(): void }) => void)[] {
+  const found: ((event: { preventDefault(): void }) => void)[] = [];
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (node && typeof node === "object" && "strings" in node && "values" in node) {
+      const template = node as { strings: readonly string[]; values: unknown[] };
+      template.strings.forEach((part, index) => {
+        const bound = template.values[index];
+        if (part.includes(attribute) && typeof bound === "function") found.push(bound as (event: { preventDefault(): void }) => void);
+        visit(bound);
+      });
+      return;
+    }
+    if (node && typeof node === "object" && "_$litDirective$" in node && "values" in node) {
+      const [items, , render] = (node as { values: unknown[] }).values;
+      if (Array.isArray(items) && typeof render === "function") {
+        items.forEach((item, index) => visit((render as (item: unknown, index: number) => unknown)(item, index)));
+      }
+    }
+  };
+  visit(value);
+  return found;
+}
+
 function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents", loading = false): string {
   const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
   if (open) sessions.push(session(open, "Open", "Work"));
@@ -815,4 +843,27 @@ test("the session list draws placeholder rows until its first read answers", () 
   assert.equal(loading.split('class="sidebar-placeholder__row"').length - 1, 6, "the placeholder keeps the list's shape");
   assert.doesNotMatch(loading, /sidebar-list__note/u, "no loading note stands beside the placeholder");
   assert.doesNotMatch(sidebar(2), /sidebar-placeholder/u, "rows replace the placeholder");
+});
+
+test("a right click on a session row asks for the actions menu its button opens", () => {
+  const menus: string[] = [];
+  const selected: string[] = [];
+  const view = renderSidebar({
+    view: "home", pages: HUI_PAGES, selectedSessionId: "other", splitSessionId: "",
+    groups: [{ label: "Work", sessions: [session("ctx", "Build", "Work")] }],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "",
+    groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
+    groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    onToggleMenu: (id: string) => menus.push(id),
+    onSelectSession: (row: SessionView) => selected.push(row.id),
+  } as unknown as Parameters<typeof renderSidebar>[0]);
+  const [contextmenu] = handlers(view, "@contextmenu=");
+  assert.equal(typeof contextmenu, "function", "a session row answers a right click");
+  let prevented = false;
+  contextmenu!({ preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, true, "the browser's own link menu does not open");
+  assert.deepEqual(menus, ["ctx"], "the right click opens the row's actions menu");
+  assert.deepEqual(selected, [], "a right click never opens the session");
 });

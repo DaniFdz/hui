@@ -24,6 +24,7 @@ HUI now mirrors that hierarchy for the operations supported by PI. `Assign to` i
 ## Exercised UI paths
 
 - Opened the session action menu from the sidebar.
+- Right-clicked a row's name while another session was open: the same **Actions for** menu appeared under that row's button, the row kept `aria-current="false"` and the open session stayed open. The shared test `e2e/tests/sess/session-right-click.e2e.ts` runs that journey (SESS-077).
 - Selected an emoji from **Icon**.
 - Marked a session unread and verified its accessible unread state.
 - Archived the session, verified it disappeared from the active sidebar, opened **Sessions → Archived**, restored it, and reloaded the app.
