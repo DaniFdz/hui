@@ -543,26 +543,50 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   cannot be mistaken for spend outside the entries.
   It is never folded into the ranged totals or the chart. Legacy PI compaction
   records do carry usage and count on their own day.
-- A summary shows tokens, recorded PI cost estimates and sessions. Missing or
-  invalid prices show Unpriced, a recorded numeric zero remains $0.00, and a mix
-  of priced and unpriced calls labels cost as partial. HUI never adds external
-  session cost reports to PI estimates or presents either as a provider bill.
+- A headline strip shows tokens, recorded PI cost estimates, sessions and error
+  rate, each with the same window's earlier half as a change when it has one, so
+  a range reads against itself. Missing or invalid prices show Unpriced, a
+  recorded numeric zero remains $0.00, and a mix of priced and unpriced calls
+  labels cost as partial. HUI never adds external session cost reports to PI
+  estimates or presents either as a provider bill.
+- The chart and a model donut share a row on wide screens and stack on narrow
+  ones. The donut names the five biggest models and the rest as one slice, its
+  centre holds the token total, and each legend row filters the page the way a
+  ranked model does.
 - Usage switches between tokens and recorded cost. Token bars can show the
-  input, output, cache-read and cache-write shares. Empty days remain visible; a
-  period with usage but no price is unpriced rather than free. Selecting a bar
-  narrows the report to its period, drawn as one bar per day up to 32 days, per
-  week up to 32 weeks, and per month beyond. A token-type bar and legend show the
-  same range.
-- Overview cards show recorded messages, tool results, errors, average tokens per
-  usage record and cache hit rate. Ranked model, provider and tool lists use the
-  same period. Unknown model/provider labels stay unknown rather than being
-  guessed from the session's current model.
+  input, output, cache-read and cache-write shares. Empty days remain visible as a
+  quiet baseline; a period with usage but no price is unpriced rather than free.
+  Pointing at or focusing a bar names its period, tokens, recorded price, type
+  split and record count. Selecting a bar selects its period and offers **Show
+  only <period>**; narrowing the report is explicit, so exploring the chart never
+  changes the range. The chart draws one bar per day up to 32 days, per week up to
+  32 weeks, and per month beyond. A token-type bar and legend show the same range.
+- Overview cards show recorded messages, tool results, errors, error rate,
+  average tokens and average recorded cost per usage record, and cache hit rate.
+  Ranked model, provider and tool lists use the same period, and a model or
+  provider names its share of the range's recorded cost. A further list names the
+  days whose messages failed most often. Unknown model/provider labels stay
+  unknown rather than being guessed from the session's current model.
+- A range of at least 60 days also draws a daily calendar: one cell per day of
+  the last 52 weeks, shaded by that day's tokens, with the same hover detail and
+  day selection as the bars. Days outside the range stay empty rather than being
+  drawn as zero. It is a pointer affordance, marked decorative for assistive
+  technology; the bars and the date fields keep every one of its actions
+  reachable by keyboard.
+- The page hands out what it shows: **Daily CSV** downloads the ranged daily
+  counters and **Sessions CSV** the ranged session rows, titles included.
 - A plain-text search narrows sessions by title, identifier or recorded model and
-  updates all displayed summaries and charts. Sessions sort by recent activity,
-  tokens or cost, with unknown prices last. At most 50 rows draw initially;
-  Show more reveals the next page. Each row can open its conversation.
-- Loading, no matching data, partial data and read failures are explicit. Controls
-  work with the keyboard and fit phone widths. No provider credentials, prompts,
+  updates all displayed summaries and charts. A ranked model or provider also
+  applies that search, so a ranking is a way into its sessions. Sessions sort by
+  recent activity, tokens or cost, with unknown prices last. At most 50 rows draw
+  initially; Show more reveals the next page. Each row states when it was last
+  active and can open its conversation.
+- A first read shows a skeleton, and a read that has not answered after six
+  seconds says so and offers **Cancel**; cancelling keeps the last report and
+  leaves a stopped first read distinct from an unavailable one. No matching data,
+  partial data and read failures are explicit: an empty range offers **Show all
+  time** and a failed read offers Retry. Controls work with the keyboard and fit
+  phone widths. No provider credentials, prompts,
   message bodies, tool arguments or tool output enter the usage response.
 - The gateway keeps one range-independent scan per time zone and answers range,
   zone and filter changes from it, so those interactions stay responsive on a
@@ -2517,6 +2541,15 @@ saved in the browser, and resizing the window. Others exist only in the wide
 layout HUI shows from 1100px, such as collapsing the sidebar. The iPhone app
 ships its code, uses the system clipboard, has no tabs, has no older version and
 is always narrow, so these are web-only use cases.
+
+### Usage is proven in the browser (2026-11-04)
+
+`/usage` is a page of the gateway's web UI: it reads the gateway's own recorded
+local histories and draws its chart against the browser's calendar and time
+zone. The catalogue records that page's outcomes as web use cases, and none of
+them is proven on iOS. When the iPhone app gets its own Usage screen, that
+screen is its own use case with its own shared test; until then PAGE-021 is
+excluded on iOS rather than left on its backlog.
 
 ### The iPhone app follows the phone's text size (2026-10-26)
 

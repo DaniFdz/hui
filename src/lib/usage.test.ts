@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { UsageMetrics, UsageReport, UsageSession } from "../api/schema/diagnostics.ts";
-import { sumUsage, usageChartDays, usageCost, usageOverview } from "./usage.ts";
+import { sumUsage, usageChartDays, usageComparison, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageOverview, usageSessionCsv } from "./usage.ts";
 
 const metrics = (tokens: number, costUsd: number | null): UsageMetrics => ({ inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: tokens, costUsd, calls: 1, unpricedCalls: costUsd === null ? 1 : 0, userMessages: 1, assistantMessages: 1, toolResults: 1, errors: 0 });
 const session = (id: string, model: string, usage: UsageMetrics): UsageSession => ({ id, title: id, lastActivityAt: 1, metrics: usage, models: [{ provider: "fixture", model, metrics: usage }], days: [{ date: "2026-10-01", metrics: usage }], tools: [{ name: "read", calls: 1, errors: 0 }] });
@@ -65,4 +65,65 @@ test("the chart keeps empty days and leap days, groups wide ranges by week and l
   assert.equal(usageChartDays([], "2024-01-01", "2024-08-11").bucket, "week", "32 weeks stay weekly");
   assert.equal(usageChartDays([], "2024-01-01", "2024-08-12").bucket, "month", "33 weeks group by month");
   assert.equal(usageChartDays([], "2024-01-01", "2024-12-31").bucket, "month", "366 days group by month");
+});
+
+test("a bar's detail names its tokens, price, type split and records", () => {
+  const mixed = { ...metrics(2048, 0.5), inputTokens: 1000, outputTokens: 400, cacheReadTokens: 648, cacheWriteTokens: 0, calls: 3, unpricedCalls: 1, errors: 1 };
+  assert.deepEqual(usageDetail(mixed), ["2,048 tokens · ≥ $0.50", "Input 1,000 · Output 400 · Cache read 648", "3 usage records · 1 unpriced · 1 error"]);
+  assert.deepEqual(usageDetail({ ...metrics(0, null), calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, unpricedCalls: 0 }), ["0 tokens · No recorded usage", "0 usage records"]);
+  assert.deepEqual(usageDetail({ ...metrics(7, 0), calls: 1, inputTokens: 7, outputTokens: 0, errors: 2 }), ["7 tokens · $0.00", "Input 7", "1 usage record · 2 errors"]);
+});
+
+test("the activity calendar keeps empty days, buckets a year by quartile and never paints outside the range", () => {
+  const calendar = usageHeatmap([{ date: "2024-02-29", metrics: metrics(7, null) }], "2024-02-28", "2024-03-01");
+  assert.equal(calendar.weeks.length, 1);
+  assert.deepEqual(calendar.monthLabels, ["Feb"]);
+  assert.deepEqual(calendar.weeks[0]?.map((cell) => cell?.date ?? null), [null, null, null, "2024-02-28", "2024-02-29", "2024-03-01", null]);
+  assert.deepEqual(calendar.weeks[0]?.slice(3, 6).map((cell) => [cell?.date, cell?.metrics.totalTokens, cell?.level]), [["2024-02-28", 0, 0], ["2024-02-29", 7, 4], ["2024-03-01", 0, 0]]);
+
+  const year = usageHeatmap(
+    [1, 2, 3, 4].map((tokens, index) => ({ date: `2024-0${index + 1}-01`, metrics: metrics(tokens, 0) })),
+    "2023-01-01", "2024-12-31",
+  );
+  assert.ok(year.weeks.length <= 53, "a calendar covers at most its trailing 52 weeks");
+  assert.equal(year.weeks.flat().filter((cell) => cell !== null).length, 364, "the cap trims the oldest days");
+  assert.deepEqual(year.weeks.flat().filter((cell) => cell !== null).slice(0, 3).map((cell) => cell?.date), ["2024-01-03", "2024-01-04", "2024-01-05"], "the grid starts at the range's last 364 days");
+  const busyDays = year.weeks.flat().filter((cell) => cell !== null && cell.metrics.totalTokens > 0).map((cell) => [cell!.metrics.totalTokens, cell!.level]).toSorted((left, right) => left[0]! - right[0]!);
+  assert.equal(busyDays.length, 3, "the trimmed day leaves the calendar");
+  assert.ok(busyDays.every(([, level], index) => index === 0 || level! >= busyDays[index - 1]![1]!), "a busier day is never lighter than a quieter one");
+  assert.equal(busyDays.at(-1)?.[1], 4, "the busiest day is the darkest");
+});
+
+test("days with errors rank by failure rate, and CSVs quote what a spreadsheet would break on", () => {
+  const rows = [
+    { date: "2024-03-01", metrics: { ...metrics(10, 0), errors: 2, userMessages: 2, assistantMessages: 2 } },
+    { date: "2024-03-02", metrics: { ...metrics(10, 0), errors: 0, userMessages: 2, assistantMessages: 2 } },
+    { date: "2024-03-03", metrics: { ...metrics(10, 0), errors: 1, userMessages: 10, assistantMessages: 10 } },
+    { date: "2024-03-04", metrics: { ...metrics(10, 0), errors: 3, userMessages: 0, assistantMessages: 0 } },
+  ];
+  assert.deepEqual(usageErrorDays(rows).map((row) => [row.date, row.rate, row.errors, row.messages]), [["2024-03-01", 0.5, 2, 4], ["2024-03-03", 0.05, 1, 20]]);
+
+  const daily = usageDailyCsv([rows[0]!, rows[2]!]);
+  assert.equal(daily.split("\n")[0], "date,inputTokens,outputTokens,cacheReadTokens,cacheWriteTokens,totalTokens,costUsd,unpricedCalls,calls,userMessages,assistantMessages,toolResults,errors");
+  assert.match(daily, /^2024-03-01,10,0,0,0,10,0,0,1,2,2,1,2$/mu);
+
+  const sessions = usageSessionCsv([{ ...session("a", "swift", metrics(1, 0)), title: 'Hello, "world"' }]);
+  assert.match(sessions, /"Hello, ""world"""/u, "a comma and quote survive the round trip");
+  assert.equal(sessions.split("\n")[0], "id,title,parentId,lastActive,models,inputTokens,outputTokens,cacheReadTokens,cacheWriteTokens,totalTokens,costUsd,unpricedCalls,calls,userMessages,assistantMessages,toolResults,errors");
+});
+
+test("the last week is compared with the week before it, inside the range", () => {
+  const day = (date: string, tokens: number, extra: Partial<UsageMetrics> = {}) => ({ date, metrics: { ...metrics(tokens, tokens ? 1 : null), ...extra } });
+  const days = [
+    day("2024-03-01", 10), day("2024-03-02", 20), day("2024-03-03", 30), day("2024-03-04", 40), day("2024-03-05", 50),
+    day("2024-03-06", 60), day("2024-03-07", 70), day("2024-03-08", 80), day("2024-03-09", 90), day("2024-03-10", 100),
+    day("2024-03-11", 110, { errors: 2 }), day("2024-03-12", 120), day("2024-03-13", 130), day("2024-03-14", 140),
+  ];
+  const compared = usageComparison(days, "2024-03-01", "2024-03-14");
+  assert.equal(compared.window, 7);
+  assert.equal(compared.recent.totalTokens, 770, "the range's last seven days");
+  assert.equal(compared.previous.totalTokens, 280, "the seven days before them");
+  assert.equal(compared.recent.errors, 2);
+  assert.equal(usageComparison(days, "2024-03-14", "2024-03-14").window, 0, "a single day has no baseline");
+  assert.equal(usageComparison(days, "2024-03-08", "2024-03-14").window, 3, "a week compares three days with three");
 });

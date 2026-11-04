@@ -4021,6 +4021,13 @@ because no valid recorded timestamp was available. Missing data never becomes
 an inferred free call. Prompts, message bodies, tool arguments, tool output,
 credentials and provider requests are excluded.
 
+The page waits up to two minutes for this response instead of the shared 20-second
+header deadline: a cold scan has no progress to report, so the shorter deadline
+reported a healthy but large history as a timeout. The page shows a skeleton
+meanwhile, names a read that has not answered after six seconds, and offers
+**Cancel**, which aborts the request and keeps the last report. A replaced range
+aborts its predecessor the same way.
+
 ### `GET /__hui/diagnostics/export`
 
 Returns the same bounded observability snapshot with a JSON attachment header.

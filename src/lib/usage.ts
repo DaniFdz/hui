@@ -1,5 +1,5 @@
 /** Combines usage-report rows for the page's session search, rankings and calendar chart. */
-import type { UsageDay, UsageMetrics, UsageModel, UsageReport, UsageTool } from "../api/schema/diagnostics.ts";
+import type { UsageDay, UsageMetrics, UsageModel, UsageReport, UsageSession, UsageTool } from "../api/schema/diagnostics.ts";
 
 export type UsageSort = "recent" | "tokens" | "cost";
 const usd = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4 });
@@ -90,6 +90,102 @@ export function usageChartDays(days: readonly UsageDay[], from: string, to: stri
   };
 }
 
+type HeatmapCell = { date: string; metrics: UsageMetrics; level: number };
+
+/** The counters a CSV carries, in the order a spreadsheet expects them. */
+const CSV_COUNTERS = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "totalTokens", "costUsd", "unpricedCalls", "calls", "userMessages", "assistantMessages", "toolResults", "errors"] as const;
+
+/** Days as a Sunday-first calendar grid, capped at its last 52 weeks; days outside the range stay empty. */
+export function usageHeatmap(days: readonly UsageDay[], from: string, to: string): { weeks: (HeatmapCell | null)[][]; monthLabels: string[] } {
+  const noon = (date: string) => Date.parse(`${date}T12:00:00Z`);
+  const start = Math.max(noon(from), noon(to) - (52 * 7 - 1) * DAY_MS);
+  const end = noon(to);
+  const recorded = new Map(days.map((day) => [day.date, day.metrics]));
+  const busy = days.filter((day) => day.metrics.totalTokens > 0).map((day) => day.metrics.totalTokens).toSorted((left, right) => left - right);
+  const quartile = (ratio: number) => busy[Math.min(busy.length - 1, Math.floor(busy.length * ratio))] ?? 0;
+  const thresholds = [quartile(0.25), quartile(0.5), quartile(0.75)];
+  const level = (tokens: number) => (tokens <= 0 ? 0 : tokens < thresholds[0]! ? 1 : tokens < thresholds[1]! ? 2 : tokens < thresholds[2]! ? 3 : 4);
+  const monthOf = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short" });
+  const weeks: (HeatmapCell | null)[][] = [];
+  const monthLabels: string[] = [];
+  let previousMonth = -1;
+  for (let week = start - new Date(start).getUTCDay() * DAY_MS; week <= end; week += 7 * DAY_MS) {
+    const cells: (HeatmapCell | null)[] = [];
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      const at = week + weekday * DAY_MS;
+      if (at < start || at > end) { cells.push(null); continue; }
+      const date = new Date(at).toISOString().slice(0, 10);
+      const metrics = recorded.get(date) ?? sumUsage([]);
+      cells.push({ date, metrics, level: level(metrics.totalTokens) });
+    }
+    weeks.push(cells);
+    const first = cells.find((cell): cell is HeatmapCell => cell !== null);
+    if (!first) { monthLabels.push(""); continue; }
+    const month = new Date(noon(first.date)).getUTCMonth();
+    monthLabels.push(month === previousMonth ? "" : monthOf.format(new Date(noon(first.date))));
+    previousMonth = month;
+  }
+  return { weeks, monthLabels };
+}
+
+/** The range's last week against the week before it, for a "since last week" delta. */
+export function usageComparison(days: readonly UsageDay[], from: string, to: string): { window: number; recent: UsageMetrics; previous: UsageMetrics } {
+  const end = Date.parse(`${to}T12:00:00Z`);
+  const window = Math.min(7, Math.floor((Math.round((end - Date.parse(`${from}T12:00:00Z`)) / DAY_MS) + 1) / 2));
+  if (window < 1) return { window: 0, recent: sumUsage([]), previous: sumUsage([]) };
+  const recorded = new Map(days.map((day) => [day.date, day.metrics]));
+  const collect = (first: number, last: number) => {
+    const rows: UsageMetrics[] = [];
+    for (let at = first; at <= last; at += DAY_MS) {
+      const metrics = recorded.get(new Date(at).toISOString().slice(0, 10));
+      if (metrics) rows.push(metrics);
+    }
+    return sumUsage(rows);
+  };
+  const recentStart = end - (window - 1) * DAY_MS;
+  return { window, recent: collect(recentStart, end), previous: collect(recentStart - window * DAY_MS, recentStart - DAY_MS) };
+}
+
+/** The days where recorded failures were most common, as an insight list. */
+export function usageErrorDays(days: readonly UsageDay[], limit = 5): { date: string; rate: number; errors: number; messages: number }[] {
+  return days
+    .map(({ date, metrics }) => ({ date, errors: metrics.errors, messages: metrics.userMessages + metrics.assistantMessages, rate: metrics.errors / Math.max(1, metrics.userMessages + metrics.assistantMessages) }))
+    .filter((day) => day.errors > 0 && day.messages > 0)
+    .toSorted((left, right) => right.rate - left.rate || right.errors - left.errors || left.date.localeCompare(right.date))
+    .slice(0, limit);
+}
+
+/** One CSV line per day, with the counters a spreadsheet can sum. */
+export function usageDailyCsv(days: readonly UsageDay[]): string {
+  return ["date", ...CSV_COUNTERS].join(",") + "\n" + days.map(({ date, metrics }) => [date, ...CSV_COUNTERS.map((key) => metrics[key] ?? "")].join(",")).join("\n") + "\n";
+}
+
+/** One CSV line per session row the page shows, with its models and counters. */
+export function usageSessionCsv(sessions: readonly UsageSession[]): string {
+  const cell = (value: string | number | null) => (/[",\n]/u.test(String(value)) ? `"${String(value).replace(/"/gu, '""')}"` : String(value));
+  return [["id", "title", "parentId", "lastActive", "models", ...CSV_COUNTERS].join(",")]
+    .concat(sessions.map((session) => [
+      session.id, session.title, session.parentId ?? "", new Date(session.lastActivityAt).toISOString(),
+      session.models.map(({ provider, model }) => `${provider}/${model}`).join(" "),
+      ...CSV_COUNTERS.map((key) => session.metrics[key]),
+    ].map(cell).join(",")))
+    .join("\n") + "\n";
+}
+
 export function usageCost(value: Pick<UsageMetrics, "costUsd" | "unpricedCalls">): string {
   return value.costUsd === null ? "Unpriced" : `${value.unpricedCalls ? "≥ " : ""}${usd.format(value.costUsd)}`;
+}
+
+const exact = new Intl.NumberFormat().format;
+const TYPE_PARTS = [["inputTokens", "Input"], ["outputTokens", "Output"], ["cacheWriteTokens", "Cache write"], ["cacheReadTokens", "Cache read"]] as const;
+
+/** What one chart bucket recorded, as the lines a bar's hover and selection show. */
+export function usageDetail(value: UsageMetrics): string[] {
+  const types = TYPE_PARTS.filter(([key]) => value[key] > 0).map(([key, label]) => `${label} ${exact(value[key])}`);
+  const records = `${exact(value.calls)} usage ${value.calls === 1 ? "record" : "records"}`;
+  return [
+    `${exact(value.totalTokens)} tokens · ${value.calls ? usageCost(value) : "No recorded usage"}`,
+    ...(types.length ? [types.join(" · ")] : []),
+    [records, ...(value.unpricedCalls ? [`${exact(value.unpricedCalls)} unpriced`] : []), ...(value.errors ? [`${exact(value.errors)} ${value.errors === 1 ? "error" : "errors"}`] : [])].join(" · "),
+  ];
 }
