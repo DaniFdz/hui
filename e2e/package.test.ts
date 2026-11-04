@@ -20,7 +20,11 @@ const baseline = JSON.parse(await readFile(join(repo, "package.json"), "utf8")).
 const nextVersion = baseline.replace(/\d+$/u, (patch) => String(Number(patch) + 1));
 const brokenVersion = baseline.replace(/\d+$/u, (patch) => String(Number(patch) + 2));
 
-test("installed package lifecycle, real SDK resume, verified update and rollback", { timeout: 360_000 }, async (t) => {
+// A macOS runner runs this proof slower than the Linux one: two nightly runs were cut off by the
+// old six-minute budget here, and the stream a resumed run reports arrived but not within the
+// twenty seconds its read allowed. Both budgets are hang guards, so they leave the slower runner
+// room instead of failing a real run; the job's own timeout still ends a stuck proof.
+test("installed package lifecycle, real SDK resume, verified update and rollback", { timeout: 900_000 }, async (t) => {
   // The installed CLI reports canonical locations, so resolve the temporary
   // directory first: macOS puts it behind the /var -> /private/var symlink.
   const temporary = await realpath(await mkdtemp(join(tmpdir(), "hui-package-proof-")));
@@ -153,7 +157,9 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   const waitStatus = async (id: string, wanted: "idle" | "running", label: string) => {
     const seen: string[] = [];
     try {
-      const response = await fetch(new URL(`/__hui/sessions/${id}/events`, status.url), { headers: { "x-hui": "1" }, signal: AbortSignal.timeout(20_000) });
+      // A resumed run boots the SDK again, which takes longer on the macOS runner, so the
+      // status stream gets a wider read budget than one request does; a stall still ends here.
+      const response = await fetch(new URL(`/__hui/sessions/${id}/events`, status.url), { headers: { "x-hui": "1" }, signal: AbortSignal.timeout(60_000) });
       const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = "";
       try {
         for (;;) {
