@@ -39,6 +39,7 @@
 .usage-heatmap__cell:hover, .usage-heatmap__cell:focus-visible { stroke: var(--text-strong); stroke-width: 1; }
 .usage-heatmap__cell--selected { stroke: var(--text-strong); stroke-width: 1.5; }
 .usage-heatmap { overflow-x: auto; }
+.usage-report .usage-heatmap__svg { width: var(--usage-heatmap-width); max-width: none; }
 
 .usage-loading-note { margin: 0; color: var(--muted); font-size: var(--control-ui-text-xs); }
 .usage-loading-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
@@ -50,6 +51,7 @@
   .usage-report__totals { flex-direction: column; gap: var(--space-2); }
   .usage-query-bar { grid-template-columns: minmax(0, 1fr); }
   .usage-report .daily-chart-bars { grid-auto-columns: minmax(14px, 1fr); gap: 2px; }
+  .usage-report .daily-chart-bars > :nth-child(even) .daily-bar-label { visibility: hidden; }
   .usage-selection { flex-direction: column; align-items: stretch; }
   .usage-selection__actions { justify-content: flex-end; }
 }
