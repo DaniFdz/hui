@@ -18,6 +18,14 @@ test("accepts only bounded same-origin media capabilities", () => {
   assert.deepEqual(presentedMediaFromDetails({ media: Array(9).fill(item) }), []);
 });
 
+test("keeps a presented file's path only when it is a clean root-relative one", () => {
+  const shown = { ...item, name: "notes.md", kind: "file", path: "docs/notes.md" };
+  assert.deepEqual(presentedMediaFromDetails({ media: [shown] }), [shown]);
+  for (const path of ["/etc/passwd", "../outside.md", "docs/../outside.md", "", "docs//notes.md"]) {
+    assert.deepEqual(presentedMediaFromDetails({ media: [{ ...shown, path }] }), [], path);
+  }
+});
+
 test("formats media sizes for transcript metadata", () => {
   assert.equal(mediaSizeLabel(12), "12 B");
   assert.equal(mediaSizeLabel(2048), "2 KB");

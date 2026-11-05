@@ -1394,7 +1394,13 @@ as images; MP4, WebM, OGV and MOV use the browser's native video player; MP3,
 WAV, OGG, M4A, AAC and FLAC use its native audio player; every other format is
 a download card. Audio/video container recognition does not imply codec support,
 so native playback failure remains visible and the original file stays
-downloadable. The active tool's prompt guidance states this exact matrix and the
+downloadable. A presented file that lives inside the conversation's working
+directory also reports its root-relative path, so a video, audio or file card
+offers that file in the conversation's Files view; presented images keep to the
+full-screen viewer. A file from outside the directory, a file that is gone when
+the card renders, a conversation on a remote worker and a bot's chat, which has
+no Files view, keep only Download. The active
+tool's prompt guidance states this exact matrix and the
 rule that a local path alone is not an attachment. Remote Markdown images remain
 click-to-open placeholders.
 

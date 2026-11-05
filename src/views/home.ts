@@ -1015,6 +1015,9 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
 
 function renderPresentedMediaItem(item: PresentedMediaItem): TemplateResult {
   const meta = `${item.mimeType} · ${mediaSizeLabel(item.size)}`;
+  const reveal = item.path
+    ? html`<hui-file-ref class="chat-assistant-attachment-card__action chat-presented-media__reveal" data-path=${item.path}>${icons.panelRightOpen}</hui-file-ref>`
+    : nothing;
   if (item.kind === "image") {
     return html`<figure class="hui-presented-media hui-presented-media--image">
       <a class="chat-message-image-button" href=${item.url} target="_blank" rel="noopener" data-media-viewer data-media-name=${item.name} aria-label=${`Open ${item.name}`}>
@@ -1038,7 +1041,7 @@ function renderPresentedMediaItem(item: PresentedMediaItem): TemplateResult {
         </span>
       </div>
       <span class="chat-assistant-attachment-card__actions">
-        <a class="chat-assistant-attachment-card__action" href=${item.url} download=${item.name} aria-label=${`Download ${item.name}`} title="Download">${icons.download}</a>
+        ${reveal}<a class="chat-assistant-attachment-card__action" href=${item.url} download=${item.name} aria-label=${`Download ${item.name}`} title="Download">${icons.download}</a>
       </span>
     </div>
     ${player}

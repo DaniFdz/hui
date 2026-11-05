@@ -836,3 +836,18 @@ test("an expanded goal reads the whole objective and edits it in place", async (
   assert.match(busy, /Finish or stop the active turn before changing the objective\./u);
   assert.match(busy, /<button type="submit" class="btn btn--sm primary" \?disabled=true>Save goal</u);
 });
+
+test("a presented file from the working directory offers to open in Files", async () => {
+  const id = "12345678-1234-4123-8123-123456789abc";
+  const media = { id, name: "notes.md", kind: "file", mimeType: "application/octet-stream", size: 7, url: `/__hui/media/${id}/notes.md` };
+  const transcript = (details: unknown) => [{ kind: "tool", id: "media", name: "present_media", status: "succeeded", details }];
+
+  const shown = await renderWorkerSession("idle", { fileLinks: true, transcript: transcript({ media: [{ ...media, path: "docs/notes.md" }] }) });
+  assert.match(shown, /<hui-file-ref class="chat-assistant-attachment-card__action chat-presented-media__reveal" data-path=docs\/notes\.md>/u);
+  assert.match(shown, /aria-label=Download notes\.md/u);
+
+  const outside = await renderWorkerSession("idle", { fileLinks: true, transcript: transcript({ media: [media] }) });
+  assert.doesNotMatch(outside, /chat-presented-media__reveal/u, "a file outside the working directory has nothing in Files to open");
+
+  assert.match(readStyles("../styles/openclaw-chat.css"), /hui-file-ref\.chat-presented-media__reveal:not\(\.is-linked\) \{ display: none; \}/u);
+});

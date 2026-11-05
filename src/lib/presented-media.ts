@@ -1,6 +1,7 @@
 /**
  * Validation and labels for media a tool presented in chat. Only well-formed items pointing at HUI's own
- * `/__hui/media/` URLs are shown; anything else in a tool's details is ignored.
+ * `/__hui/media/` URLs are shown; anything else in a tool's details is ignored. An item inside the
+ * conversation's working directory also names its root-relative `path`, which the Files view can open.
  */
 export type PresentedMediaItem = {
   id: string;
@@ -9,9 +10,15 @@ export type PresentedMediaItem = {
   mimeType: string;
   size: number;
   url: string;
+  path?: string;
 };
 
 const MEDIA_URL = /^\/__hui\/media\/[0-9a-f]{8}-[0-9a-f-]{27,}\/[A-Za-z0-9%._~!$&'()*+,;=:@-]+$/u;
+
+/** A clean root-relative path: no leading `/`, no `..`, no empty segment. */
+function insideRoot(path: string): boolean {
+  return !!path && !path.startsWith("/") && path.split("/").every((part) => part && part !== "." && part !== "..");
+}
 
 function mediaItem(value: unknown): PresentedMediaItem | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
@@ -24,6 +31,8 @@ function mediaItem(value: unknown): PresentedMediaItem | undefined {
     typeof item["size"] !== "number" || !Number.isSafeInteger(item["size"]) || item["size"] < 0 ||
     typeof item["url"] !== "string" || !MEDIA_URL.test(item["url"])
   ) return undefined;
+  const path = item["path"];
+  if (path !== undefined && (typeof path !== "string" || !insideRoot(path))) return undefined;
   return item as PresentedMediaItem;
 }
 
