@@ -251,7 +251,8 @@ test("the download holds exactly what the review and the picks make: no handle, 
   const zip = await service.export("ada", { review: review.id, picks: {} });
   assert.equal(zip.name, "ada.hui-bot.zip", "named after the bot");
   const files = unzip(zip.data);
-  assert.deepEqual([...files.keys()], ["bot.json", "SOUL.md", "skills/review/SKILL.md", "skills/review/notes.md", "skills/review/scripts/list.sh"]);
+  assert.deepEqual([...files.keys()], ["BOOTSTRAP.md", "bot.json", "SOUL.md", "skills/review/SKILL.md", "skills/review/notes.md", "skills/review/scripts/list.sh"]);
+  assert.match(files.get("BOOTSTRAP.md")!, /^# Setting up Ada\n/u);
   const manifest = JSON.parse(files.get("bot.json")!) as BotExportManifest;
   assert.deepEqual(manifest.bot, { name: "Ada", title: "{{user}}'s PR review assistant", avatar: { emoji: "🦉" }, model: "claude-sonnet-4-5" });
   assert.equal(JSON.stringify(manifest).includes("dani"), false, "nothing of the owner's names or paths");
@@ -269,7 +270,7 @@ test("the download holds exactly what the review and the picks make: no handle, 
   assert.equal(files.get("SOUL.md"), "# Who I am\n\nI'm {{user}}'s review assistant. I review pull requests in [ask: the repositories to watch] with a teammate.\nApprove only when CI is green. Mail [removed] when unsure.\n");
   assert.match(files.get("skills/review/SKILL.md")!, /Run scripts\/approve\.sh for \[ask: the repositories to watch\]\./u, "an asked passage changes wherever it appears");
   assert.equal(files.get("skills/review/notes.md"), "Ask a teammate about flaky tests.\n");
-  assert.deepEqual(readZip(zip.data, { files: 100, totalBytes: 1024 * 1024 }).length, 5);
+  assert.deepEqual(readZip(zip.data, { files: 100, totalBytes: 1024 * 1024 }).length, 6);
   assert.equal(zip.data.readUInt16LE(12), (0 << 9) | (1 << 5) | 1, "every file dated 1980-01-01, whatever the time zone");
 });
 
@@ -532,7 +533,7 @@ test("an excerpt is tidied before it is shortened, labels that give way stay apa
   state.soul = SOUL.replace("with Pat Doe.", "with Pat\nDoe.").replace("Approve only when CI is green.", "Approve only when CI is green, as Pat\nDoe asked.");
   const review = await service.review("ada");
   const build = buildExport(review, {});
-  const manifest = JSON.parse(build.files[0]!.text) as BotExportManifest;
+  const manifest = JSON.parse(build.files.find((file) => file.path === "bot.json")!.text) as BotExportManifest;
   assert.equal(JSON.stringify(manifest).includes("Pat"), false, JSON.stringify(manifest.open));
   const soul = build.files.find((file) => file.path === "SOUL.md")!.text;
   assert.ok(soul.includes("[ask: your own value]") && soul.includes("[ask: your own value 2]"), soul);
