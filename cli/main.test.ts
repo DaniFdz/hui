@@ -271,3 +271,16 @@ test("CLI parses the shell completion program it prints, and nothing else for it
     assert.throws(() => parseCli(args), Error, args.join(" "));
   }
 });
+
+test("CLI parses extension list and toggles, and refuses a missing or extra id", () => {
+  assert.equal(parseCli(["extension"]).command, "extension list");
+  assert.equal(parseCli(["extension", "list"]).command, "extension list");
+  assert.equal(parseCli(["extensions", "list"]).command, "extension list");
+  const enable = parseCli(["extension", "enable", "hello"]);
+  assert.equal(enable.command, "extension enable");
+  assert.equal("target" in enable ? enable.target : undefined, "hello");
+  assert.equal(parseCli(["extension", "disable", "hello", "--json"]).values.json, true);
+  for (const args of [["extension", "enable"], ["extension", "disable", "hello", "extra"], ["extension", "list", "extra"], ["extension", "enable", "hello", "--force"]]) {
+    assert.throws(() => parseCli(args), Error, args.join(" "));
+  }
+});

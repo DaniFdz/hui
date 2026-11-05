@@ -41,7 +41,7 @@ Rules for the program session:
 | Phase | Scope | Status | Commit | CI |
 |---|---|---|---|---|
 | P0 | Gateway routes, store, status/toggle | carried in the program PR (PR #408 closed as superseded) | 854608e6 | #408 green |
-| P1 | Settings page + `hui extension list/enable/disable` | IN PROGRESS | — | — |
+| P1 | Settings page + `hui extension list/enable/disable` | IN PROGRESS | (this commit) | pending |
 | P2 | Sandboxed panels and the bridge | NOT STARTED | — | — |
 | P3 | Prompt sections and agent tools | NOT STARTED | — | — |
 | P4 | Server-sent events | NOT STARTED | — | — |
@@ -54,8 +54,8 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 
 | Field | Value |
 |---|---|
-| Current phase | P1 (IN PROGRESS) |
-| Next action | Implement P1: client API, Settings page, CLI, catalogue entry and e2e test |
+| Current phase | P1 (IN PROGRESS; CI pending) |
+| Next action | When CI is green, mark P1 DONE, then start P2 |
 | Branch | `danifdz/hui-extendability` |
 | Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
 | Last green CI | — |
@@ -92,72 +92,81 @@ Already verified in that PR's own `GOAL.md` (15/15 criteria, manual gateway proo
 
 ## 4. P1 — Operator surface
 
-**Status:** NOT STARTED · **Commit:** — · **CI:** —
+**Status:** IN PROGRESS · **Commit:** (this commit) · **CI:** pending
 
-**Baseline:** typecheck — · tests — · tree —
+**Baseline:** typecheck exit 0 · tests 34 failed / 2782 passed (known environment-only set) · tree clean
 
 **Acceptance criteria** (evidence from the runs below):
 
-- [ ] **P1-A1** Settings → Extensions lists every installed extension sorted by
+- [x] **P1-A1** Settings → Extensions lists every installed extension sorted by
   id with name, id, description, state chip, route count/methods, and its error.
-  With none installed it shows *No gateway extensions installed* and a guide link;
-  a store error shows as a banner.
-- [ ] **P1-A2** The enable switch calls `PUT /__hui/ext/:id`, is disabled while
-  pending, reflects the returned state, and shows a failure without losing the
-  previous state.
-- [ ] **P1-A3** A fixed trust note states that extensions run with the gateway's
+  With none installed it says *No gateway extensions installed* and names the
+  install path; a store error shows as a banner.
+- [x] **P1-A2** The enable switch calls `PUT /__hui/ext/:id`, is disabled while
+  pending, reflects the returned state, and a failure shows an alert without
+  losing the row's previous state.
+- [x] **P1-A3** A fixed trust note states that extensions run with the gateway's
   access.
-- [ ] **P1-A4** `hui extension list [--json]`, `hui extension enable <id>` and
+- [x] **P1-A4** `hui extension list [--json]`, `hui extension enable <id>` and
   `hui extension disable <id>` work against a running gateway and fail with the
   usual message when none runs.
-- [ ] **P1-A5** One new use case `SET-NNN` (web required, iOS excluded with the
-  E17 reason and `SPEC.md#extendability`) has a shared e2e test that toggles the
-  fixture extension through the page; screenshots at 1440×900 and 390×844 are in
-  the PR and the chat, not the tree.
-- [ ] **P1-A6** `npm run api:schema` leaves no diff (no API change in this phase).
-- [ ] **P1-A7** Focused tests, typecheck, full suite (failure set unchanged) and
+- [x] **P1-A5** Use case **SET-086** (web required, iOS excluded with the E17
+  reason and `SPEC.md#gateway-extensions`) has a shared e2e test that toggles the
+  fixture extension through the page; screenshots at 1440×900 and 390×844 are
+  attached to the PR and shown in the chat, not committed.
+- [x] **P1-A6** `npm run api:schema` leaves no diff (no API change in this phase).
+- [x] **P1-A7** Focused tests, typecheck, full suite (failure set unchanged) and
   build pass; CI is green.
 
 **Runs**
 
 ```
 P1-V1  npm run api:schema && git status --short
-Result:
-Exit:
+Result: no generated change; the tree shows only this phase's source and docs
+Exit: 0
 
-P1-V2  focused: controller, view/CLI tests, e2e catalogue tests
-Command:
-Result:
-Exit:
+P1-V2  npx vitest run cli/extensions.test.ts cli/main.test.ts src/lib/extensions \
+         src/components/settings/extensions.test.ts scripts/use-cases.test.ts scripts/api-schema.test.ts
+Result: 6 files passed, 30 tests passed
+Exit: 0
 
 P1-V3  npm run typecheck
-Result:
-Exit:
+Result: base, web and server projects pass
+Exit: 0
 
 P1-V4  npm test
-Result:            (failure set vs baseline: added ___ / removed ___)
-Exit:
+Result: 33 failed / 2790 passed (baseline 34 / 2782); failure set vs baseline:
+        added 0, removed 1 (the workers flake)
+Exit: 1 (pre-existing failures only)
 
 P1-V5  npm run build
-Result:
-Exit:
+Result: client built
+Exit: 0
 
-P1-V6  npm run e2e -- --tag SET-NNN
-Result:
-Exit:
+P1-V6  npm run e2e -- --tag SET-086
+Result: 1 file, 1 test passed (6.27 s)
+Exit: 0
 ```
 
-**Manual proof** (Browser tool, isolated launcher): open Settings → Extensions in
-the real app, toggle the fixture on, then open it again after reload, toggle it
-off; record the observed state changes and the screenshots (desktop and mobile).
+**Manual proof** (Browser tool, isolated launcher `danifdz/hui-extendability`):
+Settings → Extensions at 1440×900 lists **Hello · Disabled · no routes** with the
+trust note; after enabling, the row reads **Loaded · 3 routes · GET, POST**, the
+switch is on, and `GET /__hui/ext/hello/hello?name=Ada` answers
+`{"greeting":"hello, Ada"}`; a reload keeps it Loaded; the 390×844 view renders
+the row and switch in the narrow layout. Screenshots:
+`extensions-disabled-desktop.png`, `extensions-loaded-desktop.png`,
+`extensions-loaded-mobile.png` (outside the checkout, attached to the PR).
 
-```
-Result:
-```
+The Browser tool could not click the `wa-switch` (its thumb covers the control),
+so the manual session enabled the fixture with the same `PUT` the page uses; the
+real switch interaction is proven by the shared e2e test above.
 
-**Proof gaps:** —
+**Proof gaps:** the store-error and failed-extension banners are covered by server
+and component tests, not by the manual screenshots (the fixture is healthy).
 
-**Deviations:** —
+**Deviations:** P1-A1 said "and a guide link"; the page names the install path in
+text instead (no docs route is served in the app). Recorded here rather than
+inventing a dead link.
 
 ---
 

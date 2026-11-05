@@ -1215,14 +1215,19 @@ directory. A route path is one to four clean segments. A handler gets
 response headers, files, redirects or streams, and a request body follows the
 ordinary 64 KiB JSON limit. The same `x-hui` gate as every other route applies.
 
-Installed extensions start out off. List them and turn one on (the gateway must
-be running; replace the port with your own):
+Installed extensions start out off. **Settings → Extensions** lists each one with
+its state, its routes and any error, and its switch turns it on or off. The same
+is available from a terminal (the gateway must be running; replace the port with
+your own):
 
 ```sh
 curl -sS http://127.0.0.1:5173/__hui/ext -H 'x-hui: 1'
 curl -sS -X PUT http://127.0.0.1:5173/__hui/ext/hello \
   -H 'x-hui: 1' -H 'content-type: application/json' -d '{"enabled":true}'
 curl -sS 'http://127.0.0.1:5173/__hui/ext/hello/hello?name=Ada' -H 'x-hui: 1'
+hui extension list
+hui extension enable hello
+hui extension disable hello
 ```
 
 The choice is saved in `HUI_CONFIG_DIR/extensions.json` (`{ "version": 1,

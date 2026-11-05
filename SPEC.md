@@ -2414,9 +2414,12 @@ trusted local module can answer JSON routes on the gateway.
   the gateway's access to the machine, its credentials and its data, exactly like
   a PI extension: no sandbox, no permission prompt, no timeout. `apiVersion`
   refuses anything but `1`.
-- **No UI in this version.** The operator interface is HTTP and
-  `extensions.json` (`docs/guide.md`); a Settings page, per-extension generated
-  types, SSE routes and an out-of-process host are follow-ups.
+- **Operator surface.** Settings → Extensions lists every installed extension with
+  its state, its routes and any error; the switch calls the enable route and the
+  row shows the state that came back. `hui extension list|enable|disable` does the
+  same from a terminal against the running gateway. The page is web-only; the
+  iPhone has no extension surface. Per-extension generated types, SSE routes and an
+  out-of-process host are follow-ups.
 
 ## Decisions
 

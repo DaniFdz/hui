@@ -146,7 +146,7 @@ test("Settings stays available while the Bots list is showing", () => {
   assert.doesNotMatch(sidebar(1, "", "bots"), /Primary navigation/u, "the Agents navigation stays out of the Bots list");
 });
 
-test("settings navigation contains only the fourteen accepted regions", () => {
+test("settings navigation contains only the fifteen accepted regions", () => {
   assert.deepEqual(
     SETTINGS_PAGES.map((page) => page.id),
     [
@@ -157,6 +157,7 @@ test("settings navigation contains only the fourteen accepted regions", () => {
       "workers",
       "models",
       "plugins",
+      "extensions",
       "skills",
       "tools",
       "memory",
@@ -179,7 +180,7 @@ test("settings search is case-insensitive and also matches group names", () => {
   assert.deepEqual(filterSettingsPages("  MODEL  ").map((page) => page.id), ["models"]);
   assert.deepEqual(
     filterSettingsPages("agents & tools").map((page) => page.id),
-    ["models", "plugins", "skills", "tools", "memory", "automation"],
+    ["models", "plugins", "extensions", "skills", "tools", "memory", "automation"],
   );
   assert.deepEqual(filterSettingsPages("does not exist"), []);
   assert.equal(filterSettingsPages("").length, SETTINGS_PAGES.length);

@@ -4,7 +4,7 @@ import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream, existsSync } from "node:fs";
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
@@ -229,6 +229,9 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
   await copyFile(join(repo, "e2e/fixtures/question-extension.ts"), join(agentDir, "extensions/question.ts"));
   await copyFile(join(repo, "e2e/fixtures/slash-commands-extension.ts"), join(agentDir, "extensions/commands.ts"));
   await copyFile(join(repo, "e2e/fixtures/compaction-extension.ts"), join(agentDir, "extensions/compaction.ts"));
+  // A gateway extension installed disabled: Settings → Extensions and its journey need a subject.
+  await mkdir(join(dir, "config", "hui", "extensions"), { recursive: true });
+  await cp(join(repo, "e2e/fixtures/extensions/hello"), join(dir, "config", "hui", "extensions/hello"), { recursive: true });
   const receiptPath = join(dir, "receipt.json");
   const receipt = { version: 1, state: "starting", production, runId: randomUUID(), token: randomUUID(), runnerPid: process.pid, checkout, workspace, huiConfig: join(dir, "config", "hui"), artifacts, receipt: receiptPath, startedAt: new Date().toISOString() };
   const save = async () => {

@@ -4,8 +4,6 @@
  */
 
 export const NOT_UI: Readonly<Record<string, string>> = {
-  "route:GET /__hui/ext": "The operator reads and enables gateway extensions over HTTP; this version has no Settings page (SPEC.md#gateway-extensions).",
-  "route:PUT /__hui/ext/:id": "The operator's enable switch for a gateway extension; driven by HTTP and extensions.json, with no screen in this version (SPEC.md#gateway-extensions).",
   "setting:vscode.enabled": "Kept so older settings files load and save unchanged; the VS Code launcher is always available, so nothing reads or shows it (SPEC.md#vs-code).",
   "route:GET /__hui/api-schema": "Serves the gateway's JSON Schema to tools and clients; no screen reads it.",
   "route:GET /__hui/bots/:id": "The browser reads bots from the list and its stream; only the CLI and agents read one bot.",
@@ -28,7 +26,6 @@ export const NOT_UI: Readonly<Record<string, string>> = {
 };
 
 export const SPEC_EXEMPT: Readonly<Record<string, string>> = {
-  "gateway-extensions": "The extension API is a gateway contract with no screen in this version; its routes are set aside in NOT_UI and covered by server tests (docs/api.md, Extension routes).",
   "why-this-is-now-possible": "Background for Part 2; it describes no behaviour of its own.",
   "ownership": "Who owns which state; the behaviour it implies is cited by the sections it governs.",
   "decisions": "The decision log; use cases cite individual decisions instead.",

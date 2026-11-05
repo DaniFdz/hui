@@ -39,6 +39,9 @@ export const HELP = `Usage:
   hui workers add --name <name> --command <connect command> [--extra-path <path>] [--json]
   hui workers edit <name|id> [--name <name>] [--command <connect command>] [--extra-path <path>] [--json]
   hui workers remove <name|id> [--json]
+  hui extension list [--json]
+  hui extension enable <id> [--json]
+  hui extension disable <id> [--json]
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
   hui bot add [--name <name>] [--title <text>] [--description <text>] [--tagging <anyone|mention|nobody>]
@@ -232,19 +235,23 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   const [first, second, ...extra] = positionals;
   const bots = first === "bot" || first === "bots";
   const schedules = first === "schedule" || first === "schedules";
+  const extensions = first === "extension" || first === "extensions";
   const routine = bots && (second === "routine" || second === "routines");
   const trigger = bots && (second === "trigger" || second === "triggers");
   const command = bots ? (routine ? `bot routine ${extra.shift() ?? "list"}` : trigger ? `bot trigger ${extra.shift() ?? "list"}` : `bot ${second ?? "list"}`)
     : schedules ? `schedule ${second ?? "list"}`
+    : extensions ? `extension ${second ?? "list"}`
     : first === "gateway" ? `gateway ${second ?? "run"}` : first === "workers" ? `workers ${second ?? "list"}` : first;
   // `workers edit` and `workers remove` name the worker they act on.
-  const target = command === "workers edit" || command === "workers remove" ? extra.shift() : undefined;
+  const target = command === "workers edit" || command === "workers remove" ? extra.shift()
+    : command === "extension enable" || command === "extension disable" ? extra.shift() : undefined;
+  if ((command === "extension enable" || command === "extension disable") && !target) throw new Error(`${command} needs an extension id: see hui extension list.`);
   // A bot command's operands: the bot, then a message or a routine; a schedule command's, the schedule.
   const operands = bots || schedules ? extra.splice(0) : [];
   // `hui completion <shell>` takes exactly one shell; every other command's words are checked by the table.
   const completion = first === "completion";
   const shell = completion ? completionShell(extra.length ? undefined : second) : undefined;
-  if (!command || !COMMAND_FLAGS[command] || (!completion && extra.length) || first !== "gateway" && first !== "workers" && !bots && !schedules && !completion && second) throw new Error("Unknown command. Run hui --help.");
+  if (!command || !COMMAND_FLAGS[command] || (!completion && extra.length) || first !== "gateway" && first !== "workers" && !extensions && !bots && !schedules && !completion && second) throw new Error("Unknown command. Run hui --help.");
   // Where a bot runs is chosen once; an edit cannot move it.
   if (command === "bot edit" && values.worker !== undefined) throw new Error("A bot stays on the machine it was created on: --worker only applies to bot add.");
   if (command === "bot edit" && values["soul-file"] !== undefined) throw new Error("bot edit does not change SOUL.md: use hui bot soul <bot> --file <path|->.");
@@ -421,6 +428,16 @@ export async function main(args: string[], installation: Installation): Promise<
     const action = command.slice("workers ".length);
     const result = await workersCommand(status.url, action, target, values);
     if (action === "list" && !values.json) console.log(formatWorkers(result as Parameters<typeof formatWorkers>[0])); else report(result);
+    return;
+  }
+  if (command.startsWith("extension ")) {
+    const status = await gatewayStatus();
+    if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");
+    const { extensionsCommand, formatExtension, formatExtensions } = await import("./extensions.ts");
+    const action = command.slice("extension ".length) as "list" | "enable" | "disable";
+    const result = await extensionsCommand(status.url, action, target);
+    if (values.json) report(result);
+    else console.log(action === "list" ? formatExtensions(result as Parameters<typeof formatExtensions>[0]) : formatExtension(result as Parameters<typeof formatExtension>[0]));
     return;
   }
   if (command.startsWith("bot trigger ")) {
