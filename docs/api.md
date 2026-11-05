@@ -4110,7 +4110,10 @@ line by line. The prompt never invents a cause: it names what the report cannot
 see and asks for drivers backed by a number, the changed files in the checkout,
 and what would have cost less by mechanism: context (subagents, narrower
 commands, compaction), model and effort, structure that applies the correction
-to every session, and a skill for work that keeps coming back.
+to every session, and a skill for work that keeps coming back. It then records
+up to three follow-ups as suggestion cards through HUI's `suggest_task` tool —
+a lint, test or check, a skill, a refactor, or the service's `AGENTS.md` — so
+the operator can start them from the investigation.
 
 201 answers `{ session, existing: false }` with the started `SessionView`, titled
 `Why was "<title>" expensive?` or `Why was <repository>#<number> expensive?`,

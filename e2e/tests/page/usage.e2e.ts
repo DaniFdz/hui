@@ -244,6 +244,9 @@ test("Usage starts a session that explains an expensive session or pull request,
   await expect(transcript.getByText("What it recorded", { exact: false })).toBeVisible();
   await expect(transcript.getByText("What to work out", { exact: false })).toBeVisible();
   await expect(transcript.getByText("All sessions in range", { exact: false })).toBeVisible();
+  // The investigation's follow-ups arrive as cards the operator can start.
+  await expect(screen.getByText("Suggested task", { exact: false })).toBeVisible();
+  await expect(screen.getByText("Add a lint that fails on whole-file reads of generated files")).toBeVisible();
   const sessionReport = await hui.url();
 
   // The row says HUI already explained it, and its action opens that report

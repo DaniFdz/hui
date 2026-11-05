@@ -170,7 +170,9 @@ function workLines(checkout: string): string[] {
     "   - Model and effort: send exploration and routine edits to a cheaper model or a lower thinking level, and keep the strongest model for the hard judgment calls.",
     "   - Structure: when a correction would apply to every session (a build flag, a lint, a test, a line in `AGENTS.md`), encode it once rather than restating it in each prompt.",
     "   - Workflow: when the same multi-step work keeps coming back, write it down as a skill the next session can invoke, so it is not re-derived from scratch.",
-    "4. Finish with a table of driver → mechanism → what it saves, split into what would have helped this session and what would help every session. Do not change code unless asked: this session exists to explain the cost.",
+    "4. Finish with a table of driver → mechanism → what it saves, split into what would have helped this session and what would help every session.",
+    "5. Record the one to three follow-ups that would have prevented the cost as suggestion cards (`suggest_task`): a lint, test or check; a skill for recurring work; a refactor of the service that forced the extra turns; or service instructions in `AGENTS.md`. One card per change, and only for a concrete change.",
+    "Do not change code unless asked: this session exists to explain the cost.",
   ];
 }
 

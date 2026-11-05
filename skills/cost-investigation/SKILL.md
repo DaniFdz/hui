@@ -37,8 +37,32 @@ For each driver, name the mechanism, not just "be careful".
 - **Workflow**: when the same multi-step work keeps coming back, write it down as
   a skill the next session can invoke, so it is not re-derived from scratch.
 
+## Suggest follow-ups
+
+The explanation is not the deliverable on its own. For the one to three changes
+that would have prevented this cost, name the kind and record each as a
+suggestion card with `suggest_task` — a short `title`, the evidence from the
+numbers and the checkout as `problem`, the first step as `fix`, and the
+service's directory as `cwd` — so the operator can start it from this session.
+
+- **A check**: a linter, test or CI rule that catches the driver next time, for
+  example a lint that fails when a hotspot file is read whole, or a CI rule that
+  fails a PR whose recorded spend passes a threshold.
+- **A skill**: the recurring multi-step work this session did by hand, written
+  down so the next session invokes it instead of re-deriving it.
+- **A refactor**: the service or module whose shape forced the extra turns, and
+  what "easier" means concretely — one entry point, fewer generated files, a
+  smaller context surface.
+- **Service instructions**: an `AGENTS.md` for that service that states how to
+  work there: which commands to run, what to read first, what to avoid.
+
+One card per change, at most three, and only for a change you can state
+concretely. When `suggest_task` is not available, list the same follow-ups in the
+reply instead.
+
 ## Report
 
 Finish with a table of driver → mechanism → what it saves, split into what would
-have helped this session and what would help every session. Do not change code
-unless asked: this session exists to explain the cost, not to fix it.
+have helped this session and what would help every session, then the follow-ups
+you recorded. Do not change code unless asked: this session exists to explain the
+cost, not to fix it.

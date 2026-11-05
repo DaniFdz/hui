@@ -607,8 +607,11 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   expanded in place; when the operator turns that skill off, the same method is
   written into the prompt instead. It asks for each
   driver to name its cheaper mechanism — context, model and effort, structure
-  that holds for every session, or a skill for recurring work — and for the
-  changes to be split into this session and every session. The histories'
+  that holds for every session, or a skill for recurring work — for the
+  changes to be split into this session and every session, and for up to three
+  follow-ups recorded as suggestion cards the operator can start: a lint, test
+  or check, a skill for recurring work, a refactor of the service that forced
+  the extra turns, or that service's `AGENTS.md`. The histories'
   created pull requests, taken from create calls and the URLs their results
   reported and never from a URL merely viewed, group into a **Cost by pull
   request** card, most expensive first, with the same action for the sessions

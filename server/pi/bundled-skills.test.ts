@@ -32,6 +32,8 @@ test("the cost method names what to work out, the four mechanisms and the report
     "## What to work out",
     "**Context**", "**Model and effort**", "**Structure**", "**Workflow**",
     "driver → mechanism → what it saves", "this session", "every session",
+    "## Suggest follow-ups", "**A check**", "**A skill**", "**A refactor**", "**Service instructions**",
+    "suggest_task", "One card per change, at most three",
     "Do not change code unless asked",
   ]) assert.ok(flat.includes(text), `${text} is in the method`);
 });
