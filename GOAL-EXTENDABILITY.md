@@ -42,7 +42,7 @@ Rules for the program session:
 |---|---|---|---|---|
 | P0 | Gateway routes, store, status/toggle | carried in the program PR (PR #408 closed as superseded) | 854608e6 | #408 green |
 | P1 | Settings page + `hui extension list/enable/disable` | **DONE** | 918e0f0c | green (run 42021662186) |
-| P2 | Sandboxed panels and the bridge | IN PROGRESS | 5d661498 | pending |
+| P2 | Sandboxed panels and the bridge | **DONE** | d60951c5 | green (run 42031190678; catalogue re-run 42032678418) |
 | P3 | Prompt sections and agent tools | NOT STARTED | — | — |
 | P4 | Server-sent events | NOT STARTED | — | — |
 | P5 | Reload, engines, doctor, install/remove | NOT STARTED | — | — |
@@ -54,11 +54,11 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 
 | Field | Value |
 |---|---|
-| Current phase | P2 (IN PROGRESS; CI pending) |
-| Next action | When CI is green, mark P2 DONE, then start P3 |
+| Current phase | P3 (NOT STARTED) |
+| Next action | Start P3: manifest prompt/tools, the extensions prompt section, the Durable tool offer, the Settings contributions view, tests and docs |
 | Branch | `danifdz/hui-extendability` |
 | Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
-| Last green CI | P1, 918e0f0c, run 42021662186 |
+| Last green CI | P2, d60951c5, runs 42031190678 and 42032678418 |
 | Last DONE phase | P0 carried (criteria met in #408; #415 carries its commits) |
 | Baseline | see §3 |
 
@@ -175,7 +175,7 @@ inventing a dead link.
 
 ## 5. P2 — Sandboxed panels
 
-**Status:** IN PROGRESS · **Commit:** 5d661498 + the test commit · **CI:** pending
+**Status:** DONE · **Commit:** d60951c5 (with 5d661498 and the test commits) · **CI:** green, runs 42031190678 and 42032678418
 
 **Baseline:** P1's green HEAD; typecheck 0 · tests 33 failed / 2808 passed · tree clean
 
