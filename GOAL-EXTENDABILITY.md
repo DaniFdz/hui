@@ -46,7 +46,7 @@ Rules for the program session:
 | P3 | Prompt sections and agent tools | **DONE** | ec18488b | green (runs 42038480178, 42038480264) |
 | P4 | Server-sent events | **DONE** | 6db2f619 | green (runs 42042613325, 42042613255) |
 | P5 | Reload, engines, doctor, install/remove | **DONE** | 7347cb53 | green (runs 42045860596, 42045860744) |
-| P6 | Out-of-process mode | **DONE** | f643ad69 | green (runs 42051036855, 42051036850) |
+| P6 | Out-of-process mode | **DONE** | f643ad69 | green on 70d96a95 (runs 42051307453, 42051307892) |
 
 Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (owner).
 
@@ -58,7 +58,7 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 | Next action | The program PR is ready for the owner: review the branch and merge; do not merge on the implementer's behalf. |
 | Branch | `danifdz/hui-extendability` |
 | Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
-| Last green CI | P6, f643ad69, runs 42051036855 and 42051036850 |
+| Last green CI | P6, 70d96a95, runs 42051307453 and 42051307892 |
 | Last DONE phase | P0 carried (criteria met in #408; #415 carries its commits) |
 | Baseline | see §3 |
 
@@ -453,7 +453,7 @@ Tool handlers remain module exports (P3).
 
 ## 9. P6 — Out-of-process mode
 
-**Status:** DONE · **Commit:** f643ad69 · **CI:** green (run 42051036850 web 1/4–4/4 and 42051036855 Test)
+**Status:** DONE · **Commit:** f643ad69 (P6 code; the ledger's HEAD 70d96a95) · **CI:** green on 70d96a95, runs 42051307453 (Test) and 42051307892 (web 1/4–4/4)
 
 **Baseline:** P5's green HEAD; typecheck 0 · tests 33 failed / 2838 passed · tree clean
 
