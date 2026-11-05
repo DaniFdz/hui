@@ -14,33 +14,42 @@ export function sumUsage(rows: readonly UsageMetrics[]): UsageMetrics {
   return result;
 }
 
+function mergeModels(models: Map<string, UsageModel>, row: UsageModel): void {
+  const key = JSON.stringify([row.provider, row.model]);
+  const previous = models.get(key);
+  models.set(key, { ...row, metrics: sumUsage(previous ? [previous.metrics, row.metrics] : [row.metrics]) });
+}
+
+function rankedModels(models: ReadonlyMap<string, UsageModel>): UsageModel[] {
+  return [...models.values()].toSorted((left, right) => right.metrics.totalTokens - left.metrics.totalTokens
+    || left.provider.localeCompare(right.provider) || left.model.localeCompare(right.model));
+}
+
 export function usageOverview(report: UsageReport, query: string, sort: UsageSort) {
   const search = query.trim().toLocaleLowerCase();
   const sessions = report.sessions.filter((session) => !search || [session.title, session.id, ...session.models.map(({ model, provider }) => `${provider}/${model}`)].join(" ").toLocaleLowerCase().includes(search));
   sessions.sort((a, b) => (sort === "cost" ? (b.metrics.costUsd ?? -1) - (a.metrics.costUsd ?? -1) : sort === "tokens" ? b.metrics.totalTokens - a.metrics.totalTokens : b.lastActivityAt - a.lastActivityAt) || a.title.localeCompare(b.title));
   const models = new Map<string, UsageModel>();
-  const days = new Map<string, UsageDay>();
+  const days = new Map<string, { metrics: UsageMetrics; models: Map<string, UsageModel> }>();
   const tools = new Map<string, UsageTool>();
   for (const session of sessions) {
-    for (const row of session.models) {
-      const key = JSON.stringify([row.provider, row.model]);
-      const previous = models.get(key);
-      models.set(key, { ...row, metrics: sumUsage(previous ? [previous.metrics, row.metrics] : [row.metrics]) });
-    }
+    for (const row of session.models) mergeModels(models, row);
     for (const row of session.days) {
-      const previous = days.get(row.date);
-      days.set(row.date, { date: row.date, metrics: sumUsage(previous ? [previous.metrics, row.metrics] : [row.metrics]) });
+      const held = days.get(row.date) ?? { metrics: sumUsage([]), models: new Map<string, UsageModel>() };
+      for (const model of row.models) mergeModels(held.models, model);
+      days.set(row.date, { metrics: sumUsage([held.metrics, row.metrics]), models: held.models });
     }
     for (const row of session.tools) {
       const previous = tools.get(row.name);
       tools.set(row.name, { name: row.name, calls: (previous?.calls ?? 0) + row.calls, errors: (previous?.errors ?? 0) + row.errors });
     }
   }
-  const rankedModels = [...models.values()].sort((a, b) => b.metrics.totalTokens - a.metrics.totalTokens);
+  const ranked = rankedModels(models);
   const providers = new Map<string, UsageMetrics[]>();
-  for (const row of rankedModels) providers.set(row.provider, [...(providers.get(row.provider) ?? []), row.metrics]);
+  for (const row of ranked) providers.set(row.provider, [...(providers.get(row.provider) ?? []), row.metrics]);
   return {
-    sessions, totals: sumUsage(sessions.map(({ metrics }) => metrics)), days: [...days.values()], models: rankedModels,
+    sessions, totals: sumUsage(sessions.map(({ metrics }) => metrics)), models: ranked,
+    days: [...days].map(([date, day]): UsageDay => ({ date, metrics: day.metrics, models: rankedModels(day.models) })),
     providers: [...providers].map(([provider, rows]) => ({ provider, metrics: sumUsage(rows) })).sort((a, b) => b.metrics.totalTokens - a.metrics.totalTokens),
     tools: [...tools.values()].sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name)),
   };
@@ -49,7 +58,7 @@ export function usageOverview(report: UsageReport, query: string, sort: UsageSor
 const DAY_MS = 86_400_000;
 const CHART_BARS = 32;
 
-type UsageChartBucket = { date: string; end: string; metrics: UsageMetrics };
+type UsageChartBucket = { date: string; end: string; metrics: UsageMetrics; models: UsageModel[] };
 
 export function usageChartDays(days: readonly UsageDay[], from: string, to: string): { bucket: "day" | "week" | "month"; days: UsageChartBucket[] } {
   const start = Date.parse(`${from}T00:00:00Z`);
@@ -70,22 +79,26 @@ export function usageChartDays(days: readonly UsageDay[], from: string, to: stri
   } else {
     for (let at = start; at <= end; at += DAY_MS) bounds.push({ start: at, end: at });
   }
-  const recorded = new Map<number, UsageMetrics>();
+  const recorded = new Map<number, { metrics: UsageMetrics; models: Map<string, UsageModel> }>();
   for (const row of days) {
     const at = Date.parse(`${row.date}T00:00:00Z`);
-    const held = recorded.get(at);
-    recorded.set(at, held ? sumUsage([held, row.metrics]) : row.metrics);
+    const held = recorded.get(at) ?? { metrics: sumUsage([]), models: new Map<string, UsageModel>() };
+    for (const model of row.models) mergeModels(held.models, model);
+    recorded.set(at, { metrics: sumUsage([held.metrics, row.metrics]), models: held.models });
   }
   return {
     bucket,
     days: bounds.map(({ start: first, end: last }) => {
       const parts: UsageMetrics[] = [];
+      const models = new Map<string, UsageModel>();
       for (let at = first; at <= last; at += DAY_MS) {
         const held = recorded.get(at);
-        if (held) parts.push(held);
+        if (!held) continue;
+        parts.push(held.metrics);
+        for (const model of held.models.values()) mergeModels(models, model);
       }
       const date = new Date(first).toISOString().slice(0, 10);
-      return { date: bucket === "month" ? date.slice(0, 7) : date, end: new Date(last).toISOString().slice(0, 10), metrics: sumUsage(parts) };
+      return { date: bucket === "month" ? date.slice(0, 7) : date, end: new Date(last).toISOString().slice(0, 10), metrics: sumUsage(parts), models: rankedModels(models) };
     }),
   };
 }

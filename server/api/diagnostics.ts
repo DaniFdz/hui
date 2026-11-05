@@ -47,11 +47,11 @@ export const UsageMetrics = Type.Object({
 }, { $id: "UsageMetrics" });
 export type UsageMetrics = Static<typeof UsageMetrics>;
 
-export const UsageDay = Type.Object({ date: Type.String(), metrics: UsageMetrics }, { $id: "UsageDay" });
-export type UsageDay = Static<typeof UsageDay>;
-
 export const UsageModel = Type.Object({ provider: Type.String(), model: Type.String(), metrics: UsageMetrics }, { $id: "UsageModel" });
 export type UsageModel = Static<typeof UsageModel>;
+
+export const UsageDay = Type.Object({ date: Type.String(), metrics: UsageMetrics, models: Type.Array(UsageModel) }, { $id: "UsageDay" });
+export type UsageDay = Static<typeof UsageDay>;
 
 export const UsageTool = Type.Object({ name: Type.String(), calls: Type.Number(), errors: Type.Number() }, { $id: "UsageTool" });
 export type UsageTool = Static<typeof UsageTool>;

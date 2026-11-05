@@ -1,7 +1,7 @@
 /** The Usage page: reporting controls and charts over recorded local conversation histories, never provider billing. */
-import { LitElement, html, nothing, svg } from "lit";
+import { LitElement, html, nothing, render, svg, type TemplateResult } from "lit";
 import { live } from "lit/directives/live.js";
-import type { UsageMetrics, UsageReport } from "../api/schema/diagnostics.ts";
+import type { UsageMetrics, UsageModel, UsageReport } from "../api/schema/diagnostics.ts";
 import { UsageController } from "../controllers/usage-controller.ts";
 import { cardGridStyle } from "../lib/card-grid.ts";
 import { sumUsage, usageChartDays, usageComparison, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageOverview, usageSessionCsv, type UsageSort } from "../lib/usage.ts";
@@ -47,6 +47,20 @@ function statCard(label: string, value: string, detail: string, delta?: { change
     ${delta ? html`<span class="usage-stat__delta usage-stat__delta--${tone}">${marker} ${(Math.abs(delta.change) * 100).toFixed(delta.change > 0.095 ? 0 : 1)}% <span>${delta.against}</span></span>` : nothing}</article>`;
 }
 
+const TIP_MODELS = 6;
+
+/** A bar's card: its day or period, each model it recorded, then the period's own numbers. */
+export function renderBarTip(label: string, metrics: UsageMetrics, models: readonly UsageModel[]): TemplateResult {
+  const [only] = models;
+  const covered = only !== undefined && models.length === 1 && only.metrics.totalTokens === metrics.totalTokens && only.metrics.costUsd === metrics.costUsd;
+  const detail = usageDetail(metrics).slice(covered ? 1 : 0);
+  return html`<div class="usage-tip__card">
+    <div class="usage-tip__day">${label}</div>
+    ${models.length ? html`<div class="usage-tip__rows">${models.slice(0, TIP_MODELS).map((row) => html`<div class="usage-tip__row"><span class="usage-tip__name">${row.provider}/${row.model}</span><span class="usage-tip__tokens">${number(row.metrics.totalTokens)} tokens</span><span class="usage-tip__cost">${cost(row.metrics)}</span></div>`)}${models.length > TIP_MODELS ? html`<div class="usage-tip__line">${count(models.length - TIP_MODELS, "more model")}</div>` : nothing}</div>` : nothing}
+    ${detail.map((line) => html`<div class="usage-tip__line">${line}</div>`)}
+  </div>`;
+}
+
 function summary(title: string, value: string, description: string) {
   return html`<article class="stat usage-summary-card"><span class="usage-summary-title">${title}</span><strong class="usage-summary-value">${value}</strong><small class="usage-summary-sub">${description}</small></article>`;
 }
@@ -82,7 +96,7 @@ export class HuiUsagePage extends LitElement {
     this.#tip = undefined;
   }
 
-  #showTip(target: Element, text: string) {
+  #showTip(target: Element, content: string | TemplateResult) {
     const tip = this.#tip ??= (() => {
       const element = document.createElement("div");
       element.className = "usage-tip";
@@ -90,7 +104,7 @@ export class HuiUsagePage extends LitElement {
       document.body.append(element);
       return element;
     })();
-    tip.textContent = text;
+    render(content, tip);
     tip.dataset.open = "true";
     const anchor = target.getBoundingClientRect();
     const width = tip.offsetWidth;
@@ -168,8 +182,8 @@ export class HuiUsagePage extends LitElement {
           const hint = [shown, ...usageDetail(metrics)].join("\n");
           const chosen = selection !== undefined && selection.from === (date.length === 7 ? `${date}-01` : date) && selection.to === end;
           return html`<button type="button" class="daily-bar-wrapper usage-report__day ${chosen ? "selected" : ""} ${empty ? "usage-report__day--empty" : ""}" aria-pressed=${chosen} aria-label=${hint.replace(/\n/gu, " · ")} tabindex=${index === Math.min(this.#chartFocus, days.days.length - 1) ? 0 : -1}
-            @pointerenter=${(event: PointerEvent) => { if (event.pointerType !== "touch") this.#showTip(event.currentTarget as HTMLElement, hint); }} @pointerleave=${this.#hideTip}
-            @focus=${(event: FocusEvent) => this.#showTip(event.currentTarget as HTMLElement, hint)} @blur=${this.#hideTip}
+            @pointerenter=${(event: PointerEvent) => { if (event.pointerType !== "touch") this.#showTip(event.currentTarget as HTMLElement, renderBarTip(shown, metrics, bar.models)); }} @pointerleave=${this.#hideTip}
+            @focus=${(event: FocusEvent) => this.#showTip(event.currentTarget as HTMLElement, renderBarTip(shown, metrics, bar.models))} @blur=${this.#hideTip}
             @keydown=${(event: KeyboardEvent) => this.#chartKey(event, index, days.days.length)} @click=${() => this.#select(date.length === 7 ? `${date}-01` : date, end, shown, metrics)}><span class="daily-bar ${byType ? "daily-bar--stacked" : ""} ${unpriced ? "usage-report__unpriced" : ""}" style=${`height: ${max ? value(metrics) / max * 200 : 0}px; opacity: ${empty ? 0.25 : 1}`}>
               ${byType ? this.#segments(metrics) : nothing}</span>
               <span class="daily-bar-label">${days.days.length <= 10 || index % Math.ceil(days.days.length / 6) === 0 || index === days.days.length - 1 ? labelDate(date) : ""}</span><span class="daily-bar-total">${unpriced ? "?" : ""}</span></button>`;
@@ -233,18 +247,21 @@ export class HuiUsagePage extends LitElement {
     let offset = 0;
     const segments = rows.map((row, index) => {
       const share = row.metrics.totalTokens / total;
-      const segment = { ...row, share, color: PALETTE[index % PALETTE.length], offset };
+      // The rest of the models share one neutral slice, so no colour stands for two models.
+      const color = rest.length > 0 && index === rows.length - 1 ? "var(--muted)" : PALETTE[index % PALETTE.length];
+      const segment = { ...row, share, color, offset };
       offset += share * 100;
       return segment;
     });
+    const detail = (segment: (typeof segments)[number]) => `${segment.label} · ${compact(segment.metrics.totalTokens)} tokens · ${Math.round(segment.share * 100)}%`;
     return html`<section class="settings-group usage-panel usage-card usage-donut-card" data-testid="usage-models">
       <div class="usage-card__header"><div class="usage-card__headline"><h2 class="usage-card__title">Usage by model</h2><p class="usage-card__meta">Recorded tokens, ranked</p></div></div>
       <div class="usage-donut-layout">
         <div class="usage-donut">
-          ${svg`<svg viewBox="0 0 42 42" aria-hidden="true"><circle class="usage-donut__track" cx="21" cy="21" r="15.9155" fill="none" pathLength="100" stroke-width="5"></circle>${segments.map((segment) => svg`<circle cx="21" cy="21" r="15.9155" fill="none" pathLength="100" stroke=${segment.color} stroke-width="5" stroke-dasharray="${(segment.share * 100).toFixed(2)} ${(100 - segment.share * 100).toFixed(2)}" stroke-dashoffset=${(25 - segment.offset).toFixed(2)}></circle>`)}</svg>`}
+          ${svg`<svg viewBox="0 0 42 42" aria-hidden="true"><circle class="usage-donut__track" cx="21" cy="21" r="15.9155" fill="none" pathLength="100" stroke-width="5"></circle>${segments.map((segment) => svg`<circle class="usage-donut__segment" cx="21" cy="21" r="15.9155" fill="none" pathLength="100" stroke=${segment.color} stroke-width="5" stroke-dasharray="${(segment.share * 100).toFixed(2)} ${(100 - segment.share * 100).toFixed(2)}" stroke-dashoffset=${(25 - segment.offset).toFixed(2)} @pointerenter=${(event: PointerEvent) => { if (event.pointerType !== "touch") this.#showTip(event.currentTarget as Element, detail(segment)); }} @pointerleave=${this.#hideTip}></circle>`)}</svg>`}
           <div class="usage-donut__center"><strong>${compact(total)}</strong><span>tokens</span></div>
         </div>
-        <div class="usage-donut__legend">${segments.map((segment) => html`<button type="button" class="usage-donut__row" data-hui-tooltip=${`Show only sessions with ${segment.label}`} @click=${() => this.#usage.search(segment.label)}>
+        <div class="usage-donut__legend">${segments.map((segment) => html`<button type="button" class="usage-donut__row" data-hui-tooltip=${`${detail(segment)} · Click to show only these sessions`} @click=${() => this.#usage.search(segment.label)}>
           <span class="usage-donut__dot" style=${`background: ${segment.color}`} aria-hidden="true"></span>
           <span class="usage-donut__name">${segment.label}</span>
           <span class="usage-donut__value">${compact(segment.metrics.totalTokens)} tokens</span>

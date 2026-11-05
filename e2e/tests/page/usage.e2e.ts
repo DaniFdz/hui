@@ -41,6 +41,8 @@ test("Usage reports a real turn's tokens, its recorded PI cost and its session",
   await expect(totals).not.toContainText("Unavailable", { ignoreCase: true });
   await expect(chart.getByRole("button", /· [1-9][\d,]* tokens · \$0\.00 · /u)).toBeVisible();
   await expect(screen.getByText("hui-e2e/fixture", { exact: false })).toBeVisible();
+  await hui.peek(screen.getByTestId("usage-models").getByRole("button", /fixture/u));
+  await expect(screen.getByText(/· [\d,.]+ tokens · \d+% · Click to show only these sessions$/u)).toBeVisible();
 
   const beforeCompaction = await totals.allTextContents();
   await expect(sessions.getByRole("button", /Usage coverage/u)).toBeVisible();

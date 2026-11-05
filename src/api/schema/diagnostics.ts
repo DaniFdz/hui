@@ -22,7 +22,7 @@ export type UiErrorReceipt = { "recorded": number; "dropped": number; };
 
 export type UiErrorReport = { "kind": UiErrorKind; "message": string; "count": number; "firstAt"?: string; "lastAt"?: string; "location"?: string; "page"?: string; "request"?: { "method": string; "path": string; }; };
 
-export type UsageDay = { "date": string; "metrics": UsageMetrics; };
+export type UsageDay = { "date": string; "metrics": UsageMetrics; "models": Array<UsageModel>; };
 
 export type UsageMetrics = { "inputTokens": number; "outputTokens": number; "cacheReadTokens": number; "cacheWriteTokens": number; "totalTokens": number; "costUsd": (number) | (null); "unpricedCalls": number; "calls": number; "userMessages": number; "assistantMessages": number; "toolResults": number; "errors": number; };
 
