@@ -330,6 +330,8 @@ export type HomeProps = {
   onQueueRemove: (id: string) => void;
   onQueueMove: (id: string, toIndex: number) => void;
   onQueueSteer: (id: string) => void;
+  /** Stops the turn the steers wait on and sends all of them as one message. */
+  onQueueSteerNow: () => void;
   /** The settled run's terminal error, unless the operator dismissed it. */
   runError?: RunErrorNotice;
   onContinueAfterError: () => void;
@@ -1021,6 +1023,9 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
 
 function renderPresentedMediaItem(item: PresentedMediaItem): TemplateResult {
   const meta = `${item.mimeType} · ${mediaSizeLabel(item.size)}`;
+  const reveal = item.path
+    ? html`<hui-file-ref class="chat-assistant-attachment-card__action chat-presented-media__reveal" data-path=${item.path}>${icons.eye}</hui-file-ref>`
+    : nothing;
   if (item.kind === "image") {
     return html`<figure class="hui-presented-media hui-presented-media--image">
       <a class="chat-message-image-button" href=${item.url} target="_blank" rel="noopener" data-media-viewer data-media-name=${item.name} aria-label=${`Open ${item.name}`}>
@@ -1044,7 +1049,7 @@ function renderPresentedMediaItem(item: PresentedMediaItem): TemplateResult {
         </span>
       </div>
       <span class="chat-assistant-attachment-card__actions">
-        <a class="chat-assistant-attachment-card__action" href=${item.url} download=${item.name} aria-label=${`Download ${item.name}`} title="Download">${icons.download}</a>
+        ${reveal}<a class="chat-assistant-attachment-card__action" href=${item.url} download=${item.name} aria-label=${`Download ${item.name}`} title="Download">${icons.download}</a>
       </span>
     </div>
     ${player}
@@ -2306,6 +2311,9 @@ function mountEditor(element: Element | undefined, value: string) {
 function renderQueue(props: HomeProps) {
   const editable = props.queue.items ?? [];
   const rows = queueRows(props.queue);
+  // Durable withdraws a steered message with the turn it waits on, so they are sent again as one prompt. A runtime
+  // that keeps its queue through Stop already delivers them with its next run.
+  const steersNow = props.session?.tool === "durable" && props.queue.steering.length > 0;
   if (!rows.length) return nothing;
   return html`<section
     class="chat-queue"
@@ -2314,6 +2322,11 @@ function renderQueue(props: HomeProps) {
     aria-atomic="false"
     aria-label="Queued messages"
   >
+    ${steersNow ? html`<div class="chat-queue__send-now">
+      <button class="chat-queue__action chat-queue__steer" type="button"
+        title="Stops this turn and sends every steered message now"
+        ?disabled=${props.sending} @click=${props.onQueueSteerNow}>${icons.zap}<span>Send now</span></button>
+    </div>` : nothing}
     <div class="chat-queue__scroll" data-scrollable=${rows.length > 3 ? "true" : "false"}
       data-at-start="true" data-at-end=${rows.length > 3 ? "false" : "true"}
       @scroll=${(event: Event) => {

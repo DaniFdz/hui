@@ -73,7 +73,7 @@ const TRANSCRIPT_PAGE_BYTES = 8 * 1024 * 1024;
 const BOT_SECTION_TIMEOUT_MS = 10_000;
 
 /** The runtime methods a gateway may call; anything else is refused. */
-const CALLS = new Set(["prompt", "steer", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion",
+const CALLS = new Set(["prompt", "steer", "takeSteeringQueue", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion",
   "clear", "reload", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "waitForTrackedPrompt", "cancelTrackedPrompt"]);
 /** PI calls that start a run, recorded before they reach the runtime. */
 const RUN_CALLS = new Set(["prompt", "continueRun"]);

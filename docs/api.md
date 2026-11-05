@@ -1325,8 +1325,16 @@ type PresentedMedia = {
   mimeType: string;
   size: number;
   url: `/__hui/media/${string}/${string}`;
+  path?: string;
 };
 ```
+
+`path` is the source file's root-relative path in the session working directory,
+and is present only when the file was inside it. The card uses it to open that
+file in the conversation's Files view through the same path as a file reference
+the agent wrote in the chat, so the button appears once the gateway confirms the
+file still exists there. Nothing else about where the file came from is
+stored: the copy in `presented-media/` stays served by its opaque URL.
 
 Tool-result `details` cross the generic runtime event/transcript contract so a
 live call and a reopened PI transcript paint identically. `present_media` is
@@ -3441,6 +3449,16 @@ cached command catalog so newly added skills and commands appear.
 
 Uses the prompt body and attachment rules. Queues an instruction before PI's
 next model call while the current run is active.
+
+### `POST /__hui/sessions/:id/steer-now`
+
+Accepts an empty JSON body and returns `{ "ok": true }`. Delivers the run's
+queued steers now rather than at its next model call, which a blocking tool call
+can hold off for minutes: it stops the turn and starts the next one with every
+queued steer as a single message, in queue order, so they arrive together.
+Queued follow-ups the same Stop withdraws are put back. `409` when nothing is
+queued, and on a runtime whose Stop keeps its steering queue (PI), where the
+steers already go in with the next run. `404` for an unknown session.
 
 ### `POST /__hui/sessions/:id/queue`
 

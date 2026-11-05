@@ -163,6 +163,9 @@ type Live = {
   submissions: number;
   /** Admission of the prompt currently crossing registry/runtime boundaries; identified followups cannot overtake it. */
   promptAdmission?: Promise<void>;
+  /** A forced steer is ending the run: input arriving meanwhile is refused, because Stop withdraws what it would
+   * join and the operator would never hear of it. */
+  steeringNow?: boolean;
   runtime?: RuntimeSession;
   /** Wall-clock lifecycle timing for the current runtime attempt. */
   bootStartedAt: number;
@@ -1001,6 +1004,7 @@ export class LiveSessions {
 
   async steer(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<void> {
     const live = this.#ready(id);
+    if (live.steeringNow) throw new SessionBusyError("The steered messages are being sent now. Try again in a moment.");
     if (this.#holdWhileCompacting(live)) {
       await this.followUp(id, text, attachments);
       return;
@@ -1016,10 +1020,42 @@ export class LiveSessions {
     await live.runtime.steer(text, attachments);
   }
 
+  /** Delivers the run's queued steers now instead of at its next model call, which a blocking tool call can hold off
+   * for minutes. Only Stop gets past that call, so it ends first, and the texts it would withdraw with the run come
+   * back as one prompt. A runtime whose Stop keeps its queue refuses: the steers go in with its next run anyway. */
+  async steerNow(id: string): Promise<void> {
+    const live = this.#ready(id);
+    const runtime = live.runtime!;
+    if (!runtime.takeSteeringQueue) {
+      throw new SessionBusyError("This session's runtime keeps its steered messages through Stop, so they go in with its next prompt.");
+    }
+    if (live.steeringNow) throw new SessionBusyError("The steered messages are already being sent.");
+    live.steeringNow = true;
+    try {
+      const steered = [...await runtime.takeSteeringQueue()];
+      if (!steered.length) throw new SessionBusyError("There are no steered messages to send.");
+      // Follow-ups a worker's runtime holds leave with the same Stop, so they go back before the steers go in.
+      const followUps = [...(runtime.pendingQueue?.().followUp ?? [])];
+      await this.abort(id);
+      for (const text of followUps) await runtime.followUp?.(text);
+      try {
+        await this.prompt(id, steered.join("\n\n"));
+      } catch (error) {
+        // The run is gone and took the texts with it: they wait in HUI's queue instead of vanishing.
+        live.followUps.unshift({ id: crypto.randomUUID(), text: steered.join("\n\n"), mode: "followUp" });
+        this.#broadcastQueue(live);
+        throw error;
+      }
+    } finally {
+      live.steeringNow = false;
+    }
+  }
+
   /** Queues work for after the current run. Returns the id of HUI's queue item, which leaves the queue when HUI sends
    * it; undefined when the runtime queued it itself (a worker's streaming run). */
   async followUp(id: string, text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<string | undefined> {
     const live = this.#ready(id);
+    if (live.steeringNow) throw new SessionBusyError("The steered messages are being sent now. Try again in a moment.");
     // HUI removes an editable followup immediately before handing it to the runtime. Its registry write may still be
     // pending, so a newer identified input must wait for actual runtime acceptance rather than treat queue removal as
     // acceptance. A rejected earlier prompt rejects this admission too, without inventing a different ordering.

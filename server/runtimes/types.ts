@@ -103,6 +103,9 @@ export type RuntimeSession = {
   prompt(text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<void>;
   /** Queue an instruction before the next model call while the agent is busy. */
   steer?(text: string, attachments?: readonly PromptAttachment[]): Promise<void>;
+  /** Hands HUI the run's queued steers for it to deliver as a prompt, because Stop withdraws them with the run. A
+   * runtime whose Stop keeps its queue omits it: those messages go in with the next run by themselves. */
+  takeSteeringQueue?(): Promise<readonly string[]>;
   /** Queue work to begin only after the current agent run has settled. */
   followUp?(text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<void>;
   /** Reacquire and await an already-admitted input by its caller-owned identity. Never sends new input. */

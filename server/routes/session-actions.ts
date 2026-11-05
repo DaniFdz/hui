@@ -39,7 +39,7 @@ export const routeSchemas: RouteSchema[] = [
 
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork|goal)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|steer-now|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork|goal)$/;
 
 export function createSessionActionRoutes(deps: {
   lifecycle: Pick<ReturnType<typeof createSessionLifecycle>, "updateSession" | "forkRequest" | "forkFromSession">;
@@ -159,6 +159,19 @@ export function createSessionActionRoutes(deps: {
           return reply(SessionError, {
             error: error instanceof Error ? error.message : "pi refused the message.",
           }, error instanceof SessionNotFoundError ? 404 : error instanceof SessionBusyError ? 409 : 400);
+        }
+      }
+      if (action[2] === "steer-now" && method === "POST") {
+        try {
+          if (!liveSessions.ensure(record)) {
+            return reply(SessionError, { error: `unknown session: ${id}` }, 404);
+          }
+          await liveSessions.steerNow(id);
+          return reply(SessionPromptResponse, { ok: true });
+        } catch (error) {
+          return reply(SessionError, {
+            error: error instanceof Error ? error.message : "Could not send those steered messages.",
+          }, error instanceof SessionBusyError ? 409 : 400);
         }
       }
       if (action[2] === "continue" && method === "POST") {

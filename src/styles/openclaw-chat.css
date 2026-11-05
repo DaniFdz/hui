@@ -443,6 +443,11 @@ hui-file-ref.is-linked:focus-visible {
   border-radius: var(--radius-sm);
 }
 
+/* A presented file's Open-in-Files action exists only where the file does: it
+   appears once the reference is confirmed, so a bot's chat and a file that is
+   gone when the card renders keep only Download. */
+hui-file-ref.chat-presented-media__reveal:not(.is-linked) { display: none; }
+
 /* Rich Markdown embeds stay bounded by the transcript and fail locally: one
    malformed diagram or blocked provider must not blank the assistant turn. */
 hui-mermaid,
@@ -1480,6 +1485,15 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 /* Emoji read best a touch larger than the stroke marks at the same box. */
 .tool-call-row__icon--emoji { font-size: 15px; }
 .tool-call-group__emoji { font-size: 14px; }
+
+/* HUI sends a run's queued steers now, so the queue carries one row above them: a blocking tool call can hold a steer
+   for minutes, and stopping the turn is the only way past it. */
+.chat-queue__send-now {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--chat-stack-trailing-inset);
+  border-bottom: 1px solid var(--chat-queue-divider);
+}
 
 /* A user's own icon file: drawn in the mark's box, cropped to its circle, never wider than the chip. */
 .tool-call-group__icon,

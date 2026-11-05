@@ -1366,6 +1366,12 @@ platforms, and `Send adds to this run` when plain Enter is a line break);
 touch devices keep `Add to this run…`.
 When PI consumes either queue, HUI projects that instruction into the transcript
 immediately so a slow response never appears without its causal user message.
+A steering queue that a Stop withdraws with the turn can also be delivered at
+once: while a steer waits behind a long tool call, **Send now** above the queued
+steers stops that turn—the only way past a blocking call—and sends every steer as
+a single message in queue order, so several arrive together instead of one model
+call apart. PI keeps its queue through Stop, so it delivers the steers with the
+next run and shows no such row.
 A normal prompt remains rejected while busy. PI RPC exposes select, confirm,
 input and editor requests, so Question is an adapted PI surface rather than a
 disabled OpenClaw placeholder.
@@ -1411,7 +1417,13 @@ as images; MP4, WebM, OGV and MOV use the browser's native video player; MP3,
 WAV, OGG, M4A, AAC and FLAC use its native audio player; every other format is
 a download card. Audio/video container recognition does not imply codec support,
 so native playback failure remains visible and the original file stays
-downloadable. The active tool's prompt guidance states this exact matrix and the
+downloadable. A presented file that lives inside the conversation's working
+directory also reports its root-relative path, so a video, audio or file card
+offers that file in the conversation's Files view; presented images keep to the
+full-screen viewer. A file from outside the directory, a file that is gone when
+the card renders, a conversation on a remote worker and a bot's chat, which has
+no Files view, keep only Download. The active
+tool's prompt guidance states this exact matrix and the
 rule that a local path alone is not an attachment. Remote Markdown images remain
 click-to-open placeholders.
 
