@@ -98,7 +98,7 @@ commands, documentation and diagnostics.
 | E20 | The existing trust posture holds: extensions are trusted local code with the gateway's access; no sandbox, no approval prompt, no per-extension quota beyond the stated caps. |
 | E21 | Phase checkpoints: after a phase's code and tests, update the ledger, commit, push, wait for the required CI jobs on that HEAD, and only then start the next phase. A red required check stops the program until it is fixed or recorded as a proof gap with evidence; the next phase never starts on top of a red HEAD. |
 | E22 | Resumption: the ledger is the source of truth. After an interruption or context loss, read the ledger, `git log` and `git status` first, resume at the phase marked IN PROGRESS or at the first NOT STARTED phase after the last DONE one, and never redo a completed phase. |
-| E23 | If #408 is still open when the program starts, base the program branch on `danifdz/gateway-extensions` (the single program PR then contains its commits), open the program PR as a draft and keep it draft; at each checkpoint check whether #408 merged, and if it did, rebase the unreviewed draft onto the new `main` and force-push before continuing. Never force-push after the PR is marked ready. Before each phase, check the PR for unresolved review comments and address them first. If the program PR is merged before P6, the owner ended the program early: mark the remaining phases NOT DONE, stop, and do **not** open another PR. |
+| E23 | The single program PR carries phase 0's commits (from `danifdz/gateway-extensions`) and the plan documents (from `danifdz/extendability-plan`), then every phase. Open it from those branches if they are unmerged; once it is open, close PR #408 and PR #412 as superseded so exactly one PR remains, and rebase the unreviewed draft onto `main` when they merge. Never force-push after the PR is marked ready. Before each phase, check the PR for unresolved review comments and address them first. If the program PR is merged before P6, mark the remaining phases NOT DONE, stop, and do **not** open another PR. |
 | E24 | A phase that cannot complete after two focused attempts at the same failing check is marked BLOCKED in the ledger with the exact error and evidence, and the session stops. Dependent phases are not started; independent ones (P4 does not depend on P2/P3) may continue only if the ledger says so explicitly. |
 
 ## 4. Where we are
@@ -408,10 +408,13 @@ only with the command's real output pasted under its run.
 
 **One PR, not several.** Branch `danifdz/hui-extendability` from the merged `main`
 when #408 has landed; if it has not, branch from `danifdz/gateway-extensions` and
-carry its commits (E23). Open exactly one **draft** PR titled
+carry its commits, then cherry-pick the plan-document commits from
+`danifdz/extendability-plan` (E23). Open exactly one **draft** PR titled
 `feat: extend the gateway into a full extension host` and put the phase checklist
-in its body. Every phase is committed to this branch and this PR. Nothing is merged
-during the program, and no second program PR is ever opened.
+in its body. Once it is open, close PR #408 and PR #412 as superseded — their
+commits are in it — so exactly one PR is open for the whole work. Every phase is
+committed to this branch and this PR. Nothing is merged during the program, and no
+second program PR is ever opened.
 
 **Each phase is a checkpoint, not a merge.**
 

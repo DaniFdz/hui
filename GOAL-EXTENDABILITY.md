@@ -12,10 +12,11 @@ Rules for the program session:
 1. Read this file first. After an interruption or context loss, resume from
    **§2 Resume point**: never redo a phase marked DONE.
 2. Start from `main` when PR #408 is merged, or carry its commits by branching from
-   `danifdz/gateway-extensions` when it is not; branch `danifdz/hui-extendability`,
-   open **the one program PR** as a draft, and keep it draft until P6. While #408 is
-   unmerged, rebase the draft onto the new `main` at the next checkpoint after it
-   lands (E23), then continue. No second program PR is ever opened.
+   `danifdz/gateway-extensions` when it is not, then cherry-pick the plan commits
+   from `danifdz/extendability-plan`; branch `danifdz/hui-extendability`, open **the
+   one program PR** as a draft, and keep it draft until P6. Once it is open, close
+   #408 and #412 as superseded (their commits are in it), and rebase the draft onto
+   `main` when they merge (E23). No second program PR is ever opened.
 3. Before each phase: check the PR for unresolved review comments and address them
    first; then record the phase's baseline in its `Runs` block.
 4. After each phase: re-run its runs, paste the real output, update this file and
@@ -39,7 +40,7 @@ Rules for the program session:
 
 | Phase | Scope | Status | Commit | CI |
 |---|---|---|---|---|
-| P0 | Gateway routes, store, status/toggle | open (PR #408) | — | — |
+| P0 | Gateway routes, store, status/toggle | carried in the program PR (PR #408 closes as superseded) | — | — |
 | P1 | Settings page + `hui extension list/enable/disable` | NOT STARTED | — | — |
 | P2 | Sandboxed panels and the bridge | NOT STARTED | — | — |
 | P3 | Prompt sections and agent tools | NOT STARTED | — | — |
