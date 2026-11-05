@@ -44,7 +44,7 @@ import type { AutomationTask } from "../automation.ts";
 import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { WATCHER_EVENT_MARKER } from "../agent-tools/watcher-events.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./memory.ts";
-import { AUTOMATION_SUSPENDED } from "../automation.ts";
+import { AUTOMATION_SUSPENDED, AutomationRetryError } from "../automation.ts";
 import {
   BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError, findBot, isDerivedHandle, normalizeBootstrap, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, patchedVoice, uniqueHandle,
   type BotRegistry,
@@ -233,6 +233,7 @@ export type BotServiceDeps = {
   routines: BotRoutines;
   /** Bots on remote workers; absent, a bot can only run here. */
   workers?: BotWorkers;
+  modelKeyUnavailable?: (provider: string, signal: AbortSignal) => Promise<boolean>;
   botsDir?: string;
   now?: () => number;
   messagesPerHour?: number;
@@ -1030,6 +1031,10 @@ export class BotService {
     // happened even if the gateway loses its connection before the dispatch returns.
     await this.#open(record);
     if (signal.aborted) throw new DOMException("The wait was cancelled.", "AbortError");
+    const provider = bot.worker ? undefined : this.#sessions.snapshot(record.id).model?.provider;
+    if (provider && await this.#deps.modelKeyUnavailable?.(provider, signal)) {
+      throw new AutomationRetryError(`The key command for ${provider} failed, so the routine has not been sent. It tries again until the key works.`, "connection");
+    }
     const text = `[routine: ${task.name}] ${task.prompt}`;
     const requestId = options && this.#sessions.supportsTrackedPrompts(record.id) ? options.requestId : undefined;
     // A tracked routine uses the durable inbox. Older messages still in HUI's editable queue must start first, or

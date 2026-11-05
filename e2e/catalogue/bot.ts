@@ -466,7 +466,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-047",
     title: "Follow or cancel a routine's automatic retry",
-    behaviour: "Run now on a routine whose worker is disconnected shows \"Retry scheduled\", \"Attempt 1/3\", the next retry's time and the connection error. Cancel in Automations before that time makes the run Cancelled with no further retry promised.",
+    behaviour: "Run now on a routine whose worker is disconnected shows \"Retry scheduled\", \"Attempt 1\", the next retry's time and the connection error. Cancel in Automations before that time makes the run Cancelled with no further retry promised.",
     spec: ["SPEC.md#bots", "docs/api.md#routines", "docs/api.md#post-__huiautomationrunsidcancel"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run", "route:POST /__hui/automation/runs/:id/cancel"],
     journeys: ["bot-routine-recovery"],

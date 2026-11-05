@@ -403,7 +403,7 @@ test("error wording classifies quota/configuration/transient failures but never 
   service.dispose();
 });
 
-test("safe retries stop after three attempts and a waiting retry can be cancelled", async () => {
+test("safe retries go on every minute for up to twelve hours, and a waiting retry can be cancelled", async () => {
   for (const cancel of [false, true]) {
     const clock = manualClock(T0);
     let attempts = 0;
@@ -421,13 +421,15 @@ test("safe retries stop after three attempts and a waiting retry can be cancelle
       assert.equal(attempts, 1);
       assert.equal((await service.snapshot()).runs[0]?.retryAt, undefined);
     } else {
-      await waitFor("first retry timer", () => clock.nextWake() === T0 + 30_000);
-      clock.advanceTo(T0 + 30_000);
-      await waitFor("second retry scheduled", async () => (await service.snapshot()).runs[0]?.retryAt === new Date(T0 + 150_000).toISOString());
-      await waitFor("second retry timer", () => clock.nextWake() === T0 + 150_000);
-      clock.advanceTo(T0 + 150_000);
+      for (const [at, next] of [[T0 + 30_000, T0 + 150_000], [T0 + 150_000, T0 + 210_000]] as const) {
+        await waitFor("the retry timer", () => clock.nextWake() === at);
+        clock.advanceTo(at);
+        await waitFor("the next retry", async () => (await service.snapshot()).runs[0]?.retryAt === new Date(next).toISOString());
+      }
+      await waitFor("the third retry timer", () => clock.nextWake() === T0 + 210_000);
+      clock.advanceTo(T0 + 12 * 60 * MINUTE - 30_000);
       await runEnds(service, "failed");
-      assert.equal(attempts, 3);
+      assert.equal(attempts, 4);
       assert.deepEqual((await service.snapshot()).runs[0]?.failure, { kind: "connection", needsAttention: true });
     }
     service.dispose();
@@ -470,20 +472,19 @@ test("shutdown detaches an accepted run and restart reconciles its delivery with
   second.dispose();
 });
 
-test("a safe retry survives restart with its deadline and without firing early", async () => {
+test("a safe retry survives restart without firing early, and its timeout starts with the attempt", async () => {
   const file = await temporaryFile();
   const clock = manualClock(T0);
   const first = new AutomationService(file, async () => { throw new AutomationRetryError("Worker offline.", "connection"); }, clock.clock);
   const task = await first.create({ name: "Check", sessionId: "bot", prompt: "Check.", schedule: { kind: "at", at: future }, runs: 1 });
   const run = await first.run(task.id);
   await waitFor("persisted retry", async () => Boolean((await first.snapshot()).runs[0]?.retryAt));
-  const deadline = (await first.snapshot()).runs[0]?.deadlineAt;
   first.dispose();
   let calls = 0;
   const second = new AutomationService(file, async (_task, _signal, context) => {
     calls++;
     assert.equal(context.run.id, run.id);
-    assert.equal(context.run.deadlineAt, deadline);
+    assert.equal(context.run.deadlineAt, new Date(T0 + 30_000 + task.timeoutSeconds * 1000).toISOString());
     return {};
   }, clock.clock);
   await second.start();
@@ -496,7 +497,28 @@ test("a safe retry survives restart with its deadline and without firing early",
   second.dispose();
 });
 
-test("a pending retry does not outlive the task's end or run deadline", async () => {
+test("a run still waiting to send its prompt survives a restart hours after it was due", async () => {
+  const file = await temporaryFile();
+  const clock = manualClock(T0);
+  const first = new AutomationService(file, async () => { throw new AutomationRetryError("Worker offline.", "connection"); }, clock.clock);
+  const task = await first.create({ name: "Check", sessionId: "bot", prompt: "Check.", schedule: { kind: "at", at: future } });
+  await first.run(task.id);
+  await waitFor("persisted retry", async () => Boolean((await first.snapshot()).runs[0]?.retryAt));
+  first.dispose();
+  const later = T0 + 3 * 60 * MINUTE;
+  clock.advanceTo(later);
+  let deadlineAt: string | undefined;
+  const second = new AutomationService(file, async (_task, _signal, context) => {
+    deadlineAt = context.run.deadlineAt;
+    return { summary: "Sent" };
+  }, clock.clock);
+  await second.start();
+  await runEnds(second, "completed");
+  assert.equal(deadlineAt, new Date(later + task.timeoutSeconds * 1000).toISOString());
+  second.dispose();
+});
+
+test("a pending retry does not outlive the task's end", async () => {
   const clock = manualClock(T0);
   const service = new AutomationService(await temporaryFile(), async () => { throw new AutomationRetryError("Offline.", "connection"); }, clock.clock);
   const task = await service.create({ name: "Check", sessionId: "bot", prompt: "Check.", schedule: { kind: "at", at: new Date(T0 + 10_000).toISOString() }, until: new Date(T0 + 20_000).toISOString() });

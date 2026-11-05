@@ -41,7 +41,7 @@ test("routines and overview Activity explain retries and intervention without hi
   for (const view of ["routines", "overview"] as const) {
     const retryPage = markup(renderBotPanel({ ...props, view }));
     assert.match(retryPage, /Retry scheduled/);
-    assert.match(retryPage, /Attempt 1\/3 · Next retry/);
+    assert.match(retryPage, /Attempt 1 · Next retry/);
     assert.ok(retryPage.includes(formatTimestamp(run.retryAt)));
     assert.match(retryPage, /Worker is offline/);
     assert.doesNotMatch(retryPage, /A run is in progress/);

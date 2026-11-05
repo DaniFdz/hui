@@ -27,7 +27,8 @@ remove Channels and Nodes / Devices.
 
 - Routine delivery recovery and visible failure state: persisted dispatch
   checkpoints, Durable request deduplication and submission outcomes, safe
-  pre-dispatch worker retries (three attempts within one deadline), exact
+  pre-dispatch retries for an offline worker or a failing model key command
+  (every minute for up to 12 hours), exact
   cancellation and shutdown detachment. Temporary run counts survive retries.
   Browser proof and final validation are tracked in
   `e2e/bot-routine-recovery.browser.md`; not considered complete until that

@@ -2254,8 +2254,10 @@ chat or the task's timeout (`timeoutSeconds`, default 900) stops that turn. An
 archived bot's routine fails. Archiving disables a bot's routines; restoring
 leaves them disabled.
 
-**Recovery and retries.** Each new run keeps its original deadline (`deadlineAt`),
-an attempt count and a dispatch checkpoint before its prompt is sent. After a
+**Recovery and retries.** Each run has a deadline (`deadlineAt`), an attempt
+count and a dispatch checkpoint before its prompt is sent. Every attempt that
+has not sent its prompt sets the deadline to its start plus the task's timeout,
+so the timeout covers the bot's work; once the prompt is sent, it stays fixed. After a
 restart, a checkpointed bot routine observes that same delivery, not a new
 prompt. Durable uses a conversation-scoped request key to deduplicate the
 submission and reads its recorded outcome; cancelling targets that submission,
@@ -2264,10 +2266,12 @@ observer without cancelling the runtime's resumable work. Older runtimes use
 conservative transcript matching; an ambiguous or missing delivery requires
 intervention rather than replay.
 
-Only an explicitly known **pre-dispatch** failure is automatically retried:
-currently a bot's worker being offline before its chat opens. There are at most
-three attempts, after 30 seconds and then two minutes, within the original
-deadline and a temporary task's end. A retry is the same run id and consumes no
+Only an explicitly known **pre-dispatch** failure is automatically retried: a
+bot's worker being offline before its chat opens, or the key command for the
+model of a bot on this gateway failing before its prompt is sent. Attempts come
+after 30 seconds, two minutes and then every minute, for up to 12 hours after
+the run was created and never past a temporary task's end. Occurrences of the
+task that come due while a run waits collapse into it. A retry is the same run id and consumes no
 extra `runsLeft`. A pending retry survives restart and can be cancelled through
 the existing run-cancel route. A failure after dispatch is never a reason to
 send another prompt automatically. Quota/rate-limit, configuration, connection,

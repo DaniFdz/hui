@@ -28,7 +28,7 @@ operator's accounts, workers, transcripts or scheduler state.
    release in an isolated home and connect it through Settings → Workers/API
    setup. Create its bot and an hourly routine, then disconnect the worker.
    Click the routine's **Run now** in the visible Routines page. Observe
-   **Retry scheduled**, **Attempt 1/3**, its original connection error and the
+   **Retry scheduled**, **Attempt 1**, its original connection error and the
    actual next retry. Open Automations and use **Cancel** before that time;
    verify **Cancelled** and no further retry promised. This uses a real worker
    host on loopback, not an external machine or billable provider.
