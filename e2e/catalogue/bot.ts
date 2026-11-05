@@ -596,7 +596,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-060",
     title: "Import a bot from a template",
-    behaviour: "+ → Import bot… takes a file or folder, a Grok Bot link or pasted text, and Preview shows everything the bot would get: its face and handle, where it came from, the untrusted-text note, SOUL.md, its BOOTSTRAP.md when the template carries one, its first message, skills, routines and triggers (disabled), integrations mapped or missing, tools turned off and what was left out. Create bot opens its chat on \"<name> was created\" and its first message; a source HUI can't read says why, and nothing is created before Create bot.",
+    behaviour: "+ → Import bot… takes a file or folder, a Grok Bot link or pasted text, and Preview shows everything the bot would get: its face and handle, where it came from, the untrusted-text note, SOUL.md, its first message, skills, routines and triggers (disabled), integrations mapped or missing, tools turned off and what was left out. Create bot opens its chat on \"<name> was created\" and its first message; a source HUI can't read says why, and nothing is created before Create bot.",
     spec: ["SPEC.md#bots", "SPEC.md#bots-import-other-platforms-templates-and-export-their-own-2026-10-07", "docs/api.md#importing-and-exporting-bots", "docs/api.md#post-__huibotsimportpreview", "docs/api.md#post-__huibotsimport"],
     surfaces: ["route:POST /__hui/bots/import/preview", "route:POST /__hui/bots/import", "row:botCreated"],
     journeys: ["bot-templates"],
@@ -606,8 +606,8 @@ const cases: UseCase[] = [
   {
     id: "BOT-061",
     title: "Export a bot as a template",
-    behaviour: "A row's ⋯ → Export… reviews the bot and lists every change by group (kept, removed, asked, confirmed) with its reason and a picker, what was cleaned automatically, what it needs, what stays behind and every file as it will be saved, BOOTSTRAP.md first, all following the picks. Download saves the zip; a bot without SOUL.md yet, or one that changed since the review, is refused with the reason.",
-    spec: ["SPEC.md#bots", "SPEC.md#an-export-is-a-setup-document-2026-11-04", "SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#post-__huibotsidexportreview", "docs/api.md#exporting-a-bot-as-a-template"],
+    behaviour: "A row's ⋯ → Export… reviews the bot and lists every change by group (kept, removed, asked, confirmed) with its reason and a picker, what was cleaned automatically, what it needs, what stays behind and every file as it will be saved, all following the picks. Download saves the zip; a bot without SOUL.md yet, or one that changed since the review, is refused with the reason.",
+    spec: ["SPEC.md#bots", "SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#post-__huibotsidexportreview", "docs/api.md#exporting-a-bot-as-a-template"],
     surfaces: ["route:POST /__hui/bots/:id/export/review", "route:POST /__hui/bots/:id/export"],
     journeys: ["bot-templates"],
     web: "backlog",
@@ -625,9 +625,9 @@ const cases: UseCase[] = [
   },
   {
     id: "BOT-063",
-    title: "Walk an imported bot's setup in its first chat",
-    behaviour: "The preview of a HUI export shows its BOOTSTRAP.md, the setup document the export wrote: what the bot needs from the new owner, what to agree before it acts, what its routines and triggers need, and that its memory never travelled. Created, the bot greets them, says it came from a template and goes through the document a question or two at a time, under its own name and the importer's profile name in place of the original owner's. Its routines and triggers start off, and its first turn can't rewrite its persona or profile.",
-    spec: ["SPEC.md#an-export-is-a-setup-document-2026-11-04", "SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#importing-and-exporting-bots"],
+    title: "Agree an imported bot's open points in its first chat",
+    behaviour: "A bot imported from an export with open points greets the new owner and goes through them a question or two at a time, under its own name and the importer's profile name in place of the original owner's. Its routines and triggers start off, and its first turn can't rewrite its persona or profile.",
+    spec: ["SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#importing-and-exporting-bots"],
     surfaces: ["route:POST /__hui/bots/import"],
     journeys: ["bot-templates"],
     web: "backlog",
@@ -676,7 +676,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-068",
     title: "Keep a bot's identity, the operator's preferences and its knowledge apart",
-    behaviour: "A bot's prompt is four files: SOUL.md, USER.md, MEMORY.md and an optional BOOTSTRAP.md. Its export writes a setup document into its BOOTSTRAP.md and lists it under \"Files as they will be saved\", with SOUL.md, never USER.md or MEMORY.md, which Stays behind names as the operator's. An import's memories become MEMORY.md, shown in its preview as reference data that never leaves with an export.",
+    behaviour: "A bot's prompt is four files: SOUL.md, USER.md, MEMORY.md and an optional BOOTSTRAP.md. Its export lists SOUL.md and its BOOTSTRAP.md under \"Files as they will be saved\", never USER.md or MEMORY.md, which Stays behind names as the operator's. An import's memories become MEMORY.md, shown in its preview as reference data that never leaves with an export.",
     spec: ["SPEC.md#a-bots-prompt-is-four-files-and-only-two-of-them-travel-2026-10-25", "docs/api.md#prompt-files"],
     surfaces: ["tool:update_user", "tool:update_memory"],
     journeys: ["bots"],
