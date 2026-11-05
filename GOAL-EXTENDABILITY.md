@@ -1,8 +1,9 @@
 # GOAL — Full harness extendability, verified
 
 Program ledger for [PLAN-EXTENDABILITY.md](PLAN-EXTENDABILITY.md). One long-running
-goal implements every phase; the phases are checkpoints of one branch and one pull
-request (see PLAN §7). Set the goal to:
+goal implements every phase; the phases are checkpoints of **one branch and one
+pull request** (see PLAN §7). There is no per-phase PR, no second program PR and no
+follow-up PR. Set the goal to:
 
 > Implement all phases of PLAN-EXTENDABILITY.md; verify through GOAL-EXTENDABILITY.md.
 
@@ -10,10 +11,11 @@ Rules for the program session:
 
 1. Read this file first. After an interruption or context loss, resume from
    **§2 Resume point**: never redo a phase marked DONE.
-2. Start from `main` when PR #408 is merged, or stacked on `danifdz/gateway-extensions`
-   when it is not; branch `danifdz/hui-extendability`, open one draft PR, keep it
-   draft until P6. While #408 is unmerged, rebase the draft onto the new `main` at
-   the next checkpoint after it lands (E23), then continue.
+2. Start from `main` when PR #408 is merged, or carry its commits by branching from
+   `danifdz/gateway-extensions` when it is not; branch `danifdz/hui-extendability`,
+   open **the one program PR** as a draft, and keep it draft until P6. While #408 is
+   unmerged, rebase the draft onto the new `main` at the next checkpoint after it
+   lands (E23), then continue. No second program PR is ever opened.
 3. Before each phase: check the PR for unresolved review comments and address them
    first; then record the phase's baseline in its `Runs` block.
 4. After each phase: re-run its runs, paste the real output, update this file and
@@ -30,8 +32,8 @@ Rules for the program session:
 7. If a phase cannot pass the same failing check after two focused attempts, mark it
    BLOCKED here with the exact error and stop. P4 does not depend on P2/P3; no other
    phase may skip its predecessors.
-8. If the PR is merged mid-program, continue on a new branch from the merged
-   `main` and open a follow-up PR; record both here.
+8. If the PR is merged before P6, the program ends early: mark the remaining phases
+   NOT DONE here, stop, and open **no** follow-up PR. Only the owner merges.
 
 ## 1. Program status
 
@@ -54,7 +56,7 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 | Current phase | — |
 | Next action | Create the program branch (from `main` if #408 merged, else stacked on `danifdz/gateway-extensions`) and open the draft PR |
 | Branch | — (expected `danifdz/hui-extendability`) |
-| PR | — |
+| Program PR (the only one) | — |
 | Last green CI | — |
 | Last DONE phase | — (P0 pends #408; stacked start allowed by E23) |
 | Baseline | see §3 |
