@@ -5221,6 +5221,9 @@
         },
         "description": {
           "type": "string"
+        },
+        "stream": {
+          "type": "boolean"
         }
       }
     },

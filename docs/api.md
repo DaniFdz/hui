@@ -4189,6 +4189,14 @@ stream, redirect or return a file. Unknown ids and paths return 404, a wrong met
 405, invalid JSON 400, an oversized request 413, and a handler that throws or
 returns something other than a JSON object 500 `{ "error": "extension failed" }`.
 
+A route declared `stream: true` answers `text/event-stream` instead: its handler
+returns `{ events }`, an async iterable of JSON objects, and each object becomes one
+unnamed `data:` event, with a heartbeat comment while it waits. Caps: ten minutes,
+5 000 events, 256 KiB per event and 5 MiB in total; a throw, an oversized event or a
+cap ends the stream with one `event: error` carrying the reason (and one
+diagnostic), and a client that leaves aborts the handler's `signal`. A streaming
+route's metadata carries `stream: true`.
+
 Extensions are trusted local code: they run in the gateway process with the
 gateway's access to the machine, its credentials and its data, exactly like a PI
 extension. There is no sandbox, no permission prompt and no timeout. The manifest's

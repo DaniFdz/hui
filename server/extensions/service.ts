@@ -9,11 +9,11 @@ import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { ExtensionRouteInfo, ExtensionStatus, ExtensionsResponse } from "../api/extensions.ts";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import type { JsonResult, RouteRequest, RouteResult } from "../http/route.ts";
 import { EXTENSIONS_DIR, EXTENSIONS_FILE } from "../paths.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import {
-  checkedResult, entryPath, extensionId, MAX_EXTENSION_DIRECTORIES, MAX_ERROR_CHARS, parseManifest, parseRoutes,
+  checkedResult, checkedStream, entryPath, extensionId, MAX_EXTENSION_DIRECTORIES, MAX_ERROR_CHARS, parseManifest, parseRoutes,
   routeInfo, routeKey, type ExtensionManifest, type ExtensionRoute, type ExtensionTool, type ExtensionToolHandler,
 } from "./registry.ts";
 import { readExtensions, writeExtensions } from "./store.ts";
@@ -66,7 +66,7 @@ export type ExtensionsService = {
   list(): Promise<ExtensionsResponse>;
   setEnabled(id: string, enabled: boolean): Promise<ExtensionStatus>;
   reconcile(): Promise<void>;
-  invoke(input: InvokeInput): Promise<JsonResult>;
+  invoke(input: InvokeInput): Promise<RouteResult>;
   /** The `ui/` directory of a loaded extension that ships a panel, for the pre-gate asset route. */
   panelRoot(id: string): Promise<string | undefined>;
   /** The static prompt text every enabled extension contributes, or undefined when none does. */
@@ -334,7 +334,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     }
   }
 
-  async function invoke(input: InvokeInput): Promise<JsonResult> {
+  async function invoke(input: InvokeInput): Promise<RouteResult> {
     const { id, method, subpath, request } = input;
     const active = loaded.get(id);
     if (!active) {
@@ -366,6 +366,26 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
         summary: `extension ${id} failed: ${method} ${subpath}`, detail: message(error),
       });
       return { status: 500, body: { error: "extension failed" } };
+    }
+    if (route.stream) {
+      const events = checkedStream(result);
+      if (!events.ok) {
+        record({
+          area: "gateway", level: "error", action: "extension_failed",
+          summary: `extension ${id} returned an invalid stream: ${method} ${subpath}`, detail: events.error,
+        });
+        return { status: 500, body: { error: "extension failed" } };
+      }
+      return {
+        status: 200,
+        sse: {
+          events: events.value,
+          onError: (reason) => record({
+            area: "gateway", level: "error", action: "extension_stream_failed",
+            summary: `extension ${id} stream ended: ${reason}`, detail: `${method} ${subpath}`,
+          }),
+        },
+      };
     }
     const checked = checkedResult(result);
     if (!checked.ok) {

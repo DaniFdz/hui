@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import {
-  checkedResult, entryPath, extensionId, parseManifest, parseRoutes, routeInfo, routeKey,
+  checkedResult, checkedStream, entryPath, extensionId, parseManifest, parseRoutes, routeInfo, routeKey,
 } from "./registry.ts";
 
 const MANIFEST = { apiVersion: 1, name: "Hello", description: "One sentence.", main: "index.mjs" };
@@ -130,8 +130,8 @@ test("route keys and published route info keep the declared order", () => {
   assert.equal(routeKey("GET", "hello"), "GET hello");
   const handler = async () => ({ body: {} });
   assert.deepEqual(routeInfo([
-    { method: "GET", path: "a", description: "A", handle: handler },
-    { method: "POST", path: "b/c", description: "", handle: handler },
+    { method: "GET", path: "a", description: "A", stream: false, handle: handler },
+    { method: "POST", path: "b/c", description: "", stream: false, handle: handler },
   ]), [
     { method: "GET", path: "a", description: "A" },
     { method: "POST", path: "b/c", description: "" },
@@ -178,6 +178,32 @@ test("prompt sections and tools are declared within their caps and the schema su
   for (const [raw, pattern] of cases) {
     const result = parseManifest(raw);
     assert.equal(result.ok, false, JSON.stringify(raw).slice(0, 120));
+    if (!result.ok) assert.match(result.error, pattern);
+  }
+});
+
+test("a streaming route declares it in its metadata", () => {
+  const handle = async () => ({ events: (async function* () {})() });
+  const parsed = parseRoutes([{ method: "GET", path: "events", stream: true, handle }]);
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) assert.deepEqual(routeInfo(parsed.value), [{ method: "GET", path: "events", description: "", stream: true }]);
+  const bad = parseRoutes([{ method: "GET", path: "events", stream: "yes", handle }]);
+  assert.equal(bad.ok, false);
+  if (!bad.ok) assert.match(bad.error, /stream must be a boolean/u);
+});
+
+test("a streaming result is an async iterable and nothing else", () => {
+  const events = (async function* () {})();
+  assert.deepEqual(checkedStream({ events }), { ok: true, value: events });
+  const cases: [unknown, RegExp][] = [
+    [null, /must return \{ events \}/u],
+    [{ events: {} }, /async iterable/u],
+    [{ events, body: {} }, /events only/u],
+    [{ events, status: 200 }, /events only/u],
+  ];
+  for (const [raw, pattern] of cases) {
+    const result = checkedStream(raw);
+    assert.equal(result.ok, false, JSON.stringify(raw));
     if (!result.ok) assert.match(result.error, pattern);
   }
 });

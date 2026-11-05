@@ -104,6 +104,8 @@ export type ExtensionRoute = {
   readonly method: ExtensionMethod;
   readonly path: string;
   readonly description: string;
+  /** Answers server-sent events instead of one JSON object. */
+  readonly stream: boolean;
   readonly handle: ExtensionHandler;
 };
 
@@ -317,6 +319,7 @@ export function parseRoutes(raw: unknown): Parsed<ExtensionRoute[]> {
       return fail(`${where}.description must be at most ${MAX_DESCRIPTION_CHARS} characters without control characters`);
     }
     if (typeof value["handle"] !== "function") return fail(`${where}.handle must be a function`);
+    if (value["stream"] !== undefined && typeof value["stream"] !== "boolean") return fail(`${where}.stream must be a boolean`);
     const key = `${method} ${path}`;
     if (seen.has(key)) return fail(`${where} repeats ${key}`);
     seen.add(key);
@@ -324,6 +327,7 @@ export function parseRoutes(raw: unknown): Parsed<ExtensionRoute[]> {
       method: method as ExtensionMethod,
       path,
       description: rawDescription.trim(),
+      stream: value["stream"] === true,
       handle: value["handle"] as ExtensionHandler,
     });
   }
@@ -331,6 +335,17 @@ export function parseRoutes(raw: unknown): Parsed<ExtensionRoute[]> {
 }
 
 /** What a handler returned, bounded: a status an HTTP client can use and a JSON object no larger than the limit. */
+/** What a streaming handler returned: an async iterable of events. A status or body is refused. */
+export function checkedStream(raw: unknown): Parsed<AsyncIterable<unknown>> {
+  if (!isRecord(raw)) return fail("a streaming handle must return { events }");
+  if (raw["status"] !== undefined || raw["body"] !== undefined) return fail("a streaming handle returns events only");
+  const events = raw["events"];
+  if (!events || typeof events !== "object" || typeof (events as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] !== "function") {
+    return fail("events must be an async iterable");
+  }
+  return { ok: true, value: events as AsyncIterable<unknown> };
+}
+
 export function checkedResult(raw: unknown): Parsed<{ status: number; body: Record<string, unknown> }> {
   if (!isRecord(raw)) return fail("handle must return { status?, body }");
   const status = raw["status"] ?? 200;
@@ -352,7 +367,12 @@ export function checkedResult(raw: unknown): Parsed<{ status: number; body: Reco
 }
 
 export function routeInfo(routes: readonly ExtensionRoute[]): ExtensionRouteInfo[] {
-  return routes.map((route) => ({ method: route.method, path: route.path, description: route.description }));
+  return routes.map((route) => ({
+    method: route.method,
+    path: route.path,
+    description: route.description,
+    ...(route.stream ? { stream: true } : {}),
+  }));
 }
 
 export function routeKey(method: string, path: string): string {

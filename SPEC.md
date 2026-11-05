@@ -2432,6 +2432,11 @@ trusted local module can answer JSON routes on the gateway.
   row shows the state that came back. `hui extension list|enable|disable` does the
   same from a terminal against the running gateway. The page is web-only; the
   iPhone has no extension surface.
+- **Streaming.** A route may declare `stream: true` and return an async iterable of
+  events; HUI writes them as server-sent events with a heartbeat, caps (ten
+  minutes, 5 000 events, 256 KiB each, 5 MiB total), an `error` event on a throw or
+  cap, and the handler's `signal` aborted when the client leaves. The route's
+  metadata says `stream: true`.
 - **Agent contributions.** An extension may declare static `prompt` sections and
   agent `tools` in its manifest, with each tool's handler exported under the same
   name by the entry module. Enabled contributions reach every new Durable

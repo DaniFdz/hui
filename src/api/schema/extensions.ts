@@ -4,7 +4,7 @@ export type ExtensionPanel = { "title": string; "entry": string; };
 
 export type ExtensionPromptInfo = { "id": string; "title": string; "text": string; };
 
-export type ExtensionRouteInfo = { "method": string; "path": string; "description": string; };
+export type ExtensionRouteInfo = { "method": string; "path": string; "description": string; "stream"?: boolean; };
 
 export type ExtensionStatus = { "id": string; "name": string; "description": string; "enabled": boolean; "state": ("loaded") | ("disabled") | ("failed") | ("missing"); "error"?: string; "panel"?: ExtensionPanel; "prompt"?: Array<ExtensionPromptInfo>; "tools"?: Array<ExtensionToolInfo>; "routes": Array<ExtensionRouteInfo>; };
 

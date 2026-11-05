@@ -5,7 +5,7 @@
  */
 import { ExtensionStatus, ExtensionsResponse, PluginError, routeSchemas as extensionRouteSchemas } from "../api/extensions.ts";
 import { UnknownExtensionError, type ExtensionsService } from "../extensions/service.ts";
-import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 
 export const routeSchemas = extensionRouteSchemas;
 
@@ -13,7 +13,7 @@ const STATUS_ROUTE = "/__hui/ext";
 const EXTENSION_ROUTE = /^\/__hui\/ext\/([a-z][a-z0-9-]{0,31})(?:\/(.+))?$/u;
 
 export function createExtensionRoutes(deps: { extensions: ExtensionsService }) {
-  async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
+  async function handle(request: RouteRequest): Promise<RouteResult | undefined> {
     if (request.path === STATUS_ROUTE) {
       if (request.method !== "GET") return reply(PluginError, { error: "method not allowed" }, 405);
       return reply(ExtensionsResponse, await deps.extensions.list());

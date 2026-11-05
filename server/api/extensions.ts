@@ -9,6 +9,7 @@ export const ExtensionRouteInfo = Type.Object({
   method: Type.String(),
   path: Type.String(),
   description: Type.String(),
+  stream: Type.Optional(Type.Boolean()),
 }, { $id: "ExtensionRouteInfo" });
 export type ExtensionRouteInfo = Static<typeof ExtensionRouteInfo>;
 
