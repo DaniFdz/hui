@@ -1,0 +1,19 @@
+/* HUI's card stacks. A page sets `--hui-card-grid-columns` from the number of cards it draws (lib/card-grid.ts), so
+ * every row stays full instead of trailing off with one card; narrower layouts reuse the same count, capped for the
+ * columns that still fit. A stack keeps its own gap, card presentation and alignment. */
+.hui-card-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--hui-card-grid-columns, 1), minmax(0, 1fr));
+}
+
+@media (max-width: 1080px) {
+  .hui-card-grid {
+    grid-template-columns: repeat(var(--hui-card-grid-columns-compact, 1), minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .hui-card-grid {
+    grid-template-columns: repeat(var(--hui-card-grid-columns-phone, 1), minmax(0, 1fr));
+  }
+}

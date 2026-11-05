@@ -108,10 +108,15 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
   await chooseRange("30d", 30);
   await expect(screen.getByLabel("From")).toHaveValue(month.from);
 
-  await screen.getByLabel("Time zone").selectOption("UTC");
+  const zone = () => screen.getByRole("button", /^Time zone:/u);
+  const pickZone = async (option: string) => {
+    await zone().tap();
+    await screen.getByTestId("picker-list", { visible: true }).getByText(option, { exact: true }).tap();
+  };
+  await pickZone("UTC");
   await expect(chart).toContainText("· UTC");
-  await screen.getByLabel("Time zone").selectOption("Local");
-  await expect(screen.getByLabel("Time zone")).toHaveValue("local");
+  await pickZone("Local");
+  await expect(zone()).toHaveAttribute("aria-label", "Time zone: Local");
   await expect(screen.getByTestId("usage-report")).toHaveAttribute("aria-busy", "false");
   const beforeDisplay = await screen.getByTestId("usage-totals").allTextContents();
 
@@ -157,7 +162,12 @@ test("Usage searches its sessions by title, id or model, sorts them and reads th
   const totals = screen.getByTestId("usage-totals");
   const filter = screen.getByLabel("Filter sessions");
   const clear = screen.getByRole("button", "Clear search");
-  const sort = screen.getByLabel("Sort sessions");
+  const sort = screen.getByRole("button", /^Sort sessions:/u);
+  const sortBy = async (option: string) => {
+    await sort.tap();
+    await screen.getByTestId("picker-list", { visible: true }).getByText(option, { exact: true }).tap();
+    await expect(sort).toHaveAttribute("aria-label", `Sort sessions: ${option}`);
+  };
   const titles = async () => (await sessions.getByRole("button").allTextContents())
     .map((text) => (/Usage coverage alpha/u.test(text) ? "alpha" : /Usage coverage beta/u.test(text) ? "beta" : text));
 
@@ -173,10 +183,9 @@ test("Usage searches its sessions by title, id or model, sorts them and reads th
   await expect(sessions.getByRole("button")).toHaveCount(2);
   await expect.poll(titles).toEqual(["beta", "alpha"]);
 
-  await sort.selectOption("Tokens");
+  await sortBy("Tokens");
   await expect.poll(titles).toEqual(["alpha", "beta"]);
-  await sort.selectOption("Cost");
-  await expect(sort).toHaveValue("cost");
+  await sortBy("Cost");
   await expect(sessions.getByRole("button")).toHaveCount(2);
 
   await filter.fill("alpha");

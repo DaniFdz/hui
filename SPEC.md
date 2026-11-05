@@ -570,7 +570,14 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   Ranked model, provider and tool lists use the same period, and a model or
   provider names its share of the range's recorded cost. A further list names the
   days whose messages failed most often. Unknown model/provider labels stay
-  unknown rather than being guessed from the session's current model.
+  unknown rather than being guessed from the session's current model. Overview
+  cards and the ranked lists fill their rows: a card stack takes its column count
+  from how many cards it draws (the seven overview cards make four columns) and
+  narrows to fewer columns on smaller screens, so no last row trails off with a
+  single card.
+- Every hover or focus detail on the page opens HUI's own tooltip, never the
+  browser's. Time zone and Sort sessions use HUI's selector, like the app's other
+  choices, never the browser's popup.
 - A range of at least 60 days also draws a daily calendar: one cell per day of
   the last 52 weeks, shaded by that day's tokens, with the same hover detail and
   day selection as the bars. Days outside the range stay empty rather than being
