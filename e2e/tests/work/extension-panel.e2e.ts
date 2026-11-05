@@ -18,6 +18,9 @@ test("an enabled extension's panel opens sandboxed in the Work pane and calls it
   await expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
   expect(await frame.getAttribute("src")).toBe("/__hui/ext-ui/hello/index.html");
   await expect(panel.getByTestId("extension-title")).toHaveText("hello, Ada");
+  const style = await frame.getAttribute("style");
+  expect(style).toMatch(/height:\d+px/u);
+  expect(style).not.toContain("height:360px");
 
   await screen.getByTestId("nav-settings").tap();
   await screen.getByTestId("settings-page-link").filter({ hasText: "Extensions" }).tap();
@@ -28,6 +31,9 @@ test("an enabled extension's panel opens sandboxed in the Work pane and calls it
   expect(greeting.greeting).toBe("hello, Ada");
   const listed = await hui.api<Extensions>("GET", "/__hui/ext");
   expect(listed.extensions.find((extension) => extension.id === "hello")?.state).toBe("loaded");
+
+  await hui.reload();
+  await expect(screen.getByTestId("extension-panel")).toHaveAttribute("data-extension-panel", "hello");
 
   await hui.api("PUT", "/__hui/ext/hello", { enabled: false });
 });

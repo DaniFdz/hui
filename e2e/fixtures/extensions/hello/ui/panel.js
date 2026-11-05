@@ -58,7 +58,7 @@
   }
 
   new ResizeObserver(() => {
-    window.parent.postMessage({ channel: CHANNEL, type: "height", value: document.documentElement.scrollHeight }, "*");
+    window.parent.postMessage({ channel: CHANNEL, type: "height", value: Math.ceil(document.body.getBoundingClientRect().height) }, "*");
   }).observe(document.body);
   window.addEventListener("message", (event) => {
     if (event.source === window.parent && event.data && event.data.channel === CHANNEL && event.data.type === "init") void reportTitle();
