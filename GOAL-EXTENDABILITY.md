@@ -1,53 +1,81 @@
 # GOAL — Full harness extendability, verified
 
-Program ledger for [PLAN-EXTENDABILITY.md](PLAN-EXTENDABILITY.md). One phase per
-goal, one PR per phase. Set the goal to:
+Program ledger for [PLAN-EXTENDABILITY.md](PLAN-EXTENDABILITY.md). One long-running
+goal implements every phase; the phases are checkpoints of one branch and one pull
+request (see PLAN §7). Set the goal to:
 
-> Implement phase P1 of PLAN-EXTENDABILITY.md; verify through GOAL-EXTENDABILITY.md.
+> Implement all phases of PLAN-EXTENDABILITY.md; verify through GOAL-EXTENDABILITY.md.
 
-A goal may name two phases; the second stacks on the first. A goal naming more
-than two phases, or "the whole program", is refused by the implementer: the owner
-merges between phases.
+Rules for the program session:
 
-Rules for whoever implements a phase:
-
-1. Check the precondition: the previous phase (and PR #408 for P1) is **merged**.
-   If not, write the blocker here and stop.
-2. Record the phase's baseline in its §Runs block before changing code.
-3. After each milestone, re-run the phase's runs and paste the real output. A
-   criterion is checked **only** when a run shows it.
-4. Anything that could not run goes under Proof gaps with the exact command and
-   error. Never weaken, skip or delete an assertion to get green.
-5. Keep `PLAN-EXTENDABILITY.md` unchanged; only this file tracks state.
-6. End the phase with the PR open, checks green and the status READY FOR REVIEW.
-   Only the owner merges and signs off.
+1. Read this file first. After an interruption or context loss, resume from
+   **§2 Resume point**: never redo a phase marked DONE.
+2. Start from `main` when PR #408 is merged, or stacked on `danifdz/gateway-extensions`
+   when it is not; branch `danifdz/hui-extendability`, open one draft PR, keep it
+   draft until P6. While #408 is unmerged, rebase the draft onto the new `main` at
+   the next checkpoint after it lands (E23), then continue.
+3. Before each phase: check the PR for unresolved review comments and address them
+   first; then record the phase's baseline in its `Runs` block.
+4. After each phase: re-run its runs, paste the real output, update this file and
+   commit code + ledger together. Push and wait for the required CI jobs on that
+   HEAD. Only then mark the phase DONE (with its commit and CI run) in the next
+   commit — a ledger-only commit, or the next phase's first commit — and start the
+   next phase. A red required check stops the program until it is fixed.
+5. A criterion is checked **only** when a run shows it. Anything that could not run
+   goes under Proof gaps with the exact command and error. Never weaken, skip or
+   delete an assertion to get green.
+6. Keep `PLAN-EXTENDABILITY.md` unchanged; only this file tracks state. Never merge
+   the PR, never rewrite a DONE phase's history, never start a dependent phase on a
+   red HEAD.
+7. If a phase cannot pass the same failing check after two focused attempts, mark it
+   BLOCKED here with the exact error and stop. P4 does not depend on P2/P3; no other
+   phase may skip its predecessors.
+8. If the PR is merged mid-program, continue on a new branch from the merged
+   `main` and open a follow-up PR; record both here.
 
 ## 1. Program status
 
-| Phase | Scope | Status | PR |
-|---|---|---|---|
-| P0 | Gateway routes, store, status/toggle | **open** | https://github.com/DaniFdz/hui/pull/408 |
-| P1 | Settings page + `hui extension list/enable/disable` | NOT STARTED | — |
-| P2 | Sandboxed panels and the bridge | NOT STARTED | — |
-| P3 | Prompt sections and agent tools | NOT STARTED | — |
-| P4 | Server-sent events | NOT STARTED | — |
-| P5 | Reload, engines, doctor, install/remove | NOT STARTED | — |
-| P6 | Out-of-process mode | NOT STARTED | — |
+| Phase | Scope | Status | Commit | CI |
+|---|---|---|---|---|
+| P0 | Gateway routes, store, status/toggle | open (PR #408) | — | — |
+| P1 | Settings page + `hui extension list/enable/disable` | NOT STARTED | — | — |
+| P2 | Sandboxed panels and the bridge | NOT STARTED | — | — |
+| P3 | Prompt sections and agent tools | NOT STARTED | — | — |
+| P4 | Server-sent events | NOT STARTED | — | — |
+| P5 | Reload, engines, doctor, install/remove | NOT STARTED | — | — |
+| P6 | Out-of-process mode | NOT STARTED | — | — |
 
-Statuses: NOT STARTED · IN PROGRESS · BLOCKED · READY FOR REVIEW · DONE (owner) ·
-MERGED (owner).
+Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (owner).
 
-## 2. Baseline
+## 2. Resume point
 
-Recorded on the branch point of P1 (current `main` after #408):
+| Field | Value |
+|---|---|
+| Current phase | — |
+| Next action | Create the program branch (from `main` if #408 merged, else stacked on `danifdz/gateway-extensions`) and open the draft PR |
+| Branch | — (expected `danifdz/hui-extendability`) |
+| PR | — |
+| Last green CI | — |
+| Last DONE phase | — (P0 pends #408; stacked start allowed by E23) |
+| Baseline | see §3 |
+
+Update this table with every checkpoint, in the same commit as the phase. A fresh
+session reads it before touching code.
+
+## 3. Baseline
+
+Recorded once at the program branch point (current `main` after #408):
 
 | Check | Command | Result |
 |---|---|---|
 | Typecheck | `npm run typecheck` | — |
-| Tests | `npm test` | — (this checkout has a known set of environment-only failures; diff the failure set before and after) |
+| Tests | `npm test` | — (this checkout has a known set of environment-only failures; diff the failure set before and after each phase) |
 | Working tree | `git status --short` | — |
 
-Each phase repeats this at its own branch point and compares failure sets.
+```
+Baseline result:
+Exit:
+```
 
 ---
 
@@ -60,7 +88,9 @@ Already verified in that PR's own `GOAL.md` (15/15 criteria, manual gateway proo
 
 ## 4. P1 — Operator surface
 
-**Status:** NOT STARTED · **PR:** —
+**Status:** NOT STARTED · **Commit:** — · **CI:** —
+
+**Baseline:** typecheck — · tests — · tree —
 
 **Acceptance criteria** (evidence from the runs below):
 
@@ -129,7 +159,9 @@ Result:
 
 ## 5. P2 — Sandboxed panels
 
-**Status:** NOT STARTED · **PR:** —
+**Status:** NOT STARTED · **Commit:** — · **CI:** —
+
+**Baseline:** typecheck — · tests — · tree —
 
 **Acceptance criteria:**
 
@@ -202,7 +234,9 @@ Result:
 
 ## 6. P3 — Prompt sections and agent tools
 
-**Status:** NOT STARTED · **PR:** —
+**Status:** NOT STARTED · **Commit:** — · **CI:** —
+
+**Baseline:** typecheck — · tests — · tree —
 
 **Acceptance criteria:**
 
@@ -265,7 +299,9 @@ Result:
 
 ## 7. P4 — Server-sent events
 
-**Status:** NOT STARTED · **PR:** —
+**Status:** NOT STARTED · **Commit:** — · **CI:** —
+
+**Baseline:** typecheck — · tests — · tree —
 
 **Acceptance criteria:**
 
@@ -315,7 +351,9 @@ Result:
 
 ## 8. P5 — Lifecycle, compatibility and installation
 
-**Status:** NOT STARTED · **PR:** —
+**Status:** NOT STARTED · **Commit:** — · **CI:** —
+
+**Baseline:** typecheck — · tests — · tree —
 
 **Acceptance criteria:**
 
@@ -377,7 +415,9 @@ Result:
 
 ## 9. P6 — Out-of-process mode
 
-**Status:** NOT STARTED · **PR:** —
+**Status:** NOT STARTED · **Commit:** — · **CI:** —
+
+**Baseline:** typecheck — · tests — · tree —
 
 **Acceptance criteria:**
 
@@ -430,13 +470,20 @@ Result:
 
 ---
 
-## 10. Owner sign-off
+## 10. Program completion and owner sign-off
 
-Per phase, after review:
+After P6, before handoff:
 
-- P1: [ ] reviewed [ ] merged
-- P2: [ ] reviewed [ ] merged
-- P3: [ ] reviewed [ ] merged
-- P4: [ ] reviewed [ ] merged
-- P5: [ ] reviewed [ ] merged
-- P6: [ ] reviewed [ ] merged
+- [ ] Every phase is DONE with its commit and green CI recorded in §1.
+- [ ] The program checks ran at the final HEAD: `npm run typecheck`, `npm test`,
+      `npm run build`, `npm run e2e` (web) and the manual proofs; results pasted.
+- [ ] The PR body lists the phases, the exact checks and the proof, and the
+      screenshots for the UI phases are attached (not committed).
+- [ ] §2 Resume point says "complete"; §7/§8 hold only documented gaps.
+- [ ] The PR is ready for review (not draft) and not merged.
+
+Owner:
+
+- [ ] Reviewed the branch commit by commit
+- [ ] Approved the PR
+- [ ] Merged

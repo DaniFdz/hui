@@ -4,17 +4,15 @@ Program plan for making HUI's gateway a first-class extension host, not just a
 route seam. It follows phase 0 — the JSON routes, enable store, status/toggle API
 and documentation in PR #408 (its `PLAN.md` / `GOAL.md` live on that branch).
 
-The owner is away while this program runs. Every decision this program needs is
-made below. Implement **one phase per pull request** and record its evidence in
-[GOAL-EXTENDABILITY.md](GOAL-EXTENDABILITY.md). Do not reopen the decisions.
+The owner runs the whole program as **one long-running goal**: one branch, one pull
+request, and each phase as a checkpoint of commits inside it. Every decision this
+program needs is made below; do not reopen them. Record each phase's evidence in
+[GOAL-EXTENDABILITY.md](GOAL-EXTENDABILITY.md), which is the source of truth for
+resuming after an interruption.
 
-Suggested goal, one phase at a time:
+Suggested goal:
 
-> Implement phase P1 of PLAN-EXTENDABILITY.md; verify through GOAL-EXTENDABILITY.md.
-
-A goal may name two phases (`P1, P2`); the second then stacks on the first (see
-§7). A goal naming more than two, or the whole program, is refused: the owner
-merges between phases.
+> Implement all phases of PLAN-EXTENDABILITY.md; verify through GOAL-EXTENDABILITY.md.
 
 ## 1. Target
 
@@ -75,7 +73,7 @@ commands, documentation and diagnostics.
 
 | # | Decision |
 |---|---|
-| E1 | One phase per PR, branched from the current `main`. A multi-phase goal stacks at most two, then stops (see §7). |
+| E1 | One long-running program: one branch, one pull request, and one commit series per phase. No phase gets its own PR and nothing is merged mid-program. The branch starts from `main` when #408 is merged, or stacked on #408's branch and rebased onto `main` once #408 merges (E23). |
 | E2 | Extension UI is a **sandboxed iframe** rendered in the Work pane; assets are served pre-gate from `/__hui/ext-ui/<id>/…`, never `/__hui/ext/…`. |
 | E3 | The CSP `sandbox allow-scripts allow-forms` makes the frame an opaque origin; `connect-src 'none'` means the frame **cannot** call HUI, and every source is limited to that extension's own `/__hui/ext-ui/<id>/` prefix. Everything goes through the parent bridge. |
 | E4 | The bridge forwards only `method + path` pairs that the panel's own extension declared and that are active now, always prefixed with `/__hui/ext/<id>/`. It adds no HUI service handles and no extra headers. The parent rejects empty, `.` or `..` segments and encodes each segment itself, so a crafted path cannot leave the extension's namespace. |
@@ -95,14 +93,19 @@ commands, documentation and diagnostics.
 | E18 | No new dependencies in any phase. Version comparison, CSP construction and RPC framing are small in-repo helpers with tests. |
 | E19 | Every phase updates `docs/api.md`, `SPEC.md`, `docs/guide.md`, `docs/map.md`, the catalogue and `GOAL-EXTENDABILITY.md` in the same PR. A later phase that changes an existing page updates that page's use case and test as well. Every new module gets its header comment. |
 | E20 | The existing trust posture holds: extensions are trusted local code with the gateway's access; no sandbox, no approval prompt, no per-extension quota beyond the stated caps. |
+| E21 | Phase checkpoints: after a phase's code and tests, update the ledger, commit, push, wait for the required CI jobs on that HEAD, and only then start the next phase. A red required check stops the program until it is fixed or recorded as a proof gap with evidence; the next phase never starts on top of a red HEAD. |
+| E22 | Resumption: the ledger is the source of truth. After an interruption or context loss, read the ledger, `git log` and `git status` first, resume at the phase marked IN PROGRESS or at the first NOT STARTED phase after the last DONE one, and never redo a completed phase. |
+| E23 | If #408 is still open when the program starts, base the program branch on `danifdz/gateway-extensions`, open the program PR as a draft and keep it draft; at each checkpoint check whether #408 merged, and if it did, rebase the unreviewed draft onto the new `main` and force-push before continuing. Never force-push after the PR is marked ready. Before each phase, check the PR for unresolved review comments and address them first. If the program PR was merged mid-program, continue on a fresh branch from the merged `main` and open a follow-up PR; never keep committing to a merged branch. |
+| E24 | A phase that cannot complete after two focused attempts at the same failing check is marked BLOCKED in the ledger with the exact error and evidence, and the session stops. Dependent phases are not started; independent ones (P4 does not depend on P2/P3) may continue only if the ledger says so explicitly. |
 
 ## 4. Where we are
 
 **P0 — shipped in PR #408** (`danifdz/gateway-extensions`, open): `/__hui/ext`,
 `/__hui/ext/:id`, `/__hui/ext/<id>/…`, `extensions.json`, manifest validation,
-diagnostics, docs, tests. The program starts by merging that PR; every later phase
-branches from the `main` that contains it. P1's PR updates P0's row in the ledger to
-MERGED with the merge commit.
+diagnostics, docs, tests. Preferred start: merge it, then branch from that `main`.
+If the goal starts before it merges, E23 stacks the program branch on #408 and
+rebases it once #408 merges. P1's checkpoint updates P0's row to MERGED with the
+merge commit.
 
 Until #408 is merged, no phase below starts. If the owner sets a phase goal while
 #408 is still open, the implementer says so and stops.
@@ -380,7 +383,7 @@ test).
 
 ## 6. Verification model
 
-Every phase PR runs and records, in `GOAL-EXTENDABILITY.md`:
+Every phase checkpoint runs and records, in `GOAL-EXTENDABILITY.md`:
 
 1. `npm run api:schema` — no diff after the commit (or the intended diff, listed).
 2. Focused tests for the phase's files.
@@ -398,27 +401,37 @@ Every phase PR runs and records, in `GOAL-EXTENDABILITY.md`:
 The goal's evidence is the ledger, not the PR body alone: a criterion is checked
 only with the command's real output pasted under its run.
 
-## 7. PR and goal rules
+## 7. Program branch, checkpoints and goals
 
-**To start the program:** merge PR #408, then set the goal to P1. Each phase ends
-with a green PR; the owner merges it and sets the next phase's goal.
+**Start.** Branch `danifdz/hui-extendability` from the merged `main` when #408 has
+landed; if it has not, branch from `danifdz/gateway-extensions` and stack (E23).
+Open one **draft** PR titled
+`feat: extend the gateway into a full extension host` and put the phase checklist
+in its body. Nothing is merged during the program.
 
-- **One phase, one PR**, branched from current `main` after the previous phase
-  merged. Never stack more than two phases; when two are asked for, base the second
-  branch on the first, open its PR against the first branch (not `main`), and say so
-  in both PRs. Stop after the second and report. If the first changes in review,
-  rebase the second onto it.
-- A phase starts only when the previous phase is merged. Phase P1 also waits for
-  PR #408. If the precondition is missing, report it and stop; do not rebase onto
-  an unmerged branch to work around it.
-- When a goal names more than two phases, implement the first two at most, then
-  stop and report the remaining list. Never attempt the whole program in one run.
-- Each phase's PR ends with the ledger updated, the checks green and the PR open.
-  The owner merges and sets the next goal.
-- Keep `PLAN-EXTENDABILITY.md` unchanged after implementation starts; only the
-  ledger tracks state.
-- No phase weakens, skips or deletes an assertion. A check that cannot run is a
-  recorded proof gap with its exact error.
+**Each phase is a checkpoint, not a merge.**
+
+1. Check the PR for unresolved review comments; address those first.
+2. Implement the phase, keeping `PLAN-EXTENDABILITY.md` unchanged.
+3. Run the phase's runs locally; paste the evidence into the ledger.
+4. Commit the code and the ledger together with the phase's Conventional Commit
+   message (`feat(gateway): …`). One phase may span several commits.
+5. Push and wait for the required CI jobs on that HEAD. Fix and repeat until
+   green; unrelated infrastructure failures are recorded as proof gaps and retried
+   once before blocking. While #408 is unmerged, this is also the moment to rebase
+   the draft onto the new `main` if it just landed (E23).
+6. Mark the phase DONE with its CI run and commit in the next push (usually the next
+   phase's commit). Only then start the next phase.
+
+**The end.** After P6: run the program-level checks in §6, mark the PR ready, fill
+its body with the phase results and the proof, and hand it to the owner. The owner
+reviews the whole branch commit by commit and merges once.
+
+**Late review.** If the owner leaves review comments while the session runs, the
+next phase's step 1 addresses them. If the branch is merged before P6, E23 applies.
+
+**Never:** merge, force-push over reviewed commits, rewrite history after a phase
+is marked DONE, or start a phase with the previous phase's required checks red.
 
 ## 8. Risks and mitigations
 
@@ -431,7 +444,9 @@ with a green PR; the owner merges it and sets the next phase's goal.
 | Reload breaks a working extension | Explicit reload only; failure marks it failed and withdraws routes, never half-registers (E11) |
 | Process mode is mistaken for a security boundary | Docs, SPEC and the Settings note state crash isolation only (E15) |
 | Extension surfaces multiply the catalogue debt | Each UI phase adds exactly one use case and one shared test; iOS excluded once with an anchor (E17) |
-| Ten weeks of unreviewed changes | One phase per PR; the owner merges between phases |
+| A very large PR is hard to review | One branch, but a commit series per phase and a ledger with per-phase evidence; the owner can review commit by commit |
+| A long session loses context or is interrupted | The ledger records resume state after every phase (E22); commits and CI runs are the checkpoints |
+| CI minutes pile up | One push per phase plus the fixes it needs; the ledger marks each run |
 
 ## 9. Effort (judgment, not measured)
 
@@ -444,5 +459,6 @@ with a green PR; the owner merges it and sets the next phase's goal.
 | P5 lifecycle and installation | 1–2 weeks |
 | P6 out-of-process mode | 3–5 weeks |
 
-Total: roughly 9–15 focused weeks. The numbers size the scope; they are not a
+Total: roughly 9–15 focused weeks of work, executed in one long-running goal
+with a checkpoint per phase. The numbers size the scope; they are not a
 commitment.
