@@ -563,8 +563,11 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
 - Usage switches between tokens and recorded cost. Token bars can show the
   input, output, cache-read and cache-write shares. Empty days remain visible as a
   quiet baseline; a period with usage but no price is unpriced rather than free.
-  Pointing at or focusing a bar names its period, tokens, recorded price, type
-  split and record count. Selecting a bar selects its period and offers **Show
+  Pointing at or focusing a bar opens a card naming its period, each model that
+  period recorded with that model's tokens and recorded cost, then the period's
+  own tokens, recorded price, type split and record count. The model list stops
+  at six with a count of the rest. A short bar keeps a square top, so its height
+  stays readable. Selecting a bar selects its period and offers **Show
   only <period>**; narrowing the report is explicit, so exploring the chart never
   changes the range. The chart draws one bar per day up to 32 days, per week up to
   32 weeks, and per month beyond. A token-type bar and legend show the same range.

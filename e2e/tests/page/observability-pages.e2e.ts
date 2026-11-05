@@ -12,7 +12,7 @@ const usageReport = {
     title: "Fixture session",
     lastActivityAt: Date.parse("2026-01-02T03:00:00.000Z"),
     metrics,
-    days: [{ date: "2026-01-02", metrics }],
+    days: [{ date: "2026-01-02", metrics, models: [{ provider: "hui-e2e", model: "fixture", metrics }] }],
     models: [{ provider: "hui-e2e", model: "fixture", metrics }],
     tools: [{ name: "bash", calls: 4, errors: 1 }],
   }],

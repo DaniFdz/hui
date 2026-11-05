@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { UsageMetrics, UsageReport, UsageSession } from "../api/schema/diagnostics.ts";
+import type { UsageDay, UsageMetrics, UsageModel, UsageReport, UsageSession } from "../api/schema/diagnostics.ts";
 import { sumUsage, usageChartDays, usageComparison, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageOverview, usageSessionCsv } from "./usage.ts";
 
 const metrics = (tokens: number, costUsd: number | null): UsageMetrics => ({ inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: tokens, costUsd, calls: 1, unpricedCalls: costUsd === null ? 1 : 0, userMessages: 1, assistantMessages: 1, toolResults: 1, errors: 0 });
-const session = (id: string, model: string, usage: UsageMetrics): UsageSession => ({ id, title: id, lastActivityAt: 1, metrics: usage, models: [{ provider: "fixture", model, metrics: usage }], days: [{ date: "2026-10-01", metrics: usage }], tools: [{ name: "read", calls: 1, errors: 0 }] });
+const model = (name: string, usage: UsageMetrics): UsageModel => ({ provider: "fixture", model: name, metrics: usage });
+const day = (date: string, usage: UsageMetrics, models: UsageModel[] = []): UsageDay => ({ date, metrics: usage, models });
+const session = (id: string, name: string, usage: UsageMetrics): UsageSession => ({ id, title: id, lastActivityAt: 1, metrics: usage, models: [model(name, usage)], days: [day("2026-10-01", usage, [model(name, usage)])], tools: [{ name: "read", calls: 1, errors: 0 }] });
 
 const report: UsageReport = {
   generatedAt: "2026-10-01T00:00:00Z", range: { from: "2026-10-01", to: "2026-10-03", timeZone: "UTC" },
@@ -21,6 +23,7 @@ test("a session search changes every total and ranking, and zero-priced sessions
   assert.equal(all.totals.unpricedCalls, 1);
   assert.equal(all.models.find(({ model }) => model === "swift")?.metrics.costUsd, 0);
   assert.equal(all.days[0]?.metrics.totalTokens, 60);
+  assert.deepEqual(all.days[0]?.models.map(({ model: name, metrics: value }) => [name, value.totalTokens]), [["swift", 40], ["large", 20]], "a day names each model by its own tokens");
   assert.equal(all.tools[0]?.calls, 3);
   const filtered = usageOverview(report, "  FIXTURE/LARGE ", "tokens");
   assert.equal(filtered.totals.totalTokens, 20);
@@ -35,30 +38,30 @@ test("a session search changes every total and ranking, and zero-priced sessions
 });
 
 test("the chart keeps empty days and leap days, groups wide ranges by week and long ones by month", () => {
-  const rows = [{ date: "2024-02-29", metrics: metrics(7, null) }];
+  const rows = [day("2024-02-29", metrics(7, null), [model("swift", metrics(7, null))])];
   const daily = usageChartDays(rows, "2024-02-28", "2024-03-01");
   assert.equal(daily.bucket, "day");
   assert.deepEqual(daily.days.map(({ date, end, metrics }) => [date, end, metrics.totalTokens, metrics.costUsd]), [
     ["2024-02-28", "2024-02-28", 0, null], ["2024-02-29", "2024-02-29", 7, null], ["2024-03-01", "2024-03-01", 0, null],
   ]);
 
-  const weekly = usageChartDays([...rows, { date: "2024-03-30", metrics: metrics(9, 0) }], "2024-01-01", "2024-03-30");
+  const weekly = usageChartDays([...rows, day("2024-03-30", metrics(9, 0), [model("large", metrics(9, 0))])], "2024-01-01", "2024-03-30");
   assert.equal(weekly.bucket, "week");
   assert.equal(weekly.days.length, 13);
-  assert.deepEqual(weekly.days[0], { date: "2024-01-01", end: "2024-01-06", metrics: sumUsage([]) });
-  assert.deepEqual(weekly.days.find(({ date, end }) => date <= "2024-02-29" && end >= "2024-02-29"), { date: "2024-02-25", end: "2024-03-02", metrics: sumUsage([metrics(7, null)]) });
-  assert.deepEqual(weekly.days.at(-1), { date: "2024-03-24", end: "2024-03-30", metrics: sumUsage([metrics(9, 0)]) });
+  assert.deepEqual(weekly.days[0], { date: "2024-01-01", end: "2024-01-06", metrics: sumUsage([]), models: [] });
+  assert.deepEqual(weekly.days.find(({ date, end }) => date <= "2024-02-29" && end >= "2024-02-29"), { date: "2024-02-25", end: "2024-03-02", metrics: sumUsage([metrics(7, null)]), models: [model("swift", metrics(7, null))] });
+  assert.deepEqual(weekly.days.at(-1), { date: "2024-03-24", end: "2024-03-30", metrics: sumUsage([metrics(9, 0)]), models: [model("large", metrics(9, 0))] });
   for (const [index, bucket] of weekly.days.entries()) {
     assert.ok((Date.parse(bucket.end) - Date.parse(bucket.date)) / 86_400_000 + 1 <= 7, "a week holds seven days at most");
     if (index > 0) assert.equal(Date.parse(bucket.date) - Date.parse(weekly.days[index - 1]!.end), 86_400_000, "weeks cover the range without gaps");
   }
 
-  const monthly = usageChartDays([...rows, { date: "2025-01-01", metrics: metrics(9, 0) }], "2024-02-01", "2025-03-01");
+  const monthly = usageChartDays([...rows, day("2025-01-01", metrics(9, 0))], "2024-02-01", "2025-03-01");
   assert.equal(monthly.bucket, "month");
   assert.equal(monthly.days.length, 14);
-  assert.deepEqual(monthly.days[0], { date: "2024-02", end: "2024-02-29", metrics: sumUsage([metrics(7, null)]) });
+  assert.deepEqual(monthly.days[0], { date: "2024-02", end: "2024-02-29", metrics: sumUsage([metrics(7, null)]), models: [model("swift", metrics(7, null))] });
   assert.deepEqual(monthly.days.filter(({ metrics }) => metrics.calls).map(({ date, metrics }) => [date, metrics.totalTokens, metrics.costUsd]), [["2024-02", 7, null], ["2025-01", 9, 0]]);
-  assert.deepEqual(monthly.days.at(-1), { date: "2025-03", end: "2025-03-31", metrics: sumUsage([]) });
+  assert.deepEqual(monthly.days.at(-1), { date: "2025-03", end: "2025-03-31", metrics: sumUsage([]), models: [] });
 
   assert.equal(usageChartDays([], "2024-01-01", "2024-02-01").bucket, "day", "32 days stay daily");
   assert.equal(usageChartDays([], "2024-01-01", "2024-02-02").bucket, "week", "33 days group by week");
@@ -75,14 +78,14 @@ test("a bar's detail names its tokens, price, type split and records", () => {
 });
 
 test("the activity calendar keeps empty days, buckets a year by quartile and never paints outside the range", () => {
-  const calendar = usageHeatmap([{ date: "2024-02-29", metrics: metrics(7, null) }], "2024-02-28", "2024-03-01");
+  const calendar = usageHeatmap([day("2024-02-29", metrics(7, null))], "2024-02-28", "2024-03-01");
   assert.equal(calendar.weeks.length, 1);
   assert.deepEqual(calendar.monthLabels, ["Feb"]);
   assert.deepEqual(calendar.weeks[0]?.map((cell) => cell?.date ?? null), [null, null, null, "2024-02-28", "2024-02-29", "2024-03-01", null]);
   assert.deepEqual(calendar.weeks[0]?.slice(3, 6).map((cell) => [cell?.date, cell?.metrics.totalTokens, cell?.level]), [["2024-02-28", 0, 0], ["2024-02-29", 7, 4], ["2024-03-01", 0, 0]]);
 
   const year = usageHeatmap(
-    [1, 2, 3, 4].map((tokens, index) => ({ date: `2024-0${index + 1}-01`, metrics: metrics(tokens, 0) })),
+    [1, 2, 3, 4].map((tokens, index) => day(`2024-0${index + 1}-01`, metrics(tokens, 0))),
     "2023-01-01", "2024-12-31",
   );
   assert.ok(year.weeks.length <= 53, "a calendar covers at most its trailing 52 weeks");
@@ -96,10 +99,10 @@ test("the activity calendar keeps empty days, buckets a year by quartile and nev
 
 test("days with errors rank by failure rate, and CSVs quote what a spreadsheet would break on", () => {
   const rows = [
-    { date: "2024-03-01", metrics: { ...metrics(10, 0), errors: 2, userMessages: 2, assistantMessages: 2 } },
-    { date: "2024-03-02", metrics: { ...metrics(10, 0), errors: 0, userMessages: 2, assistantMessages: 2 } },
-    { date: "2024-03-03", metrics: { ...metrics(10, 0), errors: 1, userMessages: 10, assistantMessages: 10 } },
-    { date: "2024-03-04", metrics: { ...metrics(10, 0), errors: 3, userMessages: 0, assistantMessages: 0 } },
+    day("2024-03-01", { ...metrics(10, 0), errors: 2, userMessages: 2, assistantMessages: 2 }),
+    day("2024-03-02", { ...metrics(10, 0), errors: 0, userMessages: 2, assistantMessages: 2 }),
+    day("2024-03-03", { ...metrics(10, 0), errors: 1, userMessages: 10, assistantMessages: 10 }),
+    day("2024-03-04", { ...metrics(10, 0), errors: 3, userMessages: 0, assistantMessages: 0 }),
   ];
   assert.deepEqual(usageErrorDays(rows).map((row) => [row.date, row.rate, row.errors, row.messages]), [["2024-03-01", 0.5, 2, 4], ["2024-03-03", 0.05, 1, 20]]);
 
@@ -113,11 +116,11 @@ test("days with errors rank by failure rate, and CSVs quote what a spreadsheet w
 });
 
 test("the last week is compared with the week before it, inside the range", () => {
-  const day = (date: string, tokens: number, extra: Partial<UsageMetrics> = {}) => ({ date, metrics: { ...metrics(tokens, tokens ? 1 : null), ...extra } });
+  const dayOf = (date: string, tokens: number, extra: Partial<UsageMetrics> = {}) => day(date, { ...metrics(tokens, tokens ? 1 : null), ...extra });
   const days = [
-    day("2024-03-01", 10), day("2024-03-02", 20), day("2024-03-03", 30), day("2024-03-04", 40), day("2024-03-05", 50),
-    day("2024-03-06", 60), day("2024-03-07", 70), day("2024-03-08", 80), day("2024-03-09", 90), day("2024-03-10", 100),
-    day("2024-03-11", 110, { errors: 2 }), day("2024-03-12", 120), day("2024-03-13", 130), day("2024-03-14", 140),
+    dayOf("2024-03-01", 10), dayOf("2024-03-02", 20), dayOf("2024-03-03", 30), dayOf("2024-03-04", 40), dayOf("2024-03-05", 50),
+    dayOf("2024-03-06", 60), dayOf("2024-03-07", 70), dayOf("2024-03-08", 80), dayOf("2024-03-09", 90), dayOf("2024-03-10", 100),
+    dayOf("2024-03-11", 110, { errors: 2 }), dayOf("2024-03-12", 120), dayOf("2024-03-13", 130), dayOf("2024-03-14", 140),
   ];
   const compared = usageComparison(days, "2024-03-01", "2024-03-14");
   assert.equal(compared.window, 7);
@@ -126,4 +129,15 @@ test("the last week is compared with the week before it, inside the range", () =
   assert.equal(compared.recent.errors, 2);
   assert.equal(usageComparison(days, "2024-03-14", "2024-03-14").window, 0, "a single day has no baseline");
   assert.equal(usageComparison(days, "2024-03-08", "2024-03-14").window, 3, "a week compares three days with three");
+});
+
+test("a chart bar sums each model over the days it covers, so a week names every model it used", () => {
+  const rows = [day("2026-10-01", metrics(10, 0), [model("swift", metrics(10, 0))]), day("2026-10-02", metrics(20, 0.5), [model("large", metrics(20, 0.5)), model("swift", metrics(5, 0))])];
+  const daily = usageChartDays(rows, "2026-10-01", "2026-10-02").days;
+  assert.deepEqual(daily.map(({ date, models }) => [date, models.map(({ model: name, metrics: value }) => [name, value.totalTokens])]), [
+    ["2026-10-01", [["swift", 10]]], ["2026-10-02", [["large", 20], ["swift", 5]]],
+  ]);
+  const week = usageChartDays(rows, "2026-08-01", "2026-10-02").days.at(-1);
+  assert.equal(week?.date, "2026-09-26", "the last bar covers the week that ends on the range's last day");
+  assert.deepEqual(week?.models.map(({ model: name, metrics: value }) => [name, value.totalTokens, value.costUsd]), [["large", 20, 0.5], ["swift", 15, 0]], "one model used on two days counts once");
 });
