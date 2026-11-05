@@ -176,6 +176,8 @@ export async function stopBackend(): Promise<void> {
     questionnaires.dispose();
     secretFiles.dispose();
     stopAgentToolBridge();
+    // Each process-mode extension host is stopped and waited for before the gateway exits.
+    await extensions.stop();
     // Closed first: remote sessions then keep running on their hosts instead of
     // receiving a kill from the disposal below.
     workers.disconnectAll();

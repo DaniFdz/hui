@@ -245,3 +245,14 @@ test("reload is a reserved route path", () => {
   assert.equal(result.ok, false);
   if (!result.ok) assert.match(result.error, /reserved/u);
 });
+
+test("mode accepts in-process or process, and process refuses tools", () => {
+  assert.equal(parseManifest({ ...MANIFEST, mode: "process" }).ok, true);
+  assert.equal(parseManifest({ ...MANIFEST, mode: "in-process" }).ok, true);
+  const bad = parseManifest({ ...MANIFEST, mode: "worker" });
+  assert.equal(bad.ok, false);
+  if (!bad.ok) assert.match(bad.error, /mode must be/u);
+  const tools = parseManifest({ ...MANIFEST, mode: "process", tools: [{ name: "greet", description: "D", parameters: { type: "object" } }] });
+  assert.equal(tools.ok, false);
+  if (!tools.ok) assert.match(tools.error, /tools require in-process mode/u);
+});

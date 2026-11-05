@@ -13,6 +13,8 @@ import { pathToFileURL } from "node:url";
 import type { ExtensionRouteInfo, ExtensionStatus, ExtensionsResponse } from "../api/extensions.ts";
 import type { JsonResult, RouteRequest, RouteResult } from "../http/route.ts";
 import { EXTENSIONS_DIR, EXTENSIONS_FILE } from "../paths.ts";
+import { ExtensionHost, HostUnavailableError } from "./host.ts";
+import { MAX_PROCESS_EXTENSIONS } from "./protocol.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import {
   checkedResult, checkedStream, entryPath, extensionId, MAX_EXTENSION_DIRECTORIES, MAX_ERROR_CHARS, parseManifest, parseRoutes, satisfiesEngines,
@@ -34,6 +36,8 @@ type Loaded = {
   readonly id: string;
   readonly manifest: ExtensionManifest;
   readonly tools: readonly ExtensionTool[];
+  /** Set for a `mode: "process"` extension: its routes, prompt text and answers come from this child. */
+  readonly host?: ExtensionHost;
   readonly routes: readonly ExtensionRoute[];
   readonly byKey: ReadonlyMap<string, ExtensionRoute>;
   readonly paths: ReadonlySet<string>;
@@ -86,6 +90,8 @@ export type ExtensionsService = {
   setEnabled(id: string, enabled: boolean): Promise<ExtensionStatus>;
   /** Re-imports one extension's module now; a failed reload withdraws its routes and reports `failed`. */
   reload(id: string): Promise<ExtensionStatus>;
+  /** Stops every process-mode host; the gateway calls it on shutdown. */
+  stop(): Promise<void>;
   reconcile(): Promise<void>;
   invoke(input: InvokeInput): Promise<RouteResult>;
   /** The `ui/` directory of a loaded extension that ships a panel, for the pre-gate asset route. */
@@ -151,6 +157,28 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     const requires = read.manifest.engines?.hui;
     if (!satisfiesEngines(requires, huiVersion)) {
       return { error: `requires HUI ${requires ? engineRange(requires) : "any"}; this gateway is ${huiVersion}` };
+    }
+    if (read.manifest.mode === "process") {
+      const count = [...loaded.values()].filter((entry) => entry.host !== undefined).length;
+      if (count >= MAX_PROCESS_EXTENSIONS) return { error: `at most ${MAX_PROCESS_EXTENSIONS} process-mode extensions can run at once` };
+      const host = new ExtensionHost({ id, directory, record });
+      const started = await host.start();
+      if (!started.ok) {
+        await host.stop();
+        return { error: started.error };
+      }
+      return {
+        loaded: {
+          id,
+          manifest: read.manifest,
+          tools: [],
+          routes: [],
+          byKey: new Map(),
+          paths: new Set(host.info.routes.map((route) => route.path)),
+          info: host.info.routes,
+          host,
+        },
+      };
     }
     const entry = entryPath(directory, read.manifest.main);
     if (!entry) return { error: "main must stay inside the extension directory" };
@@ -225,6 +253,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     const enabled = new Set(store.enabled);
     for (const id of [...loaded.keys()]) {
       if (!enabled.has(id)) {
+        await loaded.get(id)?.host?.stop();
         loaded.delete(id);
         failures.delete(id);
       }
@@ -251,6 +280,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     if (!extensionId(id)) throw new UnknownExtensionError(id);
     const directory = (await scan()).get(id);
     if (!directory) throw new UnknownExtensionError(id);
+    await loaded.get(id)?.host?.stop();
     const result = await load(id, directory, true);
     if ("error" in result) fail(id, result.error);
     else {
@@ -263,6 +293,11 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return status;
   }
 
+  async function stop(): Promise<void> {
+    await Promise.all([...loaded.values()].map((entry) => entry.host?.stop()));
+    loaded.clear();
+  }
+
   async function reconcile(): Promise<void> {
     const run = chain.then(() => reconcileNow());
     chain = run.catch(() => undefined);
@@ -273,12 +308,13 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     const enabled = storeEnabled.has(id);
     const directory = directories.get(id);
     const active = loaded.get(id);
+    const host = active?.host;
     const base = {
       id,
       enabled,
       routes: [...(active?.info ?? [])],
-      mode: "in-process" as const,
-      restarts: 0,
+      mode: host ? ("process" as const) : ("in-process" as const),
+      restarts: host?.info.restarts ?? 0,
       ...(reloadedAt.has(id) ? { reloadedAt: reloadedAt.get(id) } : {}),
     };
     if (!directory) {
@@ -297,6 +333,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
         tools: read.manifest.tools.map((tool) => ({ name: tool.name, runtimeName: runtimeToolName(id, tool.name), description: tool.description })),
       } : {}),
     };
+    if (active?.host?.info.state === "failed") return { ...base, ...identity, state: "failed", error: active.host.info.error ?? "the extension process failed" };
     if (active) return { ...base, ...identity, state: "loaded" };
     if (!enabled) return { ...base, ...identity, state: "disabled" };
     return { ...base, ...identity, state: "failed", error: failures.get(id) ?? "not loaded" };
@@ -342,7 +379,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
   function promptText(): string | undefined {
     const parts: string[] = [];
     for (const active of [...loaded.values()].sort((left, right) => left.id.localeCompare(right.id))) {
-      const sections = active.manifest.prompt;
+      const sections = active.host ? active.host.info.prompt : active.manifest.prompt;
       if (!sections?.length) continue;
       parts.push(`### Extension: ${active.manifest.name} (${active.id})`);
       for (const section of sections) parts.push(`#### ${section.title}\n${section.text}`);
@@ -392,6 +429,45 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     if (!active) {
       if (!await installed(id)) return { status: 404, body: { error: `unknown extension: ${id}` } };
       return unknownRoute(subpath);
+    }
+    if (active.host) {
+      const declared = active.info.find((entry) => entry.method === method && entry.path === subpath);
+      if (!declared) {
+        return active.paths.has(subpath) ? { status: 405, body: { error: "method not allowed" } } : unknownRoute(subpath);
+      }
+      let body: unknown;
+      if (method !== "GET" && method !== "HEAD") {
+        try {
+          body = await request.json();
+        } catch (error) {
+          return message(error) === "request body too large"
+            ? { status: 413, body: { error: "request body too large" } }
+            : { status: 400, body: { error: "body must be JSON" } };
+        }
+      }
+      try {
+        if (declared.stream) {
+          return {
+            status: 200,
+            sse: {
+              events: active.host.stream(method, subpath, body, request.signal),
+              onError: (reason) => record({
+                area: "gateway", level: "error", action: "extension_stream_failed",
+                summary: `extension ${id} stream ended: ${reason}`, detail: `${method} ${subpath}`,
+              }),
+            },
+          };
+        }
+        const answer = await active.host.call(method, subpath, body);
+        return { status: answer.status, body: answer.body };
+      } catch (error) {
+        if (error instanceof HostUnavailableError) return { status: 503, body: { error: "extension process is restarting" } };
+        record({
+          area: "gateway", level: "error", action: "extension_failed",
+          summary: `extension ${id} failed: ${method} ${subpath}`, detail: message(error),
+        });
+        return { status: 500, body: { error: "extension failed" } };
+      }
     }
     const route = active.byKey.get(routeKey(method, subpath));
     if (!route) {
@@ -450,5 +526,5 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return { status: checked.value.status, body: checked.value.body };
   }
 
-  return { list, setEnabled, reload, reconcile, invoke, panelRoot, promptText, agentTools, contributions, toolFor };
+  return { list, setEnabled, reload, reconcile, stop, invoke, panelRoot, promptText, agentTools, contributions, toolFor };
 }

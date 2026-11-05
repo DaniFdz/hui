@@ -2432,6 +2432,13 @@ trusted local module can answer JSON routes on the gateway.
   row shows the state that came back. `hui extension list|enable|disable` does the
   same from a terminal against the running gateway. The page is web-only; the
   iPhone has no extension surface.
+- **Out-of-process mode.** A manifest may set `mode: "process"`: the extension
+  runs in one gateway-supervised child (at most eight), its routes and streams
+  forwarded over a versioned newline protocol, its prompt text read at start and its
+  tools refused. A crash restarts it after 1/2/4 s while routes answer 503; three
+  crashes in five minutes leave it `failed` until a reload. The child runs as the
+  same user with the same file access: crash isolation, not a sandbox. Settings shows
+  the mode and restart count.
 - **Lifecycle.** A manifest may declare its `version` and the HUI `engines.hui`
   range; a gateway outside it refuses to load with a named reason. `POST
   /__hui/ext/:id/reload` re-imports a changed module (routes and panel files at

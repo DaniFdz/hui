@@ -4143,7 +4143,7 @@ plus every id the enable store lists, sorted by id. Each `ExtensionStatus` carri
 the extension's `id`, `name`, `description`, `enabled`, its `routes` metadata, `panel`
 (`title` and `entry`) when it ships a sandboxed panel, its declared `prompt` sections
 and agent `tools` (with each tool's declared and `ext_<id>_<name>` runtime name) when
-it declares them, its `version` and `engines`, its `mode` (`in-process`) and
+it declares them, its `version` and `engines`, its `mode` (`in-process` or `process`) and
 `restarts` count, and a `state` of `loaded`, `disabled`, `failed` or `missing`;
 `error` explains a failure. `reloadedAt` marks a successful reload.
 `storeError` appears when `extensions.json` cannot be read; the list then behaves as
@@ -4168,6 +4168,17 @@ once, its prompt text on the next assembly and its tools on the next new Durable
 session. A failed reload answers 200 with `state: "failed"` and the error, and
 withdraws the routes; an unknown id is 404. `reload` is a reserved path for an
 extension's own routes.
+
+### Process-mode extensions
+
+A manifest may set `mode: "process"`; the extension then runs in one child process
+the gateway supervises (at most eight at once). Its routes and streams are forwarded
+over a newline-framed, versioned protocol, its prompt text travels at start, and its
+tools are refused (`tools require in-process mode`). A crash restarts it after 1, 2
+and 4 seconds, answering `503 { "error": "extension process is restarting" }` while
+it is down; three crashes in five minutes leave it `failed` until a reload. This is
+crash isolation, not a security sandbox: the child runs as the same user with the
+same file access.
 
 ### Extension panel files
 

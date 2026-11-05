@@ -1239,6 +1239,12 @@ hui extension enable hello
 hui extension disable hello
 ```
 
+A manifest can set `"mode": "process"` to run in a supervised child process (at most
+eight at once): its routes and streams are forwarded, a crash restarts it after 1, 2
+and 4 seconds while routes answer 503, and three crashes in five minutes leave it
+failed until a reload. That is crash isolation, not a sandbox; tools require the
+default in-process mode.
+
 `hui extension add <path> [--link]` validates a local module and installs it
 (copied, or linked with `--link`), enabling it now when the gateway runs and at the
 next start otherwise; `hui extension remove <id>` needs it disabled, and only

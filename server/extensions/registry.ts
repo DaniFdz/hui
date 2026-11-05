@@ -94,6 +94,8 @@ export type ExtensionManifest = {
   readonly version?: string;
   /** The HUI versions it accepts. */
   readonly engines?: { readonly hui?: ExtensionEngines };
+  /** Where it runs: in the gateway (default) or in its own child process. */
+  readonly mode?: "in-process" | "process";
 };
 
 export type ExtensionContext = {
@@ -287,6 +289,11 @@ export function parseManifest(raw: unknown): Parsed<ExtensionManifest> {
     }
     ui = { title, entry };
   }
+  let mode: "in-process" | "process" = "in-process";
+  if (raw["mode"] !== undefined) {
+    if (raw["mode"] !== "in-process" && raw["mode"] !== "process") return fail("mode must be in-process or process");
+    mode = raw["mode"];
+  }
   let version: string | undefined;
   if (raw["version"] !== undefined) {
     if (typeof raw["version"] !== "string" || !VERSION.test(raw["version"])) return fail("version must be a dotted numeric version");
@@ -318,6 +325,7 @@ export function parseManifest(raw: unknown): Parsed<ExtensionManifest> {
     toolList = parseTools(raw["tools"]);
     if (!toolList.ok) return toolList;
   }
+  if (mode === "process" && toolList?.ok && toolList.value.length > 0) return fail("tools require in-process mode");
   return {
     ok: true,
     value: {
@@ -330,6 +338,7 @@ export function parseManifest(raw: unknown): Parsed<ExtensionManifest> {
       ...(toolList?.ok ? { tools: toolList.value } : {}),
       ...(version ? { version } : {}),
       ...(engines ? { engines } : {}),
+      ...(raw["mode"] === undefined ? {} : { mode }),
     },
   };
 }

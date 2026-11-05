@@ -30,5 +30,6 @@ test("the page renders the extensions element and the element uses the gateway s
   assert.match(element, /data-extension-reload/u);
   assert.match(element, /reloadExtension/u);
   assert.match(element, /extension\.version/u);
+  assert.match(element, /extension\.mode === "process"/u);
   assert.match(element, /role="alert"/u);
 });
