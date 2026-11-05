@@ -1016,7 +1016,7 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
 function renderPresentedMediaItem(item: PresentedMediaItem): TemplateResult {
   const meta = `${item.mimeType} · ${mediaSizeLabel(item.size)}`;
   const reveal = item.path
-    ? html`<hui-file-ref class="chat-assistant-attachment-card__action chat-presented-media__reveal" data-path=${item.path}>${icons.panelRightOpen}</hui-file-ref>`
+    ? html`<hui-file-ref class="chat-assistant-attachment-card__action chat-presented-media__reveal" data-path=${item.path}>${icons.eye}</hui-file-ref>`
     : nothing;
   if (item.kind === "image") {
     return html`<figure class="hui-presented-media hui-presented-media--image">
