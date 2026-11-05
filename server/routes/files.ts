@@ -4,8 +4,8 @@
  * maps requests onto `FilesRoot` (`../files.ts`). `hui.ts` applies the `x-hui` guard before dispatching here.
  */
 import { displayPath } from "../git/working-directories.ts";
-import { FilesError, FilesRoot, parseIfMatch, MAX_EDITABLE_FILE_BYTES, MAX_RAW_FILE_BYTES, MAX_RESOLVE_PATH_LENGTH, MAX_RESOLVE_PATHS } from "../files.ts";
-import { contentDisposition, reply, type RouteRequest, type RouteResult } from "../http/route.ts";
+import { FilesError, FilesRoot, parseIfMatch, MAX_EDITABLE_FILE_BYTES, MAX_RESOLVE_PATH_LENGTH, MAX_RESOLVE_PATHS, MAX_UPLOAD_FILE_BYTES, uploadSizeError } from "../files.ts";
+import { BodyTooLargeError, contentDisposition, declaredBodyBytes, reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 import { FileDeleted, FileEntryResponse, FileError, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "../api/files.ts";
 export { routeSchemas } from "../api/files.ts";
 import { basename } from "node:path";
@@ -70,10 +70,9 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
       }
       if (action === "raw" && method === "GET") {
         const raw = await root.raw(path);
-        const preview = raw.mimeType.startsWith("image/") || raw.mimeType === "application/pdf";
         const headers: Record<string, string> = { "cross-origin-resource-policy": "same-origin", "content-security-policy": "default-src 'none'; sandbox" };
-        if (!preview) headers["content-disposition"] = contentDisposition("attachment", raw.name);
-        return { status: 200, file: { mimeType: raw.mimeType, data: raw.data, headers } };
+        if (!raw.preview) headers["content-disposition"] = contentDisposition("attachment", raw.name);
+        return { status: 200, stream: { mimeType: raw.mimeType, size: raw.size, headers, open: () => raw.body } };
       }
       if (action === "entry" && method === "POST") {
         let body: unknown;
@@ -101,11 +100,17 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
         return reply(FilesResolve, { entries });
       }
       if (action === "upload" && method === "POST") {
+        const declared = declaredBodyBytes(request.headers);
+        if (declared !== undefined && declared > MAX_UPLOAD_FILE_BYTES) throw uploadSizeError();
         const name = request.query.get("name") ?? "";
         const overwrite = request.query.get("overwrite") === "1";
-        let data: Buffer;
-        try { data = await request.bytes(MAX_RAW_FILE_BYTES); } catch { throw new FilesError("Uploads are limited to 64 MB.", 413); }
-        return reply(FileEntryResponse, { entry: await root.upload(request.query.get("dir") ?? "", name, data, overwrite) }, 201);
+        try {
+          const entry = await root.upload(request.query.get("dir") ?? "", name, request.stream(MAX_UPLOAD_FILE_BYTES), overwrite);
+          return reply(FileEntryResponse, { entry }, 201);
+        } catch (error) {
+          if (error instanceof BodyTooLargeError) throw uploadSizeError();
+          throw error;
+        }
       }
       return reply(FileError, { error: "method not allowed" }, 405);
     } catch (error) {

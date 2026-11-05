@@ -76,7 +76,7 @@ function normalizeThemeMode(value: unknown): ThemeMode {
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 
 export const DEFAULT_BRANCH_PREFIX = "feature/";
-export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
@@ -157,6 +157,8 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
     enabled: source["enabled"] !== false,
     headless: source["headless"] !== false,
     executablePath: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
+    // Opt-in: only an explicit true lends a machine's cookies and logins to another.
+    mirrorState: source["mirrorState"] === true,
   };
 }
 

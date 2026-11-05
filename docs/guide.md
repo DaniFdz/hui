@@ -188,6 +188,50 @@ the managed gateway and the current app: `hui update` reinstalls an app left on
 an older version, and a window that was already open needs quitting and
 reopening. Quitting HUI clears its notifications from Notification Center.
 
+## Shell completion
+
+`hui` completes its commands, its subcommands and its flags in bash and zsh.
+Tab on a flag it validates, such as `--shape`, `--thinking` or `--color`, also
+lists the values that flag takes; flags taking a path, such as `--from` and
+`--out`, keep the shell's own file names.
+
+Each Tab asks the CLI itself for the words it accepts (`hui __complete <words…>`),
+so completion never goes stale: a command added by an update is completable at
+once, and an old release does not advertise one it lacks.
+
+A global npm install writes the programs into the prefix it installed into, and
+the Nix package does the same for its own store path:
+
+```
+<prefix>/share/bash-completion/completions/hui
+<prefix>/share/zsh/site-functions/_hui
+```
+
+bash-completion loads its directory on demand, so bash needs nothing else.
+zsh finds the file through `fpath`; when the prefix is not already in `fpath`
+(for example `~/.local`), put the directory there in `~/.zshrc` before
+`compinit`:
+
+```sh
+fpath=("$HOME/.local/share/zsh/site-functions" $fpath)
+```
+
+An installation that had no writable prefix, or a shell you configure yourself,
+can take the program directly instead. In bash it is one line in `~/.bashrc`; in
+zsh the line goes **after** `compinit`, because `compinit` resets earlier
+registrations:
+
+```sh
+eval "$(hui completion bash)"   # ~/.bashrc
+
+# ~/.zshrc
+autoload -Uz compinit && compinit
+eval "$(hui completion zsh)"
+```
+
+`hui completion bash` and `hui completion zsh` print the program, and
+`HUI_SKIP_COMPLETIONS=1` keeps the npm postinstall from writing them.
+
 ## Remote access through a reverse proxy
 
 [Security and data](../README.md#security-and-data) covers binding the gateway
@@ -592,16 +636,23 @@ drops the note.
 Its **Tools** tab shows what a bot there can have: the tools of a session on that
 worker, its extensions' included, and its skills where the worker keeps them, your
 skills by their mirrored copies there (`~/.local/share/hui-worker/mirror/agent/skills`).
-It doesn't list the terminal, the browser or watchers: they stay on this machine,
-so the bot isn't offered them and there is nothing to turn off. What you turn off is
+It doesn't list the terminal or watchers: they stay on this machine, so the bot
+isn't offered them and there is nothing to turn off. What you turn off is
 kept and enforced on the worker; when the bot asks for something back, you
 answer here, and its Tools & skills page and roster row follow. While the worker is offline
 its Tools & skills page says so.
 
+Its **browser** is the worker's own: a separate profile under the worker's data
+directory, so pages it signs in to stay on that machine, and no preview or
+browser view streamed here. The worker needs a Chromium-family browser for it:
+`npx playwright install --with-deps chromium` on that machine is enough (a
+Chromium in PATH, Chrome, Brave or Edge are found too), and the tool says when
+there is none.
+
 **Limits.** A bot on a worker has the limits of any session on a worker: the
-terminal, the managed browser and watchers act on this machine, so it can't use
-them, and it can't use worktrees. A worker can't be removed while bots run on
-it; delete them first.
+terminal and watchers act on this machine, so it can't use them, and it can't
+use worktrees. A worker can't be removed while bots run on it; delete them
+first.
 
 ### Talking to a bot
 

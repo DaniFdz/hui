@@ -56,13 +56,15 @@ test("the question timeout is Off unless one of its choices is saved", () => {
   }
 });
 
-test("the managed browser is on and headless unless explicitly changed", () => {
-  assert.deepEqual(DEFAULT_SETTINGS.browser, { enabled: true, headless: true, executablePath: "" });
+test("the managed browser is on and headless unless explicitly changed, and mirrors nothing", () => {
+  assert.deepEqual(DEFAULT_SETTINGS.browser, { enabled: true, headless: true, executablePath: "", mirrorState: false });
   assert.deepEqual(normalizeSettings({}).browser, DEFAULT_SETTINGS.browser);
   assert.deepEqual(normalizeSettings({ browser: { enabled: "no", headless: 0, executablePath: 7 } }).browser, DEFAULT_SETTINGS.browser);
+  assert.equal(normalizeSettings({ browser: { mirrorState: "yes" } }).browser.mirrorState, false, "only an explicit true turns mirroring on");
+  assert.equal(normalizeSettings({ browser: { mirrorState: true } }).browser.mirrorState, true);
   assert.deepEqual(
     normalizeSettings({ browser: { enabled: false, headless: false, executablePath: "  /Applications/Brave Browser.app  " } }).browser,
-    { enabled: false, headless: false, executablePath: "/Applications/Brave Browser.app" },
+    { enabled: false, headless: false, executablePath: "/Applications/Brave Browser.app", mirrorState: false },
   );
   assert.equal(normalizeSettings({ browser: { executablePath: "/usr/bin/chrome\n--flag" } }).browser.executablePath, "");
   assert.equal(normalizeSettings({ browser: { executablePath: `/${"x".repeat(5_000)}` } }).browser.executablePath, "");

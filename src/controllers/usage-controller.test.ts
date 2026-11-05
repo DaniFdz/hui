@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import type { UsageReport } from "../api/schema/diagnostics.ts";
 import { UsageController } from "./usage-controller.ts";
 
@@ -53,4 +53,56 @@ test("late responses and a disconnected page never replace the newest report", a
   third.resolve(report("2026-10-01"));
   await load;
   assert.equal(disconnected.report, undefined);
+});
+
+test("a slow read says so, and Cancel abandons it without replacing the page", async () => {
+  vi.useFakeTimers();
+  try {
+    const read = pending();
+    let signal: AbortSignal | undefined;
+    const state = new UsageController({ requestUpdate() {} }, (_query, _refresh, given) => { signal = given; return read.promise; });
+    const loading = state.load({ from: "2026-09-01", to: "2026-09-01", timeZone: "UTC" });
+    assert.equal(state.slow, false);
+    await vi.advanceTimersByTimeAsync(6_000);
+    assert.equal(state.slow, true, "a read that has not answered after six seconds says so");
+    state.cancel();
+    assert.equal(state.loading, false);
+    assert.equal(state.slow, false);
+    assert.equal(state.stopped, true, "a first read the user stopped is not an unavailable report");
+    assert.equal(signal?.aborted, true, "the gateway read is cancelled, not just ignored");
+    read.resolve(report("2026-09-01"));
+    await loading;
+    assert.equal(state.report, undefined, "a cancelled read never paints");
+    await state.load({ from: "2026-09-01", to: "2026-09-01", timeZone: "UTC" });
+    assert.equal(state.stopped, false, "reading again clears the stopped state");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a newer range aborts the read it replaces and keeps the newest answer", async () => {
+  vi.useFakeTimers();
+  try {
+    const first = pending();
+    const second = pending();
+    const signals: (AbortSignal | undefined)[] = [];
+    let reads = 0;
+    const state = new UsageController({ requestUpdate() {} }, (_query, _refresh, signal) => {
+      signals.push(signal);
+      return ++reads === 1 ? first.promise : second.promise;
+    });
+    const stale = state.load({ from: "2026-09-01", to: "2026-09-01", timeZone: "UTC" });
+    const current = state.load({ from: "2026-10-01", to: "2026-10-01", timeZone: "UTC" });
+    assert.equal(signals[0]?.aborted, true);
+    await vi.advanceTimersByTimeAsync(6_000);
+    assert.equal(state.slow, true, "the replaced read's timer does not cancel the newest read's slow notice");
+    second.resolve(report("2026-10-01"));
+    await current;
+    first.resolve(report("2026-09-01"));
+    await stale;
+    assert.equal(state.report?.range.from, "2026-10-01");
+    assert.equal(state.error, "", "a cancelled read is not an error");
+  } finally {
+    vi.useRealTimers();
+  }
 });

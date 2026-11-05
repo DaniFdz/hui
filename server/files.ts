@@ -2,15 +2,19 @@
  * The Files view's filesystem side: listing, searching, reading, saving, creating, uploading and deleting inside one
  * conversation's working directory. Every path is relative to that root and is resolved through realpath, so neither
  * `..` nor a symlink reaches outside it. Saves are optimistic: the caller names the version it edited (the content's
- * hash) and a changed file answers with its current content instead of being overwritten.
+ * hash) and a changed file answers with its current content instead of being overwritten. Bytes move in streams both
+ * ways: an upload is written beside its target and renamed over it once it arrived whole, and a read pipes the file, so
+ * the size of a file never decides whether the folder can hold it.
  *
  * Search and save rules follow AgentsInTheCloud's Files feature (packages/files/src/server, MIT, see
  * THIRD_PARTY_NOTICES.md); HUI does the work with Node's fs instead of a workspace shell.
  */
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, createReadStream } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import { access, chmod, lstat, mkdir, open, readdir, readFile, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import type { Readable } from "node:stream";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import type { FileEntry, FileLocation, FileRead, FileSaved, FilesListing, FilesSearch } from "./api/files.ts";
@@ -18,7 +22,10 @@ import type { FileEntry, FileLocation, FileRead, FileSaved, FilesListing, FilesS
 export const MAX_RESOLVE_PATHS = 100;
 export const MAX_RESOLVE_PATH_LENGTH = 1024;
 export const MAX_EDITABLE_FILE_BYTES = 2_000_000;
+/** An image or PDF the browser shows inline is held as a blob, so it has a cap; other files stream. */
 export const MAX_RAW_FILE_BYTES = 64 * 1024 * 1024;
+/** Uploads stream to the disk, so the cap is what a conversation's folder should hold, not what fits in memory. */
+export const MAX_UPLOAD_FILE_BYTES = 2 * 1024 * 1024 * 1024;
 
 const IMAGE_TYPES: Record<string, string> = {
   png: "image/png",
@@ -42,6 +49,12 @@ export function previewMimeType(name: string): string {
   const extension = fileExtension(name);
   if (extension === "pdf") return "application/pdf";
   return IMAGE_TYPES[extension] ?? "application/octet-stream";
+}
+
+/** The refusal an oversized upload gets, before or while its body is read; the route answers with it too. */
+export function uploadSizeError(maxBytes = MAX_UPLOAD_FILE_BYTES): FilesError {
+  const label = maxBytes >= 1024 ** 3 ? `${maxBytes / 1024 ** 3} GB` : maxBytes >= 1024 ** 2 ? `${Math.round(maxBytes / 1024 ** 2)} MB` : `${maxBytes} bytes`;
+  return new FilesError(`Uploads are limited to ${label} per file.`, 413);
 }
 
 /** A refusal with the HTTP status the route answers. */
@@ -410,14 +423,19 @@ export class FilesRoot {
     return { ...base, size: bytes.length, kind: "text", mimeType: "text/plain; charset=utf-8", etag: contentEtag(bytes), content };
   }
 
-  /** The bytes of a file for an image or PDF preview, or a download. */
-  async raw(path: string): Promise<{ name: string; mimeType: string; data: Buffer }> {
+  /**
+   * A file's bytes for an image or PDF preview, or a download, as a stream so the size of a file never decides
+   * whether it can be served. A preview the browser holds as a blob is capped; anything else streams.
+   */
+  async raw(path: string): Promise<{ name: string; mimeType: string; size: number; preview: boolean; body: Readable }> {
     const { real, rel } = await this.existing(path);
     const info = await stat(real);
     if (!info.isFile()) throw new FilesError("Only regular files can be opened.", 422);
-    if (info.size > MAX_RAW_FILE_BYTES) throw new FilesError("That file is too large to preview here.", 413);
     const name = basename(rel);
-    return { name, mimeType: previewMimeType(name), data: await readFile(real) };
+    const mimeType = previewMimeType(name);
+    const preview = mimeType.startsWith("image/") || mimeType === "application/pdf";
+    if (preview && info.size > MAX_RAW_FILE_BYTES) throw new FilesError("That file is too large to preview here.", 413);
+    return { name, mimeType, size: info.size, preview, body: createReadStream(real) };
   }
 
   private async replace(real: string, data: Uint8Array, mode: number | undefined): Promise<void> {
@@ -469,21 +487,50 @@ export class FilesRoot {
     return { name: basename(real), path: rel, kind, size: 0 };
   }
 
-  /** Writes an uploaded file into a folder. An existing file is replaced only with `overwrite`; a folder or symlink
-   * with that name never is. */
-  async upload(directory: string, name: string, data: Uint8Array, overwrite: boolean): Promise<FileEntry> {
+  /**
+   * Streams an uploaded file into a folder and answers the entry it wrote. The bytes go to a temporary name beside the
+   * target and are renamed into place only once the whole body arrived, so a refused or cancelled upload leaves the
+   * folder as it was. An existing file is replaced only with `overwrite`; a folder or symlink with that name never is.
+   */
+  async upload(directory: string, name: string, body: AsyncIterable<Uint8Array>, overwrite: boolean, maxBytes = MAX_UPLOAD_FILE_BYTES): Promise<FileEntry> {
     const folder = normalizeFilesPath(directory);
     const file = validEntryName(name);
     const { real, rel } = await this.target(folder ? `${folder}/${file}` : file);
-    if (data.length > MAX_RAW_FILE_BYTES) throw new FilesError("Uploads are limited to 64 MB.", 413);
     return withWriteLock(real, async () => {
       const existing = await lstat(real).catch(() => undefined);
       if (existing && !existing.isFile()) throw new FilesError("A folder or link already uses that name.", 422);
       if (existing && !overwrite) throw new FilesError("A file with that name already exists.", 409, "exists");
-      await this.replace(real, data, existing?.mode);
+      const size = await this.sink(real, body, existing?.mode, maxBytes);
       searchCache.delete(this.root);
-      return { name: basename(real), path: rel, kind: "file" as const, size: data.length };
+      return { name: basename(real), path: rel, kind: "file" as const, size };
     });
+  }
+
+  /** Writes `body` beside `real` and renames it over the target once it is complete, keeping the replaced file's mode;
+   * answers the bytes it wrote. A body past `maxBytes`, a client that goes away or a full disk removes the temporary
+   * file and leaves the target as it was. */
+  private async sink(real: string, body: AsyncIterable<Uint8Array>, mode: number | undefined, maxBytes: number): Promise<number> {
+    const temporary = join(dirname(real), `${TEMPORARY_PREFIX}${randomUUID()}`);
+    let handle: FileHandle | undefined;
+    let size = 0;
+    try {
+      handle = await open(temporary, "wx", 0o644);
+      for await (const chunk of body) {
+        size += chunk.byteLength;
+        if (size > maxBytes) throw uploadSizeError(maxBytes);
+        await handle.write(chunk);
+      }
+      await handle.close();
+      handle = undefined;
+      if (mode !== undefined) await chmod(temporary, mode & 0o7777);
+      await rename(temporary, real);
+    } catch (error) {
+      await handle?.close().catch(() => undefined);
+      await unlink(temporary).catch(() => undefined);
+      if (errorCode(error) === "ENOSPC" || errorCode(error) === "EDQUOT") throw new FilesError("The disk is full.", 507);
+      throw error;
+    }
+    return size;
   }
 
   /**

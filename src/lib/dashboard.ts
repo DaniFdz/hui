@@ -1,9 +1,10 @@
 /**
  * What the Dashboard page reads from the session list the app already holds: the top-level sessions in flight counted
  * by status and Kanban stage, the ones waiting for the operator (those that are not running, starting or reconnecting,
- * so nothing moves until the operator does), the ones still in flight grouped by status, and each one's subagents, each
- * list under the key the page expands it by. A finished session (idle in Done) is only counted; archived sessions and
- * subagents are not sessions here.
+ * so nothing moves until the operator does) in the order that puts the longest wait first: a question, then a stopped
+ * session, an unread answer and parked work, the ones still in flight grouped by status newest first, and each one's
+ * subagents, each list under the key the page expands it by. A finished session (idle in Done) is only counted;
+ * archived sessions and subagents are not sessions here.
  */
 import type { SessionGroup, SessionStage, SessionStatus, SessionView } from "../api/schema/sessions.ts";
 import { isSessionStage } from "./kanban.ts";
@@ -41,6 +42,17 @@ export type SessionSummary = {
 const updatedTime = (session: SessionView) => Date.parse(session.updatedAt) || 0;
 const newestFirst = (a: SessionView, b: SessionView) => updatedTime(b) - updatedTime(a);
 
+/** What stopped the session orders the list: a question, a crash, a disconnect, an unread answer, then parked work. */
+const needsYouTier = (session: SessionView) =>
+  session.status === "waiting" ? 0
+    : session.status === "error" ? 1
+      : session.status === "disconnected" ? 2
+        : session.unread ? 3
+          : 4;
+/** Within a tier the longest wait since the last message comes first; a time HUI can't read sorts last. */
+const waitedLongestFirst = (a: SessionView, b: SessionView) => (Date.parse(a.updatedAt) || Infinity) - (Date.parse(b.updatedAt) || Infinity);
+const needsYouOrder = (a: SessionView, b: SessionView) => needsYouTier(a) - needsYouTier(b) || waitedLongestFirst(a, b);
+
 export function summarizeSessions(groups: readonly SessionGroup[]): SessionSummary {
   const statuses: Record<SessionStatus, number> = { waiting: 0, error: 0, disconnected: 0, reconnecting: 0, running: 0, starting: 0, idle: 0 };
   const stages: Record<SessionStage, number> = { investigation: 0, implementation: 0, testing: 0, done: 0 };
@@ -68,7 +80,7 @@ export function summarizeSessions(groups: readonly SessionGroup[]): SessionSumma
     finished,
     statuses,
     stages,
-    needsYou: shown.filter((session) => AWAITING_STATUSES.includes(session.status)),
+    needsYou: shown.filter((session) => AWAITING_STATUSES.includes(session.status)).sort(needsYouOrder),
     groups: DASHBOARD_STATUSES
       .filter((status) => !AWAITING_STATUSES.includes(status))
       .map((status) => ({ key: status, label: DASHBOARD_STATUS_LABELS[status], sessions: shown.filter((session) => session.status === status) }))

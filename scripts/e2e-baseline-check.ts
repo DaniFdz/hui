@@ -8,7 +8,7 @@
  * the job summary. Run it as `node scripts/e2e-baseline-check.ts <base-commit>`.
  */
 import { execFileSync } from "node:child_process";
-import { appendFile, mkdtemp, readdir, readFile, rm, symlink } from "node:fs/promises";
+import { appendFile, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { list } from "e2e/runner";
@@ -47,7 +47,9 @@ const baseDir = await mkdtemp(join(tmpdir(), "hui-baseline-"));
 git("worktree", "add", "--detach", baseDir, base);
 let before: Tree;
 try {
-  await symlink(join(root, "node_modules"), join(baseDir, "node_modules"));
+  // The base loads with the dependencies it pinned: a pull request that bumps a package may import an export the new
+  // version no longer has, and the base is read here, not run as the pull request's code.
+  execFileSync("npm", ["ci", "--no-audit", "--no-fund", "--ignore-scripts"], { cwd: baseDir, stdio: "ignore" });
   before = await load(baseDir);
 } finally {
   git("worktree", "remove", "--force", baseDir);

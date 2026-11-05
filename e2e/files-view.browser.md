@@ -27,7 +27,8 @@ tabs) is recorded in `e2e/work-pane.browser.md`.
    Then change the same file on disk from a shell and type again.
 5. Open `README.md`, switch Source/Rendered; open the PNG and the binary file;
    type in the filter; create a file; delete a folder; upload two files, one of
-   which already exists. Repeat at 390×844.
+   which already exists, and cancel a large one with **Cancel upload** while it
+   is in flight. Repeat at 390×844.
 
 ## Observed
 
@@ -64,6 +65,12 @@ tabs) is recorded in `e2e/work-pane.browser.md`.
 - Uploading an existing `README.md` and a new text file with nothing selected
   wrote the new file to the root ("Uploaded 1 file to workspace") and asked
   "Replace the existing file?" listing `README.md`; **Replace** overwrote it.
+- While a file was uploading the navigator showed "Upload progress", its
+  percent and **Cancel upload**; cancelling read "Upload cancelled; … was not
+  changed." and left nothing on disk. The upload bytes stream to a temporary
+  file beside the target, so a video up to 2 GB lands without the gateway or the
+  browser holding it in memory, and `POST …/files/upload` refuses a larger
+  `content-length` before reading it.
 - With the browser's color scheme set to dark, the view followed HUI's dark
   theme, editor included, without a reload.
 - At 390×844 the editor took the full width with a 16 px font; the navigator

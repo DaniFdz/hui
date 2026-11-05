@@ -50,7 +50,7 @@ Actual session routes and their questions are exercised separately.
 | Memory / Memory Import / Worktrees | Read-only inventory, branch-prefix preference and OpenClaw-style checkout/worktree creation from New Session |
 | Automation / Cron / Tasks | All three schedule forms, create/edit/pause, run, cancel, delete fixture task and retained run history |
 | Activity / Logs / Debug / Diagnostics | Refresh/filter/detail, runtime evidence and redacted diagnostic export |
-| Usage | Date/time-zone ranges, token and PI-estimate charts, overview/rankings, session search/sort and opening conversations. Current recorded local histories only, with missing-price and history gaps explicit. |
+| Usage | Date/time-zone ranges, token and PI-estimate charts with a hover tooltip and an explicit day selection, a daily activity calendar, error-day, error-rate and cost-share insights, CSV exports, skeleton while reading, slow-read cancel, overview/rankings that filter, session search/sort and opening conversations. Current recorded local histories only, with missing-price and history gaps explicit. |
 | About / Labs / Profile | Runtime metadata, reversible persisted flags and presentation profile |
 
 “Implemented” includes intentionally read-only projections, not OpenClaw's entire

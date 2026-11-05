@@ -88,7 +88,10 @@ Requirements:
 - Node.js **24 or newer** and npm.
 - Git for source checkouts.
 - Optional: Google Chrome, Brave, Microsoft Edge or Chromium for the agent
-  browser tool. HUI launches it with its own profile; nothing is downloaded.
+  browser tool, on each machine that runs sessions (a remote worker included).
+  HUI launches it with its own profile; nothing is downloaded. A container with
+  none can get one with `npx playwright install --with-deps chromium`: HUI finds
+  that Chromium too.
 
 HUI is distributed as npm archives (`.tgz`), not through the public npm
 registry.
@@ -157,6 +160,21 @@ start-up plus every warning and error with its redacted cause, including
 failures the browser reported, across restarts.
 Settings → Logs shows the running gateway's entries, and **Export diagnostics**
 saves them as JSON.
+
+Tab completion for bash and zsh covers every command and flag, because the
+program asks the CLI instead of keeping its own list. A global npm install (and
+the Nix package) writes it where each shell finds it; if you installed another
+way, add one line:
+
+```sh
+# bash: ~/.bashrc
+eval "$(hui completion bash)"
+
+# zsh: ~/.zshrc, after compinit
+eval "$(hui completion zsh)"
+```
+
+See [shell completion](docs/guide.md#shell-completion).
 
 Remote workers (Settings → Workers) can be managed from a terminal too, through
 the running gateway. A new worker connects at once; edit changes only the fields

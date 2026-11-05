@@ -57,7 +57,7 @@ buildNpmPackage {
 
   # PI ships its own shrinkwrap; cache URL metadata as well as tarball integrity.
   npmDepsFetcherVersion = 2;
-  npmDepsHash = "sha256-frLEhQEyy59BQKrTXlmG3xjxvS6V4q5F9/ZtoseJWLs=";
+  npmDepsHash = "sha256-XkK/2boGhrjo1VeYIVEYBtvnAA83Q9VjiqRpLpxXdkc=";
   npmFlags = [ "--ignore-scripts" ];
 
   nativeBuildInputs = [
@@ -99,6 +99,9 @@ buildNpmPackage {
           -exec rm -rf {} +
       fi
     done
+    # bash-completion and compinit find these in the profile's share directories, so a Nix install completes `hui`
+    # without an rc line.
+    "${nodejs_24}/bin/node" "$out/lib/node_modules/hui/cli/completion-install.mjs" "$out"
     wrapProgram "$out/bin/hui" \
       ${lib.optionalString (!withDesktop) "--run "}${
         lib.optionalString (!withDesktop) (

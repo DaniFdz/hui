@@ -84,7 +84,7 @@ export async function trackedFetch(input: RequestInfo | URL, init?: RequestInit)
   }
 }
 
-export async function fetchJson<T>(url: string, init?: RequestInit, cancellation?: AbortSignal): Promise<T> {
+export async function fetchJson<T>(url: string, init?: RequestInit, cancellation?: AbortSignal, responseTimeoutMs = RESPONSE_TIMEOUT_MS): Promise<T> {
   const stalled = new AbortController();
   const signal = cancellation ? AbortSignal.any([stalled.signal, cancellation]) : stalled.signal;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -97,7 +97,7 @@ export async function fetchJson<T>(url: string, init?: RequestInit, cancellation
       ...init,
       headers: { ...CLIENT_HEADERS, ...init?.headers },
       cache: "no-store",
-    }, RESPONSE_TIMEOUT_MS, signal);
+    }, responseTimeoutMs, signal);
     if (response.body) progress();
     const json = new Response(response.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) { if (chunk.byteLength) progress(); controller.enqueue(chunk); },

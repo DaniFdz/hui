@@ -26,8 +26,10 @@ with no matching sessions.
 ## Visible journey
 
 1. Open `/usage`. Confirm **30d**, inclusive **From**/**To**, **Time zone** set
-   to Local, the scope note, token/PI estimate/session summaries, a usage chart,
-   the overview, rankings and session rows. Partial pricing must identify unpriced
+   to Local, the scope note, the headline strip (tokens, PI estimate, sessions,
+   error rate) with a change against the range's earlier half, the chart and
+   model donut side by side on a wide screen, the overview, rankings and session
+   rows. A donut legend row must filter the page like a ranked model. Partial pricing must identify unpriced
    records, not make them free. The line for spend outside the entries gives its
    tokens and recorded cost and says it covers all recorded time; neither the
    summaries nor the chart may include it. A cost with no recorded tokens must
@@ -40,21 +42,43 @@ with no matching sessions.
    dates must replace the draft. Apply a custom range, switch **Time zone** between
    UTC and Local, and check that the returned range names the chosen calendar.
 4. Switch **Tokens**/**Cost** and **Total**/**By type**. Unpriced days have a
-   distinct marker in Cost; all prices remain PI estimates. Choose a day to
-   narrow the range. Use Tab to enter the chart once, arrow keys to move between
-   bars, and Enter to apply a day; focus moves to **Apply range**.
-5. Filter by title, ID and recorded model. Totals, rankings and chart must follow
-   the same subset. Enter a nonmatching query, confirm **No sessions match your
-   search.**, then **Clear search**. Try all **Sort sessions** options. Recorded
-   zero sorts before unknown prices. The amount outside the entries remains
-   unchanged by the session search. Open a Durable session and **Design notes**
-   from their rows. Both must show recorded messages and an Idle status.
-6. Choose an empty day and confirm **No usage in this range.** Return to 30d.
-   Submit a reversed range; the error must name the attempted range while the
-   last successful chart retains its own dates. Fix the fields and apply them.
-   **Refresh** must keep successful data on screen while reading again.
-7. Inspect 1440×900, 1024×900 and 390×844, including controls and lower session
-   rows. The controls must align within each wrapped row. The top metrics must
+   distinct marker in Cost; all prices remain PI estimates. Point at a day: a
+   tooltip names its tokens by type, recorded price and records, and the column
+   shows its whole hit area. Choose a day: it selects without changing the range
+   or the active preset, and the selection names the same detail with **Show only
+   <day>** and **Clear**. Choose it again to deselect. Use **Show only <day>**
+   and confirm the range narrows and focus moves to **Apply range**. Use Tab to
+   enter the chart once, arrow keys to move between bars, and Enter to select.
+5. Confirm the overview adds **Error rate** and **Avg cost / record**, that a
+   ranked model and provider name their share of the range's cost, and that
+   **Days with errors** lists the fixture's failed day with its rate. **Daily
+   CSV** and **Sessions CSV** must each download a file whose header and first
+   row match the range shown.
+6. Choose **1y** and confirm **Daily activity** draws one cell per day, with
+   month and weekday labels; hovering a cell names its day, and selecting it
+   offers **Show only <day>**. A 30d range must not draw the calendar.
+7. Filter by title, ID and recorded model. Totals, rankings and chart must follow
+   the same subset. A ranked model or provider applies the same search. Enter a
+   nonmatching query, confirm **No sessions match your search.**, then **Clear
+   search** beside the field. Try all **Sort sessions**
+   options. Recorded zero sorts before unknown prices. Session rows state when
+   they were last active. The amount outside the entries remains unchanged by the
+   session search. Open a Durable session and **Design notes** from their rows.
+   Both must show recorded messages and an Idle status.
+8. Choose an empty day, confirm its selection says no recorded usage, and
+   **Show only** it: confirm **No usage in this range.** and **Show all time**.
+   Return to 30d. Submit a reversed range; the error must name the attempted
+   range while the last successful chart retains its own dates. Fix the fields
+   and apply them. **Refresh** must keep successful data on screen while reading
+   again.
+9. Hold the first report back with a delayed or blocked request. Confirm the
+   skeleton, the **Reading HUI diagnostics…** status and, after six seconds, the
+   slow-read note with **Cancel**. Cancel must leave either the last report or
+   **Reading stopped.** with **Read histories again**, never a timeout error or an
+   unavailable report. A blocked read must fail on the page's own cancel, not
+   before.
+10. Inspect 1440×900, 1024×900 and 390×844, including controls and lower session
+   rows. The selection stacks at phone width. The controls must align within each wrapped row. The top metrics must
    align with the search field's left edge and keep space between their columns,
    including **Unavailable** beside zero sessions in an empty range. Repeat a
    chart/filter interaction at phone width. Check keyboard focus, horizontal

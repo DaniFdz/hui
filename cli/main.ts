@@ -1,6 +1,7 @@
-/** The `hui` command line: argument parsing, validation and dispatch. Gateway lifecycle and updates run here under
- * the lifecycle lock; worker and bot commands only talk to the running gateway, and the doctor, desktop, update and
- * release logic live in their own modules. */
+/** The `hui` command line: argument parsing, validation and dispatch. The words and flags it accepts are
+ * `cli/commands.ts`; shell completion and its programs are `cli/completion.ts`. Gateway lifecycle and updates run
+ * here under the lifecycle lock; worker and bot commands only talk to the running gateway, and the doctor, desktop,
+ * update and release logic live in their own modules. */
 import { execFileSync, spawn } from "node:child_process";
 import { isIP } from "node:net";
 import { join } from "node:path";
@@ -16,6 +17,8 @@ import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_TAGGING, BOT_THINK
 import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../server/bots/voice-languages.ts";
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../server/calls-format.ts";
 import { checkTriggerAdd } from "./bot-triggers.ts";
+import { completionCandidates, completionScript, completionShell } from "./completion.ts";
+import { BOT_FIELDS, COMMAND_FLAGS, SCHEDULE_FIELDS } from "./commands.ts";
 
 export const HELP = `Usage:
   hui gateway start [--host <IP|tailnet>] [--port <number>] [--allow-host <name>] [--json]
@@ -78,6 +81,7 @@ export const HELP = `Usage:
               [--until <ISO time>] [--runs <n>] [--disabled] [--json]
   hui schedule edit <schedule> [same flags as add] [--json]
   hui schedule pause|resume|run|remove <schedule> [--json]
+  hui completion <bash|zsh>
   hui --version
 
 HUI_GATEWAY_HOST and HUI_GATEWAY_PORT configure defaults; CLI flags override them.
@@ -190,6 +194,12 @@ run doesn't count), and HUI deletes it after either; on edit --until "" and
 --runs "" clear them. --timeout is how long one run may take (10-86400
 seconds, default 900). A bot can schedule its own routines too, with its
 routines tool, which shows as made by @bot.
+Completion prints the program for bash or zsh; both ask the CLI for the words it
+accepts, so neither lists a command the installed version lacks. A global npm
+install or the Nix package writes them where each shell finds them
+(share/bash-completion/completions/hui, share/zsh/site-functions/_hui); without
+one, eval "$(hui completion bash)" in a startup file, or "$(hui completion
+zsh)" after compinit.
 `;
 
 export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
@@ -231,30 +241,14 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   const target = command === "workers edit" || command === "workers remove" ? extra.shift() : undefined;
   // A bot command's operands: the bot, then a message or a routine; a schedule command's, the schedule.
   const operands = bots || schedules ? extra.splice(0) : [];
-  const allowed: Record<string, string[]> = {
-    "gateway start": ["host", "port", "json", "allow-host"], "gateway run": ["host", "port", "allow-host"],
-    "gateway stop": ["force", "json"], "gateway restart": ["host", "port", "force", "json", "allow-host"],
-    "gateway status": ["json"], "gateway logs": ["lines"], ui: ["no-open"], browser: ["no-open"],
-    update: ["from", "sha256", "rollback", "check", "json", "nightly", "force"], desktop: [], "install-app": [],
-    doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
-    "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
-    "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "worker", "deny-tools", "deny-skills", "json"], "bot edit": [...BOT_FIELDS, "json"],
-    "bot soul": ["file", "json"], "bot user": ["json"], "bot memory": ["json"], "bot history": ["zoom", "html", "json"], "bot bootstrap": ["file", "json"], "bot split": ["wait", "timeout", "json"],
-    "bot tools": ["allow", "deny", "json"], "bot skills": ["allow", "deny", "json"],
-    "bot import": ["worker", "agent", "yes", "json"], "bot export": ["out", "review", "set", "add", "yes", "json"],
-    "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
-    "bot routine list": ["json"],
-    "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
-    "bot trigger list": ["json"], "bot trigger remove": ["json"], "bot trigger test": ["json"],
-    "bot trigger add": ["name", "prompt", "match", "cooldown", "pr-links", "allow-bots", "allow-external", "json"],
-    "schedule list": ["bot", "session", "json"], "schedule show": ["json"], "schedule add": [...SCHEDULE_FIELDS, "json"], "schedule edit": [...SCHEDULE_FIELDS, "json"],
-    "schedule pause": ["json"], "schedule resume": ["json"], "schedule run": ["json"], "schedule remove": ["json"],
-  };
-  if (!command || !allowed[command] || extra.length || first !== "gateway" && first !== "workers" && !bots && !schedules && second) throw new Error("Unknown command. Run hui --help.");
+  // `hui completion <shell>` takes exactly one shell; every other command's words are checked by the table.
+  const completion = first === "completion";
+  const shell = completion ? completionShell(extra.length ? undefined : second) : undefined;
+  if (!command || !COMMAND_FLAGS[command] || (!completion && extra.length) || first !== "gateway" && first !== "workers" && !bots && !schedules && !completion && second) throw new Error("Unknown command. Run hui --help.");
   // Where a bot runs is chosen once; an edit cannot move it.
   if (command === "bot edit" && values.worker !== undefined) throw new Error("A bot stays on the machine it was created on: --worker only applies to bot add.");
   if (command === "bot edit" && values["soul-file"] !== undefined) throw new Error("bot edit does not change SOUL.md: use hui bot soul <bot> --file <path|->.");
-  for (const flag of Object.keys(values)) if (!allowed[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
+  for (const flag of Object.keys(values)) if (!COMMAND_FLAGS[command]!.includes(flag)) throw new Error(`--${flag} is not valid for ${command}.`);
   if (bots) checkBotCommand(command, operands, values);
   if (schedules) checkScheduleCommand(command, operands, values);
   if (["gateway start", "gateway run", "gateway restart"].includes(command)) {
@@ -272,11 +266,9 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   if (command === "workers add" && (!values.name || !values.command)) throw new Error("workers add needs --name and --command.");
   if ((command === "workers edit" || command === "workers remove") && !target) throw new Error(`${command} needs the worker's name or id.`);
   if (command === "workers edit" && values.name === undefined && values.command === undefined && !values["extra-path"]) throw new Error("workers edit needs --name, --command or --extra-path.");
-  return { command, values, ...(target ? { target } : {}), ...(bots || schedules ? { operands } : {}) };
+  return { command, values, ...(target ? { target } : {}), ...(bots || schedules ? { operands } : {}), ...(shell ? { shell } : {}) };
 }
 
-/** The flags `schedule add` and `schedule edit` share. */
-const SCHEDULE_FIELDS = ["name", "prompt", "description", "at", "every", "cron", "timezone", "bot", "session", "timeout", "until", "runs", "disabled"];
 const ISO_HINT = "an ISO date and time, such as 2026-10-06T09:00:00+02:00";
 
 /** What the gateway would refuse anyway, refused before a request. */
@@ -310,8 +302,6 @@ function checkScheduleCommand(command: string, operands: readonly string[], valu
   }
 }
 
-/** The flags `bot add` and `bot edit` share. */
-const BOT_FIELDS = ["name", "title", "description", "tagging", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "ears", "color", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
   "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot user": ["bot"], "bot memory": ["bot"], "bot history": ["bot"], "bot bootstrap": ["bot"], "bot split": ["bot"], "bot tools": ["bot"], "bot skills": ["bot"],
@@ -391,9 +381,21 @@ export function binding(host = "127.0.0.1"): { host: string; allowedHosts: strin
 }
 
 export async function main(args: string[], installation: Installation): Promise<void> {
-  const { command, values, target, operands } = parseCli(args);
+  // A shell asks for the words to offer with the words it holds, before any of them is parsed as a command.
+  if (args[0] === "__complete") {
+    const candidates = completionCandidates(args.slice(1));
+    if (candidates.length) process.stdout.write(`${candidates.join("\n")}\n`);
+    return;
+  }
+  const parsed = parseCli(args);
+  const { command, values, target, operands } = parsed;
   if (command === "help") { process.stdout.write(HELP); return; }
   if (command === "version") { console.log(await packageVersion(installation.packageRoot)); return; }
+  if (command === "completion") {
+    // parseCli already refused an unknown shell; asking again keeps a missing one from reaching the gateway.
+    process.stdout.write(await completionScript(completionShell("shell" in parsed ? parsed.shell : undefined)));
+    return;
+  }
   if (command === "desktop" || command === "install-app") {
     const module = await import(pathToFileURL(join(installation.packageRoot, "desktop", command === "desktop" ? "launch.mjs" : "install.mjs")).href);
     if (command === "desktop") await module.launchDesktop(installation.installationRoot);

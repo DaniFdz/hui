@@ -10,6 +10,7 @@ const request = (method: string, path: string, body: unknown): RouteRequest => (
   headers: {},
   json: async () => body,
   bytes: async () => Buffer.alloc(0),
+  stream: () => (async function* () {})() as AsyncIterable<Buffer>,
   signal: new AbortController().signal,
 });
 

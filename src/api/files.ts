@@ -2,12 +2,19 @@
  * Browser client for the Files view's routes (`/__hui/sessions/:id/files…`, see docs/api.md). The gateway owns the
  * disk and resolves every path inside the conversation's working directory; this only sends requests with the
  * local-client header and turns refusals into errors, except a save conflict, which is an answer. It also downloads
- * the blobs behind media and file previews.
+ * the blobs behind media and file previews, and uploads a file with its progress, over an XHR because only that
+ * reports how much of a body the browser has sent.
  */
 import type { FileEntry, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "./schema/files.ts";
+import { assertCurrentBuild } from "./offline.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
+import { reportReachable, reportRequestFailure } from "./ui-errors.ts";
 
 export const MAX_RESOLVE_PATHS = 100;
+
+/** Mirrors the gateway's cap (`MAX_UPLOAD_FILE_BYTES` in `server/files.ts`): the browser refuses a file the gateway
+ * would refuse instead of sending gigabytes of it first. */
+export const MAX_UPLOAD_FILE_BYTES = 2 * 1024 * 1024 * 1024;
 
 export function fileExtension(name: string): string {
   const base = name.slice(name.lastIndexOf("/") + 1);
@@ -125,12 +132,68 @@ export async function deleteEntry(sessionId: string, path: string, recursive: bo
 }
 
 /** Uploads one file into a folder; an existing file answers 409 unless `overwrite`. */
-export async function uploadFile(sessionId: string, directory: string, file: File, overwrite: boolean): Promise<FileEntry> {
-  const response = await request(withQuery(base(sessionId, "upload"), { dir: directory, name: file.name, ...(overwrite ? { overwrite: "1" } : {}) }), {
-    method: "POST",
-    headers: { "content-type": "application/octet-stream" },
-    body: file,
+export type UploadOptions = {
+  /** How much of the file the browser has sent so far, in bytes, and the file's size. */
+  onProgress?: (sent: number, total: number) => void;
+  /** Cancels the upload; the gateway removes what it wrote so far. */
+  signal?: AbortSignal;
+};
+
+export async function uploadFile(
+  sessionId: string,
+  directory: string,
+  file: File,
+  overwrite: boolean,
+  options: UploadOptions = {},
+): Promise<FileEntry> {
+  if (file.size > MAX_UPLOAD_FILE_BYTES) {
+    throw new FilesRequestError(`“${file.name}” is larger than ${MAX_UPLOAD_FILE_BYTES / (1024 * 1024 * 1024)} GB.`, 413);
+  }
+  const url = withQuery(base(sessionId, "upload"), { dir: directory, name: file.name, ...(overwrite ? { overwrite: "1" } : {}) });
+  // XHR rather than fetch: only `XMLHttpRequest.upload` reports progress on every browser HUI runs on.
+  await assertCurrentBuild(options.signal);
+  return await new Promise<FileEntry>((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(new DOMException("The upload was cancelled.", "AbortError"));
+      return;
+    }
+    const request = new XMLHttpRequest();
+    const cancel = () => request.abort();
+    const done = (settle: () => void) => {
+      options.signal?.removeEventListener("abort", cancel);
+      settle();
+    };
+    options.signal?.addEventListener("abort", cancel, { once: true });
+    request.upload.addEventListener("progress", (event) => options.onProgress?.(event.loaded, event.lengthComputable ? event.total : file.size));
+    request.addEventListener("load", () => done(() => {
+      reportReachable();
+      if (request.status === 201) {
+        resolve((JSON.parse(request.responseText) as { entry: FileEntry }).entry);
+        return;
+      }
+      const body = (() => {
+        try {
+          return JSON.parse(request.responseText) as { error?: string; code?: string };
+        } catch {
+          return undefined;
+        }
+      })();
+      reject(new FilesRequestError(body?.error ?? `The gateway answered HTTP ${request.status}.`, request.status, body?.code));
+    }));
+    request.addEventListener("error", () => done(() => {
+      const error = new FilesRequestError("Could not reach HUI. Check the connection and try again.", 0);
+      reportRequestFailure(error, { method: "POST", path: new URL(url, location.href).pathname });
+      reject(error);
+    }));
+    request.addEventListener("abort", () => done(() => reject(new DOMException("The upload was cancelled.", "AbortError"))));
+    request.open("POST", url);
+    for (const [name, value] of Object.entries(CLIENT_HEADERS)) request.setRequestHeader(name, value);
+    request.setRequestHeader("content-type", "application/octet-stream");
+    request.send(file);
   });
-  if (!response.ok) throw await failure(response);
-  return (await response.json() as { entry: FileEntry }).entry;
+}
+
+/** Whether a failed upload was cancelled by its caller rather than refused. */
+export function isUploadCancelled(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }

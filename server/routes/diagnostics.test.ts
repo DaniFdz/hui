@@ -29,6 +29,7 @@ function fixture() {
     method, path: USAGE_ROUTE, query: new URLSearchParams(query), headers: {},
     json: async () => assert.fail("the usage route reads no body"),
     bytes: async () => assert.fail("the usage route reads no body"),
+    stream: () => (async function* () { assert.fail("the usage route reads no body"); })(),
     signal: new AbortController().signal,
   } satisfies RouteRequest, {} as ServerResponse);
   return { call, queries };

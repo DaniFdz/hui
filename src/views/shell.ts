@@ -422,6 +422,13 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
           closeContainingDrawer(event, false, true);
           props.onSelectSession(session);
         }}
+        @contextmenu=${(event: MouseEvent) => {
+          // The row's actions button opens this menu; a right click asks for the
+          // same one instead of the browser's link menu, which the menu's Copy
+          // and Open in submenus already cover.
+          event.preventDefault();
+          props.onToggleMenu(session.id);
+        }}
       >
         <span class="sidebar-session-indicator" title=${glyph.label || nothing} aria-hidden="true">
           ${attention ? html`<span class="session-glyph"><span class="session-glyph__content"><span class="sidebar-session-attention__icon sidebar-session-attention__icon--${attention.tone}">${attention.icon}</span></span></span>` : nothing}
@@ -711,6 +718,17 @@ function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: 
   `;
 }
 
+/** Rows in the list's shape while the registry read is pending, so the list
+ * does not jump from one line of text to rows. */
+function renderSessionPlaceholder() {
+  return html`<div class="sidebar-placeholder session-group__rows sidebar-recent-sessions__list" role="status" aria-label="Loading sessions…">
+    ${Array.from({ length: 6 }, () => html`<span class="sidebar-placeholder__row">
+      <span class="sidebar-placeholder__lead skeleton"></span>
+      <span class="sidebar-placeholder__title skeleton"></span>
+    </span>`)}
+  </div>`;
+}
+
 function renderImportNote(props: ShellProps) {
   if (!props.importNote) {
     return nothing;
@@ -896,7 +914,7 @@ export function renderSidebar(props: ShellProps) {
           props.error
             ? html`<p class="sidebar-list__note is-error">${props.error}</p>`
             : props.loading
-              ? html`<p class="sidebar-list__note">Loading sessions…</p>`
+              ? renderSessionPlaceholder()
             : visibleGroups.length === 0
               ? html`
                     <div class="sidebar-empty">

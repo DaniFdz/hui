@@ -85,12 +85,12 @@ test("rows show running, waiting and failed sessions and a parent's watcher or s
   }
 });
 
-test("the list shows Loading sessions… and a failed first load, retries once the gateway is back, and keeps its rows when a later refresh fails", { tags: ["SESS-076"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the list shows placeholder rows and a failed first load, retries once the gateway is back, and keeps its rows when a later refresh fails", { tags: ["SESS-076"], platforms: ["web"] }, async ({ screen, hui }) => {
   const list = await hui.intercept("GET", /\/__hui\/sessions$/u);
   const stream = await hui.intercept("GET", /\/__hui\/sessions\/events$/u);
   await hui.open("/");
   await list.arrived();
-  await expect(screen.getByText("Loading sessions…")).toBeVisible();
+  await expect(screen.getByLabel("Loading sessions…")).toBeVisible();
   await list.reject(503, "The gateway is unavailable.");
   await expect(screen.getByText("The gateway is unavailable.")).toBeVisible();
   await stream.reject(503, "The gateway is unavailable.");

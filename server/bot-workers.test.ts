@@ -741,8 +741,8 @@ test("a bot on the worker has the tools and skills a session there has until the
   // A list can't name what stays on this machine, at creation or later: there is nothing to turn off.
   const termless = await call("/__hui/bots", "POST", { name: "Termless", worker: "devbox", disabledTools: ["terminal", "bash"] });
   assert.deepEqual([termless.status, termless.body["error"]], [400, "terminal stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out."]);
-  const watched = await call("/__hui/bots/surveyor", "PATCH", { disabledTools: ["watcher", "browser"] });
-  assert.deepEqual([watched.status, watched.body["error"]], [400, "watcher, browser stay on this machine, so a bot on devbox can't use them and there is nothing to turn off: leave them out."]);
+  const watched = await call("/__hui/bots/surveyor", "PATCH", { disabledTools: ["watcher", "terminal"] });
+  assert.deepEqual([watched.status, watched.body["error"]], [400, "watcher, terminal stay on this machine, so a bot on devbox can't use them and there is nothing to turn off: leave them out."]);
 
   // Edited from here, written there: a skill named by this gateway's own path finds its mirrored one.
   const edited = await call("/__hui/bots/surveyor", "PATCH", { disabledTools: [], disabledSkills: [{ name: "atlas", path: join(agentDir, "skills", "atlas", "SKILL.md") }] });

@@ -535,7 +535,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:POST /__hui/sessions/:id/files/upload"],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -808,6 +808,16 @@ const cases: UseCase[] = [
     journeys: ["files-view"],
     web: "required",
     ios: "backlog",
+  },
+  {
+    id: "WORK-082",
+    title: "Watch an upload's progress and cancel it",
+    behaviour: "While a file uploads, the navigator shows \"Upload progress\" with its percent and **Cancel upload**; cancelling reads \"Upload cancelled; <folder> was not changed.\" and leaves the folder as it was, and a file larger than 2 GB is refused before any of it is sent.",
+    spec: ["SPEC.md#files", "docs/api.md#files-view-api", "SPEC.md#the-webs-upload-progress-and-cancel-stay-on-the-web-2026-11-03"],
+    surfaces: ["route:POST /__hui/sessions/:id/files/upload"],
+    journeys: ["files-view"],
+    web: "required",
+    ios: { excluded: "The iPhone app imports files through its native file importer, which shows the system's own progress and offers no in-app Cancel upload; the gateway's larger cap still applies to it.", decision: "SPEC.md#the-webs-upload-progress-and-cancel-stay-on-the-web-2026-11-03" },
   },
 ];
 
