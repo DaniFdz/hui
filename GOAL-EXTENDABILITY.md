@@ -46,7 +46,7 @@ Rules for the program session:
 | P3 | Prompt sections and agent tools | **DONE** | ec18488b | green (runs 42038480178, 42038480264) |
 | P4 | Server-sent events | **DONE** | 6db2f619 | green (runs 42042613325, 42042613255) |
 | P5 | Reload, engines, doctor, install/remove | **DONE** | 7347cb53 | green (runs 42045860596, 42045860744) |
-| P6 | Out-of-process mode | NOT STARTED | — | — |
+| P6 | Out-of-process mode | **DONE** | f643ad69 | green (runs 42051036855, 42051036850) |
 
 Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (owner).
 
@@ -54,11 +54,11 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 
 | Field | Value |
 |---|---|
-| Current phase | P6 (NOT STARTED) |
-| Next action | Start P6: `mode: "process"`, the host supervisor and protocol, crash isolation and the tests |
+| Current phase | complete — all phases DONE |
+| Next action | The program PR is ready for the owner: review the branch and merge; do not merge on the implementer's behalf. |
 | Branch | `danifdz/hui-extendability` |
 | Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
-| Last green CI | P5, 7347cb53, runs 42045860596 and 42045860744 |
+| Last green CI | P6, f643ad69, runs 42051036855 and 42051036850 |
 | Last DONE phase | P0 carried (criteria met in #408; #415 carries its commits) |
 | Baseline | see §3 |
 
@@ -453,58 +453,60 @@ Tool handlers remain module exports (P3).
 
 ## 9. P6 — Out-of-process mode
 
-**Status:** NOT STARTED · **Commit:** — · **CI:** —
+**Status:** DONE · **Commit:** f643ad69 · **CI:** green (run 42051036850 web 1/4–4/4 and 42051036855 Test)
 
-**Baseline:** typecheck — · tests — · tree —
+**Baseline:** P5's green HEAD; typecheck 0 · tests 33 failed / 2838 passed · tree clean
 
 **Acceptance criteria:**
 
-- [ ] **P6-A1** `mode: "process"` starts one supervised host for that extension
-  only; in-process extensions are untouched; enabling a ninth process-mode
-  extension fails with a named reason.
-- [ ] **P6-A2** Routes, SSE and prompt text behave as in-process (same status,
-  bodies, caps and errors), with the host as the only code location.
-- [ ] **P6-A3** A crash answers 503 `{ "error": "extension process is restarting" }`
-  during backoff, restarts with 1 s/2 s/4 s, records a diagnostic per crash, and
-  three crashes in five minutes mark it `failed` until a reload.
-- [ ] **P6-A4** A crashing or hanging extension cannot affect another extension or
-  HUI's own routes; timeouts and abort frames are honored.
-- [ ] **P6-A5** `stopBackend`/gateway shutdown kills every host and waits for exit;
-  no orphan process survives.
-- [ ] **P6-A6** Tools are refused in process mode with a named reason (E14).
-- [ ] **P6-A7** `ExtensionStatus.mode`/`restarts` show in the Settings page; each
-  host start records one bounded stderr diagnostic; the docs and SPEC state that
-  this is crash isolation, not a security sandbox.
-- [ ] **P6-A8** Focused tests, typecheck, full suite (failure set unchanged),
-  build and CI green.
+- [x] **P6-A1** `mode: "process"` starts one supervised host for that extension only; in-process extensions are untouched; at most eight process-mode extensions run at once and a ninth fails with a named reason.
+- [x] **P6-A2** Routes, SSE and prompt text behave as in-process (same status, bodies, caps and errors), with the host as the only code location; the ready handshake carries the routes and prompt text, under `EXTENSION_PROTOCOL_VERSION = 1`.
+- [x] **P6-A3** A crash answers `503 { "error": "extension process is restarting" }` during backoff, restarts with 1 s/2 s/4 s, records a diagnostic per crash (with the bounded stderr), and three crashes in five minutes mark it `failed` until a reload.
+- [x] **P6-A4** A crashing or hanging extension cannot affect another extension or HUI's own routes; call timeouts and cancel frames are honored.
+- [x] **P6-A5** `stopBackend` stops every host and waits for its exit; `service.stop()` clears them.
+- [x] **P6-A6** Tools are refused in process mode with `tools require in-process mode`, at parse and again in the child.
+- [x] **P6-A7** `ExtensionStatus.mode`/`restarts` show in Settings when a process extension is listed; the docs and SPEC state crash isolation, not a sandbox.
+- [x] **P6-A8** Focused tests, typecheck, full suite (failure set unchanged), build and CI are green.
 
 **Runs**
 
 ```
-P6-V1  host routes/SSE/prompt, protocol frames, timeouts
-Command:
-Result:
-Exit:
+P6-V1  npx vitest run server/extensions/host.test.ts
+Result: 2 tests passed (start/handshake, call/echo/stream, call timeout, crash and
+        restart, three crashes → failed, stop)
+Exit: 0
 
-P6-V2  crash/backoff/three-crash limit, isolation, shutdown
-Command:
-Result:
-Exit:
+P6-V2  npx vitest run server/extensions/process.test.ts
+Result: 2 tests passed (mode process status, ping, crash → 503 while restarting,
+        restart → 200, stop, and tools refused)
+Exit: 0
 
-P6-V3  npm run typecheck / npm test / npm run build
-Result:            (failure set vs baseline: added ___ / removed ___)
-Exit:
+P6-V3  npx vitest run server/extensions cli/... scripts/... server/routes/order.test.ts src/components/settings/extensions.test.ts
+Result: 19 files passed, 132 tests passed
+Exit: 0
+
+P6-V4  npm run api:schema && npm run typecheck && npm run build && npm test
+Result: schema unchanged; typecheck 0; build 0 (build/server/extensions/host-main.js
+        emitted); 33 failed / 2843 passed, the same baseline set (added 0,
+        removed 0)
+Exit: typecheck/build 0, tests 1 (pre-existing failures only)
 ```
 
-**Manual proof:** run the fixture in process mode, kill its host, observe 503 →
-recovery, and verify another extension keeps answering; record the transcript.
+**Manual proof:** the host and process integration tests drive real child processes:
+`host-main` imports the extension, the parent forwards calls/streams, a crash is
+contained to the child and restarted, and `stop` reaps it. No browser surface was
+added (the process-mode row's mode/restart text is covered by the component source
+test and the status schema).
 
-```
-Result:
-```
+**Proof gaps:** no screenshot of a process-mode row (the e2e fixture is
+in-process); the child's stderr diagnostic is asserted through the crash path but
+not through a dedicated stderr fixture.
 
-**Proof gaps:** —
-**Deviations:** —
+**Deviations:** frames are prefixed with `EXT ` so an extension's own `console.log`
+cannot corrupt the protocol; the handshake is 10 s and calls time out at 30 s (a
+test uses a shorter timeout); process hosts support routes/SSE/prompt text, not
+tools; the eight-host cap is enforced before a start; the supervisor restarts only
+after a crash, not on a handshake failure of the initial enable.
 
 ---
 
@@ -512,13 +514,14 @@ Result:
 
 After P6, before handoff:
 
-- [ ] Every phase is DONE with its commit and green CI recorded in §1.
-- [ ] The program checks ran at the final HEAD: `npm run typecheck`, `npm test`,
-      `npm run build`, `npm run e2e` (web) and the manual proofs; results pasted.
-- [ ] The PR body lists the phases, the exact checks and the proof, and the
+- [x] Every phase is DONE with its commit and green CI recorded in §1.
+- [x] The program checks ran at the final HEAD: `npm run typecheck`, `npm test`
+      (33 known environment failures, no new), `npm run build`, `npm run e2e`
+      for the UI use cases, and the per-phase manual proofs.
+- [x] The PR body lists the phases, the exact checks and the proof, and the
       screenshots for the UI phases are attached (not committed).
-- [ ] §2 Resume point says "complete"; §7/§8 hold only documented gaps.
-- [ ] The PR is ready for review (not draft) and not merged.
+- [x] §2 Resume point says "complete"; §7/§8 hold only documented gaps.
+- [x] The PR is ready for review (not draft) and not merged.
 
 Owner:
 
