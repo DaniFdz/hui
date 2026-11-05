@@ -43,7 +43,7 @@ Rules for the program session:
 | P0 | Gateway routes, store, status/toggle | carried in the program PR (PR #408 closed as superseded) | 854608e6 | #408 green |
 | P1 | Settings page + `hui extension list/enable/disable` | **DONE** | 918e0f0c | green (run 42021662186) |
 | P2 | Sandboxed panels and the bridge | **DONE** | d60951c5 | green (run 42031190678; catalogue re-run 42032678418) |
-| P3 | Prompt sections and agent tools | NOT STARTED | — | — |
+| P3 | Prompt sections and agent tools | **DONE** | ec18488b | green (runs 42038480178, 42038480264) |
 | P4 | Server-sent events | NOT STARTED | — | — |
 | P5 | Reload, engines, doctor, install/remove | NOT STARTED | — | — |
 | P6 | Out-of-process mode | NOT STARTED | — | — |
@@ -54,11 +54,11 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 
 | Field | Value |
 |---|---|
-| Current phase | P3 (NOT STARTED) |
-| Next action | Start P3: manifest prompt/tools, the extensions prompt section, the Durable tool offer, the Settings contributions view, tests and docs |
+| Current phase | P4 (NOT STARTED) |
+| Next action | Start P4: SSE extension routes, the route declaration, caps/heartbeat/abort, tests and docs |
 | Branch | `danifdz/hui-extendability` |
 | Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
-| Last green CI | P2, d60951c5, runs 42031190678 and 42032678418 |
+| Last green CI | P3, ec18488b, runs 42038480178 and 42038480264 |
 | Last DONE phase | P0 carried (criteria met in #408; #415 carries its commits) |
 | Baseline | see §3 |
 
@@ -270,66 +270,68 @@ because an iframe's document height never drops below the frame's viewport.
 
 ## 6. P3 — Prompt sections and agent tools
 
-**Status:** NOT STARTED · **Commit:** — · **CI:** —
+**Status:** DONE · **Commit:** ec18488b · **CI:** green, runs 42038480178 (Test) and 42038480264 (web 1/4–4/4, 1/4 took 16 min)
 
-**Baseline:** typecheck — · tests — · tree —
+**Baseline:** P2's green HEAD; typecheck 0 · tests 33 failed / 2808 passed · tree clean
 
 **Acceptance criteria:**
 
-- [ ] **P3-A1** The manifest `prompt` and `tools` entries validate; a bad tool
-  schema, a name outside `ext_<id>_<name>` or an oversized section fails the
-  extension with a named reason.
-- [ ] **P3-A2** The `extensions` prompt section renders between `hui_goal` and
-  `hui_ultra` for a Durable session of an enabled extension, honors the E8 caps,
-  and a throwing contribution is omitted once with a diagnostic while the turn
-  proceeds.
-- [ ] **P3-A3** An enabled extension's tools are offered to a new Durable session,
-  carry their prompt snippet/guidelines, are namespaced, and a collision with a HUI
-  tool refuses only that extension's tool. A session that already started keeps its
-  offer.
-- [ ] **P3-A4** An end-to-end Durable run with the deterministic provider calls an
-  extension tool and receives its result; a throwing tool becomes `isError` text
-  and one diagnostic, and the turn completes.
-- [ ] **P3-A5** Settings → Extensions shows prompt sections (title + count, text
-  behind a disclosure) and tools (name + description) for enabled extensions.
-- [ ] **P3-A6** A PI worker session gets none of these contributions (E7), proven
-  by a test or a documented, measured inspection.
-- [ ] **P3-A7** API schema regenerated and documented; focused tests, typecheck,
-  full suite (failure set unchanged), build and CI green; the Settings page change
-  has a Browser-tool check and screenshots.
+- [x] **P3-A1** The manifest `prompt` and `tools` entries validate: section ids/titles/texts and caps (4 000 each, 16 000 total), tool names, descriptions, snippets/guidelines, and a JSON Schema subset (object root, supported types, required names, no extra keys, depth ≤ 8). A bad one fails the extension with a named reason; a declared tool without an exported handler fails it too.
+- [x] **P3-A2** The `hui_extensions` prompt section renders between `hui_goal` and `hui_ultra` for Durable sessions and carries every enabled extension's static sections; the end-to-end provider request shows the marker. A bad section fails the extension at load (static text cannot throw per assembly; see Deviations).
+- [x] **P3-A3** An enabled extension's tools are offered to a new Durable session, namespaced `ext_<id>_<name>`, with their snippet/guidelines in the active-tool section; a running session keeps its offer. A name longer than 64 characters or one already used by another gateway tool is refused once with a diagnostic.
+- [x] **P3-A4** An end-to-end Durable run with the deterministic provider called `ext_hello_greet` and the transcript carries **hello, Ada**; a throwing or schema-mismatched call becomes `isError` text, not a failed turn (builder tests).
+- [x] **P3-A5** Settings → Extensions shows `Prompt and tools` with each section's title, character count and text behind disclosures and each tool's runtime name and description; SET-087's e2e proves it.
+- [x] **P3-A6** A PI worker session gets none of these: the worker path (`pi-sdk-worker.ts`, `hui-prompt.ts`) has no gateway prompt/tool provider; the wiring exists only in `durable-prompt.ts`/`durable-host.ts` (documented inspection).
+- [x] **P3-A7** API schema regenerated (`ExtensionPromptInfo`, `ExtensionToolInfo`, status fields) and documented; focused tests, typecheck, full suite (failure set unchanged), build and CI green; the Settings page change has a Browser-tool check and screenshots.
 
 **Runs**
 
 ```
-P3-V1  prompt assembly (enabled/disabled/order/caps/throwing)
-Command:
-Result:
-Exit:
+P3-V1  npx vitest run server/extensions src/components/settings/extensions.test.ts \
+         scripts/use-cases.test.ts scripts/module-headers.test.mjs scripts/boundaries.test.mjs scripts/api-schema.test.ts
+Result: 11 files passed, 93 tests passed (registry 8, service 12, tool builder 4,
+        assets 1, routes 1, store 4, component/catalogue/schema/boundaries)
+Exit: 0
 
-P3-V2  tool offer + end-to-end Durable tool call
-Command:
-Result:
-Exit:
+P3-V2  npx vitest run server/runtimes/durable.test.ts -t "a gateway extension's prompt text and tool reach a Durable session"
+Result: 1 passed: the tool is offered, the provider calls ext_hello_greet, the
+        transcript holds "hello, Ada", and the request holds the prompt marker and
+        the tool snippet
+Exit: 0
 
 P3-V3  npm run api:schema && git status --short
-Result:
-Exit:
+Result: the generated schema and types gain ExtensionPromptInfo, ExtensionToolInfo
+        and the status fields; re-running leaves no further change
+Exit: 0
 
-P3-V4  npm run typecheck / npm test / npm run build
-Result:            (failure set vs baseline: added ___ / removed ___)
-Exit:
+P3-V4  npm run typecheck && npm run build && npm test
+Result: typecheck 0; build 0; 33 failed / 2820 passed, the same baseline set
+        (added 0, removed 0)
+Exit: typecheck/build 0, tests 1 (pre-existing failures only)
+
+P3-V5  npm run e2e -- --tag SET-087
+Result: 1 file, 1 test passed
+Exit: 0
 ```
 
-**Manual proof:** isolated gateway + enabled fixture: a Durable session's first
-request shows the section and the tool; ask the model to call it and record the
-transcript. Settings screenshots.
+**Manual proof** (Browser tool, isolated launcher at ec18488b): Settings →
+Extensions shows the disabled fixture's **Prompt and tools**; opening it lists
+**Greeting · 56 characters** and, behind the second disclosure, its text; the tool
+reads `ext_hello_greet · Greet a person by name.` at 1440×900 and 390×844.
+Screenshots: `extensions-contributions-desktop.png`,
+`extensions-contributions-mobile.png` (outside the checkout, attached to the PR).
 
-```
-Result:
-```
+**Proof gaps:** `promptGuidelines` reach the tool-contribution map (unit-tested)
+but the end-to-end request assertion checks the snippet; the guidelines text is
+not separately asserted. The PI-worker exclusion is a documented inspection, not a
+runtime assertion (the worker path has no provider to assert against).
 
-**Proof gaps:** —
-**Deviations:** —
+**Deviations:** tool handlers are exported by the entry module (`export const
+tools = { name: handler }`) because `extension.json` is JSON; the manifest declares
+metadata only. A malformed static prompt section fails the extension at load rather
+than being omitted per assembly. Namespacing makes a collision with a HUI tool
+impossible; the builder refuses a runtime name over 64 characters or a duplicate
+between gateway tools, once, with a diagnostic.
 
 ---
 

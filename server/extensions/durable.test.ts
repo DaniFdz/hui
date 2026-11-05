@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "vitest";
 import type { Extension } from "@earendil-works/pi-durable";
 
@@ -59,4 +60,9 @@ test("a tool whose name is too long or already taken is refused once", () => {
   assert.equal(events.filter((event) => event.action === "extension_tool_refused").length, 2);
   gatewayDurableExtension(source([duplicate, long], TOOL), { problems, record });
   assert.equal(events.length, 2, "the same refusal is reported once");
+});
+
+test("the gateway prompt section sits between the goal and Ultra", () => {
+  const source = readFileSync(new URL("../runtimes/durable-prompt.ts", import.meta.url), "utf8");
+  assert.match(source, /"hui_goal", "hui_extensions", "hui_ultra"/u);
 });
