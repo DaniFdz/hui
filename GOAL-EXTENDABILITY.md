@@ -41,7 +41,7 @@ Rules for the program session:
 | Phase | Scope | Status | Commit | CI |
 |---|---|---|---|---|
 | P0 | Gateway routes, store, status/toggle | carried in the program PR (PR #408 closed as superseded) | 854608e6 | #408 green |
-| P1 | Settings page + `hui extension list/enable/disable` | IN PROGRESS | (this commit) | pending |
+| P1 | Settings page + `hui extension list/enable/disable` | **DONE** | 918e0f0c | green (run 42021662186) |
 | P2 | Sandboxed panels and the bridge | NOT STARTED | — | — |
 | P3 | Prompt sections and agent tools | NOT STARTED | — | — |
 | P4 | Server-sent events | NOT STARTED | — | — |
@@ -54,11 +54,11 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 
 | Field | Value |
 |---|---|
-| Current phase | P1 (IN PROGRESS; CI pending) |
-| Next action | When CI is green, mark P1 DONE, then start P2 |
+| Current phase | P2 (NOT STARTED) |
+| Next action | Start P2: manifest `ui`, `/__hui/ext-ui/<id>/…` assets, the sandboxed iframe, the bridge, the fixture panel, SET/WORK use case and screenshots |
 | Branch | `danifdz/hui-extendability` |
 | Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
-| Last green CI | — |
+| Last green CI | P1, 918e0f0c, run 42021662186 |
 | Last DONE phase | P0 carried (criteria met in #408; #415 carries its commits) |
 | Baseline | see §3 |
 
@@ -92,7 +92,7 @@ Already verified in that PR's own `GOAL.md` (15/15 criteria, manual gateway proo
 
 ## 4. P1 — Operator surface
 
-**Status:** IN PROGRESS · **Commit:** (this commit) · **CI:** pending
+**Status:** DONE · **Commit:** 918e0f0c (and its `test:` follow-up) · **CI:** green, run 42021662186
 
 **Baseline:** typecheck exit 0 · tests 34 failed / 2782 passed (known environment-only set) · tree clean
 
@@ -163,6 +163,9 @@ real switch interaction is proven by the shared e2e test above.
 
 **Proof gaps:** the store-error and failed-extension banners are covered by server
 and component tests, not by the manual screenshots (the fixture is healthy).
+
+**CI:** all required checks green on 918e0f0c (Test, web 1/4–4/4, catalogue,
+package, lockfile, plan, analyze, CodeQL; release jobs skipped).
 
 **Deviations:** P1-A1 said "and a guide link"; the page names the install path in
 text instead (no docs route is served in the app). Recorded here rather than
