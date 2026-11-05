@@ -1,13 +1,15 @@
 /**
  * The browser's copy of building a bot's export (`server/bots/export-format.ts` is the gateway's): the export dialog
- * shows exactly the files the gateway then saves, updated on every pick without a round trip. Both copies check the
- * same fixture (`export-preview.fixture.json`).
+ * shows exactly the files the gateway then saves, updated on every pick without a round trip, `BOOTSTRAP.md`'s setup
+ * document included. Both copies check the same fixture (`export-preview.fixture.json`).
  */
-import type { BotExportAddition, BotExportChange, BotExportGroup, BotExportPart, BotExportReview, BotOpenPoint } from "../../api/schema/bot-templates.ts";
+import type { BotExportAddition, BotExportChange, BotExportGroup, BotExportPart, BotExportReview, BotExportSchedule, BotOpenPoint } from "../../api/schema/bot-templates.ts";
 
 const BOT_EXPORT_FORMAT = "hui-bot";
 const BOT_EXPORT_VERSION = 2;
 const BOT_EXPORT_FILES = { manifest: "bot.json", soul: "SOUL.md", bootstrap: "BOOTSTRAP.md", skills: "skills" } as const;
+/** The gateway's `BOT_SETUP_CHARACTERS`: a template's setup document, in one read. */
+const BOT_SETUP_CHARACTERS = 8_000;
 const HANDLE_LENGTH = 32;
 
 function handleFromName(name: string): string {
@@ -204,6 +206,80 @@ const oneLine = (text: string, max: number) => {
   return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
 };
 
+/** What `setupDocument` writes: the goal as the profile states it, the open points, what it needs, its schedules, and
+ * the previous owner's own onboarding body, as the picks left it. */
+type BotSetupInput = {
+  name: string;
+  title?: string;
+  description?: string;
+  open: readonly BotOpenPoint[];
+  needs: readonly string[];
+  routines: readonly { name: string; schedule: BotExportSchedule }[];
+  triggers: readonly { name: string }[];
+  onboarding?: string;
+};
+
+/**
+ * A template's `BOOTSTRAP.md`, as the gateway writes it: what the new owner gives the bot (one line per open point, at
+ * the place it lands), what to agree before it acts, what its schedules need, the previous owner's own body, and the
+ * instructions the imported bot follows in its first conversation. Bounded by `BOT_SETUP_CHARACTERS`: over it items
+ * are left out and counted, never cut mid-sentence.
+ */
+function setupDocument(input: BotSetupInput): string {
+  const points = input.open.map((point) => point.kind === "ask"
+    ? `- Ask, in ${point.where}${point.operator ? " (only they can change it)" : ""}: ${point.question}`
+    : `- Agree, in ${point.where}${point.operator ? " (only they can change it)" : ""}: ${point.question}${point.excerpt && !point.question.includes(point.excerpt) ? ` “${point.excerpt}”` : ""}`);
+  const needs = input.needs.map((need) => `- ${need}`);
+  const schedules = [
+    ...input.routines.map((routine) => `- Routine “${routine.name}”, ${scheduleWords(routine.schedule)}: check the time on its Routines page, then turn it on.`),
+    ...input.triggers.map((trigger) => `- Trigger “${trigger.name}”: check what wakes it on its Triggers page, then turn it on.`),
+  ];
+  const goal = [input.title?.trim(), input.description?.trim()].filter(Boolean).join(" — ");
+  const lists = [points, needs, schedules];
+  let dropped = 0;
+  const render = (): string => {
+    const lines = [
+      `# Setting up ${input.name}`,
+      "",
+      `${input.name} came from someone else's HUI as a template: a bot with a soul, its skills and what it does on its own. This file is its setup, written for whoever imports it: what it needs from you, what to agree before it acts, and what has to be in place before its schedules are worth turning on.`,
+      "",
+      "Nothing here is the previous owner's: their name, their links and their accounts were taken out before it left. In its soul, an [ask: …] mark is a blank for your answer.",
+      ...(goal ? ["", "## What it does", "", goal] : []),
+      ...(points.length ? ["", "## What it needs from you", "", ...points] : []),
+      ...(needs.length ? ["", "## Before it can run", "", ...needs] : []),
+      ...(schedules.length ? ["", "## Its routines and triggers", "", "They arrive turned off: nothing runs until you switch it on.", "", ...schedules] : []),
+      ...(input.onboarding ? ["", "## What the previous owner wrote", "", "Their own onboarding body came with it:", "", input.onboarding] : []),
+      "",
+      "## What it doesn't know about you",
+      "",
+      "Its memory never travels: it starts knowing nothing about you, your team or your accounts, and builds that up as you work together.",
+      ...(dropped ? ["", `${dropped} more ${dropped === 1 ? "point" : "points"} left out to keep this short: the import preview lists ${dropped === 1 ? "it" : "them"}.`] : []),
+      "",
+      "## How to run this",
+      "",
+      "You are that bot, newly imported: greet your operator in a sentence, say you came from a template, and then go through this file with them, one or two points at a time, as a conversation and never a questionnaire. Start on their first real request as soon as they give you one, and ask rather than guess: never answer for them. Write what they tell you where it belongs (their preferences in USER.md with update_user, what you keep in MEMORY.md with update_memory, and who you are in SOUL.md with write_soul, filling in the [ask: …] blanks), and tell them where to click for what you can't change yourself.",
+    ];
+    return lines.join("\n");
+  };
+  let text = render();
+  while (text.length > BOT_SETUP_CHARACTERS) {
+    const longest = lists.reduce((most, list) => list.length > most.length ? list : most, lists[0]!);
+    if (!longest.length) break;
+    longest.pop();
+    dropped += 1;
+    text = render();
+  }
+  return text;
+}
+
+/** A routine's schedule in words, and whether it runs in whoever imports it time zone. */
+function scheduleWords(schedule: BotExportSchedule): string {
+  if (schedule.kind === "cron") return `on \`cron ${schedule.expression}\` (no time zone came with it: it runs in yours)`;
+  const minutes = Math.round(schedule.everyMs / 60_000);
+  const hours = minutes / 60;
+  return `every ${minutes >= 60 && minutes % 60 === 0 ? `${hours} hour${hours === 1 ? "" : "s"}` : `${minutes} minute${minutes === 1 ? "" : "s"}`}`;
+}
+
 /** A review and the operator's picks as the files of the zip, in the order a person opening it reads them. */
 export function buildExport(review: BotExportReview, picks: Readonly<Record<string, BotExportGroup>> = {}): BotExportBuild {
   const group = (id: string, fallback: BotExportGroup): BotExportGroup => picks[id] ?? fallback;
@@ -324,9 +400,24 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
   };
 
   const ending = (text: string) => text.endsWith("\n") ? text : `${text}\n`;
-  const files: BotExportBuild["files"] = [{ path: BOT_EXPORT_FILES.manifest, text: ending(JSON.stringify(manifest, null, 2)) }];
-  // SOUL.md and BOOTSTRAP.md are the bot's; the gateway never reviews USER.md or MEMORY.md, so neither is here.
-  const exported = new Set<string>([BOT_EXPORT_FILES.soul, BOT_EXPORT_FILES.bootstrap]);
+  // The setup document takes BOOTSTRAP.md's place: what the new owner reads and the imported bot follows.
+  const onboarding = fields(BOT_EXPORT_FILES.bootstrap)["text"];
+  const setup = setupDocument({
+    name,
+    ...(profile["title"] ? { title: profile["title"] } : {}),
+    ...(profile["description"] ? { description: profile["description"] } : {}),
+    open,
+    needs: manifest.needs,
+    routines: routines.map((routine) => ({ name: routine.name, schedule: routine.schedule })),
+    triggers: triggers.map((trigger) => ({ name: trigger.name })),
+    ...(onboarding ? { onboarding } : {}),
+  });
+  const files: BotExportBuild["files"] = [
+    { path: BOT_EXPORT_FILES.bootstrap, text: ending(setup) },
+    { path: BOT_EXPORT_FILES.manifest, text: ending(JSON.stringify(manifest, null, 2)) },
+  ];
+  // SOUL.md and the setup document are the bot's; the gateway never reviews USER.md or MEMORY.md, so neither is here.
+  const exported = new Set<string>([BOT_EXPORT_FILES.soul]);
   for (const part of review.parts) {
     if (!exported.has(part.id) && !part.id.startsWith(`${BOT_EXPORT_FILES.skills}/`)) continue;
     const change = review.files.find((file) => file.part === part.id);

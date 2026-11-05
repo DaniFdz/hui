@@ -91,7 +91,7 @@ test("the preview prints every imported text in full and says what maps, what is
   assert.match(text, /^Import 🦊 Nova \(@nova\) from OpenClaw workspace\./u);
   assert.match(text, /SOUL\.md \(\d+ characters\):\n  You are Nova\./u);
   assert.match(text, /MEMORY\.md \(\d+ characters, never exported, with 1 of 2 memories\):\n  # MEMORY\.md\n\n  Brought over from OpenClaw workspace\./u);
-  assert.match(text, /BOOTSTRAP\.md \(\d+ characters, used while it has no SOUL\.md\):\n  Ask them what they need\./u);
+  assert.match(text, /BOOTSTRAP\.md \(\d+ characters, its setup: what it needs from you and what to agree\):\n  Ask them what they need\./u);
   assert.match(text, /First message \(it sends this in a first turn HUI starts\):\n  Hi! Where shall we start\?/u);
   assert.match(text, /  weather-2 \(from weather\): Forecasts\n    Use wttr\.in\./u);
   assert.match(text, /Routines, created disabled:\n  Heartbeat · every 30m \(assumed from "whenever": check it\)\n    Check the build\./u);
@@ -192,7 +192,7 @@ test("the review as text keeps what a pick moves", () => {
   assert.match(text, /c2 confirm SOUL\.md: “acme\/widgets”, the new owner confirms it\./u);
   assert.match(text, /What it needs \(--set <id>=remove leaves one out\):\n  n1 keep    The GitHub CLI signed in/u);
   assert.match(text, /Cleaned automatically, before any model read it:\n  SOUL\.md: your name \(Dani\)/u);
-  assert.match(text, /It saves as nova\.hui-bot\.zip: bot\.json, SOUL\.md\./u);
+  assert.match(text, /It saves as nova\.hui-bot\.zip: BOOTSTRAP\.md, bot\.json, SOUL\.md\./u);
 });
 
 test("the CLI parses import and export with their own flags only", () => {

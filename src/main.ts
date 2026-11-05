@@ -11,6 +11,7 @@ import "./styles/openclaw-shell.css";
 import "./styles/openclaw-workspaces.css";
 import "./styles/openclaw-chat.css";
 import "./styles/openclaw-launch.css";
+import "./styles/card-grid.css";
 import "./styles/web-awesome.css";
 import "./styles/terminal.css";
 import "./styles/browser-pane.css";

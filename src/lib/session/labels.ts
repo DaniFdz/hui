@@ -29,7 +29,7 @@ export function sessionStatusLabel(session: Pick<SessionView, "status" | "worker
 export function sessionAccessibleName(session: SessionView, marks: readonly string[] = []): string {
   return [
     session.title,
-    session.creating ? worktreeProgressLabel(session.creating) : `status ${session.status}`,
+    session.creating ? worktreeProgressLabel(session.creating) : `status ${failedRunShown(session) ? "error" : session.status}`,
     ...(session.background && session.status !== "running" ? ["watcher or subagent running"] : []),
     `tool ${session.tool}`,
     ...(isSessionStage(session.stage) ? [`stage ${SESSION_STAGE_LABELS[session.stage].toLocaleLowerCase()}`] : []),
@@ -49,13 +49,19 @@ export type SessionGlyph = {
   label: string;
 };
 
+/** A turn whose answer carried an error leaves its session idle, and an idle row reads as finished. Every other status
+ * says what the session is doing about it already. */
+function failedRunShown(session: SessionView): boolean {
+  return session.runFailed === true && session.status === "idle";
+}
+
 /** The sidebar row's leading glyph: attention outranks the busy ring (a turn, or a watcher or subagent below it), which outranks the unread dot. */
 export function sessionGlyph(session: SessionView): SessionGlyph {
   const away = unreachableHost(session);
+  const failed = session.status === "error" || failedRunShown(session);
   const attention = session.status === "waiting"
     ? { label: "Waiting for your answer", tone: "question" as const }
-    : session.status === "error"
-      ? { label: "Session failed", tone: "error" as const }
+    : failed ? { label: "Session failed", tone: "error" as const }
       : away ? { label: away, tone: "away" as const } : undefined;
   const background = session.status !== "running" && session.background === true && !attention;
   const busy = session.status === "running" || background;

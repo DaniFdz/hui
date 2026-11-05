@@ -2758,7 +2758,7 @@ handle, so no bot's `/__hui/bots/:id` is ever one of them.
 
 ### `POST /__hui/bots/import/preview`
 
-200 `BotImportPreview`. `{ source, pick?, worker? }`, at most 32 MB. Reads the source (fetching a Grok Bot page now, on this request only) and answers what creating its bot would do: `template` (what to send back), `bot` (name, the handle it will get, title, description, look, worker), `soul` (SOUL.md as it will be written), `memory` (MEMORY.md: what the source bot knew, reference data), `bootstrap` (the source's onboarding body, when it has one), `opener`, `model`, `thinking`, `utilityModel`, `memories: { included, total }`, `skills` (each with the name it is written as and its `original`), `routines` (each with the Automation schedule HUI read from it, the source's `scheduleText` and `guessed` when a part was assumed), `integrations` (each with the HUI `tool` it maps to, absent: missing), `disabledTools`, `disabledSkills`, `open` (a HUI template's open points, as SOUL.md's *Not agreed yet* will list them), `needs` (what it needs to work, one line each), `triggers` (each `{ name, filter, prompt?, delivery?, cooldownSeconds }`, created disabled), `dropped` and `notes` (one line each); a skill of a HUI template has its `files` (`{ path, text }`, in full). A file with several agents (CrewAI, Letta, a folder of Claude Code subagents) adds `candidates` (`{ key, name, title? }`) and the shown `pick`; send `pick` to preview another. `worker` previews for a bot on that worker. Nothing is created
+200 `BotImportPreview`. `{ source, pick?, worker? }`, at most 32 MB. Reads the source (fetching a Grok Bot page now, on this request only) and answers what creating its bot would do: `template` (what to send back), `bot` (name, the handle it will get, title, description, look, worker), `soul` (SOUL.md as it will be written), `memory` (MEMORY.md: what the source bot knew, reference data), `bootstrap` (its `BOOTSTRAP.md`: a HUI export's setup document, one an import shows and its first turn hands the bot), `opener`, `model`, `thinking`, `utilityModel`, `memories: { included, total }`, `skills` (each with the name it is written as and its `original`), `routines` (each with the Automation schedule HUI read from it, the source's `scheduleText` and `guessed` when a part was assumed), `integrations` (each with the HUI `tool` it maps to, absent: missing), `disabledTools`, `disabledSkills`, `open` (a HUI template's open points: what its setup document carries, or, without one, what SOUL.md's *Not agreed yet* will list), `needs` (what it needs to work, one line each), `triggers` (each `{ name, filter, prompt?, delivery?, cooldownSeconds }`, created disabled), `dropped` and `notes` (one line each); a skill of a HUI template has its `files` (`{ path, text }`, in full). A file with several agents (CrewAI, Letta, a folder of Claude Code subagents) adds `candidates` (`{ key, name, title? }`) and the shown `pick`; send `pick` to preview another. `worker` previews for a bot on that worker. Nothing is created
 
 ### `POST /__hui/bots/import`
 
@@ -2844,18 +2844,22 @@ What creating does with a template, the same plan for the preview and the create
 - **A HUI template's points.** `{{user}}` becomes Settings' profile name (*the
   operator* without one) in its name, title, description, Markdown (SOUL.md, its
   skills' Markdown and text files), routines' and triggers' prompts and open
-  points; never in a script or a trigger's filter. Its open points close SOUL.md
-  under `## Not agreed yet` (`notAgreedSection`): what to do once the operator has
-  answered, then one line per point, `- Ask (where): question` or `- Confirm
-  (where, only the operator can change it): question “excerpt”`. Their room comes
-  first: the persona is cut to fit SOUL.md's 20,000 characters, and the points take
-  at most half of it (any beyond are left out). Its first turn is a kickoff
-  (`botTemplateKickoffText`: the marker, the name, `from: template`) that asks the
-  bot to greet the operator and start on the points, without tools; like the
+  points; never in a script or a trigger's filter. With a setup document
+  (`bootstrap`: every HUI export carries its `BOOTSTRAP.md`) its points stay in
+  that document and SOUL.md is the persona alone; its first turn is a kickoff
+  (`botTemplateKickoffText`: the marker, the name, `from: template`, then the whole
+  document) that asks the bot to greet the operator and start on it, without
+  tools; like the
   opener's, that turn is not the operator's. On a worker whose `hello` lacks
   `bot-skill-files` (an older one, whose host would read that turn as the
-  operator's) no such turn runs: the bot goes through the points once the operator
-  writes. Its triggers are made disabled through
+  operator's) no such turn runs: the bot goes through the document once the
+  operator writes. A template without a document (another platform's, an export
+  from before it) closes SOUL.md with its points under `## Not agreed yet`
+  (`notAgreedSection`): what to do once the operator has answered, then one line
+  per point, `- Ask (where): question` or `- Confirm (where, only the operator can
+  change it): question “excerpt”`. Their room comes first: the persona is cut to fit
+  SOUL.md's 20,000 characters, and the points take at most half of it (any beyond
+  are left out). Its triggers are made disabled through
   the triggers' route (`source: "listener"`), so each gets its URL from **New URL**.
 - **Model.** The template's model is kept only when this gateway resolves it:
   the exact `provider/id`, a bare id, or Claude Code's `sonnet`/`opus`/`haiku` (the
@@ -2976,8 +2980,18 @@ travels without `match`, with an open point for the operator. `bot.json` is
 description?, avatar?, model?, thinking?, memoryModel?, memoryThinking?, voice?, tagging?),
 `routines` (`{ name, description?, prompt, schedule: { kind: "every", everyMs } |
 { kind: "cron", expression } }`), `triggers`, `disabledTools`,
-`disabledSkills` (names), `skills` (names), `open` and `needs`; then `SOUL.md` and
-`skills/<name>/…`, scripts picked `remove` left out. No export date: every entry is
+`disabledSkills` (names), `skills` (names), `open` and `needs`. The zip's files are,
+first, `BOOTSTRAP.md`, the setup document whoever imports it reads
+(`setupDocument`): the goal as the profile states it, then a line per open point at
+the place it lands (asked ones say what to give the bot, confirmed ones what to
+agree), what it needs before it can run, one line per routine and trigger (they
+arrive turned off), the previous owner's own onboarding body when there was one,
+that its memory never travels, and the instructions the imported bot follows in its
+first conversation (`## How to run this`: greet, go through the points one or two at
+a time, ask rather than answer for them, write the answers to USER.md, MEMORY.md and
+SOUL.md). It is bounded (`BOT_SETUP_CHARACTERS`, 8,000): over it items are left out
+and counted, never cut. Then `bot.json`, `SOUL.md` and `skills/<name>/…`, scripts
+picked `remove` left out. No export date: every entry is
 dated 1980-01-01 (a local date would tell the time zone), and the file is named
 from the bot's final name (`botExportFileName`, `{{user}}` left out).
 
@@ -3636,7 +3650,10 @@ Each frame is a `SessionStreamFrame` (`server/api/session-events.ts`, generated 
 message on the session WebSocket. Runtime events arrive as transmitted (`SessionEvent`): `history` never leaves the
 gateway and `error` carries only its `message`.
 
-Session views can include `"interrupted": true` and `"unread": true`. `"background": true` means a running watcher of that session, or a running
+Session views can include `"interrupted": true`, `"runFailed": true` and `"unread": true`. `"runFailed": true` means the view's
+transcript ends with an error entry whose run is over — a failed model call, a refused request — so an idle session is
+not mistaken for one that finished; the sidebar row shows the failure until the next turn replaces that entry.
+`"background": true` means a running watcher of that session, or a running
 subagent anywhere below it, is still working; the sidebar shows such a session as running
 even while its own turn is idle. Before submitting a normal
 prompt, HUI writes `runStartedAt` plus a temporary `runPrompt` recovery journal

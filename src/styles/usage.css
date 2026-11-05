@@ -63,6 +63,9 @@
 .usage-report__unpriced { border: 2px dashed var(--warn); background: var(--warn-subtle); }
 .usage-report__rank-name { min-width: 0; overflow-wrap: anywhere; }
 .usage-report__session-values { display: grid; gap: var(--space-1); text-align: right; flex-shrink: 0; }
+.usage-report .usage-zone-picker,
+.usage-report .usage-sort-picker { flex: none; inline-size: 128px; }
+.usage-report .usage-sessions-sort { display: inline-flex; align-items: center; gap: var(--space-2); }
 .usage-report .session-bar-meta { white-space: normal; overflow-wrap: anywhere; }
 .usage-report .session-bar-title { white-space: normal; }
 .usage-report .callout .btn { margin-inline-start: var(--space-3); }

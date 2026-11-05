@@ -330,8 +330,9 @@ const server = createServer(async (request, response) => {
     text(response, `message_bot answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
     return finish(response);
   }
-  // A bot imported from a HUI template with open points: its first turn greets and starts on them.
-  if (source.includes("[HUI bot created]") && source.includes("from: template") && source.includes("Not agreed yet")) {
+  // A bot imported from a HUI template: its first turn greets and starts on its setup document (BOOTSTRAP.md), or on
+  // the open points closing its soul when the template carried no document.
+  if (source.includes("[HUI bot created]") && source.includes("from: template") && (source.includes("# Setting up ") || source.includes("Not agreed yet"))) {
     text(response, "Hi! I came from a template someone shared. First thing to agree: which repositories should I watch for pull requests?");
     return finish(response);
   }

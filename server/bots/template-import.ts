@@ -9,9 +9,11 @@
  * routines and triggers (disabled): a failure there deletes the new bot again. Its opener is its first turn, a kickoff
  * that asks it to send it. A template's own BOOTSTRAP.md comes with it.
  *
- * A HUI template (`server/bots/export-format.ts` makes them) brings more: `{{user}}` becomes this operator's name, its open
- * points go into SOUL.md under "Not agreed yet", and its first turn asks the bot to go through them with the operator;
- * its triggers and the files beside its skills come with it.
+ * A HUI template (`server/bots/export-format.ts` makes them) brings more: `{{user}}` becomes this operator's name, its
+ * triggers and the files beside its skills come with it, and its setup document (`BOOTSTRAP.md`: what the new owner gives
+ * the bot, what to agree before it acts and what its schedules need) is carried in its first turn, which asks the bot to
+ * go through it with the operator, one or two points at a time. A template without one (another platform's, an older
+ * export) closes SOUL.md with its open points under "Not agreed yet" instead.
  *
  * Nothing an import brings turns on more than a new bot has: a template can only turn tools off, routines and triggers
  * start disabled, a model is kept only when it resolves, and its first turn is not the operator's (its gated tools
@@ -72,8 +74,8 @@ type Plan = {
   triggers: BotTemplateTrigger[];
   /** A HUI export's turned-off skills, by name: set once its own skills exist. */
   disabledSkills: string[];
-  /** Its open points' first turn can run there: never on an older worker, whose host would read it as the operator's. */
-  pointsTurn: boolean;
+  /** Its setup's first turn can run there: never on an older worker, whose host would read it as the operator's. */
+  setupTurn: boolean;
 };
 
 const listed = (items: readonly string[]) => items.length <= 1 ? items[0] ?? "" : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
@@ -197,7 +199,7 @@ export class BotTemplateService {
     }
     // Its first turn: going through a HUI template's open points, or sending its template's opener.
     let opener = false;
-    const kickoff = plan.pointsTurn ? botTemplateKickoffText(bot.name) : plan.preview.opener ? botOpenerKickoffText(bot.name, plan.preview.opener) : undefined;
+    const kickoff = plan.setupTurn ? botTemplateKickoffText(bot.name, plan.preview.bootstrap) : plan.preview.opener ? botOpenerKickoffText(bot.name, plan.preview.opener) : undefined;
     if (kickoff) {
       try {
         await this.#deps.bots.send(bot.id, { text: kickoff });
@@ -329,13 +331,17 @@ export class BotTemplateService {
       persona = template.description?.trim() || `You are ${name}${template.title ? `, ${template.title}` : ""}.`;
       notes.push("It has no instructions of its own: its description stands in as its persona, and what it knew goes to MEMORY.md.");
     }
-    // A HUI template's open points close SOUL.md under "Not agreed yet". Their room comes first: the persona is cut, never
-    // the points (they take at most half of it; any beyond are listed as left out).
-    let open = persona.trim() ? template.open ?? [] : [];
+    // A HUI export's setup document (BOOTSTRAP.md) carries its open points, at the place each lands: with a document,
+    // SOUL.md stays the persona alone and the first turn hands the bot the setup. Without one (another platform's
+    // template, an older export), the points close SOUL.md under "Not agreed yet", their room taken first: the persona
+    // is cut, never the points (they take at most half of it; any beyond are listed as left out).
+    const setup = template.bootstrap?.trim() ? template.bootstrap.trim() : undefined;
+    const open = persona.trim() ? template.open ?? [] : [];
     if (template.open?.length && !open.length) dropped.push(`Its ${plural(template.open.length, "open point")}: without a persona the bot writes its own soul in its first conversation.`);
-    while (open.length > 1 && notAgreedSection(open).length > BOT_LIMITS.soul / 2) open = open.slice(0, -1);
-    if (template.open && open.length && open.length < template.open.length) dropped.push(`${plural(template.open.length - open.length, "open point")} that didn't fit in SOUL.md.`);
-    const section = open.length ? notAgreedSection(open) : "";
+    const toClose = setup ? [] : [...open];
+    while (toClose.length > 1 && notAgreedSection(toClose).length > BOT_LIMITS.soul / 2) toClose.pop();
+    if (open.length && toClose.length < open.length) dropped.push(`${plural(open.length - toClose.length, "open point")} that didn't fit in SOUL.md.`);
+    const section = toClose.length ? notAgreedSection(toClose) : "";
     const room = section ? BOT_LIMITS.soul - section.length - 2 : BOT_LIMITS.soul;
     const composed = composeSoul(persona, room);
     if (composed.cut) notes.push(`Its persona has ${template.soul.length.toLocaleString("en-US")} characters; SOUL.md keeps the first ${room.toLocaleString("en-US")}.`);
@@ -390,8 +396,9 @@ export class BotTemplateService {
     if (triggers.length) notes.push(`${triggers.length === 1 ? "Its trigger starts" : `Its ${triggers.length} triggers start`} disabled: a listener you run wakes ${triggers.length === 1 ? "it" : "them"}, through a URL from New URL on its Triggers page.`);
     // An older worker's host reads an import's first turn as the operator's (it lets the bot rewrite its soul there): on
     // one the bot waits for the operator's first message instead. A worker that keeps skills' files knows the turn.
-    const pointsTurn = open.length > 0 && (!worker || keepsFiles);
-    if (open.length) notes.push(pointsTurn ? `It goes through ${plural(open.length, "open point")} with you in its first chat, then rewrites its SOUL.md.` : `It goes through ${plural(open.length, "open point")} once you write to it: ${worker?.name ?? "its worker"} runs an older HUI worker, so it doesn't speak first.`);
+    const setupTurn = (setup !== undefined || open.length > 0) && (!worker || keepsFiles);
+    if (setup !== undefined) notes.push(setupTurn ? `Its setup (BOOTSTRAP.md) walks you through ${open.length ? plural(open.length, "open point") : "what it needs"} in its first chat, a question or two at a time, then it writes its SOUL.md again.` : `Its setup (BOOTSTRAP.md) goes through ${open.length ? plural(open.length, "open point") : "what it needs"} once you write to it: ${worker?.name ?? "its worker"} runs an older HUI worker, so it doesn't speak first.`);
+    else if (open.length) notes.push(setupTurn ? `It goes through ${plural(open.length, "open point")} with you in its first chat, then rewrites its SOUL.md.` : `It goes through ${plural(open.length, "open point")} once you write to it: ${worker?.name ?? "its worker"} runs an older HUI worker, so it doesn't speak first.`);
 
     const integrations = template.integrations.map((integration) => {
       const tool = matchIntegration(integration, offer.tools);
@@ -404,7 +411,7 @@ export class BotTemplateService {
       routines,
       triggers,
       disabledSkills,
-      pointsTurn,
+      setupTurn,
       preview: {
         bot: {
           name, handle,

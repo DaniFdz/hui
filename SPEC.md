@@ -570,7 +570,14 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   Ranked model, provider and tool lists use the same period, and a model or
   provider names its share of the range's recorded cost. A further list names the
   days whose messages failed most often. Unknown model/provider labels stay
-  unknown rather than being guessed from the session's current model.
+  unknown rather than being guessed from the session's current model. Overview
+  cards and the ranked lists fill their rows: a card stack takes its column count
+  from how many cards it draws (the seven overview cards make four columns) and
+  narrows to fewer columns on smaller screens, so no last row trails off with a
+  single card.
+- Every hover or focus detail on the page opens HUI's own tooltip, never the
+  browser's. Time zone and Sort sessions use HUI's selector, like the app's other
+  choices, never the browser's popup.
 - A range of at least 60 days also draws a daily calendar: one cell per day of
   the last 52 weeks, shaded by that day's tokens, with the same hover detail and
   day selection as the bars. Days outside the range stay empty rather than being
@@ -4066,6 +4073,40 @@ gateway isn't the managed one or the desktop app can't show a notification,
 HUI skips it and records why in diagnostics. Scheduled tasks you set up in a
 regular session count as runs you started; a bot's routines don't.
 
+### An export is a setup document (2026-11-04)
+
+The owner, after reading how Grok Bot shares a template: "For me a export should
+be a Bootstrap file on how the person importing should provide the information to
+make the bot keep working with the same goal, triggers, cronjobs, etc. But,
+adapted to whoever is using it." Told that Grok leaves that setup to the human
+and to a conversation with the new copy, and asked whether to follow it
+automatically, he kept the zip ("I'm okay exporting as zip"). So HUI keeps a file
+as the exchange and automates the setup: the export writes the document, and the
+imported bot walks the new owner through it.
+
+- **`BOOTSTRAP.md` is the export's first file.** HUI writes it (`setupDocument`)
+  from the review and the picks: the bot's goal as its profile states it, then one
+  line per open point at the place it lands (what the new owner gives it, or what
+  to agree before it acts), what it needs before it can run, one line per routine
+  and trigger (they arrive turned off), the previous owner's own BOOTSTRAP.md when
+  they wrote one, and that its memory never travelled. Everything in it is the
+  previous owner's in no case: the cleanup and the picks already saw to that,
+  and the document is scrubbed like every other text the reviewer wrote.
+- **It is written for whoever imports it, and for the bot.** Its last section is
+  the bot's: greet, go through it one or two points at a time, ask rather than
+  answer for the operator, write what they say to USER.md, MEMORY.md and SOUL.md.
+  The import carries the whole document in the imported bot's first turn, so the
+  bot needs no file tool and the operator's chat shows only "<name> was created",
+  as before. Bounded at 8,000 characters: over it items are left out and counted,
+  never cut.
+- **No live link, no updating copies.** Grok publishes a template and can push
+  changes to every copy; HUI has no accounts or hosting, and a served template
+  would have to be reviewed again on every publish. The zip is reviewed once,
+  immutable, and imports a copy whose memory never travels.
+- **A template without a document keeps the old path.** Another platform's
+  template, or an export from before this, still closes SOUL.md with its points
+  under "Not agreed yet"; a HUI export's points live in the document instead, so
+  SOUL.md stays the persona alone and nothing is said twice.
 ### Needs you leads with the longest wait (2026-11-04)
 
 The Dashboard's *Needs you* list was newest first, so a session that had just

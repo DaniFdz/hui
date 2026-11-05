@@ -198,7 +198,8 @@ test("a bot exports as a reviewed template: the cleanup and the utility model so
     assert.equal(exported.headers.get("content-type"), "application/zip");
     assert.match(exported.headers.get("content-disposition") ?? "", /^attachment; filename="nova\.hui-bot\.zip"/u);
     const files = new Map(readZip(exported.raw, { files: 100, totalBytes: 1024 * 1024 }).map((entry) => [entry.path, entry.data.toString("utf8")]));
-    assert.deepEqual([...files.keys()], ["bot.json", "SOUL.md", "skills/weather/SKILL.md", "skills/weather/scripts/check.sh"]);
+    assert.deepEqual([...files.keys()], ["BOOTSTRAP.md", "bot.json", "SOUL.md", "skills/weather/SKILL.md", "skills/weather/scripts/check.sh"]);
+    assert.match(files.get("BOOTSTRAP.md")!, /^# Setting up Nova\n\n/u, "the setup document comes first: it is what whoever imports it reads");
     assert.equal([...files.values()].some((text) => /dani|Pat Doe|example\.com/iu.test(text)), false, "nothing of the owner's leaves");
     assert.equal(files.get("SOUL.md"), "# Who I am\n\nI'm {{user}}'s research partner. I watch [ask: the repositories to watch] with a teammate.\nApprove only when CI is green. Mail [removed].\n");
     const manifest = JSON.parse(files.get("bot.json")!) as BotExportManifest;
@@ -214,12 +215,15 @@ test("a bot exports as a reviewed template: the cleanup and the utility model so
     assert.equal(stale.status, 409);
     assert.match(stale.body.error, /changed since its review/u);
 
-    // The new owner: {{user}} is their name, the open points close SOUL.md, and the bot's first turn starts on them.
+    // The new owner: {{user}} is their name, its setup document carries the open points, and the bot's first turn
+    // starts on them.
     assert.equal((await put({ models: { ...settings.models, utility: "hui-e2e/fixture" }, profileName: "Alex Kim" })).status, 200);
     const preview = await call<BotImportPreview>("/__hui/bots/import/preview", "POST", { source: { kind: "file", name: "nova.hui-bot.zip", data: exported.raw.toString("base64") } });
     assert.equal(preview.status, 200, JSON.stringify(preview.body));
     assert.ok(preview.body.soul.startsWith("# Who I am\n\nI'm Alex Kim's research partner. I watch [ask: the repositories to watch] with a teammate."), preview.body.soul);
-    assert.match(preview.body.soul, /\n## Not agreed yet\n[\s\S]*- Ask \(SOUL\.md\): Which repositories should I watch for pull requests\?/u);
+    assert.doesNotMatch(preview.body.soul, /## Not agreed yet/u, "the setup document carries the points, not the soul's tail");
+    assert.match(preview.body.bootstrap ?? "", /^# Setting up Nova\n/u);
+    assert.match(preview.body.bootstrap ?? "", /- Ask, in SOUL\.md: Which repositories should I watch for pull requests\?/u);
     assert.deepEqual(preview.body.needs, manifest.needs);
     assert.deepEqual(preview.body.triggers.map((each) => each.name), ["Reviews"]);
     assert.deepEqual(preview.body.skills.map((skill) => [skill.name, skill.files?.map((file) => file.path)]), [["weather", ["scripts/check.sh"]]]);
