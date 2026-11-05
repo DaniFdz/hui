@@ -1191,6 +1191,9 @@ test("a session cost an extension reports reaches the session's usage and surviv
         pi.appendEntry('hui.session-cost', { usd: -1, source: 'fixture gateway', asOf: 1 });
       });
       pi.on('agent_settled', () => pi.appendEntry('hui.session-cost', { usd: 0, source: 'fixture gateway', asOf: 1792920300000 }));
+      pi.registerCommand('fixture-report-cost', { description: 'Report a cost', handler: async () => {
+        pi.appendEntry('hui.session-cost', { usd: 7.5, source: 'fixture gateway', asOf: 1792920600000 });
+      } });
     }
   ` } });
   const host = f.host();
@@ -1207,6 +1210,12 @@ test("a session cost an extension reports reaches the session's usage and surviv
   await turns(reopened, ["COST_ZERO_AFTER_TURN please"]);
   await waitFor("the zero report", () => reopened.currentUsage()?.sessionCost?.asOf === 1792920300000);
   assert.deepEqual(reopened.currentUsage()?.sessionCost, { usd: 0, source: "fixture gateway", asOf: 1792920300000 }, "a reported zero is a cost, not an absent one");
+
+  // A report made while the session is idle reaches an open composer without waiting for another turn.
+  const usageChanged = nextEvent(reopened, (event) => event.type === "usage");
+  await reopened.prompt("/fixture-report-cost");
+  await usageChanged;
+  await waitFor("the newer report", () => reopened.currentUsage()?.sessionCost?.usd === 7.5);
   reopened.dispose();
 });
 

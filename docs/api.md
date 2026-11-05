@@ -3653,10 +3653,11 @@ cost remains `null`/absent rather than being estimated by HUI.
 the whole session's cost from a source HUI cannot price reports it by appending a
 `hui.session-cost` entry with `{ usd, source, asOf }`, and the session's `usage`
 carries the newest readable report until a `/clear` resets the history. HUI shows it
-beside the estimate with its source and how long ago it was checked; it never
-replaces the per-message or per-run figures, and an unreadable entry is skipped
-rather than shown as a zero. `GET /__hui/usage` treats it as the session's cost
-where the range covers that session.
+beside the estimate with its source and how long ago it was checked, and an open
+stream receives a fresh snapshot as soon as a report is written outside a run; it
+never replaces the per-message or per-run figures, and an unreadable entry is
+skipped rather than shown as a zero. `GET /__hui/usage` treats it as the session's
+cost where the range covers that session.
 `historyRefreshed` is omitted/true on that path. When PI cannot refresh history,
 the adapter emits `settled` with `historyRefreshed: false`; HUI still returns to
 the runtime's reported status but retains and snapshots the live projection so
