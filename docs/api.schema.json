@@ -11902,7 +11902,8 @@
       "type": "object",
       "required": [
         "date",
-        "metrics"
+        "metrics",
+        "models"
       ],
       "properties": {
         "date": {
@@ -11910,6 +11911,12 @@
         },
         "metrics": {
           "$ref": "#/$defs/UsageMetrics"
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UsageModel"
+          }
         }
       }
     },

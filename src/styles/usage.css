@@ -74,7 +74,15 @@
 .usage-report .callout .btn { margin-inline-start: var(--space-3); }
 
 /* A bar's details follow the pointer; the native title is too slow to read at a glance. */
-.usage-tip { position: fixed; z-index: var(--z-toast); display: none; max-width: min(320px, calc(100vw - 16px)); padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-elevated); color: var(--text); font-size: 12px; line-height: 1.45; white-space: pre-line; box-shadow: var(--shadow-md); pointer-events: none; }
+.usage-tip { position: fixed; z-index: var(--z-toast); display: none; width: max-content; max-width: min(440px, calc(100vw - 16px)); padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-elevated); color: var(--text); font-size: 12px; line-height: 1.45; white-space: pre-line; box-shadow: var(--shadow-md); pointer-events: none; }
+.usage-tip__card { display: grid; gap: 2px; white-space: normal; }
+.usage-tip__day { color: var(--text-strong); font-weight: 600; }
+.usage-tip__rows { display: grid; gap: 2px; margin-block: 2px; }
+.usage-tip__row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0 var(--space-3); align-items: baseline; }
+.usage-tip__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage-tip__tokens, .usage-tip__cost { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+/* A short bar reads as a bar, not a pill, once its top is square. */
+.usage-report__day .daily-bar { border-radius: 0; }
 .usage-tip[data-open="true"] { display: block; }
 
 /* A selected bar offers narrowing the report instead of applying it on click. */

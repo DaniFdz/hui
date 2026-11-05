@@ -145,6 +145,11 @@ function sumOf(rows: readonly UsageMetrics[]): UsageMetrics {
   return total;
 }
 
+function modelsOf(models: ReadonlyMap<string, UsageModel>): UsageModel[] {
+  return [...models.values()].toSorted((left, right) => right.metrics.totalTokens - left.metrics.totalTokens
+    || left.provider.localeCompare(right.provider) || left.model.localeCompare(right.model));
+}
+
 function addMetrics(target: UsageMetrics, row: UsageMetrics): void {
   for (const key of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "totalTokens", "unpricedCalls", "calls", "userMessages", "assistantMessages", "toolResults", "errors"] as const) {
     target[key] += row[key];
@@ -504,9 +509,8 @@ export function sliceUsage(scan: UsageScan, query: UsageQuery): UsageReport {
       ...(session.parentId ? { parentId: session.parentId } : {}),
       lastActivityAt,
       metrics,
-      days: kept.map(([date, bucket]): UsageDay => ({ date, metrics: { ...bucket.metrics } })),
-      models: [...models.values()].toSorted((left, right) => right.metrics.totalTokens - left.metrics.totalTokens
-        || left.provider.localeCompare(right.provider) || left.model.localeCompare(right.model)),
+      days: kept.map(([date, bucket]): UsageDay => ({ date, metrics: { ...bucket.metrics }, models: modelsOf(bucket.models) })),
+      models: modelsOf(models),
       tools: [...tools.values()].toSorted((left, right) => right.calls - left.calls || left.name.localeCompare(right.name)),
     });
   }

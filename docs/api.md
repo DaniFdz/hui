@@ -4023,7 +4023,8 @@ refresh.
 The response carries `generatedAt`, the effective `range`, `sessions`,
 `coverage` and `unplacedSpend`. Each session has its identity and title, the latest included activity
 stamp, `metrics`, dated buckets, recorded model/provider breakdowns and tool
-result counts. All-time ranges report the earliest included day through today
+result counts. Each dated bucket repeats the models it recorded, so a bar can
+name them without reading every session. All-time ranges report the earliest included day through today
 or the latest recorded day when a clock was ahead. Empty drafts have no row.
 The browser combines rows for search and rankings; no transcript content is sent.
 
