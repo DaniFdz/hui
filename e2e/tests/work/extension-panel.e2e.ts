@@ -17,7 +17,7 @@ test("an enabled extension's panel opens sandboxed in the Work pane and calls it
   await expect(frame).toHaveAttribute("sandbox", "allow-scripts allow-forms");
   await expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
   expect(await frame.getAttribute("src")).toBe("/__hui/ext-ui/hello/index.html");
-  await expect(screen.getByText("Hello panel", { exact: true }).first()).toBeVisible();
+  await expect(panel.getByTestId("extension-title")).toHaveText("hello, Ada");
 
   await screen.getByTestId("nav-settings").tap();
   await screen.getByTestId("settings-page-link").filter({ hasText: "Extensions" }).tap();

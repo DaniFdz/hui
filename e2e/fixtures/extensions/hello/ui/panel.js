@@ -30,7 +30,7 @@
     const callId = nextCall++;
     return new Promise((resolve, reject) => {
       pending.set(callId, { resolve, reject });
-      window.parent.postMessage({ channel: CHANNEL, type: "call", callId, method, path, body }, location.origin);
+      window.parent.postMessage({ channel: CHANNEL, type: "call", callId, method, path, body }, "*");
     });
   }
 
@@ -46,8 +46,22 @@
     }
   });
 
+  async function reportTitle() {
+    try {
+      const answer = await call("GET", "hello?name=Ada");
+      if (answer.body && typeof answer.body.greeting === "string") {
+        window.parent.postMessage({ channel: CHANNEL, type: "title", value: answer.body.greeting }, "*");
+      }
+    } catch {
+      // The bar keeps the extension's title when the call fails.
+    }
+  }
+
   new ResizeObserver(() => {
-    window.parent.postMessage({ channel: CHANNEL, type: "height", value: document.documentElement.scrollHeight }, location.origin);
+    window.parent.postMessage({ channel: CHANNEL, type: "height", value: document.documentElement.scrollHeight }, "*");
   }).observe(document.body);
-  window.parent.postMessage({ channel: CHANNEL, type: "ready" }, location.origin);
+  window.addEventListener("message", (event) => {
+    if (event.source === window.parent && event.data && event.data.channel === CHANNEL && event.data.type === "init") void reportTitle();
+  });
+  window.parent.postMessage({ channel: CHANNEL, type: "ready" }, "*");
 })();

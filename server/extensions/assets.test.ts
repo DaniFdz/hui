@@ -55,7 +55,7 @@ test("a panel's files are served before the gate, sandboxed, contained and typed
   assert.equal(index.status, 200);
   assert.equal(index.headers.get("content-type"), "text/html; charset=utf-8");
   assert.equal(index.headers.get("x-content-type-options"), "nosniff");
-  assert.equal(index.headers.get("cross-origin-resource-policy"), "same-origin");
+  assert.equal(index.headers.get("cross-origin-resource-policy"), "cross-origin");
   assert.equal(index.headers.get("referrer-policy"), "no-referrer");
   assert.match(index.headers.get("permissions-policy") ?? "", /camera=\(\)/u);
   const csp = index.headers.get("content-security-policy") ?? "";

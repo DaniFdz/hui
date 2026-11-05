@@ -1,7 +1,8 @@
 /**
  * Extension panels' files: `<extension>/ui/…` served before the `x-hui` gate at `/__hui/ext-ui/<id>/…`, the way the
  * widget sandbox page is. Every file is contained by realpath, allowlisted by type and size, and carries the sandbox
- * CSP that makes the frame an opaque origin with no network — the panel's only channel is the parent bridge.
+ * CSP that makes the frame an opaque origin with no network. Assets are cross-origin to the frame's opaque origin, so
+ * CORP must allow it to load its own CSS and JS. — the panel's only channel is the parent bridge.
  */
 import { readFile, realpath, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -136,7 +137,7 @@ export async function serveExtensionAsset(
     "content-security-policy": extensionAssetContentSecurityPolicy(origin, id),
     "permissions-policy": PERMISSIONS,
     "referrer-policy": "no-referrer",
-    "cross-origin-resource-policy": "same-origin",
+    "cross-origin-resource-policy": "cross-origin",
     "x-content-type-options": "nosniff",
     "cache-control": "no-store",
     ...(body ? { "content-length": String(body.byteLength) } : {}),

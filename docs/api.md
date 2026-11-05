@@ -4166,8 +4166,8 @@ and must hold no secrets. Only files inside that `ui/` directory are served
 (realpath containment; symlinks that leave it are refused), only these types:
 `html`, `js`, `mjs`, `css`, `json`, `svg`, `png`, `webp`, `jpg`, `jpeg`,
 `woff2`; at most 10 MiB each; `GET` and `HEAD` only. Every response carries
-`no-store`, `nosniff`, same-origin CORP, no referrer, a restrictive permissions
-policy, and a CSP whose `sandbox` makes the document an opaque origin, whose
+`no-store`, `nosniff`, cross-origin CORP (the sandboxed frame's opaque origin is
+cross-origin to the gateway), no referrer, a restrictive permissions policy, and a CSP whose `sandbox` makes the document an opaque origin, whose
 sources are limited to that extension's own prefix, and whose `connect-src 'none'`
 blocks every network call: a panel's only channel is its parent bridge. Files are
 served only while the extension is enabled and loaded.

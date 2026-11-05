@@ -32,6 +32,7 @@ export class HuiExtensionPanel extends HuiElement {
   #loading = true;
   #error = "";
   #height = 360;
+  #title = "";
   #inflight = new Map<number, AbortController>();
   #themeObserver?: MutationObserver;
 
@@ -55,6 +56,7 @@ export class HuiExtensionPanel extends HuiElement {
       this.#extensions = extensions.filter((extension) => extension.panel);
       const wanted = this.#extensions.find((extension) => extension.id === this.extensionId);
       this.#selected = wanted?.id ?? this.#extensions.find((extension) => extension.state === "loaded")?.id ?? this.#extensions[0]?.id ?? "";
+      this.#title = "";
       this.#error = "";
     } catch (error) {
       this.#error = error instanceof Error ? error.message : "Extension panels could not be loaded.";
@@ -72,7 +74,9 @@ export class HuiExtensionPanel extends HuiElement {
   }
 
   #send(message: Record<string, unknown>) {
-    this.#frame()?.contentWindow?.postMessage({ channel: BRIDGE_CHANNEL, ...message }, window.location.origin);
+    // A sandboxed frame's origin is opaque: "null" would match no targetOrigin, so the channel name and the parent's
+    // source check are what identify the conversation.
+    this.#frame()?.contentWindow?.postMessage({ channel: BRIDGE_CHANNEL, ...message }, "*");
   }
 
   #theme() {
@@ -103,6 +107,11 @@ export class HuiExtensionPanel extends HuiElement {
     const data = event.data as Record<string, unknown> | null;
     if (!data || data["channel"] !== BRIDGE_CHANNEL) return;
     if (data["type"] === "ready") { this.#postInit(); return; }
+    if (data["type"] === "title" && typeof data["value"] === "string") {
+      this.#title = (data["value"] as string).slice(0, 120);
+      this.requestUpdate();
+      return;
+    }
     if (data["type"] === "height" && typeof data["value"] === "number" && Number.isFinite(data["value"])) {
       this.#height = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, Math.round(data["value"] as number)));
       this.requestUpdate();
@@ -160,10 +169,10 @@ export class HuiExtensionPanel extends HuiElement {
     const loaded = extension?.state === "loaded";
     return html`<section class="extension-panel" data-extension-panel=${extension?.id ?? ""} data-testid="extension-panel">
       <header class="extension-panel__bar">
-        <span class="extension-panel__title">${extension?.panel?.title ?? "Extension panel"}</span>
+        <span class="extension-panel__title" data-testid="extension-title">${this.#title || extension?.panel?.title || "Extension panel"}</span>
         ${this.#extensions.length > 1
           ? html`<label class="extension-panel__pick">Panel
-              <select @change=${(event: Event) => { this.#selected = (event.currentTarget as HTMLSelectElement).value; this.requestUpdate(); }}>
+              <select @change=${(event: Event) => { this.#selected = (event.currentTarget as HTMLSelectElement).value; this.#title = ""; this.requestUpdate(); }}>
                 ${this.#extensions.map((candidate) => html`<option value=${candidate.id} ?selected=${candidate.id === this.#selected}>${candidate.panel?.title ?? candidate.id}</option>`)}
               </select>
             </label>`
