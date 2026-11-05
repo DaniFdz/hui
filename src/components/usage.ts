@@ -16,11 +16,13 @@ loadViewAssets(() => import("../styles/usage.css"));
 const number = new Intl.NumberFormat().format;
 const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format;
 const count = (value: number, noun: string) => `${number(value)} ${noun}${value === 1 ? "" : "s"}`;
-const cost = (value: UsageMetrics) => value.calls === 0 && value.costUsd === null ? "Unavailable" : usageCost(value);
+/** `unpriced`: the calls that make this sum partial. A reported session cost is complete, so its own unpriced records do not. */
+const cost = (value: UsageMetrics, unpriced = value.unpricedCalls) => value.calls === 0 && value.costUsd === null ? "Unavailable" : usageCost({ costUsd: value.costUsd, unpricedCalls: unpriced });
 const TYPES = [["outputTokens", "Output", "accent"], ["inputTokens", "Input", "ok"], ["cacheWriteTokens", "Cache write", "warn"], ["cacheReadTokens", "Cache read", "info"]] as const;
 const PRESETS = [["today", "Today"], ["7d", "7d"], ["30d", "30d"], ["90d", "90d"], ["1y", "1y"], ["all", "All"]] as const;
 const dayLabel = new Intl.DateTimeFormat(undefined, { timeZone: "UTC", month: "short", day: "numeric" });
 const monthLabel = new Intl.DateTimeFormat(undefined, { timeZone: "UTC", month: "short", year: "numeric" });
+const checkedAt = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 const labelDate = (date: string) => (date.length === 7 ? monthLabel : dayLabel).format(new Date(`${date.length === 7 ? `${date}-01` : date}T12:00:00Z`));
 const CHART_SCOPE = { day: "Daily", week: "Weekly", month: "Monthly" } as const;
 const SORT_LABELS: Record<UsageSort, string> = { recent: "Recent", tokens: "Tokens", cost: "Cost" };
@@ -162,8 +164,9 @@ export class HuiUsagePage extends LitElement {
     </div>`;
   }
 
-  #chart(days: ReturnType<typeof usageChartDays>, totals: UsageMetrics) {
+  #chart(days: ReturnType<typeof usageChartDays>) {
     const state = this.#usage;
+    const totals = sumUsage(days.days.map(({ metrics }) => metrics));
     const selection = this.#selection?.report === state.report ? this.#selection : undefined;
     const value = (metrics: UsageMetrics) => state.metric === "cost" ? metrics.costUsd ?? 0 : metrics.totalTokens;
     const max = Math.max(0, ...days.days.map(({ metrics }) => value(metrics)));
@@ -229,6 +232,8 @@ export class HuiUsagePage extends LitElement {
       if (!compared.window || recent === null || previous === null || previous <= 0) return undefined;
       return { change: (recent - previous) / previous, against: `vs previous ${compared.window} ${compared.window === 1 ? "day" : "days"}` };
     };
+    const reported = overview.sessions.filter((session) => session.reportedCost).length;
+    const unpriced = overview.sessions.reduce((sum, session) => sum + (session.reportedCost ? 0 : session.metrics.unpricedCalls), 0);
     const messages = totals.userMessages + totals.assistantMessages;
     const rate = messages ? totals.errors / messages : null;
     const previousRate = compared.previous.userMessages + compared.previous.assistantMessages
@@ -236,7 +241,9 @@ export class HuiUsagePage extends LitElement {
       : null;
     return html`<section class="usage-stats" data-testid="usage-totals">
       ${statCard("Total tokens", compact(totals.totalTokens), count(totals.calls, "usage record"), delta(totals.totalTokens, compared.previous.totalTokens))}
-      ${statCard("PI cost estimate", cost(totals), totals.unpricedCalls ? `${count(totals.unpricedCalls, "unpriced record")}${totals.costUsd === null ? "" : " · partial estimate"}` : "Recorded prices, not a provider bill", delta(totals.costUsd, compared.previous.costUsd))}
+      ${statCard(reported ? "Cost" : "PI cost estimate", cost(totals, unpriced), reported
+        ? `${count(reported, "session")} reported by its own source · recorded prices elsewhere`
+        : totals.unpricedCalls ? `${count(totals.unpricedCalls, "unpriced record")}${totals.costUsd === null ? "" : " · partial estimate"}` : "Recorded prices, not a provider bill", reported ? undefined : delta(totals.costUsd, compared.previous.costUsd))}
       ${statCard("Sessions", number(overview.sessions.length), `${number(report.coverage.readSessions)} local ${report.coverage.readSessions === 1 ? "history" : "histories"} read · ${count(report.coverage.registeredSessions, "registered session")}`)}
       ${statCard("Error rate", rate === null ? "Unavailable" : percent(rate, 1), `${count(totals.errors, "error")} across ${count(messages, "message")}`, delta(rate, previousRate))}
     </section>`;
@@ -313,8 +320,10 @@ export class HuiUsagePage extends LitElement {
 
   #rankings(overview: ReturnType<typeof usageOverview>) {
     const totalCost = overview.totals.costUsd;
+    // A reported session cost is part of the total but not of any model's recorded price, so a share would lie.
+    const shareable = !overview.sessions.some((session) => session.reportedCost);
     const spending = (metrics: UsageMetrics) => {
-      const share = totalCost && metrics.costUsd !== null ? ` · ${percent(metrics.costUsd, totalCost)} of cost` : "";
+      const share = shareable && totalCost && metrics.costUsd !== null ? ` · ${percent(metrics.costUsd, totalCost)} of cost` : "";
       return `${compact(metrics.totalTokens)} tokens${share}`;
     };
     const failures = usageErrorDays(overview.days);
@@ -378,11 +387,11 @@ export class HuiUsagePage extends LitElement {
       ${report && (report.coverage.unavailable.length || report.coverage.undatedRecords) ? html`<div class="callout warning">Totals are partial. ${number(report.coverage.unavailable.length)} histories unavailable; ${number(report.coverage.undatedRecords)} records without valid dates were excluded.</div>` : nothing}
       ${report && totals && overview ? html`
         ${this.#stats(report, overview, totals)}
-        ${overview.sessions.length ? html`<div class="usage-dashboard">${this.#chart(usageChartDays(overview.days, report.range.from, report.range.to), totals)}${this.#donut(overview)}</div>${this.#heatmap(report, overview, this.#selection?.report === report ? this.#selection : undefined)}` : html`<div class="settings-group usage-panel usage-empty-state"><strong class="usage-empty-state__title">${active ? "No sessions match your search." : "No usage in this range."}</strong><p class="usage-summary-sub">${active ? "Try a title, session ID or model name, or clear the search above." : "Choose another range or start a conversation."}</p>${active ? nothing : html`<div class="usage-empty-state__actions"><button class="btn btn--sm" type="button" @click=${() => state.selectPreset("all")}>Show all time</button></div>`}</div>`}
+        ${overview.sessions.length ? html`<div class="usage-dashboard">${this.#chart(usageChartDays(overview.days, report.range.from, report.range.to))}${this.#donut(overview)}</div>${this.#heatmap(report, overview, this.#selection?.report === report ? this.#selection : undefined)}` : html`<div class="settings-group usage-panel usage-empty-state"><strong class="usage-empty-state__title">${active ? "No sessions match your search." : "No usage in this range."}</strong><p class="usage-summary-sub">${active ? "Try a title, session ID or model name, or clear the search above." : "Choose another range or start a conversation."}</p>${active ? nothing : html`<div class="usage-empty-state__actions"><button class="btn btn--sm" type="button" @click=${() => state.selectPreset("all")}>Show all time</button></div>`}</div>`}
         ${this.#overviewCards(totals, overview)}
         ${this.#rankings(overview)}
         <section class="settings-group usage-panel sessions-card" data-testid="usage-sessions"><div class="sessions-card-header"><div><h2 class="settings-section__heading">Sessions</h2><p class="usage-summary-sub">${Math.min(state.limit, overview.sessions.length)} shown · ${overview.sessions.length} in range</p></div><div class="usage-card-actions"><button class="btn btn--sm" type="button" data-hui-tooltip="Download these sessions as a CSV" @click=${() => downloadTextFile(`hui-usage-sessions-${report.range.from}-${report.range.to}.csv`, usageSessionCsv(overview.sessions))}>Sessions CSV</button><div class="usage-sessions-sort">Sort sessions<div class="usage-sort-picker">${renderPicker({ label: "Sort sessions", value: state.sort, options: SORT_OPTIONS, showOptionTooltips: false, onChange: (value) => { state.sort = asSort(value); this.requestUpdate(); } })}</div></div></div></div>
-          <div class="session-bars" data-testid="usage-session-rows">${overview.sessions.slice(0, state.limit).map((session) => html`<article class="session-bar-row" data-testid="usage-session-row"><button class="session-bar-selection" type="button" @click=${() => this.onOpenSession?.(session.id)}><span class="session-bar-title">${session.title}</span><span class="session-bar-meta">${session.models.map(({ model }) => model).join(", ") || "Unknown model"}${session.parentId ? " · Child session" : ""} · ${lastActive && session.lastActivityAt ? `Active ${lastActive.format(session.lastActivityAt)} · ` : ""}${count(session.metrics.userMessages + session.metrics.assistantMessages, "message")} · ${count(session.metrics.toolResults, "tool result")}</span></button><div class="usage-report__session-values"><strong>${compact(session.metrics.totalTokens)}</strong><span class="usage-summary-sub">${cost(session.metrics)}</span></div>${session.metrics.calls ? this.#investigateAction({ kind: "session", id: session.id }, `Investigate why ${session.title} was expensive`, session.title, investigations.get(usageInvestigationKey({ kind: "session", id: session.id }))) : nothing}</article>`)}</div>
+          <div class="session-bars" data-testid="usage-session-rows">${overview.sessions.slice(0, state.limit).map((session) => html`<article class="session-bar-row" data-testid="usage-session-row"><button class="session-bar-selection" type="button" @click=${() => this.onOpenSession?.(session.id)}><span class="session-bar-title">${session.title}</span><span class="session-bar-meta">${session.models.map(({ model }) => model).join(", ") || "Unknown model"}${session.parentId ? " · Child session" : ""} · ${lastActive && session.lastActivityAt ? `Active ${lastActive.format(session.lastActivityAt)} · ` : ""}${count(session.metrics.userMessages + session.metrics.assistantMessages, "message")} · ${count(session.metrics.toolResults, "tool result")}</span></button><div class="usage-report__session-values"><strong>${compact(session.metrics.totalTokens)}</strong><span class="usage-summary-sub" data-hui-tooltip=${session.reportedCost ? `Reported by ${session.reportedCost.source}, checked ${checkedAt.format(session.reportedCost.asOf)}` : nothing}>${cost(session.metrics, session.reportedCost ? 0 : session.metrics.unpricedCalls)}${session.reportedCost ? ` · ${session.reportedCost.source}` : ""}</span></div>${session.metrics.calls ? this.#investigateAction({ kind: "session", id: session.id }, `Investigate why ${session.title} was expensive`, session.title, investigations.get(usageInvestigationKey({ kind: "session", id: session.id }))) : nothing}</article>`)}</div>
           ${overview.sessions.length > state.limit ? html`<button class="btn usage-more-sessions" type="button" @click=${() => { state.limit += 50; this.requestUpdate(); }}>Show more</button>` : nothing}
         </section>
         ${state.investigationError ? html`<div class="callout danger" role="alert">${state.investigationError}</div>` : nothing}

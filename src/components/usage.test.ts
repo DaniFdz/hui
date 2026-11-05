@@ -30,6 +30,11 @@ test("the time zone and the session order are HUI's picker, never the browser's 
   assert.equal(source.match(/showOptionTooltips: false/gu)?.length, 2, "option values never surface as browser tooltips");
 });
 
+test("a session that reported its own cost names the source beside the figure", () => {
+  assert.match(source, /session\.reportedCost \? ` · \$\{session\.reportedCost\.source\}` : ""/u, "the row says where its figure came from");
+  assert.match(source, /cost\(session\.metrics, session\.reportedCost \? 0 : session\.metrics\.unpricedCalls\)/u, "a reported cost is the whole cost, never a lower bound");
+});
+
 test("every hover or focus detail opens HUI's tooltip, never the browser's", () => {
   assert.doesNotMatch(source, /\btitle=/u, "a native title would open the browser's own tooltip");
   assert.match(source, /element.className = "usage-tip"/u, "a chart bar and a calendar day explain themselves in HUI's card");

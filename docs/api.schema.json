@@ -12278,6 +12278,25 @@
           "items": {
             "$ref": "#/$defs/SessionPullRequest"
           }
+        },
+        "reportedCost": {
+          "type": "object",
+          "required": [
+            "usd",
+            "source",
+            "asOf"
+          ],
+          "properties": {
+            "usd": {
+              "type": "number"
+            },
+            "source": {
+              "type": "string"
+            },
+            "asOf": {
+              "type": "number"
+            }
+          }
         }
       }
     },

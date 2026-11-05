@@ -3653,9 +3653,11 @@ cost remains `null`/absent rather than being estimated by HUI.
 the whole session's cost from a source HUI cannot price reports it by appending a
 `hui.session-cost` entry with `{ usd, source, asOf }`, and the session's `usage`
 carries the newest readable report until a `/clear` resets the history. HUI shows it
-beside the estimate with its source and how long ago it was checked; it never
-replaces the per-message or per-run figures, and an unreadable entry is skipped
-rather than shown as a zero.
+beside the estimate with its source and how long ago it was checked, and an open
+stream receives a fresh snapshot as soon as a report is written outside a run; it
+never replaces the per-message or per-run figures, and an unreadable entry is
+skipped rather than shown as a zero. `GET /__hui/usage` treats it as the session's
+cost where the range covers that session.
 `historyRefreshed` is omitted/true on that path. When PI cannot refresh history,
 the adapter emits `settled` with `historyRefreshed: false`; HUI still returns to
 the runtime's reported status but retains and snapshots the live projection so
@@ -4066,8 +4068,17 @@ usage-record, user-message, assistant-message, tool-result and error counts;
 subtypes. Reasoning and one-hour cache-write subsets are not added again.
 `calls` counts usage records, not user messages. Cost is a recorded PI estimate,
 not an invoice: `costUsd: null` means no valid price was recorded, a numeric zero
-is retained, and `unpricedCalls > 0` labels any known sum as partial. External
-session-cost reports are never added to these PI values.
+is retained, and `unpricedCalls > 0` labels any known sum as partial.
+
+A session whose extensions reported its whole cost overrides that sum instead of
+adding to it: when the requested range holds every day the session recorded,
+`metrics.costUsd` is the newest readable `hui.session-cost` report and
+`reportedCost` carries `{ usd, source, asOf }`. Its `days` and `models` stay
+recorded estimates, so a reported total need not equal its dated buckets. A range
+that only partly overlaps the session keeps the recorded prices of the days it
+covers and carries no `reportedCost`, since a whole-session total cannot be
+attributed to part of one. A report the gateway has not scanned yet is seen at
+the next scan or a forced refresh.
 
 Durable history is read in pages without changing the store. Each conversation's
 ledger and latest entry ID are read together, and its scan stops at that ID so

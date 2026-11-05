@@ -25,6 +25,7 @@ import { CompactionEntry, type ConversationId, type EntryId } from "@earendil-wo
 import type { UsageDay, UsageInvestigationRecord, UsageMetrics, UsageModel, UsageReport, UsageSession, UsageTool } from "./api/diagnostics.ts";
 import { CreatedPullRequestScan, type PullRequestRef } from "./integrations/pull-requests.ts";
 import { durableContext, durableHost } from "./runtimes/durable-host.ts";
+import { sessionCostOf } from "./runtimes/durable-extensions.ts";
 import { durableConversationId } from "./runtimes/durable.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
 
@@ -65,6 +66,9 @@ type Usage = { input: number; output: number; cacheRead: number; cacheWrite: num
 
 type Spend = { totalTokens: number; cost: number };
 
+/** A whole-session cost an extension measured, which replaces the sum of the session's recorded prices. */
+type CostReport = NonNullable<ReturnType<typeof sessionCostOf>>;
+
 type UsageLabel = { provider: string; model: string };
 
 type UsageEvent = {
@@ -95,6 +99,8 @@ export type UsageScan = {
   recordedSpend: Map<number, Spend>;
   /** Pull requests each registered history created, accumulated across incremental passes. */
   pullRequests: Map<string, PullRequestRef[]>;
+  /** The newest whole-session cost each session's extensions reported. */
+  reportedCost: Map<string, CostReport>;
   unplacedSpend: UsageReport["unplacedSpend"];
   registeredSessions: number;
   undatedRecords: Map<string, number>;
@@ -323,6 +329,7 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
   const found: UsageScan = {
     sessions: new Map(), marks: new Map(previous?.marks), claimed: new Set(previous?.claimed),
     recordedSpend: new Map(previous?.recordedSpend), pullRequests: new Map(previous?.pullRequests),
+    reportedCost: new Map(previous?.reportedCost),
     unplacedSpend: { totalTokens: 0, costUsd: 0 },
     registeredSessions: sessions.length, undatedRecords: new Map(previous?.undatedRecords), unavailable: [], readSessions: 0,
   };
@@ -389,6 +396,8 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
       // is fed to the pull-request scan in entry order once the read succeeds.
       const messages: { session: SessionRecord; entryId: number; message: StoredMessage }[] = [];
       const created: { session: SessionRecord; ref: PullRequestRef }[] = [];
+      // The scan reads entries newest first, so the first report of a session is its newest one.
+      const reports = new Map<string, CostReport>();
       let highest = after;
       try {
         await durableHost().open();
@@ -406,6 +415,8 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
             cost: (already?.cost ?? 0) + spend.cost,
           });
           const owner = owners.get(entry.conversationId) ?? session;
+          const report = sessionCostOf(entry);
+          if (report && !reports.has(owner.id)) reports.set(owner.id, report);
           for (const message of entry.model ?? []) {
             if (entry.kind === CompactionEntry.kind && message.role === "user") continue;
             messages.push({ session: owner, entryId: entry.id, message });
@@ -423,6 +434,7 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
           for (const ref of scanner.add(message)) created.push({ session: owner, ref });
         }
         for (const { session, ref } of created) addPullRequest(found, session.id, ref);
+        for (const [owner, report] of reports) found.reportedCost.set(owner, report);
         for (const [owner, spend] of spent) {
           const already = found.recordedSpend.get(owner);
           found.recordedSpend.set(owner, { totalTokens: (already?.totalTokens ?? 0) + spend.totalTokens, cost: (already?.cost ?? 0) + spend.cost });
@@ -525,6 +537,7 @@ function mergeScan(target: UsageScan, delta: UsageScan, replaced: ReadonlySet<st
   target.claimed = delta.claimed;
   target.recordedSpend = delta.recordedSpend;
   target.pullRequests = delta.pullRequests;
+  target.reportedCost = delta.reportedCost;
   target.unplacedSpend = delta.unplacedSpend;
   target.registeredSessions = delta.registeredSessions;
   target.undatedRecords = delta.undatedRecords;
@@ -559,12 +572,16 @@ export function sliceUsage(scan: UsageScan, query: UsageQuery, investigations: r
         tools.set(row.name, { name: row.name, calls: (previous?.calls ?? 0) + row.calls, errors: (previous?.errors ?? 0) + row.errors, outputChars: (previous?.outputChars ?? 0) + row.outputChars });
       }
     }
+    const report = scan.reportedCost.get(session.id);
+    const wholeSession = report && kept.length === days.size ? report : undefined;
+    if (wholeSession) metrics.costUsd = wholeSession.usd;
     sessions.push({
       id: session.id,
       title: session.title,
       ...(session.parentId ? { parentId: session.parentId } : {}),
       lastActivityAt,
       metrics,
+      ...(wholeSession ? { reportedCost: wholeSession } : {}),
       days: kept.map(([date, bucket]): UsageDay => ({ date, metrics: { ...bucket.metrics }, models: modelsOf(bucket.models) })),
       models: modelsOf(models),
       tools: [...tools.values()].toSorted((left, right) => right.calls - left.calls || left.name.localeCompare(right.name)),

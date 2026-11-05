@@ -66,6 +66,7 @@ export const UsageSession = Type.Object({
   metrics: UsageMetrics, days: Type.Array(UsageDay), models: Type.Array(UsageModel), tools: Type.Array(UsageTool),
   /** The pull requests this history created, as the sidebar's badges report them: a reference, never GitHub state. */
   pullRequests: Type.Optional(Type.Array(SessionPullRequest)),
+  reportedCost: Type.Optional(Type.Object({ usd: Type.Number(), source: Type.String(), asOf: Type.Number() })),
 }, { $id: "UsageSession" });
 export type UsageSession = Static<typeof UsageSession>;
 

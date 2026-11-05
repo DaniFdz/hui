@@ -1078,6 +1078,39 @@ test("the manager closes the prompt race before a runtime reports streaming", as
   await manager.prompt("concurrent", "after settlement");
 });
 
+test("a cost an extension reports outside a run reaches open browsers with the transcript they hold", async () => {
+  const listeners = new Set<(event: RuntimeEvent) => void>();
+  let cost: NonNullable<import("./runtimes/types.ts").RuntimeUsage["sessionCost"]> | undefined;
+  const session: RuntimeSession = {
+    sessionId: "pi-reported-cost",
+    sessionFile: "/tmp/pi-reported-cost.jsonl",
+    isStreaming: false,
+    async prompt() {},
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    transcript: () => [],
+    dispose: () => {},
+    currentUsage: () => ({ contextTokens: 2, contextWindow: 100, percent: 2, inputTokens: 1, outputTokens: 1, costUsd: 0, ...(cost ? { sessionCost: cost } : {}) }),
+  };
+  const manager = new LiveSessions({ id: "pi", start: async () => session });
+  manager.ensure(recordFor("reported-cost"));
+  await waitForBoot(manager, "reported-cost");
+  const frames: SessionStreamMessage[] = [];
+  manager.watch("reported-cost", (message) => frames.push(message), { reader: true });
+  assert.equal(manager.snapshot("reported-cost").usage?.sessionCost, undefined, "no report yet");
+
+  cost = { usd: 42.5, source: "Provider bill", asOf: 1792920000000 };
+  for (const listener of listeners) listener({ type: "usage" });
+
+  const snapshot = frames.at(-1);
+  assert(snapshot?.kind === "snapshot");
+  assert.deepEqual(snapshot.snapshot.usage?.sessionCost, cost, "the open browser gets the reported cost");
+  assert.equal(snapshot.transcriptUnchanged, true, "and keeps the transcript it already holds");
+  assert.equal(snapshot.snapshot.transcript.length, 0);
+});
+
 test("a prompt during boot is refused rather than queued", async () => {
   const manager = new LiveSessions(factory([]));
   manager.ensure(recordFor("early"));

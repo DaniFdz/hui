@@ -40,7 +40,7 @@ export type UsageModel = { "provider": string; "model": string; "metrics": Usage
 
 export type UsageReport = { "generatedAt": string; "range": { "from": string; "to": string; "timeZone": string; }; "sessions": Array<UsageSession>; "investigations": Array<UsageInvestigationRecord>; "coverage": { "registeredSessions": number; "readSessions": number; "unavailable": Array<{ "sessionId": string; "reason": string; }>; "undatedRecords": number; }; "unplacedSpend": { "totalTokens": number; "costUsd": number; }; };
 
-export type UsageSession = { "id": string; "title": string; "parentId"?: string; "lastActivityAt": number; "metrics": UsageMetrics; "days": Array<UsageDay>; "models": Array<UsageModel>; "tools": Array<UsageTool>; "pullRequests"?: Array<SessionPullRequest>; };
+export type UsageSession = { "id": string; "title": string; "parentId"?: string; "lastActivityAt": number; "metrics": UsageMetrics; "days": Array<UsageDay>; "models": Array<UsageModel>; "tools": Array<UsageTool>; "pullRequests"?: Array<SessionPullRequest>; "reportedCost"?: { "usd": number; "source": string; "asOf": number; }; };
 
 export type UsageTool = { "name": string; "calls": number; "errors": number; "outputChars": number; };
 
