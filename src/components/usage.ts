@@ -233,18 +233,21 @@ export class HuiUsagePage extends LitElement {
     let offset = 0;
     const segments = rows.map((row, index) => {
       const share = row.metrics.totalTokens / total;
-      const segment = { ...row, share, color: PALETTE[index % PALETTE.length], offset };
+      // The rest of the models share one neutral slice, so no colour stands for two models.
+      const color = rest.length > 0 && index === rows.length - 1 ? "var(--muted)" : PALETTE[index % PALETTE.length];
+      const segment = { ...row, share, color, offset };
       offset += share * 100;
       return segment;
     });
+    const detail = (segment: (typeof segments)[number]) => `${segment.label} · ${compact(segment.metrics.totalTokens)} tokens · ${Math.round(segment.share * 100)}%`;
     return html`<section class="settings-group usage-panel usage-card usage-donut-card" data-testid="usage-models">
       <div class="usage-card__header"><div class="usage-card__headline"><h2 class="usage-card__title">Usage by model</h2><p class="usage-card__meta">Recorded tokens, ranked</p></div></div>
       <div class="usage-donut-layout">
         <div class="usage-donut">
-          ${svg`<svg viewBox="0 0 42 42" aria-hidden="true"><circle class="usage-donut__track" cx="21" cy="21" r="15.9155" fill="none" pathLength="100" stroke-width="5"></circle>${segments.map((segment) => svg`<circle cx="21" cy="21" r="15.9155" fill="none" pathLength="100" stroke=${segment.color} stroke-width="5" stroke-dasharray="${(segment.share * 100).toFixed(2)} ${(100 - segment.share * 100).toFixed(2)}" stroke-dashoffset=${(25 - segment.offset).toFixed(2)}></circle>`)}</svg>`}
+          ${svg`<svg viewBox="0 0 42 42" aria-hidden="true"><circle class="usage-donut__track" cx="21" cy="21" r="15.9155" fill="none" pathLength="100" stroke-width="5"></circle>${segments.map((segment) => svg`<circle class="usage-donut__segment" cx="21" cy="21" r="15.9155" fill="none" pathLength="100" stroke=${segment.color} stroke-width="5" stroke-dasharray="${(segment.share * 100).toFixed(2)} ${(100 - segment.share * 100).toFixed(2)}" stroke-dashoffset=${(25 - segment.offset).toFixed(2)} @pointerenter=${(event: PointerEvent) => { if (event.pointerType !== "touch") this.#showTip(event.currentTarget as Element, detail(segment)); }} @pointerleave=${this.#hideTip}></circle>`)}</svg>`}
           <div class="usage-donut__center"><strong>${compact(total)}</strong><span>tokens</span></div>
         </div>
-        <div class="usage-donut__legend">${segments.map((segment) => html`<button type="button" class="usage-donut__row" data-hui-tooltip=${`Show only sessions with ${segment.label}`} @click=${() => this.#usage.search(segment.label)}>
+        <div class="usage-donut__legend">${segments.map((segment) => html`<button type="button" class="usage-donut__row" data-hui-tooltip=${`${detail(segment)} · Click to show only these sessions`} @click=${() => this.#usage.search(segment.label)}>
           <span class="usage-donut__dot" style=${`background: ${segment.color}`} aria-hidden="true"></span>
           <span class="usage-donut__name">${segment.label}</span>
           <span class="usage-donut__value">${compact(segment.metrics.totalTokens)} tokens</span>

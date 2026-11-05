@@ -29,6 +29,9 @@
 .usage-donut { position: relative; display: grid; place-items: center; width: 190px; max-width: 100%; margin-inline: auto; aspect-ratio: 1; }
 .usage-donut svg { width: 100%; height: 100%; transform: rotate(0deg); }
 .usage-donut__track { stroke: color-mix(in srgb, var(--text) 8%, var(--card)); }
+/* A slice answers for itself: pointing at one names its model, tokens and share. */
+.usage-donut__segment { transition: stroke-width var(--duration-fast) var(--ease-out); }
+.usage-donut__segment:hover { stroke-width: 6; }
 .usage-donut__center { position: absolute; display: grid; justify-items: center; gap: 0; text-align: center; }
 .usage-donut__center strong { color: var(--text-strong); font-size: 24px; font-weight: 620; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .usage-donut__center span { color: var(--muted); font-size: var(--control-ui-text-xs); }
