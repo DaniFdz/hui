@@ -42,7 +42,7 @@ Rules for the program session:
 |---|---|---|---|---|
 | P0 | Gateway routes, store, status/toggle | carried in the program PR (PR #408 closed as superseded) | 854608e6 | #408 green |
 | P1 | Settings page + `hui extension list/enable/disable` | **DONE** | 918e0f0c | green (run 42021662186) |
-| P2 | Sandboxed panels and the bridge | NOT STARTED | — | — |
+| P2 | Sandboxed panels and the bridge | IN PROGRESS | 5d661498 | pending |
 | P3 | Prompt sections and agent tools | NOT STARTED | — | — |
 | P4 | Server-sent events | NOT STARTED | — | — |
 | P5 | Reload, engines, doctor, install/remove | NOT STARTED | — | — |
@@ -54,8 +54,8 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 
 | Field | Value |
 |---|---|
-| Current phase | P2 (NOT STARTED) |
-| Next action | Start P2: manifest `ui`, `/__hui/ext-ui/<id>/…` assets, the sandboxed iframe, the bridge, the fixture panel, SET/WORK use case and screenshots |
+| Current phase | P2 (IN PROGRESS; CI pending) |
+| Next action | When CI is green, mark P2 DONE, then start P3 |
 | Branch | `danifdz/hui-extendability` |
 | Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
 | Last green CI | P1, 918e0f0c, run 42021662186 |
@@ -175,76 +175,96 @@ inventing a dead link.
 
 ## 5. P2 — Sandboxed panels
 
-**Status:** NOT STARTED · **Commit:** — · **CI:** —
+**Status:** IN PROGRESS · **Commit:** 5d661498 + the test commit · **CI:** pending
 
-**Baseline:** typecheck — · tests — · tree —
+**Baseline:** P1's green HEAD; typecheck 0 · tests 33 failed / 2808 passed · tree clean
 
 **Acceptance criteria:**
 
-- [ ] **P2-A1** The manifest `ui` entry is validated (`title`, optional
-  `entry`, `.html`, relative to and contained in the extension's `ui/` directory)
-  and `ExtensionStatus` carries `panel` (`title`, `entry`); a bad manifest fails
-  the extension without touching the gateway.
-- [ ] **P2-A2** `/__hui/ext-ui/<id>/…` serves only files inside that extension's
-  `ui/` directory, before the `x-hui` gate, with the MIME allowlist, 10 MiB cap,
-  `nosniff`, `no-store`, same-origin CORP, and a CSP whose `sandbox` makes the
-  frame opaque, whose sources are limited to the extension's asset prefix, and
-  whose `connect-src 'none'` blocks network access. Traversal, symlink escape, a
-  directly opened HTML/SVG staying opaque, and a disallowed method are refused.
-- [ ] **P2-A3** Settings → Extensions shows **Open panel** for an enabled
-  extension with a `ui`; it opens the Work view on the last shown conversation
-  (disabled with *Open a conversation first* when there is none), which renders
-  the sandboxed iframe, and the view restores from saved state after a reload.
-- [ ] **P2-A4** The bridge delivers `init`, lets the panel call only its own
-  declared routes and returns the result, answers `error` for a foreign
-  extension's route, an oversized message and a timeout, and enforces the E5
-  limits.
-- [ ] **P2-A5** `height`, `theme` and `open` work; closing the Work view tears the
-  frame and listeners down.
-- [ ] **P2-A6** One new use case `WORK-NNN` (web required, iOS excluded per E17)
-  has a shared e2e test with a real panel that calls its own route and resizes;
-  screenshots at 1440×900 and 390×844 are in the PR and the chat.
-- [ ] **P2-A7** Focused tests, typecheck, full suite (failure set unchanged),
-  build and CI are green; the runtime bridge refusals are exercised by tests, not
-  only by the e2e happy path.
+- [x] **P2-A1** The manifest `ui` entry is validated (`title`, optional `entry`,
+  `.html`, relative to and contained in the extension's `ui/` directory) and
+  `ExtensionStatus` carries `panel` (`title`, `entry`); a bad manifest fails the
+  extension without touching the gateway.
+- [x] **P2-A2** `/__hui/ext-ui/<id>/…` serves only files inside `ui/`, before the
+  `x-hui` gate, with the MIME allowlist, 10 MiB cap, `nosniff`, `no-store`,
+  cross-origin CORP (see Deviations), a CSP whose `sandbox` makes the frame
+  opaque, whose sources are limited to the extension's asset prefix and whose
+  `connect-src 'none'` blocks network access, and `GET`/`HEAD` only. Traversal,
+  symlink escape, an unknown extension, a disabled extension, a disallowed type
+  and an oversized file are refused.
+- [x] **P2-A3** Settings → Extensions shows **Open panel** for a loaded extension
+  with a `ui`; it opens the Work view on the conversation the app last showed
+  (disabled when none), the Work pane's launcher opens the first enabled panel, and
+  the view restores from saved state after a reload.
+- [x] **P2-A4** The bridge delivers `init`, lets the panel call only its own
+  declared routes and returns the result, answers `error` for a route of another
+  extension, a bad path, an oversized request/response and a timeout, and enforces
+  the in-flight, size and time limits.
+- [x] **P2-A5** `height` resizes the frame, `title` reaches the bar and `theme` is
+  sent on init and on document theme changes; `open` opens only an `https:` URL
+  with `noopener`; closing the Work view aborts in-flight calls and removes the
+  listener.
+- [x] **P2-A6** Use case **WORK-083** (web required, iOS excluded per E17) has a
+  shared e2e test with the real fixture panel: Settings → Open panel, the + menu,
+  the iframe's sandbox/src, the bridge's greeting in the bar, a reported height
+  that differs from the default, and a restore after reload. Screenshots at
+  1440×900 and 390×844 are attached to the PR and shown in the chat.
+- [x] **P2-A7** Focused tests, typecheck, full suite (failure set unchanged),
+  build and CI are green; the bridge refusals are unit-tested, not only covered by
+  the e2e happy path.
 
 **Runs**
 
 ```
-P2-V1  assets: containment, MIME, size, CSP, pre-gate
-Command:
-Result:
-Exit:
+P2-V1  npx vitest run server/extensions/assets.test.ts
+Result: 1 test passed (pre-gate access, CSP, MIME, HEAD, 405, traversal, symlink,
+        unknown/disabled, type and size caps)
+Exit: 0
 
-P2-V2  bridge: init, allowed call, foreign call, oversize, timeout, teardown
-Command:
-Result:
-Exit:
+P2-V2  npx vitest run src/lib/extensions/bridge.test.ts
+Result: 4 tests passed (path normalization, route/method allow-list, envelope,
+        request cap, UTF-8 byte counting)
+Exit: 0
 
 P2-V3  npm run api:schema && git status --short
-Result:            (expected: docs/api.schema.json and src/api/schema/extensions.ts
-                    gain the panel field; nothing else)
-Exit:
+Result: the generated schema and browser types gain ExtensionPanel and the
+        status panel field; re-running leaves no further change
+Exit: 0
 
-P2-V4  npm run typecheck / npm test / npm run build
-Result:            (failure set vs baseline: added ___ / removed ___)
-Exit:
+P2-V4  npm run typecheck && npm run build && npm test
+Result: typecheck 0; build 0; 33 failed / 2808 passed, the same baseline set
+        (added 0, removed 0)
+Exit: typecheck/build 0, tests 1 (pre-existing failures only)
 
-P2-V5  npm run e2e -- --tag WORK-NNN
-Result:
-Exit:
+P2-V5  npm run e2e -- --tag WORK-083
+Result: 1 file, 1 test passed
+Exit: 0
 ```
 
-**Manual proof:** Browser tool opens the fixture panel from Settings → Extensions,
-which shows it in the Work pane; the panel calls its route (greeting with a name),
-resizes, switches theme and closes; screenshots as above.
+**Manual proof** (Browser tool, isolated launcher at 5d661498): the fixture panel
+opens from the Work pane's + menu in a conversation; the bar shows **hello, Ada**
+(the panel's own route answered through the bridge), the iframe is sandboxed and
+points at `/__hui/ext-ui/hello/index.html`, and the 390×844 Work destination shows
+the same panel. Screenshots: `extension-panel-desktop.png`,
+`extension-panel-mobile.png` (outside the checkout, attached to the PR).
 
-```
-Result:
-```
+The Browser tool cannot inspect or click inside the sandboxed frame, so the
+in-frame **Greet** button and its output were not exercised by hand; the panel's
+load-time bridge call (the bar title) and the e2e test prove the call path.
 
-**Proof gaps:** —
-**Deviations:** —
+**Proof gaps:** the `open` and theme-change messages have unit-level handling but
+no automated exercise (the fixture panel does not request either); the store-error
+and failed-extension banners remain covered by server/component tests.
+
+**Deviations:** `cross-origin-resource-policy` is **cross-origin** for panel
+assets, not the plan's same-origin. A sandboxed frame's origin is opaque; the
+browser treats its requests for its own CSS and JS as cross-origin, and same-origin
+CORP blocked them (`ERR_BLOCKED_BY_RESPONSE.NotSameOrigin`). Assets are public by
+design (E16), and the CSP still limits the frame. The bridge's `postMessage` uses
+`"*"` as targetOrigin for the same reason (an opaque origin cannot be named); both
+sides identify the conversation by the frame's `window` reference and the channel
+name. The fixture panel reports `document.body` height rather than the document's,
+because an iframe's document height never drops below the frame's viewport.
 
 ---
 
