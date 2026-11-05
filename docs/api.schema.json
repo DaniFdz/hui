@@ -5171,6 +5171,21 @@
         }
       }
     },
+    "ExtensionPanel": {
+      "type": "object",
+      "required": [
+        "title",
+        "entry"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        }
+      }
+    },
     "ExtensionRouteInfo": {
       "type": "object",
       "required": [
@@ -5252,6 +5267,9 @@
         },
         "error": {
           "type": "string"
+        },
+        "panel": {
+          "$ref": "#/$defs/ExtensionPanel"
         },
         "routes": {
           "type": "array",
@@ -14316,6 +14334,7 @@
       "ThemesResponse"
     ],
     "extensions": [
+      "ExtensionPanel",
       "ExtensionRouteInfo",
       "ExtensionStatus",
       "ExtensionToggleRequest",

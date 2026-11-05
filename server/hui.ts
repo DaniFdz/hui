@@ -23,6 +23,7 @@ import type { BotsUpdate } from "./bots-format.ts";
 import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode/proxy.ts";
 import { VSCODE_ENTER_PATH } from "./vscode/contract.ts";
 import { attachBrowserTransport } from "./browser/transport.ts";
+import { EXTENSION_ASSET_ROUTE, serveExtensionAsset } from "./extensions/assets.ts";
 import type { EventEmitter } from "node:events";
 import { liveSessions } from "./sessions/live-sessions.ts";
 import { diagnosticPath, recordDiagnosticEvent } from "./observability.ts";
@@ -60,6 +61,7 @@ import {
   jiraRoutes,
   localPathRoutes,
   managedBrowser,
+  extensions,
   piRoutes,
   powerRoutes,
   appRoutes,
@@ -244,6 +246,13 @@ async function handleRequest(
   // data; its own policy keeps it opaque and embeddable only by HUI.
   if (path === WIDGET_SANDBOX_PATH) {
     serveWidgetSandbox(request, response);
+    return;
+  }
+  // An extension panel's files cannot send x-hui either: the frame is sandboxed and its only channel is the parent
+  // bridge. Served before the gate, like the widget sandbox, and only while the extension is loaded (docs/api.md).
+  const panelAsset = EXTENSION_ASSET_ROUTE.exec(path);
+  if (panelAsset) {
+    await serveExtensionAsset(request, response, panelAsset[1]!, panelAsset[2]!, await extensions.panelRoot(panelAsset[1]!));
     return;
   }
   const presentedMedia = path.match(PRESENTED_MEDIA_ROUTE);

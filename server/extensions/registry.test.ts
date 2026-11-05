@@ -40,6 +40,28 @@ test("the manifest needs apiVersion 1, a name and a contained entry module", () 
   }
 });
 
+test("a panel needs a title and a relative .html entry inside ui/", () => {
+  const withPanel = parseManifest({ ...MANIFEST, ui: { title: "Hello panel" } });
+  assert.equal(withPanel.ok, true);
+  assert.deepEqual(withPanel.ok ? withPanel.value.ui : undefined, { title: "Hello panel", entry: "index.html" });
+  const entry = parseManifest({ ...MANIFEST, ui: { title: "Hello panel", entry: "pages/panel.html" } });
+  assert.deepEqual(entry.ok ? entry.value.ui : undefined, { title: "Hello panel", entry: "pages/panel.html" });
+
+  const cases: [unknown, RegExp][] = [
+    [{ ...MANIFEST, ui: "panel" }, /ui must be an object/],
+    [{ ...MANIFEST, ui: {} }, /ui\.title must be/],
+    [{ ...MANIFEST, ui: { title: "" } }, /ui\.title must be/],
+    [{ ...MANIFEST, ui: { title: "Panel", entry: "panel.txt" } }, /ui\.entry must be/],
+    [{ ...MANIFEST, ui: { title: "Panel", entry: "../panel.html" } }, /ui\.entry must (?:be|stay inside)/],
+    [{ ...MANIFEST, ui: { title: "Panel", entry: "/panel.html" } }, /ui\.entry must (?:be|stay inside)/],
+  ];
+  for (const [raw, pattern] of cases) {
+    const result = parseManifest(raw);
+    assert.equal(result.ok, false, JSON.stringify(raw));
+    if (!result.ok) assert.match(result.error, pattern);
+  }
+});
+
 test("the entry path resolves inside the extension directory", () => {
   assert.equal(entryPath("/tmp/hello", "index.mjs"), "/tmp/hello/index.mjs");
   assert.equal(entryPath("/tmp/hello", "lib/main.js"), "/tmp/hello/lib/main.js");

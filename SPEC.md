@@ -2425,8 +2425,16 @@ trusted local module can answer JSON routes on the gateway.
   its state, its routes and any error; the switch calls the enable route and the
   row shows the state that came back. `hui extension list|enable|disable` does the
   same from a terminal against the running gateway. The page is web-only; the
-  iPhone has no extension surface. Per-extension generated types, SSE routes and an
-  out-of-process host are follow-ups.
+  iPhone has no extension surface.
+- **Sandboxed panels.** An extension may ship `ui/` with an entry page; its files
+  are served before the `x-hui` gate at `/__hui/ext-ui/<id>/` (public, contained,
+  typed and size-capped) and the page renders in a Work pane iframe whose CSP makes
+  it an opaque origin with no network. It cannot call HUI: only a `postMessage`
+  bridge may ask the parent for that extension's own declared routes, with the
+  browser's session, under fixed size, count and time limits. Settings → Extensions
+  opens a panel in the current conversation's Work pane, and the Work pane's
+  launcher opens the first enabled panel. Per-extension generated types, SSE routes
+  and an out-of-process host are follow-ups.
 
 ## Decisions
 

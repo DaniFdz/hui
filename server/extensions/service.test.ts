@@ -120,6 +120,21 @@ test("enabling imports once, persists the choice and answers its routes", async 
   });
 });
 
+test("a panel's title and entry are listed, and its root follows the enable switch", async (t) => {
+  const root = await temp(t);
+  await installed(root, "hello", { ...MANIFEST, ui: { title: "Hello panel" } }, HELLO);
+  const service = serviceAt(root);
+
+  const disabled = (await service.list()).extensions.find((extension) => extension.id === "hello");
+  assert.deepEqual(disabled?.panel, { title: "Hello panel", entry: "index.html" });
+  assert.equal(await service.panelRoot("hello"), undefined, "a disabled panel has no asset root");
+
+  await service.setEnabled("hello", true);
+  assert.equal(await service.panelRoot("hello"), join(root, "extensions", "hello", "ui"));
+  await service.setEnabled("hello", false);
+  assert.equal(await service.panelRoot("hello"), undefined);
+});
+
 test("a failed import is reported without touching the extensions that loaded", async (t) => {
   const root = await temp(t);
   const events: { action?: string; summary?: string }[] = [];

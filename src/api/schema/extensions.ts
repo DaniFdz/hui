@@ -1,8 +1,10 @@
 /** Generated from docs/api.schema.json by scripts/api-schema.ts. Do not edit. */
 
+export type ExtensionPanel = { "title": string; "entry": string; };
+
 export type ExtensionRouteInfo = { "method": string; "path": string; "description": string; };
 
-export type ExtensionStatus = { "id": string; "name": string; "description": string; "enabled": boolean; "state": ("loaded") | ("disabled") | ("failed") | ("missing"); "error"?: string; "routes": Array<ExtensionRouteInfo>; };
+export type ExtensionStatus = { "id": string; "name": string; "description": string; "enabled": boolean; "state": ("loaded") | ("disabled") | ("failed") | ("missing"); "error"?: string; "panel"?: ExtensionPanel; "routes": Array<ExtensionRouteInfo>; };
 
 export type ExtensionToggleRequest = { "enabled": boolean; };
 

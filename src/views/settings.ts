@@ -63,6 +63,8 @@ export type SettingsProps = AutomationProps & {
   workspaceError: string;
   observability: ObservabilitySnapshot | undefined;
   observabilityError: string;
+  /** A Work pane exists to show an extension panel in. */
+  canOpenExtensionPanel: boolean;
   onRefreshObservability: () => void;
   onExportDiagnostics: () => void;
   onRetryPi: () => void;
@@ -1075,7 +1077,7 @@ export function renderSettingsPage(props: SettingsProps) {
                     : props.page === "plugins"
                       ? renderPluginsPage(props)
                       : props.page === "extensions"
-                        ? html`<hui-extensions-settings></hui-extensions-settings>`
+                        ? html`<hui-extensions-settings .panelAvailable=${props.canOpenExtensionPanel}></hui-extensions-settings>`
                       : props.page === "memory"
                         ? renderMemoryPage(props)
                         : props.page === "automation"

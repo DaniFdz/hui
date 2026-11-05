@@ -2,7 +2,7 @@
  * Browser client for gateway extensions: the installed list and the enable switch. An extension's own routes are its
  * own contract; a panel calls them through its bridge, not through this module.
  */
-import { fetchJson } from "./request.ts";
+import { CLIENT_HEADERS, fetchJson } from "./request.ts";
 import type { ExtensionStatus, ExtensionsResponse } from "./schema/extensions.ts";
 
 const EXTENSIONS_URL = "/__hui/ext";
@@ -19,4 +19,30 @@ export async function setExtensionEnabled(id: string, enabled: boolean): Promise
     headers: JSON_HEADERS,
     body: JSON.stringify({ enabled }),
   });
+}
+
+/** One call from a panel, forwarded by the parent with the browser's own `x-hui` session. */
+export async function callExtensionRoute(
+  id: string,
+  method: string,
+  path: string,
+  body: unknown,
+  signal: AbortSignal,
+): Promise<{ status: number; body: unknown }> {
+  const response = await fetch(`/__hui/ext/${encodeURIComponent(id)}/${path}`, {
+    method,
+    headers: { ...CLIENT_HEADERS, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal,
+    cache: "no-store",
+    redirect: "error",
+  });
+  const text = await response.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = text;
+  }
+  return { status: response.status, body: parsed };
 }

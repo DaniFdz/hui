@@ -1209,14 +1209,20 @@ export const routes = [
 
 An id is a lowercase directory name (letters, digits and `-`, at most 32
 characters), `apiVersion` must be `1`, and `main` must stay inside the extension's
-directory. A route path is one to four clean segments. A handler gets
+directory. A panel is optional: `"ui": { "title": "Hello panel", "entry": "index.html" }`
+serves the files under the extension's `ui/` directory at `/__hui/ext-ui/<id>/` and
+shows the entry page in a sandboxed Work pane frame that can only call the
+extension's own routes through HUI. Panel files are public to anyone who can reach
+the gateway, so keep secrets out of them. A route path is one to four clean segments. A handler gets
 `{ method, path, query, body, signal, extension }` and returns
 `{ status?, body }` where `body` is a JSON object (at most 256 KiB); there are no
 response headers, files, redirects or streams, and a request body follows the
 ordinary 64 KiB JSON limit. The same `x-hui` gate as every other route applies.
 
 Installed extensions start out off. **Settings → Extensions** lists each one with
-its state, its routes and any error, and its switch turns it on or off. The same
+its state, its routes and any error, and its switch turns it on or off; **Open
+panel** shows an enabled extension's panel in the current conversation's Work pane
+(or add it from the Work pane's + menu). The same
 is available from a terminal (the gateway must be running; replace the port with
 your own):
 

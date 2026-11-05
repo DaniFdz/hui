@@ -819,6 +819,15 @@ const cases: UseCase[] = [
     web: "required",
     ios: { excluded: "The iPhone app imports files through its native file importer, which shows the system's own progress and offers no in-app Cancel upload; the gateway's larger cap still applies to it.", decision: "SPEC.md#the-webs-upload-progress-and-cancel-stay-on-the-web-2026-11-03" },
   },
+  {
+    id: "WORK-083",
+    title: "Open an extension panel in the Work pane",
+    behaviour: "An enabled gateway extension that ships a ui entry adds Extension panel to the Work pane's + menu. Choosing it opens the extension's title bar and a sandboxed frame in the conversation's Work pane; the frame cannot reach HUI or the network directly and calls only that extension's own routes through HUI. Settings → Extensions' Open panel opens the same view, and a saved panel returns with the conversation.",
+    spec: ["SPEC.md#gateway-extensions"],
+    surfaces: ["work-view:extension", "settings-page:extensions"],
+    web: "required",
+    ios: { excluded: "The iPhone has no Work pane and no extension surface in this version.", decision: "SPEC.md#gateway-extensions" },
+  },
 ];
 
 export default cases;

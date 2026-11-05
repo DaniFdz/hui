@@ -128,6 +128,7 @@ import {
 import { PANE_COLUMN_MIN_WIDTH } from "./lib/session/pane-geometry.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/files/file-link-store.ts";
 import { OPEN_SETTINGS_EVENT, requestOpenSettings, type OpenSettingsDetail } from "./lib/open-settings.ts";
+import { OPEN_EXTENSION_PANEL_EVENT, type OpenExtensionPanelDetail } from "./lib/extensions/open-panel.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import "./components/work-pane.ts";
 import "./components/terminal-pane.ts";
@@ -524,6 +525,7 @@ export class HuiApp extends HuiElement {
       this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
       this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
       this.addEventListener("hui-files-connection", this.onFilesConnection);
+      this.addEventListener(OPEN_EXTENSION_PANEL_EVENT, this.onOpenExtensionPanelRequest);
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -546,6 +548,7 @@ export class HuiApp extends HuiElement {
     this.removeEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
     this.removeEventListener("hui-files-connection", this.onFilesConnection);
+    this.removeEventListener(OPEN_EXTENSION_PANEL_EVENT, this.onOpenExtensionPanelRequest);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
     this.work.stop();
@@ -2372,6 +2375,16 @@ export class HuiApp extends HuiElement {
    * and optionally the section to scroll to. Cancelling the event tells it the app navigated, so its link does not
    * load the page. The section is scrolled to once it renders and kept there while sections above it load. */
   private stopSettingsScroll: (() => void) | undefined;
+  private onOpenExtensionPanelRequest = (event: Event) => {
+    const layout = this.work.layout;
+    const sessionId = layout ? activeSessionPane(layout).sessionId : undefined;
+    if (!sessionId) return;
+    event.preventDefault();
+    const id = (event as CustomEvent<OpenExtensionPanelDetail>).detail?.id;
+    this.closeSettings();
+    this.work.showView(sessionId, { kind: "extension", ...(id ? { id } : {}) }, true);
+  };
+
   private onOpenSettingsRequest = (event: Event) => {
     const detail = (event as CustomEvent<Partial<Record<keyof OpenSettingsDetail, unknown>> | undefined>).detail;
     const page = SETTINGS_PAGES.find((entry) => entry.id === detail?.page)?.id;
@@ -2976,6 +2989,7 @@ export class HuiApp extends HuiElement {
           ...this.control.props(),
           onRefreshObservability: () => this.loadOperationalData(true),
           onSelectPage: this.selectSettingsPage,
+          canOpenExtensionPanel: Boolean(this.work.layout),
           onChangeModels: (models) => {
             this.launcher.selectModel(models.primary);
             void this.control.save({ models });

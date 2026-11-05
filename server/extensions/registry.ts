@@ -23,12 +23,20 @@ export const MAX_EXTENSION_DIRECTORIES = 200;
 const SEGMENT = /^[A-Za-z0-9._~-]+$/u;
 const CONTROL = /[\p{Cc}]/u;
 
+/** What Settings and the Work pane need to open an extension's panel: its title and the entry page inside `ui/`. */
+export type ExtensionPanel = {
+  readonly title: string;
+  readonly entry: string;
+};
+
 export type ExtensionManifest = {
   readonly apiVersion: typeof EXTENSION_API_VERSION;
   readonly name: string;
   readonly description: string;
   /** Relative to the extension's directory. */
   readonly main: string;
+  /** Present when the extension ships a sandboxed panel under `ui/`. */
+  readonly ui?: ExtensionPanel;
 };
 
 export type ExtensionContext = {
@@ -93,7 +101,30 @@ export function parseManifest(raw: unknown): Parsed<ExtensionManifest> {
   if (main.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
     return fail("main must stay inside the extension directory");
   }
-  return { ok: true, value: { apiVersion: EXTENSION_API_VERSION, name, description: rawDescription.trim(), main } };
+  let ui: ExtensionPanel | undefined;
+  if (raw["ui"] !== undefined) {
+    if (!isRecord(raw["ui"])) return fail("ui must be an object");
+    const title = boundedText(raw["ui"]["title"], MAX_NAME_CHARS);
+    if (!title) return fail(`ui.title must be 1-${MAX_NAME_CHARS} characters without control characters`);
+    const entry = raw["ui"]["entry"] ?? "index.html";
+    if (typeof entry !== "string" || entry.length > 256 || !entry.endsWith(".html")) {
+      return fail("ui.entry must be a relative .html file inside the ui directory");
+    }
+    if (entry.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(entry) || entry.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
+      return fail("ui.entry must stay inside the ui directory");
+    }
+    ui = { title, entry };
+  }
+  return {
+    ok: true,
+    value: {
+      apiVersion: EXTENSION_API_VERSION,
+      name,
+      description: rawDescription.trim(),
+      main,
+      ...(ui ? { ui } : {}),
+    },
+  };
 }
 
 /** The entry module's absolute path, or undefined when `main` would leave `directory` lexically. */

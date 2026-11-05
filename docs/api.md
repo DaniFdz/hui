@@ -4139,8 +4139,9 @@ PI's configuration.
 
 Returns `ExtensionsResponse`: every directory under `$XDG_CONFIG_HOME/hui/extensions`
 plus every id the enable store lists, sorted by id. Each `ExtensionStatus` carries
-the extension's `id`, `name`, `description`, `enabled`, its `routes` metadata and a
-`state` of `loaded`, `disabled`, `failed` or `missing`; `error` explains a failure.
+the extension's `id`, `name`, `description`, `enabled`, its `routes` metadata, `panel`
+(`title` and `entry`) when it ships a sandboxed panel, and a `state` of `loaded`, `disabled`,
+`failed` or `missing`; `error` explains a failure.
 `storeError` appears when `extensions.json` cannot be read; the list then behaves as
 if nothing is enabled. Listing rescans the directory, but it never imports an
 extension: a disabled extension stays `disabled` and its module is never loaded.
@@ -4154,6 +4155,22 @@ without a restart; disabling removes them immediately, although Node keeps the
 module cached. The choice is recorded, not a promise it loaded: an extension whose
 manifest or import fails answers 200 with `state: "failed"` and its `error`. An id
 with no directory returns 404, a malformed body 400, any other method 405.
+
+### Extension panel files
+
+An extension with a `ui` manifest entry ships its panel's files under the gateway
+prefix `/__hui/ext-ui/<id>/<path>`, mapped to the extension's `ui/` directory. They
+are served **before** the `x-hui` gate, like the widget sandbox page, because an
+iframe cannot send that header; they are public to anyone who can reach the gateway
+and must hold no secrets. Only files inside that `ui/` directory are served
+(realpath containment; symlinks that leave it are refused), only these types:
+`html`, `js`, `mjs`, `css`, `json`, `svg`, `png`, `webp`, `jpg`, `jpeg`,
+`woff2`; at most 10 MiB each; `GET` and `HEAD` only. Every response carries
+`no-store`, `nosniff`, same-origin CORP, no referrer, a restrictive permissions
+policy, and a CSP whose `sandbox` makes the document an opaque origin, whose
+sources are limited to that extension's own prefix, and whose `connect-src 'none'`
+blocks every network call: a panel's only channel is its parent bridge. Files are
+served only while the extension is enabled and loaded.
 
 ### Extension routes
 

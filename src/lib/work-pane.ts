@@ -15,7 +15,8 @@ export type WorkViewRef =
   | { kind: "browser" }
   | { kind: "files"; id: string }
   | { kind: "vscode" }
-  | { kind: "diff"; id: string };
+  | { kind: "diff"; id: string }
+  | { kind: "extension"; id?: string };
 
 export type WorkViewContext = {
   /** The conversation owning the Work pane. */
@@ -94,6 +95,7 @@ export function defaultWorkViewKey(ref: WorkViewRef): string {
   if (ref.kind === "terminal") return `terminal:${ref.terminalId}`;
   if (ref.kind === "files") return `files:${ref.id}`;
   if (ref.kind === "diff") return `diff:${ref.id}`;
+  if (ref.kind === "extension") return `extension:${ref.id ?? "all"}`;
   return ref.kind;
 }
 
@@ -301,6 +303,10 @@ export function parseWorkViewRef(value: unknown, isKnown: (kind: string) => bool
     return typeof raw.id === "string" && raw.id.trim() && raw.id.length <= 128 && !CONTROL.test(raw.id) ? { kind: raw.kind, id: raw.id } : undefined;
   }
   if (raw.kind === "browser" || raw.kind === "vscode") return { kind: raw.kind };
+  if (raw.kind === "extension") {
+    if (raw.id === undefined) return { kind: "extension" };
+    return typeof raw.id === "string" && raw.id.trim() && raw.id.length <= 128 && !CONTROL.test(raw.id) ? { kind: "extension", id: raw.id } : undefined;
+  }
   return undefined;
 }
 

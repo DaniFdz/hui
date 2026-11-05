@@ -56,6 +56,8 @@ export type ExtensionsService = {
   setEnabled(id: string, enabled: boolean): Promise<ExtensionStatus>;
   reconcile(): Promise<void>;
   invoke(input: InvokeInput): Promise<JsonResult>;
+  /** The `ui/` directory of a loaded extension that ships a panel, for the pre-gate asset route. */
+  panelRoot(id: string): Promise<string | undefined>;
 };
 
 function message(error: unknown): string {
@@ -201,7 +203,11 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     }
     const read = await readManifest(directory);
     if ("error" in read) return { ...base, name: id, description: "", state: "failed", error: read.error };
-    const identity = { name: read.manifest.name, description: read.manifest.description };
+    const identity = {
+      name: read.manifest.name,
+      description: read.manifest.description,
+      ...(read.manifest.ui ? { panel: read.manifest.ui } : {}),
+    };
     if (active) return { ...base, ...identity, state: "loaded" };
     if (!enabled) return { ...base, ...identity, state: "disabled" };
     return { ...base, ...identity, state: "failed", error: failures.get(id) ?? "not loaded" };
@@ -238,6 +244,11 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
 
   function unknownRoute(subpath: string): JsonResult {
     return { status: 404, body: { error: `unknown extension route: ${subpath}` } };
+  }
+
+  async function panelRoot(id: string): Promise<string | undefined> {
+    const active = loaded.get(id);
+    return active?.manifest.ui ? join(dir, id, "ui") : undefined;
   }
 
   async function installed(id: string): Promise<boolean> {
@@ -292,5 +303,5 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return { status: checked.value.status, body: checked.value.body };
   }
 
-  return { list, setEnabled, reconcile, invoke };
+  return { list, setEnabled, reconcile, invoke, panelRoot };
 }

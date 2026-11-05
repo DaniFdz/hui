@@ -12,6 +12,12 @@ export const ExtensionRouteInfo = Type.Object({
 }, { $id: "ExtensionRouteInfo" });
 export type ExtensionRouteInfo = Static<typeof ExtensionRouteInfo>;
 
+export const ExtensionPanel = Type.Object({
+  title: Type.String(),
+  entry: Type.String(),
+}, { $id: "ExtensionPanel" });
+export type ExtensionPanel = Static<typeof ExtensionPanel>;
+
 export const ExtensionStatus = Type.Object({
   id: Type.String(),
   name: Type.String(),
@@ -21,6 +27,7 @@ export const ExtensionStatus = Type.Object({
     Type.Literal("loaded"), Type.Literal("disabled"), Type.Literal("failed"), Type.Literal("missing"),
   ]),
   error: Type.Optional(Type.String()),
+  panel: Type.Optional(ExtensionPanel),
   routes: Type.Array(ExtensionRouteInfo),
 }, { $id: "ExtensionStatus" });
 export type ExtensionStatus = Static<typeof ExtensionStatus>;

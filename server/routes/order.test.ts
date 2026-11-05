@@ -57,6 +57,7 @@ type Case = [request: string, status: number, keys: string[] | null, recorded: b
 const CASES: Case[] = [
   ["GET /__hui/widget-sandbox", 200, null, false, anonymous],
   ["GET /__hui/media/0/missing.png", 404, ["error"], false, anonymous],
+  ["GET /__hui/ext-ui/hello/index.html", 404, ["error"], false, anonymous],
   ["GET /__hui/sessions/missing/attachments/1/1", 404, ["error"], false, sameOrigin],
   ["GET /__hui/bots/missing/memory/html", 404, ["error"], false, sameOrigin],
   ["POST /__hui/vscode/enter", 405, null, false, anonymous],

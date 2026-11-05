@@ -9,6 +9,7 @@ import type { ExtensionStatus } from "../../api/schema/extensions.ts";
 import {
   EXTENSION_EMPTY_NOTE, EXTENSION_STATE_LABEL, EXTENSION_TRUST_NOTE, extensionRoutesSummary, extensionToggleLabel,
 } from "../../lib/extensions/presentation.ts";
+import { requestOpenExtensionPanel } from "../../lib/extensions/open-panel.ts";
 import { renderSettingsToggle } from "../../views/settings-toggle.ts";
 
 const TONE: Readonly<Record<ExtensionStatus["state"], string>> = {
@@ -19,6 +20,9 @@ const TONE: Readonly<Record<ExtensionStatus["state"], string>> = {
 };
 
 export class HuiExtensionsSettings extends LitElement {
+  static override properties = { panelAvailable: { type: Boolean } };
+  declare panelAvailable: boolean;
+
   #extensions: ExtensionStatus[] = [];
   #storeError = "";
   #loading = true;
@@ -45,6 +49,10 @@ export class HuiExtensionsSettings extends LitElement {
     if (request !== this.#request) return;
     this.#loading = false;
     this.requestUpdate();
+  }
+
+  #openPanel(extension: ExtensionStatus) {
+    if (!requestOpenExtensionPanel(this, { id: extension.id })) this.#error = "Open a conversation first.";
   }
 
   async #toggle(extension: ExtensionStatus, enabled: boolean) {
@@ -74,6 +82,10 @@ export class HuiExtensionsSettings extends LitElement {
         ${extension.error ? html`<span class="settings-row__desc" role="alert" data-extension-error data-testid="extension-error">${extension.error}</span>` : nothing}
       </div>
       <div class="settings-row__control jira-settings__actions">
+        ${extension.panel ? html`<button type="button" class="btn btn--sm" data-extension-open=${extension.id}
+          ?disabled=${!this.panelAvailable || extension.state !== "loaded"}
+          title=${this.panelAvailable ? `Open ${extension.panel.title}` : "Open a conversation first"}
+          @click=${() => this.#openPanel(extension)}>Open panel</button>` : nothing}
         ${renderSettingsToggle(extensionToggleLabel(extension), extension.enabled, (checked) => void this.#toggle(extension, checked), this.#busy.has(extension.id))}
       </div>
     </div>`;
