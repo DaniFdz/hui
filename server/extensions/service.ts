@@ -14,7 +14,7 @@ import { EXTENSIONS_DIR, EXTENSIONS_FILE } from "../paths.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import {
   checkedResult, entryPath, extensionId, MAX_EXTENSION_DIRECTORIES, MAX_ERROR_CHARS, parseManifest, parseRoutes,
-  routeInfo, routeKey, type ExtensionManifest, type ExtensionRoute,
+  routeInfo, routeKey, type ExtensionManifest, type ExtensionRoute, type ExtensionTool, type ExtensionToolHandler,
 } from "./registry.ts";
 import { readExtensions, writeExtensions } from "./store.ts";
 
@@ -29,7 +29,9 @@ export class UnknownExtensionError extends Error {
 }
 
 type Loaded = {
+  readonly id: string;
   readonly manifest: ExtensionManifest;
+  readonly tools: readonly ExtensionTool[];
   readonly routes: readonly ExtensionRoute[];
   readonly byKey: ReadonlyMap<string, ExtensionRoute>;
   readonly paths: ReadonlySet<string>;
@@ -43,6 +45,15 @@ export type ExtensionsServiceOptions = {
   file?: string;
   record?: RecordEvent;
 };
+
+/** One tool an enabled extension offers a Durable conversation, with its runtime name. */
+export type ExtensionAgentTool = {
+  readonly extensionId: string;
+  readonly name: string;
+  readonly tool: ExtensionTool;
+};
+
+export type ExtensionAgentContribution = { readonly snippet: string; readonly guidelines: readonly string[] };
 
 export type InvokeInput = {
   readonly id: string;
@@ -58,6 +69,14 @@ export type ExtensionsService = {
   invoke(input: InvokeInput): Promise<JsonResult>;
   /** The `ui/` directory of a loaded extension that ships a panel, for the pre-gate asset route. */
   panelRoot(id: string): Promise<string | undefined>;
+  /** The static prompt text every enabled extension contributes, or undefined when none does. */
+  promptText(): string | undefined;
+  /** The tools every enabled extension offers a new Durable conversation. */
+  agentTools(): readonly ExtensionAgentTool[];
+  /** The prompt snippet and guidelines of each agent tool, by runtime name. */
+  contributions(): Readonly<Record<string, ExtensionAgentContribution>>;
+  /** The tool a conversation may call, looked up at call time so a disabled extension answers nothing. */
+  toolFor(extensionId: string, name: string): ExtensionTool | undefined;
 };
 
 function message(error: unknown): string {
@@ -103,7 +122,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return parsed.ok ? { manifest: parsed.value } : { error: parsed.error };
   }
 
-  async function load(directory: string): Promise<{ loaded: Loaded } | { error: string }> {
+  async function load(id: string, directory: string): Promise<{ loaded: Loaded } | { error: string }> {
     const read = await readManifest(directory);
     if ("error" in read) return { error: read.error };
     const entry = entryPath(directory, read.manifest.main);
@@ -124,6 +143,18 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     }
     const routes = parseRoutes((module as { routes?: unknown } | null)?.routes);
     if (!routes.ok) return { error: routes.error };
+    const declared = read.manifest.tools ?? [];
+    const exported = (module as { tools?: unknown } | null)?.tools;
+    if (exported !== undefined && (typeof exported !== "object" || exported === null || Array.isArray(exported))) {
+      return { error: "tools must be an object of handlers" };
+    }
+    const handlers = (exported ?? {}) as Record<string, unknown>;
+    const tools: ExtensionTool[] = [];
+    for (const tool of declared) {
+      const handler = handlers[tool.name];
+      if (typeof handler !== "function") return { error: `tools.${tool.name} has no handler exported by the entry module` };
+      tools.push({ ...tool, handle: handler as ExtensionToolHandler });
+    }
     const byKey = new Map<string, ExtensionRoute>();
     const paths = new Set<string>();
     for (const route of routes.value) {
@@ -132,7 +163,9 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     }
     return {
       loaded: {
+        id,
         manifest: read.manifest,
+        tools,
         routes: routes.value,
         byKey,
         paths,
@@ -177,7 +210,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
         continue;
       }
       if (loaded.has(id)) continue;
-      const result = await load(directory);
+      const result = await load(id, directory);
       if ("error" in result) {
         fail(id, result.error);
         continue;
@@ -207,6 +240,10 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
       name: read.manifest.name,
       description: read.manifest.description,
       ...(read.manifest.ui ? { panel: read.manifest.ui } : {}),
+      ...(read.manifest.prompt ? { prompt: read.manifest.prompt.map((section) => ({ id: section.id, title: section.title, text: section.text })) } : {}),
+      ...(read.manifest.tools ? {
+        tools: read.manifest.tools.map((tool) => ({ name: tool.name, runtimeName: runtimeToolName(id, tool.name), description: tool.description })),
+      } : {}),
     };
     if (active) return { ...base, ...identity, state: "loaded" };
     if (!enabled) return { ...base, ...identity, state: "disabled" };
@@ -244,6 +281,44 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
 
   function unknownRoute(subpath: string): JsonResult {
     return { status: 404, body: { error: `unknown extension route: ${subpath}` } };
+  }
+
+  function runtimeToolName(id: string, name: string): string {
+    return `ext_${id.replaceAll("-", "_")}_${name}`;
+  }
+
+  function promptText(): string | undefined {
+    const parts: string[] = [];
+    for (const active of [...loaded.values()].sort((left, right) => left.id.localeCompare(right.id))) {
+      const sections = active.manifest.prompt;
+      if (!sections?.length) continue;
+      parts.push(`### Extension: ${active.manifest.name} (${active.id})`);
+      for (const section of sections) parts.push(`#### ${section.title}\n${section.text}`);
+    }
+    return parts.length ? parts.join("\n\n") : undefined;
+  }
+
+  function agentTools(): ExtensionAgentTool[] {
+    const tools: ExtensionAgentTool[] = [];
+    for (const active of [...loaded.values()].sort((left, right) => left.id.localeCompare(right.id))) {
+      for (const tool of active.tools) {
+        tools.push({ extensionId: active.id, name: runtimeToolName(active.id, tool.name), tool });
+      }
+    }
+    return tools;
+  }
+
+  function contributions(): Record<string, ExtensionAgentContribution> {
+    const found: Record<string, ExtensionAgentContribution> = {};
+    for (const entry of agentTools()) {
+      if (!entry.tool.promptSnippet && !entry.tool.promptGuidelines?.length) continue;
+      found[entry.name] = { snippet: entry.tool.promptSnippet ?? "", guidelines: entry.tool.promptGuidelines ?? [] };
+    }
+    return found;
+  }
+
+  function toolFor(extensionId: string, name: string): ExtensionTool | undefined {
+    return loaded.get(extensionId)?.tools.find((tool) => tool.name === name);
   }
 
   async function panelRoot(id: string): Promise<string | undefined> {
@@ -303,5 +378,5 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return { status: checked.value.status, body: checked.value.body };
   }
 
-  return { list, setEnabled, reconcile, invoke, panelRoot };
+  return { list, setEnabled, reconcile, invoke, panelRoot, promptText, agentTools, contributions, toolFor };
 }

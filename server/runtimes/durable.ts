@@ -355,7 +355,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     // on, and only there. Each is selected per conversation; every other conversation's selection stays as it was.
     const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
     const botTools = bot ? await this.#host.botToolsFor(this.#conversation.id) : undefined;
-    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : []), ...(tag ? [tag] : [])];
+    const gateway = this.#host.gatewayExtension();
+    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(gateway ? [gateway] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : []), ...(tag ? [tag] : [])];
     let withCodemode = codemode.enabled;
     const remove = [...inactive.values()];
     this.#botOffer = [];
@@ -364,6 +365,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       const offered = this.#composed([
         [this.#host.codingTools, () => ({ kind: "coding" })],
         [this.#host.huiTools, () => ({ kind: "hui" })],
+        [gateway?.tools ?? [], () => ({ kind: "hui" })],
         [withCodemode ? modelCallable(this.#host.codemode) : [], () => ({ kind: "coding" })],
         [this.#extensions?.extension.tools ?? [], (tool) => ({ kind: "extension", ...this.#extensions!.describe(tool.name) })],
         [optchat?.tools ?? [], () => ({ kind: "hui" })],

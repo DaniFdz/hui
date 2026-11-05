@@ -19,3 +19,8 @@ export const routes = [
     handle: async () => { throw new Error("fixture failure"); },
   },
 ];
+
+/* Agent tools declared in extension.json; each handler is exported under the tool's name. */
+export const tools = {
+  greet: async ({ name }) => `hello, ${name}`,
+};

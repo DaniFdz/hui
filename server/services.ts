@@ -134,6 +134,7 @@ export const fileRoutes = createFileRoutes({ session: async (id) => (await readR
 export const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 export const themeRoutes = createThemeRoutes();
 export const extensions = createExtensionsService();
+durableHost().configureGatewayExtensions(extensions);
 export const extensionRoutes = createExtensionRoutes({ extensions });
 export const updateRoutes = createUpdateRoutes();
 export const settingsRoutes = createSettingsRoutes({ writeSettings });

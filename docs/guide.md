@@ -1212,7 +1212,9 @@ characters), `apiVersion` must be `1`, and `main` must stay inside the extension
 directory. A panel is optional: `"ui": { "title": "Hello panel", "entry": "index.html" }`
 serves the files under the extension's `ui/` directory at `/__hui/ext-ui/<id>/` and
 shows the entry page in a sandboxed Work pane frame that can only call the
-extension's own routes through HUI. Panel files are public to anyone who can reach
+extension's own routes through HUI. An extension can also declare static prompt
+sections for Durable conversations and agent tools, whose handlers are exported by
+the entry module under the tool's name (see `e2e/fixtures/extensions/hello`). Panel files are public to anyone who can reach
 the gateway, so keep secrets out of them. A route path is one to four clean segments. A handler gets
 `{ method, path, query, body, signal, extension }` and returns
 `{ status?, body }` where `body` is a JSON object (at most 256 KiB); there are no

@@ -22,6 +22,7 @@ export const routes = [
   { method: "GET", path: "cyclic", description: "Returns a value JSON cannot hold.",
     handle: async () => { const body = {}; body.self = body; return { body }; } },
 ];
+export const tools = { greet: async ({ name }) => "hello, " + name };
 `;
 
 const MARKER = `
@@ -133,6 +134,51 @@ test("a panel's title and entry are listed, and its root follows the enable swit
   assert.equal(await service.panelRoot("hello"), join(root, "extensions", "hello", "ui"));
   await service.setEnabled("hello", false);
   assert.equal(await service.panelRoot("hello"), undefined);
+});
+
+test("prompt sections and tools load with their handlers and reach the settings payload", async (t) => {
+  const root = await temp(t);
+  await installed(root, "hello", {
+    ...MANIFEST,
+    prompt: [{ id: "greeting", title: "Greeting", text: "PROMPT_MARKER greet by name." }],
+    tools: [{
+      name: "greet", description: "Greets a person.",
+      parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+      promptSnippet: "Greets", promptGuidelines: ["Use it."],
+    }],
+  }, HELLO);
+  const service = serviceAt(root);
+
+  assert.equal(service.promptText(), undefined);
+  assert.deepEqual(service.agentTools(), [], "nothing is offered while the extension is off");
+  await service.setEnabled("hello", true);
+  assert.match(service.promptText() ?? "", /PROMPT_MARKER/);
+  const tools = service.agentTools();
+  assert.deepEqual(tools.map((entry) => [entry.extensionId, entry.name]), [["hello", "ext_hello_greet"]]);
+  assert.deepEqual(service.contributions()["ext_hello_greet"], { snippet: "Greets", guidelines: ["Use it."] });
+  const handler = service.toolFor("hello", "greet")?.handle;
+  assert.equal(await handler?.({ name: "Ada" }, { conversationId: "7", signal: new AbortController().signal }), "hello, Ada");
+  assert.equal(service.toolFor("hello", "missing"), undefined);
+  assert.equal(service.toolFor("other", "greet"), undefined);
+
+  const status = (await service.list()).extensions[0];
+  assert.deepEqual(status?.prompt, [{ id: "greeting", title: "Greeting", text: "PROMPT_MARKER greet by name." }]);
+  assert.deepEqual(status?.tools, [{ name: "greet", runtimeName: "ext_hello_greet", description: "Greets a person." }]);
+  await service.setEnabled("hello", false);
+  assert.equal(service.promptText(), undefined);
+});
+
+test("a declared tool without an exported handler fails the extension", async (t) => {
+  const root = await temp(t);
+  await installed(root, "hello", {
+    ...MANIFEST,
+    tools: [{ name: "greet", description: "Greets a person.", parameters: { type: "object" } }],
+  }, HELLO.replace('export const tools = { greet: async ({ name }) => "hello, " + name };', "export const tools = {};"));
+  const service = serviceAt(root);
+  await service.setEnabled("hello", true);
+  const status = (await service.list()).extensions[0];
+  assert.equal(status?.state, "failed");
+  assert.match(status?.error ?? "", /tools\.greet has no handler/u);
 });
 
 test("a failed import is reported without touching the extensions that loaded", async (t) => {

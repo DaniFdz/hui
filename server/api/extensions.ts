@@ -18,6 +18,20 @@ export const ExtensionPanel = Type.Object({
 }, { $id: "ExtensionPanel" });
 export type ExtensionPanel = Static<typeof ExtensionPanel>;
 
+export const ExtensionPromptInfo = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  text: Type.String(),
+}, { $id: "ExtensionPromptInfo" });
+export type ExtensionPromptInfo = Static<typeof ExtensionPromptInfo>;
+
+export const ExtensionToolInfo = Type.Object({
+  name: Type.String(),
+  runtimeName: Type.String(),
+  description: Type.String(),
+}, { $id: "ExtensionToolInfo" });
+export type ExtensionToolInfo = Static<typeof ExtensionToolInfo>;
+
 export const ExtensionStatus = Type.Object({
   id: Type.String(),
   name: Type.String(),
@@ -28,6 +42,8 @@ export const ExtensionStatus = Type.Object({
   ]),
   error: Type.Optional(Type.String()),
   panel: Type.Optional(ExtensionPanel),
+  prompt: Type.Optional(Type.Array(ExtensionPromptInfo)),
+  tools: Type.Optional(Type.Array(ExtensionToolInfo)),
   routes: Type.Array(ExtensionRouteInfo),
 }, { $id: "ExtensionStatus" });
 export type ExtensionStatus = Static<typeof ExtensionStatus>;

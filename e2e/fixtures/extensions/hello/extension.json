@@ -5,5 +5,34 @@
   "main": "index.mjs",
   "ui": {
     "title": "Hello panel"
-  }
+  },
+  "prompt": [
+    {
+      "id": "greeting",
+      "title": "Greeting",
+      "text": "When you greet someone, use their name when it is known."
+    }
+  ],
+  "tools": [
+    {
+      "name": "greet",
+      "description": "Greet a person by name.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Who to greet"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "promptSnippet": "Greets a person by name",
+      "promptGuidelines": [
+        "Use greet when the operator asks for a greeting."
+      ]
+    }
+  ]
 }

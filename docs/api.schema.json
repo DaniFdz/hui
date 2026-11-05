@@ -5186,6 +5186,25 @@
         }
       }
     },
+    "ExtensionPromptInfo": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
     "ExtensionRouteInfo": {
       "type": "object",
       "required": [
@@ -5271,6 +5290,18 @@
         "panel": {
           "$ref": "#/$defs/ExtensionPanel"
         },
+        "prompt": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionPromptInfo"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionToolInfo"
+          }
+        },
         "routes": {
           "type": "array",
           "items": {
@@ -5287,6 +5318,25 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        }
+      }
+    },
+    "ExtensionToolInfo": {
+      "type": "object",
+      "required": [
+        "name",
+        "runtimeName",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "runtimeName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
         }
       }
     },
@@ -14342,9 +14392,11 @@
     ],
     "extensions": [
       "ExtensionPanel",
+      "ExtensionPromptInfo",
       "ExtensionRouteInfo",
       "ExtensionStatus",
       "ExtensionToggleRequest",
+      "ExtensionToolInfo",
       "ExtensionsResponse",
       "PluginError",
       "PluginPayload"

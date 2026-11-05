@@ -24,5 +24,8 @@ test("the page renders the extensions element and the element uses the gateway s
   assert.match(element, /renderSettingsToggle\(extensionToggleLabel/u);
   assert.match(element, /data-extension-state/u);
   assert.match(element, /data-extensions-empty/u);
+  assert.match(element, /Prompt and tools/u);
+  assert.match(element, /data-testid="extension-prompt"/u);
+  assert.match(element, /data-testid="extension-tool"/u);
   assert.match(element, /role="alert"/u);
 });

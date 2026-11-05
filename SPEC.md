@@ -2432,6 +2432,14 @@ trusted local module can answer JSON routes on the gateway.
   row shows the state that came back. `hui extension list|enable|disable` does the
   same from a terminal against the running gateway. The page is web-only; the
   iPhone has no extension surface.
+- **Agent contributions.** An extension may declare static `prompt` sections and
+  agent `tools` in its manifest, with each tool's handler exported under the same
+  name by the entry module. Enabled contributions reach every new Durable
+  conversation: its prompt text after the goal, its tool under the namespaced
+  `ext_<id>_<name>` with its snippet and guidelines, its arguments checked against
+  the declared schema, and its failure an `isError` result rather than a failed
+  turn. Sessions on the older PI worker and already-running Durable conversations
+  keep what they started with. Settings → Extensions shows each section and tool.
 - **Sandboxed panels.** An extension may ship `ui/` with an entry page; its files
   are served before the `x-hui` gate at `/__hui/ext-ui/<id>/` (public, contained,
   typed and size-capped) and the page renders in a Work pane iframe whose CSP makes

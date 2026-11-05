@@ -822,6 +822,15 @@ const cases: UseCase[] = [
     web: "required",
     ios: { excluded: "Extension management edits the gateway's config directory and is web-only in this version; the iPhone has no Settings → Extensions.", decision: "SPEC.md#gateway-extensions" },
   },
+  {
+    id: "SET-087",
+    title: "Read an extension's prompt and tools",
+    behaviour: "Settings → Extensions shows “Prompt and tools” for an extension that declares prompt sections or agent tools. Opening it lists each section with its title and character count, the text behind a second disclosure, and each tool by its runtime name and description; an extension with neither shows nothing.",
+    spec: ["SPEC.md#gateway-extensions"],
+    surfaces: ["settings-page:extensions"],
+    web: "required",
+    ios: { excluded: "Extension management edits the gateway's config directory and is web-only in this version; the iPhone has no Settings → Extensions.", decision: "SPEC.md#gateway-extensions" },
+  },
 ];
 
 export default cases;

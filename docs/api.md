@@ -4141,8 +4141,10 @@ PI's configuration.
 Returns `ExtensionsResponse`: every directory under `$XDG_CONFIG_HOME/hui/extensions`
 plus every id the enable store lists, sorted by id. Each `ExtensionStatus` carries
 the extension's `id`, `name`, `description`, `enabled`, its `routes` metadata, `panel`
-(`title` and `entry`) when it ships a sandboxed panel, and a `state` of `loaded`, `disabled`,
-`failed` or `missing`; `error` explains a failure.
+(`title` and `entry`) when it ships a sandboxed panel, its declared `prompt` sections
+and agent `tools` (with each tool's declared and `ext_<id>_<name>` runtime name) when
+it declares them, and a `state` of `loaded`, `disabled`, `failed` or `missing`;
+`error` explains a failure.
 `storeError` appears when `extensions.json` cannot be read; the list then behaves as
 if nothing is enabled. Listing rescans the directory, but it never imports an
 extension: a disabled extension stays `disabled` and its module is never loaded.

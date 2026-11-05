@@ -137,3 +137,47 @@ test("route keys and published route info keep the declared order", () => {
     { method: "POST", path: "b/c", description: "" },
   ]);
 });
+
+const deepSchema = (depth: number): Record<string, unknown> => depth === 0 ? { type: "object" } : { type: "object", properties: { x: deepSchema(depth - 1) } };
+
+test("prompt sections and tools are declared within their caps and the schema subset", () => {
+  const parsed = parseManifest({
+    ...MANIFEST,
+    prompt: [{ id: "greeting", title: "Greeting", text: "Greet by name." }],
+    tools: [{
+      name: "greet", description: "Greet a person.",
+      parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+      promptSnippet: "Greets", promptGuidelines: ["Use it."],
+    }],
+  });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.deepEqual(parsed.value.prompt, [{ id: "greeting", title: "Greeting", text: "Greet by name." }]);
+  assert.equal(parsed.value.tools?.[0]?.name, "greet");
+  assert.equal(parsed.value.tools?.[0]?.promptSnippet, "Greets");
+
+  const cases: [unknown, RegExp][] = [
+    [{ ...MANIFEST, prompt: [{ id: "Bad", title: "T", text: "x" }] }, /prompt\[0\]\.id/],
+    [{ ...MANIFEST, prompt: [{ id: "a", title: "T", text: "x" }, { id: "a", title: "T", text: "y" }] }, /id is used twice/],
+    [{ ...MANIFEST, prompt: [{ id: "a", title: "", text: "x" }] }, /title/],
+    [{ ...MANIFEST, prompt: [{ id: "a", title: "T", text: "" }] }, /text/],
+    [{ ...MANIFEST, prompt: [{ id: "a", title: "T", text: "x".repeat(4_001) }] }, /text/],
+    [{ ...MANIFEST, prompt: Array.from({ length: 17 }, (_, index) => ({ id: `p${index}`, title: "T", text: "x" })) }, /at most 16/],
+    [{ ...MANIFEST, prompt: Array.from({ length: 5 }, (_, index) => ({ id: `p${index}`, title: "T", text: "x".repeat(3_900) })) }, /stay within/],
+    [{ ...MANIFEST, tools: [{ name: "Bad", description: "D", parameters: { type: "object" } }] }, /name/],
+    [{ ...MANIFEST, tools: [{ name: "a", description: "D", parameters: { type: "object" } }, { name: "a", description: "D", parameters: { type: "object" } }] }, /used twice/],
+    [{ ...MANIFEST, tools: [{ name: "a", description: "", parameters: { type: "object" } }] }, /description/],
+    [{ ...MANIFEST, tools: [{ name: "a", description: "D", parameters: { type: "string" } }] }, /object schema/],
+    [{ ...MANIFEST, tools: [{ name: "a", description: "D", parameters: { type: "object", properties: { x: { type: "string", pattern: "x" } } } }] }, /unsupported schema key/],
+    [{ ...MANIFEST, tools: [{ name: "a", description: "D", parameters: deepSchema(9) }] }, /too deeply/],
+    [{ ...MANIFEST, tools: [{ name: "a", description: "D", parameters: { type: "object", properties: { x: { type: "string", enum: [{ a: 1 }] } } } }] }, /enum/],
+    [{ ...MANIFEST, tools: [{ name: "a", description: "D", parameters: { type: "object", required: ["missing"] } }] }, /required/],
+    [{ ...MANIFEST, tools: Array.from({ length: 17 }, (_, index) => ({ name: `t${index}`, description: "D", parameters: { type: "object" } })) }, /at most 16/],
+    [{ ...MANIFEST, tools: [{ name: "a", description: "D", parameters: { type: "object" }, promptSnippet: "x".repeat(201) }] }, /promptSnippet/],
+  ];
+  for (const [raw, pattern] of cases) {
+    const result = parseManifest(raw);
+    assert.equal(result.ok, false, JSON.stringify(raw).slice(0, 120));
+    if (!result.ok) assert.match(result.error, pattern);
+  }
+});

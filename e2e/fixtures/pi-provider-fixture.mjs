@@ -791,6 +791,11 @@ const server = createServer(async (request, response) => {
     }, 1);
     return finish(response, "tool_use");
   }
+  // A gateway extension's tool, which only exists when the enabled extension declared it.
+  if (source.includes("E2E_GATEWAY_TOOL")) {
+    toolUse(response, "tool-e2e-gateway", "ext_hello_greet", { name: "Ada" });
+    return finish(response, "tool_use");
+  }
   // A tool a PI extension registers, which only exists when the runtime loaded it.
   if (source.includes("E2E_EXTENSION_TOOL")) {
     toolUse(response, "tool-e2e-extension", "fixture_echo", { text: "from the model" });

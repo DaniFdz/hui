@@ -29,3 +29,12 @@ test("Settings enables and disables the installed gateway extension, and its rou
   const off = await hui.api<Extensions>("GET", "/__hui/ext");
   expect(off.extensions.find((extension) => extension.id === "hello")?.state).toBe("disabled");
 });
+
+test("Settings shows an extension's prompt sections and tools", { tags: ["SET-087"], platforms: ["web"] }, async ({ screen, hui }) => {
+  await hui.open("/settings/extensions");
+  const contributions = screen.getByTestId("extension-contributions");
+  await contributions.getByText("Prompt and tools").tap();
+  await contributions.getByText(/Greeting · \d+ characters/u).tap();
+  await expect(contributions.getByText("When you greet someone, use their name when it is known.")).toBeVisible();
+  await expect(contributions.getByText("ext_hello_greet", { exact: false })).toBeVisible();
+});

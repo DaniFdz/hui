@@ -71,6 +71,22 @@ export class HuiExtensionsSettings extends LitElement {
     }
   }
 
+  #contributions(extension: ExtensionStatus) {
+    const prompt = extension.prompt ?? [];
+    const tools = extension.tools ?? [];
+    if (prompt.length === 0 && tools.length === 0) return nothing;
+    return html`<div class="settings-row settings-row--stacked" data-testid="extension-contributions">
+      <details>
+        <summary class="settings-row__title">Prompt and tools</summary>
+        ${prompt.map((section) => html`<details data-testid="extension-prompt">
+          <summary class="settings-row__desc">${section.title} · ${section.text.length} characters</summary>
+          <pre class="extension-contributions__text">${section.text}</pre>
+        </details>`)}
+        ${tools.map((tool) => html`<span class="settings-row__desc" data-testid="extension-tool"><code>${tool.runtimeName}</code> · ${tool.description}</span>`)}
+      </details>
+    </div>`;
+  }
+
   #renderExtension(extension: ExtensionStatus) {
     const tone = TONE[extension.state];
     return html`<div class="settings-row" data-extension-row=${extension.id} data-testid="extension-row">
@@ -89,7 +105,8 @@ export class HuiExtensionsSettings extends LitElement {
           @click=${() => this.#openPanel(extension)}>Open panel</button>` : nothing}
         ${renderSettingsToggle(extensionToggleLabel(extension), extension.enabled, (checked) => void this.#toggle(extension, checked), this.#busy.has(extension.id))}
       </div>
-    </div>`;
+    </div>
+    ${this.#contributions(extension)}`;
   }
 
   override render() {
