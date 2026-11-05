@@ -275,7 +275,7 @@ const cases: UseCase[] = [
   {
     id: "RICH-028",
     title: "Download a file the agent presents",
-    behaviour: "A presented file of any other format, such as a PDF, is a named card with its type and size and a **Download <name>** action that saves the original file; it is not shown inline, and the card is back after a reload. When the file came from inside the conversation's working directory, the card also has an **Open <name> in Files** action that shows that file in the conversation's Files view.",
+    behaviour: "A presented file of any other format, such as a PDF, is a named card with its type and size and a **Download <name>** action that saves the original file; it is not shown inline, and the card is back after a reload.",
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#agent-presented-media"],
     surfaces: ["tool:present_media", "route:GET /__hui/media/:id/:name"],
     journeys: ["presented-media"],
