@@ -138,8 +138,9 @@ npm run typecheck
 Result: exit 0 (server, web and base projects).
 
 npm test
-Result: 33 failed / 2771 passed, 419 files; the 33 failures are the identical
-baseline set (diffed by file and title: 0 added, 0 removed). All 20 new tests pass.
+Result: 33 failed / 2783 passed, 419 files on the rebased HEAD (2771 passed before
+main advanced to f7a620b2); the 33 failures are the identical baseline set (diffed
+by file and title: 0 added, 0 removed). All 20 new tests pass.
 Exit: 1 (pre-existing failures only).
 
 npm run build
@@ -245,6 +246,11 @@ gateway's strip-only TypeScript loader (`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`), wh
 - **One extra payload shape.** `ExtensionToggleRequest` is a named schema, as the
   plan required; no `ExtensionState` schema was added (the state union is inline),
   so the generated area exports exactly the six planned names.
+- **Rebased onto `origin/main` (`f7a620b2`) before handoff.** The catalogue check
+  compares against the current base; main had advanced past the branch point and
+  its changes made the stale branch look like it was changing SET-070. The rebase
+  was conflict-free, and the checks, the 86 focused tests and the full suite were
+  re-run on the rebased tree (CI green: 11 pass, 3 skipped).
 - No other deviation from D1–D13.
 
 ## 9. Owner sign-off (owner only)
