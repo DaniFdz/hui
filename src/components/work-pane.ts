@@ -13,7 +13,7 @@ import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { ariaShortcut, formatShortcut } from "../lib/shortcut-binding.ts";
 import { requestOpenSettings, settingsHref } from "../lib/open-settings.ts";
 import {
-  clampWorkPaneWidth, closingLastWorkView, sessionWorkPane, workPaneFits, workViewKey, workViewKind, workViewKinds,
+  clampWorkPaneWidth, closingLastWorkView, listedWorkViewKinds, sessionWorkPane, workPaneFits, workViewKey, workViewKind, workViewKinds,
   workPaneMaximized, WORK_PANE_LABEL, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_MIN_WIDTH, WORK_PANE_OPEN_VIEW, WORK_PANE_SHOW,
   WORK_PANE_TOGGLE_SHORTCUT,
   type WorkPaneStore, type WorkViewKind, type WorkViewRef, type WorkViewResource, type WorkViewSettingsLink,
@@ -331,7 +331,7 @@ export class WorkPane extends HuiElement {
   private renderLauncherMenu() {
     return html`<wa-dropdown class="work-pane__launcher" placement="bottom-end" @wa-show=${this.loadReopenable} @wa-select=${this.selectMenu}>
       <button slot="trigger" type="button" class="btn btn--ghost btn--icon work-pane__icon-btn" aria-label=${WORK_PANE_OPEN_VIEW} data-hui-tooltip="Open Work view">${plusIcon}</button>
-      ${workViewKinds().map((kind) => {
+      ${listedWorkViewKinds().map((kind) => {
         const reason = kind.unavailable?.(this.sessionId);
         return html`<wa-dropdown-item value=${`launch:${kind.kind}`} class="session-menu__item work-pane__menu-item" ?disabled=${Boolean(reason) || this.launching === kind.kind}>
           <span slot="icon" class="session-menu__icon" aria-hidden="true">${kind.icon}</span>
@@ -369,7 +369,7 @@ export class WorkPane extends HuiElement {
   private renderEmpty() {
     return html`<div class="work-pane__empty">
       <p class="work-pane__empty-lead">Open a view beside this conversation.</p>
-      <ul class="work-pane__empty-launchers">${workViewKinds().map((kind) => {
+      <ul class="work-pane__empty-launchers">${listedWorkViewKinds().map((kind) => {
         const reason = kind.unavailable?.(this.sessionId);
         return html`<li>
           <button type="button" class="work-pane__empty-launcher" ?disabled=${Boolean(reason) || this.launching === kind.kind}

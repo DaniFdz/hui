@@ -5,6 +5,7 @@
 import { html } from "lit";
 
 import { loadExtensions } from "../../api/extensions.ts";
+import { panelLauncherAvailable } from "../../lib/extensions/panel-availability.ts";
 import { icons } from "../../lib/icons.ts";
 import "../../components/extension-panel.ts";
 import type { WorkViewKind } from "../../lib/work-pane.ts";
@@ -16,6 +17,7 @@ export const extensionWorkViewKind: WorkViewKind<ExtensionWorkViewRef> = {
   label: "Extension panel",
   icon: icons.package,
   // The first enabled panel, so the launcher and Settings open the same tab for it.
+  hidden: () => !panelLauncherAvailable(),
   create: async () => {
     const { extensions } = await loadExtensions();
     const panel = extensions.find((extension) => extension.panel && extension.state === "loaded");

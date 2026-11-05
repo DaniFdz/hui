@@ -62,6 +62,7 @@ export class HuiExtensionsSettings extends LitElement {
     try {
       const status = await setExtensionEnabled(extension.id, enabled);
       this.#extensions = this.#extensions.map((entry) => entry.id === status.id ? status : entry);
+      this.dispatchEvent(new CustomEvent("hui-extensions-changed", { bubbles: true, composed: true }));
     } catch (error) {
       this.#error = error instanceof Error ? error.message : "That extension could not be changed.";
     } finally {

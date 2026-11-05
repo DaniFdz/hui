@@ -2,6 +2,7 @@
  * Browser client for gateway extensions: the installed list and the enable switch. An extension's own routes are its
  * own contract; a panel calls them through its bridge, not through this module.
  */
+import { notePanelExtensions } from "../lib/extensions/panel-availability.ts";
 import { CLIENT_HEADERS, fetchJson } from "./request.ts";
 import type { ExtensionStatus, ExtensionsResponse } from "./schema/extensions.ts";
 
@@ -9,7 +10,9 @@ const EXTENSIONS_URL = "/__hui/ext";
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 
 export async function loadExtensions(): Promise<ExtensionsResponse> {
-  return await fetchJson<ExtensionsResponse>(EXTENSIONS_URL);
+  const response = await fetchJson<ExtensionsResponse>(EXTENSIONS_URL);
+  notePanelExtensions(response.extensions);
+  return response;
 }
 
 /** Records the choice; the returned status is the extension's state right after the reconciliation. */

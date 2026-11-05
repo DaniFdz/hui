@@ -129,6 +129,7 @@ import { PANE_COLUMN_MIN_WIDTH } from "./lib/session/pane-geometry.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/files/file-link-store.ts";
 import { OPEN_SETTINGS_EVENT, requestOpenSettings, type OpenSettingsDetail } from "./lib/open-settings.ts";
 import { OPEN_EXTENSION_PANEL_EVENT, type OpenExtensionPanelDetail } from "./lib/extensions/open-panel.ts";
+import { loadExtensions } from "./api/extensions.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import "./components/work-pane.ts";
 import "./components/terminal-pane.ts";
@@ -526,6 +527,8 @@ export class HuiApp extends HuiElement {
       this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
       this.addEventListener("hui-files-connection", this.onFilesConnection);
       this.addEventListener(OPEN_EXTENSION_PANEL_EVENT, this.onOpenExtensionPanelRequest);
+      this.addEventListener("hui-extensions-changed", this.onExtensionsChanged);
+      void loadExtensions().then(() => this.requestUpdate()).catch(() => undefined);
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -549,6 +552,7 @@ export class HuiApp extends HuiElement {
     this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
     this.removeEventListener("hui-files-connection", this.onFilesConnection);
     this.removeEventListener(OPEN_EXTENSION_PANEL_EVENT, this.onOpenExtensionPanelRequest);
+    this.removeEventListener("hui-extensions-changed", this.onExtensionsChanged);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
     this.work.stop();
@@ -2375,6 +2379,8 @@ export class HuiApp extends HuiElement {
    * and optionally the section to scroll to. Cancelling the event tells it the app navigated, so its link does not
    * load the page. The section is scrolled to once it renders and kept there while sections above it load. */
   private stopSettingsScroll: (() => void) | undefined;
+  private onExtensionsChanged = () => this.requestUpdate();
+
   private onOpenExtensionPanelRequest = (event: Event) => {
     const layout = this.work.layout;
     const sessionId = layout ? activeSessionPane(layout).sessionId : undefined;

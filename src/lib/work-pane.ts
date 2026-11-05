@@ -49,6 +49,8 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   shortcut?: string;
   /** Visible reason when it cannot launch (for this conversation, when given). */
   unavailable?(sessionId?: string): string | undefined;
+  /** Not listed at all while this answers true (a launcher with nothing to open). */
+  hidden?(): boolean;
   /** When `unavailable` answers, the Settings page that changes it (e.g. "Open Settings → Tools → VS Code"). */
   settingsLink?(sessionId?: string): WorkViewSettingsLink | undefined;
   /** Calls `listener` whenever `unavailable` may answer differently; returns the unsubscribe. */
@@ -85,9 +87,14 @@ export function workViewKinds(): WorkViewKind[] {
   return [...kinds.values()];
 }
 
-/** Launchers worth listing beside a conversation's open views: every kind except a single-view kind already open. */
+/** Kinds the launcher UI may list: registered ones whose launcher has something to open. */
+export function listedWorkViewKinds(): WorkViewKind[] {
+  return workViewKinds().filter((kind) => !kind.hidden?.());
+}
+
+/** Launchers worth listing beside a conversation's open views: every listed kind except a single-view kind already open. */
 export function launchableWorkViewKinds(pane: Pick<SessionWorkPane, "views">): WorkViewKind[] {
-  return workViewKinds().filter((kind) => !kind.single || !pane.views.some((view) => view.kind === kind.kind));
+  return listedWorkViewKinds().filter((kind) => !kind.single || !pane.views.some((view) => view.kind === kind.kind));
 }
 
 /** Used for kinds that are not registered (yet): the same keys the built-in kinds use. */

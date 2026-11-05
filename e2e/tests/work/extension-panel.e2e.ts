@@ -7,10 +7,18 @@ type Extensions = { extensions: { id: string; state: string }[] };
 test("an enabled extension's panel opens sandboxed in the Work pane and calls its own route", { tags: ["WORK-083"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Extension panel", cwd: repository.path });
-  await hui.api("PUT", "/__hui/ext/hello", { enabled: true });
 
+  // Enable it through the page, so the app learns a panel exists before the Work pane offers it.
+  await hui.open("/settings/extensions");
+  await hui.flip(screen.getByRole("switch", "Enable Hello"));
+  await expect(screen.getByTestId("extension-state")).toHaveText("Loaded");
+
+  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await hui.openWorkView("Extension panel");
+  await screen.getByRole("button", "Show Work pane").tap();
+  await expect(screen.getByRole("button", "Extension panel")).toBeVisible();
+  await screen.getByRole("button", "Open Work view").tap();
+  await screen.getByRole("menuitem").filter({ hasText: "Extension panel" }).tap();
   const panel = screen.getByTestId("extension-panel");
   await expect(panel).toHaveAttribute("data-extension-panel", "hello");
   const frame = screen.getByTestId("extension-frame");
