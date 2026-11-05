@@ -1607,3 +1607,8 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
    * conversation needs the composer's underlap and a gap, not the fade's height. */
   .chat-thread { --chat-thread-padding-bottom: calc(6px + var(--chat-transcript-composer-underlap, 0px) + 32px); }
 }
+
+/* A turn that invoked a skill names it instead of showing PI's wrapper for the model. */
+.chat-skill-invoked { display: inline-flex; align-items: center; gap: var(--space-1); margin-bottom: var(--space-1); color: var(--muted); font: var(--control-ui-text-xs)/1.4 var(--font-mono); }
+.chat-skill-invoked__label { border: 1px solid var(--border); border-radius: 999px; padding: 0 var(--space-2); }
+.chat-skill-invoked code { color: var(--text); }

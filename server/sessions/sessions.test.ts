@@ -244,3 +244,35 @@ test("group checkout defaults survive read, rename and reorder and can be cleare
   await updateSessionGroup("Renamed", { worker: "" });
   assert.deepEqual((await readSessionGroups())[0], { label: "Renamed", cwd: "/srv/checkout" });
 });
+
+test("an investigation marker round-trips, and one that cannot be meant is dropped", async () => {
+  await writeRegistry([
+    record("explained", {
+      investigation: {
+        target: { kind: "session", id: "source" },
+        range: { from: "2026-05-01", to: "2026-05-31", timeZone: "Europe/Madrid" },
+      },
+    }),
+    record("explained-pr", {
+      investigation: {
+        target: { kind: "pullRequest", repository: "acme/web", number: 12 },
+        range: { from: "2026-05-01", to: "2026-05-31", timeZone: "UTC" },
+      },
+    }),
+  ]);
+  const stored = await readRegistry();
+  assert.deepEqual(stored.find((session) => session.id === "explained")?.investigation, {
+    target: { kind: "session", id: "source" },
+    range: { from: "2026-05-01", to: "2026-05-31", timeZone: "Europe/Madrid" },
+  }, "the marker survives the write every runtime update performs");
+  assert.deepEqual(stored.find((session) => session.id === "explained-pr")?.investigation?.target, { kind: "pullRequest", repository: "acme/web", number: 12 });
+
+  // A hand-edited registry cannot make the page claim a target it cannot name.
+  const path = join(configHome, "hui", "sessions.json");
+  const document = JSON.parse(await readFile(path, "utf8"));
+  const broken = document.sessions.find((session: { id: string }) => session.id === "explained");
+  broken.investigation = { target: { kind: "session", id: "" }, range: { from: "x", to: "y", timeZone: "" } };
+  await writeFile(path, JSON.stringify(document));
+  const reread = await readRegistry();
+  assert.equal(reread.find((session) => session.id === "explained")?.investigation, undefined);
+});

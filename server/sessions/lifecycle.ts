@@ -14,7 +14,7 @@ import { liveSessions, type DeleteToken } from "./live-sessions.ts";
 import { fallbackTitle, generateSessionNames } from "../pi/model-routing.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import type { PromptAttachment } from "../runtimes/types.ts";
-import { SessionNotFoundError, updateRegistry, upsert, type SessionRecord } from "./sessions.ts";
+import { SessionNotFoundError, updateRegistry, upsert, type SessionInvestigation, type SessionRecord } from "./sessions.ts";
 import type { SubagentService } from "../agent-tools/subagents.ts";
 import type { TaskSuggestionStore } from "../agent-tools/task-suggestions.ts";
 import { terminals } from "../terminals/terminals.ts";
@@ -94,6 +94,8 @@ async function createSession(
     bot?: { id: string; piSessionFile: string };
     /** A fork: the resume reference of the conversation copy it continues (`liveSessions.fork`). */
     piSessionFile?: string;
+    /** A Usage investigation: what it explains and the range it read. */
+    investigation?: SessionInvestigation;
   } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
@@ -193,6 +195,7 @@ async function createSession(
     ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
     ...(seed.bot ? { bot: seed.bot.id, piSessionFile: seed.bot.piSessionFile } : {}),
     ...(seed.piSessionFile ? { piSessionFile: seed.piSessionFile } : {}),
+    ...(seed.investigation ? { investigation: seed.investigation } : {}),
     createdAt: now,
     updatedAt: now,
     source: "hui",

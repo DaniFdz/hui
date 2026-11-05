@@ -60,6 +60,7 @@ import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { parseSlackLink } from "../lib/markdown/slack-link.ts";
+import { expandedSkillText, splitSkillBlock } from "../lib/skill-block.ts";
 import { activityLabel, attributedMessage, questionnaireSummary, type QuestionnaireSummary, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../lib/chat-projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
@@ -900,17 +901,24 @@ export function isLongPrompt(text: string): boolean {
 /** A user-role message's text: the operator's own (or a routine's or trigger's) plain, a bot's or a session's (`markdown`)
  * rendered as the agents write it. */
 function renderUserText(props: HomeProps, item: ChatMessage, embeds: boolean, text = item.text, markdown = false) {
-  const slack = embeds ? parseSlackLink(text.trim()) : undefined;
+  // A turn that invoked a skill carries PI's wrapper for the model; the reader gets the skill's name and the words
+  // the turn added around it instead.
+  const invoked = splitSkillBlock(text);
+  const skill = invoked
+    ? html`<span class="chat-skill-invoked" data-testid="chat-skill-invoked" data-hui-tooltip=${invoked.location}><span class="chat-skill-invoked__label">Skill</span> <code>${invoked.name}</code></span>`
+    : nothing;
+  const content = invoked ? expandedSkillText(invoked) : text;
+  const slack = embeds ? parseSlackLink(content.trim()) : undefined;
   if (slack) return html`<div class="chat-text chat-text--plain chat-text--rich-link"><hui-slack-link
     data-url=${slack.url}
     data-workspace=${slack.workspace}
     data-channel-id=${slack.channelId}
     data-kind=${slack.kind}
   ></hui-slack-link></div>`;
-  if (!isLongPrompt(text)) return markdown ? html`<div class="chat-text">${renderAgentMarkdown(text, embeds)}</div>` : html`<div class="chat-text chat-text--plain">${text}</div>`;
+  if (!isLongPrompt(content)) return html`${skill}${markdown ? html`<div class="chat-text">${renderAgentMarkdown(content, embeds)}</div>` : html`<div class="chat-text chat-text--plain">${content}</div>`}`;
   const id = `${props.session?.id ?? "session"}:prompt:${item.id}`;
   const expanded = props.expandedActivityIds.has(id);
-  return html`<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(text, embeds) : text}</div>
+  return html`${skill}<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(content, embeds) : content}</div>
     <button type="button" class="chat-prompt-toggle" aria-expanded=${expanded ? "true" : "false"} @click=${() => props.onActivityExpanded(id, !expanded)}>
       ${expanded ? "Show less" : "Show more"}<span class="chat-prompt-toggle__icon ${expanded ? "is-open" : ""}" aria-hidden="true">${chevronDownIcon}</span>
     </button>`;

@@ -134,7 +134,7 @@ test("a fork's inherited entries count once, attributed to the conversation that
     inputTokens: 115, outputTokens: 6, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 126, costUsd: 9.5,
     unpricedCalls: 1, calls: 4, userMessages: 1, assistantMessages: 3, toolResults: 1, errors: 2,
   }, "a tool's spend counts once, a model failure is an error, and a recorded zero stays priced");
-  assert.deepEqual(owned.tools, [{ name: "read", calls: 1, errors: 1 }]);
+  assert.deepEqual(owned.tools, [{ name: "read", calls: 1, errors: 1, outputChars: 0 }], "a tool result with no text adds no readable output");
   assert.deepEqual(owned.models.map((model) => [model.provider, model.model, model.metrics.totalTokens]), [["fixture", "model-a", 26]], "a tool's spend is not guessed into a model");
 
   const copy = report.sessions.find((each) => each.id === "fork")!;
@@ -197,7 +197,7 @@ test("legacy transcripts report unpriced calls, undated records and gaps without
     "a recorded total of zero stays zero, a negative price is unpriced rather than free, and a tool's spend counts once",
   );
   assert.equal(legacy.metrics.errors, 2, "a model failure and a failed tool are both errors");
-  assert.deepEqual(legacy.tools, [{ name: "bash", calls: 1, errors: 1 }]);
+  assert.deepEqual(legacy.tools, [{ name: "bash", calls: 1, errors: 1, outputChars: 0 }], "a tool result with no text adds no readable output");
   assert.deepEqual(legacy.models.map((model) => [model.provider, model.model, model.metrics.calls]), [
     ["fixture", "model-b", 2],
     ["fixture", "model-c", 1],
@@ -792,4 +792,73 @@ test("Refresh during an incremental scan waits for a full read shared by concurr
   barrier.resolve();
   await Promise.all([incremental, first, second]);
   assert.deepEqual(reads, ["full", "incremental", "full"], "an in-flight incremental scan cannot consume Refresh, and the full refresh is shared");
+});
+
+test("a history's created pull requests and its tools' readable output survive a later incremental read", async () => {
+  const created = "Creating pull request for branch\nhttps://github.com/acme/web/pull/12\n";
+  const { conversation } = await harness.commit(async (tx) => {
+    const conversation = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(conversation, { kind: UserEntry.kind, model: [user(T1, "ship it") as never] });
+    await tx.appendEntry(conversation, { kind: AssistantEntry.kind, model: [{
+      role: "assistant", api: "anthropic-messages", provider: "fixture", model: "model-a", stopReason: "toolUse", timestamp: T1, usage: priced(10, 2, 12, 0.1),
+      content: [
+        { type: "text", text: "Opening a pull request." },
+        { type: "toolCall", id: "call-pr", name: "bash", arguments: { command: "git push && gh pr create --fill" } },
+      ],
+    } as never] });
+    await tx.appendEntry(conversation, { kind: ToolResultEntry.kind, model: [{
+      role: "toolResult", toolCallId: "call-pr", toolName: "bash", isError: false, timestamp: T2,
+      content: [{ type: "text", text: created }, { type: "text", text: "x".repeat(400) }, { type: "image", data: "aGVsbG8=", mimeType: "image/png" }],
+    } as never] });
+    // A URL in a call that only viewed another pull request proves nothing.
+    await tx.appendEntry(conversation, { kind: ToolResultEntry.kind, model: [{
+      role: "toolResult", toolCallId: "call-view", toolName: "bash", isError: false, timestamp: T2,
+      content: [{ type: "text", text: "https://github.com/acme/docs/pull/99\n" }],
+    } as never] });
+    return { conversation };
+  }, durableContext);
+  const session = record("shipping", `durable:${conversation}`, new Date(T1).toISOString());
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+  const row = (scan: Awaited<ReturnType<typeof scanUsage>>) => sliceUsage(scan, june).sessions.find((each) => each.id === "shipping")!;
+
+  const first = await scanUsage([session], "UTC");
+  const shipped = row(first);
+  expectSchema(UsageReport, sliceUsage(first, june));
+  assert.deepEqual(shipped.pullRequests, [{ repository: "acme/web", number: 12, url: "https://github.com/acme/web/pull/12" }], "only a create call's output names a pull request, and an image adds no readable output");
+  const viewed = "https://github.com/acme/docs/pull/99\n";
+  assert.deepEqual(shipped.tools.map((tool) => [tool.name, tool.calls, tool.errors, tool.outputChars]), [["bash", 2, 0, created.length + viewed.length + 400]], "the tool's readable characters are counted, never its images");
+
+  await harness.commit(async (tx) => {
+    await tx.appendEntry(conversation, { kind: AssistantEntry.kind, model: [assistant(T3, priced(4, 1, 5, 0.05)) as never] });
+  }, durableContext);
+  const second = await scanUsage([{ ...session, updatedAt: new Date(T3).toISOString() }], "UTC", first);
+  const kept = row(second);
+  assert.deepEqual(kept.pullRequests, shipped.pullRequests, "a read that starts after the create call keeps what it already found");
+  assert.equal(kept.metrics.calls, 2, "the appended answer is counted");
+  assert.equal(kept.tools.find((tool) => tool.name === "bash")?.outputChars, shipped.tools[0]?.outputChars, "already-counted output is not added twice");
+
+  const refreshed = row(await scanUsage([{ ...session, updatedAt: new Date(T3).toISOString() }], "UTC"));
+  assert.deepEqual(refreshed.pullRequests, shipped.pullRequests, "a full read finds the same pull request once");
+});
+
+test("a report lists the investigations HUI already started, whatever range they cover", async () => {
+  const { UsageReports } = await import("./usage.ts");
+  const investigation = {
+    id: "investigation", title: "Why was \"Retry-safe checkout\" expensive?", group: "checkout-api", cwd: "/tmp", tool: "durable",
+    createdAt: "2026-06-05T09:00:00.000Z", updatedAt: "2026-06-05T09:01:00.000Z",
+    investigation: {
+      target: { kind: "session", id: "source" } as const,
+      range: { from: "2026-05-01", to: "2026-05-31", timeZone: "Europe/Madrid" },
+    },
+  };
+  const reports = new UsageReports(async () => [investigation]);
+  const report = await reports.get(usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" })));
+  expectSchema(UsageReport, report);
+  assert.deepEqual(report.investigations, [{
+    id: "investigation", title: "Why was \"Retry-safe checkout\" expensive?",
+    target: { kind: "session", id: "source" },
+    range: { from: "2026-05-01", to: "2026-05-31", timeZone: "Europe/Madrid" },
+    createdAt: "2026-06-05T09:00:00.000Z",
+  }], "an investigation is reported for the range it read, not the page's");
+  assert.deepEqual(report.sessions, [], "and it is not a usage row of its own");
 });

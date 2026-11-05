@@ -3,6 +3,7 @@
  * sessions first, then bots, tools, integrations, automation and the backlog, with the route modules that serve them.
  */
 import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { homedir, hostname, userInfo } from "node:os";
 
@@ -49,6 +50,8 @@ import { ROUTINES_TOOL } from "./bots/durable-routines.ts";
 import { resolveWorkingDirectory } from "./git/working-directories.ts";
 import { aggregateUsage, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { UsageReports } from "./usage.ts";
+import { createUsageInvestigation } from "./usage-investigation.ts";
+import { bundledSkillEnabled } from "./pi/bundled-skills.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { createDurableBots } from "./bots/durable-access.ts";
 import type { SessionJiraIssue } from "./api/sessions.ts";
@@ -135,10 +138,6 @@ export const updateRoutes = createUpdateRoutes();
 export const settingsRoutes = createSettingsRoutes({ writeSettings });
 const usageReports = new UsageReports(readRegistry);
 const durableUsage = async (conversationId: number) => durableHost().conversationUsage(conversationId as never);
-export const diagnosticsRoutes = createDiagnosticsRoutes({
-  observability: async () => readObservability(await readRegistry(), durableUsage),
-  usage: (query, refresh) => usageReports.get(query, refresh),
-});
 export const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
 // and stop showing a reconnect once HUI no longer tries.
@@ -174,13 +173,27 @@ const sessionViews = createSessionViews({
   watchers: () => watchers,
 });
 const { toView, listSessionViews } = sessionViews;
-const { createSession, forkRequest, forkFromSession, startWorktreeSession, waitForSessionReady, deleteSession, updateSession } = createSessionLifecycle({
-  views: sessionViews,
+const { createSession, forkRequest, forkFromSession, startWorktreeSession, waitForSessionReady, deleteSession, updateSession } = createSessionLifecycle({  views: sessionViews,
   readAttachments,
   subagents: () => subagents,
   taskSuggestions: () => taskSuggestions,
   watchers: () => watchers,
   managedBrowser: () => managedBrowser,
+});
+/** Why an expensive session or pull request was expensive: a new session, prompted from the Usage report. */
+const usageInvestigation = createUsageInvestigation({
+  usage: (query) => usageReports.get(query),
+  readRegistry,
+  liveSessions,
+  lifecycle: { createSession, waitForSessionReady },
+  views: sessionViews,
+  directoryExists: async (path) => stat(path).then((info) => info.isDirectory()).catch(() => false),
+  costSkillEnabled: async () => bundledSkillEnabled("cost-investigation", (await readHuiSettings()).disabledSkills),
+});
+export const diagnosticsRoutes = createDiagnosticsRoutes({
+  observability: async () => readObservability(await readRegistry(), durableUsage),
+  usage: (query, refresh) => usageReports.get(query, refresh),
+  investigate: (request) => usageInvestigation.investigate(request),
 });
 export const bots = new BotService({
   registry: botRegistry,

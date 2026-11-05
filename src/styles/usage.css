@@ -117,3 +117,24 @@
   .usage-selection { flex-direction: column; align-items: stretch; }
   .usage-selection__actions { justify-content: flex-end; }
 }
+
+/* A row's investigation: one compact action beside its numbers, never behind a hover. */
+.usage-investigate { flex-shrink: 0; white-space: nowrap; }
+.usage-investigate[aria-busy="true"] { opacity: 0.7; }
+.usage-pr-name { display: grid; gap: var(--space-1); min-width: 0; }
+.usage-pr-link { color: var(--accent); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.usage-pr-link:hover { text-decoration: underline; }
+.usage-pr-link:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+/* A row already explained says so, and its action opens that report. */
+.usage-investigation-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.usage-investigated { border: 1px solid var(--border); border-radius: 999px; padding: 2px var(--space-2); color: var(--muted); font-size: var(--control-ui-text-xs); white-space: nowrap; }
+
+/* A row's investigation and its answered state. */
+.usage-investigate { flex-shrink: 0; white-space: nowrap; }
+.usage-investigate[aria-busy="true"] { opacity: 0.7; }
+.usage-pr-name { display: grid; gap: var(--space-1); min-width: 0; }
+.usage-pr-link { color: var(--accent); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.usage-pr-link:hover { text-decoration: underline; }
+.usage-pr-link:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+.usage-investigation-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.usage-investigated { border: 1px solid var(--border); border-radius: 999px; padding: 2px var(--space-2); color: var(--muted); font-size: var(--control-ui-text-xs); white-space: nowrap; }

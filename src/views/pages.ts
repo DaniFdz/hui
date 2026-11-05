@@ -17,6 +17,8 @@ export type DedicatedPageProps = {
   dashboard: () => DashboardProps;
   onOpenSettings: () => void;
   onOpenSession: (id: string) => void;
+  /** Opens a session the gateway has just created: the client list must hold it first. */
+  onOpenStartedSession: (id: string) => void;
 };
 
 export const PAGE_RENDERERS = {
@@ -25,7 +27,8 @@ export const PAGE_RENDERERS = {
   tasks: (props) => renderAutomationSurface(props.automation(), "Tasks"),
   sessions: (props) => renderSessionsPage(props.sessions()),
   dashboard: (props) => renderDashboard(props.dashboard()),
-  usage: (props) => html`<hui-usage-page .onOpenSession=${props.onOpenSession}></hui-usage-page>`,
+  usage: (props) => html`<hui-usage-page .onOpenSession=${props.onOpenSession}
+    .onOpenStartedSession=${props.onOpenStartedSession}></hui-usage-page>`,
   contributions: (props) => html`<hui-contributions-page .onOpenSettings=${props.onOpenSettings}
     .onOpenSession=${props.onOpenSession}></hui-contributions-page>`,
 } satisfies Partial<Record<HuiPageId, (props: DedicatedPageProps) => TemplateResult>>;

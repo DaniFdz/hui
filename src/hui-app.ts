@@ -613,6 +613,11 @@ export class HuiApp extends HuiElement {
     await this.sessions.refresh(background);
   }
 
+  /** Opens a session the gateway has just created: navigation can only activate a row the client list holds. */
+  private openStartedSession = (id: string) => {
+    void this.refreshSessions(true).then(() => this.navigate({ kind: "session", id }));
+  };
+
   /** Opens a launch once the registry lists its session: a worktree session is unlisted until the gateway has made its checkout. */
   private openLaunchedSession(): void {
     const launch = this.unlistedLaunch;
@@ -2956,6 +2961,7 @@ export class HuiApp extends HuiElement {
       }),
       onOpenSettings: () => this.navigate({ kind: "settings", page: "integrations" }),
       onOpenSession: (id) => this.navigate({ kind: "session", id }),
+      onOpenStartedSession: this.openStartedSession,
     };
   }
 

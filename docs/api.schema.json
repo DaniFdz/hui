@@ -11920,6 +11920,133 @@
         }
       }
     },
+    "UsageInvestigation": {
+      "type": "object",
+      "required": [
+        "session",
+        "existing"
+      ],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        },
+        "existing": {
+          "type": "boolean"
+        }
+      }
+    },
+    "UsageInvestigationRecord": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "target",
+        "range",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/UsageInvestigationTarget"
+        },
+        "range": {
+          "type": "object",
+          "required": [
+            "from",
+            "to",
+            "timeZone"
+          ],
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      }
+    },
+    "UsageInvestigationRequest": {
+      "type": "object",
+      "required": [
+        "target",
+        "range"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/UsageInvestigationTarget"
+        },
+        "range": {
+          "type": "object",
+          "required": [
+            "timeZone"
+          ],
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "UsageInvestigationTarget": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "id"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "session"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "repository",
+            "number"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "pullRequest"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "number": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    },
     "UsageMetrics": {
       "type": "object",
       "required": [
@@ -12007,6 +12134,7 @@
         "generatedAt",
         "range",
         "sessions",
+        "investigations",
         "coverage",
         "unplacedSpend"
       ],
@@ -12037,6 +12165,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/UsageSession"
+          }
+        },
+        "investigations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UsageInvestigationRecord"
           }
         },
         "coverage": {
@@ -12138,6 +12272,12 @@
           "items": {
             "$ref": "#/$defs/UsageTool"
           }
+        },
+        "pullRequests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionPullRequest"
+          }
         }
       }
     },
@@ -12146,7 +12286,8 @@
       "required": [
         "name",
         "calls",
-        "errors"
+        "errors",
+        "outputChars"
       ],
       "properties": {
         "name": {
@@ -12156,6 +12297,9 @@
           "type": "number"
         },
         "errors": {
+          "type": "number"
+        },
+        "outputChars": {
           "type": "number"
         }
       }
@@ -14182,6 +14326,10 @@
       "UiErrorReceipt",
       "UiErrorReport",
       "UsageDay",
+      "UsageInvestigation",
+      "UsageInvestigationRecord",
+      "UsageInvestigationRequest",
+      "UsageInvestigationTarget",
       "UsageMetrics",
       "UsageModel",
       "UsageReport",
@@ -15637,6 +15785,16 @@
       "path": "/__hui/usage",
       "response": {
         "$ref": "#/$defs/UsageReport"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/usage/investigate",
+      "request": {
+        "$ref": "#/$defs/UsageInvestigationRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/UsageInvestigation"
       }
     },
     {

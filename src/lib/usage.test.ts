@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { UsageDay, UsageMetrics, UsageModel, UsageReport, UsageSession } from "../api/schema/diagnostics.ts";
-import { sumUsage, usageChartDays, usageComparison, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageOverview, usageSessionCsv } from "./usage.ts";
+import { sumUsage, usageChartDays, usageComparison, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageInvestigations, usageOverview, usagePullRequests, usageSessionCsv } from "./usage.ts";
 
 const metrics = (tokens: number, costUsd: number | null): UsageMetrics => ({ inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: tokens, costUsd, calls: 1, unpricedCalls: costUsd === null ? 1 : 0, userMessages: 1, assistantMessages: 1, toolResults: 1, errors: 0 });
 const model = (name: string, usage: UsageMetrics): UsageModel => ({ provider: "fixture", model: name, metrics: usage });
 const day = (date: string, usage: UsageMetrics, models: UsageModel[] = []): UsageDay => ({ date, metrics: usage, models });
-const session = (id: string, name: string, usage: UsageMetrics): UsageSession => ({ id, title: id, lastActivityAt: 1, metrics: usage, models: [model(name, usage)], days: [day("2026-10-01", usage, [model(name, usage)])], tools: [{ name: "read", calls: 1, errors: 0 }] });
+const session = (id: string, name: string, usage: UsageMetrics): UsageSession => ({ id, title: id, lastActivityAt: 1, metrics: usage, models: [model(name, usage)], days: [day("2026-10-01", usage, [model(name, usage)])], tools: [{ name: "read", calls: 1, errors: 0, outputChars: 10 }] });
 
 const report: UsageReport = {
   generatedAt: "2026-10-01T00:00:00Z", range: { from: "2026-10-01", to: "2026-10-03", timeZone: "UTC" },
+  investigations: [],
   coverage: { registeredSessions: 3, readSessions: 3, unavailable: [], undatedRecords: 0 },
   unplacedSpend: { totalTokens: 0, costUsd: 0 },
   sessions: [session("free", "swift", metrics(10, 0)), session("unknown", "swift", metrics(30, null)), session("paid", "large", metrics(20, 0.5))],
@@ -140,4 +141,35 @@ test("a chart bar sums each model over the days it covers, so a week names every
   const week = usageChartDays(rows, "2026-08-01", "2026-10-02").days.at(-1);
   assert.equal(week?.date, "2026-09-26", "the last bar covers the week that ends on the range's last day");
   assert.deepEqual(week?.models.map(({ model: name, metrics: value }) => [name, value.totalTokens, value.costUsd]), [["large", 20, 0.5], ["swift", 15, 0]], "one model used on two days counts once");
+});
+
+test("the pull-request card groups sessions by the pull requests they created, most expensive first", () => {
+  const pullRequest = (repository: string, number: number) => ({ repository, number, url: `https://github.com/${repository}/pull/${number}` });
+  const rows: UsageSession[] = [
+    { ...session("webhook", "large", metrics(20, 0.5)), pullRequests: [pullRequest("acme/web", 12), pullRequest("acme/docs", 7)] },
+    { ...session("retry", "swift", metrics(10, 0.25)), pullRequests: [pullRequest("acme/web", 12)] },
+    { ...session("plain", "swift", metrics(5, 0.1)) },
+  ];
+  const grouped = usagePullRequests(rows);
+  assert.deepEqual(grouped.map((row) => [`${row.repository}#${row.number}`, row.sessions.map((each) => each.id), row.metrics.totalTokens, row.metrics.costUsd]), [
+    ["acme/web#12", ["webhook", "retry"], 30, 0.75],
+    ["acme/docs#7", ["webhook"], 20, 0.5],
+  ], "a session that created two pull requests counts under each, and a session without one is not a row");
+  assert.equal(grouped[0]?.url, "https://github.com/acme/web/pull/12");
+  assert.deepEqual(usagePullRequests([]), []);
+});
+
+test("the page matches an answered target with the report HUI already started for it", () => {
+  const report: UsageReport = {
+    generatedAt: "2026-10-02T00:00:00Z", range: { from: "2026-10-01", to: "2026-10-02", timeZone: "UTC" },
+    sessions: [], coverage: { registeredSessions: 1, readSessions: 0, unavailable: [], undatedRecords: 0 }, unplacedSpend: { totalTokens: 0, costUsd: 0 },
+    investigations: [
+      { id: "answered-session", title: "Why was x expensive?", target: { kind: "session", id: "x" }, range: { from: "2026-09-01", to: "2026-09-30", timeZone: "Europe/Madrid" }, createdAt: "2026-10-01T00:00:00Z" },
+      { id: "answered-pr", title: "Why was acme/web#12 expensive?", target: { kind: "pullRequest", repository: "Acme/Web", number: 12 }, range: { from: "2026-09-01", to: "2026-09-30", timeZone: "UTC" }, createdAt: "2026-10-01T01:00:00Z" },
+    ],
+  };
+  const answered = usageInvestigations(report);
+  assert.equal(answered.get("session:x")?.id, "answered-session");
+  assert.equal(answered.get("pullRequest:acme/web#12")?.id, "answered-pr", "a repository matches whatever its case");
+  assert.equal(answered.size, 2);
 });

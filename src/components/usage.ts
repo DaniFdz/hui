@@ -1,10 +1,11 @@
 /** The Usage page: reporting controls and charts over recorded local conversation histories, never provider billing. */
 import { LitElement, html, nothing, render, svg, type TemplateResult } from "lit";
 import { live } from "lit/directives/live.js";
-import type { UsageMetrics, UsageModel, UsageReport } from "../api/schema/diagnostics.ts";
+import type { UsageInvestigationRecord, UsageMetrics, UsageModel, UsageReport } from "../api/schema/diagnostics.ts";
+import type { UsageInvestigationTarget } from "../api/usage.ts";
 import { UsageController } from "../controllers/usage-controller.ts";
 import { cardGridStyle } from "../lib/card-grid.ts";
-import { sumUsage, usageChartDays, usageComparison, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageOverview, usageSessionCsv, type UsageSort } from "../lib/usage.ts";
+import { sumUsage, usageChartDays, usageComparison, usageCost, usageDailyCsv, usageDetail, usageErrorDays, usageHeatmap, usageInvestigationKey, usageInvestigations, usageOverview, usagePullRequests, usageSessionCsv, type UsagePullRequest, type UsageSort } from "../lib/usage.ts";
 import { downloadTextFile } from "../lib/download.ts";
 import { icons } from "../lib/icons.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
@@ -76,11 +77,14 @@ function skeleton() {
 
 export class HuiUsagePage extends LitElement {
   onOpenSession?: (id: string) => void;
+  /** A session this page started, which the shell opens once its list holds the new row. */
+  onOpenStartedSession?: (id: string) => void;
   #usage = new UsageController(this);
   #chartFocus = 0;
   #selection: Selection | undefined;
   #tip: HTMLElement | undefined;
   #overview: { report: UsageReport; query: string; sort: UsageSort; value: ReturnType<typeof usageOverview> } | undefined;
+  #investigations: { report: UsageReport; value: Map<string, UsageInvestigationRecord> } | undefined;
 
   override createRenderRoot() { return this; }
   override connectedCallback() {
@@ -271,6 +275,42 @@ export class HuiUsagePage extends LitElement {
     </section>`;
   }
 
+  /** Starts the explanation session and opens it; the page owns nothing else of it. */
+  async #investigate(target: UsageInvestigationTarget): Promise<void> {
+    const id = await this.#usage.investigate(target);
+    if (id) (this.onOpenStartedSession ?? this.onOpenSession)?.(id);
+  }
+
+  /**
+   * The row's action: start a report, or open the one HUI already started for
+   * this target. An answered target says so beside its numbers and never starts
+   * a second report by accident.
+   */
+  #investigateAction(target: UsageInvestigationTarget, label: string, name: string, answered: UsageInvestigationRecord | undefined) {
+    if (answered) {
+      const range = `${answered.range.from} to ${answered.range.to} (${answered.range.timeZone})`;
+      return html`<div class="usage-investigation-actions">
+        <span class="usage-investigated" data-testid="usage-investigated" data-hui-tooltip=${"HUI explained it on " + new Date(answered.createdAt).toLocaleDateString() + " for " + range}>Investigated</span>
+        <button class="btn btn--sm usage-investigate" type="button" data-hui-tooltip=${"Open the report started for " + name}
+          aria-label=${"Open the investigation of " + name} @click=${() => this.onOpenStartedSession?.(answered.id)}>${icons.fileText}<span>Open report</span></button>
+      </div>`;
+    }
+    const starting = this.#usage.investigating === usageInvestigationKey(target);
+    return html`<button class="btn btn--sm usage-investigate" type="button" data-hui-tooltip=${label} aria-label=${label}
+      aria-busy=${starting} ?disabled=${Boolean(this.#usage.investigating)} @click=${() => void this.#investigate(target)}>${icons.search}<span>${starting ? "Starting…" : "Investigate"}</span></button>`;
+  }
+
+  #pullRequests(rows: readonly UsagePullRequest[], investigations: ReadonlyMap<string, UsageInvestigationRecord>) {
+    return html`<section class="settings-group usage-panel sessions-card" data-testid="usage-pull-requests">
+      <div class="sessions-card-header"><div><h2 class="settings-section__heading">Cost by pull request</h2><p class="usage-summary-sub">${count(rows.length, "pull request")} opened by the sessions in range · a session that opened several counts under each</p></div></div>
+      <div class="session-bars">${rows.slice(0, this.#usage.limit).map((row) => html`<article class="session-bar-row" data-testid="usage-pull-request">
+        <div class="usage-pr-name"><a class="usage-pr-link" href=${row.url} target="_blank" rel="noreferrer">${row.repository}#${row.number}</a>
+          <span class="session-bar-meta">${row.sessions.map((session) => session.title).join(" · ")}</span></div>
+        <div class="usage-report__session-values"><strong>${compact(row.metrics.totalTokens)}</strong><span class="usage-summary-sub">${cost(row.metrics)}</span></div>
+        ${this.#investigateAction({ kind: "pullRequest", repository: row.repository, number: row.number }, `Investigate why ${row.repository}#${row.number} was expensive`, `${row.repository}#${row.number}`, investigations.get(usageInvestigationKey({ kind: "pullRequest", repository: row.repository, number: row.number })))}
+      </article>`)}</div></section>`;
+  }
+
   #rankings(overview: ReturnType<typeof usageOverview>) {
     const totalCost = overview.totals.costUsd;
     const spending = (metrics: UsageMetrics) => {
@@ -307,8 +347,11 @@ export class HuiUsagePage extends LitElement {
     if (report && (this.#overview?.report !== report || this.#overview.query !== state.query || this.#overview.sort !== state.sort)) {
       this.#overview = { report, query: state.query, sort: state.sort, value: usageOverview(report, state.query, state.sort) };
     }
+    if (report && this.#investigations?.report !== report) this.#investigations = { report, value: usageInvestigations(report) };
+    const investigations = report ? this.#investigations?.value ?? new Map<string, UsageInvestigationRecord>() : new Map<string, UsageInvestigationRecord>();
     const overview = report ? this.#overview?.value : undefined;
     const totals = overview?.totals;
+    const pullRequests = overview ? usagePullRequests(overview.sessions) : [];
     const active = this.#usage.query.trim().length > 0;
     const lastActive = report ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: report.range.timeZone }) : undefined;
     return html`<header class="content-header content-header--settings"><div><div class="page-title" data-testid="page-title">Usage</div><div class="page-subtitle">Recorded tokens and PI cost estimates.</div></div><div class="page-header-actions">${state.slow && report ? html`<button class="btn" type="button" @click=${() => state.cancel()}>Cancel</button>` : nothing}${report && overview ? html`<button class="btn" type="button" data-hui-tooltip="Download these days as a CSV" @click=${() => downloadTextFile(`hui-usage-daily-${report.range.from}-${report.range.to}.csv`, usageDailyCsv(overview.days.toSorted((left, right) => left.date.localeCompare(right.date))))}>${icons.download}<span>Daily CSV</span></button>` : nothing}<button class="btn" type="button" @click=${() => state.refresh()}>${icons.refresh}<span>${state.loading ? "Refreshing…" : "Refresh"}</span></button></div></header>
@@ -339,9 +382,11 @@ export class HuiUsagePage extends LitElement {
         ${this.#overviewCards(totals, overview)}
         ${this.#rankings(overview)}
         <section class="settings-group usage-panel sessions-card" data-testid="usage-sessions"><div class="sessions-card-header"><div><h2 class="settings-section__heading">Sessions</h2><p class="usage-summary-sub">${Math.min(state.limit, overview.sessions.length)} shown · ${overview.sessions.length} in range</p></div><div class="usage-card-actions"><button class="btn btn--sm" type="button" data-hui-tooltip="Download these sessions as a CSV" @click=${() => downloadTextFile(`hui-usage-sessions-${report.range.from}-${report.range.to}.csv`, usageSessionCsv(overview.sessions))}>Sessions CSV</button><div class="usage-sessions-sort">Sort sessions<div class="usage-sort-picker">${renderPicker({ label: "Sort sessions", value: state.sort, options: SORT_OPTIONS, showOptionTooltips: false, onChange: (value) => { state.sort = asSort(value); this.requestUpdate(); } })}</div></div></div></div>
-          <div class="session-bars" data-testid="usage-session-rows">${overview.sessions.slice(0, state.limit).map((session) => html`<article class="session-bar-row"><button class="session-bar-selection" type="button" @click=${() => this.onOpenSession?.(session.id)}><span class="session-bar-title">${session.title}</span><span class="session-bar-meta">${session.models.map(({ model }) => model).join(", ") || "Unknown model"}${session.parentId ? " · Child session" : ""} · ${lastActive && session.lastActivityAt ? `Active ${lastActive.format(session.lastActivityAt)} · ` : ""}${count(session.metrics.userMessages + session.metrics.assistantMessages, "message")} · ${count(session.metrics.toolResults, "tool result")}</span></button><div class="usage-report__session-values"><strong>${compact(session.metrics.totalTokens)}</strong><span class="usage-summary-sub">${cost(session.metrics)}</span></div></article>`)}</div>
+          <div class="session-bars" data-testid="usage-session-rows">${overview.sessions.slice(0, state.limit).map((session) => html`<article class="session-bar-row" data-testid="usage-session-row"><button class="session-bar-selection" type="button" @click=${() => this.onOpenSession?.(session.id)}><span class="session-bar-title">${session.title}</span><span class="session-bar-meta">${session.models.map(({ model }) => model).join(", ") || "Unknown model"}${session.parentId ? " · Child session" : ""} · ${lastActive && session.lastActivityAt ? `Active ${lastActive.format(session.lastActivityAt)} · ` : ""}${count(session.metrics.userMessages + session.metrics.assistantMessages, "message")} · ${count(session.metrics.toolResults, "tool result")}</span></button><div class="usage-report__session-values"><strong>${compact(session.metrics.totalTokens)}</strong><span class="usage-summary-sub">${cost(session.metrics)}</span></div>${session.metrics.calls ? this.#investigateAction({ kind: "session", id: session.id }, `Investigate why ${session.title} was expensive`, session.title, investigations.get(usageInvestigationKey({ kind: "session", id: session.id }))) : nothing}</article>`)}</div>
           ${overview.sessions.length > state.limit ? html`<button class="btn usage-more-sessions" type="button" @click=${() => { state.limit += 50; this.requestUpdate(); }}>Show more</button>` : nothing}
-        </section>` : nothing}
+        </section>
+        ${state.investigationError ? html`<div class="callout danger" role="alert">${state.investigationError}</div>` : nothing}
+        ${pullRequests.length ? this.#pullRequests(pullRequests, investigations) : nothing}` : nothing}
     </main>`;
   }
 }

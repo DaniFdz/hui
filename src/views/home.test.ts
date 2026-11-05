@@ -837,6 +837,29 @@ test("an expanded goal reads the whole objective and edits it in place", async (
   assert.match(busy, /<button type="submit" class="btn btn--sm primary" \?disabled=true>Save goal</u);
 });
 
+test("a turn that invoked a skill names it, instead of showing PI's wrapper for the model", async () => {
+  const prompt = [
+    '<skill name="cost-investigation" location="/opt/hui/skills/cost-investigation/SKILL.md">',
+    "References are relative to /opt/hui/skills/cost-investigation.",
+    "",
+    "# Cost investigation",
+    "",
+    "Name the cheaper mechanism.",
+    "</skill>",
+    "",
+    "# Why was this expensive?",
+    "",
+    "It cost $1.25.",
+  ].join("\n");
+  const html = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: prompt }] });
+  assert.match(html, /class="chat-skill-invoked"[^>]*data-hui-tooltip=\/opt\/hui\/skills\/cost-investigation\/SKILL\.md/u);
+  assert.match(html, /<span class="chat-skill-invoked__label">Skill<\/span> <code>cost-investigation<\/code>/u);
+  assert.match(html, /Name the cheaper mechanism\./u, "the method stays readable in the turn");
+  assert.match(html, /# Why was this expensive\?/u);
+  assert.ok(!html.includes("&lt;skill name=") && !html.includes("<skill name="), "the wrapper PI writes for the model is not shown");
+  assert.ok(!html.includes("References are relative to"));
+});
+
 test("a presented file from the working directory offers to open in Files", async () => {
   const id = "12345678-1234-4123-8123-123456789abc";
   const media = { id, name: "notes.md", kind: "file", mimeType: "application/octet-stream", size: 7, url: `/__hui/media/${id}/notes.md` };
