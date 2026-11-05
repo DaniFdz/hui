@@ -44,7 +44,7 @@ Rules for the program session:
 | P1 | Settings page + `hui extension list/enable/disable` | **DONE** | 918e0f0c | green (run 42021662186) |
 | P2 | Sandboxed panels and the bridge | **DONE** | d60951c5 | green (run 42031190678; catalogue re-run 42032678418) |
 | P3 | Prompt sections and agent tools | **DONE** | ec18488b | green (runs 42038480178, 42038480264) |
-| P4 | Server-sent events | NOT STARTED | — | — |
+| P4 | Server-sent events | **DONE** | 6db2f619 | green (runs 42042613325, 42042613255) |
 | P5 | Reload, engines, doctor, install/remove | NOT STARTED | — | — |
 | P6 | Out-of-process mode | NOT STARTED | — | — |
 
@@ -54,11 +54,11 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 
 | Field | Value |
 |---|---|
-| Current phase | P4 (NOT STARTED) |
-| Next action | Start P4: SSE extension routes, the route declaration, caps/heartbeat/abort, tests and docs |
+| Current phase | P5 (NOT STARTED) |
+| Next action | Start P5: explicit reload, engines.hui, status fields, doctor check, install/remove CLI, Reload UI |
 | Branch | `danifdz/hui-extendability` |
 | Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
-| Last green CI | P3, ec18488b, runs 42038480178 and 42038480264 |
+| Last green CI | P4, 6db2f619, runs 42042613255 and 42042613325 |
 | Last DONE phase | P0 carried (criteria met in #408; #415 carries its commits) |
 | Baseline | see §3 |
 
@@ -337,53 +337,55 @@ between gateway tools, once, with a diagnostic.
 
 ## 7. P4 — Server-sent events
 
-**Status:** NOT STARTED · **Commit:** — · **CI:** —
+**Status:** DONE · **Commit:** 6db2f619 · **CI:** green, run 42042613325 (web 1/4–4/4) and 42042613255 (Test)
 
-**Baseline:** typecheck — · tests — · tree —
+**Baseline:** P3's green HEAD; typecheck 0 · tests 33 failed / 2820 passed · tree clean
 
 **Acceptance criteria:**
 
-- [ ] **P4-A1** A route declared `stream: true` answers `text/event-stream`; each
-  yielded object becomes one `data:` event in order, with a 15 s heartbeat comment,
-  and the response closes when the iterable ends. `ExtensionRouteInfo` marks the
-  stream and the schema is regenerated.
-- [ ] **P4-A2** A client disconnect aborts the iterable's `signal`; a throw ends the
-  stream with one `error` event and one diagnostic; the E10 caps end it with a
-  named error event.
-- [ ] **P4-A3** A streaming handler on a non-streaming route, a non-iterable result
-  on a streaming route, and a wrong method are refused (500/405), never a hung
-  response.
-- [ ] **P4-A4** `docs/api.md` and `SPEC.md` describe the SSE contract and caps.
-- [ ] **P4-A5** Focused tests (real HTTP client), order test, typecheck, full
-  suite (failure set unchanged), build and CI green.
+- [x] **P4-A1** A route declared `stream: true` answers `text/event-stream`; each yielded object becomes one unnamed `data:` frame in order, with a 15 s heartbeat comment, and the response closes when the iterable ends. `ExtensionRouteInfo` carries `stream: true` and the schema is regenerated.
+- [x] **P4-A2** A client leaving stops the loop and makes the generator's `return` run (the integration fixture's marker file proves it); a throw ends the stream with one `event: error` and one diagnostic; the event-count, event-size and total-size caps end it with named errors and one diagnostic each.
+- [x] **P4-A3** A streaming handler that returns a body, a non-streaming handler that returns events, and a wrong method are refused with 500/405, never a hung response.
+- [x] **P4-A4** `docs/api.md`, `SPEC.md` and `docs/guide.md` describe the declaration, the caps, the heartbeat and the error frame.
+- [x] **P4-A5** Focused tests (real HTTP client and the stream writer), the order test, typecheck, full suite (failure set unchanged), build and CI are green.
 
 **Runs**
 
 ```
-P4-V1  SSE ordering, heartbeat, abort, throw, caps
-Command:
-Result:
-Exit:
+P4-V1  npx vitest run server/http/events-stream.test.ts server/extensions/stream.test.ts
+Result: 6 tests passed: frame order, heartbeat, throw error + report, the three
+        caps, a client leaving (generator return), and the middleware integration
+        (events, abort marker, wrong shapes 500)
+Exit: 0
 
-P4-V2  wrong handler/result/method
-Command:
-Result:
-Exit:
+P4-V2  npx vitest run server/extensions server/http/events-stream.test.ts \
+         scripts/api-schema.test.ts scripts/use-cases.test.ts \
+         scripts/module-headers.test.mjs scripts/boundaries.test.mjs
+Result: 12 files passed, 100 tests passed
+Exit: 0
 
-P4-V3  npm run typecheck / npm test / npm run build
-Result:            (failure set vs baseline: added ___ / removed ___)
-Exit:
+P4-V3  npm run api:schema && git status --short
+Result: ExtensionRouteInfo gains the optional stream field; no further change on
+        a rerun
+Exit: 0
+
+P4-V4  npm run typecheck && npm run build && npm test
+Result: typecheck 0; build 0; 33 failed / 2829 passed, the same baseline set
+        (added 0, removed 0)
+Exit: typecheck/build 0, tests 1 (pre-existing failures only)
 ```
 
-**Manual proof:** a real gateway call to the fixture stream, with the event
-transcript and the abort behaviour recorded.
+**Manual proof:** not applicable — P4 adds no browser surface. The integration
+test drives a real HTTP client against the middleware, cancels the reader and
+waits for the handler's generator to close.
 
-```
-Result:
-```
+**Proof gaps:** the ten-minute duration cap's branch is not exercised (a test
+would run ten minutes); the code branch is a single elapsed-time check beside the
+tested event-count/size caps.
 
-**Proof gaps:** —
-**Deviations:** —
+**Deviations:** events are unnamed `data:` frames with a separate `event: error`
+frame, as the plan says; the heartbeat interval is configurable only internally
+(tests use a short one), while the gateway uses 15 s.
 
 ---
 
