@@ -2266,10 +2266,11 @@ everything the Bots tab can, through the same routes.
   preserve their recorded outcome. Only a known failure before dispatch
   retries automatically: a disconnected worker before the chat opens, or a
   key command for the model of a bot on this gateway that fails (the machine
-  offline or just woken). It retries after 30 seconds, two minutes and then
-  every minute, for up to 12 hours after the run was due and never past a
-  temporary task's end; occurrences that come due meanwhile collapse into the
-  waiting run. The run's timeout starts with the attempt that sends its
+  offline or just woken; not checked on Windows). It retries after 30
+  seconds, two minutes and then every minute, for up to 12 hours after the
+  run was created and never past a temporary task's end; a retry that comes
+  due later fails without sending, and occurrences that come due meanwhile
+  collapse into the waiting run. The run's timeout starts with the attempt that sends its
   prompt. Retries keep one run id and consume a temporary run only once.
   Routines, Activity and Automations show the next retry or *Needs attention*
   with an explanation for quota, configuration, connection, transient,

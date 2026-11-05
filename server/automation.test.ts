@@ -518,6 +518,23 @@ test("a run still waiting to send its prompt survives a restart hours after it w
   second.dispose();
 });
 
+test("a retry that comes due after the twelve hours fails without sending", async () => {
+  const clock = manualClock(T0);
+  let attempts = 0;
+  const service = new AutomationService(await temporaryFile(), async () => {
+    if (++attempts === 1) throw new AutomationRetryError("Worker offline.", "connection");
+    return { summary: "Sent too late" };
+  }, clock.clock);
+  const task = await service.create({ name: "Check", sessionId: "bot", prompt: "Check.", schedule: { kind: "at", at: future } });
+  await service.run(task.id);
+  await waitFor("the first retry timer", () => clock.nextWake() === T0 + 30_000);
+  clock.advanceTo(T0 + 13 * 60 * MINUTE);
+  await runEnds(service, "failed");
+  assert.equal(attempts, 1);
+  assert.deepEqual((await service.snapshot()).runs[0]?.failure, { kind: "connection", needsAttention: true });
+  service.dispose();
+});
+
 test("a pending retry does not outlive the task's end", async () => {
   const clock = manualClock(T0);
   const service = new AutomationService(await temporaryFile(), async () => { throw new AutomationRetryError("Offline.", "connection"); }, clock.clock);

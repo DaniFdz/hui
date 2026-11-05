@@ -2268,10 +2268,12 @@ intervention rather than replay.
 
 Only an explicitly known **pre-dispatch** failure is automatically retried: a
 bot's worker being offline before its chat opens, or the key command for the
-model of a bot on this gateway failing before its prompt is sent. Attempts come
-after 30 seconds, two minutes and then every minute, for up to 12 hours after
-the run was created and never past a temporary task's end. Occurrences of the
-task that come due while a run waits collapse into it. A retry is the same run id and consumes no
+model of a bot on this gateway failing before its prompt is sent (not checked on
+Windows, where PI runs key commands synchronously). Attempts come after 30
+seconds, two minutes and then every minute, for up to 12 hours after the run was
+created and never past a temporary task's end. A retry that comes due after
+that, as after the machine slept, fails without sending. Occurrences of the task
+that come due while a run waits collapse into it. A retry is the same run id and consumes no
 extra `runsLeft`. A pending retry survives restart and can be cancelled through
 the existing run-cancel route. A failure after dispatch is never a reason to
 send another prompt automatically. Quota/rate-limit, configuration, connection,

@@ -717,6 +717,7 @@ export class AutomationService {
         abort.abort();
       }
       if (!run.delivery && task.until !== undefined && Date.parse(task.until) <= nowMs) throw new Error("This temporary task ended before its retry could be delivered.");
+      if (!run.delivery && run.retryAt && nowMs >= waitLimit(task, run)) throw new Error("Its bot or model stayed unreachable for 12 hours, so the routine was never sent.");
       const { retryAt: _retryAt, error: _error, failure: _failure, ...kept } = current;
       current = { ...kept, status: "running", deadlineAt, startedAt: current.startedAt ?? iso(nowMs), attempt: (run.attempt ?? 1) + (run.retryAt ? 1 : 0) };
       await this.#update((file) => ({ ...file, runs: file.runs.map((item) => item.id === run.id ? current : item) }));
