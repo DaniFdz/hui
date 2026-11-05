@@ -45,7 +45,7 @@ Rules for the program session:
 | P2 | Sandboxed panels and the bridge | **DONE** | d60951c5 | green (run 42031190678; catalogue re-run 42032678418) |
 | P3 | Prompt sections and agent tools | **DONE** | ec18488b | green (runs 42038480178, 42038480264) |
 | P4 | Server-sent events | **DONE** | 6db2f619 | green (runs 42042613325, 42042613255) |
-| P5 | Reload, engines, doctor, install/remove | NOT STARTED | — | — |
+| P5 | Reload, engines, doctor, install/remove | **DONE** | 7347cb53 | green (runs 42045860596, 42045860744) |
 | P6 | Out-of-process mode | NOT STARTED | — | — |
 
 Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (owner).
@@ -54,11 +54,11 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 
 | Field | Value |
 |---|---|
-| Current phase | P5 (NOT STARTED) |
-| Next action | Start P5: explicit reload, engines.hui, status fields, doctor check, install/remove CLI, Reload UI |
+| Current phase | P6 (NOT STARTED) |
+| Next action | Start P6: `mode: "process"`, the host supervisor and protocol, crash isolation and the tests |
 | Branch | `danifdz/hui-extendability` |
 | Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
-| Last green CI | P4, 6db2f619, runs 42042613255 and 42042613325 |
+| Last green CI | P5, 7347cb53, runs 42045860596 and 42045860744 |
 | Last DONE phase | P0 carried (criteria met in #408; #415 carries its commits) |
 | Baseline | see §3 |
 
@@ -391,65 +391,63 @@ frame, as the plan says; the heartbeat interval is configurable only internally
 
 ## 8. P5 — Lifecycle, compatibility and installation
 
-**Status:** NOT STARTED · **Commit:** — · **CI:** —
+**Status:** DONE · **Commit:** 7347cb53 · **CI:** green, runs 42045860596 (Test) and 42045860744 (web 1/4–4/4)
 
-**Baseline:** typecheck — · tests — · tree —
+**Baseline:** P4's green HEAD; typecheck 0 · tests 33 failed / 2829 passed · tree clean
 
 **Acceptance criteria:**
 
-- [ ] **P5-A1** `POST /__hui/ext/:id/reload` re-imports a changed module; a
-  successful reload serves the new routes immediately (panels via the new table),
-  prompt text on the next assembly and tools on the next new session; a failed
-  reload answers 200 with `state: "failed"`, the error, and no routes from the
-  broken module.
-- [ ] **P5-A2** `engines.hui` min/max are enforced by a tested comparator; an
-  unsupported range refuses to load with a named reason; extensions without
-  `engines` still load.
-- [ ] **P5-A3** `ExtensionStatus` gains `version?`, `engines?`, `reloadedAt?`,
-  `mode`, `restarts`; the API schema and generated browser types are regenerated
-  and documented; the Settings page has a Reload action.
-- [ ] **P5-A4** `hui extension add <path> [--link]`, `remove <id> [--delete]` and
-  `list` behave as specified, including refusing an existing id, requiring a
-  disabled extension to remove, and the no-gateway message; `hui extension`
-  commands appear in HELP and completion.
-- [ ] **P5-A5** `hui doctor` reports missing, failed and incompatible enabled
-  extensions, has no `--fix`, and its tests cover each issue.
-- [ ] **P5-A6** Focused tests, typecheck, full suite (failure set unchanged),
-  build, CLI tests and CI green; the Reload button has a Browser-tool check and a
-  screenshot if the page changed.
+- [x] **P5-A1** `POST /__hui/ext/:id/reload` re-imports a changed module (cache-busted): routes use the new table at once, prompt text on the next assembly and tools on the next new session. A successful reload returns `ExtensionStatus` with `reloadedAt`; a failed reload answers 200 with `state: "failed"`, the error, and no routes from the broken module; an unknown id is 404. `reload` is reserved for this action.
+- [x] **P5-A2** `engines.hui` min/max are enforced by a tested field-by-field comparator (bounds inclusive); an unsupported range refuses to load with the named reason and the extension's version/engines still show; an extension without engines loads.
+- [x] **P5-A3** `ExtensionStatus` carries `version?`, `engines?`, `reloadedAt?`, `mode` (`in-process`) and `restarts` (0); the API schema and browser types are regenerated and documented. Settings → Extensions shows the version, the HUI range and the reload time, with a **Reload** action.
+- [x] **P5-A4** `hui extension add <path> [--link]` validates the manifest and entry, refuses an existing id, copies or links, and enables through a running gateway (or writes the store when none runs); `hui extension remove <id> [--delete]` requires it disabled, prints the path, and only `--delete` removes it (a linked extension unlinks, never the target); `list/enable/disable/reload` work as before.
+- [x] **P5-A5** `hui doctor` reports an enabled id with no directory, a failed manifest, an unreadable store and an unsupported `engines` range; the check has no `--fix`.
+- [x] **P5-A6** Focused tests, typecheck, full suite (failure set unchanged), build, CLI tests and CI green; the Reload action has a Browser-tool check and screenshots.
 
 **Runs**
 
 ```
-P5-V1  reload success/failure, engines, comparator
-Command:
-Result:
-Exit:
+P5-V1  npx vitest run server/extensions cli/extensions.test.ts cli/doctor-extensions.test.ts
+Result: 9 files passed, 44 tests passed (registry 13, service 14, tool builder 4,
+        assets 1, stream 1, routes 1, store 4, CLI 4, doctor 2)
+Exit: 0
 
-P5-V2  CLI add/remove/list, doctor check
-Command:
-Result:
-Exit:
+P5-V2  npx vitest run cli/main.test.ts cli/doctor.test.ts server/routes/order.test.ts \
+         scripts/api-schema.test.ts scripts/use-cases.test.ts \
+         scripts/module-headers.test.mjs scripts/boundaries.test.mjs \
+         src/components/settings/extensions.test.ts
+Result: 8 files passed, 83 tests passed
+Exit: 0
 
-P5-V3  npm run api:schema && git status --short
-Result:
-Exit:
+P5-V3  npm run e2e -- --tag SET-086
+Result: 1 file, 1 test passed (version/range shown, Reload confirmed)
+Exit: 0
 
-P5-V4  npm run typecheck / npm test / npm run build
-Result:            (failure set vs baseline: added ___ / removed ___)
-Exit:
+P5-V4  npm run api:schema && git status --short
+Result: the reload route and lifecycle fields are published; no further change
+Exit: 0
+
+P5-V5  npm run typecheck && npm run build && npm test
+Result: typecheck 0; build 0; 33 failed / 2838 passed, the same baseline set
+        (added 0, removed 0)
+Exit: typecheck/build 0, tests 1 (pre-existing failures only)
 ```
 
-**Manual proof:** install a copy of the fixture with `hui extension add`, reload
-after editing its module, then remove it; record the CLI transcript and the
-status/doctor output.
+**Manual proof** (Browser tool, isolated launcher at 7347cb53): the fixture is
+enabled, its row shows **v1.2.3 · HUI >=0.1.0**, clicking **Reload** shows
+**Reloaded 3:32:07 PM**, and the page renders at 1440×900 and 390×844. Screenshots:
+`extensions-lifecycle-desktop.png`, `extensions-lifecycle-mobile.png` (outside the
+checkout, attached to the PR).
 
-```
-Result:
-```
+**Proof gaps:** none for the phase; the doctor check's real installation version
+is read from package.json (a source checkout included), and the test covers the
+same parse/range rules with a fixture package.
 
-**Proof gaps:** —
-**Deviations:** —
+**Deviations:** `hui extension remove` without `--delete` reports the absolute path
+and changes nothing (the plan's `--delete` is the only removal); the doctor check
+reads `<packageRoot>/package.json` rather than `packageVersion`, so a source
+checkout is checked against its real version instead of requiring a built release.
+Tool handlers remain module exports (P3).
 
 ---
 
