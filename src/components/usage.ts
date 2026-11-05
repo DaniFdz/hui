@@ -318,8 +318,10 @@ export class HuiUsagePage extends LitElement {
 
   #rankings(overview: ReturnType<typeof usageOverview>) {
     const totalCost = overview.totals.costUsd;
+    // A reported session cost is part of the total but not of any model's recorded price, so a share would lie.
+    const shareable = !overview.sessions.some((session) => session.reportedCost);
     const spending = (metrics: UsageMetrics) => {
-      const share = totalCost && metrics.costUsd !== null ? ` · ${percent(metrics.costUsd, totalCost)} of cost` : "";
+      const share = shareable && totalCost && metrics.costUsd !== null ? ` · ${percent(metrics.costUsd, totalCost)} of cost` : "";
       return `${compact(metrics.totalTokens)} tokens${share}`;
     };
     const failures = usageErrorDays(overview.days);
