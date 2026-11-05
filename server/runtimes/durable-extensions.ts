@@ -756,7 +756,16 @@ export class DurableExtensions {
     }
     if (SystemEntry.is(entry) || ResetEntry.is(entry)) return undefined;
     let id: string | undefined;
-    for (const message of entry.model ?? []) id = manager.appendMessage(message as never);
+    for (const message of entry.model ?? []) id = this.#projectMessage(message as Message);
+    return id;
+  }
+
+  /** PI stamps a projected entry with the moment it appends it; the message keeps the time it was recorded, which an
+   * extension reading `ctx.sessionManager.getEntries()` reports on (pi-coding-agent's `appendMessage`). */
+  #projectMessage(message: Message): string {
+    const id = this.#manager.appendMessage(message as never);
+    const entry = message.timestamp > 0 && message.timestamp <= 8.64e15 ? this.#manager.getEntry(id) : undefined;
+    if (entry) entry.timestamp = new Date(message.timestamp).toISOString();
     return id;
   }
 

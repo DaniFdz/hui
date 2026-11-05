@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
@@ -1206,6 +1207,38 @@ test("a session cost an extension reports reaches the session's usage and surviv
   await turns(reopened, ["COST_ZERO_AFTER_TURN please"]);
   await waitFor("the zero report", () => reopened.currentUsage()?.sessionCost?.asOf === 1792920300000);
   assert.deepEqual(reopened.currentUsage()?.sessionCost, { usd: 0, source: "fixture gateway", asOf: 1792920300000 }, "a reported zero is a cost, not an absent one");
+  reopened.dispose();
+});
+
+test("an extension sees when a projected entry was recorded, not when the gateway loaded the conversation", async (t) => {
+  // A cost report measures from the session's earliest entry, so a projection that stamps every entry with its own load
+  // time asks the gateway only about the work that happened since.
+  const seen = join(root, `entry-times-${randomUUID()}.jsonl`);
+  const f = await fixture(t, { extensions: { "times.js": `
+    import { appendFileSync } from "node:fs";
+    export default function (pi) {
+      pi.on("session_start", (event, ctx) => appendFileSync(${JSON.stringify(seen)}, JSON.stringify(ctx.sessionManager.getEntries()
+        .filter((entry) => entry.type === "message")
+        .map((entry) => Date.parse(entry.timestamp))) + "\\n"));
+    }
+  ` } });
+  const first = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "projection-time" }, first);
+  await turns(session, ["TIME one"]);
+  const reference = session.sessionFile;
+  session.dispose();
+  await first.close();
+
+  const host = f.host();
+  const conversation = await (await host.open()).conversation(Number(reference.slice("durable:".length)) as never, durableContext);
+  const stored = (await conversation!.entries({ order: "ascending" }, 50, undefined, durableContext)).items
+    .flatMap((entry) => (entry.model ?? []).filter((message) => message.role !== "system").map((message) => message.timestamp));
+  assert.equal(stored.length, 2, "a prompt and its answer");
+
+  const reopened = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "projection-time" }, host);
+  await waitFor("the reopened projection", async () => (await readFile(seen, "utf8")).trim().split("\n").length >= 2);
+  const projections = (await readFile(seen, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as number[]);
+  assert.deepEqual(projections.at(-1), stored, "each entry keeps the time its message was recorded");
   reopened.dispose();
 });
 
