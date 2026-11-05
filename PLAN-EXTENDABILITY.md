@@ -4,9 +4,12 @@ Program plan for making HUI's gateway a first-class extension host, not just a
 route seam. It follows phase 0 — the JSON routes, enable store, status/toggle API
 and documentation in PR #408 (its `PLAN.md` / `GOAL.md` live on that branch).
 
-The owner runs the whole program as **one long-running goal**: one branch, one pull
-request, and each phase as a checkpoint of commits inside it. Every decision this
-program needs is made below; do not reopen them. Record each phase's evidence in
+The owner runs the whole program as **one long-running goal**: one branch, **one
+pull request for every phase**, and each phase as a checkpoint of commits inside
+it. There is no per-phase PR, no second program PR and no follow-up PR. Phase 0
+already exists as PR #408 and is this branch's base, not another program PR; the
+program PR carries its commits until #408 merges. Every decision this program needs
+is made below; do not reopen them. Record each phase's evidence in
 [GOAL-EXTENDABILITY.md](GOAL-EXTENDABILITY.md), which is the source of truth for
 resuming after an interruption.
 
@@ -73,7 +76,7 @@ commands, documentation and diagnostics.
 
 | # | Decision |
 |---|---|
-| E1 | One long-running program: one branch, one pull request, and one commit series per phase. No phase gets its own PR and nothing is merged mid-program. The branch starts from `main` when #408 is merged, or stacked on #408's branch and rebased onto `main` once #408 merges (E23). |
+| E1 | **Exactly one program PR**: one branch, one pull request for P1–P6, and one commit series per phase. No per-phase PR, no second program PR, no follow-up PR. The branch starts from `main` when #408 is merged, or carries #408's commits until it merges (E23); either way there is one program PR. Nothing is merged mid-program. |
 | E2 | Extension UI is a **sandboxed iframe** rendered in the Work pane; assets are served pre-gate from `/__hui/ext-ui/<id>/…`, never `/__hui/ext/…`. |
 | E3 | The CSP `sandbox allow-scripts allow-forms` makes the frame an opaque origin; `connect-src 'none'` means the frame **cannot** call HUI, and every source is limited to that extension's own `/__hui/ext-ui/<id>/` prefix. Everything goes through the parent bridge. |
 | E4 | The bridge forwards only `method + path` pairs that the panel's own extension declared and that are active now, always prefixed with `/__hui/ext/<id>/`. It adds no HUI service handles and no extra headers. The parent rejects empty, `.` or `..` segments and encodes each segment itself, so a crafted path cannot leave the extension's namespace. |
@@ -95,7 +98,7 @@ commands, documentation and diagnostics.
 | E20 | The existing trust posture holds: extensions are trusted local code with the gateway's access; no sandbox, no approval prompt, no per-extension quota beyond the stated caps. |
 | E21 | Phase checkpoints: after a phase's code and tests, update the ledger, commit, push, wait for the required CI jobs on that HEAD, and only then start the next phase. A red required check stops the program until it is fixed or recorded as a proof gap with evidence; the next phase never starts on top of a red HEAD. |
 | E22 | Resumption: the ledger is the source of truth. After an interruption or context loss, read the ledger, `git log` and `git status` first, resume at the phase marked IN PROGRESS or at the first NOT STARTED phase after the last DONE one, and never redo a completed phase. |
-| E23 | If #408 is still open when the program starts, base the program branch on `danifdz/gateway-extensions`, open the program PR as a draft and keep it draft; at each checkpoint check whether #408 merged, and if it did, rebase the unreviewed draft onto the new `main` and force-push before continuing. Never force-push after the PR is marked ready. Before each phase, check the PR for unresolved review comments and address them first. If the program PR was merged mid-program, continue on a fresh branch from the merged `main` and open a follow-up PR; never keep committing to a merged branch. |
+| E23 | If #408 is still open when the program starts, base the program branch on `danifdz/gateway-extensions` (the single program PR then contains its commits), open the program PR as a draft and keep it draft; at each checkpoint check whether #408 merged, and if it did, rebase the unreviewed draft onto the new `main` and force-push before continuing. Never force-push after the PR is marked ready. Before each phase, check the PR for unresolved review comments and address them first. If the program PR is merged before P6, the owner ended the program early: mark the remaining phases NOT DONE, stop, and do **not** open another PR. |
 | E24 | A phase that cannot complete after two focused attempts at the same failing check is marked BLOCKED in the ledger with the exact error and evidence, and the session stops. Dependent phases are not started; independent ones (P4 does not depend on P2/P3) may continue only if the ledger says so explicitly. |
 
 ## 4. Where we are
@@ -403,11 +406,12 @@ only with the command's real output pasted under its run.
 
 ## 7. Program branch, checkpoints and goals
 
-**Start.** Branch `danifdz/hui-extendability` from the merged `main` when #408 has
-landed; if it has not, branch from `danifdz/gateway-extensions` and stack (E23).
-Open one **draft** PR titled
+**One PR, not several.** Branch `danifdz/hui-extendability` from the merged `main`
+when #408 has landed; if it has not, branch from `danifdz/gateway-extensions` and
+carry its commits (E23). Open exactly one **draft** PR titled
 `feat: extend the gateway into a full extension host` and put the phase checklist
-in its body. Nothing is merged during the program.
+in its body. Every phase is committed to this branch and this PR. Nothing is merged
+during the program, and no second program PR is ever opened.
 
 **Each phase is a checkpoint, not a merge.**
 
@@ -428,7 +432,9 @@ its body with the phase results and the proof, and hand it to the owner. The own
 reviews the whole branch commit by commit and merges once.
 
 **Late review.** If the owner leaves review comments while the session runs, the
-next phase's step 1 addresses them. If the branch is merged before P6, E23 applies.
+next phase's step 1 addresses them. If the branch is merged before P6, the program
+ends there: the ledger records the remaining phases as NOT DONE and no other PR is
+opened (E23).
 
 **Never:** merge, force-push over reviewed commits, rewrite history after a phase
 is marked DONE, or start a phase with the previous phase's required checks red.
@@ -444,9 +450,9 @@ is marked DONE, or start a phase with the previous phase's required checks red.
 | Reload breaks a working extension | Explicit reload only; failure marks it failed and withdraws routes, never half-registers (E11) |
 | Process mode is mistaken for a security boundary | Docs, SPEC and the Settings note state crash isolation only (E15) |
 | Extension surfaces multiply the catalogue debt | Each UI phase adds exactly one use case and one shared test; iOS excluded once with an anchor (E17) |
-| A very large PR is hard to review | One branch, but a commit series per phase and a ledger with per-phase evidence; the owner can review commit by commit |
+| A very large PR is hard to review | One branch and one PR by request, but a commit series per phase and a ledger with per-phase evidence; the owner can review commit by commit |
 | A long session loses context or is interrupted | The ledger records resume state after every phase (E22); commits and CI runs are the checkpoints |
-| CI minutes pile up | One push per phase plus the fixes it needs; the ledger marks each run |
+| CI minutes pile up | One push per phase plus the fixes it needs; the ledger marks each run on the single PR |
 
 ## 9. Effort (judgment, not measured)
 
