@@ -329,6 +329,8 @@ export type HomeProps = {
   onQueueRemove: (id: string) => void;
   onQueueMove: (id: string, toIndex: number) => void;
   onQueueSteer: (id: string) => void;
+  /** Stops the turn the steers wait on and sends all of them as one message. */
+  onQueueSteerNow: () => void;
   /** The settled run's terminal error, unless the operator dismissed it. */
   runError?: RunErrorNotice;
   onContinueAfterError: () => void;
@@ -2298,6 +2300,9 @@ function mountEditor(element: Element | undefined, value: string) {
 function renderQueue(props: HomeProps) {
   const editable = props.queue.items ?? [];
   const rows = queueRows(props.queue);
+  // Durable withdraws a steered message with the turn it waits on, so they are sent again as one prompt. A runtime
+  // that keeps its queue through Stop already delivers them with its next run.
+  const steersNow = props.session?.tool === "durable" && props.queue.steering.length > 0;
   if (!rows.length) return nothing;
   return html`<section
     class="chat-queue"
@@ -2306,6 +2311,11 @@ function renderQueue(props: HomeProps) {
     aria-atomic="false"
     aria-label="Queued messages"
   >
+    ${steersNow ? html`<div class="chat-queue__send-now">
+      <button class="chat-queue__action chat-queue__steer" type="button"
+        title="Stops this turn and sends every steered message now"
+        ?disabled=${props.sending} @click=${props.onQueueSteerNow}>${icons.zap}<span>Send now</span></button>
+    </div>` : nothing}
     <div class="chat-queue__scroll" data-scrollable=${rows.length > 3 ? "true" : "false"}
       data-at-start="true" data-at-end=${rows.length > 3 ? "false" : "true"}
       @scroll=${(event: Event) => {

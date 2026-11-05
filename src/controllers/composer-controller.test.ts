@@ -14,9 +14,11 @@ const fake = vi.hoisted(() => ({
   prompts: [] as { id: string; text: string; resolve: () => void; reject: (error: Error) => void }[],
   rewinds: [] as unknown[][],
   aborts: [] as string[],
+  steerNows: [] as { id: string; resolve: () => void; reject: (error: Error) => void }[],
 }));
 vi.mock("../api/sessions.ts", () => ({
   mutateQueuedMessage: (id: string, mutation: unknown) => new Promise<void>((resolve, reject) => fake.mutations.push({ id, mutation, resolve, reject })),
+  sendQueuedSteersNow: (id: string) => new Promise<void>((resolve, reject) => fake.steerNows.push({ id, resolve, reject })),
   sendPrompt: (id: string, text: string) => new Promise((resolve, reject) => fake.prompts.push({ id, text, resolve: () => resolve({ duplicate: false }), reject })),
   rewindSession: async (...args: unknown[]) => { fake.rewinds.push(args); },
   abortSession: async (id: string) => { fake.aborts.push(id); },
@@ -48,6 +50,7 @@ beforeEach(() => {
   fake.prompts = [];
   fake.rewinds = [];
   fake.aborts = [];
+  fake.steerNows = [];
 });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -181,6 +184,19 @@ test("editing a queued message ends when the queue drops it or the edit is saved
   fake.mutations[2]?.reject(new Error("late"));
   await settle();
   assert.deepEqual(notes, ["error:gone"], "a failure for a session no longer shown says nothing");
+});
+
+test("sending the queued steers now sends once and reports a refusal", async () => {
+  const { controller, notes } = composer({ current: { id: "s1" } as SessionView });
+  controller.props().onQueueSteerNow();
+  assert.equal(controller.sending, true);
+  controller.props().onQueueSteerNow();
+  assert.deepEqual(fake.steerNows.map(({ id }) => id), ["s1"], "a second click sends nothing while the first is in flight");
+
+  fake.steerNows[0]?.reject(new Error("nothing is steered"));
+  await settle();
+  assert.equal(controller.sending, false);
+  assert.equal(notes.at(-1), "error:nothing is steered");
 });
 
 test("a sent prompt claims the draft at once and a refused one comes back with the error", async () => {

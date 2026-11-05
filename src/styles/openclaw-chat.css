@@ -1481,6 +1481,15 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .tool-call-row__icon--emoji { font-size: 15px; }
 .tool-call-group__emoji { font-size: 14px; }
 
+/* HUI sends a run's queued steers now, so the queue carries one row above them: a blocking tool call can hold a steer
+   for minutes, and stopping the turn is the only way past it. */
+.chat-queue__send-now {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--chat-stack-trailing-inset);
+  border-bottom: 1px solid var(--chat-queue-divider);
+}
+
 /* A user's own icon file: drawn in the mark's box, cropped to its circle, never wider than the chip. */
 .tool-call-group__icon,
 .tool-call-row__icon-img {

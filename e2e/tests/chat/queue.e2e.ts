@@ -1,4 +1,4 @@
-/** While a run is busy, Send steers it and holding Send enqueues follow-ups, which can be edited, removed, reordered and sent now (CHAT-005 to CHAT-008, CHAT-010). */
+/** While a run is busy, Send steers it and holding Send enqueues follow-ups, which can be edited, removed, reordered and sent now (CHAT-005 to CHAT-008, CHAT-010); Send now sends the steers on at once, ahead of the tool call they wait behind (CHAT-085). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
@@ -35,7 +35,7 @@ test("Send steers a busy run, and PI takes the steer before a follow-up queued a
   await enqueue(screen, hui, "Queued before the steer");
   await message.fill("Use tabs, not spaces");
   await steer.tap();
-  await expect.poll(() => hui.textOf(queue)).toMatch(/^\s*Use tabs, not spaces\s*Steer\s*Queued before the steer\s*Follow up/u);
+  await expect.poll(() => hui.textOf(queue)).toMatch(/^\s*Send now\s*Use tabs, not spaces\s*Steer\s*Queued before the steer\s*Follow up/u);
   await expect(queue.getByRole("button", "Edit queued message")).toHaveCount(1);
   await expect(message).toHaveValue("");
   await message.fill("The next draft");
@@ -145,11 +145,36 @@ test("Steer queued message sends a follow-up into the running turn, ahead of the
   await enqueue(screen, hui, "First follow-up");
   await enqueue(screen, hui, "Urgent follow-up");
   await queue.getByRole("button", "Steer queued message").nth(1).tap();
-  await expect.poll(() => hui.textOf(queue)).toMatch(/^\s*Urgent follow-up\s*Steer\s*First follow-up\s*Follow up/u);
+  await expect.poll(() => hui.textOf(queue)).toMatch(/^\s*Send now\s*Urgent follow-up\s*Steer\s*First follow-up\s*Follow up/u);
 
   await hui.provider.release();
   await expect(transcript.getByText("Fixture response.")).toHaveCount(2);
   await expect.poll(() => hui.textOf(transcript)).toMatch(/Replay prefix — replay suffix.*Urgent follow-up.*Fixture response\..*First follow-up.*Fixture response\./su);
+  await expect(idle).toBeVisible();
+  await expect(queue).toBeHidden();
+});
+
+test("Send now stops the turn a steer waits behind and sends every steer as one message", { tags: ["CHAT-085"] }, async ({ screen, hui }) => {
+  const { message, steer, queue, transcript, idle } = chat(screen);
+
+  // The provider holds this command, so the run stays inside its tool call and the steers cannot reach the model yet.
+  const session = await hui.createSession({ title: "Send steers now" });
+  await hui.open(`/sessions/${session.id}`);
+  await expect(idle).toBeVisible();
+  await message.fill("E2E_COMMAND_RUNNING hold the command");
+  await screen.getByRole("button", "Send message").tap();
+  await hui.provider.held();
+  await message.fill("Status please");
+  await steer.tap();
+  await message.fill("Skip the slow part");
+  await steer.tap();
+  await expect.poll(() => hui.textOf(queue)).toMatch(/Status please\s*Steer.*Skip the slow part\s*Steer/su);
+
+  await queue.getByRole("button", "Send now").tap();
+
+  await expect.poll(() => hui.textOf(transcript)).toMatch(/Status please Skip the slow part/su);
+  await expect(transcript.getByText("Status please Skip the slow part", { exact: false })).toHaveCount(1);
+  await expect(transcript.getByText("Fixture response.")).toBeVisible();
   await expect(idle).toBeVisible();
   await expect(queue).toBeHidden();
 });

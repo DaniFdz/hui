@@ -3442,6 +3442,16 @@ cached command catalog so newly added skills and commands appear.
 Uses the prompt body and attachment rules. Queues an instruction before PI's
 next model call while the current run is active.
 
+### `POST /__hui/sessions/:id/steer-now`
+
+Accepts an empty JSON body and returns `{ "ok": true }`. Delivers the run's
+queued steers now rather than at its next model call, which a blocking tool call
+can hold off for minutes: it stops the turn and starts the next one with every
+queued steer as a single message, in queue order, so they arrive together.
+Queued follow-ups the same Stop withdraws are put back. `409` when nothing is
+queued, and on a runtime whose Stop keeps its steering queue (PI), where the
+steers already go in with the next run. `404` for an unknown session.
+
 ### `POST /__hui/sessions/:id/queue`
 
 Edits the follow-up queue using an `operation` of `edit`, `remove`, `move` or

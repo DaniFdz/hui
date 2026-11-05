@@ -5,11 +5,11 @@
  * follow-up or a composer command (`/clear`, `/reload`, `/compact`, `/btw` with its side chat), with the first prompt
  * of a launched session held until it is idle; stopping a turn, compacting, rewinding to a message, the Fork dialog's
  * target and answering a question; and the session's message queue, with the edit of one queued message and the
- * requests that edit, remove, move and steer queued messages. The shell reads its props, measures its textarea and
- * hands it the queue from the conversation's snapshots and events.
+ * requests that edit, remove, move and steer queued messages, or send the steered ones now. The shell reads its
+ * props, measures its textarea and hands it the queue from the conversation's snapshots and events.
  */
 import type { LitElement, ReactiveControllerHost } from "lit";
-import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion, cancelCompaction, clearSession, compactSession, continueSession, followUpSession, loadCommands, mutateQueuedMessage, reloadSession, rewindSession, sendPrompt, setSessionGoal, steerSession, type Attachment, type PromptMode, type QuestionResponse, type QueueSnapshot, type RewindTarget, type RuntimeCommand, type SessionSnapshot, type SessionStatus, type SessionView, type TranscriptAttachment } from "../api/sessions.ts";
+import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion, cancelCompaction, clearSession, compactSession, continueSession, followUpSession, loadCommands, mutateQueuedMessage, reloadSession, rewindSession, sendPrompt, sendQueuedSteersNow, setSessionGoal, steerSession, type Attachment, type PromptMode, type QuestionResponse, type QueueSnapshot, type RewindTarget, type RuntimeCommand, type SessionSnapshot, type SessionStatus, type SessionView, type TranscriptAttachment } from "../api/sessions.ts";
 import { readTranscriptAttachments } from "../api/attachments.ts";
 import { loadLocalPathSuggestions } from "../api/local-paths.ts";
 import type { ForkTarget } from "../components/fork-dialog.ts";
@@ -484,6 +484,26 @@ export class ComposerController {
       });
   }
 
+  /** The queued steers go in now: the gateway stops the turn they wait on and starts the next one with all of them. */
+  #sendQueuedSteersNow(): void {
+    const session = this.#conversation.selected;
+    if (!session || this.sending || this.#conversation.opening || this.#conversation.connection !== "live") return;
+    this.#deps.showNote("", "info");
+    this.sending = true;
+    this.#host.requestUpdate();
+    void sendQueuedSteersNow(session.id)
+      .catch((error: unknown) => {
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.#deps.showNote(error instanceof Error ? error.message : "Could not send those steered messages.", "error");
+      })
+      .finally(() => {
+        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
+          this.sending = false;
+          this.#host.requestUpdate();
+        }
+      });
+  }
+
   followStatus(status: SessionStatus): void {
     if (status === "idle") {
       this.flushLaunchPrompt();
@@ -940,7 +960,7 @@ export class ComposerController {
       });
   };
 
-  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "sideChat" | "onCloseSideChat" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "onGoalToggle" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer"> {
+  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "sideChat" | "onCloseSideChat" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "onGoalToggle" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer" | "onQueueSteerNow"> {
     const conversation = this.#conversation;
     const sending = this.sending;
     return {
@@ -1017,6 +1037,7 @@ export class ComposerController {
       onQueueRemove: (itemId) => this.#queueMutation({ operation: "remove", itemId }),
       onQueueMove: (itemId, toIndex) => this.#queueMutation({ operation: "move", itemId, toIndex }),
       onQueueSteer: (itemId) => this.#queueMutation({ operation: "steer", itemId }),
+      onQueueSteerNow: () => this.#sendQueuedSteersNow(),
     };
   }
 }

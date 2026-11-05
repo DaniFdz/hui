@@ -497,6 +497,16 @@ export async function abortSession(id: string): Promise<void> {
   });
 }
 
+/** Sends the run's queued steers now: the gateway stops the turn they wait on and starts the next one with all of
+ * them as a single message. */
+export async function sendQueuedSteersNow(id: string): Promise<void> {
+  await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/steer-now`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+}
+
 /** A PI entry id, or a user message not yet shown with one, counted from the end. */
 export type RewindTarget = string | { userFromEnd: number };
 

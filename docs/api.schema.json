@@ -15400,6 +15400,13 @@
       }
     },
     {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/steer-now",
+      "response": {
+        "$ref": "#/$defs/SessionPromptResponse"
+      }
+    },
+    {
       "method": "DELETE",
       "path": "/__hui/sessions/:id/suggestions/:sid",
       "response": {

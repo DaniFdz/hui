@@ -62,6 +62,10 @@ class FakeSession implements RuntimeSession {
   thinking = "medium";
   questionResponses: Array<{ id: string; response?: RuntimeQuestionResponse; cancelled?: true }> = [];
   queue: RuntimeQueue = { steering: [], followUp: [] };
+  /** Whether Stop withdraws the queued messages with the run, as Durable does, or keeps them, as PI does. */
+  queueOnAbort: "keep" | "clear" = "keep";
+  /** Durable hands HUI its steers to send again; a runtime without this keeps them for its next run. */
+  takeSteeringQueue?: () => Promise<readonly string[]>;
   questions: RuntimeQuestion[] = [];
   history: TranscriptEntry[] = [{ kind: "message", role: "user", text: "hello" }];
   disposed = false;
@@ -153,6 +157,7 @@ class FakeSession implements RuntimeSession {
 
   async abort(): Promise<void> {
     this.aborts += 1;
+    if (this.queueOnAbort === "clear") this.queue = { steering: [], followUp: [] };
     this.#streaming = false;
   }
 
@@ -2645,6 +2650,23 @@ test("a consumed queued instruction becomes a visible user turn before settlemen
     true,
     "open browsers receive the promoted user turn without waiting for settled",
   );
+});
+
+test("sending steers now refuses an empty queue and a runtime that keeps its queue, without stopping anything", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  manager.ensure(recordFor("steer-refusals"));
+  await waitForBoot(manager, "steer-refusals");
+  const session = started[0]!;
+  session.queue = { steering: ["How is it going?"], followUp: [] };
+
+  await assert.rejects(manager.steerNow("steer-refusals"), /keeps its steered messages through Stop/u);
+  assert.equal(session.aborts, 0, "a runtime that keeps its queue is not stopped for nothing");
+
+  session.queue = { steering: [], followUp: [] };
+  session.takeSteeringQueue = async () => [...session.queue.steering];
+  await assert.rejects(manager.steerNow("steer-refusals"), /no steered messages/u);
+  assert.equal(session.aborts, 0, "an empty queue has nothing to send");
 });
 
 test("a pending question is claimed before awaiting PI so double-submit cannot answer twice", async () => {
