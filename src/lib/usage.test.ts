@@ -113,7 +113,7 @@ test("days with errors rank by failure rate, and CSVs quote what a spreadsheet w
 
   const sessions = usageSessionCsv([{ ...session("a", "swift", metrics(1, 0)), title: 'Hello, "world"' }]);
   assert.match(sessions, /"Hello, ""world"""/u, "a comma and quote survive the round trip");
-  assert.equal(sessions.split("\n")[0], "id,title,parentId,lastActive,models,inputTokens,outputTokens,cacheReadTokens,cacheWriteTokens,totalTokens,costUsd,unpricedCalls,calls,userMessages,assistantMessages,toolResults,errors");
+  assert.equal(sessions.split("\n")[0], "id,title,parentId,lastActive,models,costSource,inputTokens,outputTokens,cacheReadTokens,cacheWriteTokens,totalTokens,costUsd,unpricedCalls,calls,userMessages,assistantMessages,toolResults,errors");
 });
 
 test("the last week is compared with the week before it, inside the range", () => {

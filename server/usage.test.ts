@@ -275,6 +275,52 @@ test("compaction spend the store keeps outside entries is reported once, beside 
   assert.deepEqual(oneDay.sessions.map((each) => each.id), [], "a range with no entry activity is empty, yet the undated spend still shows");
 });
 
+test("a session cost an extension reported replaces its recorded prices where the range covers it", async () => {
+  const answerUsage = priced(10, 5, 15, 1.5);
+  const report = (usd: number, asOf: number) => ({ kind: "hui.pi-entry", data: { customType: "hui.session-cost", data: { usd, source: "Billing", asOf } } });
+  const { reported, plain } = await harness.commit(async (tx) => {
+    const reported = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(reported, { kind: UserEntry.kind, model: [user(T1, "one") as never] });
+    await tx.appendEntry(reported, { kind: AssistantEntry.kind, model: [assistant(T1, answerUsage) as never] });
+    await tx.appendEntry(reported, { kind: UserEntry.kind, model: [user(T3, "two") as never] });
+    await tx.appendEntry(reported, { kind: AssistantEntry.kind, model: [assistant(T3, answerUsage) as never] });
+    await recordUsage(tx, reported, "models", "fixture/model-a", answerUsage);
+    await recordUsage(tx, reported, "models", "fixture/model-a", answerUsage);
+    // Unreadable, then readable, then the newest: the newest readable report is the session's cost.
+    await tx.appendEntry(reported, report(-1, T2));
+    await tx.appendEntry(reported, report(9, T2));
+    await tx.appendEntry(reported, report(12, T3));
+    const plain = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(plain, { kind: AssistantEntry.kind, model: [assistant(T1, answerUsage) as never] });
+    return { reported, plain };
+  }, durableContext);
+  const sessions = [
+    record("reported", `durable:${reported}`, "2026-01-01T00:00:00.000Z"),
+    record("plain", `durable:${plain}`, "2026-01-02T00:00:00.000Z"),
+  ];
+
+  const scan = await scanUsage(sessions, "UTC");
+  const all = sliceUsage(scan, usageQuery(new URLSearchParams({ timeZone: "UTC" })));
+  expectSchema(UsageReport, all);
+  const byId = new Map(all.sessions.map((row) => [row.id, row]));
+  assert.equal(byId.get("reported")?.metrics.costUsd, 12, "the newest report replaces the sum of the recorded prices");
+  assert.deepEqual(byId.get("reported")?.reportedCost, { usd: 12, source: "Billing", asOf: T3 });
+  assert.equal(byId.get("plain")?.metrics.costUsd, 1.5, "a session without a report keeps what PI recorded");
+  assert.equal(byId.get("plain")?.reportedCost, undefined);
+  assert.equal(byId.get("reported")?.days.reduce((sum, day) => sum + (day.metrics.costUsd ?? 0), 0), 3, "the dated figures stay estimates");
+
+  const oneDay = sliceUsage(scan, usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-01", timeZone: "UTC" })));
+  const cut = oneDay.sessions.find((row) => row.id === "reported")!;
+  assert.equal(cut.metrics.costUsd, 1.5, "a range that cuts the session keeps the prices of the days it covers");
+  assert.equal(cut.reportedCost, undefined);
+
+  await harness.commit(async (tx) => {
+    await tx.appendEntry(reported, report(20, T3 + DAY));
+  }, durableContext);
+  const later = sliceUsage(await scanUsage(sessions, "UTC", scan), usageQuery(new URLSearchParams({ timeZone: "UTC" })));
+  assert.equal(later.sessions.find((row) => row.id === "reported")?.metrics.costUsd, 20, "a report appended later reaches an incremental scan");
+});
+
 test("a ledger snapshot excludes concurrent replies, retains cost-only spend and reports failed reads", async () => {
   const initial = priced(10, 0, 10, 0.5);
   const later = priced(100, 0, 100, 1);

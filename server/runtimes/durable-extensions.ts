@@ -58,11 +58,17 @@ const SESSION_COST_ENTRY = "hui.session-cost";
 export function reportedSessionCost(rows: readonly EntryRecord[]): RuntimeUsage["sessionCost"] {
   for (let index = rows.length - 1; index >= 0; index -= 1) {
     const entry = rows[index];
-    if (!entry || !ExtensionStateEntry.is(entry) || entry.data.customType !== SESSION_COST_ENTRY) continue;
-    const report = costReport(entry.data.data);
+    const report = entry ? sessionCostOf(entry) : undefined;
     if (report) return report;
   }
   return undefined;
+}
+
+/** The whole-session cost this state entry reports, or undefined for any other entry or an unreadable report. */
+export function sessionCostOf(entry: { readonly kind: string; readonly data?: JsonValue }): RuntimeUsage["sessionCost"] {
+  if (entry.kind !== ExtensionStateEntry.kind || typeof entry.data !== "object" || entry.data === null) return undefined;
+  const { customType, data } = entry.data as { customType?: unknown; data?: JsonValue };
+  return customType === SESSION_COST_ENTRY ? costReport(data) : undefined;
 }
 
 function costReport(value: JsonValue | undefined): RuntimeUsage["sessionCost"] {

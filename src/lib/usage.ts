@@ -177,10 +177,11 @@ export function usageDailyCsv(days: readonly UsageDay[]): string {
 /** One CSV line per session row the page shows, with its models and counters. */
 export function usageSessionCsv(sessions: readonly UsageSession[]): string {
   const cell = (value: string | number | null) => (/[",\n]/u.test(String(value)) ? `"${String(value).replace(/"/gu, '""')}"` : String(value));
-  return [["id", "title", "parentId", "lastActive", "models", ...CSV_COUNTERS].join(",")]
+  return [["id", "title", "parentId", "lastActive", "models", "costSource", ...CSV_COUNTERS].join(",")]
     .concat(sessions.map((session) => [
       session.id, session.title, session.parentId ?? "", new Date(session.lastActivityAt).toISOString(),
       session.models.map(({ provider, model }) => `${provider}/${model}`).join(" "),
+      session.reportedCost?.source ?? "",
       ...CSV_COUNTERS.map((key) => session.metrics[key]),
     ].map(cell).join(",")))
     .join("\n") + "\n";
