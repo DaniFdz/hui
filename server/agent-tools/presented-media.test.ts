@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +21,7 @@ test("stages typed media behind an opaque URL without exposing its local path", 
     mimeType: "video/mp4",
     size: 11,
     url: `/__hui/media/${FIXTURE_ID}/clip.mp4`,
+    path: "clip.mp4",
   });
   assert.equal(await readFile(join(dir, "store", FIXTURE_ID, "content"), "utf8"), "video-bytes");
   assert.doesNotMatch(JSON.stringify(media), new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
@@ -54,6 +55,37 @@ test("serves byte ranges for native media playback and rejects a wrong display n
     id: FIXTURE_ID, name: "sound.mp3", kind: "audio", mimeType: "text/html", size: 10,
   }));
   assert.equal((await fetch(`${base}/sound.mp3`)).status, 404, "tampered MIME metadata must not become same-origin HTML");
+});
+
+test("names a presented file that lives inside the working directory, and only then", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "hui-presented-media-root-"));
+  t.onTestFinished(() => rm(home, { recursive: true, force: true }));
+  const workspace = join(home, "workspace");
+  const elsewhere = join(home, "elsewhere");
+  await mkdir(join(workspace, "docs"), { recursive: true });
+  await mkdir(elsewhere, { recursive: true });
+  await writeFile(join(workspace, "docs", "notes.md"), "# Notes");
+  await writeFile(join(elsewhere, "outside.md"), "# Outside");
+
+  const [inside] = await stagePresentedMedia(workspace, ["docs/notes.md"], join(home, "store"), () => FIXTURE_ID);
+  assert.equal(inside?.path, "docs/notes.md");
+  assert.equal(inside?.url, `/__hui/media/${FIXTURE_ID}/notes.md`);
+
+  // The recorded working directory may itself be a link, as ~/dd is on a Mac.
+  await symlink(workspace, join(home, "linked"));
+  const [linked] = await stagePresentedMedia(join(home, "linked"), ["docs/notes.md"], join(home, "linked-store"), () => FIXTURE_ID);
+  assert.equal(linked?.path, "docs/notes.md");
+
+  const [outside] = await stagePresentedMedia(workspace, [join(elsewhere, "outside.md")], join(home, "other-store"), () => FIXTURE_ID);
+  assert.equal(outside?.path, undefined, "a file from outside the working directory has nothing in Files to open");
+
+  // A name that starts with dots is still inside; one the Files routes would trim is not a path they can open.
+  await writeFile(join(workspace, "..report.md"), "# Report");
+  const [dotted] = await stagePresentedMedia(workspace, ["..report.md"], join(home, "dotted-store"), () => FIXTURE_ID);
+  assert.equal(dotted?.path, "..report.md");
+  await writeFile(join(workspace, " report.md"), "# Spaced");
+  const [spaced] = await stagePresentedMedia(workspace, [" report.md"], join(home, "spaced-store"), () => FIXTURE_ID);
+  assert.equal(spaced?.path, undefined);
 });
 
 test("rejects missing files and more than eight media paths", async (t) => {

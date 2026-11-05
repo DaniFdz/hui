@@ -1325,8 +1325,16 @@ type PresentedMedia = {
   mimeType: string;
   size: number;
   url: `/__hui/media/${string}/${string}`;
+  path?: string;
 };
 ```
+
+`path` is the source file's root-relative path in the session working directory,
+and is present only when the file was inside it. The card uses it to open that
+file in the conversation's Files view through the same path as a file reference
+the agent wrote in the chat, so the button appears once the gateway confirms the
+file still exists there. Nothing else about where the file came from is
+stored: the copy in `presented-media/` stays served by its opaque URL.
 
 Tool-result `details` cross the generic runtime event/transcript contract so a
 live call and a reopened PI transcript paint identically. `present_media` is
