@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import {
+  CreatedPullRequestScan,
   pullRequestBodyPreview,
   PullRequestStatuses,
   pullRequestsFromTranscript,
@@ -80,4 +81,29 @@ test("one listing starts every due lookup at once, so the previews can batch the
   });
   for (const number of [1, 2, 3]) statuses.view({ repository: "acme/web", number, url: `https://github.com/acme/web/pull/${number}` });
   assert.equal(started.length, 3);
+});
+
+test("a stored history's create call and its result are joined across entries", () => {
+  const scan = new CreatedPullRequestScan();
+  const assistant = { role: "assistant", content: [
+    { type: "text", text: "Opening it." },
+    { type: "toolCall", id: "create", name: "bash", arguments: { command: "git push -u origin HEAD && gh pr create --fill" } },
+    { type: "toolCall", id: "view", name: "bash", arguments: { command: "gh pr view https://github.com/acme/docs/pull/99" } },
+  ] };
+  assert.deepEqual(scan.add(assistant), [], "a call proves nothing until its output arrives");
+  assert.deepEqual(scan.add({ role: "toolResult", toolCallId: "view", toolName: "bash", content: [{ type: "text", text: "https://github.com/acme/docs/pull/99\n" }] }), [], "a URL from a call that only viewed a pull request is not a creation");
+  assert.deepEqual(scan.add({ role: "toolResult", toolCallId: "create", toolName: "bash", content: [
+    { type: "text", text: "Creating pull request for branch\nhttps://github.com/acme/web/pull/12\n" },
+    { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+  ] }), [{ repository: "acme/web", number: 12, url: "https://github.com/acme/web/pull/12" }]);
+  assert.deepEqual(scan.add({ role: "toolResult", toolCallId: "create", toolName: "bash", content: [{ type: "text", text: "https://github.com/acme/web/pull/12" }] }), [], "the same pull request is reported once");
+  assert.deepEqual(scan.refs, [{ repository: "acme/web", number: 12, url: "https://github.com/acme/web/pull/12" }]);
+});
+
+test("a scan that starts after the create call still reports a dedicated create tool's result", () => {
+  const scan = new CreatedPullRequestScan();
+  assert.deepEqual(scan.add({ role: "toolResult", toolCallId: "unknown-call", toolName: "create_pull_request", content: [{ type: "text", text: "{\"html_url\":\"https://github.com/acme/docs.site/pull/7\"}" }] }), [
+    { repository: "acme/docs.site", number: 7, url: "https://github.com/acme/docs.site/pull/7" },
+  ]);
+  assert.deepEqual(scan.add({ role: "toolResult", toolCallId: "unknown-call", toolName: "read", content: [{ type: "text", text: "https://github.com/acme/web/pull/1" }] }), [], "an unseen ordinary call stays unproven");
 });

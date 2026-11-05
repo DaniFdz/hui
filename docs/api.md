@@ -4028,6 +4028,19 @@ name them without reading every session. All-time ranges report the earliest inc
 or the latest recorded day when a clock was ahead. Empty drafts have no row.
 The browser combines rows for search and rankings; no transcript content is sent.
 
+`tools` entries also carry `outputChars`: the readable characters that tool
+returned, which is usually what drove a conversation's context growth. Images and
+other non-text parts add nothing. `pullRequests` lists the pull requests the
+history created, as `{ repository, number, url }` in the order first reported, at
+most 20 per history. `investigations` lists every registered session HUI started
+to explain a target, with that target, the range it read and its creation time,
+whatever range this report covers, so the page can say a target is already
+explained instead of starting a second report. A reference is read from a create call and the URL its
+result printed, or from a dedicated create tool's result; a URL a history merely
+viewed or mentioned never counts. No GitHub state, title or body is fetched, so
+the list renders without network access. A history inherited by a fork keeps the
+references of the conversation that recorded them.
+
 `UsageMetrics` includes input, output, cache-read, cache-write and total tokens;
 usage-record, user-message, assistant-message, tool-result and error counts;
 `costUsd`; and `unpricedCalls`. Recorded total tokens take precedence over summing
@@ -4074,6 +4087,42 @@ reported a healthy but large history as a timeout. The page shows a skeleton
 meanwhile, names a read that has not answered after six seconds, and offers
 **Cancel**, which aborts the request and keeps the last report. A replaced range
 aborts its predecessor the same way.
+
+### `POST /__hui/usage/investigate`
+
+Starts the session that explains one expensive history. The body is
+`{ target, range }`, where `target` is `{ kind: "session", id }` or
+`{ kind: "pullRequest", repository, number }` and `range` is
+`{ from?, to?, timeZone }` exactly as the page read it, so the explanation covers
+the report on screen.
+
+The gateway answers from the same cached scan as `GET /__hui/usage`, then builds
+the first turn from recorded numbers only: the target's cost and tokens, its
+models, its tools by readable output, its cache share, its costliest days and the
+pull requests it created, beside the median and up to three cheaper histories in
+the same project (or the whole range when the project holds nothing else), and
+for a pull request, the sessions that created it and the other pull requests in
+range. A session that created several pull requests counts under each, and the
+prompt says so. The first turn invokes HUI's bundled `cost-investigation` skill
+(a leading `/skill:cost-investigation` that the runtime expands before sending)
+unless the operator disabled it, in which case the prompt carries the method
+line by line. The prompt never invents a cause: it names what the report cannot
+see and asks for drivers backed by a number, the changed files in the checkout,
+and what would have cost less by mechanism: context (subagents, narrower
+commands, compaction), model and effort, structure that applies the correction
+to every session, and a skill for work that keeps coming back.
+
+201 answers `{ session, existing: false }` with the started `SessionView`, titled
+`Why was "<title>" expensive?` or `Why was <repository>#<number> expensive?`,
+in the target's group and its first existing checkout (the home directory when
+no checkout remains). A new session's first turn is sent after its runtime is
+ready, exactly as a started task suggestion's is. A target a registered
+investigation already explains answers 200 with `{ session, existing: true }`
+and that report's `SessionView`, without reading the histories again; the check
+comes before the range, so a report started for another range still opens. 404
+means no row in that range holds the target; 400 means the body or its range
+cannot be meant. A failed start
+creates no further session and leaves the report unaffected.
 
 ### `GET /__hui/diagnostics/export`
 

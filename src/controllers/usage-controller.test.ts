@@ -3,7 +3,7 @@ import { test, vi } from "vitest";
 import type { UsageReport } from "../api/schema/diagnostics.ts";
 import { UsageController } from "./usage-controller.ts";
 
-const report = (from: string): UsageReport => ({ generatedAt: "2026-10-01T00:00:00Z", range: { from, to: from, timeZone: "UTC" }, sessions: [], coverage: { registeredSessions: 0, readSessions: 0, unavailable: [], undatedRecords: 0 }, unplacedSpend: { totalTokens: 0, costUsd: 0 } });
+const report = (from: string): UsageReport => ({ generatedAt: "2026-10-01T00:00:00Z", range: { from, to: from, timeZone: "UTC" }, sessions: [], investigations: [], coverage: { registeredSessions: 0, readSessions: 0, unavailable: [], undatedRecords: 0 }, unplacedSpend: { totalTokens: 0, costUsd: 0 } });
 
 function pending() {
   let resolve: (report: UsageReport) => void = () => { throw new Error("Not initialized"); };
@@ -105,4 +105,49 @@ test("a newer range aborts the read it replaces and keeps the newest answer", as
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("an investigation starts once, asks for the range the page shows, and reports a failure without changing it", async () => {
+  const asked: { target: unknown; range: unknown }[] = [];
+  let fail = false;
+  const state = new UsageController(
+    { requestUpdate() {} },
+    async (query) => ({ ...report(query.from ?? "2026-10-01"), range: { from: "2026-09-01", to: "2026-09-30", timeZone: "Europe/Madrid" } }),
+    async (target, range) => {
+      asked.push({ target, range });
+      if (fail) throw new Error("No such directory: /gone");
+      return "investigation";
+    },
+  );
+  await state.load({ from: "2026-08-01", to: "2026-08-31", timeZone: "UTC" });
+  const id = await state.investigate({ kind: "session", id: "expensive" });
+  assert.equal(id, "investigation");
+  assert.deepEqual(asked, [{
+    target: { kind: "session", id: "expensive" },
+    range: { from: "2026-09-01", to: "2026-09-30", timeZone: "Europe/Madrid" },
+  }], "the explanation covers the report the page showed, not a draft range");
+
+  fail = true;
+  const failed = await state.investigate({ kind: "pullRequest", repository: "acme/web", number: 12 });
+  assert.equal(failed, undefined);
+  assert.equal(state.investigating, "");
+  assert.match(state.investigationError, /Could not start the investigation/u);
+  assert.match(state.investigationError, /No such directory/u);
+  assert.equal(state.report?.range.from, "2026-09-01", "a failed investigation leaves the report alone");
+});
+
+test("a second investigation cannot start while one is already starting", async () => {
+  let finish: (id: string) => void = () => {};
+  const started: unknown[] = [];
+  const state = new UsageController({ requestUpdate() {} }, async (query) => report(query.from ?? "2026-10-01"), (target) => {
+    started.push(target);
+    return new Promise<string>((resolve) => { finish = resolve; });
+  });
+  const first = state.investigate({ kind: "session", id: "one" });
+  assert.equal(state.investigating, "session:one");
+  assert.equal(await state.investigate({ kind: "session", id: "two" }), undefined, "a second press starts nothing");
+  assert.deepEqual(started, [{ kind: "session", id: "one" }]);
+  finish("investigation");
+  assert.equal(await first, "investigation");
+  assert.equal(state.investigating, "");
 });

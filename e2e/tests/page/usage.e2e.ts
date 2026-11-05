@@ -21,6 +21,7 @@ async function shownRange(screen: Screen) {
 test("Usage reports a real turn's tokens, its recorded PI cost and its session", { tags: ["PAGE-021"], platforms: ["web"] }, async ({ screen, hui }) => {
   const totals = screen.getByTestId("usage-totals");
   const sessions = screen.getByTestId("usage-sessions");
+  const rows = () => sessions.getByTestId("usage-session-row");
   const chart = screen.getByTestId("usage-chart");
 
   await richTurn(screen, hui, "Usage coverage");
@@ -45,8 +46,8 @@ test("Usage reports a real turn's tokens, its recorded PI cost and its session",
   await expect(screen.getByText(/· [\d,.]+ tokens · \d+% · Click to show only these sessions$/u)).toBeVisible();
 
   const beforeCompaction = await totals.allTextContents();
-  await expect(sessions.getByRole("button", /Usage coverage/u)).toBeVisible();
-  await sessions.getByRole("button", /Usage coverage/u).tap();
+  await expect(rows().getByRole("button", /^Usage coverage/u)).toBeVisible();
+  await rows().getByRole("button", /^Usage coverage/u).tap();
   await expect(screen.getByTestId("transcript").getByText("Tool complete")).toBeVisible();
   await screen.getByLabel("Message").fill("/compact");
   await screen.getByRole("button", "Send message").tap();
@@ -60,7 +61,7 @@ test("Usage reports a real turn's tokens, its recorded PI cost and its session",
   await expect(screen.getByText("No usage in this range.")).toBeVisible();
   await expect(outsideEntries).toContainText("2 tokens, $0.00, for all recorded time");
   await screen.getByRole("button", "All").tap();
-  await expect(sessions.getByRole("button", /Usage coverage/u)).toBeVisible();
+  await expect(rows().getByRole("button", /^Usage coverage/u)).toBeVisible();
   await expect(outsideEntries).toContainText("2 tokens, $0.00, for all recorded time");
   await screen.getByPlaceholder("Search sessions by title, ID or model").fill("no matching session");
   await expect(screen.getByText("No sessions match your search.")).toBeVisible();
@@ -170,7 +171,8 @@ test("Usage searches its sessions by title, id or model, sorts them and reads th
     await screen.getByTestId("picker-list", { visible: true }).getByText(option, { exact: true }).tap();
     await expect(sort).toHaveAttribute("aria-label", `Sort sessions: ${option}`);
   };
-  const titles = async () => (await sessions.getByRole("button").allTextContents())
+  const rows = () => sessions.getByTestId("usage-session-row");
+  const titles = async () => (await rows().allTextContents())
     .map((text) => (/Usage coverage alpha/u.test(text) ? "alpha" : /Usage coverage beta/u.test(text) ? "beta" : text));
 
   const first = await richTurn(screen, hui, "Usage coverage alpha");
@@ -182,30 +184,30 @@ test("Usage searches its sessions by title, id or model, sorts them and reads th
 
   await hui.open("/usage");
   await expect(sessions).toBeVisible();
-  await expect(sessions.getByRole("button")).toHaveCount(2);
+  await expect(rows()).toHaveCount(2);
   await expect.poll(titles).toEqual(["beta", "alpha"]);
 
   await sortBy("Tokens");
   await expect.poll(titles).toEqual(["alpha", "beta"]);
   await sortBy("Cost");
-  await expect(sessions.getByRole("button")).toHaveCount(2);
+  await expect(rows()).toHaveCount(2);
 
   await filter.fill("alpha");
-  await expect(sessions.getByRole("button")).toHaveCount(1);
+  await expect(rows()).toHaveCount(1);
   await expect(totals).toContainText(/sessions\s*1\b/iu);
   await expect(clear).toBeVisible();
   await filter.fill("nothing recorded matches this");
   await expect(screen.getByText("No sessions match your search.")).toBeVisible();
   await clear.tap();
   await expect(filter).toHaveValue("");
-  await expect(sessions.getByRole("button")).toHaveCount(2);
+  await expect(rows()).toHaveCount(2);
   await expect(clear).toBeHidden();
 
   await filter.fill(first.id);
-  await expect(sessions.getByRole("button")).toHaveCount(1);
+  await expect(rows()).toHaveCount(1);
   await clear.tap();
   await filter.fill("hui-e2e/fixture");
-  await expect(sessions.getByRole("button")).toHaveCount(2);
+  await expect(rows()).toHaveCount(2);
   await clear.tap();
 
   const before = await totals.allTextContents();
@@ -215,6 +217,55 @@ test("Usage searches its sessions by title, id or model, sorts them and reads th
   await expect.poll(calls).toBeGreaterThan(recorded);
   await screen.getByRole("button", "Refresh").tap();
   await expect.poll(() => totals.allTextContents()).not.toEqual(before);
-  await expect(sessions.getByRole("button")).toHaveCount(2);
+  await expect(rows()).toHaveCount(2);
   await expect(screen.getByTestId("usage-report")).toBeVisible();
+});
+test("Usage starts a session that explains an expensive session or pull request, and says when it already did", { tags: ["PAGE-046"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const shipping = await hui.createSession({ title: "Shipping the checkout fix" });
+  await hui.open(`/sessions/${shipping.id}`);
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await screen.getByLabel("Message").fill("E2E_PULL_REQUEST");
+  await screen.getByRole("button", "Send message").tap();
+  const transcript = screen.getByTestId("transcript");
+  await expect(transcript.getByText("Tool complete")).toBeVisible();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+
+  await hui.open("/usage");
+  const sessions = screen.getByTestId("usage-sessions");
+  const pullRequests = screen.getByTestId("usage-pull-requests");
+  await expect(pullRequests).toBeVisible();
+  await expect(pullRequests.getByText("hui-e2e/fixture#7")).toHaveAttribute("href", "https://github.com/hui-e2e/fixture/pull/7");
+  await expect(pullRequests.getByTestId("usage-pull-request")).toContainText("Shipping the checkout fix");
+
+  const row = sessions.getByTestId("usage-session-row");
+  await row.getByRole("button", "Investigate why Shipping the checkout fix was expensive").tap();
+  await expect(screen.getByTestId("session-title")).toHaveText('Why was "Shipping the checkout fix" expensive?');
+  await expect(transcript.getByText('Why was "Shipping the checkout fix" expensive?', { exact: false })).toBeVisible();
+  await expect(transcript.getByText("What it recorded", { exact: false })).toBeVisible();
+  await expect(transcript.getByText("What to work out", { exact: false })).toBeVisible();
+  await expect(transcript.getByText("All sessions in range", { exact: false })).toBeVisible();
+  const sessionReport = await hui.url();
+
+  // The row says HUI already explained it, and its action opens that report
+  // instead of starting a second one.
+  await hui.open("/usage");
+  await expect(row.getByTestId("usage-investigated")).toHaveText("Investigated");
+  await row.getByRole("button", "Open the investigation of Shipping the checkout fix").tap();
+  await expect.poll(() => hui.url()).toBe(sessionReport);
+  await expect(transcript.getByText("What to work out", { exact: false })).toBeVisible();
+  await expect(screen.getByRole("link", /Why was "Shipping the checkout fix" expensive\?/u)).toHaveCount(1);
+
+  await hui.open("/usage");
+  await expect(pullRequests).toBeVisible();
+  await pullRequests.getByRole("button", "Investigate why hui-e2e/fixture#7 was expensive").tap();
+  await expect(screen.getByTestId("session-title")).toHaveText("Why was hui-e2e/fixture#7 expensive?");
+  await expect(transcript.getByText("The sessions behind it", { exact: false })).toBeVisible();
+  await expect(transcript.getByText("Shipping the checkout fix", { exact: false })).toBeVisible();
+  const pullRequestReport = await hui.url();
+
+  await hui.open("/usage");
+  await expect(pullRequests.getByTestId("usage-investigated")).toHaveText("Investigated");
+  await pullRequests.getByRole("button", "Open the investigation of hui-e2e/fixture#7").tap();
+  await expect.poll(() => hui.url()).toBe(pullRequestReport);
+  await expect(screen.getByRole("link", /Why was hui-e2e\/fixture#7 expensive\?/u)).toHaveCount(1);
 });

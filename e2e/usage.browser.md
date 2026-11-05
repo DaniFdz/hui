@@ -17,7 +17,9 @@ whose summarization the store records in its spend ledger rather than an entry.
 These are
 recorded presentation fixtures, not this conversation's spend or provider
 billing. The report does not contact a provider. Reopening a seeded session uses the local
-fixture model. Its recorded model names and prices stay unchanged.
+fixture model. Its recorded model names and prices stay unchanged. Two of its
+seeded turns print a pull request URL from a `gh pr create` command, so the
+**Cost by pull request** card has two references without contacting GitHub.
 Shared `PAGE-021` tests instead send real PI turns and run `/compact` through
 the deterministic local provider. They check recorded zero prices, unchanged
 dated totals after compaction, and the separate amount in an empty range or
@@ -71,14 +73,27 @@ with no matching sessions.
    range while the last successful chart retains its own dates. Fix the fields
    and apply them. **Refresh** must keep successful data on screen while reading
    again.
-9. Hold the first report back with a delayed or blocked request. Confirm the
+9. Press **Investigate** on the most expensive session row (`Investigate why …`).
+   A new session must open, titled `Why was "<name>" expensive?`, whose first
+   turn carries the recorded cost, tokens, models, tool output, cache share,
+   costliest days, the same-project comparison with cheaper histories and
+   **What to work out**. Its title must appear in the sidebar without a reload.
+   Go back to `/usage` and confirm that row now reads **Investigated** and its
+   action is **Open report**; it must reopen the same session without creating a
+   second one. Go back to `/usage`, open a pull request link to confirm it points at GitHub,
+   then press that row's **Investigate** and confirm the new session lists the
+   sessions behind the pull request. Confirm a failed start (a target outside
+   the range, refused by API) states the reason and leaves the report and its
+   range on screen.
+10. Hold the first report back with a delayed or blocked request. Confirm the
    skeleton, the **Reading HUI diagnostics…** status and, after six seconds, the
    slow-read note with **Cancel**. Cancel must leave either the last report or
    **Reading stopped.** with **Read histories again**, never a timeout error or an
    unavailable report. A blocked read must fail on the page's own cancel, not
    before.
-10. Inspect 1440×900, 1024×900 and 390×844, including controls and lower session
-   rows. The selection stacks at phone width. The controls must align within each wrapped row. The top metrics must
+11. Inspect 1440×900, 1024×900 and 390×844, including controls and lower session
+   rows and both investigate buttons. The action must stay beside its row's
+   numbers and keep its accessible name at every size. The selection stacks at phone width. The controls must align within each wrapped row. The top metrics must
    align with the search field's left edge and keep space between their columns,
    including **Unavailable** beside zero sessions in an empty range. Repeat a
    chart/filter interaction at phone width. Check keyboard focus, horizontal

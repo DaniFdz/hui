@@ -94,6 +94,15 @@ const cases: UseCase[] = [
     ios: { excluded: "The Usage page is the gateway's web page; no iOS screen renders it. The app's own Usage screen proves its use case there when it exists.", decision: "SPEC.md#usage-is-proven-in-the-browser-2026-11-04" },
   },
   {
+    id: "PAGE-046",
+    title: "Explain an expensive session or pull request",
+    behaviour: "Every session row with recorded usage carries **Investigate** (*Investigate why <title> was expensive*), and a **Cost by pull request** card lists the pull requests those sessions created, most expensive first, each with its `owner/name#number` link, the sessions behind it, its tokens and cost, and the same action. Pressing either starts one session and opens it: its first turn is `# Why was \"<title>\" expensive?` or `# Why was <owner/name#number> expensive?` beside the recorded cost, tokens, models, tool output, cache share and costliest days, the median and up to three cheaper histories in the same project (or the whole range when the project holds nothing else), and `## What to work out`, which comes from HUI's bundled cost investigation skill. Once HUI has explained a target, its row reads **Investigated** (its tooltip names the day and the range of that report) and the action becomes **Open report** (*Open the investigation of <name>*), which opens that session instead of starting a second one, also after the range changes. A failure reads *Could not start the investigation.* with its reason, the report and its range stay as they were, and no second investigation starts while one is starting. A target the range does not hold starts nothing.",
+    spec: ["SPEC.md#usage-reporting", "docs/api.md#post-__huiusageinvestigate"],
+    surfaces: ["page:usage", "route:POST /__hui/usage/investigate"],
+    web: "required",
+    ios: { excluded: "The Usage page is the gateway's web page; no iOS screen renders it. The app's own Usage screen proves its use case there when it exists.", decision: "SPEC.md#usage-is-proven-in-the-browser-2026-11-04" },
+  },
+  {
     id: "PAGE-022",
     title: "Show denser Activity and Logs",
     behaviour: "Turning on *Dense observability* in Labs shows more Activity and Logs rows at once; turning it off restores the normal spacing. The switch keeps its state after a reload.",

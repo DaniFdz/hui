@@ -598,6 +598,26 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   recent activity, tokens or cost, with unknown prices last. At most 50 rows draw
   initially; Show more reveals the next page. Each row states when it was last
   active and can open its conversation.
+- Each session row with recorded usage offers **Investigate**: the gateway starts
+  a new session in that history's project whose first turn carries the row's
+  recorded totals, its models, tools by readable output, cache shares and
+  costliest days beside the median and up to three cheaper histories in the same
+  project, and says that this report holds no message content. The method comes
+  from HUI's bundled `cost-investigation` skill, invoked by the first turn and
+  expanded in place; when the operator turns that skill off, the same method is
+  written into the prompt instead. It asks for each
+  driver to name its cheaper mechanism — context, model and effort, structure
+  that holds for every session, or a skill for recurring work — and for the
+  changes to be split into this session and every session. The histories'
+  created pull requests, taken from create calls and the URLs their results
+  reported and never from a URL merely viewed, group into a **Cost by pull
+  request** card, most expensive first, with the same action for the sessions
+  behind one. A session that created several pull requests counts under each and
+  the card says so. A target HUI already explained says **Investigated** and its
+  action opens that report instead of starting a second one, even after the range
+  changes. A target the range does not hold starts nothing, a failed
+  start leaves the report and its range as they were, and the new session opens
+  in HUI titled `Why was "<name>" expensive?` in the history's own group.
 - A first read shows a skeleton, and a read that has not answered after six
   seconds says so and offers **Cancel**; cancelling keeps the last report and
   leaves a stopped first read distinct from an unavailable one. No matching data,

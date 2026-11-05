@@ -14,8 +14,9 @@ const usageReport = {
     metrics,
     days: [{ date: "2026-01-02", metrics, models: [{ provider: "hui-e2e", model: "fixture", metrics }] }],
     models: [{ provider: "hui-e2e", model: "fixture", metrics }],
-    tools: [{ name: "bash", calls: 4, errors: 1 }],
+    tools: [{ name: "bash", calls: 4, errors: 1, outputChars: 240 }],
   }],
+  investigations: [],
   coverage: { registeredSessions: 1, readSessions: 1, unavailable: [{ sessionId: "usage-missing", reason: "unreadable" }], undatedRecords: 0 },
   unplacedSpend: { totalTokens: 0, costUsd: 0 },
 };

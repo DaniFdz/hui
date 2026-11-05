@@ -1,6 +1,6 @@
-/** Owns the Usage page's requested range, its last successful report, the read it may cancel and browser-only display controls. */
+/** Owns the Usage page's requested range, its last successful report, the read it may cancel, browser-only display controls and the investigation it starts. */
 import type { ReactiveControllerHost } from "lit";
-import { loadUsageReport, type UsageQuery } from "../api/usage.ts";
+import { investigateUsage, loadUsageReport, type UsageInvestigationTarget, type UsageQuery } from "../api/usage.ts";
 import type { UsageReport } from "../api/schema/diagnostics.ts";
 import type { UsageSort } from "../lib/usage.ts";
 
@@ -28,16 +28,25 @@ export class UsageController {
   metric: "tokens" | "cost" = "tokens";
   chart: "total" | "types" = "types";
   limit = 50;
+  /** The target whose investigation is starting, so its button says so and cannot be pressed twice. */
+  investigating = "";
+  investigationError = "";
   #request = 0;
   #target: UsageQuery | undefined;
   #cancel: AbortController | undefined;
   #slow: ReturnType<typeof setTimeout> | undefined;
   #host: Pick<ReactiveControllerHost, "requestUpdate">;
   #read: (query: UsageQuery, refresh?: boolean, signal?: AbortSignal) => Promise<UsageReport>;
+  #investigate: (target: UsageInvestigationTarget, range: UsageQuery) => Promise<string>;
 
-  constructor(host: Pick<ReactiveControllerHost, "requestUpdate">, read = loadUsageReport) {
+  constructor(
+    host: Pick<ReactiveControllerHost, "requestUpdate">,
+    read = loadUsageReport,
+    start = async (target: UsageInvestigationTarget, range: UsageQuery) => (await investigateUsage(target, range)).id,
+  ) {
     this.#host = host;
     this.#read = read;
+    this.#investigate = start;
     this.#presetDates();
   }
 
@@ -109,6 +118,32 @@ export class UsageController {
   }
 
   search(query: string) { this.query = query; this.limit = 50; this.#host.requestUpdate(); }
+
+  /** The report's own range, so the explanation covers exactly what the page showed. */
+  get range(): UsageQuery {
+    return this.report ? { from: this.report.range.from, to: this.report.range.to, timeZone: this.report.range.timeZone } : { from: this.from, to: this.to, timeZone: this.timeZone };
+  }
+
+  /**
+   * Starts the session that explains one expensive history, then reports its id
+   * so the page can open it. The gateway builds it from the same report the page
+   * holds; a failure is stated here and changes nothing.
+   */
+  async investigate(target: UsageInvestigationTarget): Promise<string | undefined> {
+    if (this.investigating) return undefined;
+    this.investigating = target.kind === "session" ? `session:${target.id}` : `pullRequest:${target.repository}#${target.number}`;
+    this.investigationError = "";
+    this.#host.requestUpdate();
+    try {
+      return await this.#investigate(target, this.range);
+    } catch (error) {
+      this.investigationError = `Could not start the investigation. ${error instanceof Error ? error.message : "Try again."}`;
+      return undefined;
+    } finally {
+      this.investigating = "";
+      this.#host.requestUpdate();
+    }
+  }
 
   /** Leaves a read the user no longer wants to wait for; the last report stays on screen. */
   cancel() {
