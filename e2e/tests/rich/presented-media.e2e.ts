@@ -1,5 +1,6 @@
 /** Media the agent shows through present_media: an image lands inline in the Presented media row and opens in the
- * media viewer, and any other file is a named card with a Download action, both back after a reload (RICH-026, RICH-028). */
+ * media viewer, and any other file is a named card with Download and, when it lives in the working directory, an
+ * Open-in-Files action, both back after a reload (RICH-026, RICH-028). */
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, type Locator, type Screen } from "e2e";
@@ -62,7 +63,13 @@ test("A presented file of another format is a named card with its type, size and
   expect(saved.name).toBe("flaky-test.pdf");
   expect(saved.text).toBe(PDF.toString("utf8"));
 
+  // The file came from the working directory, so the card opens it where the agent's own paths open.
+  await row.getByLabel("Open flaky-test.pdf in Files").tap();
+  await expect(screen.getByLabel("Editor for flaky-test.pdf")).toBeVisible();
+  await expect(screen.getByRole("button", "Download")).toBeVisible();
+
   await hui.reload();
   await expect(row.getByText("flaky-test.pdf")).toBeVisible();
   await expect(row.getByLabel("Download flaky-test.pdf")).toBeVisible();
+  await expect(row.getByLabel("Open flaky-test.pdf in Files")).toBeVisible();
 });
