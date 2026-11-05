@@ -35,3 +35,10 @@ test("every hover or focus detail opens HUI's tooltip, never the browser's", () 
   assert.match(source, /data-hui-tooltip=\$\{`Show only sessions with \$\{row\.label\}`\}/u, "a ranked row explains itself");
   assert.match(source, /data-hui-tooltip="Download these sessions as a CSV"/u);
 });
+
+test("a donut slice and its legend row name the model, and the rest of the models keep one neutral slice", () => {
+  assert.match(source, /const detail = \(segment: \(typeof segments\)\[number\]\) => `\$\{segment\.label\} · \$\{compact\(segment\.metrics\.totalTokens\)\} tokens · \$\{Math\.round\(segment\.share \* 100\)\}%`/u);
+  assert.match(source, /class="usage-donut__segment"[^`]*@pointerenter=\$\{\(event: PointerEvent\) => \{ if \(event\.pointerType !== "touch"\) this\.#showTip\(event\.currentTarget as Element, detail\(segment\)\); \}\}/u, "a slice opens HUI's card instead of nothing");
+  assert.match(source, /data-hui-tooltip=\$\{`\$\{detail\(segment\)\} · Click to show only these sessions`\}/u, "a legend row keeps its truncated name readable and says what pressing it does");
+  assert.match(source, /index === rows\.length - 1 \? "var\(--muted\)"/u, "the other models' slice never reuses a model's colour");
+});

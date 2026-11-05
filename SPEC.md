@@ -556,7 +556,10 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
 - The chart and a model donut share a row on wide screens and stack on narrow
   ones. The donut names the five biggest models and the rest as one slice, its
   centre holds the token total, and each legend row filters the page the way a
-  ranked model does.
+  ranked model does. Pointing at a slice names its model with its tokens and
+  share, and so does its legend row, which adds what pressing it does, so a name
+  the row truncates stays readable. The rest of the models keep one neutral
+  slice rather than a colour another model already uses.
 - Usage switches between tokens and recorded cost. Token bars can show the
   input, output, cache-read and cache-write shares. Empty days remain visible as a
   quiet baseline; a period with usage but no price is unpriced rather than free.
