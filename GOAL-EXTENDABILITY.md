@@ -41,7 +41,7 @@ Rules for the program session:
 | Phase | Scope | Status | Commit | CI |
 |---|---|---|---|---|
 | P0 | Gateway routes, store, status/toggle | carried in the program PR (PR #408 closed as superseded) | 854608e6 | #408 green |
-| P1 | Settings page + `hui extension list/enable/disable` | NOT STARTED | — | — |
+| P1 | Settings page + `hui extension list/enable/disable` | IN PROGRESS | — | — |
 | P2 | Sandboxed panels and the bridge | NOT STARTED | — | — |
 | P3 | Prompt sections and agent tools | NOT STARTED | — | — |
 | P4 | Server-sent events | NOT STARTED | — | — |
@@ -54,8 +54,8 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 
 | Field | Value |
 |---|---|
-| Current phase | — |
-| Next action | Record the program baseline, then implement P1 |
+| Current phase | P1 (IN PROGRESS) |
+| Next action | Implement P1: client API, Settings page, CLI, catalogue entry and e2e test |
 | Branch | `danifdz/hui-extendability` |
 | Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
 | Last green CI | — |
@@ -67,17 +67,18 @@ session reads it before touching code.
 
 ## 3. Baseline
 
-Recorded once at the program branch point (current `main` after #408):
+Recorded at the program branch point (`danifdz/hui-extendability`, which carries #408):
 
 | Check | Command | Result |
 |---|---|---|
-| Typecheck | `npm run typecheck` | — |
-| Tests | `npm test` | — (this checkout has a known set of environment-only failures; diff the failure set before and after each phase) |
-| Working tree | `git status --short` | — |
+| Typecheck | `npm run typecheck` | exit 0 |
+| Tests | `npm test` | 34 failed / 2782 passed in 11 files — the known environment-only set (process control, local sockets, browser launch, download fixtures), plus one flaky workers test; diff the failure set before and after each phase |
+| Working tree | `git status --short` | clean |
 
 ```
-Baseline result:
-Exit:
+Baseline failed files: state.test.ts, workers.test.ts (one extra flaky case),
+session-connection.test.ts, watchers.test.ts, dashboard.test.ts, manager.test.ts,
+schedules.test.ts, durable.test.ts, pi-sdk.test.ts, install.test.ts, vscode.test.ts.
 ```
 
 ---
