@@ -3650,7 +3650,10 @@ Each frame is a `SessionStreamFrame` (`server/api/session-events.ts`, generated 
 message on the session WebSocket. Runtime events arrive as transmitted (`SessionEvent`): `history` never leaves the
 gateway and `error` carries only its `message`.
 
-Session views can include `"interrupted": true` and `"unread": true`. `"background": true` means a running watcher of that session, or a running
+Session views can include `"interrupted": true`, `"runFailed": true` and `"unread": true`. `"runFailed": true` means the view's
+transcript ends with an error entry whose run is over — a failed model call, a refused request — so an idle session is
+not mistaken for one that finished; the sidebar row shows the failure until the next turn replaces that entry.
+`"background": true` means a running watcher of that session, or a running
 subagent anywhere below it, is still working; the sidebar shows such a session as running
 even while its own turn is idle. Before submitting a normal
 prompt, HUI writes `runStartedAt` plus a temporary `runPrompt` recovery journal

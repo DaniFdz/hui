@@ -9945,6 +9945,10 @@
           "type": "boolean",
           "const": true
         },
+        "runFailed": {
+          "type": "boolean",
+          "const": true
+        },
         "background": {
           "type": "boolean",
           "const": true
