@@ -4,7 +4,9 @@
  * sandbox — so every failure is contained to that extension: a named error in its status, one diagnostic, and no
  * effect on any other route. Enablement is `extensions.json` (store.ts); nothing here writes it but `setEnabled`.
  */
+import { readFileSync } from "node:fs";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
+import { findPackageJSON } from "node:module";
 import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -13,7 +15,7 @@ import type { JsonResult, RouteRequest, RouteResult } from "../http/route.ts";
 import { EXTENSIONS_DIR, EXTENSIONS_FILE } from "../paths.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import {
-  checkedResult, checkedStream, entryPath, extensionId, MAX_EXTENSION_DIRECTORIES, MAX_ERROR_CHARS, parseManifest, parseRoutes,
+  checkedResult, checkedStream, entryPath, extensionId, MAX_EXTENSION_DIRECTORIES, MAX_ERROR_CHARS, parseManifest, parseRoutes, satisfiesEngines,
   routeInfo, routeKey, type ExtensionManifest, type ExtensionRoute, type ExtensionTool, type ExtensionToolHandler,
 } from "./registry.ts";
 import { readExtensions, writeExtensions } from "./store.ts";
@@ -44,7 +46,24 @@ export type ExtensionsServiceOptions = {
   dir?: string;
   file?: string;
   record?: RecordEvent;
+  /** The running HUI version `engines.hui` is checked against; read from package.json by default. */
+  huiVersion?: string;
 };
+
+function packageVersion(): string {
+  const manifest = findPackageJSON(import.meta.url);
+  if (!manifest) return "0.0.0";
+  try {
+    const parsed = JSON.parse(readFileSync(manifest, "utf8")) as { version?: unknown };
+    return typeof parsed.version === "string" ? parsed.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+function engineRange(engines: { min?: string; max?: string }): string {
+  return [engines.min ? `>=${engines.min}` : "", engines.max ? `<=${engines.max}` : ""].filter(Boolean).join(" ") || "any";
+}
 
 /** One tool an enabled extension offers a Durable conversation, with its runtime name. */
 export type ExtensionAgentTool = {
@@ -65,6 +84,8 @@ export type InvokeInput = {
 export type ExtensionsService = {
   list(): Promise<ExtensionsResponse>;
   setEnabled(id: string, enabled: boolean): Promise<ExtensionStatus>;
+  /** Re-imports one extension's module now; a failed reload withdraws its routes and reports `failed`. */
+  reload(id: string): Promise<ExtensionStatus>;
   reconcile(): Promise<void>;
   invoke(input: InvokeInput): Promise<RouteResult>;
   /** The `ui/` directory of a loaded extension that ships a panel, for the pre-gate asset route. */
@@ -88,7 +109,9 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
   const dir = options.dir ?? EXTENSIONS_DIR;
   const file = options.file ?? EXTENSIONS_FILE;
   const record = options.record ?? recordDiagnosticEvent;
+  const huiVersion = options.huiVersion ?? packageVersion();
   const loaded = new Map<string, Loaded>();
+  const reloadedAt = new Map<string, number>();
   const failures = new Map<string, string>();
   let chain: Promise<void> = Promise.resolve();
 
@@ -122,9 +145,13 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return parsed.ok ? { manifest: parsed.value } : { error: parsed.error };
   }
 
-  async function load(id: string, directory: string): Promise<{ loaded: Loaded } | { error: string }> {
+  async function load(id: string, directory: string, bust = false): Promise<{ loaded: Loaded } | { error: string }> {
     const read = await readManifest(directory);
     if ("error" in read) return { error: read.error };
+    const requires = read.manifest.engines?.hui;
+    if (!satisfiesEngines(requires, huiVersion)) {
+      return { error: `requires HUI ${requires ? engineRange(requires) : "any"}; this gateway is ${huiVersion}` };
+    }
     const entry = entryPath(directory, read.manifest.main);
     if (!entry) return { error: "main must stay inside the extension directory" };
     let entryPathReal: string;
@@ -137,7 +164,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     }
     let module: unknown;
     try {
-      module = await import(pathToFileURL(entryPathReal).href);
+      module = await import(pathToFileURL(entryPathReal).href + (bust ? `?reload=${Date.now()}` : ""));
     } catch (error) {
       return { error: `entry module threw on import: ${message(error)}` };
     }
@@ -220,6 +247,22 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     }
   }
 
+  async function reload(id: string): Promise<ExtensionStatus> {
+    if (!extensionId(id)) throw new UnknownExtensionError(id);
+    const directory = (await scan()).get(id);
+    if (!directory) throw new UnknownExtensionError(id);
+    const result = await load(id, directory, true);
+    if ("error" in result) fail(id, result.error);
+    else {
+      loaded.set(id, result.loaded);
+      failures.delete(id);
+    }
+    reloadedAt.set(id, Date.now());
+    const status = (await list()).extensions.find((entry) => entry.id === id);
+    if (!status) throw new UnknownExtensionError(id);
+    return status;
+  }
+
   async function reconcile(): Promise<void> {
     const run = chain.then(() => reconcileNow());
     chain = run.catch(() => undefined);
@@ -230,7 +273,14 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     const enabled = storeEnabled.has(id);
     const directory = directories.get(id);
     const active = loaded.get(id);
-    const base = { id, enabled, routes: [...(active?.info ?? [])] };
+    const base = {
+      id,
+      enabled,
+      routes: [...(active?.info ?? [])],
+      mode: "in-process" as const,
+      restarts: 0,
+      ...(reloadedAt.has(id) ? { reloadedAt: reloadedAt.get(id) } : {}),
+    };
     if (!directory) {
       return { ...base, name: id, description: "", state: "missing", error: "no extension directory" };
     }
@@ -239,6 +289,8 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     const identity = {
       name: read.manifest.name,
       description: read.manifest.description,
+      ...(read.manifest.version ? { version: read.manifest.version } : {}),
+      ...(read.manifest.engines?.hui ? { engines: read.manifest.engines.hui } : {}),
       ...(read.manifest.ui ? { panel: read.manifest.ui } : {}),
       ...(read.manifest.prompt ? { prompt: read.manifest.prompt.map((section) => ({ id: section.id, title: section.title, text: section.text })) } : {}),
       ...(read.manifest.tools ? {
@@ -398,5 +450,5 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return { status: checked.value.status, body: checked.value.body };
   }
 
-  return { list, setEnabled, reconcile, invoke, panelRoot, promptText, agentTools, contributions, toolFor };
+  return { list, setEnabled, reload, reconcile, invoke, panelRoot, promptText, agentTools, contributions, toolFor };
 }

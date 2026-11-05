@@ -4143,8 +4143,9 @@ plus every id the enable store lists, sorted by id. Each `ExtensionStatus` carri
 the extension's `id`, `name`, `description`, `enabled`, its `routes` metadata, `panel`
 (`title` and `entry`) when it ships a sandboxed panel, its declared `prompt` sections
 and agent `tools` (with each tool's declared and `ext_<id>_<name>` runtime name) when
-it declares them, and a `state` of `loaded`, `disabled`, `failed` or `missing`;
-`error` explains a failure.
+it declares them, its `version` and `engines`, its `mode` (`in-process`) and
+`restarts` count, and a `state` of `loaded`, `disabled`, `failed` or `missing`;
+`error` explains a failure. `reloadedAt` marks a successful reload.
 `storeError` appears when `extensions.json` cannot be read; the list then behaves as
 if nothing is enabled. Listing rescans the directory, but it never imports an
 extension: a disabled extension stays `disabled` and its module is never loaded.
@@ -4158,6 +4159,15 @@ without a restart; disabling removes them immediately, although Node keeps the
 module cached. The choice is recorded, not a promise it loaded: an extension whose
 manifest or import fails answers 200 with `state: "failed"` and its `error`. An id
 with no directory returns 404, a malformed body 400, any other method 405.
+
+### `POST /__hui/ext/:id/reload`
+
+Re-imports the extension's entry module with a cache-busting URL and returns
+`ExtensionStatus` with `reloadedAt`. Its routes and panel files use the new table at
+once, its prompt text on the next assembly and its tools on the next new Durable
+session. A failed reload answers 200 with `state: "failed"` and the error, and
+withdraws the routes; an unknown id is 404. `reload` is a reserved path for an
+extension's own routes.
 
 ### Extension panel files
 

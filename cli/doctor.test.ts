@@ -89,7 +89,7 @@ test("the report lists sessions still on PI, changes nothing, and --fix waits fo
   await setup();
   const registry = await readFile(registryFile, "utf8");
   const report = await runDoctor({ installation });
-  assert.deepEqual(report.checks.map((check) => check.id), ["pi-sessions", "triggers", "bots", "desktop-app"]);
+  assert.deepEqual(report.checks.map((check) => check.id), ["pi-sessions", "triggers", "bots", "extensions", "desktop-app"]);
   assert.equal(report.checks.find((check) => check.id === "desktop-app")?.summary, "no HUI desktop app is installed");
   assert.equal(report.ok, false);
   assert.equal(piCheck(report).status, "issue");
@@ -176,7 +176,8 @@ test("a state with every session on Durable is healthy", async () => {
     { id: "pi-sessions", title: "PI sessions", status: "ok", summary: "every session runs on Pi Durable", items: [], notes: [] },
     { id: "triggers", title: "Triggers", status: "ok", summary: "nothing left of GitHub, Sessions, Webhook or Slack triggers", items: [], notes: [] },
     { id: "bots", title: "Bot files", status: "ok", summary: "No bot keeps a memory section in SOUL.md or needs hui bot split", items: [], notes: ["A bot's split needs judgement: hui bot split <bot> sends it the three files, what belongs in each, and asks it to sort its own."] },
+    { id: "extensions", title: "Gateway extensions", status: "ok", summary: "Every enabled extension can load", items: [], notes: [] },
     { id: "desktop-app", title: "HUI desktop app", status: "ok", summary: "no HUI desktop app is installed", items: [], notes: [] },
   ] });
-  assert.equal(formatDoctorReport(report), "✓ PI sessions: every session runs on Pi Durable\n✓ Triggers: nothing left of GitHub, Sessions, Webhook or Slack triggers\n✓ Bot files: No bot keeps a memory section in SOUL.md or needs hui bot split\n  A bot's split needs judgement: hui bot split <bot> sends it the three files, what belongs in each, and asks it to sort its own.\n✓ HUI desktop app: no HUI desktop app is installed");
+  assert.equal(formatDoctorReport(report), "✓ PI sessions: every session runs on Pi Durable\n✓ Triggers: nothing left of GitHub, Sessions, Webhook or Slack triggers\n✓ Bot files: No bot keeps a memory section in SOUL.md or needs hui bot split\n  A bot's split needs judgement: hui bot split <bot> sends it the three files, what belongs in each, and asks it to sort its own.\n✓ Gateway extensions: Every enabled extension can load\n✓ HUI desktop app: no HUI desktop app is installed");
 });

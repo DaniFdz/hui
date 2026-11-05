@@ -46,15 +46,16 @@ async function installed(root: string, id: string, manifest: Record<string, unkn
   await writeFile(join(directory, "index.mjs"), source);
 }
 
-function serviceAt(root: string, events: unknown[] = []) {
+function serviceAt(root: string, events: unknown[] = [], huiVersion?: string) {
   return createExtensionsService({
     dir: join(root, "extensions"),
     file: join(root, "extensions.json"),
     record: (event) => { events.push(event); },
+    ...(huiVersion ? { huiVersion } : {}),
   });
 }
 
-function request(overrides: Partial<RouteRequest> = {}): RouteRequest {
+function request0(overrides: Partial<RouteRequest> = {}): RouteRequest {
   return {
     method: "GET", path: "/__hui/ext/hello/hello", query: new URLSearchParams(), headers: {},
     json: async () => undefined, bytes: async () => Buffer.alloc(0),
@@ -76,7 +77,7 @@ test("an installed extension lists as disabled and is never imported", async (t)
   ]);
   assert.equal(listed.storeError, undefined);
   await assert.rejects(access(marker), /ENOENT/);
-  const answer = await service.invoke({ id: "marked", method: "GET", subpath: "m", request: request() });
+  const answer = await service.invoke({ id: "marked", method: "GET", subpath: "m", request: request0() });
   assert.equal(answer.status, 404);
 });
 
@@ -100,23 +101,23 @@ test("enabling imports once, persists the choice and answers its routes", async 
 
   const greeting = await service.invoke({
     id: "hello", method: "GET", subpath: "hello",
-    request: request({ query: new URLSearchParams("name=Ada") }),
+    request: request0({ query: new URLSearchParams("name=Ada") }),
   });
   assert.deepEqual(greeting, { status: 200, body: { greeting: "hello, Ada" } });
 
   const echoed = await service.invoke({
     id: "hello", method: "POST", subpath: "echo",
-    request: request({ method: "POST", json: async () => ({ ok: true }) }),
+    request: request0({ method: "POST", json: async () => ({ ok: true }) }),
   });
   assert.deepEqual(echoed, { status: 201, body: { echo: { ok: true } } });
 
-  assert.deepEqual(await service.invoke({ id: "hello", method: "PUT", subpath: "hello", request: request() }), {
+  assert.deepEqual(await service.invoke({ id: "hello", method: "PUT", subpath: "hello", request: request0() }), {
     status: 405, body: { error: "method not allowed" },
   });
-  assert.deepEqual(await service.invoke({ id: "hello", method: "GET", subpath: "missing", request: request() }), {
+  assert.deepEqual(await service.invoke({ id: "hello", method: "GET", subpath: "missing", request: request0() }), {
     status: 404, body: { error: "unknown extension route: missing" },
   });
-  assert.deepEqual(await service.invoke({ id: "ghost", method: "GET", subpath: "hello", request: request() }), {
+  assert.deepEqual(await service.invoke({ id: "ghost", method: "GET", subpath: "hello", request: request0() }), {
     status: 404, body: { error: "unknown extension: ghost" },
   });
 });
@@ -181,6 +182,50 @@ test("a declared tool without an exported handler fails the extension", async (t
   assert.match(status?.error ?? "", /tools\.greet has no handler/u);
 });
 
+test("engines.hui refuses a gateway outside the range and keeps the manifest's metadata", async (t) => {
+  const root = await temp(t);
+  await installed(root, "hello", { ...MANIFEST, version: "1.2.3", engines: { hui: { min: "9.0.0" } } }, HELLO);
+  const service = serviceAt(root, [], "1.5.0");
+  await service.setEnabled("hello", true);
+  const refused = (await service.list()).extensions[0];
+  assert.equal(refused?.state, "failed");
+  assert.match(refused?.error ?? "", /requires HUI >=9\.0\.0; this gateway is 1\.5\.0/u);
+  assert.equal(refused?.version, "1.2.3");
+  assert.deepEqual(refused?.engines, { min: "9.0.0" });
+  assert.equal(refused?.mode, "in-process");
+  assert.equal(refused?.restarts, 0);
+
+  const accepted = serviceAt(root, [], "9.1.0");
+  await accepted.setEnabled("hello", true);
+  const loaded = (await accepted.list()).extensions[0];
+  assert.equal(loaded?.state, "loaded");
+  assert.equal(loaded?.version, "1.2.3");
+});
+
+test("reload re-imports a changed module, and a broken reload withdraws its routes", async (t) => {
+  const root = await temp(t);
+  const moduleSource = (value: number) => `
+    export const routes = [{ method: "GET", path: "value", handle: async () => ({ body: { value: ${value} } }) }];
+  `;
+  await installed(root, "hello", MANIFEST, moduleSource(1));
+  const service = serviceAt(root);
+  await service.setEnabled("hello", true);
+  assert.deepEqual(await service.invoke({ id: "hello", method: "GET", subpath: "value", request: request0() }), { status: 200, body: { value: 1 } });
+
+  await writeFile(join(root, "extensions", "hello", "index.mjs"), moduleSource(2));
+  const reloaded = await service.reload("hello");
+  assert.equal(reloaded.state, "loaded");
+  assert.equal(typeof reloaded.reloadedAt, "number");
+  assert.deepEqual(await service.invoke({ id: "hello", method: "GET", subpath: "value", request: request0() }), { status: 200, body: { value: 2 } });
+
+  await writeFile(join(root, "extensions", "hello", "index.mjs"), 'throw new Error("reload boom");');
+  const failed = await service.reload("hello");
+  assert.equal(failed.state, "failed");
+  assert.match(failed.error ?? "", /reload boom/u);
+  assert.equal((await service.invoke({ id: "hello", method: "GET", subpath: "value", request: request0() })).status, 404);
+  await assert.rejects(service.reload("missing"), /unknown extension/u);
+});
+
 test("a failed import is reported without touching the extensions that loaded", async (t) => {
   const root = await temp(t);
   const events: { action?: string; summary?: string }[] = [];
@@ -198,7 +243,7 @@ test("a failed import is reported without touching the extensions that loaded", 
   const broken = listed.extensions.find((extension) => extension.id === "broken");
   assert.match(broken?.error ?? "", /fixture boom/);
   assert.ok(events.some((event) => event.action === "extension_load_failed" && /broken/.test(event.summary ?? "")));
-  const greeting = await service.invoke({ id: "hello", method: "GET", subpath: "hello", request: request() });
+  const greeting = await service.invoke({ id: "hello", method: "GET", subpath: "hello", request: request0() });
   assert.equal(greeting.status, 200);
 });
 
@@ -260,16 +305,16 @@ test("disabling removes the routes at once and re-enabling does not re-import", 
   const service = serviceAt(root);
 
   await service.setEnabled("marked", true);
-  assert.equal((await service.invoke({ id: "marked", method: "GET", subpath: "m", request: request() })).status, 200);
+  assert.equal((await service.invoke({ id: "marked", method: "GET", subpath: "m", request: request0() })).status, 200);
   assert.equal(await readFile(marker, "utf8"), "imported\n");
 
   const disabled = await service.setEnabled("marked", false);
   assert.equal(disabled.state, "disabled");
-  assert.equal((await service.invoke({ id: "marked", method: "GET", subpath: "m", request: request() })).status, 404);
+  assert.equal((await service.invoke({ id: "marked", method: "GET", subpath: "m", request: request0() })).status, 404);
   assert.deepEqual(JSON.parse(await readFile(join(root, "extensions.json"), "utf8")), { version: 1, enabled: [] });
 
   await service.setEnabled("marked", true);
-  assert.equal((await service.invoke({ id: "marked", method: "GET", subpath: "m", request: request() })).status, 200);
+  assert.equal((await service.invoke({ id: "marked", method: "GET", subpath: "m", request: request0() })).status, 200);
   assert.equal(await readFile(marker, "utf8"), "imported\n");
 });
 
@@ -281,20 +326,20 @@ test("a failing handler is contained, mapped and recorded", async (t) => {
   await service.setEnabled("hello", true);
 
   for (const subpath of ["boom", "shape", "range", "cyclic"]) {
-    const answer = await service.invoke({ id: "hello", method: "GET", subpath, request: request() });
+    const answer = await service.invoke({ id: "hello", method: "GET", subpath, request: request0() });
     assert.deepEqual(answer, { status: 500, body: { error: "extension failed" } }, subpath);
   }
   assert.equal(events.filter((event) => event.action === "extension_failed").length, 4);
 
   const invalid = await service.invoke({
     id: "hello", method: "POST", subpath: "echo",
-    request: request({ method: "POST", json: async () => { throw new SyntaxError("bad json"); } }),
+    request: request0({ method: "POST", json: async () => { throw new SyntaxError("bad json"); } }),
   });
   assert.deepEqual(invalid, { status: 400, body: { error: "body must be JSON" } });
 
   const oversized = await service.invoke({
     id: "hello", method: "POST", subpath: "echo",
-    request: request({ method: "POST", json: async () => { throw new Error("request body too large"); } }),
+    request: request0({ method: "POST", json: async () => { throw new Error("request body too large"); } }),
   });
   assert.deepEqual(oversized, { status: 413, body: { error: "request body too large" } });
 });

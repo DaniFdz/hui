@@ -34,5 +34,11 @@
         "Use greet when the operator asks for a greeting."
       ]
     }
-  ]
+  ],
+  "version": "1.2.3",
+  "engines": {
+    "hui": {
+      "min": "0.1.0"
+    }
+  }
 }

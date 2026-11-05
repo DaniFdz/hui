@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import {
-  checkedResult, checkedStream, entryPath, extensionId, parseManifest, parseRoutes, routeInfo, routeKey,
+  checkedResult, checkedStream, compareVersions, entryPath, extensionId, parseManifest, parseRoutes, routeInfo, routeKey, satisfiesEngines,
 } from "./registry.ts";
 
 const MANIFEST = { apiVersion: 1, name: "Hello", description: "One sentence.", main: "index.mjs" };
@@ -206,4 +206,42 @@ test("a streaming result is an async iterable and nothing else", () => {
     assert.equal(result.ok, false, JSON.stringify(raw));
     if (!result.ok) assert.match(result.error, pattern);
   }
+});
+
+test("versions compare field by field and engines bound the HUI version", () => {
+  assert.equal(compareVersions("0.1.5", "0.1.5"), 0);
+  assert.equal(compareVersions("0.1.5", "0.2.0"), -1);
+  assert.equal(compareVersions("1.0.0", "0.9.9"), 1);
+  assert.equal(compareVersions("1.2", "1.2.0"), 0);
+  assert.equal(satisfiesEngines(undefined, "0.1.5"), true);
+  assert.equal(satisfiesEngines({ min: "0.1.0", max: "0.2.0" }, "0.1.5"), true);
+  assert.equal(satisfiesEngines({ min: "0.2.0" }, "0.1.5"), false);
+  assert.equal(satisfiesEngines({ max: "0.1.0" }, "0.1.5"), false);
+  assert.equal(satisfiesEngines({ min: "0.1.5", max: "0.1.5" }, "0.1.5"), true);
+});
+
+test("a manifest may declare its version and HUI engines", () => {
+  const parsed = parseManifest({ ...MANIFEST, version: "1.2.3", engines: { hui: { min: "0.1.0", max: "0.2.0" } } });
+  assert.equal(parsed.ok, true);
+  if (parsed.ok) {
+    assert.equal(parsed.value.version, "1.2.3");
+    assert.deepEqual(parsed.value.engines, { hui: { min: "0.1.0", max: "0.2.0" } });
+  }
+  const cases: [unknown, RegExp][] = [
+    [{ ...MANIFEST, version: "1.2" }, /dotted numeric/u],
+    [{ ...MANIFEST, engines: "hui" }, /engines must be an object/u],
+    [{ ...MANIFEST, engines: { hui: { min: "x" } } }, /min must be/u],
+    [{ ...MANIFEST, engines: { hui: { min: "2.0.0", max: "1.0.0" } } }, /above max/u],
+  ];
+  for (const [raw, pattern] of cases) {
+    const result = parseManifest(raw);
+    assert.equal(result.ok, false, JSON.stringify(raw));
+    if (!result.ok) assert.match(result.error, pattern);
+  }
+});
+
+test("reload is a reserved route path", () => {
+  const result = parseRoutes([{ method: "POST", path: "reload", handle: async () => ({ body: {} }) }]);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.error, /reserved/u);
 });

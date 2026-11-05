@@ -33,6 +33,12 @@ export const ExtensionToolInfo = Type.Object({
 }, { $id: "ExtensionToolInfo" });
 export type ExtensionToolInfo = Static<typeof ExtensionToolInfo>;
 
+export const ExtensionEnginesInfo = Type.Object({
+  min: Type.Optional(Type.String()),
+  max: Type.Optional(Type.String()),
+}, { $id: "ExtensionEnginesInfo" });
+export type ExtensionEnginesInfo = Static<typeof ExtensionEnginesInfo>;
+
 export const ExtensionStatus = Type.Object({
   id: Type.String(),
   name: Type.String(),
@@ -42,6 +48,11 @@ export const ExtensionStatus = Type.Object({
     Type.Literal("loaded"), Type.Literal("disabled"), Type.Literal("failed"), Type.Literal("missing"),
   ]),
   error: Type.Optional(Type.String()),
+  version: Type.Optional(Type.String()),
+  engines: Type.Optional(ExtensionEnginesInfo),
+  reloadedAt: Type.Optional(Type.Number()),
+  mode: Type.Union([Type.Literal("in-process"), Type.Literal("process")]),
+  restarts: Type.Number(),
   panel: Type.Optional(ExtensionPanel),
   prompt: Type.Optional(Type.Array(ExtensionPromptInfo)),
   tools: Type.Optional(Type.Array(ExtensionToolInfo)),
@@ -68,4 +79,5 @@ export type PluginError = Static<typeof PluginError>;
 export const routeSchemas = [
   { method: "GET", path: "/__hui/ext", response: ExtensionsResponse },
   { method: "PUT", path: "/__hui/ext/:id", request: ExtensionToggleRequest, response: ExtensionStatus },
+  { method: "POST", path: "/__hui/ext/:id/reload", response: ExtensionStatus },
 ];

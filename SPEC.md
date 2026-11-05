@@ -2432,6 +2432,15 @@ trusted local module can answer JSON routes on the gateway.
   row shows the state that came back. `hui extension list|enable|disable` does the
   same from a terminal against the running gateway. The page is web-only; the
   iPhone has no extension surface.
+- **Lifecycle.** A manifest may declare its `version` and the HUI `engines.hui`
+  range; a gateway outside it refuses to load with a named reason. `POST
+  /__hui/ext/:id/reload` re-imports a changed module (routes and panel files at
+  once, prompt text next assembly, tools next new Durable session), and a failed
+  reload withdraws the routes and reports `failed`. `hui extension add <path>
+  [--link]` validates and installs a local module (enabling it now when a gateway
+  runs, else at the next start); `hui extension remove <id> [--delete]` requires it
+  disabled and only deletes with `--delete`; `hui doctor` reports enabled
+  extensions that cannot load, without a `--fix`.
 - **Streaming.** A route may declare `stream: true` and return an async iterable of
   events; HUI writes them as server-sent events with a heartbeat, caps (ten
   minutes, 5 000 events, 256 KiB each, 5 MiB total), an `error` event on a throw or

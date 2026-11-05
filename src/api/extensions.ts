@@ -49,3 +49,8 @@ export async function callExtensionRoute(
   }
   return { status: response.status, body: parsed };
 }
+
+/** Re-imports one extension now; the returned status is its state right after the attempt. */
+export async function reloadExtension(id: string): Promise<ExtensionStatus> {
+  return await fetchJson<ExtensionStatus>(`${EXTENSIONS_URL}/${encodeURIComponent(id)}/reload`, { method: "POST" });
+}

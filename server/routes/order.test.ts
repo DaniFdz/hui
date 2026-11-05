@@ -83,6 +83,7 @@ const CASES: Case[] = [
   ["GET /__hui/ext", 200, ["extensions"], false],
   ["PUT /__hui/ext/hello", 404, ["error"], true, { body: JSON.stringify({ enabled: true }) }],
   ["GET /__hui/ext/hello/hello", 404, ["error"], true],
+  ["POST /__hui/ext/hello/reload", 404, ["error"], true],
   ["GET /__hui/pi/packages/install", 405, ["error"], true],
   ["POST /__hui/tools", 405, ["error"], true],
   [`GET /__hui/pi/resources/skill/${"0".repeat(24)}`, 404, ["error"], true],

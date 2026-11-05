@@ -4,7 +4,7 @@
  */
 import { LitElement, html, nothing } from "lit";
 
-import { loadExtensions, setExtensionEnabled } from "../../api/extensions.ts";
+import { loadExtensions, reloadExtension, setExtensionEnabled } from "../../api/extensions.ts";
 import type { ExtensionStatus } from "../../api/schema/extensions.ts";
 import {
   EXTENSION_EMPTY_NOTE, EXTENSION_STATE_LABEL, EXTENSION_TRUST_NOTE, extensionRoutesSummary, extensionToggleLabel,
@@ -55,6 +55,22 @@ export class HuiExtensionsSettings extends LitElement {
     if (!requestOpenExtensionPanel(this, { id: extension.id })) this.#error = "Open a conversation first.";
   }
 
+  async #reload(extension: ExtensionStatus) {
+    this.#busy.add(extension.id);
+    this.#error = "";
+    this.requestUpdate();
+    try {
+      const status = await reloadExtension(extension.id);
+      this.#extensions = this.#extensions.map((entry) => entry.id === status.id ? status : entry);
+      this.dispatchEvent(new CustomEvent("hui-extensions-changed", { bubbles: true, composed: true }));
+    } catch (error) {
+      this.#error = error instanceof Error ? error.message : "That extension could not be reloaded.";
+    } finally {
+      this.#busy.delete(extension.id);
+      this.requestUpdate();
+    }
+  }
+
   async #toggle(extension: ExtensionStatus, enabled: boolean) {
     this.#busy.add(extension.id);
     this.#error = "";
@@ -94,11 +110,15 @@ export class HuiExtensionsSettings extends LitElement {
         <span class="settings-row__title">${extension.name}
           <span class="settings-status ${tone ? `settings-status--${tone}` : ""}" data-extension-state=${extension.state} data-testid="extension-state"><span class="settings-status__dot" aria-hidden="true"></span>${EXTENSION_STATE_LABEL[extension.state]}</span>
         </span>
-        <span class="settings-row__desc"><code>${extension.id}</code>${extension.description ? html` · ${extension.description}` : nothing}</span>
+        <span class="settings-row__desc"><code>${extension.id}</code>${extension.description ? html` · ${extension.description}` : nothing}${extension.version ? html` · v${extension.version}` : nothing}${extension.engines ? html` · HUI ${[extension.engines.min ? `>=${extension.engines.min}` : "", extension.engines.max ? `<=${extension.engines.max}` : ""].filter(Boolean).join(" ")}` : nothing}</span>
+        ${extension.reloadedAt ? html`<span class="settings-row__desc" data-extension-reloaded>Reloaded ${new Date(extension.reloadedAt).toLocaleTimeString()}</span>` : nothing}
         <span class="settings-row__desc" data-extension-routes>${extensionRoutesSummary(extension.routes)}</span>
         ${extension.error ? html`<span class="settings-row__desc" role="alert" data-extension-error data-testid="extension-error">${extension.error}</span>` : nothing}
       </div>
       <div class="settings-row__control jira-settings__actions">
+        ${extension.enabled && (extension.state === "loaded" || extension.state === "failed") ? html`<button type="button" class="btn btn--sm" data-extension-reload=${extension.id}
+          ?disabled=${this.#busy.has(extension.id)}
+          @click=${() => void this.#reload(extension)}>Reload</button>` : nothing}
         ${extension.panel ? html`<button type="button" class="btn btn--sm" data-extension-open=${extension.id}
           ?disabled=${!this.panelAvailable || extension.state !== "loaded"}
           title=${this.panelAvailable ? `Open ${extension.panel.title}` : "Open a conversation first"}

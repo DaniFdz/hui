@@ -1239,6 +1239,14 @@ hui extension enable hello
 hui extension disable hello
 ```
 
+`hui extension add <path> [--link]` validates a local module and installs it
+(copied, or linked with `--link`), enabling it now when the gateway runs and at the
+next start otherwise; `hui extension remove <id>` needs it disabled, and only
+`--delete` removes its directory. A manifest may carry `version` and `engines.hui`
+bounds; a gateway outside them refuses to load it. **Reload** on Settings →
+Extensions (or `hui extension reload <id>`) re-imports a changed module. `hui
+doctor` reports enabled extensions that cannot load.
+
 The choice is saved in `HUI_CONFIG_DIR/extensions.json` (`{ "version": 1,
 "enabled": ["hello"] }`) and applies immediately: enabling imports the module,
 disabling withdraws its routes at once (Node keeps the module cached). The same

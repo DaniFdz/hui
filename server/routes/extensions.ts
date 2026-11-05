@@ -22,6 +22,15 @@ export function createExtensionRoutes(deps: { extensions: ExtensionsService }) {
     if (!match?.[1]) return undefined;
     const id = match[1];
     const subpath = match[2];
+    if (subpath === "reload") {
+      if (request.method !== "POST") return reply(PluginError, { error: "method not allowed" }, 405);
+      try {
+        return reply(ExtensionStatus, await deps.extensions.reload(id));
+      } catch (error) {
+        if (error instanceof UnknownExtensionError) return reply(PluginError, { error: error.message }, 404);
+        throw error;
+      }
+    }
     if (subpath !== undefined) {
       return await deps.extensions.invoke({ id, method: request.method, subpath, request });
     }

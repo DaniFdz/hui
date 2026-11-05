@@ -5171,6 +5171,17 @@
         }
       }
     },
+    "ExtensionEnginesInfo": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "string"
+        },
+        "max": {
+          "type": "string"
+        }
+      }
+    },
     "ExtensionPanel": {
       "type": "object",
       "required": [
@@ -5252,6 +5263,8 @@
         "description",
         "enabled",
         "state",
+        "mode",
+        "restarts",
         "routes"
       ],
       "properties": {
@@ -5289,6 +5302,30 @@
         },
         "error": {
           "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "engines": {
+          "$ref": "#/$defs/ExtensionEnginesInfo"
+        },
+        "reloadedAt": {
+          "type": "number"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "in-process"
+            },
+            {
+              "type": "string",
+              "const": "process"
+            }
+          ]
+        },
+        "restarts": {
+          "type": "number"
         },
         "panel": {
           "$ref": "#/$defs/ExtensionPanel"
@@ -14394,6 +14431,7 @@
       "ThemesResponse"
     ],
     "extensions": [
+      "ExtensionEnginesInfo",
       "ExtensionPanel",
       "ExtensionPromptInfo",
       "ExtensionRouteInfo",
@@ -14971,6 +15009,13 @@
       "request": {
         "$ref": "#/$defs/ExtensionToggleRequest"
       },
+      "response": {
+        "$ref": "#/$defs/ExtensionStatus"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/ext/:id/reload",
       "response": {
         "$ref": "#/$defs/ExtensionStatus"
       }

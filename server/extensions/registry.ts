@@ -28,6 +28,7 @@ export const MAX_TOOL_SNIPPET_CHARS = 200;
 export const MAX_TOOL_GUIDELINES = 8;
 export const MAX_TOOL_GUIDELINE_CHARS = 200;
 export const MAX_SCHEMA_DEPTH = 8;
+const VERSION = /^\d+\.\d+\.\d+$/u;
 const TOOL_NAME = /^[a-z][a-z0-9_]{0,47}$/u;
 const PROMPT_ID = /^[a-z][a-z0-9-]{0,31}$/u;
 const SCHEMA_KEYS = new Set(["type", "description", "properties", "required", "items", "enum", "additionalProperties"]);
@@ -71,6 +72,12 @@ export type ExtensionToolDeclaration = {
 
 export type ExtensionTool = ExtensionToolDeclaration & { readonly handle: ExtensionToolHandler };
 
+/** The HUI versions an extension accepts, as dotted numeric bounds. */
+export type ExtensionEngines = {
+  readonly min?: string;
+  readonly max?: string;
+};
+
 export type ExtensionManifest = {
   readonly apiVersion: typeof EXTENSION_API_VERSION;
   readonly name: string;
@@ -83,6 +90,10 @@ export type ExtensionManifest = {
   readonly prompt?: readonly ExtensionPromptSection[];
   /** Agent tools for Durable sessions; their handlers come from the entry module. */
   readonly tools?: readonly ExtensionToolDeclaration[];
+  /** The extension's own version, dotted numeric. */
+  readonly version?: string;
+  /** The HUI versions it accepts. */
+  readonly engines?: { readonly hui?: ExtensionEngines };
 };
 
 export type ExtensionContext = {
@@ -124,6 +135,25 @@ function boundedText(value: unknown, maximum: number): string | undefined {
   const text = value.trim();
   if (!text || text.length > maximum || CONTROL.test(text)) return undefined;
   return text;
+}
+
+/** Compare two dotted numeric versions, field by field. */
+export function compareVersions(left: string, right: string): number {
+  const a = left.split(".").map(Number);
+  const b = right.split(".").map(Number);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) return difference < 0 ? -1 : 1;
+  }
+  return 0;
+}
+
+/** Whether `version` is inside the range (both bounds included). */
+export function satisfiesEngines(engines: ExtensionEngines | undefined, version: string): boolean {
+  if (!engines) return true;
+  if (engines.min !== undefined && compareVersions(version, engines.min) < 0) return false;
+  if (engines.max !== undefined && compareVersions(version, engines.max) > 0) return false;
+  return true;
 }
 
 /** The id is the extension's directory name. */
@@ -257,6 +287,27 @@ export function parseManifest(raw: unknown): Parsed<ExtensionManifest> {
     }
     ui = { title, entry };
   }
+  let version: string | undefined;
+  if (raw["version"] !== undefined) {
+    if (typeof raw["version"] !== "string" || !VERSION.test(raw["version"])) return fail("version must be a dotted numeric version");
+    version = raw["version"];
+  }
+  let engines: { readonly hui?: ExtensionEngines } | undefined;
+  if (raw["engines"] !== undefined) {
+    if (!isRecord(raw["engines"])) return fail("engines must be an object");
+    if (raw["engines"]["hui"] !== undefined) {
+      const hui = raw["engines"]["hui"];
+      if (!isRecord(hui)) return fail("engines.hui must be an object");
+      const min = hui["min"];
+      const max = hui["max"];
+      if (min !== undefined && (typeof min !== "string" || !VERSION.test(min))) return fail("engines.hui.min must be a dotted numeric version");
+      if (max !== undefined && (typeof max !== "string" || !VERSION.test(max))) return fail("engines.hui.max must be a dotted numeric version");
+      if (min !== undefined && max !== undefined && compareVersions(min, max) > 0) return fail("engines.hui.min must not be above max");
+      engines = { hui: { ...(min === undefined ? {} : { min }), ...(max === undefined ? {} : { max }) } };
+    } else {
+      engines = {};
+    }
+  }
   let prompt: Parsed<readonly ExtensionPromptSection[]> | undefined;
   if (raw["prompt"] !== undefined) {
     prompt = parsePrompt(raw["prompt"]);
@@ -277,6 +328,8 @@ export function parseManifest(raw: unknown): Parsed<ExtensionManifest> {
       ...(ui ? { ui } : {}),
       ...(prompt?.ok ? { prompt: prompt.value } : {}),
       ...(toolList?.ok ? { tools: toolList.value } : {}),
+      ...(version ? { version } : {}),
+      ...(engines ? { engines } : {}),
     },
   };
 }
@@ -320,6 +373,7 @@ export function parseRoutes(raw: unknown): Parsed<ExtensionRoute[]> {
     }
     if (typeof value["handle"] !== "function") return fail(`${where}.handle must be a function`);
     if (value["stream"] !== undefined && typeof value["stream"] !== "boolean") return fail(`${where}.stream must be a boolean`);
+    if (path === "reload") return fail(`${where}.path "reload" is reserved for HUI's reload action`);
     const key = `${method} ${path}`;
     if (seen.has(key)) return fail(`${where} repeats ${key}`);
     seen.add(key);

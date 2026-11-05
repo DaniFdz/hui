@@ -280,7 +280,15 @@ test("CLI parses extension list and toggles, and refuses a missing or extra id",
   assert.equal(enable.command, "extension enable");
   assert.equal("target" in enable ? enable.target : undefined, "hello");
   assert.equal(parseCli(["extension", "disable", "hello", "--json"]).values.json, true);
-  for (const args of [["extension", "enable"], ["extension", "disable", "hello", "extra"], ["extension", "list", "extra"], ["extension", "enable", "hello", "--force"]]) {
+  const add = parseCli(["extension", "add", "/tmp/hello", "--link"]);
+  assert.equal(add.command, "extension add");
+  assert.equal("target" in add ? add.target : undefined, "/tmp/hello");
+  assert.equal(add.values.link, true);
+  const remove = parseCli(["extension", "remove", "hello", "--delete"]);
+  assert.equal(remove.command, "extension remove");
+  assert.equal("target" in remove ? remove.target : undefined, "hello");
+  assert.equal(parseCli(["extension", "reload", "hello"]).command, "extension reload");
+  for (const args of [["extension", "enable"], ["extension", "disable", "hello", "extra"], ["extension", "list", "extra"], ["extension", "enable", "hello", "--force"], ["extension", "add"], ["extension", "remove"], ["extension", "reload"]]) {
     assert.throws(() => parseCli(args), Error, args.join(" "));
   }
 });
