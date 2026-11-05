@@ -13,14 +13,15 @@ concurrency:
   group: nightly
   cancel-in-progress: true
 jobs:
-  package:
+  # The proofs run as separate parallel jobs, each with its own hang guard.
+  # Serially they outgrew one job: the web suite alone takes over twenty
+  # minutes, and a single budget for the whole gate either masked a slow proof
+  # or cut a green run off before it could publish.
+  checks:
     if: github.event.repository.private == false && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # A green run takes about six minutes; a hung one fails here instead of
-    # holding the nightly back for GitHub's six-hour default.
-    timeout-minutes: 30
-    outputs:
-      version: ${{ steps.version.outputs.version }}
+    # Typecheck and the unit suite take about five minutes.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -33,12 +34,82 @@ jobs:
       - run: npx vitest run cli/release-workflow.test.mjs
       - run: npm run typecheck
       - run: npm test
+  # The web suite is sharded as the E2E workflow shards it, so the nightly's
+  # slowest proof stays a few minutes per runner instead of half an hour.
+  e2e:
+    if: github.event.repository.private == false && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # A shard takes about eight minutes once Chromium is installed.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/4", "2/4", "3/4", "4/4"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
       - run: npx e2e-web install chromium --with-deps
-      - run: npm run e2e
-      # Retries are off, so the nightly runs the smoke tests three times more to catch a flaky one.
+      - run: npm run e2e -- --shard ${{ matrix.shard }}
+      # A failed shard's traces and screenshots are what explains it; a green one needs no artifact.
+      - if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-e2e-${{ strategy.job-index }}
+          path: |
+            .e2e/
+            /tmp/hui-visual-*/artifacts/
+          include-hidden-files: true
+          if-no-files-found: warn
+  # Retries are off, so the nightly runs the smoke tests three times more to catch a flaky one.
+  smoke:
+    if: github.event.repository.private == false && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # The smoke tests themselves take seconds; Chromium and the fixture's build are the rest.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
+      - run: npx e2e-web install chromium --with-deps
       - run: npm run e2e -- --tag smoke --repeat-each 3
-      # The installed-package proof derives its fixture versions from a stable
-      # package.json, so it runs before the nightly version is stamped.
+      - if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-smoke
+          path: |
+            .e2e/
+            /tmp/hui-visual-*/artifacts/
+          include-hidden-files: true
+          if-no-files-found: warn
+  # The installed-package proof derives its fixture versions from a stable
+  # package.json, so it runs before the nightly version is stamped.
+  package-linux:
+    if: github.event.repository.private == false && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Installing the archive, updating it and rolling back takes about five minutes.
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
       - run: npm run test:package
       - name: Stamp the nightly version
         id: version
@@ -65,6 +136,9 @@ jobs:
   package-macos:
     if: github.event.repository.private == false && github.ref == 'refs/heads/main'
     runs-on: macos-latest
+    # The macOS runner is slower than the Linux one; the same proof takes up to
+    # seven minutes there, and its own budget is in e2e/package.test.ts.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -76,7 +150,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run test:package
   publish:
-    needs: [package, package-macos]
+    needs: [checks, e2e, smoke, package-linux, package-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -88,7 +162,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          NIGHTLY_VERSION: ${{ needs.package.outputs.version }}
+          NIGHTLY_VERSION: ${{ needs.package-linux.outputs.version }}
           NIGHTLY_SHA: ${{ github.sha }}
         run: |
           # Clients see no nightly for the seconds between delete and create and
