@@ -40,7 +40,7 @@ Rules for the program session:
 
 | Phase | Scope | Status | Commit | CI |
 |---|---|---|---|---|
-| P0 | Gateway routes, store, status/toggle | carried in the program PR (PR #408 closes as superseded) | — | — |
+| P0 | Gateway routes, store, status/toggle | carried in the program PR (PR #408 closed as superseded) | 854608e6 | #408 green |
 | P1 | Settings page + `hui extension list/enable/disable` | NOT STARTED | — | — |
 | P2 | Sandboxed panels and the bridge | NOT STARTED | — | — |
 | P3 | Prompt sections and agent tools | NOT STARTED | — | — |
@@ -55,11 +55,11 @@ Statuses: NOT STARTED · IN PROGRESS · BLOCKED · DONE (CI green) · MERGED (ow
 | Field | Value |
 |---|---|
 | Current phase | — |
-| Next action | Create the program branch (from `main` if #408 merged, else stacked on `danifdz/gateway-extensions`) and open the draft PR |
-| Branch | — (expected `danifdz/hui-extendability`) |
-| Program PR (the only one) | — |
+| Next action | Record the program baseline, then implement P1 |
+| Branch | `danifdz/hui-extendability` |
+| Program PR (the only one) | https://github.com/DaniFdz/hui/pull/415 |
 | Last green CI | — |
-| Last DONE phase | — (P0 pends #408; stacked start allowed by E23) |
+| Last DONE phase | P0 carried (criteria met in #408; #415 carries its commits) |
 | Baseline | see §3 |
 
 Update this table with every checkpoint, in the same commit as the phase. A fresh
