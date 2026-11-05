@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
@@ -161,6 +161,25 @@ test("an unsupported apiVersion or an escaping main stays failed and unimported"
   await assert.rejects(access(marker), /ENOENT/);
 });
 
+test("an entry symlink that leaves the extension directory is refused", async (t) => {
+  const root = await temp(t);
+  const outside = join(root, "outside.mjs");
+  await writeFile(outside, 'export const routes = [{ method: "GET", path: "x", handle: async () => ({ body: { ok: true } }) }];\n');
+  const directory = join(root, "extensions", "linked");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "extension.json"), JSON.stringify({ ...MANIFEST, name: "Linked" }));
+  await symlink(outside, join(directory, "index.mjs"));
+  await writeFile(join(root, "extensions.json"), JSON.stringify({ version: 1, enabled: ["linked"] }));
+  const events: { action?: string; summary?: string }[] = [];
+  const service = serviceAt(root, events);
+
+  await service.reconcile();
+  const status = (await service.list()).extensions.find((extension) => extension.id === "linked");
+  assert.equal(status?.state, "failed");
+  assert.match(status?.error ?? "", /stay inside/);
+  assert.ok(events.some((event) => event.action === "extension_load_failed"));
+});
+
 test("an enabled id without a directory is missing, not fatal", async (t) => {
   const root = await temp(t);
   await writeFile(join(root, "extensions.json"), JSON.stringify({ version: 1, enabled: ["ghost"] }));
@@ -228,6 +247,10 @@ test("a corrupt store reads as empty, reports it, and a toggle repairs it", asyn
   const corrupt = await service.list();
   assert.deepEqual(corrupt.extensions.map(({ id, state }) => ({ id, state })), [{ id: "hello", state: "disabled" }]);
   assert.match(corrupt.storeError ?? "", /not valid JSON/);
+
+  const events: { action?: string }[] = [];
+  await serviceAt(root, events).reconcile();
+  assert.ok(events.some((event) => event.action === "extensions_store_failed"));
 
   await service.setEnabled("hello", true);
   const repaired = await service.list();

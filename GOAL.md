@@ -127,7 +127,7 @@ generator after the commit leaves nothing to commit (A3).
 
 ```
 npx vitest run server/extensions scripts/api-schema.test.ts server/routes/order.test.ts scripts/use-cases.test.ts scripts/module-headers.test.mjs scripts/boundaries.test.mjs
-Result: 9 files passed, 85 tests passed.
+Result: 9 files passed, 86 tests passed.
 Exit: 0
 ```
 
@@ -139,7 +139,7 @@ Result: exit 0 (server, web and base projects).
 
 npm test
 Result: 33 failed / 2771 passed, 419 files; the 33 failures are the identical
-baseline set (diffed by file and title: 0 added, 0 removed). All 19 new tests pass.
+baseline set (diffed by file and title: 0 added, 0 removed). All 20 new tests pass.
 Exit: 1 (pre-existing failures only).
 
 npm run build
@@ -151,16 +151,17 @@ Result: exit 0, client built.
 ```
 server/extensions/registry.test.ts   6 passed
 server/extensions/store.test.ts      4 passed
-server/extensions/service.test.ts    8 passed
+server/extensions/service.test.ts    9 passed
 server/extensions/routes.test.ts     1 passed (real middleware, temp HUI_CONFIG_DIR)
 ```
 
 Cases: id grammar; manifest/entry/route validation; store normalization, atomic
 0600 write and corrupt-store repair; disabled → never imported (marker file);
 enable → loaded and answering; import throw isolated; `apiVersion: 2` and escaping
-`main` failed and unimported; enabled id without directory `missing`; disable →
-routes gone and re-enable does not re-import; 201/400/413/405/404/500 mappings;
-`extension_failed` diagnostics; store error surfaced and repaired.
+`main` failed and unimported; an entry symlink that leaves the directory refused;
+enabled id without directory `missing`; disable → routes gone and re-enable does not
+re-import; 201/400/413/405/404/500 mappings;
+`extension_failed` diagnostics; store error surfaced at reconcile and repaired.
 
 **V5 — Gate spot-check** (order test)
 
