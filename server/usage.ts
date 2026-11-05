@@ -396,7 +396,8 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
       // is fed to the pull-request scan in entry order once the read succeeds.
       const messages: { session: SessionRecord; entryId: number; message: StoredMessage }[] = [];
       const created: { session: SessionRecord; ref: PullRequestRef }[] = [];
-      const reports: { owner: SessionRecord; report: CostReport }[] = [];
+      // The scan reads entries newest first, so the first report of a session is its newest one.
+      const reports = new Map<string, CostReport>();
       let highest = after;
       try {
         await durableHost().open();
@@ -415,7 +416,7 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
           });
           const owner = owners.get(entry.conversationId) ?? session;
           const report = sessionCostOf(entry);
-          if (report) reports.push({ owner, report });
+          if (report && !reports.has(owner.id)) reports.set(owner.id, report);
           for (const message of entry.model ?? []) {
             if (entry.kind === CompactionEntry.kind && message.role === "user") continue;
             messages.push({ session: owner, entryId: entry.id, message });
@@ -433,10 +434,7 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
           for (const ref of scanner.add(message)) created.push({ session: owner, ref });
         }
         for (const { session, ref } of created) addPullRequest(found, session.id, ref);
-        for (const { owner, report } of reports) {
-          const held = found.reportedCost.get(owner.id);
-          if (!held || report.asOf >= held.asOf) found.reportedCost.set(owner.id, report);
-        }
+        for (const [owner, report] of reports) found.reportedCost.set(owner, report);
         for (const [owner, spend] of spent) {
           const already = found.recordedSpend.get(owner);
           found.recordedSpend.set(owner, { totalTokens: (already?.totalTokens ?? 0) + spend.totalTokens, cost: (already?.cost ?? 0) + spend.cost });

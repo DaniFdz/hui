@@ -75,7 +75,7 @@ function costReport(value: JsonValue | undefined): RuntimeUsage["sessionCost"] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const { usd, source, asOf } = value as Record<string, JsonValue | undefined>;
   if (typeof usd !== "number" || !Number.isFinite(usd) || usd < 0) return undefined;
-  if (typeof source !== "string" || !source.trim() || typeof asOf !== "number" || !Number.isFinite(asOf)) return undefined;
+  if (typeof source !== "string" || !source.trim() || typeof asOf !== "number" || !Number.isFinite(asOf) || Math.abs(asOf) > 8.64e15) return undefined;
   return { usd, source: source.trim().slice(0, 80), asOf };
 }
 

@@ -286,9 +286,11 @@ test("a session cost an extension reported replaces its recorded prices where th
     await tx.appendEntry(reported, { kind: AssistantEntry.kind, model: [assistant(T3, answerUsage) as never] });
     await recordUsage(tx, reported, "models", "fixture/model-a", answerUsage);
     await recordUsage(tx, reported, "models", "fixture/model-a", answerUsage);
-    // Unreadable, then readable, then the newest: the newest readable report is the session's cost.
+    // Unreadable, then readable: a negative amount and a date no clock can hold are both skipped.
     await tx.appendEntry(reported, report(-1, T2));
-    await tx.appendEntry(reported, report(9, T2));
+    await tx.appendEntry(reported, report(9, 1e20));
+    // Two reports stamped the same: the one written later is the session's cost.
+    await tx.appendEntry(reported, report(11, T3));
     await tx.appendEntry(reported, report(12, T3));
     const plain = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
     await tx.appendEntry(plain, { kind: AssistantEntry.kind, model: [assistant(T1, answerUsage) as never] });
