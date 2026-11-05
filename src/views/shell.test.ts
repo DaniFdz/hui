@@ -12,7 +12,7 @@ import {
   SHELL_DRAWER_DEFAULT_OPEN,
   SHELL_NARROW_MEDIA,
 } from "./shell.ts";
-import { sessionAccessibleName } from "../lib/session/labels.ts";
+import { sessionAccessibleName, sessionGlyph } from "../lib/session/labels.ts";
 import {
   adaptedSettingsCopy,
   filterSettingsPages,
@@ -215,6 +215,25 @@ test("session accessible names expose live status, tool and pinned state", () =>
     sessionAccessibleName({ ...base, jiraIssues: [{ key: "CI-1", url: "https://x/CI-1", status: "To Do" }, { key: "CI-2", url: "https://x/CI-2", status: "In Progress", summary: "Fix flake" }] }, ["draft"]),
     "Fix navigation, status running, tool pi, draft, Jira CI-2, in progress: Fix flake, 1 more linked",
   );
+});
+
+test("a session whose last run failed is marked until its next turn replaces it", () => {
+  const failed = session("one", "Fix navigation", "Frontend", { runFailed: true });
+  assert.deepEqual(sessionGlyph(failed).attention, { label: "Session failed", tone: "error" });
+  assert.equal(sessionAccessibleName(failed), "Fix navigation, status error, tool pi");
+  // A turn in flight or a question waiting says what it is instead; a dead runtime reads the same failure.
+  for (const status of ["running", "starting", "waiting", "error"] as const) {
+    assert.equal(
+      sessionAccessibleName({ ...failed, status }),
+      `Fix navigation, status ${status === "error" ? "error" : status}, tool pi`,
+      status,
+    );
+  }
+  assert.equal(sessionGlyph({ ...failed, status: "running" }).busy, true, "a new turn works instead of showing the failure");
+  assert.equal(sessionGlyph(session("two", "Review styles", "Frontend")).attention, undefined);
+  // Its next turn's answer replaces the error entry, and with it the mark.
+  assert.equal(sessionGlyph({ ...failed, runFailed: undefined }).attention, undefined);
+  assert.equal(sessionAccessibleName({ ...failed, runFailed: undefined }), "Fix navigation, status idle, tool pi");
 });
 
 test("session rows expose group drag and a keyboard-accessible move menu", () => {

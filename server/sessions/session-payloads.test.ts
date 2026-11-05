@@ -32,6 +32,7 @@ type LegacySessionView = {
   initialPrompt?: string;
   runtime?: { active: true; memoryBytes?: number; bootDurationMs?: number };
   interrupted?: true;
+  runFailed?: true;
   background?: true;
   model?: string;
   thinking?: string;

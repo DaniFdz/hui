@@ -109,6 +109,7 @@ export const SessionView = Type.Object({
     active: Type.Literal(true), memoryBytes: Type.Optional(Type.Number()), bootDurationMs: Type.Optional(Type.Number()),
   })),
   interrupted: Type.Optional(Type.Literal(true)),
+  runFailed: Type.Optional(Type.Literal(true)),
   background: Type.Optional(Type.Literal(true)),
   model: Type.Optional(Type.String()),
   thinking: Type.Optional(Type.String()),
