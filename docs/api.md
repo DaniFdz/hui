@@ -304,7 +304,8 @@ event belongs to, aborted by Stop. An extension command runs when sent as `/name
 `$name` alias); its prompt request returns once it ends or first asks
 something. Dialogs are `question` events answered through the question routes,
 and Stop dismisses them; `notify` is a `notice`. `ctx.sessionManager` is an
-in-memory PI session projected from the history. `appendEntry` data is stored
+in-memory PI session projected from the history; a message entry keeps the time
+its message was recorded rather than the moment the gateway loaded it. `appendEntry` data is stored
 as a `hui.pi-entry` entry. A custom message is a `hui.pi-message` entry the
 model reads as user input, written before the prompt `before_agent_start` added
 it to (PI places it after), so a rewind to before that prompt leaves it out too;
