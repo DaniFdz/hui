@@ -1343,6 +1343,12 @@ platforms, and `Send adds to this run` when plain Enter is a line break);
 touch devices keep `Add to this run…`.
 When PI consumes either queue, HUI projects that instruction into the transcript
 immediately so a slow response never appears without its causal user message.
+A steering queue that a Stop withdraws with the turn can also be delivered at
+once: while a steer waits behind a long tool call, **Send now** above the queued
+steers stops that turn—the only way past a blocking call—and sends every steer as
+a single message in queue order, so several arrive together instead of one model
+call apart. PI keeps its queue through Stop, so it delivers the steers with the
+next run and shows no such row.
 A normal prompt remains rejected while busy. PI RPC exposes select, confirm,
 input and editor requests, so Question is an adapted PI surface rather than a
 disabled OpenClaw placeholder.

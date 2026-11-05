@@ -1121,6 +1121,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     await this.#queueInput(text, attachments, "steer");
   }
 
+  /** Stop withdraws this inbox with the run, so HUI takes the steers before stopping it and sends them again. */
+  async takeSteeringQueue(): Promise<readonly string[]> {
+    return this.pendingQueue().steering;
+  }
+
   async followUp(text: string, attachments: readonly PromptAttachment[] = [], options?: RuntimePromptOptions): Promise<void> {
     await this.#trackedStart(options, () => this.#queueInput(text, attachments, "followUp", options));
   }

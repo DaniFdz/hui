@@ -53,6 +53,19 @@ test("the dynamic queue is announced as a polite live status", () => {
   assert.match(source, /aria-label="Queued messages"/);
 });
 
+test("the queue offers sending its steers now, only while one is queued", async () => {
+  const steering = await renderWorkerSession("running", { streaming: true, queue: { steering: ["How is it going?", "Skip the slow part."], followUp: [] } });
+  assert.match(steering, /class="chat-queue__send-now"/u);
+  assert.match(steering, /title="Stops this turn and sends every steered message now"/u);
+  assert.match(steering, /<span>Send now<\/span>/u);
+  const queuedFollowUp = await renderWorkerSession("running", { streaming: true, queue: { steering: [], followUp: ["later"] } });
+  assert.doesNotMatch(queuedFollowUp, /chat-queue__send-now/u);
+  // PI keeps its steering queue through Stop and delivers it with the next run, so there is nothing to force there.
+  const pi = await renderWorkerSession("running", { streaming: true, session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "repo", tool: "pi", status: "running" }, queue: { steering: ["How is it going?"], followUp: [] } });
+  assert.match(pi, /class="chat-queue__item/u);
+  assert.doesNotMatch(pi, /chat-queue__send-now/u);
+});
+
 test("the composer routes Enter shortcuts through explicit steer and queue modes", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   assert.match(source, /composerEnterMode\(\{/u);
