@@ -293,6 +293,7 @@ test("spawn resolves live routes for ordinary and collected children without cha
     routes: [
       { name: "fast", description: "Quick lookups.", model: "gateway/cheap", thinking: "low" },
       { name: "deep", description: "Hard work.", model: "gateway/opus" },
+      { name: "inherit", description: "Runs on its caller's model.", model: "" },
     ],
     ids: Array.from({ length: 12 }, (_, index) => `route-${index}`),
   };
@@ -312,6 +313,7 @@ test("spawn resolves live routes for ordinary and collected children without cha
   await spawn({ route: "fast", thinking: "xhigh" });
   await spawn({});
   await spawn({ model: "gateway/opus" });
+  await spawn({ route: "inherit" });
   options.routes = [{ name: "deep", description: "Changed live.", model: "gateway/cheap", thinking: "max" }];
   await spawn({ route: "deep", collect: true });
   const children = state.records().filter((item) => item.parentId === parent.id);
@@ -321,6 +323,7 @@ test("spawn resolves live routes for ordinary and collected children without cha
     ["gateway/cheap", "xhigh"],
     ["gateway/parent", "medium"],
     ["gateway/opus", "medium"],
+    ["gateway/parent", "medium"],
     ["gateway/cheap", "max"],
   ]);
   assert.equal(children.at(-1)?.subagent?.collect, true);

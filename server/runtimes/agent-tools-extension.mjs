@@ -124,7 +124,7 @@ Every question also offers a free-text answer the card adds itself, and the user
       route: Type.Optional(Type.String({
         minLength: 1,
         maxLength: 40,
-        description: "Name of a model route the prompt lists; the route already names the provider and model.",
+        description: "Name of a model route the prompt lists; a route without a model inherits the caller's model and thinking, and one with a model already names the provider and model.",
       })),
       model: Type.Optional(Type.String({ minLength: 3, maxLength: 200, description: "A raw `provider/id` model, only when no route fits." })),
       thinking: Type.Optional(Type.Union([

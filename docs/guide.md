@@ -253,10 +253,12 @@ are with bots only.
 
 **Subagent routes** sit under the same page. Choose **Add route** to open a
 form for its name, one-line description, model and optional reasoning level.
-The model starts on your primary model when available, and thinking inherits
+The model starts on **Inherit the caller's model**, and thinking inherits
 the parent's level. **Add route** saves the completed form; **Cancel** or Escape
 closes it without adding anything. A failed save keeps the form for retry.
 Saved routes show a brief summary of their description, model and thinking level.
+A route without a model runs its subagent on the caller's model and reasoning
+level, so it follows your primary model as that changes.
 Choose **Edit** to open the same form with the current values. **Save changes**
 applies the edit; Cancel or Escape leaves the saved configuration unchanged.
 **Remove** stays beside Edit. An agent that spawns a subagent can pass the name

@@ -291,7 +291,8 @@ export class SubagentService {
       throw new AgentToolInputError(`Unsupported thinking level: ${thinking}`);
     }
     const picked = route ? await this.#resolveRoute(route) : undefined;
-    const childModel = picked?.model ?? model;
+    // A route without a model inherits the caller's, as an omitted route does.
+    const childModel = picked?.model || model;
     const childThinking = thinking ?? picked?.thinking;
     if (childModel) await this.#assertModelAvailable(callerId, childModel, route);
     const taskId = this.uuid();

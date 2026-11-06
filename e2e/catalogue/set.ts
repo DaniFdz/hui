@@ -766,7 +766,7 @@ const cases: UseCase[] = [
   {
     id: "SET-078",
     title: "Name the models a subagent can be spawned on",
-    behaviour: "“Subagent routes” lists compact summaries with name, description, model and thinking level. “Add route” opens a modal with an empty focused Name, Description, the primary Model and optional Thinking. Edit opens that modal prefilled; Save changes updates only that route and a rename replaces its row. Cancel or Escape discards the draft and returns focus without saving. A repeated, blank or internally spaced name is refused, keeping the original name is valid, edits survive reload, and Remove removes the row. At 50 routes adding is disabled but editing still works, including preserving an unavailable stored model.",
+    behaviour: "“Subagent routes” lists compact summaries with name, description, model and thinking level. “Add route” opens a modal with an empty focused Name, Description, a Model that starts at “Inherit the caller's model” and optional Thinking. Edit opens that modal prefilled; Save changes updates only that route and a rename replaces its row. Cancel or Escape discards the draft and returns focus without saving. A repeated, blank or internally spaced name is refused, keeping the original name is valid, edits survive reload, and Remove removes the row. A route saved without a model inherits the caller's model and thinking, and can be added without a provider. At 50 routes adding is disabled but editing still works, including preserving an unavailable stored model.",
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#put-__huisettings"],
     surfaces: ["setting:models.routes", "route:PUT /__hui/settings"],
     journeys: ["subagent-routes"],
@@ -776,7 +776,7 @@ const cases: UseCase[] = [
   {
     id: "SET-079",
     title: "Spawn a subagent on a route",
-    behaviour: "A session spawned with `route` names the route only: the child runs on that route's model and pinned thinking level, so its own header shows them while its parent runs on the parent's model. A route sent together with `model` is refused, and an unknown route is refused before any child exists, naming the configured routes.",
+    behaviour: "A session spawned with `route` names the route only: the child runs on that route's model and pinned thinking level, so its own header shows them while its parent runs on the parent's model. A route without a model runs the child on its parent's model and thinking. A route sent together with `model` is refused, and an unknown route is refused before any child exists, naming the configured routes.",
     spec: ["SPEC.md#session-born-subagents"],
     surfaces: ["tool:sessions_spawn"],
     journeys: ["subagent-routes"],
