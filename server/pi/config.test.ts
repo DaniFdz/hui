@@ -115,7 +115,7 @@ test("reads pi's skills, with their frontmatter", async () => {
   const snapshot = await readPiConfigAt(dir);
   assert.deepEqual(
     snapshot.skills.map((skill) => skill.name),
-    ["alpha", "beta", "cost-investigation", "create-verification-skill", "git-selective-staging", "visualize"],
+    ["alpha", "beta", "build-hui-extension", "cost-investigation", "create-verification-skill", "git-selective-staging", "visualize"],
   );
   assert.equal(snapshot.skills[0]?.description, "Does the alpha thing.");
   await rm(dir, { recursive: true, force: true });
@@ -185,8 +185,8 @@ test("a fresh install includes HUI defaults without changing PI configuration", 
   const dir = await mkdtemp(join(tmpdir(), "hui-pi-empty-"));
   const snapshot = await readPiConfigAt(dir);
   assert.equal(snapshot.settings.exists, false);
-  assert.deepEqual(snapshot.skills.map((skill) => skill.name), ["cost-investigation", "create-verification-skill", "git-selective-staging", "visualize"]);
-  const tags: Record<string, string[]> = { "cost-investigation": ["good practices"], "create-verification-skill": ["good practices"], "git-selective-staging": ["good practices"], visualize: ["presentation"] };
+  assert.deepEqual(snapshot.skills.map((skill) => skill.name), ["build-hui-extension", "cost-investigation", "create-verification-skill", "git-selective-staging", "visualize"]);
+  const tags: Record<string, string[]> = { "build-hui-extension": ["good practices"], "cost-investigation": ["good practices"], "create-verification-skill": ["good practices"], "git-selective-staging": ["good practices"], visualize: ["presentation"] };
   for (const skill of snapshot.skills) {
     assert.equal(skill.origin, "hui");
     assert.deepEqual(skill.tags, tags[skill.name]);

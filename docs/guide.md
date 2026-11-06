@@ -1265,6 +1265,10 @@ bounds; a gateway outside them refuses to load it. **Reload** on Settings →
 Extensions (or `hui extension reload <id>`) re-imports a changed module. `hui
 doctor` reports enabled extensions that cannot load.
 
+The bundled **build-hui-extension** skill walks an agent through this surface,
+copies a working reference extension and verifies it against the gateway; turn it
+off in Settings → Skills if you do not want it offered.
+
 The choice is saved in `HUI_CONFIG_DIR/extensions.json` (`{ "version": 1,
 "enabled": ["hello"] }`) and applies immediately: enabling imports the module,
 disabling withdraws its routes at once (Node keeps the module cached). The same

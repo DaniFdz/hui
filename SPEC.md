@@ -2522,8 +2522,10 @@ trusted local module can answer JSON routes on the gateway.
   `ui.icon` (`package`, `github` or `pull-request`) is the Work pane tab and rail
   mark; absent, it is the package. Settings → Extensions
   opens a panel in the current conversation's Work pane, and the Work pane's
-  launcher opens the first enabled panel. Per-extension generated types, SSE routes
-  and an out-of-process host are follow-ups.
+  launcher opens the first enabled panel. HUI ships a **build-hui-extension**
+  skill that scaffolds and verifies one; it is on by default and the operator can
+  turn it off in Settings → Skills. Per-extension generated types, SSE routes and
+  an out-of-process host are follow-ups.
 
 ## Decisions
 
@@ -4033,10 +4035,11 @@ currently configured PI source on the server. A skill operation is successful
 only when a fresh PI inventory discovers a new `SKILL.md`; process exit alone
 is not success. HUI never edits PI's settings or skill directories itself.
 
-HUI also ships `create-verification-skill`, a portable generator for project-local
-verification workflows, and `git-selective-staging`, which commits only a
-session's own hunks when a shared or reused checkout already holds other
-uncommitted work, both with the **good practices** tag. Each is available by
+HUI also ships `build-hui-extension`, a v1-aware guide and working reference for
+local gateway extensions; `create-verification-skill`, a portable generator for
+project-local verification workflows; and `git-selective-staging`, which commits
+only a session's own hunks when a shared or reused checkout already holds other
+uncommitted work, all with the **good practices** tag. Each is available by
 default in new SDK and CLI runtimes, not automatically executed. Their read-only
 files live in HUI's installed package; no installation agent, provider call or PI
 configuration write is needed. Skills and Settings → Skills expose the same
