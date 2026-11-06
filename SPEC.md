@@ -2112,9 +2112,9 @@ everything the Bots tab can, through the same routes.
   with its `write_soul` tool, which only bots' chats have (no file tools
   needed). It changes SOUL.md when the operator asks, and says so. Only the
   operator's turns (and HUI's kickoff) can rewrite it: SOUL.md steers every
-  later turn, so a turn that took a message from a routine, a trigger or
+  later turn, so a turn that took a message from a routine, a trigger,
   another bot (the one that started it, or one that joined it while it ran)
-  can't, as it can't rename the bot. The operator can also replace it with
+  or a subagent's completion report can't, as it can't rename the bot. The operator can also replace it with
   `hui bot soul`; the bot's panel doesn't show it (decision below). A bot without a
   model of its own runs on Settings' primary model, like a new session.
 - **Named by talking.** A bot created without a name is *New Bot*; its first
