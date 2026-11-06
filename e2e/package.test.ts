@@ -318,7 +318,8 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   // The nightly channel installs the published main build. The stable channel
   // is checked independently, and a nightly already installed is not repeated.
   const nightly = `${nextVersion}-nightly.20261004131149.gb0f30d5`;
-  await releases.set({ channel: "nightly", version: nightly, archive: await candidate(nightly) });
+  const nightlyArchive = await candidate(nightly);
+  await releases.set({ channel: "nightly", version: nightly, archive: nightlyArchive });
   assert.equal(JSON.parse(await command("update", "--check", "--json")).status, "unpublished");
   const nightlyCheck = JSON.parse(await command("update", "--check", "--nightly", "--json"));
   assert.equal(nightlyCheck.status, "available"); assert.equal(nightlyCheck.latest.version, nightly);
@@ -444,4 +445,20 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   await fetch(`${providerUrl}/control/release-replay`, { method: "POST" });
   await waitIdle(session.id, "resumed Durable run");
   assert.match(JSON.stringify((await api(`sessions/${session.id}/open`, {})).snapshot.transcript), /replay suffix/u, "the resumed run finished");
+
+  // A gateway that cannot answer is replaced by --force on the update itself:
+  // the flag reaches the stop the update performs, so a wedged gateway needs no
+  // separate stop and start. Only the first check sees it, before the download.
+  await releases.set({ channel: "nightly", version: nightly, archive: nightlyArchive });
+  const wedged = JSON.parse(await command("gateway", "status", "--json"));
+  assert.equal(wedged.version, nextVersion);
+  process.kill(wedged.pid, "SIGSTOP");
+  try {
+    await assert.rejects(command("update", "--nightly"), /idle gateway/u);
+    const forced = JSON.parse(await command("update", "--nightly", "--force", "--json"));
+    assert.equal(forced.version, nightly); assert.equal(forced.restarted, true);
+    const forcedStatus = JSON.parse(await command("gateway", "status", "--json"));
+    assert.equal(forcedStatus.status, "running"); assert.equal(forcedStatus.version, nightly);
+    assert.notEqual(forcedStatus.pid, wedged.pid);
+  } finally { try { process.kill(wedged.pid, "SIGCONT"); } catch { /* Already ended by the forced stop. */ } }
 });
