@@ -206,7 +206,7 @@ const cases: UseCase[] = [
   {
     id: "PAGE-044",
     title: "Open the Dashboard from the sidebar or its address",
-    behaviour: "**Dashboard** sits at the top of the sidebar on every install, with no Labs switch to turn on. Opening it from the sidebar, or from `/dashboard`, shows the page and its subtitle, and a reload keeps it.",
+    behaviour: "**Dashboard** is the first sidebar destination on every install, with no Labs switch to turn on: **Primary navigation** reads Dashboard, Contributions, Kanban, Sessions and Usage. Opening it from the sidebar, or from `/dashboard`, shows the page and its subtitle, and a reload keeps it.",
     spec: ["SPEC.md#the-dashboard-is-on-for-everyone-2026-11-06"],
     surfaces: ["page:dashboard"],
     web: "required",
