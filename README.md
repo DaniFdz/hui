@@ -41,45 +41,45 @@ offline reading only.
 
 ### Kanban
 
-Every session is a card in the stage its work is in, agents move their own cards, and a backlog item starts in its own worktree.
+The Dashboard shows what every session is doing and what needs you first; the board puts the same sessions in their stage. Agents move their own cards, a backlog item starts in its own worktree, and every session gets a task progress card.
 
-https://github.com/user-attachments/assets/f8591a87-ea6a-4107-8bfc-f4f5e2bed13f
+https://github.com/user-attachments/assets/09c6a72c-3dc9-49e0-99e0-a8645a8eb931
 
 ### Rich results in the chat
 
 Interactive widgets, a browser the agent drives with a live preview, and GitHub, Slack and Datadog links that unfurl.
 
-https://github.com/user-attachments/assets/a4e1ddfb-b8b8-47b9-8312-ecc37fd5952c
+https://github.com/user-attachments/assets/6ca43cc4-c590-4647-af43-a59c8e0db7d7
 
 ### Work pane
 
 A terminal you share with the agent, and the Diff, Files and VS Code views of what it changed, beside the chat.
 
-https://github.com/user-attachments/assets/804bb631-9b12-4a8a-bf9c-f6c8eec8747c
+https://github.com/user-attachments/assets/2f9174e7-41ee-428f-87bd-60480ec1b1cf
 
 ### Subagents and watchers
 
-Parallel reviewers tracked on one card, and a watcher that waits for CI and merges.
+Parallel reviewers tracked on one card, a goal the conversation keeps pursuing, and a watcher that waits for CI and merges.
 
-https://github.com/user-attachments/assets/f20a20f1-b34e-4654-8e97-6d757e0d4a94
+https://github.com/user-attachments/assets/0ee16b78-768b-4866-83e6-a37d94fb3f8c
 
 ### Bots
 
-Long-lived agents with a face, one chat, a memory and routines they schedule themselves.
+Long-lived agents with a face, one chat, a memory and routines they schedule themselves, and a Usage page that reports what all of it cost.
 
-https://github.com/user-attachments/assets/e7bb9bc2-a1f4-4c40-a57b-3c0c6a43d3ea
+https://github.com/user-attachments/assets/d07095f4-4e0f-4193-9d82-20d88d16b11c
 
 ### Bots working together
 
 Agents hand bots their pull requests and get questions back, triggers wake a bot when a page comes in, and bots tag each other.
 
-https://github.com/user-attachments/assets/fd8bdd23-7932-4b18-b92f-88067b177b6a
+https://github.com/user-attachments/assets/6e5a1f8c-ade3-4770-b573-debb9595e903
 
 ### On your phone
 
-Open the gateway over Tailscale and check in on your agents, or the board, from anywhere.
+Reach your gateway over Tailscale and check in on your agents, or on everything in flight, from anywhere.
 
-https://github.com/user-attachments/assets/105d3a04-aeca-449e-a575-cd95eb36bbce
+https://github.com/user-attachments/assets/ace294f5-b185-4603-b9f6-4703a7184f2d
 
 ## Install
 
