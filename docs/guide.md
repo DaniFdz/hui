@@ -1212,7 +1212,9 @@ characters), `apiVersion` must be `1`, and `main` must stay inside the extension
 directory. A panel is optional: `"ui": { "title": "Hello panel", "entry": "index.html" }`
 serves the files under the extension's `ui/` directory at `/__hui/ext-ui/<id>/` and
 shows the entry page in a sandboxed Work pane frame that can only call the
-extension's own routes through HUI. An extension can also declare static prompt
+extension's own routes through HUI. Its optional `icon` names the Work pane tab's
+mark — `package` (the default), `github` or `pull-request`; another name is
+refused when the manifest loads. An extension can also declare static prompt
 sections for Durable conversations and agent tools, whose handlers are exported by
 the entry module under the tool's name, and a route can stream events with
 `stream: true` (see `e2e/fixtures/extensions/hello`). Panel files are public to anyone who can reach

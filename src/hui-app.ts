@@ -2391,9 +2391,11 @@ export class HuiApp extends HuiElement {
     const sessionId = layout ? activeSessionPane(layout).sessionId : undefined;
     if (!sessionId) return;
     event.preventDefault();
-    const id = (event as CustomEvent<OpenExtensionPanelDetail>).detail?.id;
+    const detail = (event as CustomEvent<OpenExtensionPanelDetail>).detail;
+    const id = detail?.id;
+    const icon = detail?.icon;
     this.closeSettings();
-    this.work.showView(sessionId, { kind: "extension", ...(id ? { id } : {}) }, true);
+    this.work.showView(sessionId, { kind: "extension", ...(id ? { id } : {}), ...(icon ? { icon } : {}) }, true);
   };
 
   private onOpenSettingsRequest = (event: Event) => {

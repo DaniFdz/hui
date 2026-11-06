@@ -16,6 +16,9 @@ export type ExtensionRouteInfo = Static<typeof ExtensionRouteInfo>;
 export const ExtensionPanel = Type.Object({
   title: Type.String(),
   entry: Type.String(),
+  icon: Type.Optional(Type.Union([
+    Type.Literal("package"), Type.Literal("github"), Type.Literal("pull-request"),
+  ])),
 }, { $id: "ExtensionPanel" });
 export type ExtensionPanel = Static<typeof ExtensionPanel>;
 

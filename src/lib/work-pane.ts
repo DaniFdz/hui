@@ -16,7 +16,7 @@ export type WorkViewRef =
   | { kind: "files"; id: string }
   | { kind: "vscode" }
   | { kind: "diff"; id: string }
-  | { kind: "extension"; id?: string };
+  | { kind: "extension"; id?: string; icon?: string };
 
 export type WorkViewContext = {
   /** The conversation owning the Work pane. */
@@ -45,6 +45,8 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   label: string;
   /** 16px SVG, explicit size. */
   icon: TemplateResult;
+  /** The tab and rail icon when it depends on the ref; defaults to `icon`. */
+  tabIcon?(ref: R): TemplateResult;
   /** e.g. "Mod+Alt+Shift+KeyF" (display + binding); the entry in `WORK_SHORTCUTS`. */
   shortcut?: string;
   /** Visible reason when it cannot launch (for this conversation, when given). */
@@ -312,7 +314,9 @@ export function parseWorkViewRef(value: unknown, isKnown: (kind: string) => bool
   if (raw.kind === "browser" || raw.kind === "vscode") return { kind: raw.kind };
   if (raw.kind === "extension") {
     if (raw.id === undefined) return { kind: "extension" };
-    return typeof raw.id === "string" && raw.id.trim() && raw.id.length <= 128 && !CONTROL.test(raw.id) ? { kind: "extension", id: raw.id } : undefined;
+    if (typeof raw.id !== "string" || !raw.id.trim() || raw.id.length > 128 || CONTROL.test(raw.id)) return undefined;
+    const icon = typeof raw.icon === "string" && raw.icon.length <= 32 && !CONTROL.test(raw.icon) ? raw.icon : undefined;
+    return { kind: "extension", id: raw.id, ...(icon ? { icon } : {}) };
   }
   return undefined;
 }

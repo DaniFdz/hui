@@ -37,11 +37,17 @@ const SCHEMA_TYPES = new Set(["object", "string", "number", "integer", "boolean"
 const SEGMENT = /^[A-Za-z0-9._~-]+$/u;
 const CONTROL = /[\p{Cc}]/u;
 
-/** What Settings and the Work pane need to open an extension's panel: its title and the entry page inside `ui/`. */
+/** What Settings and the Work pane need to open an extension's panel: its title, its entry page inside `ui/` and an
+ * optional icon from HUI's named set. */
 export type ExtensionPanel = {
   readonly title: string;
   readonly entry: string;
+  readonly icon?: ExtensionPanelIcon;
 };
+
+/** The icons a panel may name for its Work pane tab; anything else is the package icon. */
+export const EXTENSION_PANEL_ICONS = ["package", "github", "pull-request"] as const;
+export type ExtensionPanelIcon = (typeof EXTENSION_PANEL_ICONS)[number];
 
 /** One static prompt section an extension adds to Durable sessions. */
 export type ExtensionPromptSection = {
@@ -287,7 +293,11 @@ export function parseManifest(raw: unknown): Parsed<ExtensionManifest> {
     if (entry.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(entry) || entry.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
       return fail("ui.entry must stay inside the ui directory");
     }
-    ui = { title, entry };
+    const icon = raw["ui"]["icon"];
+    if (icon !== undefined && (typeof icon !== "string" || !(EXTENSION_PANEL_ICONS as readonly string[]).includes(icon))) {
+      return fail(`ui.icon must be one of ${EXTENSION_PANEL_ICONS.join(", ")}`);
+    }
+    ui = { title, entry, ...(icon === undefined ? {} : { icon: icon as ExtensionPanelIcon }) };
   }
   let mode: "in-process" | "process" = "in-process";
   if (raw["mode"] !== undefined) {

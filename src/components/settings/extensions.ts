@@ -52,7 +52,8 @@ export class HuiExtensionsSettings extends LitElement {
   }
 
   #openPanel(extension: ExtensionStatus) {
-    if (!requestOpenExtensionPanel(this, { id: extension.id })) this.#error = "Open a conversation first.";
+    const icon = extension.panel?.icon;
+    if (!requestOpenExtensionPanel(this, { id: extension.id, ...(icon ? { icon } : {}) })) this.#error = "Open a conversation first.";
   }
 
   async #reload(extension: ExtensionStatus) {

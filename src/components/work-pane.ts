@@ -321,7 +321,7 @@ export class WorkPane extends HuiElement {
           data-hui-tooltip=${title}
           @click=${() => this.activate(view.key)}
           @keydown=${(event: KeyboardEvent) => this.tabKeydown(event, views, index)}
-        >${view.kind.icon}<span class="work-pane__tab-label">${title}</span></button>
+        >${view.kind.tabIcon?.(view.ref) ?? view.kind.icon}<span class="work-pane__tab-label">${title}</span></button>
         <button type="button" class="work-pane__tab-close" tabindex="-1" aria-label=${`Close ${title}`} data-hui-tooltip="Close tab"
           @click=${(event: Event) => { event.stopPropagation(); this.close(this.sessionId, view.key); }}>${closeIcon}</button>
       </div>`;
@@ -396,7 +396,7 @@ export class WorkPane extends HuiElement {
         const title = view.kind.title(view.ref);
         return html`<button type="button" class="btn btn--ghost btn--icon work-pane__icon-btn" aria-label=${`Show ${title}`} data-hui-tooltip=${title}
           aria-current=${view.key === active ? "true" : nothing}
-          @click=${() => { this.reveal(); this.activate(view.key); this.pendingFocus = { tab: view.key }; }}>${view.kind.icon}</button>`;
+          @click=${() => { this.reveal(); this.activate(view.key); this.pendingFocus = { tab: view.key }; }}>${view.kind.tabIcon?.(view.ref) ?? view.kind.icon}</button>`;
       })}
     </div>`;
   }

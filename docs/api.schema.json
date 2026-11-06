@@ -5194,6 +5194,22 @@
         },
         "entry": {
           "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "package"
+            },
+            {
+              "type": "string",
+              "const": "github"
+            },
+            {
+              "type": "string",
+              "const": "pull-request"
+            }
+          ]
         }
       }
     },

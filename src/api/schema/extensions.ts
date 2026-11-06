@@ -2,7 +2,7 @@
 
 export type ExtensionEnginesInfo = { "min"?: string; "max"?: string; };
 
-export type ExtensionPanel = { "title": string; "entry": string; };
+export type ExtensionPanel = { "title": string; "entry": string; "icon"?: ("package") | ("github") | ("pull-request"); };
 
 export type ExtensionPromptInfo = { "id": string; "title": string; "text": string; };
 

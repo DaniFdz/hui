@@ -2506,7 +2506,9 @@ trusted local module can answer JSON routes on the gateway.
   typed and size-capped) and the page renders in a Work pane iframe whose CSP makes
   it an opaque origin with no network. It cannot call HUI: only a `postMessage`
   bridge may ask the parent for that extension's own declared routes, with the
-  browser's session, under fixed size, count and time limits. Settings → Extensions
+  browser's session, under fixed size, count and time limits. An optional
+  `ui.icon` (`package`, `github` or `pull-request`) is the Work pane tab and rail
+  mark; absent, it is the package. Settings → Extensions
   opens a panel in the current conversation's Work pane, and the Work pane's
   launcher opens the first enabled panel. Per-extension generated types, SSE routes
   and an out-of-process host are follow-ups.

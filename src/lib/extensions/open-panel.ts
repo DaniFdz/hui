@@ -4,7 +4,7 @@
  */
 export const OPEN_EXTENSION_PANEL_EVENT = "hui-open-extension-panel";
 
-export type OpenExtensionPanelDetail = { id?: string };
+export type OpenExtensionPanelDetail = { id?: string; icon?: string };
 
 /** Returns true when the app accepted the request (the event was handled). */
 export function requestOpenExtensionPanel(from: EventTarget, detail: OpenExtensionPanelDetail): boolean {
