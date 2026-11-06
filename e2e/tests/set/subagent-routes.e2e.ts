@@ -3,7 +3,7 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
 
-test("Subagent routes show summaries and use a modal for creating and editing", { tags: ["SET-078"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Subagent routes show summaries and use a modal for creating and editing", { tags: ["SET-078"] }, async ({ screen, hui }) => {
   const settings = await hui.api<Settings>("GET", "/__hui/settings");
   await hui.api("PUT", "/__hui/settings", { ...settings, models: { primary: "hui-e2e/fixture-deep", fallback: "", utility: "", routes: [] } });
   const savedRoutes = async () => (await hui.api<Settings>("GET", "/__hui/settings")).models.routes;
@@ -165,7 +165,7 @@ test("Subagent routes show summaries and use a modal for creating and editing", 
   await expect.poll(async () => (await savedRoutes()).length).toBe(50);
 });
 
-test("a routed spawn uses its model and thinking; invalid routes create no children", { tags: ["SET-079"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a routed spawn uses its model and thinking; invalid routes create no children", { tags: ["SET-079"] }, async ({ screen, hui }) => {
   const settings = await hui.api<Record<string, unknown>>("GET", "/__hui/settings");
   await hui.api("PUT", "/__hui/settings", { ...settings, models: {
     primary: "hui-e2e/fixture", fallback: "", utility: "",
@@ -213,7 +213,7 @@ test("a routed spawn uses its model and thinking; invalid routes create no child
   await expect(screen.getByLabel("Thinking: high", { exact: true })).toBeVisible();
 });
 
-test("a route without a model runs its child on the caller's model and thinking", { tags: ["SET-079"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a route without a model runs its child on the caller's model and thinking", { tags: ["SET-079"] }, async ({ screen, hui }) => {
   const settings = await hui.api<Record<string, unknown>>("GET", "/__hui/settings");
   await hui.api("PUT", "/__hui/settings", { ...settings, models: {
     primary: "hui-e2e/fixture", fallback: "", utility: "",

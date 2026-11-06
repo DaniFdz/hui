@@ -771,7 +771,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.routes", "route:PUT /__hui/settings"],
     journeys: ["subagent-routes"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-079",
@@ -781,7 +781,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_spawn"],
     journeys: ["subagent-routes"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-080",
