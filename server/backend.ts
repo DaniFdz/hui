@@ -113,7 +113,7 @@ export async function startBackend(): Promise<void> {
   }));
   recoverInterruptedSessions(await readRegistry());
   // The staff pack's one bot and its skills: seeded once, then kept current except for what the operator edited.
-  void staff.ensure().then((outcome) => {
+  await staff.ensure().then((outcome) => {
     if (!outcome.seeded && !outcome.written.length && !outcome.kept.length && !outcome.routesAdded.length) return;
     recordDiagnosticEvent({
       area: "session", level: "info", action: "staff_pack_installed",

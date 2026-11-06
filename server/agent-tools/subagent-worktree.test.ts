@@ -31,7 +31,7 @@ function record(id: string, patch: Partial<SessionRecord> = {}): SessionRecord {
 function manager(): InstanceType<typeof LiveSessions> {
   return new LiveSessions(
     { id: "durable", start: async () => { throw new Error("not started"); } } as unknown as AgentRuntime,
-    async (mutate: (current: readonly SessionRecord[]) => readonly SessionRecord[]) => mutate([]),
+    async (mutate: (current: readonly SessionRecord[]) => readonly SessionRecord[]) => [...mutate([])],
     async () => DEFAULT_SETTINGS,
   );
 }
