@@ -133,7 +133,7 @@ const piMutations = new PiMutationService();
 export const piRoutes = createPiRoutes({ piMutations });
 export const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
 export const localPathRoutes = createLocalPathRoutes({ workers });
-export const terminalRoutes = createTerminalRoutes({ readRegistry });
+export const terminalRoutes = createTerminalRoutes({ readRegistry, workers });
 export const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 export const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 export const themeRoutes = createThemeRoutes();

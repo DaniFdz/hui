@@ -104,12 +104,15 @@ test("an integration the gateway is not signed in to is skipped, never guessed",
 
 test("pup's own config, an unlisted site and an unreadable file stay on the gateway", async (t) => {
   const { pupDir } = await fixture(t);
-  await writeFile(join(pupDir, "tokens_datadoghq_com.json"), JSON.stringify({ prod: { access_token: "a" } }));
-  await writeFile(join(pupDir, "tokens_us3_datadoghq_com.json"), JSON.stringify({ "": { access_token: "c" } }));
+  await writeFile(join(pupDir, "tokens_datadoghq_com.json"), JSON.stringify({ prod: { access_token: "a" }, staging: { access_token: "b" } }));
+  await writeFile(join(pupDir, "tokens_us3_datadoghq_com.json"), JSON.stringify({ __default__: { access_token: "c" } }));
+  await writeFile(join(pupDir, "sessions.json"), JSON.stringify([{ site: "datadoghq.com", org: "prod", org_uuid: "8dee" }]));
   await writeFile(join(pupDir, "tokens_datadoghq_eu.json"), "x".repeat(64 * 1024 + 1));
   await writeFile(join(pupDir, "notes.json"), "{}");
   await writeFile(join(pupDir, "config.yml"), "aliases: {}\n");
-  assert.deepEqual((await pupFiles(pupDir, PROD)).map((file) => file.path), ["hui/integrations/pup/tokens_datadoghq_com.json"]);
+  const shared = await pupFiles(pupDir, PROD);
+  assert.deepEqual(shared.map((file) => file.path), ["hui/integrations/pup/tokens_datadoghq_com.json", "hui/integrations/pup/sessions.json"]);
+  assert.deepEqual(JSON.parse(shared[0]!.content!.toString()), { prod: { access_token: "a" } }, "a token pup does not list is not shared");
   assert.deepEqual(await pupFiles(pupDir, [{ name: "prod", site: "app.datadoghq.eu" }]), [], "an unreadable file is never shared");
 });
 

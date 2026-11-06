@@ -11,9 +11,8 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { GITHUB_HOST, parseAccounts } from "../integrations/github.ts";
-import { DatadogOrgStore, PUP_CONFIG_DIR as HUI_PUP_CONFIG_DIR } from "../integrations/datadog.ts";
+import { DatadogOrgStore, PUP_CONFIG_DIR as HUI_PUP_CONFIG_DIR, pupOrgKey, pupSiteFile, storedPupOrgs } from "../integrations/datadog.ts";
 import { JIRA_CONFIG_FILE, JiraConfigStore } from "../integrations/jira.ts";
-import { pupSite } from "../integrations/datadog-links.ts";
 import type { DatadogOrg } from "../api/datadog.ts";
 import { contentFile, type PlannedFile } from "./sync.ts";
 
@@ -77,12 +76,6 @@ export async function githubAccounts(command: string, env: NodeJS.ProcessEnv): P
   return found;
 }
 
-/** pup's own naming: a site's file is `tokens_<site>.json` with every non-alphanumeric character as `_`. */
-const pupSiteFile = (site: string): string => pupSite(site).replace(/[^A-Za-z0-9]/gu, "_");
-
-/** The key of an org inside its site's file: pup's `__default__` for the default session. */
-const pupOrgKey = (org: DatadogOrg): string => org.name || "__default__";
-
 /** One JSON file from pup's directory, parsed as the object pup writes. */
 async function pupJson(dir: string, name: string): Promise<Record<string, unknown> | unknown[] | undefined> {
   const path = join(dir, name);
@@ -104,13 +97,15 @@ const registryOrg = (entry: unknown): { site: string; org: string } | undefined 
 };
 
 /** The session files of the orgs HUI lists, and nothing else: one `tokens_<site>.json` keeping only their entries,
- * the site's client registration, and a registry naming them. A session HUI does not list is not shared, so the
- * worker reads exactly what Settings shows. Empty when pup keeps its tokens in a keychain. */
+ * the site's client registration, and a registry naming them. A session HUI does not list, or pup cannot read, is
+ * not shared, so the worker reads exactly what Settings shows. Empty when pup keeps its tokens in a keychain. */
 export async function pupFiles(dir: string, orgs: readonly DatadogOrg[]): Promise<PlannedFile[]> {
+  const stored = await storedPupOrgs(dir);
   const sites = new Map<string, Set<string>>();
   for (const org of orgs) {
     const name = pupSiteFile(org.site);
-    sites.set(name, (sites.get(name) ?? new Set()).add(pupOrgKey(org)));
+    const key = pupOrgKey(org);
+    if (stored.get(name)?.has(key)) sites.set(name, (sites.get(name) ?? new Set()).add(key));
   }
   const files: PlannedFile[] = [];
   for (const [site, keys] of [...sites].toSorted(([a], [b]) => a.localeCompare(b))) {
@@ -160,7 +155,7 @@ export async function gatherIntegrationLogins(options: {
   // A session registry without a token signs nothing in; only share when pup has tokens to give.
   if (!orgs.length) skipped.push("Datadog: no orgs in Settings → Integrations → Datadog to share");
   else if (pup.some((file) => file.path.includes("/tokens_"))) files.push(...pup);
-  else skipped.push("Datadog: pup has no token files on the gateway; sign in through Settings → Integrations → Datadog to share its orgs");
+  else skipped.push("Datadog: pup has no session it can read in HUI's own directory; sign in through Settings → Integrations → Datadog to share its orgs");
 
   const jira: Record<string, string> = await jiraEnv(options.jiraFile).catch(() => ({}));
   if (!jira["ATLASSIAN_API_TOKEN"]) skipped.push("Jira: not connected in Settings → Integrations → Jira");

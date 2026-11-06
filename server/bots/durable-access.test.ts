@@ -602,38 +602,38 @@ test("on a worker's host a bot's chat is never offered the tools that stay on th
   assert.ok(names((await access.builtinBotOffer(f.host))).includes("secret_request"));
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   assert.deepEqual(gatewayOnly(names((await plain.inspect()).tools)).sort(), [...GATEWAY_ONLY_TOOLS].sort(), "an ordinary session keeps them, and the gateway's bridge refuses their calls");
-  // bash off, and terminal in its list too, as a list written before its host left terminal out could hold it.
-  const { session } = await f.bot(off(["bash", "terminal"]));
+  // bash off, and watcher in its list too, as a list written before its host left watcher out could hold it.
+  const { session } = await f.bot(off(["bash", "watcher"]));
   assert.deepEqual(gatewayOnly(names((await session.inspect()).tools)), []);
   assert.deepEqual(gatewayOnly(names(session.botOffer())), [], "nothing for the operator to switch, and nothing counted as off");
   assert.ok(names(session.botOffer()).includes("secret_request"), "but secret_request is the operator's to switch there too");
-  await session.prompt(calls({ name: "request_access", input: { tools: ["terminal"], reason: "To use the shared terminal." } }));
+  await session.prompt(calls({ name: "request_access", input: { tools: ["watcher"], reason: "To watch the build." } }));
   await settledWith(session, answered("tool answered:"));
-  assert.equal(lastReply(session), "tool answered: terminal works only on HUI's own machine, not the one you run on: it isn't yours to ask for. You can ask for: bash.");
+  assert.equal(lastReply(session), "tool answered: watcher works only on HUI's own machine, not the one you run on: it isn't yours to ask for. You can ask for: bash.");
   const [first] = await requests(f.log);
   assert.deepEqual(gatewayOnly(toolNames(first)), [], "its model never sees them");
   assert.ok(toolNames(first).includes("secret_request"), "it is offered secret_request");
   const system = JSON.stringify(first?.system);
   assert.match(system, /Tools:\\n- bash: /u, "its access section names what it can ask for");
-  assert.doesNotMatch(system, /- terminal: /u);
+  assert.doesNotMatch(system, /- watcher: /u);
 });
 
 test("without a live chat, a bot's access section still leaves out what acts on another machine", async () => {
   const tool = (name: string) => ({ name, description: name, parameters: {}, execute: async () => ({ content: [] }) });
   const input = {
     conversationId: 7,
-    agent: { tools: [tool("read")], extensions: [{ name: "hui-tools", tools: [tool("read"), tool("bash"), tool("terminal")] }], cwd: "/work" },
+    agent: { tools: [tool("read")], extensions: [{ name: "hui-tools", tools: [tool("read"), tool("bash"), tool("watcher")] }], cwd: "/work" },
     env: undefined, shown: {},
-    read: { snapshot: async () => ({ bot: "bot-1", disabledTools: ["bash", "terminal"], disabledSkills: [] }) },
+    read: { snapshot: async () => ({ bot: "bot-1", disabledTools: ["bash", "watcher"], disabledSkills: [] }) },
   } as never;
   const render = async (gatewayOnly?: readonly string[]) => {
     const [section] = access.botAccessParts({ chat: () => undefined, skills: async () => [], agentDir: "/agent", ...(gatewayOnly ? { gatewayOnly } : {}) }).sections;
     return String(await section!.render(input, BACKGROUND_CONTEXT));
   };
-  assert.match(await render(), /- bash: [^]*- terminal: /u, "on the gateway, both are this chat's to ask for");
+  assert.match(await render(), /- bash: [^]*- watcher: /u, "on the gateway, both are this chat's to ask for");
   const onWorker = await render(GATEWAY_ONLY_TOOLS);
   assert.match(onWorker, /Tools:\n- bash: /u);
-  assert.doesNotMatch(onWorker, /terminal/u);
+  assert.doesNotMatch(onWorker, /watcher/u);
 });
 
 test("a bot's prompt and /skill: offer only the skills that are on; a session in its directory keeps them all", { timeout: 60_000 }, async (t) => {

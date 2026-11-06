@@ -207,7 +207,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   Connected. *Remove* forgets the org in HUI; pup keeps its session. Without
   `pup` on the gateway's PATH the section shows "Datadog CLI not found" with an
   install link. Tokens stay in pup, in its own files rather than a system
-  keychain, so the orgs can be given to a worker.
+  keychain, so the orgs can be given to a worker; a session signed in before
+  that reads *Sign in needed*, and `hui doctor` lists each org with no session
+  in HUI's own directory (report only, since the sign-in runs in a browser).
 - Contributions (first sidebar destination) has two tabs, *GitHub* (default)
   and *Calendar*; the browser remembers the choice, and GitHub is read only
   once its tab is shown. The GitHub tab charts the GitHub activity of every
@@ -341,8 +343,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   ⌥⇧⌘C VS Code, Ctrl+Alt+Shift+D / ⌥⇧⌘D a new Diff view)
   and reopens running terminals whose tab was closed; with nothing open the pane
   lists the same launchers with their shortcuts. A launcher that cannot act says
-  why in visible text (the browser tool turned off, a conversation on a remote
-  worker has no local terminal) and, when a setting changes that, links to its
+  why in visible text (the browser tool turned off) and, when a setting changes
+  that, links to its
   Settings section, which opens scrolled to it with a little room (`--space-6`)
   above its heading. The VS Code launcher is always available; its view explains
   what it needs on first open (see *VS Code*). Closing the last view (its tab's close button or Delete, or a view
@@ -853,6 +855,16 @@ running terminals without a tab under *Running* to reopen them. **End terminal**
 in the view's ⋯ menu explicitly terminates the shell and its descendants and
 closes its tab. On narrow screens the panel selector switches between chat and
 terminal while preserving hidden views. Opening a terminal does not call PI.
+
+A conversation on a remote worker has its terminals on that machine. The PTY,
+its replay and the **terminal** tool stay here: the gateway runs the worker's own
+connect command (Settings → Workers) in the PTY, so the shell the operator types
+into is the one on that machine, and it is told to change to the conversation's
+directory once it starts. That needs a connect command that opens a shell by
+itself, like `ssh host`; one that only runs the command it is given, such as a
+`docker exec -i` or `kubectl exec -i` prefix, shows its own error in the pane and
+needs a shell appended. A worker's terminal does not need HUI connected to that
+worker's host, because it uses the same command HUI connects with.
 
 HUI owns these PTYs and their bounded in-memory output, separately from PI's
 RPC/SDK and transcripts. Browser reload and disconnection preserve shell state
@@ -3506,9 +3518,9 @@ started it. The bot panel gets a Tools tab between Soul and Settings, and the CL
 document there, which that worker's host enforces; the gateway reads and writes
 them through the host, asks it what can be turned off (skills by their mirrored
 paths there), and hears of the grants made there. Its chat there isn't offered the
-tools that stay on the gateway's machine (the terminal, the browser, watchers),
-which the gateway refuses for every remote session from the same list, so its Tools
-tab leaves them out rather than showing switches that could do nothing.
+tools that stay on the gateway's machine (watchers), which the gateway refuses
+for every remote session from the same list, so its Tools tab leaves it out
+rather than showing a switch that could do nothing.
 
 Tools are the boundary, not a sandbox: with `bash` or `read` a bot reaches
 whatever the user's account can, and `message_bot` lets it ask a better-equipped
@@ -3709,11 +3721,12 @@ session on that worker, as any remote session's.
   per connection, so an offline worker never slows or fails the roster. Offline,
   a bot shows its session's state; its memory and messages fail with a reason
   naming the worker; a worker host from before bots is told apart.
-- **A remote session's limits.** The terminal and watchers act on the gateway's
-  machine, so a bot on a worker has neither, and no worktrees. The browser is its
-  own, as for any session on that worker, and the gateway's sits out. Its secret
-  requests work as a worker session's: the card is answered on the gateway and
-  the worker host writes the file.
+- **A remote session's limits.** Watchers act on the gateway's machine, so a bot
+  on a worker has none, and no worktrees. The browser is its own, as for any
+  session on that worker, and the gateway's sits out; the terminal is a shell on
+  its own machine too (see *Shared terminals*). Its secret requests work as a
+  worker session's: the card is answered on the gateway and the worker host
+  writes the file.
 
 ### Bots are set up like Grok Bot (2026-10-06)
 

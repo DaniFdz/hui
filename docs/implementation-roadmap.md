@@ -923,9 +923,9 @@ requests:
    `bot.offer`: the catalog and creation's check computed there, skills by their
    mirrored paths), a grant there comes back in a `bot.access` frame, and each
    connection reconciles that worker's bots; offline, 503 naming it. Its chat
-   there isn't offered `terminal`, `browser` or `watcher`, which the gateway's
-   bridge refuses for any remote session (one list, `GATEWAY_ONLY_TOOLS`), so the
-   catalog leaves them out and a list can't name them. Proof:
+   there isn't offered `watcher`, which the gateway's bridge refuses for any
+   remote session (one list, `GATEWAY_ONLY_TOOLS`), so the catalog leaves it out
+   and a list can't name it. Proof:
    `server/bots/durable-access.test.ts` (real requests: offers, the
    bridge, prompts, `/skill:`, `load_skill`, requests allowed, denied, refused
    and one at a time, the port, documents from before the lists),
@@ -1341,10 +1341,15 @@ Verified desktop/mobile behavior and checks are recorded in
   `docker exec -i` and over SSH: Node download, release install, package
   dependency install, durable runs across a killed transport, host upgrade, and
   the Settings → Workers, Run on and reattach journeys in the browser.
-- Not yet remote: terminals, watchers, worktrees/branch checkout,
-  multi-account quota rotation and usage totals. A session there browses in the
-  worker's own managed browser (`server/browser/`, a profile under its data
-  directory, no live view here), found with the same executable detection.
+- Terminals work on a worker: the gateway runs that worker's own connect command
+  in its PTY, so the operator's shell, the agent's `terminal` tool and the Work
+  pane's tabs behave as they do locally, and the shell moves to the
+  conversation's directory once it starts. A connect command that needs a
+  command appended (`docker exec -i`) cannot open an interactive shell yet.
+- Not yet remote: watchers, worktrees/branch checkout, multi-account quota
+  rotation and usage totals. A session there browses in the worker's own managed
+  browser (`server/browser/`, a profile under its data directory, no live view
+  here), found with the same executable detection.
 - Follow-up 2026-11-06: the gateway also shares its integration logins, so
   agents on a worker can use Datadog, GitHub and Jira as the operator is signed
   in to them here: a `gh` hosts file with every account, pup's session files

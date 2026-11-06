@@ -2644,7 +2644,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
             @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
           ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}
           ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser view" data-hui-tooltip="Open browser view" ?disabled=${props.connection !== "live"} @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
-          ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.connection !== "live" || props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
+          ${props.onOpenTerminal ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.connection !== "live" || props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
           ${session.tool === "pi" ? html`<button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.connection !== "live" || props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
             <span class="session-history-action__icon">${continueIcon}</span><span class="session-history-action__label">${props.continuing ? "Continuing…" : "Continue"}</span>
           </button>` : nothing}

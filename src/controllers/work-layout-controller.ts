@@ -39,7 +39,6 @@ type WorkLayoutDeps = {
   paletteOpen: () => boolean;
   terminalFont: () => string;
   browserEnabled: () => boolean;
-  remoteSession: (sessionId: string) => boolean;
 };
 
 export class WorkLayoutController {
@@ -136,12 +135,7 @@ export class WorkLayoutController {
   /** Registers the built-in Work view kinds, reads the browser-local record, follows the narrow breakpoint and the
    * shortcuts. */
   start(): void {
-    registerWorkViewKind(terminalWorkViewKind({
-      fontFamily: () => this.#deps.terminalFont(),
-      unavailable: (sessionId) => sessionId && this.#deps.remoteSession(sessionId)
-        ? "Terminals run on this gateway's machine; this conversation runs on a remote worker."
-        : undefined,
-    }));
+    registerWorkViewKind(terminalWorkViewKind({ fontFamily: () => this.#deps.terminalFont() }));
     registerWorkViewKind(browserWorkViewKind({ enabled: () => this.#deps.browserEnabled() }));
     registerWorkViewKind(filesWorkViewKind);
     registerWorkViewKind(vscodeWorkViewKind);

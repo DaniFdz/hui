@@ -117,9 +117,9 @@ transcript, credential or account is involved.
 3. **Its Settings**: "Runs on 🌐 devbox" beside the Workspace heading; the
    Directory says "A folder on devbox. Can change only while it is idle." and
    holds its home on the worker; under the section, #79's hint: "A bot stays on
-   the machine it was created on: its chat and memory live there. Terminals,
-   the browser and watchers stay on this machine, so it can't use them." The
-   tab is 822 px tall: it scrolls by 30 px at 1440×900.
+   the machine it was created on: its chat and memory live there. Watchers stay
+   on this machine, so it can't use them; it browses in its own, and its terminal
+   is a shell there." The tab is 822 px tall: it scrolls by 30 px at 1440×900.
 4. **Its folders are devbox's**: typing `~/pro` asks
    `/__hui/directories?…&worker=<devbox's id>` and suggests `~/project/` (the
    worker's home); the same on Scout suggests `~/proto-local/` (this
