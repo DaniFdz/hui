@@ -32,7 +32,7 @@ import { dirname, join } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import {
   defineDoc, defineExtension, defineTool, section,
-  type ConversationId, type DocumentReader, type Extension, type PromptSection, type ToolRegistration,
+  type ConversationId, type DocumentReader, type Extension, type PromptSection, type ToolRegistration, type Tx,
 } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
 import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_FILE_LIMITS, BOT_FILE_NAMES, BOT_KICKOFF_MARKER, BOT_LIMITS, NEW_BOT_NAME, type BotAccess, type BotFile, type BotSkillRef } from "../bots-format.ts";
@@ -95,6 +95,30 @@ export async function conversationBotState(reader: DocumentReader, conversationI
     disabledTools: Array.isArray(doc.disabledTools) ? doc.disabledTools.filter((name): name is string => typeof name === "string") : [],
     disabledSkills: Array.isArray(doc.disabledSkills) ? doc.disabledSkills.filter(isSkillRef).map(({ name, path }) => ({ name, path })) : [],
   };
+}
+
+/** The bot whose own skills one subagent's conversation loads (never a bot chat's: that has `BotDoc`). A fork keeps it,
+ * so a rewind of a worker still sees the pack it was briefed with. */
+export const BotSkillsDoc = defineDoc<{ bot: string }>({
+  kind: "hui.botSkills",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ bot: "" }),
+  checkpointWhen: () => false,
+});
+
+/** The bot a subagent's conversation belongs to; undefined for every other conversation. */
+export async function conversationBotSkills(reader: DocumentReader, conversationId: ConversationId, context: Context): Promise<string | undefined> {
+  const doc = await reader.snapshot(BotSkillsDoc, conversationId, context);
+  return doc?.bot || undefined;
+}
+
+/** Marks a spawned subagent's conversation as one that loads `botId`'s own skills, in the commit that creates it. */
+export async function writeBotSkills(tx: Tx, conversationId: ConversationId, botId: string): Promise<void> {
+  const doc = await tx.doc(BotSkillsDoc, conversationId);
+  doc.bot = botId;
 }
 
 /** How a host finds each bot's SOUL.md: the bot's home folder there, and what a first conversation needs to know. */

@@ -13,6 +13,8 @@
  * by itself) or `disconnected` (it waits for a reconnect); its streams stay open.
  */
 import { remoteRuntime } from "../runtimes/remote.ts";
+import { workers } from "../workers.ts";
+import { createSessionWorktree } from "../git/worktrees.ts";
 import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
 import { lastOperatorRequest } from "./digest.ts";
@@ -786,6 +788,16 @@ export class LiveSessions {
     return (await this.#readSettings()).models.routes;
   }
 
+  /** A subagent's own checkout: a fresh worktree off its caller's (on the worker that runs the caller), so parallel
+   * workers never share one working tree. The branch gets HUI's configured prefix and the child's title. */
+  async subagentWorktree(caller: SessionRecord, title: string): Promise<{ cwd: string; branch: string; rollback: () => Promise<void> }> {
+    const { branchPrefix } = await this.#readSettings();
+    const options = { sourceDirectory: caller.cwd, title, branchPrefix };
+    if (caller.worker) return workers.createWorktree(caller.worker, options);
+    const created = await createSessionWorktree(options);
+    return { cwd: created.cwd, branch: created.branch, rollback: created.rollback };
+  }
+
   async commands(id: string): Promise<readonly RuntimeCommand[]> {
     const live = this.#live.get(id);
     if (!live?.runtime) throw this.#unavailable(live);
@@ -1398,6 +1410,7 @@ export class LiveSessions {
         ...(live.record.model ? { model: live.record.model } : {}),
         ...(live.record.thinking ? { thinking: live.record.thinking } : {}),
         ...(live.record.worker ? { worker: live.record.worker } : {}),
+        ...(live.record.botSkills ? { botSkills: live.record.botSkills } : {}),
         huiSessionId: live.record.id,
       });
       if (live.record.fast) await runtime.setFast?.(true);

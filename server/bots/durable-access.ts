@@ -33,7 +33,7 @@ import { botTurnOrigin } from "../runtimes/turn-origins.ts";
 import { botSkillsDir } from "./skills.ts";
 import { bundledSkills } from "../pi/bundled-skills.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
-import { BOT_TOOL_CONTRIBUTIONS, BotDoc, conversationBotState, huiBotsExtensions, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, UPDATE_MEMORY_TOOL, UPDATE_USER_TOOL, WRITE_SOUL_TOOL, type BotHomeHost, type BotState } from "./durable.ts";
+import { BOT_TOOL_CONTRIBUTIONS, BotDoc, conversationBotSkills, conversationBotState, huiBotsExtensions, writeBotSkills, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, UPDATE_MEMORY_TOOL, UPDATE_USER_TOOL, WRITE_SOUL_TOOL, type BotHomeHost, type BotState } from "./durable.ts";
 import { BOT_ROUTINES_CONTRIBUTION, botRoutinesTool, ROUTINES_TOOL } from "./durable-routines.ts";
 import { durableContext, modelCallable, type DurableBots, type DurableHost } from "../runtimes/durable-host.ts";
 import { TRIGGERS_TOOL, TRIGGERS_TOOL_INFO } from "./durable-triggers.ts";
@@ -528,6 +528,12 @@ export function createDurableBots(host: DurableHost, deps: DurableBotsDeps): Dur
       const home = deps.home?.home(state.bot);
       return home ? botSkillsDir(home) : undefined;
     },
+    skillsDirForBot(botId) {
+      const home = deps.home?.home(botId);
+      return home ? botSkillsDir(home) : undefined;
+    },
+    skillsBot: (reader, conversationId) => conversationBotSkills(reader, conversationId, durableContext),
+    writeSkills: writeBotSkills,
     skills: <T extends { readonly name: string; readonly filePath: string }>(skills: readonly T[], state: BotState) => botSkills(skills, state.disabledSkills),
     planOffer(offer, state: BotState, context) {
       const on = botSkills(context.skills, state.disabledSkills).length;

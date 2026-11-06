@@ -31,6 +31,21 @@ test("Hide takes a bot off the roster, Show hidden lists it with a Hidden tag, U
   await hui.peek(row);
   await menu.tap();
   await screen.getByText("Hide", { exact: true, visible: true }).tap();
+  // The seeded Chief of Staff is a bot too: hide it before the roster can say every bot is hidden.
+  const chief = screen.getByLabel(/^Chief of Staff,/u);
+  await hui.peek(chief);
+  await screen.getByRole("button", "Actions for Chief of Staff").tap();
+  await screen.getByText("Hide", { exact: true, visible: true }).tap();
   await expect(screen.getByText("Every bot is hidden.")).toBeVisible();
-  await expect(screen.getByRole("button", "Show hidden (1)")).toBeVisible();
+  await expect(screen.getByRole("button", "Show hidden (2)")).toBeVisible();
+
+  // The roster is shared by the suite: leave the seeded Chief of Staff visible for the next test.
+  for (const name of ["Napper", "Chief of Staff"]) {
+    const hidden = screen.getByRole("button", "Show hidden (2)");
+    if (await hidden.count()) await hidden.tap();
+    const row = screen.getByLabel(new RegExp(`^${name},`, "u"));
+    await hui.peek(row);
+    await screen.getByRole("button", `Actions for ${name}`).tap();
+    await screen.getByText("Unhide", { exact: true, visible: true }).tap();
+  }
 });

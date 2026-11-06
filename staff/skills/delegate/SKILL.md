@@ -14,7 +14,7 @@ Every `sessions_spawn` task answers these, in this order.
 1. **Goal.** The operator's goal in one sentence: the outcome, not the activity. Say who the result is for and what changes for them.
 2. **Scope.** What to read, what to change, where to stop. Name the boundary in files, routes, or surfaces. If the work grows past it, stop and report instead of widening it.
 3. **Evidence.** The exact command that decides done, and the output it must print. `npm test -- src/views/home.test.ts` expects `12 passing` and exit 0. For a change, give the before and after. "Tests pass" is not evidence.
-4. **Paths.** The worktree, branch, and files it may write. Name what it may not write: the shared checkout, another session's worktree, `dist/`, generated output, and every path outside the brief.
+4. **Paths.** The worktree, branch, and files it may write. Name what it may not write: the shared checkout, another session's worktree, `dist/`, generated output, and every path outside the brief. Pass `worktree: true` to `sessions_spawn` when the child writes code, so it gets its own checkout off yours; its `cwd` is then the new worktree and its branch carries HUI's prefix. Parallel workers never share a working tree.
 5. **Never.** The actions it must not take: push, merge, force-push, rewrite a shared branch, delete data, install dependencies, change a persisted format, message outside HUI, or open a PR unless the brief makes it the PR owner. Anything hard to undo waits for the parent.
 6. **Report.** Result, branch and diff pointer, each command with its output, gaps, and guesses. No self-grade. A summary is a claim; the command output is the evidence.
 

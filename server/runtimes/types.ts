@@ -79,6 +79,8 @@ export type StartOptions = {
   huiSessionId?: string;
   /** Remote worker that hosts the session; absent means this machine. */
   worker?: string;
+  /** The bot whose own skills this subagent's prompt loads (a bot's workers carry the staff pack). */
+  botSkills?: string;
 };
 
 /** A caller-owned input identity, deduplicated by runtimes that expose tracked prompt receipts. */

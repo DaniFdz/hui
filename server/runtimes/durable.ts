@@ -12,7 +12,7 @@ import type { ImageContent, Message, ModelThinkingLevel, TextContent } from "@ea
 import {
   CompactionEntry, InboxDoc, LiveDoc, ResetEntry, SystemEntry, UserEntry, watchEvents,
   type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
-  type EntryId, type EntryRecord, type Harness, type SubmissionRecord, type TaskId, type ToolRegistration,
+  type EntryId, type EntryRecord, type Harness, type SubmissionRecord, type TaskId, type ToolRegistration, type Tx,
 } from "@earendil-works/pi-durable";
 import { CODEMODE_TOOL_NAME, type CodemodeNestedCall } from "@earendil-works/pi-durable/codemode";
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
@@ -1558,11 +1558,17 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
     const known = model ? host.models.getModel(model.provider, model.modelId) : undefined;
     const requestedThinking = options.thinking ?? defaultThinking(host, options.cwd);
     const thinking = requestedThinking && known ? fitThinking(known, requestedThinking) : undefined;
-    conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
-      cwd: options.cwd,
-      ...(model ? { model } : {}),
-      ...(thinking ? { thinkingLevel: thinking } : {}),
-    } }, context);
+    const bots = host.bots;
+    conversation = await harness.createConversation({
+      ownership: { kind: "ownerless" },
+      agent: {
+        cwd: options.cwd,
+        ...(model ? { model } : {}),
+        ...(thinking ? { thinkingLevel: thinking } : {}),
+      },
+      // A bot's subagent loads the bot's own skills from its first request, and nothing of the bot's chat besides them.
+      ...(options.botSkills && bots ? { init: (tx: Tx, conversationId: ConversationId) => bots.writeSkills(tx, conversationId, options.botSkills!) } : {}),
+    }, context);
   }
   host.bindCaller(conversation.id, options.huiSessionId);
   if (options.huiSessionId) host.setUltra(options.huiSessionId, options.thinking === "ultra");
