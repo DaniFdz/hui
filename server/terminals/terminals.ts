@@ -2,14 +2,16 @@
  * Interactive shells the operator opens inside a conversation. Owns the PTY processes, their bounded replay
  * buffers (server/terminals/replay.ts), the byte stream subscribers receive and the per-session and global limits,
  * and lets that conversation's agent use the same terminals through the terminal tool. Terminals live only in this
- * gateway process; closing one kills its whole process tree.
+ * gateway process; closing one kills its whole process tree. A conversation on a remote worker gets its shell there
+ * through that worker's own connect command (`create`'s `connect`): the PTY, its replay and the tool stay here.
  */
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { userInfo } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { stripVTControlCharacters } from "node:util";
 import { spawn, type IPty } from "@lydell/node-pty";
 import type { TerminalSnapshot, TerminalView, TerminalOperationResponse } from "../api/terminals.ts";
+import { shellQuote } from "../worker/workers.ts";
 import { ReplayBuffer } from "./replay.ts";
 
 export type { TerminalSnapshot, TerminalView } from "../api/terminals.ts";
@@ -75,15 +77,20 @@ export class TerminalService {
     return [...this.entries.values()].filter(({ view }) => view.ownerSessionId === ownerSessionId).map(({ view }) => ({ ...view }));
   }
 
-  create(ownerSessionId: string, cwd: string, params: Record<string, unknown> = {}): TerminalView {
+  /** `connect` is the connect command of the worker the conversation runs on (`workers.ts`), which opens a shell on
+   * that machine from here. Only a local shell can be given its directory, so a remote one is told where to go. */
+  create(ownerSessionId: string, cwd: string, params: Record<string, unknown> = {}, connect?: readonly string[]): TerminalView {
     if (this.entries.size >= TOTAL_LIMIT || this.list(ownerSessionId).length >= PER_SESSION_LIMIT) throw new TerminalError("Terminal limit reached. End an unused terminal first.", 409);
     const size = terminalSize(params["cols"] ?? 100, params["rows"] ?? 28);
     const title = params["title"];
     if (title !== undefined && (typeof title !== "string" || !title.trim() || title.length > 80 || /[\p{Cc}]/u.test(title))) throw new TerminalError("Invalid terminal title.");
     const shell = process.platform === "win32" ? process.env["COMSPEC"] || "cmd.exe" : process.env["SHELL"] || userInfo().shell || "/bin/sh";
     const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => value !== undefined && !key.startsWith("HUI_AGENT_"))) as Record<string, string>;
-    const pty = this.spawnPty(shell, process.platform === "win32" ? [] : ["-i"], { cwd, ...size, name: "xterm-256color", env: { ...env, TERM: "xterm-256color", COLORTERM: "truecolor" } });
+    const file = connect?.[0] ?? shell;
+    const args = connect ? connect.slice(1) : process.platform === "win32" ? [] : ["-i"];
+    const pty = this.spawnPty(file, args, { cwd: connect ? homedir() : cwd, ...size, name: "xterm-256color", env: { ...env, TERM: "xterm-256color", COLORTERM: "truecolor" } });
     const view: TerminalView = { id: randomUUID(), ownerSessionId, title: typeof title === "string" ? title.trim() : `Terminal ${this.list(ownerSessionId).length + 1}`, cwd, ...size, status: "running", createdAt: new Date().toISOString() };
+    if (connect) pty.write(`cd ${shellQuote(cwd)}\r`);
     const entry: Entry = { view, pty, replay: new ReplayBuffer(TERMINAL_BUFFER_BYTES), sequence: 0, listeners: new Set() };
     this.entries.set(view.id, entry);
     pty.onData((data) => {

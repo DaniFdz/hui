@@ -1548,9 +1548,11 @@ restarted host resumes call HUI tools as that session. Host requests: `credentia
 `hui:<providers-relative path>`), the nested `credential-step` that runs an
 OAuth refresh callback on the remote while the gateway holds its lock, and
 `bridge` (a HUI agent tool call; the gateway refuses callers whose session is
-not on that worker, and refuses `terminal`, `browser` and `watcher`, the
-`GATEWAY_ONLY_TOOLS` of `server/worker/gateway-tools.ts`, and `secret_request`
-from a host that predates `secret-request`),
+not on that worker, and refuses `watcher`, the `GATEWAY_ONLY_TOOLS` of
+`server/worker/gateway-tools.ts`, and `secret_request` from a host that predates
+`secret-request`; the terminal and the browser are not one of them: a worker
+conversation's terminals live in the gateway but open that worker's own shell,
+and its browser runs on the host),
 `bot.section {botId}` (`{ section: string | null }`, the `bots` prompt section of
 a bot whose chat runs on that worker; any other bot is refused) and
 `secret-request {key,params}`, whose answer `{status:"provided",label,value}`
@@ -2742,21 +2744,22 @@ roster says is off; a host whose `hello` lists no `bot-access` feature is refuse
 with 409 naming it.
 
 A bot's chat on a worker is never offered the tools that act on the gateway's
-machine, `terminal`, `browser` and `watcher`: the same `GATEWAY_ONLY_TOOLS` the
-bridge refuses, which the worker's host gives its `DurableHost`
-(`gatewayOnlyTools`). They are left out of its requests and of `bot.offer`, live or
-not, so the catalog doesn't list them and they never count as off;
-`request_access` can't ask for them, whatever an older list holds; and a list
-naming them is 400, e.g. *terminal stays on this machine, so a bot on devbox
-can't use it and there is nothing to turn off: leave it out.* Ordinary sessions
-on a worker are still offered them, and the bridge refuses their calls.
+machine, `watcher`: the same `GATEWAY_ONLY_TOOLS` the bridge refuses, which the
+worker's host gives its `DurableHost` (`gatewayOnlyTools`). It is left out of its
+requests and of `bot.offer`, live or not, so the catalog doesn't list it and it
+never counts as off; `request_access` can't ask for it, whatever an older list
+holds; and a list naming it is 400, e.g. *watcher stays on this machine, so a bot
+on devbox can't use it and there is nothing to turn off: leave it out.* Ordinary
+sessions on a worker are still offered it, and the bridge refuses their calls.
 `secret_request` is not one of them: its card is answered on the gateway and the
 worker's host writes the file (`secret-request`), so a bot's chat on a worker
 keeps it, on or off like any other tool.
 
-A bot on a worker has a remote session's limits: the `terminal`, `browser`
-and `watcher` tools act on the gateway's machine, so its chat isn't offered them
-(above), and it cannot use worktrees. A worker with bots cannot be removed while their
+A bot on a worker has a remote session's limits: the `watcher` tool acts on the
+gateway's machine, so its chat isn't offered it (above), and it cannot use
+worktrees. The terminal and the browser it keeps: its browser runs there, and its
+terminals are opened in the gateway over that worker's connect command (see
+*Terminals API*). A worker with bots cannot be removed while their
 chats' session records exist (409, as for any session on it).
 
 ### Importing and exporting bots
@@ -4325,6 +4328,16 @@ The table above describes these routes. `TerminalsResponse`, `TerminalResponse`,
 Invalid payloads return 400; missing conversation/foreign terminal IDs 404;
 exited-terminal input/resize and resource exhaustion 409. Every terminal is
 scoped to its exact owning conversation. No list operation leaks foreign IDs.
+
+A conversation on a remote worker creates its shell there through that worker's
+own connect command (`~/.config/hui/workers.json`), run in the gateway's PTY:
+`cwd` stays a path on the worker, the PTY starts in the gateway's home directory
+and the gateway types `cd '<cwd>'` into the shell once it starts. The rest of the
+contract is unchanged, the agent's `terminal` tool included (a worker conversation
+is no longer refused at the bridge). A connect command that only runs the command
+it is given (`docker exec -i`, `kubectl exec -i`) cannot open an interactive
+shell: its own error appears in the terminal. A worker that no longer exists
+answers 409.
 
 WebSocket upgrade at `/__hui/terminal-stream?ticket=…` requires that capability,
 a same-origin `Origin`/`Host` pair and, on the standalone gateway, an allowed

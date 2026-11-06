@@ -598,8 +598,9 @@ test("a Durable session on the worker calls HUI tools on the gateway as itself, 
 
 test("the gateway refuses a worker session's calls to the tools that stay on its machine, before HUI's tool handler sees them", async () => {
   // The list a bot's chat on a worker isn't offered, too. The browser is not one of them: it runs where the session
-  // runs, so a session here calls its own and the gateway hears of it only from a host without one.
-  assert.deepEqual(GATEWAY_ONLY_TOOLS, ["terminal", "watcher"]);
+  // runs, so a session here calls its own and the gateway hears of it only from a host without one. Nor is the
+  // terminal: its PTY is in the gateway but opens that worker's own shell, so a worker conversation keeps the tool.
+  assert.deepEqual(GATEWAY_ONLY_TOOLS, ["watcher"]);
   const key = "remote-durable-gateway-only";
   await registerRemote(key);
   const calls: string[] = [];
@@ -607,11 +608,11 @@ test("the gateway refuses a worker session's calls to the tools that stay on its
   const session = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
   try {
     const done = settled(session);
-    await session.prompt(`E2E_CALL:${Buffer.from(JSON.stringify([{ name: "terminal", input: { action: "list" } }, { name: "watcher", input: { action: "list" } }])).toString("base64url")}`);
+    await session.prompt(`E2E_CALL:${Buffer.from(JSON.stringify([{ name: "watcher", input: { action: "list" } }, { name: "terminal", input: { action: "list" } }])).toString("base64url")}`);
     await done;
     const answer = lastAnswer(session) ?? "";
-    for (const name of ["terminal", "watcher"]) assert.ok(answer.includes(`The ${name} tool is not available to sessions on a remote worker yet.`), answer);
-    assert.deepEqual(calls, [], "refused at the bridge");
+    assert.ok(answer.includes("The watcher tool is not available to sessions on a remote worker yet."), answer);
+    assert.deepEqual(calls, ["terminal"], "the terminal is not one of them: it opens that worker's own shell, so the handler answers it");
   } finally {
     session.dispose();
   }
