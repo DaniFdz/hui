@@ -218,9 +218,9 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   assert.match(JSON.stringify(history), /Installed SDK content/u);
   assert.equal((await api(`sessions/${session.id}/tools`)).backend, "sdk");
   const bundledSkills = (await api("pi")).skills.filter((skill: { origin?: string }) => skill.origin === "hui");
-  assert.deepEqual(bundledSkills.map((skill: { name: string }) => skill.name), ["create-verification-skill", "git-selective-staging", "visualize"]);
+  assert.deepEqual(bundledSkills.map((skill: { name: string }) => skill.name), ["cost-investigation", "create-verification-skill", "git-selective-staging", "visualize"]);
   const commands = (await api(`sessions/${session.id}/commands`)).commands as { name: string }[];
-  const tags: Record<string, string[]> = { "create-verification-skill": ["good practices"], "git-selective-staging": ["good practices"], visualize: ["presentation"] };
+  const tags: Record<string, string[]> = { "cost-investigation": ["good practices"], "create-verification-skill": ["good practices"], "git-selective-staging": ["good practices"], visualize: ["presentation"] };
   for (const bundled of bundledSkills) {
     assert.equal(bundled.preferencePath, `hui:skill:${bundled.name}`);
     assert.deepEqual(bundled.tags, tags[bundled.name]);
