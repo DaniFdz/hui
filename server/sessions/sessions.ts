@@ -75,6 +75,10 @@ export type SessionRecord = {
    * `parentId`, so existing version-2 registries need no migration. The bot
    * registry decides: a record whose bot is gone is an ordinary session. */
   bot?: string;
+  /** For a subagent under a bot's chat: the bot whose own skills its prompt
+   * loads (`botSkillsDoc`), so the staff pack reaches the workers that need it
+   * without loading into every session. */
+  botSkills?: string;
   /** Jira work items created for this session from HUI, oldest first. Only
    * the reference is stored; Jira facts are fetched and cached in memory. */
   jiraIssues?: { key: string; url: string }[];
@@ -242,6 +246,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
       : undefined;
   const parentId = str(raw["parentId"]).trim();
   const bot = str(raw["bot"]).trim();
+  const botSkills = str(raw["botSkills"]).trim();
   const subagent = raw["subagent"] === undefined ? undefined : toSubagent(raw["subagent"]);
   if (raw["subagent"] !== undefined && !subagent) return undefined;
   const jiraIssues = Array.isArray(raw["jiraIssues"])
@@ -284,6 +289,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(progress ? { progress } : {}),
     ...(subagent ? { subagent } : {}),
     ...(bot ? { bot } : {}),
+    ...(botSkills ? { botSkills } : {}),
     ...(jiraIssues.length ? { jiraIssues } : {}),
     ...(stage ? { stage, stageSource: stageSource ?? "agent" } : {}),
     ...(stagePullRequests.length ? { stagePullRequests } : {}),

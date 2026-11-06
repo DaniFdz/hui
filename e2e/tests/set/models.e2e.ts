@@ -19,9 +19,11 @@ test("Primary, Fallback, Utility and Default reasoning choose their values, say 
   await screen.getByLabel("Default reasoning: PI default").tap();
   await screen.getByLabel("Thinking effort").fill("4");
   await expect(screen.getByLabel("Default reasoning: High")).toBeVisible();
-  await expect.poll(async () => (await hui.api<{ models: Record<string, unknown> }>("GET", "/__hui/settings")).models)
-    .toEqual({ primary: "hui-e2e/anthropic/claude-opus-5-5", fallback: "hui-e2e/fixture", utility: "hui-e2e/anthropic/claude-opus-5-5", thinking: "high", routes: [] });
-
+  // Subagent routes are the staff pack's business: this test only saves the three models and the default reasoning.
+  await expect.poll(async () => {
+    const { routes: _routes, ...models } = (await hui.api<{ models: Record<string, unknown> }>("GET", "/__hui/settings")).models;
+    return models;
+  }).toEqual({ primary: "hui-e2e/anthropic/claude-opus-5-5", fallback: "hui-e2e/fixture", utility: "hui-e2e/anthropic/claude-opus-5-5", thinking: "high" });
   await hui.reload();
   await expect(screen.getByRole("button", "Primary model: Opus fixture")).toBeVisible();
   await expect(screen.getByRole("button", "Fallback model: HUI SDK Fixture")).toBeVisible();

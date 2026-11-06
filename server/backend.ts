@@ -22,6 +22,7 @@ import {
   questionnaires,
   secretFiles,
   secretRequests,
+  staff,
   subagents,
   triggers,
   vscode,
@@ -111,6 +112,20 @@ export async function startBackend(): Promise<void> {
     detail: error instanceof Error ? error.message : String(error),
   }));
   recoverInterruptedSessions(await readRegistry());
+  // The staff pack's one bot and its skills: seeded once, then kept current except for what the operator edited.
+  await staff.ensure().then((outcome) => {
+    if (!outcome.seeded && !outcome.written.length && !outcome.kept.length && !outcome.routesAdded.length) return;
+    recordDiagnosticEvent({
+      area: "session", level: "info", action: "staff_pack_installed",
+      summary: outcome.seeded
+        ? `Seeded the Chief of Staff bot; ${outcome.written.length} skills installed and ${outcome.routesAdded.length} routes added`
+        : `Staff pack checked; ${outcome.written.length} skills written, ${outcome.kept.length} kept, ${outcome.routesAdded.length} routes added`,
+    });
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "staff_pack_failed",
+    summary: "The staff pack could not be installed; HUI tries again at its next start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   // Auto-star the HUI repo when GitHub is connected.
   void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
 }

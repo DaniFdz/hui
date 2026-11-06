@@ -48,6 +48,20 @@ test("normalizes HUI-owned model routes", async () => {
   });
 });
 
+test("a route without a model inherits the caller's model; a malformed one is dropped", () => {
+  const settings = normalizeSettings({ models: { routes: [
+    { name: "inherit", description: "Runs on its caller's model." },
+    { name: "blank", model: "   " },
+    { name: "broken", model: "claude-opus-5-5" },
+    { name: "pinned", model: "openai/gpt-5.6-luna", thinking: "high" },
+  ] } });
+  assert.deepEqual(settings.models.routes, [
+    { name: "inherit", description: "Runs on its caller's model.", model: "" },
+    { name: "blank", description: "", model: "" },
+    { name: "pinned", description: "", model: "openai/gpt-5.6-luna", thinking: "high" },
+  ]);
+});
+
 test("the default reasoning keeps a PI level and drops Ultra or an unknown one", async () => {
   const directory = await mkdtemp(join(tmpdir(), "hui-settings-"));
   const path = join(directory, "settings.json");

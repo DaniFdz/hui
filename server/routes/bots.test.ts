@@ -129,7 +129,7 @@ const says = (role: "user" | "assistant", text: string) => (entries: TranscriptE
 
 test("bots are created, read, edited, archived and restored through the guarded routes", { timeout: 120_000 }, async () => {
   assert.equal((await call("/__hui/bots", "GET", undefined, false)).status, 403, "the local-client guard applies");
-  assert.deepEqual((await call("/__hui/bots")).body, { bots: [] });
+  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).filter((bot) => bot.handle !== "chief-of-staff"), [], "only the seeded Chief of Staff");
   for (const [body, pattern] of [
     [{ name: "Ada", nickname: "x" }, /Unknown bot field: nickname/u],
     [{ name: "Ada", model: "hui-e2e/missing" }, /Unknown model: hui-e2e\/missing/u],
@@ -142,7 +142,7 @@ test("bots are created, read, edited, archived and restored through the guarded 
     assert.equal(refused.status, 400, JSON.stringify(body));
     assert.match(String(refused.body["error"]), pattern);
   }
-  assert.deepEqual((await call("/__hui/bots")).body, { bots: [] }, "a refused create leaves nothing");
+  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).filter((bot: BotView) => bot.handle !== "chief-of-staff"), [], "a refused create leaves nothing (the seeded Chief of Staff aside)");
 
   // These bots get a soul at creation, so no first-conversation turn runs beside the turns these tests start.
   const created = await call("/__hui/bots", "POST", { name: "Ada", title: "Researcher", soul: "# Who I am\nYou are Ada." });
@@ -158,7 +158,7 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal(botOf(await call("/__hui/bots", "POST", { name: "Bob", avatar: { emoji: "🐻" }, soul: "You are Bob." })).handle, "bob");
   const listed = (await call("/__hui/bots")).body;
   expectSchema(BotsResponse, listed);
-  assert.deepEqual(listed.bots.map((bot) => bot.handle), ["ada", "bob"]);
+  assert.deepEqual(listed.bots.filter((bot: BotView) => bot.handle !== "chief-of-staff").map((bot) => bot.handle), ["ada", "bob"]);
   assert.equal(botOf(await call(`/__hui/bots/${ada.id}`)).handle, "ada");
   assert.equal(botOf(await call("/__hui/bots/bob")).avatar?.emoji, "🐻", "a handle addresses a bot too");
   assert.equal((await call("/__hui/bots/nobody")).status, 404);
@@ -218,8 +218,8 @@ test("bots are created, read, edited, archived and restored through the guarded 
   const archived = await call("/__hui/bots/bob", "DELETE");
   assert.equal(archived.status, 200);
   assert.equal(botOf(archived).archived, true);
-  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).map((bot) => bot.handle), ["ada"]);
-  assert.deepEqual(((await call("/__hui/bots?archived=1")).body["bots"] as BotView[]).map((bot) => bot.handle), ["bob"]);
+  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).filter((bot: BotView) => bot.handle !== "chief-of-staff").map((bot) => bot.handle), ["ada"]);
+  assert.deepEqual(((await call("/__hui/bots?archived=1")).body["bots"] as BotView[]).filter((bot: BotView) => bot.handle !== "chief-of-staff").map((bot) => bot.handle), ["bob"]);
   assert.equal((await call("/__hui/bots/bob/messages", "POST", { text: "hello?" })).status, 409);
   assert.equal(botOf(await call("/__hui/bots/bob/restore", "POST", {})).archived, undefined);
 });

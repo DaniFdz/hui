@@ -732,7 +732,7 @@ function renderModelsPage(props: SettingsProps) {
       `,
     )}
     <hui-subagent-routes .routes=${props.settings.models.routes} .models=${modelOptions.filter((option) => option.value)}
-      .primary=${props.settings.models.primary} .onSave=${props.onSaveSubagentRoute}
+      .onSave=${props.onSaveSubagentRoute}
       .onRemove=${(name: string) => props.onChangeModels({ ...props.settings.models, routes: props.settings.models.routes.filter((route) => route.name !== name) })}
     ></hui-subagent-routes>
     ${renderCallsSection(props)}

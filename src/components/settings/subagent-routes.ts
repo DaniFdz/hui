@@ -14,7 +14,6 @@ type Editor = { kind: "add"; draft: Route } | { kind: "edit"; original: Route; d
 export class HuiSubagentRoutes extends HuiElement {
   @property({ attribute: false }) routes: readonly Route[] = [];
   @property({ attribute: false }) models: PickerParams["options"] = [];
-  @property({ attribute: false }) primary = "";
   @property({ attribute: false }) onSave!: (route: Route, originalName?: string) => Promise<boolean>;
   @property({ attribute: false }) onRemove!: (name: string) => void;
   #editor: Editor | undefined;
@@ -29,9 +28,8 @@ export class HuiSubagentRoutes extends HuiElement {
   #open(route?: Route) {
     if (route) this.#editor = { kind: "edit", original: route, draft: { ...route } };
     else {
-      const model = this.models.find((option) => option.value === this.primary) ?? this.models[0];
-      if (!model || this.routes.length >= 50) return;
-      this.#editor = { kind: "add", draft: { name: "", description: "", model: model.value } };
+      if (this.routes.length >= 50) return;
+      this.#editor = { kind: "add", draft: { name: "", description: "", model: "" } };
     }
     this.#error = "";
     this.requestUpdate();
@@ -55,7 +53,7 @@ export class HuiSubagentRoutes extends HuiElement {
     this.#error = !routeNameIsValid(name) ? "Use 1 to 40 letters, digits, underscores, dots or hyphens."
       : this.routes.some((route) => route.name !== original?.name && route.name === name) ? "That route name is already in use."
       : !original && this.routes.length >= 50 ? "You can add up to 50 routes."
-      : !this.models.some((model) => model.value === draft.model) && draft.model !== original?.model ? "Choose an available model." : "";
+      : draft.model !== "" && !this.models.some((model) => model.value === draft.model) && draft.model !== original?.model ? "Choose an available model." : "";
     if (this.#error) {
       this.requestUpdate();
       this.querySelector<HTMLInputElement>('input[name="name"]')?.focus();
@@ -93,7 +91,7 @@ export class HuiSubagentRoutes extends HuiElement {
       }}>
       <form class="exec-approval-card" aria-busy=${String(this.#pending)} @submit=${(event: SubmitEvent) => void this.#submit(event)}>
         <div class="exec-approval-title" id="route-editor-title">${editing ? "Edit route" : "Add route"}</div>
-        <div class="exec-approval-sub" id="route-editor-description">${editing ? "Changes apply to new subagents after you save." : "Choose a name and model before adding a subagent route."}</div>
+        <div class="exec-approval-sub" id="route-editor-description">${editing ? "Changes apply to new subagents after you save." : "Choose a name; a model is optional and inherits the caller's."}</div>
         <label class="field input-dialog__field"><span>Name</span>
           <input class="settings-input" name="name" required maxlength="40" autocomplete="off" spellcheck="false" autofocus
             placeholder="e.g. fast or deep" ?disabled=${this.#pending} .value=${live(draft.name)}
@@ -107,7 +105,7 @@ export class HuiSubagentRoutes extends HuiElement {
             ?disabled=${this.#pending} .value=${live(draft.description)}
             @input=${(event: Event) => { if (event.currentTarget instanceof HTMLInputElement) draft.description = event.currentTarget.value; }} /></label>
         <div class="field input-dialog__field"><span>Model</span>
-          ${renderPicker({ label: "Model", value: draft.model, options: this.models, searchable: true, disabled: this.#pending,
+          ${renderPicker({ label: "Model", value: draft.model, options: [{ value: "", label: "Inherit the caller's model" }, ...this.models], searchable: true, disabled: this.#pending,
             onChange: (model) => { draft.model = model; this.requestUpdate(); } })}</div>
         <div class="field input-dialog__field"><span>Thinking</span>
           ${renderPicker({ label: "Thinking", value: draft.thinking ?? "", disabled: this.#pending,
@@ -126,16 +124,16 @@ export class HuiSubagentRoutes extends HuiElement {
     return html`<section class="settings-section">
       <div class="settings-section__header"><div class="settings-section__copy">
         <h2 class="settings-section__heading">Subagent routes</h2>
-        <p class="settings-section__desc">Named models for subagents. An agent passes a name to <code>sessions_spawn</code> as <code>route</code>; the prompt lists your names and descriptions.</p>
+        <p class="settings-section__desc">Named roles for subagents. An agent passes a name to <code>sessions_spawn</code> as <code>route</code>; the prompt lists your names and descriptions. A route without a model inherits the caller's model and thinking.</p>
       </div><div class="settings-section__actions">
-        <button type="button" class="btn btn--sm" ?disabled=${!this.models.length || this.routes.length >= 50} @click=${() => this.#open()}>Add route</button>
+        <button type="button" class="btn btn--sm" ?disabled=${this.routes.length >= 50} @click=${() => this.#open()}>Add route</button>
       </div></div>
       <div class="settings-group">
         ${this.routes.length ? this.routes.map((route) => html`<div class="settings-row" role="group" aria-label=${`Route ${route.name}`}>
           <div class="settings-row__text">
             <span class="settings-row__title">${route.name}</span>
             ${route.description ? html`<span class="settings-row__desc">${route.description}</span>` : nothing}
-            <span class="settings-row__desc">${this.models.find((model) => model.value === route.model)?.label ?? route.model} · ${route.thinking ?? "Inherit parent"}</span>
+            <span class="settings-row__desc">${route.model ? this.models.find((model) => model.value === route.model)?.label ?? route.model : "Inherits the caller's model"} · ${route.thinking ?? "Inherit parent"}</span>
           </div>
           <div class="settings-row__control">
             <button type="button" class="btn btn--sm" aria-label=${`Edit route ${route.name}`} @click=${() => this.#open(route)}>Edit</button>
@@ -143,7 +141,7 @@ export class HuiSubagentRoutes extends HuiElement {
           </div>
         </div>`) : html`<div class="settings-row"><div class="settings-row__text">
           <span class="settings-row__title">No routes yet</span>
-          <span class="settings-row__desc">${this.models.length ? "Agents keep choosing models by id until you add one." : "Connect a provider first: a route needs a model."}</span>
+          <span class="settings-row__desc">${this.models.length ? "Agents inherit their own model until you name a route." : "A route without a model works without a provider; agents inherit their own."}</span>
         </div></div>`}
       </div>
     </section>${this.#dialog()}`;

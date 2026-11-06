@@ -4,6 +4,9 @@ import { test } from "../../fixtures/hui.ts";
 
 test("Mistral is offered with API-key sign-in and a cancelled sign-in adds no card", { tags: ["SET-086"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/settings/models");
+  // The page renders once before its settings load and once after; tap only when the loaded page is there, so the
+  // second render cannot swallow the click that opens the provider dialog.
+  await expect(screen.getByText("Saved by HUI and applied to new sessions.")).toBeVisible({ timeout: 60_000 });
   const add = screen.getByRole("button", "Add provider");
   await expect(add).toBeVisible();
   await add.tap();

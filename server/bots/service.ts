@@ -692,7 +692,7 @@ export class BotService {
     if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
     const origins = runTurnOrigins((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt, runOrigins);
     if (origins.some((origin) => origin.kind !== "operator" && origin.kind !== "kickoff")) {
-      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a session or your import. Ask the operator instead.");
+      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a subagent's report, a session or your import. Ask the operator instead.");
     }
     const unknown = Object.keys(params).filter((key) => !PROFILE_KEYS.includes(key));
     if (unknown.length) throw new BotInputError(`set_profile takes ${PROFILE_KEYS.join(", ")} only, not ${unknown.join(", ")}.`);
