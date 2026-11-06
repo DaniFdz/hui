@@ -10537,17 +10537,13 @@
           "type": "object",
           "required": [
             "denseObservability",
-            "detailedDebug",
-            "dashboard"
+            "detailedDebug"
           ],
           "properties": {
             "denseObservability": {
               "type": "boolean"
             },
             "detailedDebug": {
-              "type": "boolean"
-            },
-            "dashboard": {
               "type": "boolean"
             }
           }

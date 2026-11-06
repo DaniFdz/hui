@@ -75,7 +75,6 @@ type OriginalSettings = {
   labs: {
     denseObservability: boolean;
     detailedDebug: boolean;
-    dashboard: boolean;
   };
 };
 

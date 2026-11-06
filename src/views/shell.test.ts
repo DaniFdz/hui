@@ -27,7 +27,7 @@ import { ACCENTS } from "../lib/theme/appearance.ts";
 import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
 import { DEFAULT_SIDEBAR_SESSION_OPTIONS } from "../lib/session/sidebar-sessions.ts";
-import { HUI_PAGES, availablePages } from "../lib/pages.ts";
+import { HUI_PAGES } from "../lib/pages.ts";
 
 function renderedText(value: unknown): string {
   if (Array.isArray(value)) return value.map(renderedText).join("");
@@ -127,17 +127,16 @@ test("each destination marks itself current, and Settings never does", () => {
   assert.doesNotMatch(rendered, current("/settings/appearance"));
 });
 
-test("the sidebar lists Dashboard only while Labs → Dashboard is on", () => {
-  const rendered = (dashboard: boolean) => markup(renderSidebar({
-    view: "home", pages: availablePages({ ...DEFAULT_SETTINGS.labs, dashboard }), selectedSessionId: "", splitSessionId: "", groups: [],
+test("the sidebar lists Dashboard with the other destinations", () => {
+  const rendered = markup(renderSidebar({
+    view: "home", pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "",
     importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "",
     draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined,
     groupReorderPending: false, bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
   } as unknown as Parameters<typeof renderSidebar>[0]));
-  assert.doesNotMatch(rendered(false), /href=\/dashboard\b/u);
-  assert.match(rendered(true), /href=\/dashboard\b[\s\S]*>Dashboard</u);
-  assert.match(rendered(false), /href=\/usage\b/u, "the other destinations stay");
+  assert.match(rendered, /href=\/dashboard\b[\s\S]*>Dashboard</u);
+  assert.match(rendered, /href=\/usage\b/u, "the other destinations stay");
 });
 
 test("Settings stays available while the Bots list is showing", () => {
