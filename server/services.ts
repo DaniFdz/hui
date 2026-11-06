@@ -53,6 +53,7 @@ import { UsageReports } from "./usage.ts";
 import { createUsageInvestigation } from "./usage-investigation.ts";
 import { bundledSkillEnabled } from "./pi/bundled-skills.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
+import { keyCommandFails } from "./runtimes/hui-models.ts";
 import { createDurableBots } from "./bots/durable-access.ts";
 import type { SessionJiraIssue } from "./api/sessions.ts";
 import {
@@ -209,6 +210,14 @@ export const bots = new BotService({
   // A bot made on a worker keeps its conversation, memory and SOUL.md there, where its chat runs; what deleting one
   // leaves there while it is offline waits in BOT_CLEANUP_FILE for its next connection.
   workers: botWorkers,
+  // On Windows PI runs key commands synchronously, which would block the gateway's event loop.
+  ...(process.platform === "win32" ? {} : {
+    modelKeyUnavailable: async (provider: string, signal: AbortSignal) => {
+      const host = durableHost();
+      await host.open();
+      return keyCommandFails(host.modelRuntime, provider, signal);
+    },
+  }),
   files: localBotFiles(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.

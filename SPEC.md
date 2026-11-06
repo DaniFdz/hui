@@ -2263,10 +2263,15 @@ everything the Bots tab can, through the same routes.
   every scheduled task from a terminal (decision below).
   Routine runs reconcile saved deliveries after gateway restarts instead of
   re-sending their prompts. Durable submissions use a stable request key and
-  preserve their recorded outcome. Only a known failure before dispatch (a
-  disconnected worker before the chat opens) retries automatically: at most
-  three attempts, after 30 seconds and two minutes, within the original run
-  deadline. Retries keep one run id and consume a temporary run only once.
+  preserve their recorded outcome. Only a known failure before dispatch
+  retries automatically: a disconnected worker before the chat opens, or a
+  key command for the model of a bot on this gateway that fails (the machine
+  offline or just woken; not checked on Windows). It retries after 30
+  seconds, two minutes and then every minute, for up to 12 hours after the
+  run was created and never past a temporary task's end; a retry that comes
+  due later fails without sending, and occurrences that come due meanwhile
+  collapse into the waiting run. The run's timeout starts with the attempt that sends its
+  prompt. Retries keep one run id and consume a temporary run only once.
   Routines, Activity and Automations show the next retry or *Needs attention*
   with an explanation for quota, configuration, connection, transient,
   interrupted, timeout or unknown errors. Shutdown detaches observers; Cancel

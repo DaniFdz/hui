@@ -20,7 +20,7 @@ test("ordinary and legacy runs keep their outcomes without invented recovery sta
 test("a scheduled retry names its actual next attempt time and current attempt", () => {
   const retry = run({ attempt: 1, retryAt: "2026-10-18T08:00:30.000Z", failure: { kind: "connection", needsAttention: false } });
   assert.equal(automationRunLabel(retry), "Retry scheduled");
-  assert.equal(automationRunRecoveryDetail(retry, time), "Attempt 1/3 · Next retry local(2026-10-18T08:00:30.000Z)");
+  assert.equal(automationRunRecoveryDetail(retry, time), "Attempt 1 · Next retry local(2026-10-18T08:00:30.000Z)");
   assert.equal(automationRunRecoveryDetail(run({ retryAt: retry.retryAt }), time), automationRunRecoveryDetail(retry, time));
 });
 
@@ -28,7 +28,7 @@ test("a finished, cancelled or underway run never promises a stale retry", () =>
   for (const status of ["running", "completed", "failed", "skipped", "cancelled"] as const) {
     const each = run({ status, retryAt: "2026-10-18T08:00:30.000Z", attempt: 2 });
     assert.notEqual(automationRunLabel(each), "Retry scheduled");
-    assert.equal(automationRunRecoveryDetail(each, time), "Attempt 2/3");
+    assert.equal(automationRunRecoveryDetail(each, time), "Attempt 2");
   }
 });
 

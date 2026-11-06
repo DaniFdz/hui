@@ -47,6 +47,8 @@ async function keyCommands(agentDir: string, selections: ProviderSelections): Pr
   }));
 }
 
+class KeyCommandError extends ModelsError {}
+
 /** PI runs a models.json `!command` API key with execSync on every request (earendil-works/pi#11186). Durable
  * sessions share the gateway's event loop, so each run froze every session and browser request, for seconds when
  * the command is a token CLI. Run it per request as PI does, without blocking. On Windows PI picks a configured
@@ -63,9 +65,19 @@ function runKeyCommandsAsync(runtime: ModelRuntime, commands: ReadonlyMap<string
     const apiKey = await run.then(({ stdout }) => stdout.trim(), () => "");
     if (apiKey) return getAuth(target, { ...overrides, apiKey });
     overrides.signal?.throwIfAborted();
-    throw new ModelsError("auth", `API key auth failed for provider ${provider}`, { cause: new Error(`Failed to resolve API key for provider "${provider}" from shell command: ${command}`) });
+    throw new KeyCommandError("auth", `API key auth failed for provider ${provider}`, { cause: new Error(`Failed to resolve API key for provider "${provider}" from shell command: ${command}`) });
   }) as ModelRuntime["getAuth"];
   return runtime;
+}
+
+export async function keyCommandFails(runtime: ModelRuntime, provider: string, signal: AbortSignal): Promise<boolean> {
+  try {
+    await runtime.getAuth(provider, { signal });
+    return false;
+  } catch (error) {
+    signal.throwIfAborted();
+    return error instanceof KeyCommandError;
+  }
 }
 
 export function createHuiModelRuntime(dir = PROVIDERS_DIR) {
