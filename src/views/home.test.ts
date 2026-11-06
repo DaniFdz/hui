@@ -53,6 +53,19 @@ test("the dynamic queue is announced as a polite live status", () => {
   assert.match(source, /aria-label="Queued messages"/);
 });
 
+test("the queue offers sending its steers now, only while one is queued", async () => {
+  const steering = await renderWorkerSession("running", { streaming: true, queue: { steering: ["How is it going?", "Skip the slow part."], followUp: [] } });
+  assert.match(steering, /class="chat-queue__send-now"/u);
+  assert.match(steering, /title="Stops this turn and sends every steered message now"/u);
+  assert.match(steering, /<span>Send now<\/span>/u);
+  const queuedFollowUp = await renderWorkerSession("running", { streaming: true, queue: { steering: [], followUp: ["later"] } });
+  assert.doesNotMatch(queuedFollowUp, /chat-queue__send-now/u);
+  // PI keeps its steering queue through Stop and delivers it with the next run, so there is nothing to force there.
+  const pi = await renderWorkerSession("running", { streaming: true, session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "repo", tool: "pi", status: "running" }, queue: { steering: ["How is it going?"], followUp: [] } });
+  assert.match(pi, /class="chat-queue__item/u);
+  assert.doesNotMatch(pi, /chat-queue__send-now/u);
+});
+
 test("the composer routes Enter shortcuts through explicit steer and queue modes", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   assert.match(source, /composerEnterMode\(\{/u);
@@ -822,4 +835,42 @@ test("an expanded goal reads the whole objective and edits it in place", async (
   const busy = await renderWorkerSession("running", { session: { ...session, status: "running" }, streaming: true, goalPanel: { expanded: true, editing: true, error: "" } });
   assert.match(busy, /Finish or stop the active turn before changing the objective\./u);
   assert.match(busy, /<button type="submit" class="btn btn--sm primary" \?disabled=true>Save goal</u);
+});
+
+test("a turn that invoked a skill names it, instead of showing PI's wrapper for the model", async () => {
+  const prompt = [
+    '<skill name="cost-investigation" location="/opt/hui/skills/cost-investigation/SKILL.md">',
+    "References are relative to /opt/hui/skills/cost-investigation.",
+    "",
+    "# Cost investigation",
+    "",
+    "Name the cheaper mechanism.",
+    "</skill>",
+    "",
+    "# Why was this expensive?",
+    "",
+    "It cost $1.25.",
+  ].join("\n");
+  const html = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: prompt }] });
+  assert.match(html, /class="chat-skill-invoked"[^>]*data-hui-tooltip=\/opt\/hui\/skills\/cost-investigation\/SKILL\.md/u);
+  assert.match(html, /<span class="chat-skill-invoked__label">Skill<\/span> <code>cost-investigation<\/code>/u);
+  assert.match(html, /Name the cheaper mechanism\./u, "the method stays readable in the turn");
+  assert.match(html, /# Why was this expensive\?/u);
+  assert.ok(!html.includes("&lt;skill name=") && !html.includes("<skill name="), "the wrapper PI writes for the model is not shown");
+  assert.ok(!html.includes("References are relative to"));
+});
+
+test("a presented file from the working directory offers to open in Files", async () => {
+  const id = "12345678-1234-4123-8123-123456789abc";
+  const media = { id, name: "notes.md", kind: "file", mimeType: "application/octet-stream", size: 7, url: `/__hui/media/${id}/notes.md` };
+  const transcript = (details: unknown) => [{ kind: "tool", id: "media", name: "present_media", status: "succeeded", details }];
+
+  const shown = await renderWorkerSession("idle", { fileLinks: true, transcript: transcript({ media: [{ ...media, path: "docs/notes.md" }] }) });
+  assert.match(shown, /<hui-file-ref class="chat-assistant-attachment-card__action chat-presented-media__reveal" data-path=docs\/notes\.md>/u);
+  assert.match(shown, /aria-label=Download notes\.md/u);
+
+  const outside = await renderWorkerSession("idle", { fileLinks: true, transcript: transcript({ media: [media] }) });
+  assert.doesNotMatch(outside, /chat-presented-media__reveal/u, "a file outside the working directory has nothing in Files to open");
+
+  assert.match(readStyles("../styles/openclaw-chat.css"), /hui-file-ref\.chat-presented-media__reveal:not\(\.is-linked\) \{ display: none; \}/u);
 });

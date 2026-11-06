@@ -801,6 +801,16 @@ const server = createServer(async (request, response) => {
     toolUse(response, "tool-e2e-extension", "fixture_echo", { text: "from the model" });
     return finish(response, "tool_use");
   }
+  // A cost investigation ends with follow-ups; the fixture files one as a suggestion card.
+  if (source.includes("cost-investigation")) {
+    toolUse(response, "tool-e2e-cost-followup", "suggest_task", {
+      title: "Add a lint that fails on whole-file reads of generated files",
+      problem: "The history's `bash` calls returned 8.4M characters over 120 calls, and half of that came from reading two generated files whole. A check would catch the next session that does it.",
+      fix: "Add a lint rule to the service that fails on whole-file reads under `generated/` and names the narrower command to use, then run it in CI.",
+      cwd: workspace,
+    });
+    return finish(response, "tool_use");
+  }
   if (source.includes("E2E_SUGGEST_TASK")) {
     toolUse(response, "tool-e2e-suggest-a", "suggest_task", {
       title: "Replace native terminal switcher select with HUI picker",

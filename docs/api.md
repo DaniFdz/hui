@@ -304,7 +304,8 @@ event belongs to, aborted by Stop. An extension command runs when sent as `/name
 `$name` alias); its prompt request returns once it ends or first asks
 something. Dialogs are `question` events answered through the question routes,
 and Stop dismisses them; `notify` is a `notice`. `ctx.sessionManager` is an
-in-memory PI session projected from the history. `appendEntry` data is stored
+in-memory PI session projected from the history; a message entry keeps the time
+its message was recorded rather than the moment the gateway loaded it. `appendEntry` data is stored
 as a `hui.pi-entry` entry. A custom message is a `hui.pi-message` entry the
 model reads as user input, written before the prompt `before_agent_start` added
 it to (PI places it after), so a rewind to before that prompt leaves it out too;
@@ -1325,8 +1326,16 @@ type PresentedMedia = {
   mimeType: string;
   size: number;
   url: `/__hui/media/${string}/${string}`;
+  path?: string;
 };
 ```
+
+`path` is the source file's root-relative path in the session working directory,
+and is present only when the file was inside it. The card uses it to open that
+file in the conversation's Files view through the same path as a file reference
+the agent wrote in the chat, so the button appears once the gateway confirms the
+file still exists there. Nothing else about where the file came from is
+stored: the copy in `presented-media/` stays served by its opaque URL.
 
 Tool-result `details` cross the generic runtime event/transcript contract so a
 live call and a reopened PI transcript paint identically. `present_media` is
@@ -2245,8 +2254,10 @@ chat or the task's timeout (`timeoutSeconds`, default 900) stops that turn. An
 archived bot's routine fails. Archiving disables a bot's routines; restoring
 leaves them disabled.
 
-**Recovery and retries.** Each new run keeps its original deadline (`deadlineAt`),
-an attempt count and a dispatch checkpoint before its prompt is sent. After a
+**Recovery and retries.** Each run has a deadline (`deadlineAt`), an attempt
+count and a dispatch checkpoint before its prompt is sent. Every attempt that
+has not sent its prompt sets the deadline to its start plus the task's timeout,
+so the timeout covers the bot's work; once the prompt is sent, it stays fixed. After a
 restart, a checkpointed bot routine observes that same delivery, not a new
 prompt. Durable uses a conversation-scoped request key to deduplicate the
 submission and reads its recorded outcome; cancelling targets that submission,
@@ -2255,10 +2266,14 @@ observer without cancelling the runtime's resumable work. Older runtimes use
 conservative transcript matching; an ambiguous or missing delivery requires
 intervention rather than replay.
 
-Only an explicitly known **pre-dispatch** failure is automatically retried:
-currently a bot's worker being offline before its chat opens. There are at most
-three attempts, after 30 seconds and then two minutes, within the original
-deadline and a temporary task's end. A retry is the same run id and consumes no
+Only an explicitly known **pre-dispatch** failure is automatically retried: a
+bot's worker being offline before its chat opens, or the key command for the
+model of a bot on this gateway failing before its prompt is sent (not checked on
+Windows, where PI runs key commands synchronously). Attempts come after 30
+seconds, two minutes and then every minute, for up to 12 hours after the run was
+created and never past a temporary task's end. A retry that comes due after
+that, as after the machine slept, fails without sending. Occurrences of the task
+that come due while a run waits collapse into it. A retry is the same run id and consumes no
 extra `runsLeft`. A pending retry survives restart and can be cancelled through
 the existing run-cancel route. A failure after dispatch is never a reason to
 send another prompt automatically. Quota/rate-limit, configuration, connection,
@@ -3442,6 +3457,16 @@ cached command catalog so newly added skills and commands appear.
 Uses the prompt body and attachment rules. Queues an instruction before PI's
 next model call while the current run is active.
 
+### `POST /__hui/sessions/:id/steer-now`
+
+Accepts an empty JSON body and returns `{ "ok": true }`. Delivers the run's
+queued steers now rather than at its next model call, which a blocking tool call
+can hold off for minutes: it stops the turn and starts the next one with every
+queued steer as a single message, in queue order, so they arrive together.
+Queued follow-ups the same Stop withdraws are put back. `409` when nothing is
+queued, and on a runtime whose Stop keeps its steering queue (PI), where the
+steers already go in with the next run. `404` for an unknown session.
+
 ### `POST /__hui/sessions/:id/queue`
 
 Edits the follow-up queue using an `operation` of `edit`, `remove`, `move` or
@@ -3634,9 +3659,11 @@ cost remains `null`/absent rather than being estimated by HUI.
 the whole session's cost from a source HUI cannot price reports it by appending a
 `hui.session-cost` entry with `{ usd, source, asOf }`, and the session's `usage`
 carries the newest readable report until a `/clear` resets the history. HUI shows it
-beside the estimate with its source and how long ago it was checked; it never
-replaces the per-message or per-run figures, and an unreadable entry is skipped
-rather than shown as a zero.
+beside the estimate with its source and how long ago it was checked, and an open
+stream receives a fresh snapshot as soon as a report is written outside a run; it
+never replaces the per-message or per-run figures, and an unreadable entry is
+skipped rather than shown as a zero. `GET /__hui/usage` treats it as the session's
+cost where the range covers that session.
 `historyRefreshed` is omitted/true on that path. When PI cannot refresh history,
 the adapter emits `settled` with `historyRefreshed: false`; HUI still returns to
 the runtime's reported status but retains and snapshots the live projection so
@@ -4028,14 +4055,36 @@ name them without reading every session. All-time ranges report the earliest inc
 or the latest recorded day when a clock was ahead. Empty drafts have no row.
 The browser combines rows for search and rankings; no transcript content is sent.
 
+`tools` entries also carry `outputChars`: the readable characters that tool
+returned, which is usually what drove a conversation's context growth. Images and
+other non-text parts add nothing. `pullRequests` lists the pull requests the
+history created, as `{ repository, number, url }` in the order first reported, at
+most 20 per history. `investigations` lists every registered session HUI started
+to explain a target, with that target, the range it read and its creation time,
+whatever range this report covers, so the page can say a target is already
+explained instead of starting a second report. A reference is read from a create call and the URL its
+result printed, or from a dedicated create tool's result; a URL a history merely
+viewed or mentioned never counts. No GitHub state, title or body is fetched, so
+the list renders without network access. A history inherited by a fork keeps the
+references of the conversation that recorded them.
+
 `UsageMetrics` includes input, output, cache-read, cache-write and total tokens;
 usage-record, user-message, assistant-message, tool-result and error counts;
 `costUsd`; and `unpricedCalls`. Recorded total tokens take precedence over summing
 subtypes. Reasoning and one-hour cache-write subsets are not added again.
 `calls` counts usage records, not user messages. Cost is a recorded PI estimate,
 not an invoice: `costUsd: null` means no valid price was recorded, a numeric zero
-is retained, and `unpricedCalls > 0` labels any known sum as partial. External
-session-cost reports are never added to these PI values.
+is retained, and `unpricedCalls > 0` labels any known sum as partial.
+
+A session whose extensions reported its whole cost overrides that sum instead of
+adding to it: when the requested range holds every day the session recorded,
+`metrics.costUsd` is the newest readable `hui.session-cost` report and
+`reportedCost` carries `{ usd, source, asOf }`. Its `days` and `models` stay
+recorded estimates, so a reported total need not equal its dated buckets. A range
+that only partly overlaps the session keeps the recorded prices of the days it
+covers and carries no `reportedCost`, since a whole-session total cannot be
+attributed to part of one. A report the gateway has not scanned yet is seen at
+the next scan or a forced refresh.
 
 Durable history is read in pages without changing the store. Each conversation's
 ledger and latest entry ID are read together, and its scan stops at that ID so
@@ -4074,6 +4123,45 @@ reported a healthy but large history as a timeout. The page shows a skeleton
 meanwhile, names a read that has not answered after six seconds, and offers
 **Cancel**, which aborts the request and keeps the last report. A replaced range
 aborts its predecessor the same way.
+
+### `POST /__hui/usage/investigate`
+
+Starts the session that explains one expensive history. The body is
+`{ target, range }`, where `target` is `{ kind: "session", id }` or
+`{ kind: "pullRequest", repository, number }` and `range` is
+`{ from?, to?, timeZone }` exactly as the page read it, so the explanation covers
+the report on screen.
+
+The gateway answers from the same cached scan as `GET /__hui/usage`, then builds
+the first turn from recorded numbers only: the target's cost and tokens, its
+models, its tools by readable output, its cache share, its costliest days and the
+pull requests it created, beside the median and up to three cheaper histories in
+the same project (or the whole range when the project holds nothing else), and
+for a pull request, the sessions that created it and the other pull requests in
+range. A session that created several pull requests counts under each, and the
+prompt says so. The first turn invokes HUI's bundled `cost-investigation` skill
+(a leading `/skill:cost-investigation` that the runtime expands before sending)
+unless the operator disabled it, in which case the prompt carries the method
+line by line. The prompt never invents a cause: it names what the report cannot
+see and asks for drivers backed by a number, the changed files in the checkout,
+and what would have cost less by mechanism: context (subagents, narrower
+commands, compaction), model and effort, structure that applies the correction
+to every session, and a skill for work that keeps coming back. It then records
+up to three follow-ups as suggestion cards through HUI's `suggest_task` tool —
+a lint, test or check, a skill, a refactor, or the service's `AGENTS.md` — so
+the operator can start them from the investigation.
+
+201 answers `{ session, existing: false }` with the started `SessionView`, titled
+`Why was "<title>" expensive?` or `Why was <repository>#<number> expensive?`,
+in the target's group and its first existing checkout (the home directory when
+no checkout remains). A new session's first turn is sent after its runtime is
+ready, exactly as a started task suggestion's is. A target a registered
+investigation already explains answers 200 with `{ session, existing: true }`
+and that report's `SessionView`, without reading the histories again; the check
+comes before the range, so a report started for another range still opens. 404
+means no row in that range holds the target; 400 means the body or its range
+cannot be meant. A failed start
+creates no further session and leaves the report unaffected.
 
 ### `GET /__hui/diagnostics/export`
 

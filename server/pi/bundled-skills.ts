@@ -9,6 +9,11 @@ import { fileURLToPath } from "node:url";
 export const bundledSkillRoot = fileURLToPath(new URL("../../skills/", import.meta.url));
 
 export const bundledSkills = [{
+  name: "cost-investigation",
+  path: fileURLToPath(new URL("../../skills/cost-investigation/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:cost-investigation",
+  tags: ["good practices"],
+}, {
   name: "create-verification-skill",
   path: fileURLToPath(new URL("../../skills/create-verification-skill/SKILL.md", import.meta.url)),
   // Existing disabledSkills.path accepts opaque strings. Keep the preference
@@ -35,4 +40,10 @@ export function enabledBundledSkillPaths(disabled: readonly { path: string }[]):
   return bundledSkills.filter((skill) => !disabled.some((entry) =>
     entry.path === skill.preferencePath || entry.path === skill.path,
   )).map((skill) => skill.path);
+}
+
+/** Whether one shipped skill is on, so a prompt can use it instead of restating its method. */
+export function bundledSkillEnabled(name: string, disabled: readonly { path: string }[]): boolean {
+  const skill = bundledSkills.find((entry) => entry.name === name);
+  return skill !== undefined && enabledBundledSkillPaths(disabled).includes(skill.path);
 }

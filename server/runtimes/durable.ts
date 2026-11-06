@@ -26,7 +26,7 @@ import { durableContext as context, durableHost, modelCallable, type DurableHost
 import { CallEntry } from "./turn-origins.ts";
 import { skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-offer.ts";
 import { QuestionBox, type QuestionDraft } from "./question-box.ts";
-import { DurableExtensions, ExtensionMessageEntry, isCustomInput, reportedSessionCost, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
+import { DurableExtensions, ExtensionMessageEntry, isCustomInput, reportedSessionCost, sessionCostOf, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import { fitThinking, modelControls, piThinking } from "./model-controls.ts";
 import {
@@ -718,7 +718,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         if (event.type === "message_end") this.#streamedText.clear();
         this.#add(event.entry);
         // A call's record, written while no run streams: the chat shows it now rather than at the next settle.
-        if (event.type === "entry_appended" && CallEntry.is(event.entry) && !this.#streaming) this.#emit({ type: "history" });
+        if (event.type === "entry_appended" && !this.#streaming) {
+          if (CallEntry.is(event.entry)) this.#emit({ type: "history" });
+          // A cost an extension reported: the open composers show it without waiting for another turn.
+          else if (sessionCostOf(event.entry)) this.#emit({ type: "usage" });
+        }
         return;
       case "tool_execution_start":
         if (event.parentToolCallId) {
@@ -1121,6 +1125,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   async steer(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
     await this.#queueInput(text, attachments, "steer");
+  }
+
+  /** Stop withdraws this inbox with the run, so HUI takes the steers before stopping it and sends them again. */
+  async takeSteeringQueue(): Promise<readonly string[]> {
+    return this.pendingQueue().steering;
   }
 
   async followUp(text: string, attachments: readonly PromptAttachment[] = [], options?: RuntimePromptOptions): Promise<void> {

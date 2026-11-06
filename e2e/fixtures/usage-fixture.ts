@@ -42,7 +42,7 @@ const OPUS = ["anthropic", "claude-opus-5-5"] as const;
 const GPT = ["openai", "gpt-5.5"] as const;
 const FIXTURE = ["hui-e2e", "fixture"] as const;
 type Model = readonly [provider: string, model: string];
-type Turn = { at: number; model: Model; input: number; output: number; cacheRead: number; cacheWrite: number; cost?: number; error?: boolean; tool?: string; alone?: boolean; said: string };
+type Turn = { at: number; model: Model; input: number; output: number; cacheRead: number; cacheWrite: number; cost?: number; error?: boolean; tool?: string; alone?: boolean; said: string; pullRequest?: string };
 type Seed = { title: string; project: string; turns: Turn[]; archived?: boolean; parent?: string };
 
 const used = (input: number, output: number, cacheRead: number, cacheWrite: number, cost?: number) => ({
@@ -53,11 +53,11 @@ const used = (input: number, output: number, cacheRead: number, cacheWrite: numb
 const seeds: Seed[] = [
   { title: "Retry-safe checkout", project: "checkout-api", turns: [
     { at: ago(2, 9, 12), model: OPUS, input: 1200, output: 480, cacheRead: 5200, cacheWrite: 900, cost: 0.84, said: "Making the charge endpoint idempotent." },
-    { at: ago(2, 14, 30), model: OPUS, input: 700, output: 300, cacheRead: 2100, cacheWrite: 400, cost: 0.41, error: true, said: "The retry test fails on the second charge." },
+    { at: ago(2, 14, 30), model: OPUS, input: 700, output: 300, cacheRead: 2100, cacheWrite: 400, cost: 0.41, error: true, said: "The retry test fails on the second charge.", pullRequest: "https://github.com/acme/checkout-api/pull/12" },
   ] },
   { title: "Webhook double charge", project: "checkout-api", turns: [
     { at: ago(9, 10, 5), model: GPT, input: 900, output: 350, cacheRead: 1400, cacheWrite: 0, cost: 0.19, said: "Storing the processed webhook ids." },
-    { at: ago(9, 16, 40), model: GPT, input: 600, output: 220, cacheRead: 800, cacheWrite: 0, cost: 0.12, said: "The double charge test passes now." },
+    { at: ago(9, 16, 40), model: GPT, input: 600, output: 220, cacheRead: 800, cacheWrite: 0, cost: 0.12, said: "The double charge test passes now.", pullRequest: "https://github.com/acme/checkout-api/pull/18" },
   ] },
   { title: "Pricing page redesign", project: "marketing-site", turns: [
     { at: ago(20, 11, 20), model: FIXTURE, input: 400, output: 180, cacheRead: 0, cacheWrite: 0, cost: 0, said: "Rewriting the pricing copy." },
@@ -96,11 +96,23 @@ async function appendTurns(tx: Tx, id: ConversationId, turns: readonly Turn[], l
       last = (await tx.appendEntry(id, { kind: UserEntry.kind, model: [{ role: "user", content: text(turn.said), timestamp: turn.at }] } as never)).id;
       appended += 1;
     }
+    const callId = `call-${turn.at}`;
     last = (await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [{
-      role: "assistant", content: text(turn.said), api: "anthropic-messages", provider, model,
-      usage: used(turn.input, turn.output, turn.cacheRead, turn.cacheWrite, turn.cost), stopReason: "stop", timestamp: turn.at + MINUTE,
+      role: "assistant", api: "anthropic-messages", provider, model,
+      content: turn.pullRequest
+        ? [...text(turn.said), { type: "toolCall", id: `pr-${callId}`, name: "bash", arguments: { command: "git push && gh pr create --fill" } }]
+        : text(turn.said),
+      usage: used(turn.input, turn.output, turn.cacheRead, turn.cacheWrite, turn.cost), stopReason: turn.pullRequest ? "toolUse" : "stop", timestamp: turn.at + MINUTE,
     }] } as never)).id;
     appended += 1;
+    if (turn.pullRequest) {
+      // The URL a create call printed is what the Usage report attributes the session to.
+      last = (await tx.appendEntry(id, { kind: ToolResultEntry.kind, model: [{
+        role: "toolResult", toolCallId: `pr-${callId}`, toolName: "bash",
+        content: text(`Creating pull request for branch\n${turn.pullRequest}\n`), isError: false, timestamp: turn.at + 2 * MINUTE,
+      }], data: { diagnostics: [] } } as never)).id;
+      appended += 1;
+    }
     if (turn.error || turn.tool) {
       last = (await tx.appendEntry(id, { kind: ToolResultEntry.kind, model: [{
         role: "toolResult", toolCallId: `call-${turn.at}`, toolName: turn.tool ?? "bash",

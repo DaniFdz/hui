@@ -598,6 +598,29 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   recent activity, tokens or cost, with unknown prices last. At most 50 rows draw
   initially; Show more reveals the next page. Each row states when it was last
   active and can open its conversation.
+- Each session row with recorded usage offers **Investigate**: the gateway starts
+  a new session in that history's project whose first turn carries the row's
+  recorded totals, its models, tools by readable output, cache shares and
+  costliest days beside the median and up to three cheaper histories in the same
+  project, and says that this report holds no message content. The method comes
+  from HUI's bundled `cost-investigation` skill, invoked by the first turn and
+  expanded in place; when the operator turns that skill off, the same method is
+  written into the prompt instead. It asks for each
+  driver to name its cheaper mechanism — context, model and effort, structure
+  that holds for every session, or a skill for recurring work — for the
+  changes to be split into this session and every session, and for up to three
+  follow-ups recorded as suggestion cards the operator can start: a lint, test
+  or check, a skill for recurring work, a refactor of the service that forced
+  the extra turns, or that service's `AGENTS.md`. The histories'
+  created pull requests, taken from create calls and the URLs their results
+  reported and never from a URL merely viewed, group into a **Cost by pull
+  request** card, most expensive first, with the same action for the sessions
+  behind one. A session that created several pull requests counts under each and
+  the card says so. A target HUI already explained says **Investigated** and its
+  action opens that report instead of starting a second one, even after the range
+  changes. A target the range does not hold starts nothing, a failed
+  start leaves the report and its range as they were, and the new session opens
+  in HUI titled `Why was "<name>" expensive?` in the history's own group.
 - A first read shows a skeleton, and a read that has not answered after six
   seconds says so and offers **Cancel**; cancelling keeps the last report and
   leaves a stopped first read distinct from an unavailable one. No matching data,
@@ -1343,6 +1366,12 @@ platforms, and `Send adds to this run` when plain Enter is a line break);
 touch devices keep `Add to this run…`.
 When PI consumes either queue, HUI projects that instruction into the transcript
 immediately so a slow response never appears without its causal user message.
+A steering queue that a Stop withdraws with the turn can also be delivered at
+once: while a steer waits behind a long tool call, **Send now** above the queued
+steers stops that turn—the only way past a blocking call—and sends every steer as
+a single message in queue order, so several arrive together instead of one model
+call apart. PI keeps its queue through Stop, so it delivers the steers with the
+next run and shows no such row.
 A normal prompt remains rejected while busy. PI RPC exposes select, confirm,
 input and editor requests, so Question is an adapted PI surface rather than a
 disabled OpenClaw placeholder.
@@ -1388,7 +1417,13 @@ as images; MP4, WebM, OGV and MOV use the browser's native video player; MP3,
 WAV, OGG, M4A, AAC and FLAC use its native audio player; every other format is
 a download card. Audio/video container recognition does not imply codec support,
 so native playback failure remains visible and the original file stays
-downloadable. The active tool's prompt guidance states this exact matrix and the
+downloadable. A presented file that lives inside the conversation's working
+directory also reports its root-relative path, so a video, audio or file card
+offers that file in the conversation's Files view; presented images keep to the
+full-screen viewer. A file from outside the directory, a file that is gone when
+the card renders, a conversation on a remote worker and a bot's chat, which has
+no Files view, keep only Download. The active
+tool's prompt guidance states this exact matrix and the
 rule that a local path alone is not an attachment. Remote Markdown images remain
 click-to-open placeholders.
 
@@ -2228,10 +2263,15 @@ everything the Bots tab can, through the same routes.
   every scheduled task from a terminal (decision below).
   Routine runs reconcile saved deliveries after gateway restarts instead of
   re-sending their prompts. Durable submissions use a stable request key and
-  preserve their recorded outcome. Only a known failure before dispatch (a
-  disconnected worker before the chat opens) retries automatically: at most
-  three attempts, after 30 seconds and two minutes, within the original run
-  deadline. Retries keep one run id and consume a temporary run only once.
+  preserve their recorded outcome. Only a known failure before dispatch
+  retries automatically: a disconnected worker before the chat opens, or a
+  key command for the model of a bot on this gateway that fails (the machine
+  offline or just woken; not checked on Windows). It retries after 30
+  seconds, two minutes and then every minute, for up to 12 hours after the
+  run was created and never past a temporary task's end; a retry that comes
+  due later fails without sending, and occurrences that come due meanwhile
+  collapse into the waiting run. The run's timeout starts with the attempt that sends its
+  prompt. Retries keep one run id and consume a temporary run only once.
   Routines, Activity and Automations show the next retry or *Needs attention*
   with an explanation for quota, configuration, connection, transient,
   interrupted, timeout or unknown errors. Shutdown detaches observers; Cancel

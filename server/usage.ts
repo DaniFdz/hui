@@ -22,8 +22,10 @@
 import { readFile, stat } from "node:fs/promises";
 
 import { CompactionEntry, type ConversationId, type EntryId } from "@earendil-works/pi-durable";
-import type { UsageDay, UsageMetrics, UsageModel, UsageReport, UsageSession, UsageTool } from "./api/diagnostics.ts";
+import type { UsageDay, UsageInvestigationRecord, UsageMetrics, UsageModel, UsageReport, UsageSession, UsageTool } from "./api/diagnostics.ts";
+import { CreatedPullRequestScan, type PullRequestRef } from "./integrations/pull-requests.ts";
 import { durableContext, durableHost } from "./runtimes/durable-host.ts";
+import { sessionCostOf } from "./runtimes/durable-extensions.ts";
 import { durableConversationId } from "./runtimes/durable.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
 
@@ -49,6 +51,8 @@ type StoredMessage = {
   readonly stopReason?: unknown;
   readonly isError?: unknown;
   readonly toolName?: unknown;
+  readonly toolCallId?: unknown;
+  readonly content?: unknown;
 };
 
 type StoredEntry = {
@@ -62,6 +66,9 @@ type Usage = { input: number; output: number; cacheRead: number; cacheWrite: num
 
 type Spend = { totalTokens: number; cost: number };
 
+/** A whole-session cost an extension measured, which replaces the sum of the session's recorded prices. */
+type CostReport = NonNullable<ReturnType<typeof sessionCostOf>>;
+
 type UsageLabel = { provider: string; model: string };
 
 type UsageEvent = {
@@ -70,6 +77,8 @@ type UsageEvent = {
   usage?: Usage;
   label?: UsageLabel;
   tool?: string;
+  /** Readable characters the tool returned, the driver of context growth. */
+  outputChars?: number;
   isError?: boolean;
 };
 
@@ -88,6 +97,10 @@ export type UsageScan = {
   /** Entry IDs already counted anywhere, so history a fork inherits counts once. */
   claimed: Set<number>;
   recordedSpend: Map<number, Spend>;
+  /** Pull requests each registered history created, accumulated across incremental passes. */
+  pullRequests: Map<string, PullRequestRef[]>;
+  /** The newest whole-session cost each session's extensions reported. */
+  reportedCost: Map<string, CostReport>;
   unplacedSpend: UsageReport["unplacedSpend"];
   registeredSessions: number;
   undatedRecords: Map<string, number>;
@@ -110,6 +123,27 @@ function stampOf(value: unknown): number | undefined {
 
 function yieldToEventLoop(): Promise<void> {
   return new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+/** Records one created pull request against its history once, in the order it was first reported. */
+function addPullRequest(scan: UsageScan, sessionId: string, ref: PullRequestRef): void {
+  const held = scan.pullRequests.get(sessionId);
+  if (held?.some((each) => each.url.toLowerCase() === ref.url.toLowerCase())) return;
+  scan.pullRequests.set(sessionId, [...(held ?? []), ref]);
+}
+
+/** Readable characters of a message's content, skipping images and other
+ * non-text parts, so a tool's output volume can be reported without keeping it. */
+function readableChars(content: unknown): number {
+  if (typeof content === "string") return content.length;
+  if (!Array.isArray(content)) return 0;
+  let chars = 0;
+  for (const part of content) {
+    if (!part || typeof part !== "object") continue;
+    const text = (part as { type?: unknown; text?: unknown }).type === "text" ? (part as { text?: unknown }).text : undefined;
+    if (typeof text === "string") chars += text.length;
+  }
+  return chars;
 }
 
 function readUsage(raw: unknown): Usage | undefined {
@@ -183,7 +217,10 @@ function messageEvent(message: StoredMessage, time = stampOf(message.timestamp))
     };
   }
   if (message.role === "toolResult") {
-    return { role: "toolResult", time, usage: readUsage(message.usage), isError: message.isError === true, tool: label(message.toolName) };
+    return {
+      role: "toolResult", time, usage: readUsage(message.usage), isError: message.isError === true, tool: label(message.toolName),
+      outputChars: readableChars(message.content),
+    };
   }
   return undefined;
 }
@@ -291,7 +328,9 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
   const dayOf = dayReader(timeZone);
   const found: UsageScan = {
     sessions: new Map(), marks: new Map(previous?.marks), claimed: new Set(previous?.claimed),
-    recordedSpend: new Map(previous?.recordedSpend), unplacedSpend: { totalTokens: 0, costUsd: 0 },
+    recordedSpend: new Map(previous?.recordedSpend), pullRequests: new Map(previous?.pullRequests),
+    reportedCost: new Map(previous?.reportedCost),
+    unplacedSpend: { totalTokens: 0, costUsd: 0 },
     registeredSessions: sessions.length, undatedRecords: new Map(previous?.undatedRecords), unavailable: [], readSessions: 0,
   };
   /** Sessions whose buckets in this pass replace the cached ones instead of adding to them. */
@@ -317,9 +356,10 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
       addEvent(model.metrics, event);
     }
     if (event.tool) {
-      const tool = bucket.tools.get(event.tool) ?? { name: event.tool, calls: 0, errors: 0 };
+      const tool = bucket.tools.get(event.tool) ?? { name: event.tool, calls: 0, errors: 0, outputChars: 0 };
       bucket.tools.set(event.tool, tool);
       tool.calls += 1;
+      tool.outputChars += event.outputChars ?? 0;
       if (event.isError) tool.errors += 1;
     }
   };
@@ -352,6 +392,12 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
       const counted = new Set<number>();
       const spent = new Map<number, Spend>();
       const events: { session: SessionRecord; event: UsageEvent }[] = [];
+      // Durable yields pages newest first, so evidence that spans two entries
+      // is fed to the pull-request scan in entry order once the read succeeds.
+      const messages: { session: SessionRecord; entryId: number; message: StoredMessage }[] = [];
+      const created: { session: SessionRecord; ref: PullRequestRef }[] = [];
+      // The scan reads entries newest first, so the first report of a session is its newest one.
+      const reports = new Map<string, CostReport>();
       let highest = after;
       try {
         await durableHost().open();
@@ -369,13 +415,26 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
             cost: (already?.cost ?? 0) + spend.cost,
           });
           const owner = owners.get(entry.conversationId) ?? session;
+          const report = sessionCostOf(entry);
+          if (report && !reports.has(owner.id)) reports.set(owner.id, report);
           for (const message of entry.model ?? []) {
             if (entry.kind === CompactionEntry.kind && message.role === "user") continue;
+            messages.push({ session: owner, entryId: entry.id, message });
             const event = messageEvent(message);
             if (event) events.push({ session: owner, event });
           }
         }
         for (const { session, event } of events) accept(session, event);
+        // The same entries already read for usage carry a create call and the
+        // URL its result printed, which is what cost attribution links.
+        const scanners = new Map<string, CreatedPullRequestScan>();
+        for (const { session: owner, message } of messages.toSorted((left, right) => left.entryId - right.entryId)) {
+          let scanner = scanners.get(owner.id);
+          if (!scanner) scanners.set(owner.id, scanner = new CreatedPullRequestScan());
+          for (const ref of scanner.add(message)) created.push({ session: owner, ref });
+        }
+        for (const { session, ref } of created) addPullRequest(found, session.id, ref);
+        for (const [owner, report] of reports) found.reportedCost.set(owner, report);
         for (const [owner, spend] of spent) {
           const already = found.recordedSpend.get(owner);
           found.recordedSpend.set(owner, { totalTokens: (already?.totalTokens ?? 0) + spend.totalTokens, cost: (already?.cost ?? 0) + spend.cost });
@@ -394,6 +453,8 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
     readPaths.add(reference);
     replaced.add(session.id);
     found.undatedRecords.delete(session.id);
+    found.pullRequests.delete(session.id);
+    const scanner = new CreatedPullRequestScan();
     try {
       const info = await stat(reference);
       if (!info.isFile() || info.size > MAX_TRANSCRIPT_BYTES) {
@@ -422,7 +483,10 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
         if (typeof record !== "object" || record === null) continue;
         const event = legacyEvent(record as Record<string, unknown>);
         if (event) accept(session, event);
+        const message = (record as Record<string, unknown>)["message"];
+        if (typeof message === "object" && message !== null) scanner.add(message as Record<string, unknown>);
       }
+      for (const ref of scanner.refs) addPullRequest(found, session.id, ref);
       if (malformed) found.unavailable.push({ sessionId: session.id, reason: "Some transcript records could not be read." });
     } catch {
       found.unavailable.push({ sessionId: session.id, reason: "The transcript is unavailable." });
@@ -446,7 +510,10 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
 
 /** Adds a later pass into the scan held in memory, which no other code mutates while this runs. */
 function mergeScan(target: UsageScan, delta: UsageScan, replaced: ReadonlySet<string>): void {
-  for (const id of replaced) target.sessions.delete(id);
+  for (const id of replaced) {
+    target.sessions.delete(id);
+    target.pullRequests.delete(id);
+  }
   for (const [id, incoming] of delta.sessions) {
     const held = target.sessions.get(id);
     const sessionUsage = { session: incoming.session, days: new Map(held?.days) };
@@ -462,13 +529,15 @@ function mergeScan(target: UsageScan, delta: UsageScan, replaced: ReadonlySet<st
       }
       for (const tool of added.tools.values()) {
         const held = bucket.tools.get(tool.name);
-        bucket.tools.set(tool.name, held ? { ...held, calls: held.calls + tool.calls, errors: held.errors + tool.errors } : tool);
+        bucket.tools.set(tool.name, held ? { ...held, calls: held.calls + tool.calls, errors: held.errors + tool.errors, outputChars: held.outputChars + tool.outputChars } : tool);
       }
     }
   }
   target.marks = delta.marks;
   target.claimed = delta.claimed;
   target.recordedSpend = delta.recordedSpend;
+  target.pullRequests = delta.pullRequests;
+  target.reportedCost = delta.reportedCost;
   target.unplacedSpend = delta.unplacedSpend;
   target.registeredSessions = delta.registeredSessions;
   target.undatedRecords = delta.undatedRecords;
@@ -476,7 +545,7 @@ function mergeScan(target: UsageScan, delta: UsageScan, replaced: ReadonlySet<st
   target.readSessions = delta.readSessions;
 }
 
-export function sliceUsage(scan: UsageScan, query: UsageQuery): UsageReport {
+export function sliceUsage(scan: UsageScan, query: UsageQuery, investigations: readonly UsageInvestigationRecord[] = []): UsageReport {
   const now = Date.now();
   const today = dayReader(query.timeZone)(now);
   const inRange = (day: string): boolean => query.kind === "all" || (day >= query.from && day <= query.to);
@@ -500,18 +569,23 @@ export function sliceUsage(scan: UsageScan, query: UsageQuery): UsageReport {
       }
       for (const row of bucket.tools.values()) {
         const previous = tools.get(row.name);
-        tools.set(row.name, { name: row.name, calls: (previous?.calls ?? 0) + row.calls, errors: (previous?.errors ?? 0) + row.errors });
+        tools.set(row.name, { name: row.name, calls: (previous?.calls ?? 0) + row.calls, errors: (previous?.errors ?? 0) + row.errors, outputChars: (previous?.outputChars ?? 0) + row.outputChars });
       }
     }
+    const report = scan.reportedCost.get(session.id);
+    const wholeSession = report && kept.length === days.size ? report : undefined;
+    if (wholeSession) metrics.costUsd = wholeSession.usd;
     sessions.push({
       id: session.id,
       title: session.title,
       ...(session.parentId ? { parentId: session.parentId } : {}),
       lastActivityAt,
       metrics,
+      ...(wholeSession ? { reportedCost: wholeSession } : {}),
       days: kept.map(([date, bucket]): UsageDay => ({ date, metrics: { ...bucket.metrics }, models: modelsOf(bucket.models) })),
       models: modelsOf(models),
       tools: [...tools.values()].toSorted((left, right) => right.calls - left.calls || left.name.localeCompare(right.name)),
+      ...(scan.pullRequests.get(session.id)?.length ? { pullRequests: [...scan.pullRequests.get(session.id)!] } : {}),
     });
   }
 
@@ -523,6 +597,7 @@ export function sliceUsage(scan: UsageScan, query: UsageQuery): UsageReport {
     generatedAt: new Date(now).toISOString(),
     range: { from, to, timeZone: query.timeZone },
     sessions: sessions.toSorted((left, right) => right.lastActivityAt - left.lastActivityAt || left.id.localeCompare(right.id)),
+    investigations: [...investigations],
     unplacedSpend: scan.unplacedSpend,
     coverage: {
       registeredSessions: scan.registeredSessions,
@@ -531,6 +606,13 @@ export function sliceUsage(scan: UsageScan, query: UsageQuery): UsageReport {
       undatedRecords: [...scan.undatedRecords.values()].reduce((sum, value) => sum + value, 0),
     },
   };
+}
+
+/** Every registered session HUI started to explain a cost, newest first. */
+export function investigationsOf(sessions: readonly SessionRecord[]): UsageInvestigationRecord[] {
+  return sessions.flatMap((session) => session.investigation
+    ? [{ id: session.id, title: session.title, target: session.investigation.target, range: session.investigation.range, createdAt: session.createdAt }]
+    : []).toSorted((left, right) => right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id));
 }
 
 function coverageStamp(sessions: readonly SessionRecord[]): string {
@@ -567,7 +649,7 @@ export class UsageReports {
 
   async get(query: UsageQuery, refresh = false): Promise<UsageReport> {
     const sessions = (await this.#registry()).map((session) => ({ ...session }));
-    return sliceUsage(await this.#rescan(query.timeZone, sessions, coverageStamp(sessions), refresh), query);
+    return sliceUsage(await this.#rescan(query.timeZone, sessions, coverageStamp(sessions), refresh), query, investigationsOf(sessions));
   }
 
   async #rescan(timeZone: string, sessions: readonly SessionRecord[], stamp: string, refresh: boolean): Promise<UsageScan> {

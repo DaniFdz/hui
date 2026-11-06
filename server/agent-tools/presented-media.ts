@@ -2,13 +2,14 @@
  * Files an agent shows in the chat through present_media. Each one is copied out of the session workspace into
  * HUI's presented-media store under a random id, so the chat keeps it after the original changes, and is
  * served back as an immutable, range-capable response. The id in the URL is the capability; nothing outside
- * that store is ever served.
+ * that store is ever served. A file that came from inside the session's working directory also reports its
+ * root-relative `path`, so the chat can offer it in that conversation's Files view.
  */
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { basename, extname, isAbsolute, join, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { PRESENTED_MEDIA_DIR } from "../paths.ts";
 import { readSessionRegistry } from "../sessions/sessions.ts";
@@ -47,9 +48,11 @@ export type PresentedMedia = {
   mimeType: string;
   size: number;
   url: string;
+  /** Root-relative path in the session's working directory, when the source was inside it. */
+  path?: string;
 };
 
-type StoredMedia = Omit<PresentedMedia, "url">;
+type StoredMedia = Omit<PresentedMedia, "url" | "path">;
 
 export class PresentedMediaInputError extends Error {}
 
@@ -65,11 +68,20 @@ function displayName(path: string): string {
   return Array.from(name).slice(0, 240).join("");
 }
 
-function publicMedia(stored: StoredMedia): PresentedMedia {
+function publicMedia(stored: StoredMedia, path?: string): PresentedMedia {
   return {
     ...stored,
     url: `/__hui/media/${stored.id}/${encodeURIComponent(stored.name)}`,
+    ...(path ? { path } : {}),
   };
+}
+
+/** `source`'s path relative to `root`, or undefined when it lies outside it or the Files routes would read it as
+ * something else: they trim the path, so a name with surrounding whitespace is not a path they can open. */
+function insideRoot(root: string, source: string): string | undefined {
+  const inside = root ? relative(root, source) : "";
+  if (!inside || isAbsolute(inside) || inside === ".." || inside.startsWith(`..${sep}`) || inside !== inside.trim()) return undefined;
+  return inside.split(sep).join("/");
 }
 
 export async function stagePresentedMedia(
@@ -82,6 +94,7 @@ export async function stagePresentedMedia(
     throw new PresentedMediaInputError(`present_media accepts between 1 and ${MAX_MEDIA_COUNT} paths.`);
   }
   const sources: Array<{ path: string; name: string; size: number; kind: PresentedMediaKind; mimeType: string }> = [];
+  const workspace = await realpath(cwd).catch(() => "");
   let total = 0;
   for (const raw of paths) {
     if (typeof raw !== "string" || !raw.trim()) throw new PresentedMediaInputError("Every media path must be a non-empty string.");
@@ -108,7 +121,7 @@ export async function stagePresentedMedia(
     await copyFile(source.path, join(directory, "content"));
     const stored: StoredMedia = { id, name: source.name, kind: source.kind, mimeType: source.mimeType, size: source.size };
     await writeFile(join(directory, "metadata.json"), `${JSON.stringify(stored)}\n`, { encoding: "utf8", flag: "wx" });
-    result.push(publicMedia(stored));
+    result.push(publicMedia(stored, insideRoot(workspace, source.path)));
   }
   return result;
 }

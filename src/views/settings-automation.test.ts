@@ -100,7 +100,7 @@ test("automation renders recovery details and retains cancellation for a queued 
     automation: { ...READY, runs: [retry, attention] }, sessions: [], automationEditingId: "",
   } as unknown as AutomationProps, (heading, description, body) => html`<section>${heading}${description}${body}</section>`));
   assert.match(page, /Retry scheduled/);
-  assert.match(page, /Attempt 1\/3 · Next retry/);
+  assert.match(page, /Attempt 1 · Next retry/);
   assert.ok(page.includes(formatTimestamp(retry.retryAt)));
   assert.match(page, /Needs attention/);
   assert.match(page, /Check the target session, model and credentials/);

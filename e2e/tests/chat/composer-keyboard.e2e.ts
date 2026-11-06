@@ -27,10 +27,10 @@ test("Enter sends and steers, Shift+Enter breaks a line, Command or Ctrl+Enter q
   await expect(screen.getByPlaceholder(/^↵ adds to this run · (?:⌘|Ctrl\+)↵ queues for later$/u)).toBeVisible();
   await message.fill("Steered with Enter");
   await message.press("Enter");
-  await expect(queue).toHaveText(/^\s*Steered with Enter\s*Steer\s*$/u);
+  await expect(queue).toHaveText(/^\s*Send now\s*Steered with Enter\s*Steer\s*$/u);
   await message.fill("Queued with the modifier");
   await message.press("ControlOrMeta+Enter");
-  await expect(queue).toHaveText(/^\s*Steered with Enter\s*Steer\s*Queued with the modifier\s*Follow up/u);
+  await expect(queue).toHaveText(/^\s*Send now\s*Steered with Enter\s*Steer\s*Queued with the modifier\s*Follow up/u);
   await hui.provider.release();
   await expect(transcript).toHaveText(/Steered with Enter.*Fixture response\..*Queued with the modifier.*Fixture response\./su);
   await expect(transcript.getByText("Fixture response.")).toHaveCount(3);

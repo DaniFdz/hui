@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 import { createAssistantMessageEventStream, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { waitFor } from "../test-support/wait-for.ts";
-import { createSessionModelRuntime, writeProviderSelections } from "./hui-models.ts";
+import { createSessionModelRuntime, keyCommandFails, writeProviderSelections } from "./hui-models.ts";
 
 const runtimes = ["PI providers only", "with a HUI provider selected"] as const;
 
@@ -65,4 +65,20 @@ test.for(runtimes)("a stored credential still wins over the key command, and a f
   assert.equal(reply.stopReason, "error");
   assert.equal(reply.errorMessage, 'API key auth failed for provider keyed: Failed to resolve API key for provider "keyed" from shell command: exit 1');
   assert.deepEqual(failing.keys, []);
+});
+
+test.for(runtimes)("keyCommandFails is true only while the key command fails, and Stop still ends it (%s)", async (kind, t) => {
+  const signal = new AbortController().signal;
+  const failing = await runtimeWithKeyCommand(t, kind, () => "exit 1");
+  assert.equal(await keyCommandFails(failing.runtime, "keyed", signal), true);
+  const working = await runtimeWithKeyCommand(t, kind, () => "echo sk-command");
+  assert.equal(await keyCommandFails(working.runtime, "keyed", signal), false);
+  const stored = await runtimeWithKeyCommand(t, kind, () => "exit 1", "sk-stored");
+  assert.equal(await keyCommandFails(stored.runtime, "keyed", signal), false, "a stored credential never runs the command");
+  const waiting = await runtimeWithKeyCommand(t, kind, waitsForReady);
+  const stop = new AbortController();
+  const checking = keyCommandFails(waiting.runtime, "keyed", stop.signal);
+  await waitFor("the key command to start", () => existsSync(join(waiting.dir, "started")));
+  stop.abort(new Error("Stopped by the operator"));
+  await assert.rejects(checking, /Stopped by the operator/u);
 });

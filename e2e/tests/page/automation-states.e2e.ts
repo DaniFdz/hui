@@ -121,7 +121,7 @@ test(
       screen.getByText("Retry scheduled", { exact: true }).first(),
     ).toBeVisible();
     await expect(
-      screen.getByText(/^Attempt 2\/3 · Next retry /u),
+      screen.getByText(/^Attempt 2 · Next retry /u),
     ).toBeVisible();
     await expect(
       screen.getByText("Needs attention", { exact: true }),

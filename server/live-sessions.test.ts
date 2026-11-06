@@ -62,6 +62,10 @@ class FakeSession implements RuntimeSession {
   thinking = "medium";
   questionResponses: Array<{ id: string; response?: RuntimeQuestionResponse; cancelled?: true }> = [];
   queue: RuntimeQueue = { steering: [], followUp: [] };
+  /** Whether Stop withdraws the queued messages with the run, as Durable does, or keeps them, as PI does. */
+  queueOnAbort: "keep" | "clear" = "keep";
+  /** Durable hands HUI its steers to send again; a runtime without this keeps them for its next run. */
+  takeSteeringQueue?: () => Promise<readonly string[]>;
   questions: RuntimeQuestion[] = [];
   history: TranscriptEntry[] = [{ kind: "message", role: "user", text: "hello" }];
   disposed = false;
@@ -153,6 +157,7 @@ class FakeSession implements RuntimeSession {
 
   async abort(): Promise<void> {
     this.aborts += 1;
+    if (this.queueOnAbort === "clear") this.queue = { steering: [], followUp: [] };
     this.#streaming = false;
   }
 
@@ -1071,6 +1076,39 @@ test("the manager closes the prompt race before a runtime reports streaming", as
     listener({ type: "settled" });
   }
   await manager.prompt("concurrent", "after settlement");
+});
+
+test("a cost an extension reports outside a run reaches open browsers with the transcript they hold", async () => {
+  const listeners = new Set<(event: RuntimeEvent) => void>();
+  let cost: NonNullable<import("./runtimes/types.ts").RuntimeUsage["sessionCost"]> | undefined;
+  const session: RuntimeSession = {
+    sessionId: "pi-reported-cost",
+    sessionFile: "/tmp/pi-reported-cost.jsonl",
+    isStreaming: false,
+    async prompt() {},
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    transcript: () => [],
+    dispose: () => {},
+    currentUsage: () => ({ contextTokens: 2, contextWindow: 100, percent: 2, inputTokens: 1, outputTokens: 1, costUsd: 0, ...(cost ? { sessionCost: cost } : {}) }),
+  };
+  const manager = new LiveSessions({ id: "pi", start: async () => session });
+  manager.ensure(recordFor("reported-cost"));
+  await waitForBoot(manager, "reported-cost");
+  const frames: SessionStreamMessage[] = [];
+  manager.watch("reported-cost", (message) => frames.push(message), { reader: true });
+  assert.equal(manager.snapshot("reported-cost").usage?.sessionCost, undefined, "no report yet");
+
+  cost = { usd: 42.5, source: "Provider bill", asOf: 1792920000000 };
+  for (const listener of listeners) listener({ type: "usage" });
+
+  const snapshot = frames.at(-1);
+  assert(snapshot?.kind === "snapshot");
+  assert.deepEqual(snapshot.snapshot.usage?.sessionCost, cost, "the open browser gets the reported cost");
+  assert.equal(snapshot.transcriptUnchanged, true, "and keeps the transcript it already holds");
+  assert.equal(snapshot.snapshot.transcript.length, 0);
 });
 
 test("a prompt during boot is refused rather than queued", async () => {
@@ -2645,6 +2683,23 @@ test("a consumed queued instruction becomes a visible user turn before settlemen
     true,
     "open browsers receive the promoted user turn without waiting for settled",
   );
+});
+
+test("sending steers now refuses an empty queue and a runtime that keeps its queue, without stopping anything", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  manager.ensure(recordFor("steer-refusals"));
+  await waitForBoot(manager, "steer-refusals");
+  const session = started[0]!;
+  session.queue = { steering: ["How is it going?"], followUp: [] };
+
+  await assert.rejects(manager.steerNow("steer-refusals"), /keeps its steered messages through Stop/u);
+  assert.equal(session.aborts, 0, "a runtime that keeps its queue is not stopped for nothing");
+
+  session.queue = { steering: [], followUp: [] };
+  session.takeSteeringQueue = async () => [...session.queue.steering];
+  await assert.rejects(manager.steerNow("steer-refusals"), /no steered messages/u);
+  assert.equal(session.aborts, 0, "an empty queue has nothing to send");
 });
 
 test("a pending question is claimed before awaiting PI so double-submit cannot answer twice", async () => {

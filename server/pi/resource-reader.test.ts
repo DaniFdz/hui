@@ -55,7 +55,7 @@ test("reads an inventoried skill by opaque id", async () => {
 test("the bundled generator is readable through its stable inventory id", async (t) => {
   const agentDir = await fixture();
   t.onTestFinished(() => rm(agentDir, { recursive: true, force: true }));
-  const skill = (await readPiConfigAt(agentDir)).skills.find((entry) => entry.origin === "hui");
+  const skill = (await readPiConfigAt(agentDir)).skills.find((entry) => entry.origin === "hui" && entry.name === "create-verification-skill");
   assert(skill);
   const document = await readPiResourceDocumentAt(agentDir, "skill", skill.id);
   assert.equal(document.title, "create-verification-skill");

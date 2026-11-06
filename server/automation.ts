@@ -66,6 +66,10 @@ export class AutomationRetryError extends Error {
 }
 
 const RETRY_DELAYS = [30_000, 120_000];
+const WAITING_RETRY_MS = 60_000;
+const MAX_WAIT_MS = 12 * 60 * 60_000;
+const waitLimit = (task: AutomationTask, run: AutomationRun) =>
+  Math.min(Date.parse(run.createdAt) + MAX_WAIT_MS, task.until === undefined ? Infinity : Date.parse(task.until));
 /** Shutdown detaches observers; it must not cancel work the runtime will resume. */
 export const AUTOMATION_SUSPENDED = "HUI automation scheduler suspended";
 
@@ -529,8 +533,7 @@ export class AutomationService {
         const task = file.tasks.find((task) => task.id === run.taskId) ?? (run.delivery ? observationTask(run) : undefined);
         const deadline = run.deadlineAt ?? (task ? iso(Date.parse(run.createdAt) + task.timeoutSeconds * 1000) : now);
         // A saved delivery can only be observed, not sent anew. A retry was explicitly safe before dispatch.
-        if (task && (run.delivery || (run.retryAt && Date.parse(deadline) > nowMs &&
-          (task.until === undefined || Date.parse(task.until) > nowMs)))) {
+        if (task && (run.delivery || (run.retryAt && nowMs < waitLimit(task, run)))) {
           this.#active.set(task.id, { runId: run.id, abort: new AbortController(), executing: false });
           return { ...run, deadlineAt: deadline };
         }
@@ -704,16 +707,19 @@ export class AutomationService {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const nowMs = this.#clock.now();
-      const remaining = Date.parse(run.deadlineAt ?? iso(Date.parse(run.createdAt) + task.timeoutSeconds * 1000)) - nowMs;
+      const deadlineAt = run.delivery
+        ? run.deadlineAt ?? iso(Date.parse(run.createdAt) + task.timeoutSeconds * 1000)
+        : iso(nowMs + task.timeoutSeconds * 1000);
+      const remaining = Date.parse(deadlineAt) - nowMs;
       if (remaining <= 0) {
         timedOut = true;
         // Reacquire an accepted receipt with an aborted signal so the executor cancels only its original input.
-        if (run.delivery) abort.abort();
-        else throw new Error("The run's timeout elapsed before it could finish.");
+        abort.abort();
       }
       if (!run.delivery && task.until !== undefined && Date.parse(task.until) <= nowMs) throw new Error("This temporary task ended before its retry could be delivered.");
+      if (!run.delivery && run.retryAt && nowMs >= waitLimit(task, run)) throw new Error("Its bot or model stayed unreachable for 12 hours, so the routine was never sent.");
       const { retryAt: _retryAt, error: _error, failure: _failure, ...kept } = current;
-      current = { ...kept, status: "running", startedAt: current.startedAt ?? iso(nowMs), attempt: (run.attempt ?? 1) + (run.retryAt ? 1 : 0) };
+      current = { ...kept, status: "running", deadlineAt, startedAt: current.startedAt ?? iso(nowMs), attempt: (run.attempt ?? 1) + (run.retryAt ? 1 : 0) };
       await this.#update((file) => ({ ...file, runs: file.runs.map((item) => item.id === run.id ? current : item) }));
       if (!this.#started || generation !== this.#generation) return;
       if (abort.signal.aborted && !timedOut) throw new DOMException("Run cancelled.", "AbortError");
@@ -737,11 +743,8 @@ export class AutomationService {
       if (!this.#started || generation !== this.#generation) return;
       const cancelled = abort.signal.aborted;
       const kind = timedOut ? "timeout" : automationFailureKind(error);
-      const delay = RETRY_DELAYS[(current.attempt ?? 1) - 1];
-      const retryAt = delay === undefined ? undefined : this.#clock.now() + delay;
-      const deadline = Date.parse(current.deadlineAt ?? iso(Date.parse(current.createdAt) + task.timeoutSeconds * 1000));
-      if (!cancelled && !current.delivery && error instanceof AutomationRetryError && retryAt !== undefined && retryAt < deadline &&
-        (task.until === undefined || retryAt < Date.parse(task.until))) {
+      const retryAt = this.#clock.now() + (RETRY_DELAYS[(current.attempt ?? 1) - 1] ?? WAITING_RETRY_MS);
+      if (!cancelled && !current.delivery && error instanceof AutomationRetryError && retryAt < waitLimit(task, current)) {
         const queued: AutomationRun = {
           ...current, status: "queued", retryAt: iso(retryAt), error: error.message,
           failure: { kind, needsAttention: false },

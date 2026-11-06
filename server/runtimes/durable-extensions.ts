@@ -58,18 +58,24 @@ const SESSION_COST_ENTRY = "hui.session-cost";
 export function reportedSessionCost(rows: readonly EntryRecord[]): RuntimeUsage["sessionCost"] {
   for (let index = rows.length - 1; index >= 0; index -= 1) {
     const entry = rows[index];
-    if (!entry || !ExtensionStateEntry.is(entry) || entry.data.customType !== SESSION_COST_ENTRY) continue;
-    const report = costReport(entry.data.data);
+    const report = entry ? sessionCostOf(entry) : undefined;
     if (report) return report;
   }
   return undefined;
+}
+
+/** The whole-session cost this state entry reports, or undefined for any other entry or an unreadable report. */
+export function sessionCostOf(entry: { readonly kind: string; readonly data?: JsonValue }): RuntimeUsage["sessionCost"] {
+  if (entry.kind !== ExtensionStateEntry.kind || typeof entry.data !== "object" || entry.data === null) return undefined;
+  const { customType, data } = entry.data as { customType?: unknown; data?: JsonValue };
+  return customType === SESSION_COST_ENTRY ? costReport(data) : undefined;
 }
 
 function costReport(value: JsonValue | undefined): RuntimeUsage["sessionCost"] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const { usd, source, asOf } = value as Record<string, JsonValue | undefined>;
   if (typeof usd !== "number" || !Number.isFinite(usd) || usd < 0) return undefined;
-  if (typeof source !== "string" || !source.trim() || typeof asOf !== "number" || !Number.isFinite(asOf)) return undefined;
+  if (typeof source !== "string" || !source.trim() || typeof asOf !== "number" || !Number.isFinite(asOf) || Math.abs(asOf) > 8.64e15) return undefined;
   return { usd, source: source.trim().slice(0, 80), asOf };
 }
 
@@ -756,7 +762,16 @@ export class DurableExtensions {
     }
     if (SystemEntry.is(entry) || ResetEntry.is(entry)) return undefined;
     let id: string | undefined;
-    for (const message of entry.model ?? []) id = manager.appendMessage(message as never);
+    for (const message of entry.model ?? []) id = this.#projectMessage(message as Message);
+    return id;
+  }
+
+  /** PI stamps a projected entry with the moment it appends it; the message keeps the time it was recorded, which an
+   * extension reading `ctx.sessionManager.getEntries()` reports on (pi-coding-agent's `appendMessage`). */
+  #projectMessage(message: Message): string {
+    const id = this.#manager.appendMessage(message as never);
+    const entry = message.timestamp > 0 && message.timestamp <= 8.64e15 ? this.#manager.getEntry(id) : undefined;
+    if (entry) entry.timestamp = new Date(message.timestamp).toISOString();
     return id;
   }
 

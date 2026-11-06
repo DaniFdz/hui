@@ -21,6 +21,12 @@ const REGISTRY_FILE = join(CONFIG_DIR, "sessions.json");
 /** Bumped when the shape changes in a way older code could not read. */
 const REGISTRY_VERSION = 2;
 
+/** What an investigation session explains: one expensive history or one pull request. */
+export type SessionInvestigation = {
+  target: { kind: "session"; id: string } | { kind: "pullRequest"; repository: string; number: number };
+  range: { from: string; to: string; timeZone: string };
+};
+
 export type SessionRecord = {
   id: string;
   title: string;
@@ -83,6 +89,10 @@ export type SessionRecord = {
   /** The objective this conversation pursues, with how far it got. Absent on
    * every session without a goal, so existing registries need no migration. */
   goal?: SessionGoal;
+  /** The Usage report this session explains, and the range it read. Absent on
+   * every ordinary session, so existing registries need no migration; a record
+   * whose target is gone still starts no second report. */
+  investigation?: SessionInvestigation;
   /** The Task progress card HUI's utility model last wrote for this
    * conversation. Optional and additive, so existing registries need no
    * migration; absent means no card yet. */
@@ -251,6 +261,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     : [];
   const goal = storedGoal(raw["goal"]);
   const progress = parseProgressCard(raw["progress"]);
+  const investigation = toInvestigation(raw["investigation"]);
   return {
     id,
     title: str(raw["title"]).trim() || id,
@@ -277,10 +288,34 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(stage ? { stage, stageSource: stageSource ?? "agent" } : {}),
     ...(stagePullRequests.length ? { stagePullRequests } : {}),
     ...(goal ? { goal } : {}),
+    ...(investigation ? { investigation } : {}),
     createdAt: str(raw["createdAt"]),
     updatedAt: str(raw["updatedAt"]),
     ...(source === "hui" ? { source } : {}),
   };
+}
+
+/** Reads an investigation marker, dropping one whose target or range cannot be meant. */
+function toInvestigation(raw: unknown): SessionInvestigation | undefined {
+  if (!isRecord(raw) || !isRecord(raw["target"]) || !isRecord(raw["range"])) return undefined;
+  const from = str(raw["range"]["from"]).trim();
+  const to = str(raw["range"]["to"]).trim();
+  const timeZone = str(raw["range"]["timeZone"]).trim();
+  if (!from || !to || !timeZone) return undefined;
+  const target = raw["target"];
+  const range = { from, to, timeZone };
+  if (target["kind"] === "session") {
+    const id = str(target["id"]).trim();
+    return id ? { target: { kind: "session", id }, range } : undefined;
+  }
+  if (target["kind"] === "pullRequest") {
+    const repository = str(target["repository"]).trim();
+    const number = target["number"];
+    return /^[\w.-]+\/[\w.-]+$/u.test(repository) && typeof number === "number" && Number.isSafeInteger(number) && number >= 1
+      ? { target: { kind: "pullRequest", repository, number }, range }
+      : undefined;
+  }
+  return undefined;
 }
 
 function toGroupConfig(raw: unknown): SessionGroupConfig | undefined {

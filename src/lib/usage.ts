@@ -1,5 +1,6 @@
-/** Combines usage-report rows for the page's session search, rankings and calendar chart. */
-import type { UsageDay, UsageMetrics, UsageModel, UsageReport, UsageSession, UsageTool } from "../api/schema/diagnostics.ts";
+/** Combines usage-report rows for the page's session search, rankings, calendar chart and pull-request card. */
+import type { UsageDay, UsageInvestigationRecord, UsageMetrics, UsageModel, UsageReport, UsageSession, UsageTool } from "../api/schema/diagnostics.ts";
+import type { UsageInvestigationTarget } from "../api/schema/diagnostics.ts";
 
 export type UsageSort = "recent" | "tokens" | "cost";
 const usd = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4 });
@@ -41,7 +42,7 @@ export function usageOverview(report: UsageReport, query: string, sort: UsageSor
     }
     for (const row of session.tools) {
       const previous = tools.get(row.name);
-      tools.set(row.name, { name: row.name, calls: (previous?.calls ?? 0) + row.calls, errors: (previous?.errors ?? 0) + row.errors });
+      tools.set(row.name, { name: row.name, calls: (previous?.calls ?? 0) + row.calls, errors: (previous?.errors ?? 0) + row.errors, outputChars: (previous?.outputChars ?? 0) + row.outputChars });
     }
   }
   const ranked = rankedModels(models);
@@ -176,10 +177,11 @@ export function usageDailyCsv(days: readonly UsageDay[]): string {
 /** One CSV line per session row the page shows, with its models and counters. */
 export function usageSessionCsv(sessions: readonly UsageSession[]): string {
   const cell = (value: string | number | null) => (/[",\n]/u.test(String(value)) ? `"${String(value).replace(/"/gu, '""')}"` : String(value));
-  return [["id", "title", "parentId", "lastActive", "models", ...CSV_COUNTERS].join(",")]
+  return [["id", "title", "parentId", "lastActive", "models", "costSource", ...CSV_COUNTERS].join(",")]
     .concat(sessions.map((session) => [
       session.id, session.title, session.parentId ?? "", new Date(session.lastActivityAt).toISOString(),
       session.models.map(({ provider, model }) => `${provider}/${model}`).join(" "),
+      session.reportedCost?.source ?? "",
       ...CSV_COUNTERS.map((key) => session.metrics[key]),
     ].map(cell).join(",")))
     .join("\n") + "\n";
@@ -201,4 +203,49 @@ export function usageDetail(value: UsageMetrics): string[] {
     ...(types.length ? [types.join(" · ")] : []),
     [records, ...(value.unpricedCalls ? [`${exact(value.unpricedCalls)} unpriced`] : []), ...(value.errors ? [`${exact(value.errors)} ${value.errors === 1 ? "error" : "errors"}`] : [])].join(" · "),
   ];
+}
+
+/** One pull request the reported sessions created, and the sessions that created it. */
+export type UsagePullRequest = {
+  repository: string;
+  number: number;
+  url: string;
+  sessions: UsageSession[];
+  metrics: UsageMetrics;
+};
+
+/**
+ * Groups reported sessions by the pull requests they created, most expensive
+ * first. A session that created more than one pull request counts under each,
+ * so the card says its totals can overlap.
+ */
+export function usagePullRequests(sessions: readonly UsageSession[]): UsagePullRequest[] {
+  const grouped = new Map<string, UsagePullRequest>();
+  for (const session of sessions) {
+    for (const ref of session.pullRequests ?? []) {
+      const key = `${ref.repository}#${ref.number}`.toLowerCase();
+      const held = grouped.get(key);
+      if (held) {
+        held.sessions.push(session);
+        held.metrics = sumUsage([held.metrics, session.metrics]);
+      } else {
+        grouped.set(key, { repository: ref.repository, number: ref.number, url: ref.url, sessions: [session], metrics: { ...session.metrics } });
+      }
+    }
+  }
+  return [...grouped.values()].toSorted((left, right) => (right.metrics.costUsd ?? -1) - (left.metrics.costUsd ?? -1)
+    || right.metrics.totalTokens - left.metrics.totalTokens
+    || left.repository.localeCompare(right.repository)
+    || left.number - right.number);
+}
+
+/** One key per investigation target, so the page matches rows with the report the gateway started. */
+export function usageInvestigationKey(target: UsageInvestigationTarget): string {
+  return target.kind === "session" ? `session:${target.id}` : `pullRequest:${target.repository.toLowerCase()}#${target.number}`;
+}
+
+/** The investigation already started for a session or pull request, by target key. */
+export function usageInvestigations(report: UsageReport): Map<string, UsageInvestigationRecord> {
+  // A report from an older gateway, or one a fixture stubbed, may predate the field.
+  return new Map((report.investigations ?? []).map((investigation) => [usageInvestigationKey(investigation.target), investigation]));
 }

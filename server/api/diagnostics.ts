@@ -1,6 +1,7 @@
 /** Public gateway health, redacted diagnostics, the Usage page's report and browser error report payloads. */
 import { Type, type Static } from "typebox";
-import { SessionStatus } from "./sessions.ts";
+import { SessionPullRequest } from "./github.ts";
+import { SessionStatus, SessionView } from "./sessions.ts";
 
 export const GatewayHealth = Type.Object({
   status: Type.Literal("online"), transport: Type.Literal("HTTP + SSE"), uptimeSeconds: Type.Number(), access: Type.Literal("Full Access"),
@@ -53,19 +54,45 @@ export type UsageModel = Static<typeof UsageModel>;
 export const UsageDay = Type.Object({ date: Type.String(), metrics: UsageMetrics, models: Type.Array(UsageModel) }, { $id: "UsageDay" });
 export type UsageDay = Static<typeof UsageDay>;
 
-export const UsageTool = Type.Object({ name: Type.String(), calls: Type.Number(), errors: Type.Number() }, { $id: "UsageTool" });
+export const UsageTool = Type.Object({
+  name: Type.String(), calls: Type.Number(), errors: Type.Number(),
+  /** Characters of readable text the tool returned, the main driver of context growth. */
+  outputChars: Type.Number(),
+}, { $id: "UsageTool" });
 export type UsageTool = Static<typeof UsageTool>;
 
 export const UsageSession = Type.Object({
   id: Type.String(), title: Type.String(), parentId: Type.Optional(Type.String()), lastActivityAt: Type.Number(),
   metrics: UsageMetrics, days: Type.Array(UsageDay), models: Type.Array(UsageModel), tools: Type.Array(UsageTool),
+  /** The pull requests this history created, as the sidebar's badges report them: a reference, never GitHub state. */
+  pullRequests: Type.Optional(Type.Array(SessionPullRequest)),
+  reportedCost: Type.Optional(Type.Object({ usd: Type.Number(), source: Type.String(), asOf: Type.Number() })),
 }, { $id: "UsageSession" });
 export type UsageSession = Static<typeof UsageSession>;
+
+/** One expensive history or pull request an investigation explains. */
+export const UsageInvestigationTarget = Type.Union([
+  Type.Object({ kind: Type.Literal("session"), id: Type.String() }),
+  Type.Object({ kind: Type.Literal("pullRequest"), repository: Type.String(), number: Type.Number() }),
+], { $id: "UsageInvestigationTarget" });
+export type UsageInvestigationTarget = Static<typeof UsageInvestigationTarget>;
+
+/** The session HUI started to explain a target, and the range it read. */
+export const UsageInvestigationRecord = Type.Object({
+  id: Type.String(), title: Type.String(),
+  target: UsageInvestigationTarget,
+  range: Type.Object({ from: Type.String(), to: Type.String(), timeZone: Type.String() }),
+  createdAt: Type.String(),
+}, { $id: "UsageInvestigationRecord" });
+export type UsageInvestigationRecord = Static<typeof UsageInvestigationRecord>;
 
 export const UsageReport = Type.Object({
   generatedAt: Type.String(),
   range: Type.Object({ from: Type.String(), to: Type.String(), timeZone: Type.String() }),
   sessions: Type.Array(UsageSession),
+  /** Every registered investigation, whatever range it read, so a target that
+   * was already explained says so instead of starting a second report. */
+  investigations: Type.Array(UsageInvestigationRecord),
   coverage: Type.Object({
     registeredSessions: Type.Number(), readSessions: Type.Number(),
     unavailable: Type.Array(Type.Object({ sessionId: Type.String(), reason: Type.String() })), undatedRecords: Type.Number(),
@@ -101,10 +128,25 @@ export type UiErrorReceipt = Static<typeof UiErrorReceipt>;
 export const DiagnosticsError = Type.Object({ error: Type.String() }, { $id: "DiagnosticsError" });
 export type DiagnosticsError = Static<typeof DiagnosticsError>;
 
+/** One expensive session or pull request to hand to a new investigation session. */
+export const UsageInvestigationRequest = Type.Object({
+  target: UsageInvestigationTarget,
+  range: Type.Object({ from: Type.Optional(Type.String()), to: Type.Optional(Type.String()), timeZone: Type.String() }),
+}, { $id: "UsageInvestigationRequest" });
+export type UsageInvestigationRequest = Static<typeof UsageInvestigationRequest>;
+
+export const UsageInvestigation = Type.Object({
+  session: SessionView,
+  /** True when the gateway answered with the report it had already started. */
+  existing: Type.Boolean(),
+}, { $id: "UsageInvestigation" });
+export type UsageInvestigation = Static<typeof UsageInvestigation>;
+
 export const routeSchemas = [
   { method: "GET", path: "/__hui/health", response: GatewayHealth },
   { method: "GET", path: "/__hui/observability", response: ObservabilitySnapshot },
   { method: "GET", path: "/__hui/diagnostics/export", response: ObservabilitySnapshot },
   { method: "GET", path: "/__hui/usage", response: UsageReport },
+  { method: "POST", path: "/__hui/usage/investigate", request: UsageInvestigationRequest, response: UsageInvestigation },
   { method: "POST", path: "/__hui/diagnostics/ui-errors", request: UiErrorBatchRequest, response: UiErrorReceipt },
 ];

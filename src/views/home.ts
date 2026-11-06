@@ -60,6 +60,7 @@ import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { parseSlackLink } from "../lib/markdown/slack-link.ts";
+import { expandedSkillText, splitSkillBlock } from "../lib/skill-block.ts";
 import { activityLabel, attributedMessage, questionnaireSummary, type QuestionnaireSummary, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../lib/chat-projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
@@ -329,6 +330,8 @@ export type HomeProps = {
   onQueueRemove: (id: string) => void;
   onQueueMove: (id: string, toIndex: number) => void;
   onQueueSteer: (id: string) => void;
+  /** Stops the turn the steers wait on and sends all of them as one message. */
+  onQueueSteerNow: () => void;
   /** The settled run's terminal error, unless the operator dismissed it. */
   runError?: RunErrorNotice;
   onContinueAfterError: () => void;
@@ -898,17 +901,24 @@ export function isLongPrompt(text: string): boolean {
 /** A user-role message's text: the operator's own (or a routine's or trigger's) plain, a bot's or a session's (`markdown`)
  * rendered as the agents write it. */
 function renderUserText(props: HomeProps, item: ChatMessage, embeds: boolean, text = item.text, markdown = false) {
-  const slack = embeds ? parseSlackLink(text.trim()) : undefined;
+  // A turn that invoked a skill carries PI's wrapper for the model; the reader gets the skill's name and the words
+  // the turn added around it instead.
+  const invoked = splitSkillBlock(text);
+  const skill = invoked
+    ? html`<span class="chat-skill-invoked" data-testid="chat-skill-invoked" data-hui-tooltip=${invoked.location}><span class="chat-skill-invoked__label">Skill</span> <code>${invoked.name}</code></span>`
+    : nothing;
+  const content = invoked ? expandedSkillText(invoked) : text;
+  const slack = embeds ? parseSlackLink(content.trim()) : undefined;
   if (slack) return html`<div class="chat-text chat-text--plain chat-text--rich-link"><hui-slack-link
     data-url=${slack.url}
     data-workspace=${slack.workspace}
     data-channel-id=${slack.channelId}
     data-kind=${slack.kind}
   ></hui-slack-link></div>`;
-  if (!isLongPrompt(text)) return markdown ? html`<div class="chat-text">${renderAgentMarkdown(text, embeds)}</div>` : html`<div class="chat-text chat-text--plain">${text}</div>`;
+  if (!isLongPrompt(content)) return html`${skill}${markdown ? html`<div class="chat-text">${renderAgentMarkdown(content, embeds)}</div>` : html`<div class="chat-text chat-text--plain">${content}</div>`}`;
   const id = `${props.session?.id ?? "session"}:prompt:${item.id}`;
   const expanded = props.expandedActivityIds.has(id);
-  return html`<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(text, embeds) : text}</div>
+  return html`${skill}<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(content, embeds) : content}</div>
     <button type="button" class="chat-prompt-toggle" aria-expanded=${expanded ? "true" : "false"} @click=${() => props.onActivityExpanded(id, !expanded)}>
       ${expanded ? "Show less" : "Show more"}<span class="chat-prompt-toggle__icon ${expanded ? "is-open" : ""}" aria-hidden="true">${chevronDownIcon}</span>
     </button>`;
@@ -1013,6 +1023,9 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
 
 function renderPresentedMediaItem(item: PresentedMediaItem): TemplateResult {
   const meta = `${item.mimeType} · ${mediaSizeLabel(item.size)}`;
+  const reveal = item.path
+    ? html`<hui-file-ref class="chat-assistant-attachment-card__action chat-presented-media__reveal" data-path=${item.path}>${icons.eye}</hui-file-ref>`
+    : nothing;
   if (item.kind === "image") {
     return html`<figure class="hui-presented-media hui-presented-media--image">
       <a class="chat-message-image-button" href=${item.url} target="_blank" rel="noopener" data-media-viewer data-media-name=${item.name} aria-label=${`Open ${item.name}`}>
@@ -1036,7 +1049,7 @@ function renderPresentedMediaItem(item: PresentedMediaItem): TemplateResult {
         </span>
       </div>
       <span class="chat-assistant-attachment-card__actions">
-        <a class="chat-assistant-attachment-card__action" href=${item.url} download=${item.name} aria-label=${`Download ${item.name}`} title="Download">${icons.download}</a>
+        ${reveal}<a class="chat-assistant-attachment-card__action" href=${item.url} download=${item.name} aria-label=${`Download ${item.name}`} title="Download">${icons.download}</a>
       </span>
     </div>
     ${player}
@@ -2298,6 +2311,9 @@ function mountEditor(element: Element | undefined, value: string) {
 function renderQueue(props: HomeProps) {
   const editable = props.queue.items ?? [];
   const rows = queueRows(props.queue);
+  // Durable withdraws a steered message with the turn it waits on, so they are sent again as one prompt. A runtime
+  // that keeps its queue through Stop already delivers them with its next run.
+  const steersNow = props.session?.tool === "durable" && props.queue.steering.length > 0;
   if (!rows.length) return nothing;
   return html`<section
     class="chat-queue"
@@ -2306,6 +2322,11 @@ function renderQueue(props: HomeProps) {
     aria-atomic="false"
     aria-label="Queued messages"
   >
+    ${steersNow ? html`<div class="chat-queue__send-now">
+      <button class="chat-queue__action chat-queue__steer" type="button"
+        title="Stops this turn and sends every steered message now"
+        ?disabled=${props.sending} @click=${props.onQueueSteerNow}>${icons.zap}<span>Send now</span></button>
+    </div>` : nothing}
     <div class="chat-queue__scroll" data-scrollable=${rows.length > 3 ? "true" : "false"}
       data-at-start="true" data-at-end=${rows.length > 3 ? "false" : "true"}
       @scroll=${(event: Event) => {
