@@ -159,7 +159,10 @@ export const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosti
 }));
 /** The Durable side of bots' chats here, and their remote workers' half: the bot service's, and what a bot import
  * checks a new bot against. */
-const botConversations = durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readHuiSettings()).models.primary || undefined });
+const botConversations = durableBotConversations(durableHost(), botMemory, {
+  primaryModel: async () => (await readHuiSettings()).models.primary || undefined,
+  defaultThinking: async () => (await readHuiSettings()).models.thinking || undefined,
+});
 const botWorkers = remoteBots(workers, {
   cleanupFile: BOT_CLEANUP_FILE,
   report: (action, summary, error) => recordDiagnosticEvent({

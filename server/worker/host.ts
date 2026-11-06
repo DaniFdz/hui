@@ -173,8 +173,9 @@ export class WorkerHost {
     });
     this.#bots = hostBots({
       durable: this.#durable, home: paths.home, botsDir: join(paths.dataDir, "bots"),
-      // A bot without a model of its own starts on Settings' primary model, as on the gateway.
+      // A bot without a model or level of its own starts on Settings' primary model and default reasoning, as on the gateway.
       primaryModel: async () => (await readHuiSettings()).models.primary || undefined,
+      defaultThinking: async () => (await readHuiSettings()).models.thinking || undefined,
       // A bot's chat here lists the other bots as the gateway that owns them says, and a session the bots it may tag.
       section: (botId, conversationId) => this.#botSection(botId, conversationId),
       // The operator's name comes from the Settings the gateway mirrors here, as the gateway reads its own.

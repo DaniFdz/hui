@@ -106,7 +106,7 @@ export const DEFAULT_SETTINGS: Settings = {
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
-  models: { primary: "", fallback: "", utility: "", routes: [] },
+  models: { primary: "", fallback: "", utility: "", thinking: "", routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
@@ -201,8 +201,16 @@ function normalizeModels(value: unknown): Settings["models"] {
     primary: normalizeModelRef(source["primary"]),
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
+    thinking: savedReasoningLevel(source["thinking"]) ?? "",
     routes: normalizeSubagentRoutes(source["routes"]),
   };
+}
+
+/** PI's reasoning levels, which a saved default or a route may pin. Ultra is not one: it is a session's own choice. */
+const SAVED_REASONING_LEVELS = THINKING_LEVELS.filter((level) => level !== "ultra");
+
+function savedReasoningLevel(value: unknown): (typeof SAVED_REASONING_LEVELS)[number] | undefined {
+  return SAVED_REASONING_LEVELS.find((level) => level === value);
 }
 
 function routeNameIsValid(name: string): boolean {
@@ -216,7 +224,7 @@ function normalizeSubagentRoutes(value: unknown): Settings["models"]["routes"] {
     if (!isRecord(item)) continue;
     const name = typeof item["name"] === "string" ? item["name"].trim() : "";
     const model = normalizeModelRef(item["model"]);
-    const thinking = THINKING_LEVELS.filter((level) => level !== "ultra").find((level) => level === item["thinking"]);
+    const thinking = savedReasoningLevel(item["thinking"]);
     if (!routeNameIsValid(name) || !model || routes.has(name)) continue;
     routes.set(name, {
       name,

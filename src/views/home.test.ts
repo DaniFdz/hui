@@ -520,6 +520,9 @@ test("Effort offers the model's own levels up to Maximum, and Speed only where f
   const older = { ...opus, thinkingLevels: ["off", "minimal", "low", "medium", "high"] };
   const clamped = await renderWorkerSession("idle", { currentModel: older, thinking: "max" });
   assert.match(clamped, /<span class="chat-controls__inline-select-label">High<\/span>/u);
+  // Ultra is a mode above the levels, not where a higher saved level fits: the model's highest level is.
+  const durableAged = await renderWorkerSession("idle", { currentModel: { ...older, thinkingLevels: [...older.thinkingLevels, "ultra"] }, thinking: "xhigh" });
+  assert.match(durableAged, /<span class="chat-controls__inline-select-label">High<\/span>/u);
   assert.doesNotMatch(clamped, /chat-controls__speed-panel/u);
   assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: { ...opus, fast: undefined }, thinking: "high", fast: false }), /chat-controls__speed-panel/u);
 });

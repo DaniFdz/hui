@@ -2060,11 +2060,14 @@ function thinkingRank(level: string): number {
   return THINKING_LEVELS.indexOf(level as ThinkingLevel);
 }
 
-/** The level the model is sent, as PI clamps it: the next one up it has, else its highest. */
+/** The level the picker shows for `level`: the model's own, else the nearest PI level it has. Ultra is a mode chosen on
+ * its own, never what a higher saved level fits to. */
 function shownThinking(level: string, levels: readonly ThinkingLevel[]): ThinkingLevel {
-  return levels.includes(level as ThinkingLevel)
+  if (level === "ultra" && levels.includes("ultra")) return "ultra";
+  const sent: readonly ThinkingLevel[] = levels.filter((candidate) => candidate !== "ultra");
+  return sent.includes(level as ThinkingLevel)
     ? level as ThinkingLevel
-    : levels.find((candidate) => thinkingRank(candidate) >= thinkingRank(level)) ?? levels.at(-1) ?? "medium";
+    : sent.find((candidate) => thinkingRank(candidate) >= thinkingRank(level)) ?? sent.at(-1) ?? "medium";
 }
 
 /** Composer pickers share one popover lane, so a trigger closes its sibling first. */

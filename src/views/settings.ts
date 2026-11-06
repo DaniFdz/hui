@@ -8,6 +8,7 @@ import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib
 import { ACCENTS, TEXT_SCALE_STOPS, TYPEFACES } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
+import { PI_THINKING_LEVELS, THINKING_LABELS } from "../lib/thinking.ts";
 import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
 import type { PowerState, PowerStatus } from "../api/schema/power.ts";
 import type { ThemePreview } from "../lib/theme/theme-store.ts";
@@ -673,9 +674,12 @@ function renderModelsPage(props: SettingsProps) {
     renderSettingsPicker(label, props.settings.models[key], modelOptions, (value) => {
       props.onChangeModels({ ...props.settings.models, [key]: value });
     });
+  const reasoningPicker = renderSettingsPicker("Default reasoning", props.settings.models.thinking,
+    [{ value: "", label: "Use PI default" }, ...PI_THINKING_LEVELS.map((level) => ({ value: level, label: THINKING_LABELS[level] }))],
+    (value) => props.onChangeModels({ ...props.settings.models, thinking: PI_THINKING_LEVELS.find((level) => level === value) ?? "" }));
   return html`
     <p class="settings-page__intro">
-      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls.
+      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
     </p>
     <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
     ${renderSection(
@@ -696,6 +700,11 @@ function renderModelsPage(props: SettingsProps) {
           "Utility model",
           `The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries.`,
           routePicker("Utility model", "utility"),
+        )}
+        ${renderRow(
+          "Default reasoning",
+          "The effort new sessions and new bots start with. A model that supports fewer levels uses the closest one it has. PI's own default applies while this is unset.",
+          reasoningPicker,
         )}
       `,
     )}
