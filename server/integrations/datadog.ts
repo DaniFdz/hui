@@ -23,6 +23,32 @@ const DATADOG_CONFIG_FILE = join(CONFIG_DIR, "datadog.json");
 /** HUI's own pup sessions. pup's platform directory differs per OS (`~/Library/Application Support` on macOS), so HUI
  * names one it can read and copy on any machine (`worker/integration-logins.ts`). */
 export const PUP_CONFIG_DIR = join(CONFIG_DIR, "pup");
+
+/** pup's own file naming: a site's sessions live in `tokens_<site>.json`, every non-alphanumeric character as `_`. */
+export const pupSiteFile = (site: string): string => pupSite(site).replace(/[^A-Za-z0-9]/gu, "_");
+
+/** The key of an org inside its site's file: pup's `__default__` for the default session. */
+export const pupOrgKey = (org: DatadogOrg): string => org.name || "__default__";
+
+/** The orgs pup would list from `dir`, by site file: its registry names the org and its site file holds a token for
+ * it. Empty when pup keeps its sessions in a keychain, or its registry is missing. */
+export async function storedPupOrgs(dir = PUP_CONFIG_DIR): Promise<Map<string, Set<string>>> {
+  const files = new Map<string, Promise<unknown>>();
+  const read = (name: string) => files.get(name) ?? files.set(name, readFile(join(dir, name), "utf8").then((text) => JSON.parse(text) as unknown, () => undefined)).get(name)!;
+  const registry = await read("sessions.json");
+  const stored = new Map<string, Set<string>>();
+  for (const entry of Array.isArray(registry) ? registry : []) {
+    const source = entry && typeof entry === "object" ? entry as Record<string, unknown> : undefined;
+    if (typeof source?.["site"] !== "string" || !source["site"]) continue;
+    const site = pupSiteFile(source["site"]);
+    const org = typeof source["org"] === "string" ? source["org"] : "";
+    const tokens = await read(`tokens_${site}.json`);
+    if (!tokens || typeof tokens !== "object" || Array.isArray(tokens) || !Object.hasOwn(tokens, org || "__default__")) continue;
+    stored.set(site, (stored.get(site) ?? new Set()).add(org || "__default__"));
+  }
+  return stored;
+}
+
 const CONFIG_VERSION = 1;
 /** pup gives up on the browser callback after 300 s; HUI stops waiting a little later. */
 const LOGIN_TIMEOUT_MS = 6 * 60_000;
