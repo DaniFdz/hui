@@ -1594,6 +1594,31 @@ while leaving them out of every environment a process it starts inherits. Values
 mirrored unchanged; an invalid models.json is not mirrored. The worker needs
 Node.js 24 or newer.
 
+The gateway mirrors its own integration logins too, mode 0600, under
+`hui/integrations/`, and points every shell the host starts at them:
+`GH_CONFIG_DIR` at `hui/integrations/gh` (`hosts.yml` holding every account of
+gh's login store, each token from `gh auth token --user`, the active one
+current; a `GH_TOKEN` in the gateway's environment names no account and is not
+shared) and `PUP_CONFIG_DIR` at
+`hui/integrations/pup` with `DD_TOKEN_STORAGE=file` (each site's token file with
+only the entries of the orgs in `~/.config/hui/datadog.json`, that site's client
+file and a registry naming them, so exactly the orgs Settings lists are
+`connected` there; a session HUI does not list is not shared). Jira's token has no file of its own: a sync
+sets `ATLASSIAN_API_TOKEN`, `ATLASSIAN_ACCOUNT` and `ATLASSIAN_SITE` from
+`~/.config/hui/jira.json` in the host's environment, where an agent's Atlassian
+helper reads them on a machine with no keychain. So `gh`, `pup` and that helper
+work on the worker with the gateway's accounts and orgs, with or without a
+gateway attached. The host drops the variables its CLIs take instead of their own
+store (`GH_TOKEN`, `GITHUB_TOKEN`, `DD_ACCESS_TOKEN`, `DD_API_KEY`, `DD_APP_KEY`,
+`DD_ORG`), so a profile on the remote cannot stand in for them.
+
+Each sync sends the login files again even when the gateway's copy is unchanged,
+so a CLI on the worker that rewrote one (`gh auth switch`, a pup refresh) gets
+the gateway's back. Jira's variables reach a PI session when it next starts and a
+Durable session's next shell at once, and they return with the next sync after a
+host restart. An integration the gateway is not signed in to writes nothing and
+says so in the view's `sync.skipped`.
+
 ### `GET /__hui/workers`
 
 `{ "workers": WorkerView[] }`: `{ id, name, command, extraPaths, state:
@@ -5564,7 +5589,8 @@ type DatadogPreviewResult = {
   `data:` URLs.
 - **pup** runs as `pup … -o json --no-agent --read-only [--org=<name>]` with
   `DD_SITE` set to the org's pup site (`app.<x>` becomes `<x>`; other hosts such
-  as `us3.datadoghq.com` or `dd.datad0g.com` stay), without `DD_API_KEY`,
+  as `us3.datadoghq.com` or `dd.datad0g.com` stay) and `DD_TOKEN_STORAGE=file`,
+  without `DD_API_KEY`,
   `DD_APP_KEY`, `DD_ACCESS_TOKEN`, `DD_ORG`, `DD_OUTPUT`, `PUP_OUTPUT`, `PUP_FILTER`
   or `PUP_AGENT_MODE`, stdin closed, 15 s and 16 MB per call, at most four at once.
   Its output never reaches the browser; failures map to the coarse `error`.
@@ -5598,7 +5624,9 @@ Settings → Integrations → Datadog lists the orgs HUI reads dashboard links
 through. An org is a pup session name (empty: pup's default session for that
 site) and the Datadog host its links use. HUI keeps the list in
 `~/.config/hui/datadog.json` (`{ version: 1, orgs: [{ name, site }] }`, mode
-0600, atomic rename) and owns no Datadog credential: pup keeps its tokens. A file
+0600, atomic rename) and owns no Datadog credential: pup keeps its tokens, as
+files under its config directory (`DD_TOKEN_STORAGE=file`, so a
+[pup session a worker can be given](#remote-workers) exists at all). A file
 HUI cannot read, or with another `version`, fails these routes with 500 (previews
 then find no org) and is never overwritten. `HUI_PUP_CLI` overrides the
 executable for E2E, and `HUI_DATADOG_TEST_ORIGIN` admits one exact extra origin

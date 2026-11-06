@@ -7,9 +7,10 @@
  * starts the durable host (worker/host.ts), mirrors the user's PI resources and
  * then multiplexes every remote session over that one connection; the host
  * runs the session's own runtime adapter and `runtimes/remote.ts` drives it. The gateway
- * answers the host's credential and agent tool requests; nothing secret is
- * written on the remote, except the answer to a session's own
- * `secret_request`, which the host keeps in a private file for ten minutes.
+ * answers the host's credential and agent tool requests, so no PI credential is
+ * written on the remote. What the mirror does carry is the operator's own
+ * integration logins (`worker/integration-logins.ts`) and the answer to a
+ * session's `secret_request`, which the host keeps in a private file for ten minutes.
  *
  *   ~/.config/hui/workers.json
  */
@@ -32,6 +33,7 @@ import { readHuiSettings } from "./hui-settings.ts";
 import { BootstrapError, connectScript, markers, nodeInstallScript, probeScript, releaseInstallScript, runScript } from "./worker/bootstrap.ts";
 import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/release.ts";
 import { brokeredModels, buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
+import { gatherIntegrationLogins } from "./worker/integration-logins.ts";
 import type { Settings } from "./hui-settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/protocol.ts";
 import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from "./runtimes/types.ts";
@@ -373,7 +375,10 @@ class WorkerConnection {
     const agentDir = resolvePiAgentDir();
     const plan = await buildSyncPlan({ agentDir, home: homedir(), remoteMirror: this.host.mirrorDir, extraPaths: this.worker.extraPaths, providerFiles });
     plan.files.push(contentFile("hui/settings.json", Buffer.from(`${JSON.stringify(await this.#remoteSettings(plan.pluginIds), null, 2)}\n`)));
-    const entries = plan.files.map(({ path, hash, mode, size }) => ({ path, hash, mode, size }));
+    const integrations = await gatherIntegrationLogins({ gh: process.env["HUI_GITHUB_CLI"] || "gh" });
+    plan.files.push(...integrations.files);
+    plan.skipped.push(...integrations.skipped);
+    const entries = plan.files.map(({ path, hash, mode, size, mutable }) => ({ path, hash, mode, size, mutable }));
     const { need } = await this.#peer.request<{ need: string[] }>("sync-plan", { entries }, 120_000);
     const wanted = new Set(need);
     let batch: { path: string; mode: number; data: string }[] = [];
@@ -393,8 +398,9 @@ class WorkerConnection {
       bytes += data.byteLength;
     }
     await flush();
-    // The header values the mirrored models.json names, for host memory only.
-    const result = await this.#peer.request<SyncResult>("sync-commit", { entries, packageRoots: plan.packageRoots, env: plan.env }, 1_800_000);
+    // The header values the mirrored models.json names, for host memory only, and the integration tokens whose CLI
+    // cannot keep them in a file the sync carries.
+    const result = await this.#peer.request<SyncResult>("sync-commit", { entries, packageRoots: plan.packageRoots, env: { ...plan.env, ...integrations.env } }, 1_800_000);
     this.#sync = {
       at: new Date().toISOString(), files: result.files, uploaded: wanted.size, deleted: result.deleted,
       installed: result.installed, skipped: plan.skipped, errors: result.errors, pluginIds: plan.pluginIds,

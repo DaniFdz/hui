@@ -206,7 +206,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the section waits with *Open sign-in page* and *Cancel*, then turns the org
   Connected. *Remove* forgets the org in HUI; pup keeps its session. Without
   `pup` on the gateway's PATH the section shows "Datadog CLI not found" with an
-  install link. Tokens stay in pup.
+  install link. Tokens stay in pup, in its own files rather than a system
+  keychain, so the orgs can be given to a worker.
 - Contributions (first sidebar destination) has two tabs, *GitHub* (default)
   and *Calendar*; the browser remembers the choice, and GitHub is read only
   once its tab is shown. The GitHub tab charts the GitHub activity of every
@@ -2196,6 +2197,15 @@ leaves worker records unchanged.
   then a model that needs one fails with PI's message naming that variable.
   Without a gateway or a cached answer only the remote's own login applies.
   An invalid models.json is not mirrored at all.
+- **Your integration logins.** Each sync also carries the logins of the
+  integrations the operator is signed in to: a `gh` hosts file holding every
+  account (each token from `gh auth token`, the active one current), pup's own
+  session files from the gateway's config directory, and Jira's token, account
+  and site with the rest of the sync's environment. The host points every shell
+  it starts at them (`GH_CONFIG_DIR`, `PUP_CONFIG_DIR` with file storage), so
+  `gh`, `pup` and an agent's Atlassian helper use the gateway's accounts and
+  orgs on the worker, with or without a gateway attached. Only what the gateway
+  is signed in to is shared; the rest is reported in the worker's sync list.
 - **Sessions.** New Session's **Run on** picker lists workers. A remote
   directory must be absolute or start with `~/` and is checked when the session
   starts; creating one never waits on a connection. The header shows the worker.

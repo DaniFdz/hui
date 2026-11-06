@@ -19,6 +19,7 @@ import {
   normalizeOrg,
   parseLoginUrl,
   parsePupSessions,
+  PUP_CONFIG_DIR,
   pupRunner,
   sessionStatus,
 } from "./datadog.ts";
@@ -43,7 +44,7 @@ async function fakePup(sessions: unknown[] = [], options: { loginTimeoutMs?: num
     onChange: () => { changes.count += 1; },
     ...(options.loginTimeoutMs ? { loginTimeoutMs: options.loginTimeoutMs } : {}),
   });
-  const calls = async () => (await readFile(join(dir, "calls"), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { args: string[]; site: string | null; leaked: string[] });
+  const calls = async () => (await readFile(join(dir, "calls"), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { args: string[]; site: string | null; leaked: string[]; storage: string | null; configDir: string | null });
   return { dir, env, orgs, changes, calls };
 }
 
@@ -114,7 +115,7 @@ test("runs pup for exactly the chosen session, read-only, without inherited iden
   await assert.rejects(run(["dashboards", "get", "abc-123-xyz"], PROD), (error: unknown) => (error as { reason?: string }).reason === "not_found");
   await assert.rejects(run(["dashboards", "get", "abc-123-xyz"], { name: "nobody", site: "app.datadoghq.com" }), (error: unknown) => (error as { reason?: string }).reason === "signed_out");
   const [first] = await calls();
-  assert.deepEqual(first, { args: ["dashboards", "get", "abc-123-xyz", "-o", "json", "--no-agent", "--read-only", "--org=prod"], site: "datadoghq.com", leaked: [] });
+  assert.deepEqual(first, { args: ["dashboards", "get", "abc-123-xyz", "-o", "json", "--no-agent", "--read-only", "--org=prod"], site: "datadoghq.com", leaked: [], storage: "file", configDir: PUP_CONFIG_DIR });
   await assert.rejects(pupRunner("/nonexistent/pup", env)(["auth", "list"]), (error: unknown) => (error as { reason?: string }).reason === "cli_missing");
 });
 

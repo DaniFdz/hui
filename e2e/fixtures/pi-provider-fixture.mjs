@@ -754,6 +754,14 @@ const server = createServer(async (request, response) => {
     event(response, { type: "content_block_stop", index: 0 });
     return finish(response, "tool_use");
   }
+  if (source.includes("E2E_PRINT_INTEGRATIONS")) {
+    // The gateway's integration logins a shell on the worker reads, as HUI's mirror points it at them.
+    const input = { command: "printf 'GH=%s\\nPUP=%s\\nSTORAGE=%s\\nATLASSIAN=%s\\n' \"$GH_CONFIG_DIR\" \"$PUP_CONFIG_DIR\" \"$DD_TOKEN_STORAGE\" \"$ATLASSIAN_API_TOKEN\" ; echo integrations-done", timeout: 120 };
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-e2e-integrations", name: "bash", input: {} } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } });
+    event(response, { type: "content_block_stop", index: 0 });
+    return finish(response, "tool_use");
+  }
   if (source.includes("E2E_COMMAND")) {
     const command = source.includes("E2E_COMMAND_RUNNING")
       ? `curl --silent --show-error --noproxy '*' --fail http://127.0.0.1:${port}/control/wait-command`
