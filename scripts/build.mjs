@@ -18,6 +18,7 @@ for (const [script, args] of [
 ]) execFileSync(process.execPath, [`${root}node_modules/${script}`, ...args], { cwd: root, stdio: "inherit" });
 await cp(new URL("../themes/", import.meta.url), new URL("../build/themes/", import.meta.url), { recursive: true });
 await cp(new URL("../skills/", import.meta.url), new URL("../build/skills/", import.meta.url), { recursive: true });
+await cp(new URL("../staff/", import.meta.url), new URL("../build/staff/", import.meta.url), { recursive: true });
 // npm pack never ships the root package-lock.json, so the verified graph ships
 // in build/, which the remote worker release installs as its lockfile.
 // Installing the archive itself ignores it: npm resolves package.json alone,

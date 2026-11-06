@@ -9,6 +9,16 @@ import { fileURLToPath } from "node:url";
 export const bundledSkillRoot = fileURLToPath(new URL("../../skills/", import.meta.url));
 
 export const bundledSkills = [{
+  name: "automate-me",
+  path: fileURLToPath(new URL("../../skills/automate-me/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:automate-me",
+  tags: ["bots"],
+}, {
+  name: "create-formal-verification-skill",
+  path: fileURLToPath(new URL("../../skills/create-formal-verification-skill/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:create-formal-verification-skill",
+  tags: ["good practices"],
+}, {
   name: "create-verification-skill",
   path: fileURLToPath(new URL("../../skills/create-verification-skill/SKILL.md", import.meta.url)),
   // Existing disabledSkills.path accepts opaque strings. Keep the preference
@@ -19,6 +29,16 @@ export const bundledSkills = [{
   name: "git-selective-staging",
   path: fileURLToPath(new URL("../../skills/git-selective-staging/SKILL.md", import.meta.url)),
   preferencePath: "hui:skill:git-selective-staging",
+  tags: ["good practices"],
+}, {
+  name: "maintain-formal-verification-skill",
+  path: fileURLToPath(new URL("../../skills/maintain-formal-verification-skill/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:maintain-formal-verification-skill",
+  tags: ["good practices"],
+}, {
+  name: "maintain-verification-skill",
+  path: fileURLToPath(new URL("../../skills/maintain-verification-skill/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:maintain-verification-skill",
   tags: ["good practices"],
 }, {
   name: "visualize",
