@@ -4,8 +4,6 @@ import { test } from "vitest";
 import type { HostMetrics } from "../api/schema/host.ts";
 import type { SessionView } from "../api/schema/sessions.ts";
 import type { WorkerMetrics } from "../api/workers.ts";
-import { HUI_PAGES, availablePages, isPageAvailable } from "../lib/pages.ts";
-import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 import { renderDashboard, type DashboardChartProps, type DashboardProps } from "./dashboard.ts";
 
 /** A template's text with every nested template and value in place; handlers and directives drop out. */
@@ -74,14 +72,6 @@ function part(markup: string, id: string): string {
   const next = markup.indexOf("data-testid=", start + 1);
   return markup.slice(start, next < 0 ? undefined : next);
 }
-
-test("Dashboard is a page only while Labs → Dashboard is on", () => {
-  const dashboard = HUI_PAGES.find((entry) => entry.id === "dashboard")!;
-  assert.equal(isPageAvailable(dashboard, DEFAULT_SETTINGS.labs), false);
-  assert.equal(availablePages(DEFAULT_SETTINGS.labs).some((entry) => entry.id === "dashboard"), false);
-  assert.equal(isPageAvailable(dashboard, { ...DEFAULT_SETTINGS.labs, dashboard: true }), true);
-  assert.equal(availablePages(DEFAULT_SETTINGS.labs).length, HUI_PAGES.length - 1, "every other page stays");
-});
 
 test("the sessions summary counts every status that is present and the pipeline counts every stage", () => {
   const markup = page({

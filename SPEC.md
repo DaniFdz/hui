@@ -2541,6 +2541,8 @@ the soul holds preferences.
 
 ### Dashboard page behind Labs → Dashboard, to iterate on it (2026-10-23)
 
+Superseded by [The Dashboard is on for everyone](#the-dashboard-is-on-for-everyone-2026-11-06).
+
 The owner wants one page that shows what every session is doing and how the
 gateway's machine is holding up, to spot bottlenecks, and to iterate on it
 before it is a default. So it sits behind `settings.labs.dashboard`, a
@@ -4180,3 +4182,19 @@ web page: the iOS app has no screen for them. Its outcomes are therefore web use
 cases, and PAGE-044 and PAGE-045 are excluded on iOS rather than left on its
 backlog, as the Usage page is. When the iPhone app gets a Dashboard of its own,
 that screen is its own use case with its own shared test.
+
+### The Dashboard is on for everyone (2026-11-06)
+
+The owner asked for the Dashboard out of Labs once the page had settled, so it
+is one of HUI's pages everywhere.
+
+- **No switch turns it on.** *Dashboard* sits at the top of the sidebar and in
+  the command palette on every install, and `/dashboard` opens it. The
+  *Dashboard* switch is gone from the Labs page.
+- **An older settings file is read, not rewritten.** `settings.labs.dashboard`
+  is no longer a setting: a file that still holds it loads without it, and the
+  next save leaves it out, as with any key HUI does not know. The stale value
+  can no longer hide the page.
+
+This supersedes the *behind Labs* part of [Dashboard page behind Labs →
+Dashboard, to iterate on it](#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23).
