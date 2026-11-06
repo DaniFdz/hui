@@ -12,6 +12,7 @@ import {
   BRIDGE_CALL_TIMEOUT_MS, BRIDGE_CHANNEL, BRIDGE_MAX_IN_FLIGHT, BRIDGE_MAX_RESPONSE_BYTES, jsonBytes, parseBridgeCall,
 } from "../lib/extensions/bridge.ts";
 import { HuiElement } from "../lit/hui-element.ts";
+import { renderPicker } from "../views/settings-picker.ts";
 
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT = 2000;
@@ -171,11 +172,17 @@ export class HuiExtensionPanel extends HuiElement {
       <header class="extension-panel__bar">
         <span class="extension-panel__title" data-testid="extension-title">${this.#title || extension?.panel?.title || "Extension panel"}</span>
         ${this.#extensions.length > 1
-          ? html`<label class="extension-panel__pick">Panel
-              <select @change=${(event: Event) => { this.#selected = (event.currentTarget as HTMLSelectElement).value; this.#title = ""; this.requestUpdate(); }}>
-                ${this.#extensions.map((candidate) => html`<option value=${candidate.id} ?selected=${candidate.id === this.#selected}>${candidate.panel?.title ?? candidate.id}</option>`)}
-              </select>
-            </label>`
+          ? html`<div class="extension-panel__pick">
+              <span class="extension-panel__pick-label">Panel</span>
+              <div class="extension-panel__picker">
+                ${renderPicker({
+                  label: "Panel",
+                  value: this.#selected,
+                  options: this.#extensions.map((candidate) => ({ value: candidate.id, label: candidate.panel?.title ?? candidate.id })),
+                  onChange: (value) => { this.#selected = value; this.#title = ""; this.requestUpdate(); },
+                })}
+              </div>
+            </div>`
           : nothing}
       </header>
       ${this.#loading
