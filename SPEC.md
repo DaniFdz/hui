@@ -4164,8 +4164,9 @@ The owner asked for the Dashboard out of Labs once the page had settled, so it
 is one of HUI's pages everywhere.
 
 - **No switch turns it on.** *Dashboard* sits at the top of the sidebar and in
-  the command palette on every install, and `/dashboard` opens it. The
-  *Dashboard* switch is gone from the Labs page.
+  the command palette on every install, so the primary navigation reads
+  Dashboard, Contributions, Kanban, Sessions and Usage, and `/dashboard` opens
+  it. The *Dashboard* switch is gone from the Labs page.
 - **An older settings file is read, not rewritten.** `settings.labs.dashboard`
   is no longer a setting: a file that still holds it loads without it, and the
   next save leaves it out, as with any key HUI does not know. The stale value
