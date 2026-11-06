@@ -207,7 +207,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   Connected. *Remove* forgets the org in HUI; pup keeps its session. Without
   `pup` on the gateway's PATH the section shows "Datadog CLI not found" with an
   install link. Tokens stay in pup, in its own files rather than a system
-  keychain, so the orgs can be given to a worker.
+  keychain, so the orgs can be given to a worker; a session signed in before
+  that reads *Sign in needed*, and `hui doctor` lists each org with no session
+  in HUI's own directory (report only, since the sign-in runs in a browser).
 - Contributions (first sidebar destination) has two tabs, *GitHub* (default)
   and *Calendar*; the browser remembers the choice, and GitHub is read only
   once its tab is shown. The GitHub tab charts the GitHub activity of every
