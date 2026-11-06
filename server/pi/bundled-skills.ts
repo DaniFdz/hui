@@ -9,6 +9,11 @@ import { fileURLToPath } from "node:url";
 export const bundledSkillRoot = fileURLToPath(new URL("../../skills/", import.meta.url));
 
 export const bundledSkills = [{
+  name: "build-hui-extension",
+  path: fileURLToPath(new URL("../../skills/build-hui-extension/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:build-hui-extension",
+  tags: ["good practices"],
+}, {
   name: "cost-investigation",
   path: fileURLToPath(new URL("../../skills/cost-investigation/SKILL.md", import.meta.url)),
   preferencePath: "hui:skill:cost-investigation",

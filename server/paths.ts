@@ -7,6 +7,11 @@ import { join } from "node:path";
 export const CONFIG_DIR = process.env["HUI_CONFIG_DIR"]
   || (process.env["XDG_CONFIG_HOME"] ? join(process.env["XDG_CONFIG_HOME"], "hui") : join(homedir(), ".config", "hui"));
 
+/** Trusted local modules that add JSON routes to the gateway (docs/api.md, "Extension routes"). HUI owns this
+ * directory and the enable list beside it; nothing writes there but the operator and the toggle route. */
+export const EXTENSIONS_DIR = join(CONFIG_DIR, "extensions");
+export const EXTENSIONS_FILE = join(CONFIG_DIR, "extensions.json");
+
 export const USER_THEME_DIR = join(CONFIG_DIR, "themes");
 
 /** Custom marks for tool rows (`chat.toolIcons` maps a CLI or tool to one of

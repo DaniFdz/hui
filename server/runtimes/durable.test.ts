@@ -35,6 +35,7 @@ const { durableConversationId, durableReference, expandSkill, startDurable } = a
 const { importPiSession } = await import("./pi-import.ts");
 const { searchTranscripts } = await import("./transcript-search.ts");
 const { aggregateUsage } = await import("../observability.ts");
+const { createExtensionsService } = await import("../extensions/service.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
 const settings = normalizeSettings(undefined);
@@ -1249,6 +1250,45 @@ test("an extension sees when a projected entry was recorded, not when the gatewa
   const projections = (await readFile(seen, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as number[]);
   assert.deepEqual(projections.at(-1), stored, "each entry keeps the time its message was recorded");
   reopened.dispose();
+});
+
+test("a gateway extension's prompt text and tool reach a Durable session", { timeout: 45_000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "hui-gateway-extension-"));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const directory = join(root, "extensions", "hello");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "extension.json"), JSON.stringify({
+    apiVersion: 1, name: "Hello", description: "Fixture.", main: "index.mjs",
+    prompt: [{ id: "greeting", title: "Greeting", text: "GATEWAY_PROMPT_MARKER: greet by name." }],
+    tools: [{
+      name: "greet", description: "Greets a person.",
+      parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+      promptSnippet: "Greets a person", promptGuidelines: ["Use greet for greetings."],
+    }],
+  }));
+  await writeFile(join(directory, "index.mjs"), `
+export const routes = [{ method: "GET", path: "ping", handle: async () => ({ body: { ok: true } }) }];
+export const tools = { greet: async ({ name }) => "hello, " + name };
+`);
+  const service = createExtensionsService({ dir: join(root, "extensions"), file: join(root, "extensions.json") });
+  await service.setEnabled("hello", true);
+
+  assert.deepEqual(service.agentTools().map((entry) => entry.name), ["ext_hello_greet"]);
+  const f = await fixture(t);
+  const host = f.host();
+  host.configureGatewayExtensions(service);
+  assert.ok(host.gatewayExtension()?.tools?.length, "the host builds the gateway extension");
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "gateway-extension" }, host);
+  await session.applyTools();
+  const inspection = await session.inspect();
+  const tools: string[] = [];
+  session.subscribe((event) => { if (event.type === "tool_end") tools.push(event.name); });
+  await settledAfter(session, "E2E_GATEWAY_TOOL please");
+  assert.deepEqual(tools, ["ext_hello_greet"], `the model calls the namespaced tool (${JSON.stringify(inspection.tools.map((tool) => tool.name))})`);
+  assert.match(JSON.stringify(session.transcript()), /hello, Ada/u, "the extension's handler answered");
+  const request = JSON.stringify((await providerRequests(f.log))[0]);
+  assert.match(request, /GATEWAY_PROMPT_MARKER/u, "its prompt section reaches the model");
+  assert.match(request, /ext_hello_greet: Greets a person/u, "its snippet is in the active-tool list");
 });
 
 test("Durable sessions load PI extensions: their tools, hooks and prompt additions reach the model", { timeout: 45_000 }, async (t) => {

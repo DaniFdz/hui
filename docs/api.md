@@ -4264,6 +4264,94 @@ Missing or invalid fields use their defaults rather than the previous values.
 The gateway applies the settings to its running services. Neither route changes
 PI's configuration.
 
+### `GET /__hui/ext`
+
+Returns `ExtensionsResponse`: every directory under `$XDG_CONFIG_HOME/hui/extensions`
+plus every id the enable store lists, sorted by id. Each `ExtensionStatus` carries
+the extension's `id`, `name`, `description`, `enabled`, its `routes` metadata, `panel`
+(`title` and `entry`) when it ships a sandboxed panel, its declared `prompt` sections
+and agent `tools` (with each tool's declared and `ext_<id>_<name>` runtime name) when
+it declares them, its `version` and `engines`, its `mode` (`in-process` or `process`) and
+`restarts` count, and a `state` of `loaded`, `disabled`, `failed` or `missing`;
+`error` explains a failure. `reloadedAt` marks a successful reload.
+`storeError` appears when `extensions.json` cannot be read; the list then behaves as
+if nothing is enabled. Listing rescans the directory, but it never imports an
+extension: a disabled extension stays `disabled` and its module is never loaded.
+
+### `PUT /__hui/ext/:id`
+
+Accepts `ExtensionToggleRequest` (`{ "enabled": boolean }`), persists the choice to
+`extensions.json` (atomic write, mode 0600) and reconciles the running set before
+answering `ExtensionStatus`. Enabling imports the module and registers its routes
+without a restart; disabling removes them immediately, although Node keeps the
+module cached. The choice is recorded, not a promise it loaded: an extension whose
+manifest or import fails answers 200 with `state: "failed"` and its `error`. An id
+with no directory returns 404, a malformed body 400, any other method 405.
+
+### `POST /__hui/ext/:id/reload`
+
+Re-imports the extension's entry module with a cache-busting URL and returns
+`ExtensionStatus` with `reloadedAt`. Its routes and panel files use the new table at
+once, its prompt text on the next assembly and its tools on the next new Durable
+session. A failed reload answers 200 with `state: "failed"` and the error, and
+withdraws the routes; an unknown id is 404. `reload` is a reserved path for an
+extension's own routes.
+
+### Process-mode extensions
+
+A manifest may set `mode: "process"`; the extension then runs in one child process
+the gateway supervises (at most eight at once). Its routes and streams are forwarded
+over a newline-framed, versioned protocol, its prompt text travels at start, and its
+tools are refused (`tools require in-process mode`). A crash restarts it after 1, 2
+and 4 seconds, answering `503 { "error": "extension process is restarting" }` while
+it is down; three crashes in five minutes leave it `failed` until a reload. This is
+crash isolation, not a security sandbox: the child runs as the same user with the
+same file access.
+
+### Extension panel files
+
+An extension with a `ui` manifest entry ships its panel's files under the gateway
+prefix `/__hui/ext-ui/<id>/<path>`, mapped to the extension's `ui/` directory. They
+are served **before** the `x-hui` gate, like the widget sandbox page, because an
+iframe cannot send that header; they are public to anyone who can reach the gateway
+and must hold no secrets. Only files inside that `ui/` directory are served
+(realpath containment; symlinks that leave it are refused), only these types:
+`html`, `js`, `mjs`, `css`, `json`, `svg`, `png`, `webp`, `jpg`, `jpeg`,
+`woff2`; at most 10 MiB each; `GET` and `HEAD` only. Every response carries
+`no-store`, `nosniff`, cross-origin CORP (the sandboxed frame's opaque origin is
+cross-origin to the gateway), no referrer, a restrictive permissions policy, and a CSP whose `sandbox` makes the document an opaque origin, whose
+sources are limited to that extension's own prefix, and whose `connect-src 'none'`
+blocks every network call: a panel's only channel is its parent bridge. Files are
+served only while the extension is enabled and loaded.
+
+### Extension routes
+
+An installed extension answers under `/__hui/ext/<id>/<path>`, where `<path>` is one
+to four `/`-separated segments it declares. Any of the five JSON methods is allowed.
+The `x-hui` gate applies unchanged: a request without the header is rejected before
+extension code runs, and the same diagnostics hook records the outcome. Each answer
+is a `PluginPayload` (a JSON object HUI does not type) or a `PluginError`
+(`{ "error": string }`); extension payloads are deliberately absent from
+`docs/api.schema.json` because they exist only at runtime. Request bodies are the
+ordinary 64 KiB JSON body; an answer is at most 256 KiB and cannot set headers,
+stream, redirect or return a file. Unknown ids and paths return 404, a wrong method
+405, invalid JSON 400, an oversized request 413, and a handler that throws or
+returns something other than a JSON object 500 `{ "error": "extension failed" }`.
+
+A route declared `stream: true` answers `text/event-stream` instead: its handler
+returns `{ events }`, an async iterable of JSON objects, and each object becomes one
+unnamed `data:` event, with a heartbeat comment while it waits. Caps: ten minutes,
+5 000 events, 256 KiB per event and 5 MiB in total; a throw, an oversized event or a
+cap ends the stream with one `event: error` carrying the reason (and one
+diagnostic), and a client that leaves aborts the handler's `signal`. A streaming
+route's metadata carries `stream: true`.
+
+Extensions are trusted local code: they run in the gateway process with the
+gateway's access to the machine, its credentials and its data, exactly like a PI
+extension. There is no sandbox, no permission prompt and no timeout. The manifest's
+`apiVersion` must be `1`; any other value refuses to load with a named reason. HUI
+ships no extension and enables none until the operator asks.
+
 ### HUI-owned presentation state
 
 `PUT /__hui/settings` also persists the validated `#rrggbb` accent override,

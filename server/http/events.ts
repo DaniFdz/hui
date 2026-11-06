@@ -7,6 +7,10 @@ import { liveSessions, type SessionSnapshot, type SessionStreamMessage } from ".
 
 /** How long an event stream may sit idle before a comment proves it is alive. */
 export const HEARTBEAT_MS = 15_000;
+export const MAX_STREAM_DURATION_MS = 600_000;
+export const MAX_STREAM_EVENTS = 5_000;
+export const MAX_STREAM_EVENT_BYTES = 256 * 1024;
+export const MAX_STREAM_TOTAL_BYTES = 5 * 1024 * 1024;
 
 export function writeEvent(response: ServerResponse, event: string, data: unknown): void {
   if (!response.writableEnded) {
@@ -62,4 +66,85 @@ export function watchSessionEvents(
 
 function withoutTranscript({ transcript: _transcript, ...snapshot }: SessionSnapshot): Omit<SessionSnapshot, "transcript"> {
   return snapshot;
+}
+
+/** What the caller supplies for one extension event stream. */
+export type EventStreamOptions = {
+  heartbeatMs?: number;
+  /** Called once when a throw or a cap ends the stream (not when the client leaves). */
+  onError?: (message: string) => void;
+};
+
+/**
+ * Writes an extension's events as server-sent events: one unnamed `data:` event per object, a heartbeat comment while
+ * it waits, and the shared caps. A throw ends it with an \`error\` event; a client that leaves stops the loop and clears
+ * the heartbeat. The handler's own \`signal\` is what makes a waiting generator stop.
+ */
+export function sendEventStream(response: ServerResponse, events: AsyncIterable<unknown>, options: EventStreamOptions = {}): void {
+  if (response.writableEnded) return;
+  response.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-store",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+    "x-content-type-options": "nosniff",
+  });
+  response.flushHeaders();
+  const heartbeat = setInterval(() => {
+    if (!response.writableEnded) response.write(": heartbeat\n\n");
+  }, options.heartbeatMs ?? HEARTBEAT_MS);
+  heartbeat.unref();
+  let closed = false;
+  const finish = (error?: string) => {
+    clearInterval(heartbeat);
+    if (response.writableEnded) return;
+    if (error) writeEvent(response, "error", { error });
+    response.end();
+  };
+  response.on("close", () => {
+    closed = true;
+    clearInterval(heartbeat);
+  });
+  void (async () => {
+    const started = Date.now();
+    let count = 0;
+    let total = 0;
+    try {
+      for await (const event of events) {
+        if (closed || response.writableEnded) break;
+        if (Date.now() - started > MAX_STREAM_DURATION_MS) {
+          options.onError?.("stream timed out");
+          finish("stream timed out");
+          return;
+        }
+        if (++count > MAX_STREAM_EVENTS) {
+          options.onError?.("too many events");
+          finish("too many events");
+          return;
+        }
+        const data = JSON.stringify(event);
+        const bytes = Buffer.byteLength(data, "utf8");
+        if (bytes > MAX_STREAM_EVENT_BYTES) {
+          options.onError?.("event too large");
+          finish("event too large");
+          return;
+        }
+        total += bytes;
+        if (total > MAX_STREAM_TOTAL_BYTES) {
+          options.onError?.("stream too large");
+          finish("stream too large");
+          return;
+        }
+        response.write(`data: ${data}\n\n`);
+      }
+      finish();
+    } catch (error) {
+      if (closed) {
+        finish();
+        return;
+      }
+      options.onError?.(error instanceof Error ? error.message : String(error));
+      finish("extension failed");
+    }
+  })();
 }

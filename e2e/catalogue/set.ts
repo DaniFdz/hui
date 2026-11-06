@@ -823,6 +823,24 @@ const cases: UseCase[] = [
     web: "required",
     ios: { excluded: "The iPhone has no Settings → Tools and no worker browsers to mirror with.", decision: "SPEC.md#managed-browser" },
   },
+  {
+    id: "SET-088",
+    title: "Enable and disable a gateway extension",
+    behaviour: "Settings → Extensions lists every installed gateway extension with its state (“Loaded”, “Disabled”, “Failed”, “Missing”), the routes it declares, its version and required HUI range, and any error, and says “No gateway extensions installed.” when there are none. Its switch loads a disabled extension immediately — the row reads Loaded and the extension's routes answer — and turning it off withdraws them; the choice survives a reload. Reload re-imports a loaded extension and shows when it last did. The page keeps a note that extensions run with the gateway's access to this machine.",
+    spec: ["SPEC.md#gateway-extensions"],
+    surfaces: ["settings-page:extensions", "route:GET /__hui/ext", "route:PUT /__hui/ext/:id", "route:POST /__hui/ext/:id/reload"],
+    web: "required",
+    ios: { excluded: "Extension management edits the gateway's config directory and is web-only in this version; the iPhone has no Settings → Extensions.", decision: "SPEC.md#gateway-extensions" },
+  },
+  {
+    id: "SET-089",
+    title: "Read an extension's prompt and tools",
+    behaviour: "Settings → Extensions shows “Prompt and tools” for an extension that declares prompt sections or agent tools. Opening it lists each section with its title and character count, the text behind a second disclosure, and each tool by its runtime name and description; an extension with neither shows nothing.",
+    spec: ["SPEC.md#gateway-extensions"],
+    surfaces: ["settings-page:extensions"],
+    web: "required",
+    ios: { excluded: "Extension management edits the gateway's config directory and is web-only in this version; the iPhone has no Settings → Extensions.", decision: "SPEC.md#gateway-extensions" },
+  },
 ];
 
 export default cases;
