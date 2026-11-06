@@ -468,7 +468,7 @@ const cases: UseCase[] = [
   {
     id: "SET-045",
     title: "Choose the models and default reasoning new sessions use",
-    behaviour: "“HUI model routing” has Primary, Fallback and Utility model pickers listing the available catalog plus “Use PI default”, each explaining when it runs, then a “Default reasoning” picker offering “Use PI default” and PI's levels through Maximum. The choices persist across reloads.",
+    behaviour: "“HUI model routing” has Primary, Fallback and Utility model pickers listing the available catalog plus “Use PI default”, each explaining when it runs, then a “Default reasoning” effort selector: its slider moves through PI's levels from Off to Maximum and “Use PI default” clears it. The choices persist across reloads.",
     spec: ["docs/api.md#pi-package-and-skill-mutations", "docs/api.md#put-__huisettings"],
     surfaces: ["setting:models.primary", "setting:models.fallback", "setting:models.utility", "setting:models.thinking", "route:PUT /__hui/settings"],
     journeys: ["model-routing"],
@@ -476,7 +476,7 @@ const cases: UseCase[] = [
     ios: "required",
   },
   {
-    id: "SET-086",
+    id: "SET-087",
     title: "Start new sessions at the default reasoning level",
     behaviour: "New Session opens on the Default reasoning level saved in Settings → Models, and the started session runs there; choosing another level on New Session applies to that launch. A session created without a level, such as a started suggestion, takes the saved default too, and a model that supports fewer levels shows the closest one it has.",
     spec: ["docs/api.md#post-__huisessions"],

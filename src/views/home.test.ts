@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { test } from "vitest";
 
 test("effort preview owns a textContent property without destroying Lit child markers", () => {
-  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  assert.match(source, /class="chat-controls__effort-value"[^>]*\.textContent=\$\{THINKING_LABELS\[level\]\}/);
+  const source = readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8");
+  assert.match(source, /class="chat-controls__effort-value"[^>]*\.textContent=\$\{shown\}/);
   assert.doesNotMatch(source, /class="chat-controls__effort-value"[^>]*>\$\{/);
 });
 
@@ -173,8 +173,8 @@ test("the primary chat uses the OpenClaw transcript and composer hierarchy", () 
   assert.match(source, /chat-send-control chat-mobile-primary-action chat-desktop-primary-action/);
   assert.match(source, /const showStop = props\.streaming && !props\.draft\.trim\(\) && !props\.attachments\.some/);
   assert.match(source, /showStop \? html`<button[^>]*chat-send-btn--stop/);
-  assert.match(source, /chat-controls__inline-select-trigger chat-controls__effort-trigger/);
-  assert.match(source, /class="chat-controls__effort-gauge-needle" d="M12 12V6"/);
+  assert.match(readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8"), /chat-controls__inline-select-trigger chat-controls__effort-trigger/);
+  assert.match(readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8"), /class="chat-controls__effort-gauge-needle" d="M12 12V6"/);
   assert.match(source, /class="agent-chat__composer-footer"/);
   assert.match(source, /class="chat-controls__inline-select chat-controls__model-picker"/);
   assert.match(styles, /\.agent-chat__composer-combobox > :is\(textarea, input\):focus-visible\s*\{\s*box-shadow: none;/);
@@ -272,16 +272,19 @@ test("model and thinking reuse one exclusive composer picker pattern", () => {
 
   assert.match(source, /function prepareComposerPicker/);
   assert.match(source, /querySelectorAll<HTMLDetailsElement>\("details\[open\]"\)/);
-  assert.match(source, /@click=\$\{prepareComposerPicker\}/);
-  assert.match(source, /@keydown=\$\{closeComposerPicker\}/);
-  assert.match(source, /class="chat-controls__reasoning-range"/);
-  assert.match(source, /class="chat-controls__reasoning-dots"/);
-  assert.match(source, /@input=\$\{/);
+  assert.match(source, /onOpen: prepareComposerPicker/);
+  assert.match(source, /onKeydown: closeComposerPicker/);
+  const effort = readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8");
+  assert.match(effort, /class="chat-controls__reasoning-range/);
+  assert.match(effort, /class="chat-controls__reasoning-dots"/);
+  assert.match(effort, /class="chat-controls__reasoning-spectrum"/);
+  assert.match(effort, /@input=\$\{/);
   assert.match(styles, /\.chat-controls__effort-menu\s*\{[^}]*width: min\(330px,/s);
-  assert.match(styles, /\.chat-controls__reasoning-range::-webkit-slider-thumb\s*\{[^}]*width: 28px;[^}]*height: 20px;/s);
+  assert.match(styles, /\.chat-controls__reasoning-spectrum::before\s*\{[^}]*clip-path: inset\(0 calc\(\(1 - var\(--effort-fill, 0\)\) \* 100%\) 0 0\);/s);
+  assert.match(styles, /\.chat-controls__reasoning-range::-webkit-slider-thumb\s*\{[^}]*width: calc\(24px \+ 10px \* var\(--effort-fill, 0\)\);/s);
   assert.doesNotMatch(styles, /\.chat-controls__effort-picker\s*\{\s*display:\s*none;\s*\}/);
   assert.match(styles, /--chat-composer-chip-height:/);
-  assert.match(source, /@toggle=\$\{positionComposerPicker\}/);
+  assert.match(source, /onToggle: positionComposerPicker/);
 });
 
 test("the model control remains visible while PI has no model catalog", () => {

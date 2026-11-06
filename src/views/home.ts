@@ -42,7 +42,7 @@ import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/sessi
 import { sessionStatusLabel } from "../lib/session/labels.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer/textarea.ts";
 import { icons } from "../lib/icons.ts";
-import { isThinkingLevel, PI_THINKING_LEVELS, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../lib/thinking.ts";
+import { renderEffortSelector } from "./effort-selector.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import type { SplitDirection } from "../lib/session/multiplexer.ts";
@@ -113,7 +113,6 @@ const composerDragDepth = new WeakMap<HTMLElement, number>();
 
 const arrowUpIcon = icons.arrowUp;
 const chevronDownIcon = icons.chevronDown;
-const chevronUpIcon = icons.chevronUp;
 const checkIcon = icons.check;
 const circleIcon = icons.circle;
 const stopIcon = icons.stop;
@@ -815,13 +814,17 @@ function renderLaunchForm(props: HomeProps) {
                     disabled: props.launching,
                     onSelect: props.onSelectLaunchModel,
                   })}
-                  ${renderThinkingPicker({
+                  ${renderEffortSelector({
+                    label: "Thinking",
                     level: props.launchThinking,
                     // New sessions run on Durable, which adds Ultra to the model's own levels.
                     levels: props.launchModel?.thinkingLevels && [...props.launchModel.thinkingLevels, "ultra"],
                     disabled: props.launching,
                     onSelect: props.onSelectLaunchThinking,
                     ...(props.launchModel?.fast ? { fast: { on: props.launchFast, onSelect: props.onSelectLaunchFast } } : {}),
+                    onToggle: positionComposerPicker,
+                    onKeydown: closeComposerPicker,
+                    onOpen: prepareComposerPicker,
                   })}
                 </div>
                 <div class="agent-chat__composer-actions">
@@ -1851,12 +1854,16 @@ function renderComposer(props: HomeProps) {
             disabled: disconnected || props.streaming,
             onSelect: props.onSelectModel,
           })}
-          ${renderThinkingPicker({
+          ${renderEffortSelector({
+            label: "Thinking",
             level: props.thinking,
             levels: props.currentModel?.thinkingLevels,
             disabled: disconnected || props.streaming || props.opening,
             onSelect: props.onSelectThinking,
             ...(props.fast !== undefined && props.currentModel?.fast ? { fast: { on: props.fast, onSelect: props.onSelectFast } } : {}),
+            onToggle: positionComposerPicker,
+            onKeydown: closeComposerPicker,
+            onOpen: prepareComposerPicker,
           })}</div>
             </div>
             <div class="agent-chat__composer-actions">
@@ -2056,20 +2063,6 @@ function modelValue(model: RuntimeModel): string {
   return model.provider ? `${model.provider}/${model.id}` : model.id;
 }
 
-function thinkingRank(level: string): number {
-  return THINKING_LEVELS.indexOf(level as ThinkingLevel);
-}
-
-/** The level the picker shows for `level`: the model's own, else the nearest PI level it has. Ultra is a mode chosen on
- * its own, never what a higher saved level fits to. */
-function shownThinking(level: string, levels: readonly ThinkingLevel[]): ThinkingLevel {
-  if (level === "ultra" && levels.includes("ultra")) return "ultra";
-  const sent: readonly ThinkingLevel[] = levels.filter((candidate) => candidate !== "ultra");
-  return sent.includes(level as ThinkingLevel)
-    ? level as ThinkingLevel
-    : sent.find((candidate) => thinkingRank(candidate) >= thinkingRank(level)) ?? sent.at(-1) ?? "medium";
-}
-
 /** Composer pickers share one popover lane, so a trigger closes its sibling first. */
 function prepareComposerPicker(event: Event) {
   const trigger = event.currentTarget;
@@ -2200,98 +2193,6 @@ function renderModelPicker(options: ModelPickerOptions) {
             (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open");
           }}><span class="chat-controls__model-option-provider">${renderProviderIcon(model.provider)}</span><span class="chat-controls__model-option-copy"><span class="chat-controls__model-option-title"><span class="chat-controls__model-option-name">${model.name}</span><span class="chat-controls__model-option-meta">${model.provider}</span></span></span><span class="chat-controls__model-option-action"><span class="chat-controls__inline-select-check">${current && modelValue(current) === modelValue(model) ? checkIcon : nothing}</span></span></button>`)}
       </div>
-    </div>
-  </details>`;
-}
-
-type ThinkingPickerOptions = {
-  level: string;
-  /** The model's levels; all of HUI's while it reports none. */
-  levels: readonly string[] | undefined;
-  disabled: boolean;
-  onSelect: (level: string) => void;
-  /** Present when the model has a fast mode the session can use. */
-  fast?: { on: boolean; onSelect: (fast: boolean) => void };
-};
-
-function renderThinkingPicker(options: ThinkingPickerOptions) {
-  const known = (options.levels ?? []).filter(isThinkingLevel);
-  const levels: readonly ThinkingLevel[] = known.length ? known : PI_THINKING_LEVELS;
-  // OpenClaw's glow: on Ultra and on the model's own highest level.
-  const top = levels.findLastIndex((candidate) => candidate !== "ultra");
-  const boost = (at: number) => levels[at] === "ultra" ? "ultra" : at === top && levels[at] !== "off" ? "max" : "";
-  const level = shownThinking(options.level, levels);
-  const index = levels.indexOf(level);
-  const last = Math.max(1, levels.length - 1);
-  const fill = (index / last) * 100;
-  const angle = -120 + (level === "off" ? 0 : index / last) * 240;
-  const fast = options.fast;
-  const disabled = options.disabled || (levels.length < 2 && !fast);
-  const label = `Thinking: ${level}${fast?.on ? ", fast" : ""}`;
-  return html`<details class="chat-controls__inline-select chat-controls__effort-picker" @keydown=${closeComposerPicker} @toggle=${positionComposerPicker}>
-    <summary class="chat-controls__inline-select-trigger chat-controls__effort-trigger ${disabled ? "chat-controls__inline-select-trigger--disabled" : ""}" aria-label=${label} aria-disabled=${String(disabled)} @click=${(event: MouseEvent) => {
-      if (disabled) event.preventDefault();
-      else prepareComposerPicker(event);
-    }}>
-      <span class="chat-controls__effort-gauge ${level === "off" ? "chat-controls__effort-gauge--off" : ""}" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path class="chat-controls__effort-gauge-dial" d="M3.34 17a10 10 0 1 1 17.32 0"></path>
-          <path class="chat-controls__effort-gauge-needle" d="M12 12V6" style=${`transform: rotate(${angle}deg)`}></path>
-          <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"></circle>
-        </svg>
-        ${fast?.on ? html`<span class="chat-controls__effort-fast-badge">${icons.zap}</span>` : nothing}
-      </span>
-      ${fast?.on ? html`<span class="chat-controls__effort-zap" aria-hidden="true">${icons.zap}</span>` : nothing}
-      <span class="chat-controls__inline-select-label">${THINKING_LABELS[level]}</span>
-      <span class="chat-controls__inline-select-chevron" aria-hidden="true">${chevronUpIcon}</span>
-    </summary>
-    <div class="chat-controls__inline-select-menu chat-controls__effort-menu" popover="manual">
-      ${levels.length > 1 ? html`<div class="chat-controls__reasoning-panel">
-        <div class="chat-controls__reasoning-head">
-          <span class="chat-controls__effort-heading">Effort</span>
-          <span class="chat-controls__effort-value" aria-hidden="true" .textContent=${THINKING_LABELS[level]}></span>
-        </div>
-        <div class="chat-controls__reasoning-slider">
-          <div class="chat-controls__reasoning-dots" aria-hidden="true">
-            ${levels.map(() => html`<span class="chat-controls__reasoning-dot"></span>`)}
-          </div>
-          <input
-            class="chat-controls__reasoning-range"
-            type="range"
-            min="0"
-            max=${String(levels.length - 1)}
-            step="1"
-            .value=${String(index)}
-            style=${`--reasoning-fill: ${fill}%`}
-            data-effort-boost=${boost(index)}
-            aria-label="Thinking effort"
-            aria-valuetext=${THINKING_LABELS[level]}
-            ?disabled=${options.disabled}
-            @input=${(event: Event) => {
-              const input = event.currentTarget as HTMLInputElement;
-              const at = Number(input.value);
-              const next = levels[at] ?? level;
-              input.style.setProperty("--reasoning-fill", `${(at / last) * 100}%`);
-              input.setAttribute("aria-valuetext", THINKING_LABELS[next]);
-              input.dataset["effortBoost"] = boost(at);
-              const value = input.closest(".chat-controls__reasoning-panel")?.querySelector(".chat-controls__effort-value");
-              if (value) value.textContent = THINKING_LABELS[next];
-            }}
-            @change=${(event: Event) => {
-              options.onSelect(levels[Number((event.currentTarget as HTMLInputElement).value)] ?? level);
-            }}
-          />
-        </div>
-        <div class="chat-controls__effort-scale" aria-hidden="true"><span>Faster</span><span>Smarter</span></div>
-      </div>` : nothing}
-      ${fast ? html`<div class="chat-controls__speed-panel">
-        <span class="chat-controls__effort-heading">Speed</span>
-        <div class="chat-controls__speed-options" role="radiogroup" aria-label="Speed">
-          ${([[false, "Standard"], [true, "Fast"]] as const).map(([value, text]) => html`<button type="button" role="radio"
-            class="chat-controls__speed-option" aria-checked=${String(fast.on === value)} ?disabled=${options.disabled}
-            @click=${() => { if (fast.on !== value) fast.onSelect(value); }}>${text}</button>`)}
-        </div>
-      </div>` : nothing}
     </div>
   </details>`;
 }

@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("Primary, Fallback, Utility and Default reasoning list their choices, say when each runs and keep the choice after a reload", { tags: ["SET-045"] }, async ({ screen, hui }) => {
+test("Primary, Fallback, Utility and Default reasoning choose their values, say when each runs and keep the choice after a reload", { tags: ["SET-045"] }, async ({ screen, hui }) => {
   await hui.open("/settings/models");
   await expect(screen.getByText("Saved by HUI and applied to new sessions.")).toBeVisible({ timeout: 60_000 });
   await expect(screen.getByText("The smartest model you have. Speed doesn't matter: it does the real work of new sessions and bots.")).toBeVisible();
@@ -16,10 +16,9 @@ test("Primary, Fallback, Utility and Default reasoning list their choices, say w
     await screen.getByLabel(route, { exact: true }).getByText(model, { exact: true }).tap();
     await expect(screen.getByRole("button", `${route}: ${model}`)).toBeVisible();
   }
-  await screen.getByRole("button", "Default reasoning: Use PI default").tap();
-  await expect.poll(() => hui.textOf(screen.getByLabel("Default reasoning", { exact: true }))).toMatch(/^\s*Use PI default\s*Off\s*Minimal\s*Low\s*Medium\s*High\s*Extra high\s*Maximum\s*$/u);
-  await screen.getByLabel("Default reasoning", { exact: true }).getByText("High", { exact: true }).tap();
-  await expect(screen.getByRole("button", "Default reasoning: High")).toBeVisible();
+  await screen.getByLabel("Default reasoning: PI default").tap();
+  await screen.getByLabel("Thinking effort").fill("4");
+  await expect(screen.getByLabel("Default reasoning: High")).toBeVisible();
   await expect.poll(async () => (await hui.api<{ models: Record<string, unknown> }>("GET", "/__hui/settings")).models)
     .toEqual({ primary: "hui-e2e/anthropic/claude-opus-5-5", fallback: "hui-e2e/fixture", utility: "hui-e2e/anthropic/claude-opus-5-5", thinking: "high", routes: [] });
 
@@ -27,7 +26,11 @@ test("Primary, Fallback, Utility and Default reasoning list their choices, say w
   await expect(screen.getByRole("button", "Primary model: Opus fixture")).toBeVisible();
   await expect(screen.getByRole("button", "Fallback model: HUI SDK Fixture")).toBeVisible();
   await expect(screen.getByRole("button", "Utility model: Opus fixture")).toBeVisible();
-  await expect(screen.getByRole("button", "Default reasoning: High")).toBeVisible();
+  await expect(screen.getByLabel("Default reasoning: High")).toBeVisible();
+  await screen.getByLabel("Default reasoning: High").tap();
+  await screen.getByRole("button", "Use PI default").tap();
+  await expect(screen.getByLabel("Default reasoning: PI default")).toBeVisible();
+  await expect.poll(async () => (await hui.api<{ models: Record<string, unknown> }>("GET", "/__hui/settings")).models.thinking).toBe("");
 });
 
 test("the utility model names a new session from its first prompt and answers /btw in the side rail without touching the transcript", { tags: ["SET-047"], platforms: ["web"] }, async ({ screen, hui }) => {

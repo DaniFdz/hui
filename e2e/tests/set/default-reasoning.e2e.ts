@@ -1,19 +1,19 @@
-/** New Session starts on the default reasoning chosen in Models, and a session created without a level takes it too (SET-086). */
+/** New Session starts on the default reasoning chosen in Models, and a session created without a level takes it too (SET-087). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 type Listed = { groups: { sessions: { id: string; thinking?: string }[] }[] };
 
-test("New Session starts on the default reasoning chosen in Models", { tags: ["SET-086"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("New Session starts on the default reasoning chosen in Models", { tags: ["SET-087"], platforms: ["web"] }, async ({ screen, hui }) => {
   const sessions = async () => (await hui.api<Listed>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions);
   const before = new Set((await sessions()).map((session) => session.id));
 
   await hui.open("/settings/models");
   await expect(screen.getByText("Saved by HUI and applied to new sessions.")).toBeVisible({ timeout: 60_000 });
   await expect(screen.getByText(/^Default reasoning$/u)).toBeVisible();
-  await screen.getByRole("button", "Default reasoning: Use PI default").tap();
-  await screen.getByLabel("Default reasoning", { exact: true }).getByText("Low", { exact: true }).tap();
-  await expect(screen.getByRole("button", "Default reasoning: Low")).toBeVisible();
+  await screen.getByLabel("Default reasoning: PI default").tap();
+  await screen.getByLabel("Thinking effort").fill("2");
+  await expect(screen.getByLabel("Default reasoning: Low")).toBeVisible();
   await expect.poll(async () => (await hui.api<{ models: { thinking: string } }>("GET", "/__hui/settings")).models.thinking).toBe("low");
 
   await hui.open("/");

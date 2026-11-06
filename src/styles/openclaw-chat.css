@@ -1170,63 +1170,314 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   opacity: 0.55;
 }
 
-/* Effort's glow on the model's highest level and on Ultra, from OpenClaw's
-   current composer; the pinned track's own fill gives way to the gradient. */
-.chat-controls__reasoning-slider:has([data-effort-boost="max"]:not(:disabled), [data-effort-boost="ultra"]:not(:disabled)) {
-  --reasoning-boost-highlight: color-mix(in srgb, var(--accent) 60%, white);
+/* Effort's gradual scale, shared by the composer, New Session and Settings → Models. The gauge fills from Off to
+   the chosen level, the slider's spectrum fills to the same fraction, and the thumb grows with it, so Low and High read
+   differently without the label. Ultra is its own state: a two-tone flow, a pulsing thumb and an orbiting gauge mark,
+   while Maximum keeps a slow warm shimmer. */
+.chat-controls__effort-gauge {
+  position: relative;
+  color: color-mix(in srgb, var(--text) 55%, var(--muted));
+}
+
+.chat-controls__effort-gauge-dial {
+  stroke: color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.chat-controls__effort-gauge-arc {
+  stroke: currentColor;
+  transition: stroke-dashoffset 200ms ease, stroke 200ms ease;
+}
+
+.chat-controls__effort-gauge--off .chat-controls__effort-gauge-arc {
+  stroke: color-mix(in srgb, currentColor 35%, transparent);
+}
+
+.chat-controls__effort-gauge--unset {
+  color: var(--muted);
+  opacity: 0.5;
+}
+
+.chat-controls__effort-gauge[data-effort-boost="max"],
+.chat-controls__effort-gauge[data-effort-boost="ultra"] {
+  color: var(--accent);
+}
+
+.chat-controls__effort-gauge-orbit {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent-2, var(--accent)) 75%, white);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+}
+
+/* The native track remains the hit area and the thumb carrier; the spectrum layer draws the gradual fill. */
+.chat-controls__reasoning-spectrum {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   border-radius: var(--radius-full);
-  background-image: linear-gradient(
-    105deg,
-    color-mix(in srgb, var(--accent) 70%, var(--card)) 0%,
-    var(--accent) 25%,
-    var(--reasoning-boost-highlight) 50%,
-    var(--accent) 75%,
-    color-mix(in srgb, var(--accent) 70%, var(--card)) 100%
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  pointer-events: none;
+}
+
+.chat-controls__reasoning-spectrum::before {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 28%, var(--card)) 0%,
+    color-mix(in srgb, var(--accent) 62%, var(--card)) 55%,
+    color-mix(in srgb, var(--accent) 86%, white) 100%
   );
-  background-position: 50% 50%;
-  background-size: 220% 100%;
+  clip-path: inset(0 calc((1 - var(--effort-fill, 0)) * 100%) 0 0);
+  transition: clip-path 180ms ease;
+  content: "";
 }
 
-.chat-controls__reasoning-slider:has([data-effort-boost="ultra"]) {
-  --reasoning-boost-highlight: color-mix(in srgb, var(--accent-2, var(--accent)) 70%, white);
-}
-
-.chat-controls__reasoning-range:is([data-effort-boost="max"], [data-effort-boost="ultra"]):not(:disabled)::-webkit-slider-runnable-track {
+.chat-controls__reasoning-range::-webkit-slider-runnable-track {
+  border-color: transparent;
   background: transparent;
 }
 
-.chat-controls__reasoning-range:is([data-effort-boost="max"], [data-effort-boost="ultra"]):not(:disabled)::-moz-range-track,
-.chat-controls__reasoning-range:is([data-effort-boost="max"], [data-effort-boost="ultra"]):not(:disabled)::-moz-range-progress {
+.chat-controls__reasoning-range::-moz-range-track,
+.chat-controls__reasoning-range::-moz-range-progress {
+  border-color: transparent;
   background: transparent;
 }
 
-.chat-controls__reasoning-range[data-effort-boost="max"] {
-  border-radius: var(--radius-full);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent),
-    0 0 12px color-mix(in srgb, var(--accent) 24%, transparent);
+.chat-controls__reasoning-range::-webkit-slider-thumb {
+  width: calc(24px + 10px * var(--effort-fill, 0));
+  height: calc(18px + 4px * var(--effort-fill, 0));
+  margin-top: calc((26px - (18px + 4px * var(--effort-fill, 0))) / 2);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--text-strong) 92%, white), var(--text-strong));
+  transition: width 180ms ease, height 180ms ease, margin-top 180ms ease;
 }
 
-.chat-controls__reasoning-range[data-effort-boost="ultra"] {
-  border-radius: var(--radius-full);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent) 75%, transparent),
-    0 0 18px color-mix(in srgb, var(--accent) 48%, transparent),
-    inset 0 0 12px color-mix(in srgb, var(--accent) 18%, transparent);
+.chat-controls__reasoning-range::-moz-range-thumb {
+  width: calc(24px + 10px * var(--effort-fill, 0));
+  height: calc(18px + 4px * var(--effort-fill, 0));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--text-strong) 92%, white), var(--text-strong));
+  transition: width 180ms ease, height 180ms ease;
 }
 
-@keyframes chat-effort-flow {
+.chat-controls__reasoning-range--unset::-webkit-slider-thumb {
+  background: var(--muted);
+}
+
+.chat-controls__reasoning-range--unset::-moz-range-thumb {
+  background: var(--muted);
+}
+
+.chat-controls__reasoning-dot {
+  transition: width 160ms ease, height 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.chat-controls__reasoning-dot[data-state="passed"] {
+  background: color-mix(in srgb, var(--accent) 62%, var(--text));
+}
+
+.chat-controls__reasoning-dot[data-state="current"] {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.chat-controls__reasoning-dot[data-state="ahead"] {
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+}
+
+.chat-controls__reasoning-slider[data-effort-boost="max"] .chat-controls__reasoning-spectrum {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.chat-controls__reasoning-slider[data-effort-boost="max"] .chat-controls__reasoning-spectrum::before {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 34%, var(--card)) 0%,
+    color-mix(in srgb, var(--accent) 68%, var(--card)) 45%,
+    color-mix(in srgb, var(--accent) 88%, white) 100%
+  );
+}
+
+.chat-controls__reasoning-slider[data-effort-boost="ultra"] .chat-controls__reasoning-spectrum {
+  border-color: color-mix(in srgb, var(--accent) 78%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 18px color-mix(in srgb, var(--accent) 42%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.chat-controls__reasoning-slider[data-effort-boost="ultra"] .chat-controls__reasoning-spectrum::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent-2, var(--accent)) 62%, white) 48%,
+    transparent 92%
+  );
+  background-position: -50% 50%;
+  background-repeat: no-repeat;
+  background-size: 45% 100%;
+  content: "";
+}
+
+.chat-controls__effort-menu:has([data-effort-boost="ultra"]) .chat-controls__effort-value {
+  color: color-mix(in srgb, var(--accent-2, var(--accent)) 70%, var(--text-strong));
+}
+
+.chat-controls__effort-default {
+  display: flex;
+  justify-content: flex-start;
+  padding: 2px 4px 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.chat-controls__effort-default-action {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.chat-controls__effort-default-action:hover,
+.chat-controls__effort-default-action[aria-pressed="true"] {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.chat-controls__effort-default-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Settings → Models dresses the same selector as its other row controls. */
+.chat-controls__effort-picker.hui-effort--settings {
+  width: 100%;
+}
+
+.chat-controls__effort-picker.hui-effort--settings > summary.chat-controls__effort-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 176px;
+  min-height: var(--settings-control-height);
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg) 80%, var(--bg-elevated) 20%);
+  color: var(--text);
+  cursor: var(--cursor-action);
+}
+
+.chat-controls__effort-picker.hui-effort--settings > summary.chat-controls__effort-trigger:hover {
+  border-color: color-mix(in srgb, var(--text) 22%, var(--border));
+}
+
+.chat-controls__effort-picker.hui-effort--settings > summary.chat-controls__effort-trigger:focus-visible,
+.chat-controls__effort-picker.hui-effort--settings[open] > summary.chat-controls__effort-trigger {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border) 45%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+  outline: none;
+}
+
+.hui-effort--settings .chat-controls__effort-gauge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: var(--muted);
+}
+
+.hui-effort--settings .chat-controls__effort-gauge svg {
+  width: 100%;
+  height: 100%;
+}
+
+.hui-effort--settings .chat-controls__effort-gauge[data-effort-boost="max"],
+.hui-effort--settings .chat-controls__effort-gauge[data-effort-boost="ultra"] {
+  color: var(--accent);
+}
+
+.hui-effort--settings .chat-controls__inline-select-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes chat-effort-max-shimmer {
   from { background-position: 0% 50%; }
   to { background-position: 100% 50%; }
 }
 
+@keyframes chat-effort-ultra-shine {
+  from { background-position: -50% 50%; }
+  to { background-position: 150% 50%; }
+}
+
+@keyframes chat-effort-ultra-thumb {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent), 0 0 8px color-mix(in srgb, var(--accent) 35%, transparent); }
+  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-2, var(--accent)) 70%, transparent), 0 0 16px color-mix(in srgb, var(--accent-2, var(--accent)) 55%, transparent); }
+}
+
+@keyframes chat-effort-max-breathe {
+  from { opacity: 0.65; }
+  to { opacity: 1; }
+}
+
+@keyframes chat-effort-ultra-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes chat-effort-ultra-gauge {
+  0%, 100% { filter: drop-shadow(0 0 1px color-mix(in srgb, var(--accent) 55%, transparent)); }
+  50% { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent-2, var(--accent)) 75%, transparent)); }
+}
+
 @media (prefers-reduced-motion: no-preference) {
-  .chat-controls__reasoning-slider:has([data-effort-boost="max"]:not(:disabled), [data-effort-boost="ultra"]:not(:disabled)) {
-    animation: chat-effort-flow 6s ease-in-out infinite alternate;
+  .chat-controls__effort-gauge[data-effort-boost="max"] .chat-controls__effort-gauge-arc {
+    animation: chat-effort-max-breathe 4s ease-in-out infinite alternate;
   }
 
-  .chat-controls__reasoning-slider:has([data-effort-boost="ultra"]:not(:disabled)) {
-    animation-duration: 4s;
+  .chat-controls__effort-gauge[data-effort-boost="ultra"] {
+    animation: chat-effort-ultra-gauge 2.4s ease-in-out infinite;
+  }
+
+  .chat-controls__effort-gauge[data-effort-boost="ultra"] .chat-controls__effort-gauge-orbit {
+    animation: chat-effort-ultra-orbit 2.6s linear infinite;
+  }
+
+  .chat-controls__reasoning-slider[data-effort-boost="max"] .chat-controls__reasoning-spectrum::before {
+    background-size: 180% 100%;
+    animation: chat-effort-max-shimmer 5s ease-in-out infinite alternate;
+  }
+
+  .chat-controls__reasoning-slider[data-effort-boost="ultra"] .chat-controls__reasoning-spectrum::after {
+    animation: chat-effort-ultra-shine 2.6s linear infinite;
+  }
+
+  .chat-controls__reasoning-slider[data-effort-boost="ultra"] .chat-controls__reasoning-range::-webkit-slider-thumb {
+    animation: chat-effort-ultra-thumb 1.8s ease-in-out infinite;
+  }
+
+  .chat-controls__reasoning-slider[data-effort-boost="ultra"] .chat-controls__reasoning-range::-moz-range-thumb {
+    animation: chat-effort-ultra-thumb 1.8s ease-in-out infinite;
   }
 }
 
