@@ -1,10 +1,10 @@
-/** Settings → Extensions lists the installed gateway fixture, loads it, calls its route and withdraws it (SET-083). */
+/** Settings → Extensions lists the installed gateway fixture, loads it, calls its route and withdraws it (SET-088). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 type Extensions = { extensions: { id: string; state: string; enabled: boolean }[] };
 
-test("Settings enables and disables the installed gateway extension, and its routes follow", { tags: ["SET-086"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Settings enables and disables the installed gateway extension, and its routes follow", { tags: ["SET-088"], platforms: ["web"] }, async ({ screen, hui }) => {
   const row = () => screen.getByTestId("extension-row").filter({ hasText: "Hello" });
   const state = () => row().getByTestId("extension-state");
   const toggle = () => screen.getByRole("switch", "Enable Hello");
@@ -30,7 +30,7 @@ test("Settings enables and disables the installed gateway extension, and its rou
   expect(off.extensions.find((extension) => extension.id === "hello")?.state).toBe("disabled");
 });
 
-test("Settings shows an extension's prompt sections and tools", { tags: ["SET-087"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Settings shows an extension's prompt sections and tools", { tags: ["SET-089"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/settings/extensions");
   const contributions = screen.getByTestId("extension-contributions");
   await contributions.getByText("Prompt and tools").tap();

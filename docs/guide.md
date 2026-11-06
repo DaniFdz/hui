@@ -1148,8 +1148,18 @@ one has the dashboard.
 When an org has no pup session yet, or its session has ended, HUI offers **Sign
 in**: pup opens Datadog's sign-in page in the browser of the machine running HUI
 (Settings also links to it), and once you approve, the cards load
-again. **Remove** forgets an org in HUI; pup keeps its session. Tokens never leave
-pup: HUI stores only the org names and sites.
+again. **Remove** forgets an org in HUI; pup keeps its session. HUI has pup keep
+its tokens in files rather than the system keychain, so a
+[remote worker](api.md#remote-workers) can be given the same orgs; a session
+signed in before that change reads *Sign in needed* once, and signing in again
+is enough.
+
+A worker gets your integration logins as well: `gh` there uses every account
+you are signed in to in **Settings → Integrations → GitHub**, `pup` uses the
+orgs listed here, and an agent's Atlassian helper reads Jira's token from its
+environment. Each sync refreshes them from this machine, so they keep working
+while HUI is away from the worker, and an integration you have not signed in to
+never reaches it.
 
 To draw a widget, HUI asks Datadog for a snapshot of it, which Datadog keeps at a
 long, unguessable link, as it does for its own sharing and its Slack app. HUI

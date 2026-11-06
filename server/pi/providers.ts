@@ -181,12 +181,12 @@ export class ProviderService {
     const cached = this.#quota.get(key);
     if (cached && cached.expires > Date.now()) return cached.value;
     const value = (async (): Promise<ProviderQuota> => {
-      if (id !== "anthropic" && id !== "openai-codex" && id !== "opencode-go") return { status: "unsupported", checkedAt: Date.now(), windows: [], message: "This provider does not expose a supported subscription quota API." };
+      if (id !== "anthropic" && id !== "openai-codex" && id !== "opencode-go" && id !== "mistral") return { status: "unsupported", checkedAt: Date.now(), windows: [], message: "This provider does not expose a supported subscription quota API." };
       try {
         const credential = readStoredCredential(id, this.accounts.authPath(accountId));
         let quota: ProviderQuota;
-        if (id === "opencode-go") {
-          if (credential?.type !== "api_key" || typeof credential.key !== "string" || !credential.key) return { status: "unsupported", checkedAt: Date.now(), windows: [], message: "OpenCode Go usage requires an API key saved by HUI." };
+        if (id === "opencode-go" || id === "mistral") {
+          if (credential?.type !== "api_key" || typeof credential.key !== "string" || !credential.key) return { status: "unsupported", checkedAt: Date.now(), windows: [], message: id === "mistral" ? "Mistral usage requires an API key saved by HUI." : "OpenCode Go usage requires an API key saved by HUI." };
           // Read this account's credential only; never use ambient environment keys.
           quota = await fetchProviderQuota(id, credential.key);
         } else {

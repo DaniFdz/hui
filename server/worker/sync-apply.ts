@@ -12,7 +12,8 @@ import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 import type { WorkerPaths } from "./paths.ts";
 
-export type SyncEntry = { path: string; hash: string; mode: number; size: number };
+/** `mutable`: a mirror file the worker's own tools rewrite (a CLI's login store), so every sync restores it. */
+export type SyncEntry = { path: string; hash: string; mode: number; size: number; mutable?: boolean };
 export type SyncFile = { path: string; mode: number; data: string };
 export type SyncCommit = {
   entries: SyncEntry[];
@@ -65,7 +66,7 @@ export async function planSync(paths: WorkerPaths, entries: unknown): Promise<{ 
   const need: string[] = [];
   for (const entry of entries as SyncEntry[]) {
     const path = target(paths, entry.path);
-    if (manifest.files[entry.path] !== entry.hash || !existsSync(path)) need.push(entry.path);
+    if (entry.mutable || manifest.files[entry.path] !== entry.hash || !existsSync(path)) need.push(entry.path);
   }
   return { need };
 }

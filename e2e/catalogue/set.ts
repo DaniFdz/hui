@@ -346,6 +346,16 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
+    id: "SET-086",
+    title: "Connect Mistral with an API key",
+    behaviour: "Add provider also offers Mistral; choosing it shows its API key method, which opens the “Enter Mistral API key” prompt. Cancelling that sign-in leaves no card and keeps Settings → Models open.",
+    spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#post-__huiprovidersproviderlogin", "docs/api.md#delete-__huiprovidersloginid"],
+    surfaces: ["route:POST /__hui/providers/:provider/login", "route:DELETE /__hui/providers/login/:id"],
+    journeys: ["providers"],
+    web: "required",
+    ios: "backlog",
+  },
+  {
     id: "SET-034",
     title: "Sign in to a provider with a subscription account",
     behaviour: "Choosing “ChatGPT account” or “Claude Pro / Max” shows the provider's sign-in step with “Open sign-in page”, a device code or a prompt to answer, and adds the card once the provider confirms. A reload during sign-in reopens the same pending step.",
@@ -814,7 +824,7 @@ const cases: UseCase[] = [
     ios: { excluded: "The iPhone has no Settings → Tools and no worker browsers to mirror with.", decision: "SPEC.md#managed-browser" },
   },
   {
-    id: "SET-086",
+    id: "SET-088",
     title: "Enable and disable a gateway extension",
     behaviour: "Settings → Extensions lists every installed gateway extension with its state (“Loaded”, “Disabled”, “Failed”, “Missing”), the routes it declares, its version and required HUI range, and any error, and says “No gateway extensions installed.” when there are none. Its switch loads a disabled extension immediately — the row reads Loaded and the extension's routes answer — and turning it off withdraws them; the choice survives a reload. Reload re-imports a loaded extension and shows when it last did. The page keeps a note that extensions run with the gateway's access to this machine.",
     spec: ["SPEC.md#gateway-extensions"],
@@ -823,7 +833,7 @@ const cases: UseCase[] = [
     ios: { excluded: "Extension management edits the gateway's config directory and is web-only in this version; the iPhone has no Settings → Extensions.", decision: "SPEC.md#gateway-extensions" },
   },
   {
-    id: "SET-087",
+    id: "SET-089",
     title: "Read an extension's prompt and tools",
     behaviour: "Settings → Extensions shows “Prompt and tools” for an extension that declares prompt sections or agent tools. Opening it lists each section with its title and character count, the text behind a second disclosure, and each tool by its runtime name and description; an extension with neither shows nothing.",
     spec: ["SPEC.md#gateway-extensions"],

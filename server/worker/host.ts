@@ -9,10 +9,11 @@
  * through the generic RuntimeSession contract (`session.*` frames). Sessions
  * are keyed by HUI session id; reopening a key reattaches to the running one,
  * whose pending questions travel in its state. Credentials and HUI agent
- * tools are served by whichever gateway is connected; credentials are kept in
+ * tools are served by whichever gateway is connected; PI credentials are kept in
  * memory until they expire, and literal models.json header values until the
- * host stops, never on disk. The one secret written here is the answer to a
- * session's `secret_request`, in a private file its agent reads (SecretFiles).
+ * host stops, never on disk. The secrets this host does keep on disk are the
+ * integration logins its mirror carries and the answer to a session's
+ * `secret_request`, in a private file its agent reads (SecretFiles).
  * A bot whose chat runs here keeps its conversation and memory in this host's
  * store (`host-bots.ts`); its `bots` prompt section comes from the connected
  * gateway, which owns the roster. Sessions here browse in this machine's own
@@ -43,7 +44,7 @@ import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
 import { searchTranscripts } from "../runtimes/transcript-search.ts";
 import type { RuntimeSession, TranscriptEntry } from "../runtimes/types.ts";
-import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
+import { installBrokeredCredentials, OfflineError, setCredentialTransport, setIntegrationEnv, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../git/working-directories.ts";
 import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, removeSessionWorktree } from "../git/worktrees.ts";
 import { attachPeer, HOST_METRICS_FEATURE, isRecord, PROTOCOL_VERSION, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
@@ -327,6 +328,7 @@ export class WorkerHost {
     peer.handle("sync-commit", (params) => {
       // Before the mirrored models.json that names them takes effect.
       setSecretEnv(params["env"]);
+      setIntegrationEnv(params["env"]);
       return applySync(this.paths, params as unknown as SyncCommit).then(async (result) => {
         if (this.#durable.isOpen) await this.#durable.refreshModels().catch(() => undefined);
         return result;

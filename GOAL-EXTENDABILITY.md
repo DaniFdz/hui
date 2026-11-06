@@ -94,6 +94,8 @@ Already verified in that PR's own `GOAL.md` (15/15 criteria, manual gateway proo
 
 **Status:** DONE · **Commit:** 918e0f0c (and its `test:` follow-up) · **CI:** green, run 42021662186
 
+**Renumbered:** main's Mistral use case took SET-086 after this phase, so the extension use cases are SET-088/SET-089 here, in the shared tests and below.
+
 **Baseline:** typecheck exit 0 · tests 34 failed / 2782 passed (known environment-only set) · tree clean
 
 **Acceptance criteria** (evidence from the runs below):
@@ -110,7 +112,7 @@ Already verified in that PR's own `GOAL.md` (15/15 criteria, manual gateway proo
 - [x] **P1-A4** `hui extension list [--json]`, `hui extension enable <id>` and
   `hui extension disable <id>` work against a running gateway and fail with the
   usual message when none runs.
-- [x] **P1-A5** Use case **SET-086** (web required, iOS excluded with the E17
+- [x] **P1-A5** Use case **SET-088** (web required, iOS excluded with the E17
   reason and `SPEC.md#gateway-extensions`) has a shared e2e test that toggles the
   fixture extension through the page; screenshots at 1440×900 and 390×844 are
   attached to the PR and shown in the chat, not committed.
@@ -143,7 +145,7 @@ P1-V5  npm run build
 Result: client built
 Exit: 0
 
-P1-V6  npm run e2e -- --tag SET-086
+P1-V6  npm run e2e -- --tag SET-088
 Result: 1 file, 1 test passed (6.27 s)
 Exit: 0
 ```
@@ -280,7 +282,7 @@ because an iframe's document height never drops below the frame's viewport.
 - [x] **P3-A2** The `hui_extensions` prompt section renders between `hui_goal` and `hui_ultra` for Durable sessions and carries every enabled extension's static sections; the end-to-end provider request shows the marker. A bad section fails the extension at load (static text cannot throw per assembly; see Deviations).
 - [x] **P3-A3** An enabled extension's tools are offered to a new Durable session, namespaced `ext_<id>_<name>`, with their snippet/guidelines in the active-tool section; a running session keeps its offer. A name longer than 64 characters or one already used by another gateway tool is refused once with a diagnostic.
 - [x] **P3-A4** An end-to-end Durable run with the deterministic provider called `ext_hello_greet` and the transcript carries **hello, Ada**; a throwing or schema-mismatched call becomes `isError` text, not a failed turn (builder tests).
-- [x] **P3-A5** Settings → Extensions shows `Prompt and tools` with each section's title, character count and text behind disclosures and each tool's runtime name and description; SET-087's e2e proves it.
+- [x] **P3-A5** Settings → Extensions shows `Prompt and tools` with each section's title, character count and text behind disclosures and each tool's runtime name and description; SET-089's e2e proves it.
 - [x] **P3-A6** A PI worker session gets none of these: the worker path (`pi-sdk-worker.ts`, `hui-prompt.ts`) has no gateway prompt/tool provider; the wiring exists only in `durable-prompt.ts`/`durable-host.ts` (documented inspection).
 - [x] **P3-A7** API schema regenerated (`ExtensionPromptInfo`, `ExtensionToolInfo`, status fields) and documented; focused tests, typecheck, full suite (failure set unchanged), build and CI green; the Settings page change has a Browser-tool check and screenshots.
 
@@ -309,7 +311,7 @@ Result: typecheck 0; build 0; 33 failed / 2820 passed, the same baseline set
         (added 0, removed 0)
 Exit: typecheck/build 0, tests 1 (pre-existing failures only)
 
-P3-V5  npm run e2e -- --tag SET-087
+P3-V5  npm run e2e -- --tag SET-089
 Result: 1 file, 1 test passed
 Exit: 0
 ```
@@ -419,7 +421,7 @@ P5-V2  npx vitest run cli/main.test.ts cli/doctor.test.ts server/routes/order.te
 Result: 8 files passed, 83 tests passed
 Exit: 0
 
-P5-V3  npm run e2e -- --tag SET-086
+P5-V3  npm run e2e -- --tag SET-088
 Result: 1 file, 1 test passed (version/range shown, Reload confirmed)
 Exit: 0
 

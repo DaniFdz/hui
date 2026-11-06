@@ -248,10 +248,10 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
     await mkdir(join(providersDir, "accounts", backup), { recursive: true });
     const auth = { type: "api_key", key: "synthetic-quota-fixture-not-a-secret" };
     const oauth = (email) => ({ type: "oauth", access: `eyJhbGciOiJub25lIn0.${Buffer.from(JSON.stringify({ "https://api.openai.com/profile": { email } })).toString("base64url")}.fixture`, refresh: "synthetic-refresh", expires: Date.now() + 86400000 });
-    await writeFile(join(providersDir, "auth.json"), JSON.stringify({ "openai-codex": oauth("alex.personal@example.com"), anthropic: auth, openai: auth, "opencode-go": auth }), { mode: 0o600 });
+    await writeFile(join(providersDir, "auth.json"), JSON.stringify({ "openai-codex": oauth("alex.personal@example.com"), anthropic: auth, openai: auth, "opencode-go": auth, mistral: auth }), { mode: 0o600 });
     await writeFile(join(providersDir, "accounts", backup, "auth.json"), JSON.stringify({ "openai-codex": oauth("alex.long.work.account@example.com") }), { mode: 0o600 });
     await writeFile(join(providersDir, "accounts.json"), JSON.stringify({ "openai-codex": [{ id: "default", name: "Personal" }, { id: backup, name: "Backup", cooldownUntil: Date.now() + 10800000 }] }), { mode: 0o600 });
-    await writeFile(join(providersDir, "models.json"), JSON.stringify({ "openai-codex": { models: [] }, anthropic: { models: [] }, openai: { models: [] }, "opencode-go": { models: [] } }), { mode: 0o600 });
+    await writeFile(join(providersDir, "models.json"), JSON.stringify({ "openai-codex": { models: [] }, anthropic: { models: [] }, openai: { models: [] }, "opencode-go": { models: [] }, mistral: { models: [] } }), { mode: 0o600 });
   }
   const children = [];
   let stopping;

@@ -7878,6 +7878,9 @@
               "resetAt": {
                 "type": "number"
               },
+              "detail": {
+                "type": "string"
+              },
               "scope": {
                 "anyOf": [
                   {

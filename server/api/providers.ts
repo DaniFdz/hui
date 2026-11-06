@@ -38,6 +38,7 @@ export const ProviderQuota = Type.Object({
   access: Type.Optional(Type.Union([Type.Literal("available"), Type.Literal("limited")])),
   windows: Type.Array(Type.Object({
     label: Type.String(), usedPercent: Type.Number(), resetAt: Type.Optional(Type.Number()),
+    detail: Type.Optional(Type.String()),
     scope: Type.Union([Type.Literal("account"), Type.Literal("scoped"), Type.Literal("spend")]),
   })),
 }, { $id: "ProviderQuota" });

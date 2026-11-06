@@ -1,7 +1,8 @@
 /**
- * Subscription usage for the providers that report it (Anthropic, OpenAI Codex, OpenCode Go). It calls each
- * provider's fixed first-party usage endpoint and normalizes the reply into labelled usage windows, reporting
- * only what the provider said rather than inferring billing state from stored credentials.
+ * Subscription usage for the providers that report it (Anthropic, OpenAI Codex, OpenCode Go, Mistral). It calls
+ * each provider's fixed first-party usage endpoint and normalizes the reply into labelled usage windows, reporting
+ * only what the provider said rather than inferring billing state from stored credentials. Mistral serves its
+ * monthly allowances from two fixed billing endpoints, read best-effort in parallel.
  */
 import { providerEmail } from "./provider-identity.ts";
 import type { ProviderQuota } from "../api/providers.ts";
@@ -26,10 +27,11 @@ export function parseProviderQuota(provider: string, raw: unknown, checkedAt = D
   const data = record(raw);
   const windows: ProviderQuota["windows"] = [];
   let partial = false;
-  const append = (label: string, percent: unknown, reset: unknown, scope: ProviderQuota["windows"][number]["scope"]) => {
+  let explainedEmpty = false;
+  const append = (label: string, percent: unknown, reset: unknown, scope: ProviderQuota["windows"][number]["scope"], detail?: string) => {
     if (typeof percent !== "number" || !Number.isFinite(percent) || percent < 0) { partial = true; return; }
     const resetAt = typeof reset === "number" ? reset * 1000 : typeof reset === "string" ? Date.parse(reset) : NaN;
-    windows.push({ label, usedPercent: percent, scope, ...(Number.isFinite(resetAt) && resetAt > 0 && resetAt <= 8.64e15 ? { resetAt } : {}) });
+    windows.push({ label, usedPercent: percent, scope, ...(Number.isFinite(resetAt) && resetAt > 0 && resetAt <= 8.64e15 ? { resetAt } : {}), ...(detail ? { detail } : {}) });
   };
   let plan: string | undefined;
   let access: ProviderQuota["access"];
@@ -87,10 +89,24 @@ export function parseProviderQuota(provider: string, raw: unknown, checkedAt = D
       const percent = typeof remaining === "number" && Number.isFinite(remaining) && remaining >= 0 && remaining <= 100 ? 100 - remaining : ratio(limit["used"], limit["limit"]);
       append("Monthly credits", percent, limit["reset_at"] ?? limit["resets_at"] ?? limit["resetsAt"], "spend");
     }
+  } else if (provider === "mistral") {
+    // Both allowances are monthly currency budgets, so neither disables other models on the account.
+    let noAllowance = false;
+    for (const [key, label] of [["api_budget", "API"], ["vibe_budget", "Vibe Code"]] as const) {
+      const budget = record(data[key]);
+      const initial = budget["initial_budget"];
+      const currency = budget["currency"];
+      // A plan without an included allowance reports a zero budget; a 0% meter
+      // would imply headroom it does not have. Mistral's own Vibe gauge skips it.
+      if (typeof initial === "number" && Number.isFinite(initial) && initial <= 0) { noAllowance = true; continue; }
+      const detail = typeof initial === "number" && Number.isFinite(initial) && initial > 0 && typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? `${initial.toFixed(2)} ${currency} included` : undefined;
+      append(`${label} · monthly`, budget["usage_percentage"], budget["reset_at"], "spend", detail);
+    }
+    if (noAllowance) { message = "This plan reports no included monthly allowance."; explainedEmpty = true; }
   }
   if (windows.some((window) => window.scope === "account" && window.usedPercent >= 100 && (!window.resetAt || window.resetAt > checkedAt))) access = "limited";
   // No inferred billing status, renewal date, or availability from stored credentials.
-  const notes = [message, partial ? "Some reported limits could not be read." : undefined, !windows.length ? "The provider did not report readable usage windows." : undefined].filter(Boolean);
+  const notes = [message, partial ? "Some reported limits could not be read." : undefined, !windows.length && !explainedEmpty ? "The provider did not report readable usage windows." : undefined].filter(Boolean);
   return { status: windows.length ? "available" : "unavailable", checkedAt, windows, ...(plan ? { plan } : {}), ...(access ? { access } : {}), ...(notes.length ? { message: notes.join(" ") } : {}) };
 }
 
@@ -99,11 +115,14 @@ export async function fetchProviderQuota(provider: string, token: string, accoun
   const checkedAt = Date.now();
   const url = provider === "anthropic" ? "https://api.anthropic.com/api/oauth/usage"
     : provider === "openai-codex" ? "https://chatgpt.com/backend-api/wham/usage"
-    : provider === "opencode-go" ? "https://opencode.ai/zen/go/v1/usage" : undefined;
+    : provider === "opencode-go" ? "https://opencode.ai/zen/go/v1/usage"
+    : provider === "mistral" ? "https://api.mistral.ai/v1/billing/budget" : undefined;
   if (!url) return { status: "unsupported", checkedAt, windows: [], message: "This provider does not expose a supported subscription quota API." };
   const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: "application/json" };
   if (provider === "anthropic") { headers["anthropic-version"] = "2023-06-01"; headers["anthropic-beta"] = "oauth-2025-04-20"; }
   if (provider === "openai-codex" && accountId) headers["ChatGPT-Account-Id"] = accountId;
+  // Mistral's public spec names x-api-key while its own Vibe CLI signs with Bearer.
+  if (provider === "mistral") headers["x-api-key"] = token;
   const request = async (endpoint: string): Promise<unknown> => {
     const response = await fetcher(endpoint, { headers, redirect: "error", signal: AbortSignal.timeout(8_000) });
     if (!response.ok) { await response.body?.cancel(); throw new Error("Provider request failed."); }
@@ -120,9 +139,26 @@ export async function fetchProviderQuota(provider: string, token: string, accoun
     return providerEmail(account["email_address"]) ?? providerEmail(account["emailAddress"]) ?? providerEmail(account["email"])
       ?? providerEmail(data["email_address"]) ?? providerEmail(data["emailAddress"]) ?? providerEmail(data["email"]);
   }).catch(() => undefined) : Promise.resolve(undefined);
+  // The plan and pay-as-you-go flags are best-effort; usable allowances survive their failure.
+  const subscription = provider === "mistral" ? request("https://api.mistral.ai/v1/billing/subscription").catch(() => undefined) : Promise.resolve(undefined);
   let quota: ProviderQuota;
   try { quota = parseProviderQuota(provider, await request(url), checkedAt); }
   catch { quota = { status: "unavailable", checkedAt, windows: [], message: "Quota could not be retrieved. Check your connection or sign in again." }; }
-  const email = await identity;
-  return email ? { ...quota, email } : quota;
+  const [email, subscriptionRaw] = await Promise.all([identity, subscription]);
+  const named = namedMistralQuota(provider, quota, subscriptionRaw);
+  return email ? { ...named, email } : named;
+}
+
+const mistralPlans: Record<string, string> = { FREE: "Free", INDIVIDUAL: "Pro", EDU: "Student", TEAM: "Team" };
+
+/** Mistral's subscription reply names the public plan and whether usage above the allowance is billed. */
+function namedMistralQuota(provider: string, quota: ProviderQuota, raw: unknown): ProviderQuota {
+  if (provider !== "mistral" || raw == null) return quota;
+  const data = record(raw);
+  const name = displayText(data["plan_name"]);
+  const plan = name ? mistralPlans[name] ?? name : undefined;
+  const payg = data["payg_enabled"] === true || data["vibe_payg_enabled"] === true;
+  if (!plan && !payg) return quota;
+  const notes = [quota.message, payg ? "Pay-as-you-go is enabled above the included budget." : undefined].filter(Boolean);
+  return { ...quota, ...(plan ? { plan } : {}), ...(notes.length ? { message: notes.join(" ") } : {}) };
 }

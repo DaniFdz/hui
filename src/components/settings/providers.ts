@@ -217,7 +217,7 @@ export class HuiProviderSettings extends LitElement {
         <div class="hui-provider-windows">${quota.windows.map((window) => html`<div class="hui-provider-window" data-exhausted=${window.usedPercent >= 100}>
           <div><strong>${window.label}</strong><span>${Number(window.usedPercent.toFixed(1))}% used</span></div>
           <progress max="100" value=${Math.min(100, window.usedPercent)} aria-label=${`${window.label}: ${Number(window.usedPercent.toFixed(1))}% used`}></progress>
-          <small>${window.resetAt ? `Resets ${new Date(window.resetAt).toLocaleString()}` : "Reset not reported"}</small>
+          <small>${window.detail ? `${window.detail} · ` : ""}${window.resetAt ? `Resets ${new Date(window.resetAt).toLocaleString()}` : "Reset not reported"}</small>
         </div>`)}</div>
         ${quota.message ? html`<p>${quota.message}</p>` : nothing}
         <small>Checked ${new Date(quota.checkedAt).toLocaleString()}</small>

@@ -56,12 +56,14 @@ async function handle(request, response, next) {
     response.statusCode = 503;
     return response.end();
   }
-  const quota = /^\/__hui\/providers\/(openai-codex|anthropic|opencode-go)\/accounts\/([^/]+)\/quota$/.exec(request.url ?? "");
+  const quota = /^\/__hui\/providers\/(openai-codex|anthropic|opencode-go|mistral)\/accounts\/([^/]+)\/quota$/.exec(request.url ?? "");
   if (process.env.HUI_VERIFICATION_QUOTAS === "1" && quota && request.method === "GET" && request.headers["x-hui"] === "1") {
     response.setHeader("content-type", "application/json");
     response.setHeader("cache-control", "no-store");
     return response.end(JSON.stringify(await fetchProviderQuota(quota[1], "synthetic-credential", undefined, async (url) => new Response(JSON.stringify(
-      String(url).endsWith("/profile") ? { account: { email_address: "alex.claude@example.com" } } : quotaFixture(quota[1], quota[2])
+      String(url).endsWith("/profile") ? { account: { email_address: "alex.claude@example.com" } }
+        : String(url).endsWith("/billing/subscription") ? { plan_name: "EDU", payg_enabled: false, vibe_payg_enabled: false, enterprise: false }
+        : quotaFixture(quota[1], quota[2])
     )))));
   }
   // The demo recorder's stage frames HUI from HUI's own origin, since widgets refuse other ancestors.
