@@ -1,8 +1,8 @@
-/** Add provider offers Mistral's API-key sign-in, and cancelling it adds no card (SET-082). */
+/** Add provider offers Mistral's API-key sign-in, and cancelling it adds no card (SET-086). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("Mistral is offered with API-key sign-in and a cancelled sign-in adds no card", { tags: ["SET-082"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Mistral is offered with API-key sign-in and a cancelled sign-in adds no card", { tags: ["SET-086"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/settings/models");
   const add = screen.getByRole("button", "Add provider");
   await expect(add).toBeVisible();

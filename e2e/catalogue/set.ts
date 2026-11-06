@@ -346,7 +346,7 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "SET-082",
+    id: "SET-086",
     title: "Connect Mistral with an API key",
     behaviour: "Add provider also offers Mistral; choosing it shows its API key method, which opens the “Enter Mistral API key” prompt. Cancelling that sign-in leaves no card and keeps Settings → Models open.",
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#post-__huiprovidersproviderlogin", "docs/api.md#delete-__huiprovidersloginid"],
