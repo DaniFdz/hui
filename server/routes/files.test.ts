@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
@@ -9,7 +9,7 @@ import { createFileRoutes, REMOTE_FILES_REASON } from "./files.ts";
 import type { RouteRequest } from "../http/route.ts";
 import * as schemas from "../api/files.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
-import { MAX_RESOLVE_PATHS } from "../files.ts";
+import { MAX_RAW_FILE_BYTES, MAX_RESOLVE_PATHS, MAX_UPLOAD_FILE_BYTES } from "../files.ts";
 import type { FileRead } from "../api/files.ts";
 
 async function workspace() {
@@ -21,14 +21,17 @@ async function workspace() {
   return { dir, cwd };
 }
 
-function request(method: string, path: string, options: { query?: Record<string, string>; ifMatch?: string; body?: unknown; bytes?: Buffer } = {}): RouteRequest {
+function request(method: string, path: string, options: { query?: Record<string, string>; ifMatch?: string; body?: unknown; bytes?: Buffer; chunks?: Buffer[]; declared?: number } = {}): RouteRequest {
   return {
     method,
     path,
     query: new URLSearchParams(options.query ?? {}),
-    headers: options.ifMatch ? { "if-match": `"${options.ifMatch}"` } : {},
+    headers: options.ifMatch ? { "if-match": `"${options.ifMatch}"` } : options.declared === undefined ? {} : { "content-length": String(options.declared) },
     json: async () => options.body,
     bytes: async () => options.bytes ?? Buffer.alloc(0),
+    stream: () => (async function* () {
+      for (const chunk of options.chunks ?? []) yield chunk;
+    })(),
     signal: new AbortController().signal,
   };
 }
@@ -86,9 +89,14 @@ test("file routes scope every request to the conversation's directory and explai
   assert.equal((await call("POST", "/__hui/sessions/local/files/entry", { body: { path: "src/b.ts", kind: "file" } })).status, 201);
   assert.equal((await call("POST", "/__hui/sessions/local/files/entry", { body: { path: "src/b.ts", kind: "file" } })).status, 409);
   assert.equal((await call("POST", "/__hui/sessions/local/files/entry", { body: { path: "src/c", kind: "socket" } })).status, 400);
-  assert.equal((await call("POST", "/__hui/sessions/local/files/upload", { query: { dir: "src", name: "up.txt" }, bytes: Buffer.from("up") })).status, 201);
-  assert.equal((await call("POST", "/__hui/sessions/local/files/upload", { query: { dir: "src", name: "up.txt" }, bytes: Buffer.from("again") })).status, 409);
-  assert.equal((await call("POST", "/__hui/sessions/local/files/upload", { query: { dir: "src", name: "up.txt", overwrite: "1" }, bytes: Buffer.from("again") })).status, 201);
+  assert.equal((await call("POST", "/__hui/sessions/local/files/upload", { query: { dir: "src", name: "up.txt" }, chunks: [Buffer.from("u"), Buffer.from("p")] })).status, 201);
+  assert.equal((await call("POST", "/__hui/sessions/local/files/upload", { query: { dir: "src", name: "up.txt" }, chunks: [Buffer.from("again")] })).status, 409);
+  assert.equal((await call("POST", "/__hui/sessions/local/files/upload", { query: { dir: "src", name: "up.txt", overwrite: "1" }, chunks: [Buffer.from("again")] })).status, 201);
+  // A body the request already declares as too large is refused before a byte of it is read.
+  const declared = await call("POST", "/__hui/sessions/local/files/upload", { query: { dir: "src", name: "huge.bin" }, declared: MAX_UPLOAD_FILE_BYTES + 1 });
+  assert.equal(declared.status, 413);
+  assert.match(String(declared.body["error"]), /2 GB/u);
+  assert.deepEqual(await readdir(join(cwd, "src")), ["a.ts", "b.ts", "up.txt"]);
   assert.equal(await readFile(join(cwd, "src", "up.txt"), "utf8"), "again");
   assert.equal((await call("DELETE", "/__hui/sessions/local/files/entry", { query: { path: "src" } })).status, 409);
   assert.equal((await call("DELETE", "/__hui/sessions/local/files/entry", { query: { path: "" } })).status, 422);
@@ -204,4 +212,17 @@ test("the gateway guards file routes with x-hui and serves previews as inert byt
   const upload = await fetch(`${origin}/upload?dir=src&name=photo.png`, { method: "POST", headers: guarded, body: new Uint8Array([7, 8, 9]) });
   assert.equal(upload.status, 201);
   assert.deepEqual([...await readFile(join(cwd, "src", "photo.png"))], [7, 8, 9]);
+  // A file far larger than a buffer is served, not held: the headers arrive with its size and the bytes stream.
+  const clip = join(cwd, "clip.mov");
+  const handle = await open(clip, "w");
+  await handle.truncate(MAX_RAW_FILE_BYTES + 1);
+  await handle.close();
+  const streamed = await fetch(`${origin}/raw?path=clip.mov`, { headers: guarded });
+  assert.equal(streamed.status, 200);
+  assert.equal(streamed.headers.get("content-length"), String((await stat(clip)).size));
+  assert.match(streamed.headers.get("content-disposition") ?? "", /^attachment; filename\*=UTF-8''clip\.mov$/u);
+  const reader = streamed.body!.getReader();
+  const first = await reader.read();
+  assert.ok(first.value && first.value.byteLength > 0 && first.value.byteLength < MAX_RAW_FILE_BYTES, "the bytes arrive in chunks, not as one body");
+  await reader.cancel();
 });

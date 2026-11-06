@@ -55,7 +55,6 @@ function setup({ followed = "s1" as string | undefined, palette = false } = {}) 
     paletteOpen: () => shell.palette,
     terminalFont: () => "mono",
     browserEnabled: () => true,
-    remoteSession: () => false,
   });
   return { work, shell };
 }

@@ -1,6 +1,7 @@
 /**
  * `<hui-files-view>`: a Files view, AgentsInTheCloud's Work view for one conversation's working directory. A
- * collapsible navigator (lazy file tree, filter, upload, new file or folder, delete behind a confirmation) beside the
+ * collapsible navigator (lazy file tree, filter, upload with its progress and a Cancel, new file or folder, delete
+ * behind a confirmation) beside the
  * selected file: text in CodeMirror with autosave, Markdown as Source or Rendered, images and PDFs as previews and
  * anything else as metadata with a download.
  *
@@ -37,6 +38,7 @@ import {
   saveFile,
   searchFiles,
   uploadFile,
+  isUploadCancelled,
 } from "../api/files.ts";
 import { onFilesViewReveal, readFilesViewState, takeFilesViewReveal, writeFilesViewState, type FilesViewReveal, type MarkdownDisplayMode } from "../lib/files/view-state.ts";
 import { FILES_COPY, filesBytes, filesCreateIn, filesCreatedLabel, filesDeleteLabel, filesDeleteRisks, filesDeleteTitle, filesNoMatch } from "../lib/files/copy.ts";
@@ -115,6 +117,8 @@ export class HuiFilesView extends HuiElement {
     drawerOpen: { state: true },
     dialog: { state: true },
     uploadStatus: { state: true },
+    uploading: { state: true },
+    uploadPercent: { state: true },
     editorReady: { state: true },
     copied: { state: true },
   };
@@ -141,6 +145,10 @@ export class HuiFilesView extends HuiElement {
   declare drawerOpen: boolean;
   declare dialog: Dialog | undefined;
   declare uploadStatus: string;
+  /** An upload is in flight: the navigator shows how far it got and a way to stop it. */
+  declare uploading: boolean;
+  /** How much of the file in flight the browser has sent, 0–100. */
+  declare uploadPercent: number;
   declare editorReady: boolean;
   declare copied: "" | "path" | "markdown";
 
@@ -151,6 +159,8 @@ export class HuiFilesView extends HuiElement {
   private editor: FileEditorHandle | undefined;
   private editorHost = createRef<HTMLDivElement>();
   private uploadInput = createRef<HTMLInputElement>();
+  /** The upload in flight, so Cancel stops it and the gateway removes what it wrote. */
+  private uploadAbort: AbortController | undefined;
   private saveTimer: ReturnType<typeof setTimeout> | undefined;
   private filterTimer: ReturnType<typeof setTimeout> | undefined;
   private searchAbort: AbortController | undefined;
@@ -191,6 +201,8 @@ export class HuiFilesView extends HuiElement {
     this.drawerOpen = false;
     this.dialog = undefined;
     this.uploadStatus = "";
+    this.uploading = false;
+    this.uploadPercent = 0;
     this.editorReady = false;
     this.copied = "";
   }
@@ -716,25 +728,58 @@ export class HuiFilesView extends HuiElement {
 
   private async upload(folder: string, files: File[], overwrite = false) {
     const count = files.length === 1 ? `“${files[0]!.name}”` : `${files.length} files`;
+    // One file at a time: a queue of large bodies competes for the same connection and hides how far each one got.
+    const abort = new AbortController();
+    this.uploadAbort = abort;
+    this.uploading = true;
+    this.uploadPercent = 0;
     this.uploadStatus = `Uploading ${count}…`;
     const conflicts: File[] = [];
     const failures: string[] = [];
-    await Promise.all(files.map(async (file) => {
-      try {
-        await uploadFile(this.sessionId, folder, file, overwrite);
-      } catch (error) {
-        if (error instanceof FilesRequestError && error.status === 409) conflicts.push(file);
-        else failures.push(`${file.name}: ${errorText(error)}`);
+    let uploaded = 0;
+    let cancelled = false;
+    try {
+      for (const [index, file] of files.entries()) {
+        if (files.length > 1) this.uploadStatus = `Uploading “${file.name}” (${index + 1} of ${files.length})…`;
+        this.uploadPercent = 0;
+        try {
+          await uploadFile(this.sessionId, folder, file, overwrite, {
+            signal: abort.signal,
+            onProgress: (sent, total) => { this.uploadPercent = total > 0 ? Math.min(100, Math.floor((sent / total) * 100)) : 0; },
+          });
+          uploaded += 1;
+        } catch (error) {
+          if (isUploadCancelled(error)) {
+            cancelled = true;
+            break;
+          }
+          if (error instanceof FilesRequestError && error.status === 409) conflicts.push(file);
+          else failures.push(`${file.name}: ${errorText(error)}`);
+        }
       }
-    }));
+    } finally {
+      this.uploadAbort = undefined;
+      this.uploading = false;
+    }
     if (folder && !this.expanded.has(folder)) this.toggleFolder(folder);
     await this.loadDirectory(folder);
-    const uploaded = files.length - conflicts.length - failures.length;
-    this.uploadStatus = failures.length
-      ? `${failures.length === 1 ? "Upload failed" : `${failures.length} uploads failed`}: ${failures[0]}`
-      : uploaded ? `Uploaded ${uploaded === 1 && files.length === 1 ? count : `${uploaded} file${uploaded === 1 ? "" : "s"}`} to ${folder || this.rootName}` : "";
+    this.uploadStatus = cancelled
+      ? `Upload cancelled; ${folder || this.rootName} was not changed.`
+      : failures.length
+        ? `${failures.length === 1 ? "Upload failed" : `${failures.length} uploads failed`}: ${failures[0]}`
+        : uploaded ? `Uploaded ${uploaded === 1 && files.length === 1 ? count : `${uploaded} file${uploaded === 1 ? "" : "s"}`} to ${folder || this.rootName}` : "";
     if (conflicts.length) this.dialog = { kind: "overwrite", folder, files: conflicts, busy: false, error: "" };
     if (this.selected && files.some((file) => joinPath(folder, file.name) === this.selected)) void this.checkFile();
+  }
+
+  /** Stops the upload in flight; the gateway drops the bytes it had written. */
+  private cancelUpload() {
+    this.uploadAbort?.abort();
+  }
+
+  /** The upload's status line names its progress bar; several Files views may be open, so the id is the view's. */
+  private get uploadStatusId(): string {
+    return `hui-files-upload-status-${this.viewId.replace(/[^A-Za-z0-9_-]/gu, "")}`;
   }
 
   private async confirmOverwrite(event: Event) {
@@ -943,7 +988,7 @@ export class HuiFilesView extends HuiElement {
           <button type="button" class="btn btn--ghost btn--icon" aria-label="Refresh" data-hui-tooltip="Refresh" @click=${() => void this.refresh()}>${icons.refresh}</button>
           ${this.narrow ? html`<button type="button" class="btn btn--ghost btn--icon" aria-label="Close files navigator" data-hui-tooltip="Close" @click=${() => { this.drawerOpen = false; }}>${icons.close}</button>` : nothing}
         </span>
-        <input type="file" multiple hidden ${ref(this.uploadInput)} @change=${this.onUploadChosen} />
+        <input type="file" multiple hidden data-testid="files-upload-input" ${ref(this.uploadInput)} @change=${this.onUploadChosen} />
       </div>
       <label class="hui-files-nav__filter">
         <span class="hui-files-row__icon">${icons.search}</span>
@@ -962,7 +1007,14 @@ export class HuiFilesView extends HuiElement {
               : html`<p class="hui-files-tree__note">${FILES_COPY.emptyRoot}</p>`
             : html`<p class="hui-files-tree__note ${root?.error ? "is-error" : ""}">${root?.error ?? FILES_COPY.loading}</p>`}
       </div>
-      ${this.uploadStatus ? html`<p class="hui-files-nav__status" role="status">${this.uploadStatus}</p>` : nothing}
+      ${this.uploading
+        ? html`<div class="hui-files-nav__upload">
+            <progress class="hui-files-nav__progress" max="100" value=${this.uploadPercent} aria-labelledby=${this.uploadStatusId}></progress>
+            <span class="hui-files-nav__percent" aria-hidden="true">${this.uploadPercent}%</span>
+            <button type="button" class="btn btn--sm" @click=${this.cancelUpload}>Cancel upload</button>
+          </div>`
+        : nothing}
+      ${this.uploadStatus ? html`<p class="hui-files-nav__status" id=${this.uploadStatusId} role="status">${this.uploadStatus}</p>` : nothing}
     </aside>`;
   }
 

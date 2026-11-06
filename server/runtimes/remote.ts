@@ -52,7 +52,7 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
     // Only what the remote runtime offers is exposed, so the gateway never
     // shows a control that would fail.
     const self = this as unknown as Record<string, unknown>;
-    for (const name of ["steer", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "clear", "reload", "waitForTrackedPrompt", "cancelTrackedPrompt"]) {
+    for (const name of ["steer", "takeSteeringQueue", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "clear", "reload", "waitForTrackedPrompt", "cancelTrackedPrompt"]) {
       if (!started.methods.includes(name)) self[name] = undefined;
     }
     this.#attached();
@@ -126,6 +126,7 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
 
   async prompt(text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<void> { await this.#call("prompt", text, await this.#stage(attachments), options); }
   async steer(text: string, attachments?: readonly PromptAttachment[]): Promise<void> { await this.#call("steer", text, await this.#stage(attachments)); }
+  async takeSteeringQueue(): Promise<readonly string[]> { return await this.#call<string[]>("takeSteeringQueue"); }
   async followUp(text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<void> { await this.#call("followUp", text, await this.#stage(attachments), options); }
   async waitForTrackedPrompt(requestId: string): Promise<RuntimePromptResult> { return this.#call("waitForTrackedPrompt", requestId); }
   async cancelTrackedPrompt(requestId: string): Promise<void> { await this.#call("cancelTrackedPrompt", requestId); }

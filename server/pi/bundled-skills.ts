@@ -14,6 +14,11 @@ export const bundledSkills = [{
   preferencePath: "hui:skill:automate-me",
   tags: ["bots"],
 }, {
+  name: "cost-investigation",
+  path: fileURLToPath(new URL("../../skills/cost-investigation/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:cost-investigation",
+  tags: ["good practices"],
+}, {
   name: "create-formal-verification-skill",
   path: fileURLToPath(new URL("../../skills/create-formal-verification-skill/SKILL.md", import.meta.url)),
   preferencePath: "hui:skill:create-formal-verification-skill",
@@ -55,4 +60,10 @@ export function enabledBundledSkillPaths(disabled: readonly { path: string }[]):
   return bundledSkills.filter((skill) => !disabled.some((entry) =>
     entry.path === skill.preferencePath || entry.path === skill.path,
   )).map((skill) => skill.path);
+}
+
+/** Whether one shipped skill is on, so a prompt can use it instead of restating its method. */
+export function bundledSkillEnabled(name: string, disabled: readonly { path: string }[]): boolean {
+  const skill = bundledSkills.find((entry) => entry.name === name);
+  return skill !== undefined && enabledBundledSkillPaths(disabled).includes(skill.path);
 }

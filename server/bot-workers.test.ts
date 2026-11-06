@@ -714,7 +714,7 @@ test("a bot on the worker has the tools and skills a session there has until the
   let catalog = (await call("/__hui/bots/surveyor/catalog")).body as unknown as BotCatalog;
   assert.equal(catalog.live, true, JSON.stringify(catalog));
   assert.deepEqual(catalog.tools.filter((tool) => !tool.enabled).map((tool) => tool.name).sort(), ["bash", "write"]);
-  assert.deepEqual(catalog.tools.filter((tool) => GATEWAY_ONLY_TOOLS.includes(tool.name)), [], "the terminal, the browser and watchers stay on this machine: not listed, so never counted");
+  assert.deepEqual(catalog.tools.filter((tool) => GATEWAY_ONLY_TOOLS.includes(tool.name)), [], "watchers stay on this machine: not listed, so never counted");
   assert.deepEqual(catalog.skills.find((skill) => skill.name === "atlas"), { ...atlas, description: "Read the survey maps.", source: "~/.local/share/hui-worker/mirror/agent/skills", enabled: false });
 
   // What is off leaves the request the chat on the worker makes, and the skill its prompt.
@@ -740,10 +740,10 @@ test("a bot on the worker has the tools and skills a session there has until the
   await waitFor(async () => botOf(await call("/__hui/bots/surveyor")).disabledTools?.join() === "write" || undefined, "the roster to follow the worker's grant");
 
   // A list can't name what stays on this machine, at creation or later: there is nothing to turn off.
-  const termless = await call("/__hui/bots", "POST", { name: "Termless", worker: "devbox", disabledTools: ["terminal", "bash"] });
-  assert.deepEqual([termless.status, termless.body["error"]], [400, "terminal stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out."]);
-  const watched = await call("/__hui/bots/surveyor", "PATCH", { disabledTools: ["watcher", "browser"] });
-  assert.deepEqual([watched.status, watched.body["error"]], [400, "watcher, browser stay on this machine, so a bot on devbox can't use them and there is nothing to turn off: leave them out."]);
+  const watched = await call("/__hui/bots", "POST", { name: "Watched", worker: "devbox", disabledTools: ["watcher", "bash"] });
+  assert.deepEqual([watched.status, watched.body["error"]], [400, "watcher stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out."]);
+  const patched = await call("/__hui/bots/surveyor", "PATCH", { disabledTools: ["watcher"] });
+  assert.deepEqual([patched.status, patched.body["error"]], [400, "watcher stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out."]);
 
   // Edited from here, written there: a skill named by this gateway's own path finds its mirrored one.
   const edited = await call("/__hui/bots/surveyor", "PATCH", { disabledTools: [], disabledSkills: [{ name: "atlas", path: join(agentDir, "skills", "atlas", "SKILL.md") }] });

@@ -135,6 +135,12 @@ async function runDaemon(): Promise<void> {
   // host's store. PI workers get their agent directory explicitly.
   process.env["HUI_CONFIG_DIR"] = join(paths.mirrorDir, "hui");
   process.env["PI_CODING_AGENT_DIR"] = paths.agentDir;
+  // The gateway's integration logins arrive in the mirror, and every shell an agent runs reads them: `gh` and `pup`
+  // use the gateway's accounts and orgs instead of this machine's own, with or without a gateway attached. The
+  // variables its CLIs take instead of their own store would win, so the host drops the ones a profile may export.
+  for (const name of ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "DD_ACCESS_TOKEN", "DD_API_KEY", "DD_APP_KEY", "DD_ORG"]) delete process.env[name];
+  const integrations = join(paths.mirrorDir, "hui", "integrations");
+  Object.assign(process.env, { GH_CONFIG_DIR: join(integrations, "gh"), PUP_CONFIG_DIR: join(integrations, "pup"), DD_TOKEN_STORAGE: "file" });
   const { WorkerHost } = await import("./host.ts");
   delete process.env["HUI_CONFIG_DIR"];
   delete process.env["PI_CODING_AGENT_DIR"];

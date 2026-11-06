@@ -8,6 +8,7 @@ export const providerBrands = [
   { id: "opencode-go", name: "OpenCode Go", description: "Use your OpenCode Go subscription.", providers: ["opencode-go"] },
   { id: "openai", name: "OpenAI", description: "ChatGPT account or API key.", providers: ["openai-codex", "openai"] },
   { id: "anthropic", name: "Claude", description: "Claude account or API key.", providers: ["anthropic"] },
+  { id: "mistral", name: "Mistral", description: "Use your Mistral plan and its API credits.", providers: ["mistral"] },
 ] as const;
 
 export function providerBrand(id: string) {

@@ -188,6 +188,50 @@ the managed gateway and the current app: `hui update` reinstalls an app left on
 an older version, and a window that was already open needs quitting and
 reopening. Quitting HUI clears its notifications from Notification Center.
 
+## Shell completion
+
+`hui` completes its commands, its subcommands and its flags in bash and zsh.
+Tab on a flag it validates, such as `--shape`, `--thinking` or `--color`, also
+lists the values that flag takes; flags taking a path, such as `--from` and
+`--out`, keep the shell's own file names.
+
+Each Tab asks the CLI itself for the words it accepts (`hui __complete <words…>`),
+so completion never goes stale: a command added by an update is completable at
+once, and an old release does not advertise one it lacks.
+
+A global npm install writes the programs into the prefix it installed into, and
+the Nix package does the same for its own store path:
+
+```
+<prefix>/share/bash-completion/completions/hui
+<prefix>/share/zsh/site-functions/_hui
+```
+
+bash-completion loads its directory on demand, so bash needs nothing else.
+zsh finds the file through `fpath`; when the prefix is not already in `fpath`
+(for example `~/.local`), put the directory there in `~/.zshrc` before
+`compinit`:
+
+```sh
+fpath=("$HOME/.local/share/zsh/site-functions" $fpath)
+```
+
+An installation that had no writable prefix, or a shell you configure yourself,
+can take the program directly instead. In bash it is one line in `~/.bashrc`; in
+zsh the line goes **after** `compinit`, because `compinit` resets earlier
+registrations:
+
+```sh
+eval "$(hui completion bash)"   # ~/.bashrc
+
+# ~/.zshrc
+autoload -Uz compinit && compinit
+eval "$(hui completion zsh)"
+```
+
+`hui completion bash` and `hui completion zsh` print the program, and
+`HUI_SKIP_COMPLETIONS=1` keeps the npm postinstall from writing them.
+
 ## Remote access through a reverse proxy
 
 [Security and data](../README.md#security-and-data) covers binding the gateway
@@ -250,6 +294,13 @@ their memory summaries, quick answers on calls and call summaries): choose the
 fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Calls)
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
+
+**Default reasoning** on the same page is the effort new sessions and new bots
+start with: one of PI's levels through Maximum, or **Use PI default** to follow
+PI's own setting. New Session opens on it (you can still change the level there
+for one launch), and a model that supports fewer levels uses the closest one it
+has. HUI's Ultra is chosen per session from the composer's Effort slider, not
+saved as a default.
 
 **Subagent routes** sit under the same page. Choose **Add route** to open a
 form for its name, one-line description, model and optional reasoning level.
@@ -621,16 +672,23 @@ drops the note.
 Its **Tools** tab shows what a bot there can have: the tools of a session on that
 worker, its extensions' included, and its skills where the worker keeps them, your
 skills by their mirrored copies there (`~/.local/share/hui-worker/mirror/agent/skills`).
-It doesn't list the terminal, the browser or watchers: they stay on this machine,
-so the bot isn't offered them and there is nothing to turn off. What you turn off is
+It doesn't list the terminal or watchers: they stay on this machine, so the bot
+isn't offered them and there is nothing to turn off. What you turn off is
 kept and enforced on the worker; when the bot asks for something back, you
 answer here, and its Tools & skills page and roster row follow. While the worker is offline
 its Tools & skills page says so.
 
+Its **browser** is the worker's own: a separate profile under the worker's data
+directory, so pages it signs in to stay on that machine, and no preview or
+browser view streamed here. The worker needs a Chromium-family browser for it:
+`npx playwright install --with-deps chromium` on that machine is enough (a
+Chromium in PATH, Chrome, Brave or Edge are found too), and the tool says when
+there is none.
+
 **Limits.** A bot on a worker has the limits of any session on a worker: the
-terminal, the managed browser and watchers act on this machine, so it can't use
-them, and it can't use worktrees. A worker can't be removed while bots run on
-it; delete them first.
+terminal and watchers act on this machine, so it can't use them, and it can't
+use worktrees. A worker can't be removed while bots run on it; delete them
+first.
 
 ### Talking to a bot
 
@@ -1126,8 +1184,18 @@ one has the dashboard.
 When an org has no pup session yet, or its session has ended, HUI offers **Sign
 in**: pup opens Datadog's sign-in page in the browser of the machine running HUI
 (Settings also links to it), and once you approve, the cards load
-again. **Remove** forgets an org in HUI; pup keeps its session. Tokens never leave
-pup: HUI stores only the org names and sites.
+again. **Remove** forgets an org in HUI; pup keeps its session. HUI has pup keep
+its tokens in files rather than the system keychain, so a
+[remote worker](api.md#remote-workers) can be given the same orgs; a session
+signed in before that change reads *Sign in needed* once, and signing in again
+is enough.
+
+A worker gets your integration logins as well: `gh` there uses every account
+you are signed in to in **Settings → Integrations → GitHub**, `pup` uses the
+orgs listed here, and an agent's Atlassian helper reads Jira's token from its
+environment. Each sync refreshes them from this machine, so they keep working
+while HUI is away from the worker, and an integration you have not signed in to
+never reaches it.
 
 To draw a widget, HUI asks Datadog for a snapshot of it, which Datadog keeps at a
 long, unguessable link, as it does for its own sharing and its Slack app. HUI
@@ -1321,6 +1389,18 @@ never invents a preference. Once its message is accepted, HUI marks the bot spli
 of time leaves it unmarked, so run the command again. A bot on a worker keeps its
 home there, and doctor cannot read a worker's files offline: it lists the bot until
 you run the same command once the worker is connected.
+
+### Datadog sessions
+
+HUI lets pup keep its Datadog sessions as files in its own directory
+(`~/.config/hui/pup`), not in the system keychain, because a worker can only be
+given a session as a file ([Datadog link previews](#datadog-link-previews)). A
+session signed in before that change stays in the keychain, which HUI does not
+read, so every org shows *Sign in needed*. `hui doctor` lists each org with no
+session in its own directory, and signing in again in Settings → Integrations →
+Datadog fixes it. There is no `--fix` for it, since the sign-in runs in a
+browser. Until each org is signed in again, the check fails and `hui doctor`
+exits with status 1.
 
 ### HUI desktop app
 

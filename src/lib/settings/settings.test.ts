@@ -56,13 +56,15 @@ test("the question timeout is Off unless one of its choices is saved", () => {
   }
 });
 
-test("the managed browser is on and headless unless explicitly changed", () => {
-  assert.deepEqual(DEFAULT_SETTINGS.browser, { enabled: true, headless: true, executablePath: "" });
+test("the managed browser is on and headless unless explicitly changed, and mirrors nothing", () => {
+  assert.deepEqual(DEFAULT_SETTINGS.browser, { enabled: true, headless: true, executablePath: "", mirrorState: false });
   assert.deepEqual(normalizeSettings({}).browser, DEFAULT_SETTINGS.browser);
   assert.deepEqual(normalizeSettings({ browser: { enabled: "no", headless: 0, executablePath: 7 } }).browser, DEFAULT_SETTINGS.browser);
+  assert.equal(normalizeSettings({ browser: { mirrorState: "yes" } }).browser.mirrorState, false, "only an explicit true turns mirroring on");
+  assert.equal(normalizeSettings({ browser: { mirrorState: true } }).browser.mirrorState, true);
   assert.deepEqual(
     normalizeSettings({ browser: { enabled: false, headless: false, executablePath: "  /Applications/Brave Browser.app  " } }).browser,
-    { enabled: false, headless: false, executablePath: "/Applications/Brave Browser.app" },
+    { enabled: false, headless: false, executablePath: "/Applications/Brave Browser.app", mirrorState: false },
   );
   assert.equal(normalizeSettings({ browser: { executablePath: "/usr/bin/chrome\n--flag" } }).browser.executablePath, "");
   assert.equal(normalizeSettings({ browser: { executablePath: `/${"x".repeat(5_000)}` } }).browser.executablePath, "");
@@ -210,6 +212,17 @@ test("calls take Cove unless a known GPT-Live voice is saved", () => {
     assert.deepEqual(normalizeSettings({ calls }).calls, { voice: "cove" }, JSON.stringify(calls));
   }
   assert.deepEqual(normalizeCalls({ voice: "marin" }), { voice: "cove" }, "a public-API voice is not one of the route's");
+});
+
+test("the default reasoning is a PI level, or PI's own default when unset", () => {
+  assert.equal(DEFAULT_SETTINGS.models.thinking, "");
+  assert.equal(normalizeSettings({}).models.thinking, "");
+  assert.equal(normalizeSettings({ models: { thinking: "high" } }).models.thinking, "high");
+  assert.equal(normalizeSettings({ models: { thinking: "max" } }).models.thinking, "max");
+  for (const thinking of ["ultra", "turbo", " high ", 3, null]) {
+    assert.equal(normalizeSettings({ models: { thinking } }).models.thinking, "", JSON.stringify(thinking));
+  }
+  assert.deepEqual(normalizeSettings(normalizeSettings({ models: { thinking: "xhigh" } })).models.thinking, "xhigh", "round-trips");
 });
 
 const fixtures: { input: unknown; expected: ReturnType<typeof normalizeSettings> }[] = JSON.parse(readFileSync(new URL("./settings.fixture.json", import.meta.url), "utf8"));

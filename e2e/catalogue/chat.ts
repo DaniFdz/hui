@@ -1044,6 +1044,16 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "CHAT-085",
+    title: "Send steered messages now",
+    behaviour: "While a long tool call holds a Durable run, Send now in the row above the queued steers stops that turn and sends every steer as one message, in queue order, so they arrive as a single user turn instead of waiting for the next model call. The row is absent when nothing is steered and on PI sessions, which keep their queue through Stop.",
+    spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidsteer-now"],
+    surfaces: ["route:POST /__hui/sessions/:id/steer-now"],
+    journeys: ["chat-composer"],
+    web: "required",
+    ios: "required",
+  },
 ];
 
 export default cases;

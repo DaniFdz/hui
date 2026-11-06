@@ -32,6 +32,7 @@ import type {
   GitCheckoutInfo,
   WorktreeProgress,
 } from "../api/sessions.ts";
+import type { WorkerView } from "../api/workers.ts";
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
@@ -41,7 +42,7 @@ import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/sessi
 import { sessionStatusLabel } from "../lib/session/labels.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer/textarea.ts";
 import { icons } from "../lib/icons.ts";
-import { isThinkingLevel, PI_THINKING_LEVELS, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../lib/thinking.ts";
+import { renderEffortSelector } from "./effort-selector.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import type { SplitDirection } from "../lib/session/multiplexer.ts";
@@ -59,6 +60,7 @@ import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { parseSlackLink } from "../lib/markdown/slack-link.ts";
+import { expandedSkillText, splitSkillBlock } from "../lib/skill-block.ts";
 import { activityLabel, attributedMessage, questionnaireSummary, type QuestionnaireSummary, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../lib/chat-projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
@@ -111,7 +113,6 @@ const composerDragDepth = new WeakMap<HTMLElement, number>();
 
 const arrowUpIcon = icons.arrowUp;
 const chevronDownIcon = icons.chevronDown;
-const chevronUpIcon = icons.chevronUp;
 const checkIcon = icons.check;
 const circleIcon = icons.circle;
 const stopIcon = icons.stop;
@@ -328,6 +329,8 @@ export type HomeProps = {
   onQueueRemove: (id: string) => void;
   onQueueMove: (id: string, toIndex: number) => void;
   onQueueSteer: (id: string) => void;
+  /** Stops the turn the steers wait on and sends all of them as one message. */
+  onQueueSteerNow: () => void;
   /** The settled run's terminal error, unless the operator dismissed it. */
   runError?: RunErrorNotice;
   onContinueAfterError: () => void;
@@ -365,10 +368,14 @@ export type HomeProps = {
   onReconnect: () => void;
   launchDefaults?: { group: string; cwd: string };
   /** Remote workers a new session can run on; none hides the picker. */
-  launchWorkers?: readonly { id: string; name: string; state: string }[];
+  launchWorkers?: readonly WorkerView[];
   /** Selected worker id; absent runs the session on this machine. */
   launchWorker?: string;
   onSelectLaunchWorker?: (id: string | undefined) => void;
+  /** Connects a worker from the picker; its state then follows in `launchWorkers`. */
+  onConnectLaunchWorker?: (id: string) => void;
+  /** The picker opened: read the worker list again, since their state changes on its own. */
+  onRefreshLaunchWorkers?: () => void;
   launchModels: readonly RuntimeModel[];
   launchModel: RuntimeModel | undefined;
   launchThinking: string;
@@ -489,27 +496,55 @@ function onSubmit(props: HomeProps) {
   };
 }
 
+/** The one line under a worker's name: its state, and what it is doing or where it lives. */
+function workerStateLine(worker: WorkerView): string {
+  if (worker.state === "connected") return worker.host ? `Connected · ${worker.host.hostname}` : "Connected";
+  if (worker.state === "connecting") return `${worker.phase ?? "Connecting"}…`;
+  // `ssh exited with code 255.` says nothing the command does not; its output does.
+  if (worker.state === "error") return `Offline · ${(worker.error ?? "connection failed").replace(/^.*?exited with code \d+\.\s*/u, "").split("\n")[0]?.slice(0, 100)}`;
+  return `Not connected · ${worker.command}`;
+}
+
+/** One remote worker: where it lives, how it is doing, and a Connect action while it is not connected. */
+function renderWorkerOption(props: HomeProps, worker: WorkerView) {
+  const connecting = worker.state === "connecting";
+  return html`<div class="new-session-page__worker-row" role="none">
+    <button type="button" role="menuitemradio" aria-checked=${String(worker.id === props.launchWorker)} class="new-session-page__worker-choice"
+      data-worker-state=${worker.state} title=${worker.command} @click=${(event: Event) => {
+        (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open");
+        props.onSelectLaunchWorker?.(worker.id);
+      }}>
+      <span class="new-session-page__target-icon">${icons.globe}</span>
+      <span class="new-session-page__worker-copy">
+        <span class="new-session-page__worker-name">${worker.name}</span>
+        <span class="new-session-page__worker-state" title=${worker.error ?? worker.command}>${workerStateLine(worker)}</span>
+      </span>
+    </button>
+    ${worker.state === "connected" ? nothing : html`<button type="button" role="menuitem" class="new-session-page__worker-connect"
+      aria-label=${`Connect ${worker.name}`} ?disabled=${connecting} @click=${() => props.onConnectLaunchWorker?.(worker.id)}>${connecting ? "Connecting" : "Connect"}</button>`}
+  </div>`;
+}
+
 /** Where the session runs: this machine or a remote worker. */
 function renderWorkerPicker(props: HomeProps) {
   const workers = props.launchWorkers ?? [];
   const selected = workers.find((worker) => worker.id === props.launchWorker);
   const local = html`<span class="new-session-page__target-icon">${icons.terminal}</span>`;
   if (!workers.length) return html`<span class="new-session-page__trigger new-session-page__runtime">${local}Local</span>`;
-  const choose = (event: Event, id: string | undefined) => {
-    (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open");
-    props.onSelectLaunchWorker?.(id);
-  };
-  return html`<details class="new-session-page__group-picker new-session-page__worker-picker" @keydown=${closeComposerPicker}>
+  return html`<details class="new-session-page__group-picker new-session-page__worker-picker" @keydown=${closeComposerPicker}
+    @toggle=${(event: Event) => { if ((event.currentTarget as HTMLDetailsElement).open) props.onRefreshLaunchWorkers?.(); }}>
     <summary class="new-session-page__trigger new-session-page__runtime" aria-label="Choose where the session runs">
       <span class="new-session-page__target-icon">${selected ? icons.globe : icons.terminal}</span><span data-launch-worker>${selected?.name ?? "Local"}</span>
       <span class="new-session-page__trigger-chevron" aria-hidden="true">${chevronDownIcon}</span>
     </summary>
     <div class="new-session-page__group-menu new-session-page__worker-menu" role="menu" aria-label="Run on">
-      <button type="button" role="menuitemradio" aria-checked=${String(!selected)} @click=${(event: Event) => choose(event, undefined)}>${local}Local</button>
+      <button type="button" role="menuitemradio" aria-checked=${String(!selected)} @click=${(event: Event) => {
+        (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open");
+        props.onSelectLaunchWorker?.(undefined);
+      }}>${local}Local</button>
       <div class="session-menu__separator" role="separator"></div>
       <div class="new-session-page__menu-note">Remote workers</div>
-      ${workers.map((worker) => html`<button type="button" role="menuitemradio" aria-checked=${String(worker.id === selected?.id)}
-        @click=${(event: Event) => choose(event, worker.id)}><span class="new-session-page__target-icon">${icons.globe}</span>${worker.name}${worker.state === "connected" ? "" : html` <span class="settings-row__muted">· ${worker.state === "error" ? "offline" : worker.state}</span>`}</button>`)}
+      ${workers.map((worker) => renderWorkerOption(props, worker))}
     </div>
   </details>`;
 }
@@ -779,13 +814,17 @@ function renderLaunchForm(props: HomeProps) {
                     disabled: props.launching,
                     onSelect: props.onSelectLaunchModel,
                   })}
-                  ${renderThinkingPicker({
+                  ${renderEffortSelector({
+                    label: "Thinking",
                     level: props.launchThinking,
                     // New sessions run on Durable, which adds Ultra to the model's own levels.
                     levels: props.launchModel?.thinkingLevels && [...props.launchModel.thinkingLevels, "ultra"],
                     disabled: props.launching,
                     onSelect: props.onSelectLaunchThinking,
                     ...(props.launchModel?.fast ? { fast: { on: props.launchFast, onSelect: props.onSelectLaunchFast } } : {}),
+                    onToggle: positionComposerPicker,
+                    onKeydown: closeComposerPicker,
+                    onOpen: prepareComposerPicker,
                   })}
                 </div>
                 <div class="agent-chat__composer-actions">
@@ -865,17 +904,24 @@ export function isLongPrompt(text: string): boolean {
 /** A user-role message's text: the operator's own (or a routine's or trigger's) plain, a bot's or a session's (`markdown`)
  * rendered as the agents write it. */
 function renderUserText(props: HomeProps, item: ChatMessage, embeds: boolean, text = item.text, markdown = false) {
-  const slack = embeds ? parseSlackLink(text.trim()) : undefined;
+  // A turn that invoked a skill carries PI's wrapper for the model; the reader gets the skill's name and the words
+  // the turn added around it instead.
+  const invoked = splitSkillBlock(text);
+  const skill = invoked
+    ? html`<span class="chat-skill-invoked" data-testid="chat-skill-invoked" data-hui-tooltip=${invoked.location}><span class="chat-skill-invoked__label">Skill</span> <code>${invoked.name}</code></span>`
+    : nothing;
+  const content = invoked ? expandedSkillText(invoked) : text;
+  const slack = embeds ? parseSlackLink(content.trim()) : undefined;
   if (slack) return html`<div class="chat-text chat-text--plain chat-text--rich-link"><hui-slack-link
     data-url=${slack.url}
     data-workspace=${slack.workspace}
     data-channel-id=${slack.channelId}
     data-kind=${slack.kind}
   ></hui-slack-link></div>`;
-  if (!isLongPrompt(text)) return markdown ? html`<div class="chat-text">${renderAgentMarkdown(text, embeds)}</div>` : html`<div class="chat-text chat-text--plain">${text}</div>`;
+  if (!isLongPrompt(content)) return html`${skill}${markdown ? html`<div class="chat-text">${renderAgentMarkdown(content, embeds)}</div>` : html`<div class="chat-text chat-text--plain">${content}</div>`}`;
   const id = `${props.session?.id ?? "session"}:prompt:${item.id}`;
   const expanded = props.expandedActivityIds.has(id);
-  return html`<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(text, embeds) : text}</div>
+  return html`${skill}<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(content, embeds) : content}</div>
     <button type="button" class="chat-prompt-toggle" aria-expanded=${expanded ? "true" : "false"} @click=${() => props.onActivityExpanded(id, !expanded)}>
       ${expanded ? "Show less" : "Show more"}<span class="chat-prompt-toggle__icon ${expanded ? "is-open" : ""}" aria-hidden="true">${chevronDownIcon}</span>
     </button>`;
@@ -980,6 +1026,9 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
 
 function renderPresentedMediaItem(item: PresentedMediaItem): TemplateResult {
   const meta = `${item.mimeType} · ${mediaSizeLabel(item.size)}`;
+  const reveal = item.path
+    ? html`<hui-file-ref class="chat-assistant-attachment-card__action chat-presented-media__reveal" data-path=${item.path}>${icons.eye}</hui-file-ref>`
+    : nothing;
   if (item.kind === "image") {
     return html`<figure class="hui-presented-media hui-presented-media--image">
       <a class="chat-message-image-button" href=${item.url} target="_blank" rel="noopener" data-media-viewer data-media-name=${item.name} aria-label=${`Open ${item.name}`}>
@@ -1003,7 +1052,7 @@ function renderPresentedMediaItem(item: PresentedMediaItem): TemplateResult {
         </span>
       </div>
       <span class="chat-assistant-attachment-card__actions">
-        <a class="chat-assistant-attachment-card__action" href=${item.url} download=${item.name} aria-label=${`Download ${item.name}`} title="Download">${icons.download}</a>
+        ${reveal}<a class="chat-assistant-attachment-card__action" href=${item.url} download=${item.name} aria-label=${`Download ${item.name}`} title="Download">${icons.download}</a>
       </span>
     </div>
     ${player}
@@ -1805,12 +1854,16 @@ function renderComposer(props: HomeProps) {
             disabled: disconnected || props.streaming,
             onSelect: props.onSelectModel,
           })}
-          ${renderThinkingPicker({
+          ${renderEffortSelector({
+            label: "Thinking",
             level: props.thinking,
             levels: props.currentModel?.thinkingLevels,
             disabled: disconnected || props.streaming || props.opening,
             onSelect: props.onSelectThinking,
             ...(props.fast !== undefined && props.currentModel?.fast ? { fast: { on: props.fast, onSelect: props.onSelectFast } } : {}),
+            onToggle: positionComposerPicker,
+            onKeydown: closeComposerPicker,
+            onOpen: prepareComposerPicker,
           })}</div>
             </div>
             <div class="agent-chat__composer-actions">
@@ -2010,17 +2063,6 @@ function modelValue(model: RuntimeModel): string {
   return model.provider ? `${model.provider}/${model.id}` : model.id;
 }
 
-function thinkingRank(level: string): number {
-  return THINKING_LEVELS.indexOf(level as ThinkingLevel);
-}
-
-/** The level the model is sent, as PI clamps it: the next one up it has, else its highest. */
-function shownThinking(level: string, levels: readonly ThinkingLevel[]): ThinkingLevel {
-  return levels.includes(level as ThinkingLevel)
-    ? level as ThinkingLevel
-    : levels.find((candidate) => thinkingRank(candidate) >= thinkingRank(level)) ?? levels.at(-1) ?? "medium";
-}
-
 /** Composer pickers share one popover lane, so a trigger closes its sibling first. */
 function prepareComposerPicker(event: Event) {
   const trigger = event.currentTarget;
@@ -2155,98 +2197,6 @@ function renderModelPicker(options: ModelPickerOptions) {
   </details>`;
 }
 
-type ThinkingPickerOptions = {
-  level: string;
-  /** The model's levels; all of HUI's while it reports none. */
-  levels: readonly string[] | undefined;
-  disabled: boolean;
-  onSelect: (level: string) => void;
-  /** Present when the model has a fast mode the session can use. */
-  fast?: { on: boolean; onSelect: (fast: boolean) => void };
-};
-
-function renderThinkingPicker(options: ThinkingPickerOptions) {
-  const known = (options.levels ?? []).filter(isThinkingLevel);
-  const levels: readonly ThinkingLevel[] = known.length ? known : PI_THINKING_LEVELS;
-  // OpenClaw's glow: on Ultra and on the model's own highest level.
-  const top = levels.findLastIndex((candidate) => candidate !== "ultra");
-  const boost = (at: number) => levels[at] === "ultra" ? "ultra" : at === top && levels[at] !== "off" ? "max" : "";
-  const level = shownThinking(options.level, levels);
-  const index = levels.indexOf(level);
-  const last = Math.max(1, levels.length - 1);
-  const fill = (index / last) * 100;
-  const angle = -120 + (level === "off" ? 0 : index / last) * 240;
-  const fast = options.fast;
-  const disabled = options.disabled || (levels.length < 2 && !fast);
-  const label = `Thinking: ${level}${fast?.on ? ", fast" : ""}`;
-  return html`<details class="chat-controls__inline-select chat-controls__effort-picker" @keydown=${closeComposerPicker} @toggle=${positionComposerPicker}>
-    <summary class="chat-controls__inline-select-trigger chat-controls__effort-trigger ${disabled ? "chat-controls__inline-select-trigger--disabled" : ""}" aria-label=${label} aria-disabled=${String(disabled)} @click=${(event: MouseEvent) => {
-      if (disabled) event.preventDefault();
-      else prepareComposerPicker(event);
-    }}>
-      <span class="chat-controls__effort-gauge ${level === "off" ? "chat-controls__effort-gauge--off" : ""}" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path class="chat-controls__effort-gauge-dial" d="M3.34 17a10 10 0 1 1 17.32 0"></path>
-          <path class="chat-controls__effort-gauge-needle" d="M12 12V6" style=${`transform: rotate(${angle}deg)`}></path>
-          <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"></circle>
-        </svg>
-        ${fast?.on ? html`<span class="chat-controls__effort-fast-badge">${icons.zap}</span>` : nothing}
-      </span>
-      ${fast?.on ? html`<span class="chat-controls__effort-zap" aria-hidden="true">${icons.zap}</span>` : nothing}
-      <span class="chat-controls__inline-select-label">${THINKING_LABELS[level]}</span>
-      <span class="chat-controls__inline-select-chevron" aria-hidden="true">${chevronUpIcon}</span>
-    </summary>
-    <div class="chat-controls__inline-select-menu chat-controls__effort-menu" popover="manual">
-      ${levels.length > 1 ? html`<div class="chat-controls__reasoning-panel">
-        <div class="chat-controls__reasoning-head">
-          <span class="chat-controls__effort-heading">Effort</span>
-          <span class="chat-controls__effort-value" aria-hidden="true" .textContent=${THINKING_LABELS[level]}></span>
-        </div>
-        <div class="chat-controls__reasoning-slider">
-          <div class="chat-controls__reasoning-dots" aria-hidden="true">
-            ${levels.map(() => html`<span class="chat-controls__reasoning-dot"></span>`)}
-          </div>
-          <input
-            class="chat-controls__reasoning-range"
-            type="range"
-            min="0"
-            max=${String(levels.length - 1)}
-            step="1"
-            .value=${String(index)}
-            style=${`--reasoning-fill: ${fill}%`}
-            data-effort-boost=${boost(index)}
-            aria-label="Thinking effort"
-            aria-valuetext=${THINKING_LABELS[level]}
-            ?disabled=${options.disabled}
-            @input=${(event: Event) => {
-              const input = event.currentTarget as HTMLInputElement;
-              const at = Number(input.value);
-              const next = levels[at] ?? level;
-              input.style.setProperty("--reasoning-fill", `${(at / last) * 100}%`);
-              input.setAttribute("aria-valuetext", THINKING_LABELS[next]);
-              input.dataset["effortBoost"] = boost(at);
-              const value = input.closest(".chat-controls__reasoning-panel")?.querySelector(".chat-controls__effort-value");
-              if (value) value.textContent = THINKING_LABELS[next];
-            }}
-            @change=${(event: Event) => {
-              options.onSelect(levels[Number((event.currentTarget as HTMLInputElement).value)] ?? level);
-            }}
-          />
-        </div>
-        <div class="chat-controls__effort-scale" aria-hidden="true"><span>Faster</span><span>Smarter</span></div>
-      </div>` : nothing}
-      ${fast ? html`<div class="chat-controls__speed-panel">
-        <span class="chat-controls__effort-heading">Speed</span>
-        <div class="chat-controls__speed-options" role="radiogroup" aria-label="Speed">
-          ${([[false, "Standard"], [true, "Fast"]] as const).map(([value, text]) => html`<button type="button" role="radio"
-            class="chat-controls__speed-option" aria-checked=${String(fast.on === value)} ?disabled=${options.disabled}
-            @click=${() => { if (fast.on !== value) fast.onSelect(value); }}>${text}</button>`)}
-        </div>
-      </div>` : nothing}
-    </div>
-  </details>`;
-}
-
 const QUEUE_DRAG_MIME = "application/x-hui-queued-message";
 /** One editor per element: Lit re-rendering around a textarea must not overwrite what the operator is typing. */
 const mountedEditors = new WeakSet<HTMLTextAreaElement>();
@@ -2265,6 +2215,9 @@ function mountEditor(element: Element | undefined, value: string) {
 function renderQueue(props: HomeProps) {
   const editable = props.queue.items ?? [];
   const rows = queueRows(props.queue);
+  // Durable withdraws a steered message with the turn it waits on, so they are sent again as one prompt. A runtime
+  // that keeps its queue through Stop already delivers them with its next run.
+  const steersNow = props.session?.tool === "durable" && props.queue.steering.length > 0;
   if (!rows.length) return nothing;
   return html`<section
     class="chat-queue"
@@ -2273,6 +2226,11 @@ function renderQueue(props: HomeProps) {
     aria-atomic="false"
     aria-label="Queued messages"
   >
+    ${steersNow ? html`<div class="chat-queue__send-now">
+      <button class="chat-queue__action chat-queue__steer" type="button"
+        title="Stops this turn and sends every steered message now"
+        ?disabled=${props.sending} @click=${props.onQueueSteerNow}>${icons.zap}<span>Send now</span></button>
+    </div>` : nothing}
     <div class="chat-queue__scroll" data-scrollable=${rows.length > 3 ? "true" : "false"}
       data-at-start="true" data-at-end=${rows.length > 3 ? "false" : "true"}
       @scroll=${(event: Event) => {
@@ -2590,7 +2548,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
             @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
           ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}
           ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser view" data-hui-tooltip="Open browser view" ?disabled=${props.connection !== "live"} @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
-          ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.connection !== "live" || props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
+          ${props.onOpenTerminal ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.connection !== "live" || props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
           ${session.tool === "pi" ? html`<button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.connection !== "live" || props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
             <span class="session-history-action__icon">${continueIcon}</span><span class="session-history-action__label">${props.continuing ? "Continuing…" : "Continue"}</span>
           </button>` : nothing}

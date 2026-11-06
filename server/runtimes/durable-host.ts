@@ -153,8 +153,28 @@ class CurrentModels {
           // (earendil-works/pi#9075). A request that reasons gets the model's output cap, which pi-ai still fits into
           // the free context window, as an ordinary turn does.
           const options = given?.reasoning ? uncapped : given;
-          // Only Durable's own requests are attributed, and they bring no callbacks of their own.
-          args[2] = { ...callbacks(options), ...options, env: { ...requestEnv(options), ...options?.env } };
+          // Only Durable's own requests are attributed. Durable brings the payload callback of its own hook chain
+          // (`beforeProviderRequest`), so HUI's hooks, fast mode and OptChat marks run on what that one produced.
+          const own = callbacks(options);
+          const payload = options?.onPayload ?? own.onPayload;
+          args[2] = {
+            ...options,
+            ...(payload === undefined ? {} : {
+              onPayload: async (body: unknown, model: unknown) => {
+                const replaced = options?.onPayload === undefined ? body : await options.onPayload(body, model);
+                const base = replaced === undefined ? body : replaced;
+                if (own.onPayload === undefined) return base;
+                return await own.onPayload(base, model) ?? base;
+              },
+            }),
+            ...(options?.onResponse === undefined && own.onResponse === undefined ? {} : {
+              onResponse: async (response: ProviderResponse, model: unknown) => {
+                await options?.onResponse?.(response, model);
+                await own.onResponse?.(response, model);
+              },
+            }),
+            env: { ...requestEnv(options), ...options?.env },
+          };
           return call.apply(target, args);
         };
       },
@@ -565,7 +585,7 @@ export class DurableHost implements ExtensionHost {
       this.#openedAt = Date.now();
       // Since Durable 1.2.0 a storage error closes the whole harness: its sessions end (`DurableSession.onExit`), and once
       // the store is released the next `open()` reopens it and resumes their runs.
-      void harness.closed.then((end) => { if (end.reason === "failed") void this.#failed(harness, end.error); });
+      void harness.closed.then((end) => { if (end.kind === "failed") void this.#failed(harness, end.error); });
       // Unfinished generations and tool calls continue even before any browser
       // reopens their session. Without it, nothing is scheduled: the store is
       // only read and written in commits.

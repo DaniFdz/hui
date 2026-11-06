@@ -8,7 +8,7 @@ export const VscodeProviderPreference = Type.Union([
 export type VscodeProviderPreference = Static<typeof VscodeProviderPreference>;
 
 export const BrowserSettings = Type.Object({
-  enabled: Type.Boolean(), headless: Type.Boolean(), executablePath: Type.String(),
+  enabled: Type.Boolean(), headless: Type.Boolean(), executablePath: Type.String(), mirrorState: Type.Boolean(),
 }, { $id: "BrowserSettings" });
 export type BrowserSettings = Static<typeof BrowserSettings>;
 
@@ -22,6 +22,9 @@ const TypefaceId = Type.Union([
   Type.Literal("space-grotesk"), Type.Literal("atkinson-hyperlegible"), Type.Literal("fraunces"), Type.Literal("lora"),
   Type.Literal("jetbrains-mono"), Type.Literal("system"),
 ]);
+
+/** HUI's default reasoning is one of PI's levels: Ultra is the orchestrating session's own choice. */
+const SavedReasoningLevel = Type.Exclude(ThinkingLevel, Type.Literal("ultra"));
 
 export const Settings = Type.Object({
   theme: Type.String(),
@@ -41,9 +44,11 @@ export const Settings = Type.Object({
   notifications: Type.Object({ tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean() }),
   models: Type.Object({
     primary: Type.String(), fallback: Type.String(), utility: Type.String(),
+    // Empty follows PI's own defaultThinkingLevel.
+    thinking: Type.Union([Type.Literal(""), SavedReasoningLevel]),
     routes: Type.Immutable(Type.Array(Type.Object({
       name: Type.String(), description: Type.String(), model: Type.String(),
-      thinking: Type.Optional(Type.Exclude(ThinkingLevel, Type.Literal("ultra"))),
+      thinking: Type.Optional(SavedReasoningLevel),
     }))),
   }),
   calls: Type.Object({ voice: Type.Union([

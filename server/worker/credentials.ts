@@ -146,6 +146,23 @@ export function secretEnv(): Record<string, string> {
   return Object.fromEntries(secrets);
 }
 
+/** Variables a sync sets for the agent's own tools, unlike `HUI_SECRET_…`: the Atlassian helper reads its token
+ * from the environment where no keychain is available, so these are in the environment this host and every process
+ * it starts run with. */
+const INTEGRATION_ENV = ["ATLASSIAN_API_TOKEN", "ATLASSIAN_ACCOUNT", "ATLASSIAN_SITE"] as const;
+
+/** The real environment: Node refuses a write through the wrapper `setSecretEnv` installs. */
+const environment = process.env;
+
+export function setIntegrationEnv(values: unknown): void {
+  const source = values && typeof values === "object" ? values as Record<string, unknown> : {};
+  for (const name of INTEGRATION_ENV) {
+    const value = source[name];
+    if (typeof value === "string" && value) environment[name] = value;
+    else delete environment[name];
+  }
+}
+
 /** HUI provider credential files a gateway serves, relative to its providers dir. */
 export const BROKERED_PROVIDER_FILE = /^(?:auth\.json|accounts\/[0-9a-f-]{36}\/auth\.json)$/u;
 

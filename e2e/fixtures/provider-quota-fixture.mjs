@@ -23,5 +23,9 @@ export function quotaFixture(provider, account, now = Date.now()) {
     weekly: { percent: 32, resetsAt: new Date(now + 345600000).toISOString() },
     monthly: { percent: 68, resetsAt: new Date(now + 864000000).toISOString() },
   } };
+  if (provider === "mistral") return {
+    api_budget: { usage_percentage: 42.5, initial_budget: 25.5, currency: "EUR", reset_at: new Date(now + 864000000).toISOString() },
+    vibe_budget: { usage_percentage: 8, initial_budget: 15, currency: "EUR", reset_at: new Date(now + 864000000).toISOString(), payg_enabled: false },
+  };
   return {};
 }

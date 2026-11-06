@@ -20,7 +20,11 @@ const baseline = JSON.parse(await readFile(join(repo, "package.json"), "utf8")).
 const nextVersion = baseline.replace(/\d+$/u, (patch) => String(Number(patch) + 1));
 const brokenVersion = baseline.replace(/\d+$/u, (patch) => String(Number(patch) + 2));
 
-test("installed package lifecycle, real SDK resume, verified update and rollback", { timeout: 360_000 }, async (t) => {
+// A macOS runner runs this proof slower than the Linux one: two nightly runs were cut off by the
+// old six-minute budget here, and the stream a resumed run reports arrived but not within the
+// twenty seconds its read allowed. Both budgets are hang guards, so they leave the slower runner
+// room instead of failing a real run; the job's own timeout still ends a stuck proof.
+test("installed package lifecycle, real SDK resume, verified update and rollback", { timeout: 900_000 }, async (t) => {
   // The installed CLI reports canonical locations, so resolve the temporary
   // directory first: macOS puts it behind the /var -> /private/var symlink.
   const temporary = await realpath(await mkdtemp(join(tmpdir(), "hui-package-proof-")));
@@ -65,7 +69,7 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   for (const path of ["desktop/main.cjs", "desktop/launch.mjs", "desktop/install.mjs", "desktop/icon.mjs", "desktop/policy.cjs"]) {
     assert(packed.files.some((file: { path: string }) => file.path === path), `Desktop package contains ${path}`);
   }
-  for (const path of ["LICENSE", "README.md", "THIRD_PARTY_NOTICES.md", "build/package-lock.json"]) {
+  for (const path of ["LICENSE", "README.md", "THIRD_PARTY_NOTICES.md", "build/package-lock.json", "cli/completions/hui.bash", "cli/completions/_hui", "cli/completion-install.mjs"]) {
     assert(packed.files.some((file: { path: string }) => file.path === path), `Package contains ${path}`);
   }
   for (const path of ["SKILL.md", "references/LICENSE", "references/UPSTREAM.md", "references/agent-compatibility.md", "references/evidence-delivery.md", "references/feature-map-example/README.md", "references/feature-map-example/search.md", "references/feature-map-example/create-note.md"]) {
@@ -85,6 +89,17 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   assert.equal(await command("--version"), baseline);
   assert.match(await command("--help"), /gateway start/u);
   assert.match(await command("--help"), /hui desktop/u);
+  assert.match(await command("--help"), /hui completion <bash\|zsh>/u);
+  // Shell completion ships in the archive and asks the installed CLI, so a Tab
+  // offers the package's own words instead of a list frozen at build time.
+  const bashProgram = await command("completion", "bash");
+  assert.match(bashProgram, /complete -o default -F _hui_completions hui/u);
+  assert.match(await command("completion", "zsh"), /^#compdef hui$/mu);
+  // The shell finds `hui` through PATH, and this host's bash sources the system profile before -c runs, so the
+  // probe names the installed prefix itself instead of trusting the environment it inherits.
+  const completed = await exec("bash", ["-c", `PATH=${JSON.stringify(join(prefix, "bin"))}:"$PATH"\n${bashProgram}\nCOMP_WORDS=(hui gateway '')\nCOMP_CWORD=2\n_hui_completions\nprintf '%s\\n' "\${COMPREPLY[@]}"`],
+    { cwd: temporary, env, timeout: 30_000 });
+  for (const word of ["start", "status", "stop"]) assert.match(completed.stdout, new RegExp(`^${word}$`, "mu"), `completes ${word}`);
   // Exercise the installed CLI's Electron dispatch without claiming a native
   // window on headless/NixOS CI. The executable fixture records its handoff.
   const desktopRuntime = join(temporary, "desktop-runtime");
@@ -142,7 +157,9 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   const waitStatus = async (id: string, wanted: "idle" | "running", label: string) => {
     const seen: string[] = [];
     try {
-      const response = await fetch(new URL(`/__hui/sessions/${id}/events`, status.url), { headers: { "x-hui": "1" }, signal: AbortSignal.timeout(20_000) });
+      // A resumed run boots the SDK again, which takes longer on the macOS runner, so the
+      // status stream gets a wider read budget than one request does; a stall still ends here.
+      const response = await fetch(new URL(`/__hui/sessions/${id}/events`, status.url), { headers: { "x-hui": "1" }, signal: AbortSignal.timeout(60_000) });
       const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = "";
       try {
         for (;;) {
@@ -201,9 +218,9 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   assert.match(JSON.stringify(history), /Installed SDK content/u);
   assert.equal((await api(`sessions/${session.id}/tools`)).backend, "sdk");
   const bundledSkills = (await api("pi")).skills.filter((skill: { origin?: string }) => skill.origin === "hui");
-  assert.deepEqual(bundledSkills.map((skill: { name: string }) => skill.name), ["create-verification-skill", "git-selective-staging", "visualize"]);
+  assert.deepEqual(bundledSkills.map((skill: { name: string }) => skill.name), ["cost-investigation", "create-verification-skill", "git-selective-staging", "visualize"]);
   const commands = (await api(`sessions/${session.id}/commands`)).commands as { name: string }[];
-  const tags: Record<string, string[]> = { "create-verification-skill": ["good practices"], "git-selective-staging": ["good practices"], visualize: ["presentation"] };
+  const tags: Record<string, string[]> = { "cost-investigation": ["good practices"], "create-verification-skill": ["good practices"], "git-selective-staging": ["good practices"], visualize: ["presentation"] };
   for (const bundled of bundledSkills) {
     assert.equal(bundled.preferencePath, `hui:skill:${bundled.name}`);
     assert.deepEqual(bundled.tags, tags[bundled.name]);

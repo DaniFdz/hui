@@ -573,6 +573,22 @@ test("a bot without a model of its own starts on Settings' primary model, which 
 });
 
 
+test("a bot without a thinking level of its own starts on Settings' default reasoning, then PI's", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  let level: string | undefined = "high";
+  const port = durableBotConversations(f.host, fakeMemory(), { defaultThinking: async () => level });
+  const harness = await f.host.open();
+  const levelOf = async (reference: string) => (await (await harness.conversation(durableConversationId(reference)!, durableContext))!.agent(durableContext)).thinkingLevel;
+
+  assert.equal(await levelOf(await port.create({ botId: "bot-default-level", cwd: f.cwd, memory: { name: "L" } })), "high", "as a new session starts, not on PI's default");
+  assert.equal(await port.defaultThinking(f.cwd, "hui-e2e/fixture"), "high", "what Gateway default means, and what a cleared level goes back to");
+  const chosen = await port.create({ botId: "bot-chosen-level", cwd: f.cwd, thinking: "minimal", memory: { name: "C" } });
+  assert.equal(await levelOf(chosen), "minimal", "a bot's own level wins");
+  level = "";
+  assert.equal(await port.defaultThinking(f.cwd, "hui-e2e/fixture"), "low", "no Settings default: PI's own");
+  assert.equal(await levelOf(await port.create({ botId: "bot-pi-level", cwd: f.cwd, memory: { name: "P" } })), "low");
+});
+
 test("set_profile asks HUI to rename the calling bot, only from a bot's chat", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
   const reference = await durableBotConversations(f.host, fakeMemory()).create({ botId: "bot-new", cwd: f.cwd, memory: { name: "New Bot" } });

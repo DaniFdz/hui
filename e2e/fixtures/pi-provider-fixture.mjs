@@ -330,8 +330,9 @@ const server = createServer(async (request, response) => {
     text(response, `message_bot answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
     return finish(response);
   }
-  // A bot imported from a HUI template with open points: its first turn greets and starts on them.
-  if (source.includes("[HUI bot created]") && source.includes("from: template") && source.includes("Not agreed yet")) {
+  // A bot imported from a HUI template: its first turn greets and starts on its setup document (BOOTSTRAP.md), or on
+  // the open points closing its soul when the template carried no document.
+  if (source.includes("[HUI bot created]") && source.includes("from: template") && (source.includes("# Setting up ") || source.includes("Not agreed yet"))) {
     text(response, "Hi! I came from a template someone shared. First thing to agree: which repositories should I watch for pull requests?");
     return finish(response);
   }
@@ -753,6 +754,14 @@ const server = createServer(async (request, response) => {
     event(response, { type: "content_block_stop", index: 0 });
     return finish(response, "tool_use");
   }
+  if (source.includes("E2E_PRINT_INTEGRATIONS")) {
+    // The gateway's integration logins a shell on the worker reads, as HUI's mirror points it at them.
+    const input = { command: "printf 'GH=%s\\nPUP=%s\\nSTORAGE=%s\\nATLASSIAN=%s\\n' \"$GH_CONFIG_DIR\" \"$PUP_CONFIG_DIR\" \"$DD_TOKEN_STORAGE\" \"$ATLASSIAN_API_TOKEN\" ; echo integrations-done", timeout: 120 };
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "tool-e2e-integrations", name: "bash", input: {} } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } });
+    event(response, { type: "content_block_stop", index: 0 });
+    return finish(response, "tool_use");
+  }
   if (source.includes("E2E_COMMAND")) {
     const command = source.includes("E2E_COMMAND_RUNNING")
       ? `curl --silent --show-error --noproxy '*' --fail http://127.0.0.1:${port}/control/wait-command`
@@ -793,6 +802,16 @@ const server = createServer(async (request, response) => {
   // A tool a PI extension registers, which only exists when the runtime loaded it.
   if (source.includes("E2E_EXTENSION_TOOL")) {
     toolUse(response, "tool-e2e-extension", "fixture_echo", { text: "from the model" });
+    return finish(response, "tool_use");
+  }
+  // A cost investigation ends with follow-ups; the fixture files one as a suggestion card.
+  if (source.includes("cost-investigation")) {
+    toolUse(response, "tool-e2e-cost-followup", "suggest_task", {
+      title: "Add a lint that fails on whole-file reads of generated files",
+      problem: "The history's `bash` calls returned 8.4M characters over 120 calls, and half of that came from reading two generated files whole. A check would catch the next session that does it.",
+      fix: "Add a lint rule to the service that fails on whole-file reads under `generated/` and names the narrower command to use, then run it in CI.",
+      cwd: workspace,
+    });
     return finish(response, "tool_use");
   }
   if (source.includes("E2E_SUGGEST_TASK")) {

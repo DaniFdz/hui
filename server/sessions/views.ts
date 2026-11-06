@@ -106,6 +106,11 @@ export type SessionViewDeps = {
   watchers: () => Pick<WatcherService, "list">;
 };
 
+/** The run a conversation ends with failed when its last entry, a compaction aside, is that failure's error. */
+export function transcriptRunFailed(transcript: readonly TranscriptEntry[]): boolean {
+  return transcript.findLast((entry) => entry.kind !== "compaction")?.kind === "error";
+}
+
 export function createSessionViews(deps: SessionViewDeps) {
   function toView(
     record: SessionRecord,
@@ -113,6 +118,7 @@ export function createSessionViews(deps: SessionViewDeps) {
     runtime?: SessionView["runtime"],
   ): SessionView {
     const transcript = liveSessions.transcript(record.id);
+    const runFailed = transcriptRunFailed(transcript);
     const pullRequests = pullRequestsFromTranscript(transcript).map((ref) => deps.pullRequestStatuses().view(ref));
     const jiraIssues = deps.jiraIssues(record, transcript);
     const bot = record.bot ? deps.bots().identity(record.bot) : undefined;
@@ -132,6 +138,7 @@ export function createSessionViews(deps: SessionViewDeps) {
       ...(record.runStartedAt && status !== "running" && status !== "waiting"
         ? { interrupted: true as const }
         : {}),
+      ...(runFailed ? { runFailed: true as const } : {}),
       ...(record.model ? { model: record.model } : {}),
       ...(record.thinking ? { thinking: record.thinking } : {}),
       ...(record.pinned ? { pinned: true } : {}),

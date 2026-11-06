@@ -279,7 +279,8 @@ test("a call the card can't show opens no card and fails back to the agent with 
     await expect(rows).toHaveCount(index + 1);
   }
 
-  const reasons = ["must not have more than 4 items", '"Other" is reserved', "must have unique labels", "must not have more than 16 characters", "previews are for single-select questions only"];
+  // The two bounds are part of the tool's schema, so Durable rejects them before HUI's own parse; the rest are HUI's.
+  const reasons = ["expected at most 4 items", '"Other" is reserved', "must have unique labels", "expected at most 16 characters", "previews are for single-select questions only"];
   for (const [index, received] of reasons.entries()) {
     await rows.nth(index).tap();
     await expect(rows.nth(index).getByLabel("Failed")).toBeVisible();

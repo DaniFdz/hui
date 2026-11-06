@@ -121,6 +121,10 @@ hui-files-view {
 .hui-files-row:hover .hui-files-row__delete, .hui-files-row:focus-within .hui-files-row__delete { opacity: 1; }
 .hui-files-row:hover .hui-files-row__main, .hui-files-row:focus-within .hui-files-row__main { padding-inline-end: 32px; }
 .hui-files-nav__status { margin: 0; padding: 8px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; line-height: 1.4; }
+/* An upload in flight: how far the browser has sent it, and a way to stop it. */
+.hui-files-nav__upload { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
+.hui-files-nav__progress { flex: 1 1 auto; min-width: 0; height: 6px; accent-color: var(--accent); }
+.hui-files-nav__percent { flex: 0 0 auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 /* ── editor side ── */
 .hui-files-main { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }

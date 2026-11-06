@@ -1,4 +1,6 @@
 /** Generated from docs/api.schema.json by scripts/api-schema.ts. Do not edit. */
+import type { SessionPullRequest } from "./github.ts";
+import type { SessionView } from "./sessions.ts";
 
 export type DiagnosticArea = ("gateway") | ("session") | ("runtime") | ("automation") | ("ui");
 
@@ -22,16 +24,24 @@ export type UiErrorReceipt = { "recorded": number; "dropped": number; };
 
 export type UiErrorReport = { "kind": UiErrorKind; "message": string; "count": number; "firstAt"?: string; "lastAt"?: string; "location"?: string; "page"?: string; "request"?: { "method": string; "path": string; }; };
 
-export type UsageDay = { "date": string; "metrics": UsageMetrics; };
+export type UsageDay = { "date": string; "metrics": UsageMetrics; "models": Array<UsageModel>; };
+
+export type UsageInvestigation = { "session": SessionView; "existing": boolean; };
+
+export type UsageInvestigationRecord = { "id": string; "title": string; "target": UsageInvestigationTarget; "range": { "from": string; "to": string; "timeZone": string; }; "createdAt": string; };
+
+export type UsageInvestigationRequest = { "target": UsageInvestigationTarget; "range": { "from"?: string; "to"?: string; "timeZone": string; }; };
+
+export type UsageInvestigationTarget = ({ "kind": "session"; "id": string; }) | ({ "kind": "pullRequest"; "repository": string; "number": number; });
 
 export type UsageMetrics = { "inputTokens": number; "outputTokens": number; "cacheReadTokens": number; "cacheWriteTokens": number; "totalTokens": number; "costUsd": (number) | (null); "unpricedCalls": number; "calls": number; "userMessages": number; "assistantMessages": number; "toolResults": number; "errors": number; };
 
 export type UsageModel = { "provider": string; "model": string; "metrics": UsageMetrics; };
 
-export type UsageReport = { "generatedAt": string; "range": { "from": string; "to": string; "timeZone": string; }; "sessions": Array<UsageSession>; "coverage": { "registeredSessions": number; "readSessions": number; "unavailable": Array<{ "sessionId": string; "reason": string; }>; "undatedRecords": number; }; "unplacedSpend": { "totalTokens": number; "costUsd": number; }; };
+export type UsageReport = { "generatedAt": string; "range": { "from": string; "to": string; "timeZone": string; }; "sessions": Array<UsageSession>; "investigations": Array<UsageInvestigationRecord>; "coverage": { "registeredSessions": number; "readSessions": number; "unavailable": Array<{ "sessionId": string; "reason": string; }>; "undatedRecords": number; }; "unplacedSpend": { "totalTokens": number; "costUsd": number; }; };
 
-export type UsageSession = { "id": string; "title": string; "parentId"?: string; "lastActivityAt": number; "metrics": UsageMetrics; "days": Array<UsageDay>; "models": Array<UsageModel>; "tools": Array<UsageTool>; };
+export type UsageSession = { "id": string; "title": string; "parentId"?: string; "lastActivityAt": number; "metrics": UsageMetrics; "days": Array<UsageDay>; "models": Array<UsageModel>; "tools": Array<UsageTool>; "pullRequests"?: Array<SessionPullRequest>; "reportedCost"?: { "usd": number; "source": string; "asOf": number; }; };
 
-export type UsageTool = { "name": string; "calls": number; "errors": number; };
+export type UsageTool = { "name": string; "calls": number; "errors": number; "outputChars": number; };
 
 export type UsageTotals = { "sessions": number; "filesRead": number; "records": number; "inputTokens": number; "outputTokens": number; "cacheReadTokens": number; "cacheWriteTokens": number; "totalTokens": number; "costUsd": (number) | (null); "models": Array<{ "model": string; "tokens": number; "costUsd": number; }>; "unavailable": Array<string>; };

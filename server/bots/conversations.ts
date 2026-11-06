@@ -33,6 +33,9 @@ export type BotConversationOptions = {
   /** Settings' primary model (`settings.models.primary`), the one a session started without a choice uses; empty or
    * undefined while none is set. */
   primaryModel?: () => Promise<string | undefined>;
+  /** Settings' default reasoning (`settings.models.thinking`), the level a session started without a choice uses;
+   * empty or undefined while PI's own default applies. */
+  defaultThinking?: () => Promise<string | undefined>;
 };
 
 export function durableBotConversations(host: DurableHost, memory: BotMemory, options: BotConversationOptions = {}): BotConversations {
@@ -55,6 +58,8 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
     if (primary) await checkModel(primary);
     return initialModel(host, cwd, requested ?? (primary || undefined));
   };
+  /** A new chat's level when its bot has none of its own: Settings' default reasoning, else PI's default. */
+  const startingThinking = async (cwd: string) => (await options.defaultThinking?.()) || defaultThinking(host, cwd);
   return {
     checkModel,
 
@@ -65,7 +70,7 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       if (input.memory.model) await checkModel(input.memory.model);
       const model = await startingModel(input.cwd, input.model);
       const known = model ? host.models.getModel(model.provider, model.modelId) : undefined;
-      const thinking = input.thinking ?? defaultThinking(host, input.cwd);
+      const thinking = input.thinking ?? await startingThinking(input.cwd);
       // One commit: no prompt can reach the chat before its bot document (which brings its soul section) and its memory
       // are in place.
       const created = await harness.createConversation({
@@ -158,7 +163,7 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       await host.open();
       const ref = modelRef(model);
       const known = ref ? host.models.getModel(ref.provider, ref.modelId) : undefined;
-      const requested = defaultThinking(host, cwd);
+      const requested = await startingThinking(cwd);
       // A new conversation without a level stored runs at Durable's "off".
       return requested && known ? clampThinkingLevel(known, requested as ModelThinkingLevel) : "off";
     },

@@ -83,7 +83,7 @@ import {
 } from "./lib/session/ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
-import { DashboardController } from "./controllers/dashboard-controller.ts";
+import { DashboardController, GATEWAY_MACHINE } from "./controllers/dashboard-controller.ts";
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
@@ -274,7 +274,7 @@ export class HuiApp extends HuiElement {
   private readonly automation = new AutomationController(this);
   private readonly dashboard = new DashboardController(this, () => this.view === "surface" && this.activePage?.id === "dashboard" && !this.settingsOpen, () => this.listedGroups);
   private readonly control = new SettingsController(this, {
-    piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary),
+    piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary, this.control.settings.models.thinking),
     copyFailed: (message) => {
       this.note = message;
       this.noteLevel = "error";
@@ -349,7 +349,6 @@ export class HuiApp extends HuiElement {
     paletteOpen: () => this.commandPaletteOpen,
     terminalFont: () => this.control.settings.fontTerminal,
     browserEnabled: () => this.control.settings.browser.enabled,
-    remoteSession: (sessionId) => Boolean(this.listedSession(sessionId)?.worker),
   });
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
   @property({ attribute: "pane-session-id" }) paneSessionId = "";
@@ -612,6 +611,11 @@ export class HuiApp extends HuiElement {
     }
     await this.sessions.refresh(background);
   }
+
+  /** Opens a session the gateway has just created: navigation can only activate a row the client list holds. */
+  private openStartedSession = (id: string) => {
+    void this.refreshSessions(true).then(() => this.navigate({ kind: "session", id }));
+  };
 
   /** Opens a launch once the registry lists its session: a worktree session is unlisted until the gateway has made its checkout. */
   private openLaunchedSession(): void {
@@ -2355,7 +2359,7 @@ export class HuiApp extends HuiElement {
 
   private loadLaunchPreferences() {
     if (this.control.pi) {
-      this.launcher.seedPreferences(this.control.pi, this.control.settings.models.primary);
+      this.launcher.seedPreferences(this.control.pi, this.control.settings.models.primary, this.control.settings.models.thinking);
       return;
     }
     this.control.loadPi();
@@ -2933,8 +2937,21 @@ export class HuiApp extends HuiElement {
         sessionsLoading: this.sessions.loading,
         sessionsError: this.sessions.error,
         metrics: this.dashboard.metrics,
-        history: this.dashboard.history,
         metricsError: this.dashboard.error,
+        workers: this.dashboard.workers,
+        workersError: this.dashboard.workersError,
+        chart: {
+          gateway: GATEWAY_MACHINE,
+          metric: this.dashboard.chartMetric,
+          window: this.dashboard.chartWindow,
+          hidden: this.dashboard.hiddenMachines,
+          samples: this.dashboard.samples,
+          hover: this.dashboard.chartHover,
+          onHover: this.dashboard.setChartHover,
+          onMetric: this.dashboard.setChartMetric,
+          onWindow: this.dashboard.setChartWindow,
+          onToggleMachine: this.dashboard.toggleMachine,
+        },
         expandedLists: this.dashboard.expandedLists,
         now: Date.now(),
         onRetry: this.dashboard.refresh,
@@ -2943,6 +2960,7 @@ export class HuiApp extends HuiElement {
       }),
       onOpenSettings: () => this.navigate({ kind: "settings", page: "integrations" }),
       onOpenSession: (id) => this.navigate({ kind: "session", id }),
+      onOpenStartedSession: this.openStartedSession,
     };
   }
 
@@ -2965,6 +2983,7 @@ export class HuiApp extends HuiElement {
           onSelectPage: this.selectSettingsPage,
           onChangeModels: (models) => {
             this.launcher.selectModel(models.primary);
+            this.launcher.selectDefaultThinking(models.thinking);
             void this.control.save({ models });
           },
           onClose: this.closeSettings,

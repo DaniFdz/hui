@@ -27,7 +27,8 @@ remove Channels and Nodes / Devices.
 
 - Routine delivery recovery and visible failure state: persisted dispatch
   checkpoints, Durable request deduplication and submission outcomes, safe
-  pre-dispatch worker retries (three attempts within one deadline), exact
+  pre-dispatch retries for an offline worker or a failing model key command
+  (every minute for up to 12 hours), exact
   cancellation and shutdown detachment. Temporary run counts survive retries.
   Browser proof and final validation are tracked in
   `e2e/bot-routine-recovery.browser.md`; not considered complete until that
@@ -922,9 +923,9 @@ requests:
    `bot.offer`: the catalog and creation's check computed there, skills by their
    mirrored paths), a grant there comes back in a `bot.access` frame, and each
    connection reconciles that worker's bots; offline, 503 naming it. Its chat
-   there isn't offered `terminal`, `browser` or `watcher`, which the gateway's
-   bridge refuses for any remote session (one list, `GATEWAY_ONLY_TOOLS`), so the
-   catalog leaves them out and a list can't name them. Proof:
+   there isn't offered `watcher`, which the gateway's bridge refuses for any
+   remote session (one list, `GATEWAY_ONLY_TOOLS`), so the catalog leaves it out
+   and a list can't name it. Proof:
    `server/bots/durable-access.test.ts` (real requests: offers, the
    bridge, prompts, `/skill:`, `load_skill`, requests allowed, denied, refused
    and one at a time, the port, documents from before the lists),
@@ -1340,5 +1341,20 @@ Verified desktop/mobile behavior and checks are recorded in
   `docker exec -i` and over SSH: Node download, release install, package
   dependency install, durable runs across a killed transport, host upgrade, and
   the Settings → Workers, Run on and reattach journeys in the browser.
-- Not yet remote: terminals, the managed browser, worktrees/branch checkout,
-  multi-account quota rotation and usage totals.
+- Terminals work on a worker: the gateway runs that worker's own connect command
+  in its PTY, so the operator's shell, the agent's `terminal` tool and the Work
+  pane's tabs behave as they do locally, and the shell moves to the
+  conversation's directory once it starts. A connect command that needs a
+  command appended (`docker exec -i`) cannot open an interactive shell yet.
+- Not yet remote: watchers, worktrees/branch checkout, multi-account quota
+  rotation and usage totals. A session there browses in the worker's own managed
+  browser (`server/browser/`, a profile under its data directory, no live view
+  here), found with the same executable detection.
+- Follow-up 2026-11-06: the gateway also shares its integration logins, so
+  agents on a worker can use Datadog, GitHub and Jira as the operator is signed
+  in to them here: a `gh` hosts file with every account, pup's session files
+  (HUI's own pup calls keep them in files, not the system keychain) and Jira's
+  token in the host's environment. Proof:
+  `server/worker/integration-logins.test.ts` and "the gateway's integration
+  logins reach the worker, and every shell there reads them" in
+  `server/workers.test.ts`.

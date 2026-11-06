@@ -88,6 +88,17 @@ corrects a new kind of slowness, and enforce it with a type, check or test.
 | Usage reuses counted histories only when registry changes preserve attribution, and commits a conversation's counters only after every page succeeds. | `server/usage.test.ts` "a session that joins the registry…", "a cached scan rereads…" and "a repeated, emptied or interrupted read…" |
 | A change to what opening, streaming or listing a session sends or draws is measured on a slow link. | Judgment: the procedure and the last numbers are in `e2e/remote-loading.browser.md`. |
 
+## Presentation patterns
+
+- A stack of overview cards takes its column count from the number of cards it
+draws, never from the room available: `lib/card-grid.ts` with `styles/card-grid.css`
+lays the Usage overview and the Usage rankings out so no last row trails off
+with one card.
+- A control HUI owns uses HUI's component: `views/settings-picker.ts`
+(`hui-select-picker`) for every choice, never a native `<select>`, and a hover
+or focus detail opens HUI's tooltip (`data-hui-tooltip` or a page-owned card
+with `role="tooltip"`), never a native `title`.
+
 ## Change Discipline
 
 - Keep behavior changes, tests, and contract documentation aligned in one task.

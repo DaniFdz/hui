@@ -7,7 +7,7 @@
 import type { ReactiveControllerHost } from "lit";
 import { loadGitCheckout, type GitCheckoutInfo, type SessionGroup } from "../api/sessions.ts";
 import { loadWorkingDirectorySuggestions } from "../api/working-directories.ts";
-import { loadWorkers, type WorkerView } from "../api/workers.ts";
+import { loadWorkers, workerAction, type WorkerView } from "../api/workers.ts";
 import { groupCheckoutDefaults } from "../lib/group-session-defaults.ts";
 import type { PiSnapshot } from "../lib/pi.ts";
 import type { HomeProps } from "../views/home.ts";
@@ -21,6 +21,8 @@ export class LaunchController {
   worker: string | undefined;
   model = "";
   thinking = "";
+  /** PI's own default level: what New Session shows while Settings' default reasoning is unset. */
+  #piThinking = "medium";
   fast = false;
   directorySuggestions: readonly string[] = [];
   /** The machine `directorySuggestions` came from: "" for this one, else a worker's id. A bot's Settings page shows only
@@ -38,6 +40,8 @@ export class LaunchController {
   #inspectedDirectory = "";
   /** The machine and directory whose checkout is loaded or loading, so a worker change re-inspects. */
   #inspected = "";
+  /** Reads the worker list again while one of them connects; connect first, then the gateway's phases. */
+  #workerPoll?: ReturnType<typeof setTimeout>;
 
   constructor(host: ReactiveControllerHost) {
     this.#host = host;
@@ -108,14 +112,20 @@ export class LaunchController {
     });
   }
 
-  seedPreferences(snapshot: PiSnapshot, primary: string): void {
+  seedPreferences(snapshot: PiSnapshot, primary: string, defaultThinking = ""): void {
+    this.#piThinking = snapshot.model.thinking ?? "medium";
     const model = this.model || primary || (
       snapshot.model.defaultProvider && snapshot.model.defaultModel
         ? `${snapshot.model.defaultProvider}/${snapshot.model.defaultModel}`
         : ""
     );
-    const thinking = this.thinking || (snapshot.model.thinking ?? "medium");
+    const thinking = this.thinking || defaultThinking || this.#piThinking;
     if (model !== this.model || thinking !== this.thinking) this.#set({ model, thinking });
+  }
+
+  /** Settings' Default reasoning changed: New Session adopts it at once, as it does a new primary model. */
+  selectDefaultThinking(level: string): void {
+    this.#set({ thinking: level || this.#piThinking });
   }
 
   selectModel(model: string): void {
@@ -130,6 +140,26 @@ export class LaunchController {
     }).catch(() => undefined);
   }
 
+  /** Connects a worker from the New Session picker and follows it until the gateway reports an outcome. */
+  connectWorker(id: string): void {
+    this.workers = this.workers.map((worker) => worker.id === id ? { ...worker, state: "connecting" as const } : worker);
+    this.#host.requestUpdate();
+    void workerAction(id, "connect").catch(() => undefined);
+    this.#followWorkers();
+  }
+
+  /** Polls the list while any worker connects, so its install phases and failures show where it was asked for. */
+  #followWorkers(attempt = 0): void {
+    if (this.#workerPoll) clearTimeout(this.#workerPoll);
+    this.#workerPoll = setTimeout(() => {
+      void loadWorkers().then((list) => {
+        this.workers = list;
+        this.#host.requestUpdate();
+        if (attempt < 200 && list.some((worker) => worker.state === "connecting")) this.#followWorkers(attempt + 1);
+      }).catch(() => undefined);
+    }, attempt ? 1_500 : 400);
+  }
+
   #set(patch: Partial<Pick<LaunchController, "model" | "thinking" | "fast" | "worker" | "worktree" | "baseRef" | "branch" | "branchSuggestionsOpen">>): void {
     Object.assign(this, patch);
     this.#host.requestUpdate();
@@ -137,7 +167,8 @@ export class LaunchController {
 
   props(): Pick<HomeProps,
     "launchDefaults" | "launchThinking" | "onSelectLaunchModel" | "onSelectLaunchThinking" | "launchFast" | "onSelectLaunchFast"
-    | "launchWorkers" | "launchWorker" | "onSelectLaunchWorker" | "directorySuggestions" | "gitCheckout" | "gitCheckoutLoading"
+    | "launchWorkers" | "launchWorker" | "onSelectLaunchWorker" | "onConnectLaunchWorker" | "onRefreshLaunchWorkers"
+    | "directorySuggestions" | "gitCheckout" | "gitCheckoutLoading"
     | "workspaceWorktree" | "workspaceBaseRef" | "workspaceBranchSuggestionsOpen" | "workspaceBranch"
     | "onWorkspaceMode" | "onWorkspaceBaseRef" | "onWorkspaceBranchSuggestionsOpen" | "onWorkspaceBranch"> {
     return {
@@ -155,6 +186,11 @@ export class LaunchController {
         this.#set({ worker });
         // The checkout belongs to a machine: inspecting it again there keeps the picker honest.
         if (this.#inspectedDirectory) this.requestCheckout(this.#inspectedDirectory);
+      },
+      onConnectLaunchWorker: (id) => this.connectWorker(id),
+      onRefreshLaunchWorkers: () => {
+        this.loadWorkers();
+        if (this.workers.some((worker) => worker.state === "connecting")) this.#followWorkers();
       },
       directorySuggestions: this.directorySuggestions,
       gitCheckout: this.checkout,

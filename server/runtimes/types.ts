@@ -43,6 +43,9 @@ export type RuntimeEvent =
   /** Entries written outside a run (a call's lines) changed the history. Never sent to a browser: an idle session
    * answers it with a fresh snapshot, a busy one shows them when its turn settles. */
   | { type: "history" }
+  /** The session's usage changed outside a run, such as a cost an extension just reported. Never sent to a browser:
+   * an idle session answers it with a snapshot that keeps the transcript it holds. */
+  | { type: "usage" }
   /** `output` holds the last lines the runtime process wrote to stderr before
    * it failed. It feeds diagnostics only and is never sent to a browser. */
   | { type: "error"; message: string; output?: string };
@@ -105,6 +108,9 @@ export type RuntimeSession = {
   prompt(text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<void>;
   /** Queue an instruction before the next model call while the agent is busy. */
   steer?(text: string, attachments?: readonly PromptAttachment[]): Promise<void>;
+  /** Hands HUI the run's queued steers for it to deliver as a prompt, because Stop withdraws them with the run. A
+   * runtime whose Stop keeps its queue omits it: those messages go in with the next run by themselves. */
+  takeSteeringQueue?(): Promise<readonly string[]>;
   /** Queue work to begin only after the current agent run has settled. */
   followUp?(text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<void>;
   /** Reacquire and await an already-admitted input by its caller-owned identity. Never sends new input. */

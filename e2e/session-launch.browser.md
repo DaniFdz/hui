@@ -13,7 +13,7 @@ again from the keyboard.
 - A failed launch displays a theme-aware callout with an icon, a heading, `role="alert"`, and a form
   `aria-describedby` association.
 - This verifies real PI against the deterministic local Anthropic-compatible
-  provider, **not** a live AI Gateway account or its credentials.
+  provider, **not** a live provider account or its credentials.
 
 ## Environment and reproduction
 

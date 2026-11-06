@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 import {
+  createGauge,
   createHostMetrics,
   metricsBetween,
   parseIoregGpu,
@@ -105,6 +106,73 @@ test("percentages and rates are deltas against the previous sample", () => {
   const reset = metricsBetween(raw(0, { network: { rx: 10, tx: 10 } }), raw(1_000, { network: null }), "linux");
   assert.equal(reset.network, null, "a host without counters has no network rate");
   assert.equal(metricsBetween(raw(0, { network: { rx: 10, tx: 10 } }), raw(1_000), "linux").network?.rxBytesPerSecond, 0, "a reset counter never reads negative");
+});
+
+test("a gauge reads once, answers from its last reading while the next one runs, and waits only for the first", async () => {
+  vi.useFakeTimers();
+  try {
+    const reads: Array<(value: number) => void> = [];
+    const gauge = createGauge(() => new Promise<number>((resolve) => { reads.push(resolve); }), 20_000);
+    const first = gauge();
+    assert.equal(reads.length, 1, "the first reading waits for a read");
+    reads[0]!(1);
+    assert.equal(await first, 1);
+    assert.equal(await gauge(), 1, "a reading within its cadence answers at once");
+    assert.equal(reads.length, 1);
+    await vi.advanceTimersByTimeAsync(20_000);
+    assert.equal(await gauge(), 1, "an expired reading answers at once with the value it has and reads again");
+    assert.equal(reads.length, 2);
+    reads[1]!(2);
+    await Promise.resolve();
+    assert.equal(await gauge(), 2, "then the newer reading answers");
+    assert.equal(reads.length, 2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a baseline read slower than the gap it needs is not padded, and its rates cover the read", async () => {
+  vi.useFakeTimers();
+  try {
+    let reads = 0;
+    const hostMetrics = createHostMetrics(async () => {
+      const at = Date.now();
+      vi.setSystemTime(at + 400);
+      reads += 1;
+      return raw(at, { cpu: { idle: reads * 50, total: reads * 100 }, network: { rx: reads * 1_000, tx: 0 } });
+    }, "darwin");
+    const first = hostMetrics();
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(reads, 2, "the sample follows a slow baseline at once");
+    assert.deepEqual((await first).network, { rxBytesPerSecond: 2_500, txBytesPerSecond: 0 });
+    assert.equal((await first).cpu.percent, 50);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a sampler keeps the samples its chart asks for, oldest first", async () => {
+  vi.useFakeTimers();
+  try {
+    let reads = 0;
+    const hostMetrics = createHostMetrics(async () => raw(Date.now(), { cpu: { idle: ++reads * 50, total: reads * 100 } }), "darwin");
+    const first = hostMetrics();
+    await vi.advanceTimersByTimeAsync(250);
+    await first;
+    await vi.advanceTimersByTimeAsync(2_500);
+    await hostMetrics();
+    await vi.advanceTimersByTimeAsync(2_500);
+    await hostMetrics();
+    const kept = hostMetrics.history(5);
+    assert.equal(kept.length, 3, "one sample per read, and the baseline is not one");
+    assert.deepEqual(kept.map((sample) => sample.cpu.percent), [50, 50, 50]);
+    assert.ok(Date.parse(kept[0]!.sampledAt) < Date.parse(kept.at(-1)!.sampledAt), "oldest first");
+    await vi.advanceTimersByTimeAsync(31 * 60_000);
+    await hostMetrics();
+    assert.equal(hostMetrics.history(30).length, 1, "a sample older than half an hour is dropped");
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("one sample serves every caller for two seconds, and a read in flight is shared", async () => {

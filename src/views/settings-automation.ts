@@ -203,7 +203,7 @@ function renderTask(props: AutomationProps, task: AutomationTask) {
 function renderRun(props: AutomationProps, run: AutomationRun) {
   const recovery = automationRunRecoveryDetail(run, formatTimestamp);
   return html`
-    <article class="cron-run-entry" data-run=${run.id}>
+    <article class="cron-run-entry" data-run=${run.id} data-testid="automation-run">
       <div class="cron-run-entry__header">
         <span class="cron-run-entry__title">${run.taskName}</span>
         <span class="settings-status">${automationRunLabel(run)}</span>

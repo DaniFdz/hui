@@ -96,15 +96,18 @@ export function notAgreedSection(open: readonly BotOpenPoint[]): string {
 }
 
 /**
- * The first turn of a bot imported from a HUI template with open points: a kickoff (shown as "<name> was created") that
- * asks it to greet the operator and start on them. Like every import's first turn it is not the operator's, so it can't
- * rewrite the bot's soul or profile.
+ * The first turn of a bot imported from a HUI template: a kickoff (shown as "<name> was created") that asks it to greet
+ * the operator and start on its setup. `setup` is the template's BOOTSTRAP.md, what the new owner gives it and what to
+ * agree, carried in the turn itself: the bot may have no tool to read a file, and the doc is not in its soul. Like
+ * every import's first turn it is not the operator's, so it can't rewrite the bot's soul or profile.
  */
-export function botTemplateKickoffText(name: string): string {
+export function botTemplateKickoffText(name: string, setup?: string): string {
   return [
     BOT_KICKOFF_MARKER,
     `name: ${name.replace(/\s+/gu, " ").trim()}`,
     BOT_IMPORTED_KICKOFF_LINE,
-    `HUI just created you from a template someone else shared. This note is from HUI, not the operator, who will read your chat when they open it. Your soul ends with "${BOT_NOT_AGREED_HEADING}": what the template left for your new operator to decide. Greet them in a sentence, say you came from a template, and ask about the first point or two; the rest come over the next messages, a question or two at a time. In this turn only write that message, without tools, and reply with it only.`,
+    setup?.trim()
+      ? `HUI just created you from a template someone else shared. This note is from HUI, not the operator, who will read your chat when they open it. Its BOOTSTRAP.md is copied below and in your home: what your new operator gives you, what to agree before you act, and what its routines and triggers need. Greet them in a sentence, say you came from a template, and start on it, one or two points at a time. In this turn only write that message, without tools, and reply with it only.\n\n---\n\n${setup.trim()}`
+      : `HUI just created you from a template someone else shared. This note is from HUI, not the operator, who will read your chat when they open it. Your soul ends with "${BOT_NOT_AGREED_HEADING}": what the template left for your new operator to decide. Greet them in a sentence, say you came from a template, and ask about the first point or two; the rest come over the next messages, a question or two at a time. In this turn only write that message, without tools, and reply with it only.`,
   ].join("\n");
 }

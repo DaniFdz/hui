@@ -14,7 +14,7 @@ import { liveSessions, type DeleteToken } from "./live-sessions.ts";
 import { fallbackTitle, generateSessionNames } from "../pi/model-routing.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import type { PromptAttachment } from "../runtimes/types.ts";
-import { SessionNotFoundError, updateRegistry, upsert, type SessionRecord } from "./sessions.ts";
+import { SessionNotFoundError, updateRegistry, upsert, type SessionInvestigation, type SessionRecord } from "./sessions.ts";
 import type { SubagentService } from "../agent-tools/subagents.ts";
 import type { TaskSuggestionStore } from "../agent-tools/task-suggestions.ts";
 import { terminals } from "../terminals/terminals.ts";
@@ -94,6 +94,8 @@ async function createSession(
     bot?: { id: string; piSessionFile: string };
     /** A fork: the resume reference of the conversation copy it continues (`liveSessions.fork`). */
     piSessionFile?: string;
+    /** A Usage investigation: what it explains and the range it read. */
+    investigation?: SessionInvestigation;
   } = {},
 ): Promise<SessionRecord> {
   if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
@@ -161,12 +163,12 @@ async function createSession(
   if (requestedModel && !/^[^/\s]+\/\S+$/.test(requestedModel)) {
     throw new Error("Session model must use provider/id format.");
   }
-  const thinking = sessionText(body, "thinking", 16, {
+  const requestedThinking = sessionText(body, "thinking", 16, {
     optional: true,
     allowEmpty: false,
   });
-  if (thinking && !isThinkingLevel(thinking)) {
-    throw new Error(`Unsupported thinking level: ${thinking}`);
+  if (requestedThinking && !isThinkingLevel(requestedThinking)) {
+    throw new Error(`Unsupported thinking level: ${requestedThinking}`);
   }
   if (body["fast"] !== undefined && typeof body["fast"] !== "boolean") {
     throw new Error("Fast mode must be true or false.");
@@ -178,6 +180,9 @@ async function createSession(
   // Sessions started without a choice (suggestions, backlog items) use the
   // primary route rather than whatever PI currently treats as its default.
   const model = requestedModel || settings.models.primary;
+  // The same goes for reasoning: Settings' default, else PI's own default at
+  // the runtime (the launch form always sends the level it shows).
+  const thinking = requestedThinking || settings.models.thinking || undefined;
   const id = randomUUID();
   const now = new Date().toISOString();
   const recordNamed = (named: string): SessionRecord => ({
@@ -193,6 +198,7 @@ async function createSession(
     ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
     ...(seed.bot ? { bot: seed.bot.id, piSessionFile: seed.bot.piSessionFile } : {}),
     ...(seed.piSessionFile ? { piSessionFile: seed.piSessionFile } : {}),
+    ...(seed.investigation ? { investigation: seed.investigation } : {}),
     createdAt: now,
     updatedAt: now,
     source: "hui",

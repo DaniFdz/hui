@@ -3,10 +3,11 @@
  * sessions first, then bots, tools, integrations, automation and the backlog, with the route modules that serve them.
  */
 import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { homedir, hostname, userInfo } from "node:os";
 
-import { workers } from "./workers.ts";
+import { browserMirror, workers } from "./workers.ts";
 import { createWorkerRoutes } from "./routes/workers.ts";
 import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots/bots.ts";
 import { BotService } from "./bots/service.ts";
@@ -37,7 +38,7 @@ import { VscodeInstaller } from "./vscode/install.ts";
 import { verifyVscodeServer } from "./vscode/providers.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
-import { createHostMetrics } from "./host-metrics.ts";
+import { createHostMetrics, sampleInBackground } from "./host-metrics.ts";
 import type { BrowserStatus } from "./api/browser.ts";
 import { ProviderService } from "./pi/providers.ts";
 import { invalidateModelCatalog } from "./pi/config.ts";
@@ -51,7 +52,10 @@ import { ROUTINES_TOOL } from "./bots/durable-routines.ts";
 import { resolveWorkingDirectory } from "./git/working-directories.ts";
 import { aggregateUsage, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { UsageReports } from "./usage.ts";
+import { createUsageInvestigation } from "./usage-investigation.ts";
+import { bundledSkillEnabled } from "./pi/bundled-skills.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
+import { keyCommandFails } from "./runtimes/hui-models.ts";
 import { createDurableBots } from "./bots/durable-access.ts";
 import type { SessionJiraIssue } from "./api/sessions.ts";
 import {
@@ -129,7 +133,7 @@ const piMutations = new PiMutationService();
 export const piRoutes = createPiRoutes({ piMutations });
 export const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
 export const localPathRoutes = createLocalPathRoutes({ workers });
-export const terminalRoutes = createTerminalRoutes({ readRegistry });
+export const terminalRoutes = createTerminalRoutes({ readRegistry, workers });
 export const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 export const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 export const themeRoutes = createThemeRoutes();
@@ -137,10 +141,6 @@ export const updateRoutes = createUpdateRoutes();
 export const settingsRoutes = createSettingsRoutes({ writeSettings });
 const usageReports = new UsageReports(readRegistry);
 const durableUsage = async (conversationId: number) => durableHost().conversationUsage(conversationId as never);
-export const diagnosticsRoutes = createDiagnosticsRoutes({
-  observability: async () => readObservability(await readRegistry(), durableUsage),
-  usage: (query, refresh) => usageReports.get(query, refresh),
-});
 export const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
 // and stop showing a reconnect once HUI no longer tries.
@@ -161,7 +161,10 @@ export const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosti
 }));
 /** The Durable side of bots' chats here, and their remote workers' half: the bot service's, and what a bot import
  * checks a new bot against. */
-const botConversations = durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readHuiSettings()).models.primary || undefined });
+const botConversations = durableBotConversations(durableHost(), botMemory, {
+  primaryModel: async () => (await readHuiSettings()).models.primary || undefined,
+  defaultThinking: async () => (await readHuiSettings()).models.thinking || undefined,
+});
 const botWorkers = remoteBots(workers, {
   cleanupFile: BOT_CLEANUP_FILE,
   report: (action, summary, error) => recordDiagnosticEvent({
@@ -176,13 +179,27 @@ const sessionViews = createSessionViews({
   watchers: () => watchers,
 });
 const { toView, listSessionViews } = sessionViews;
-const { createSession, forkRequest, forkFromSession, startWorktreeSession, waitForSessionReady, deleteSession, updateSession } = createSessionLifecycle({
-  views: sessionViews,
+const { createSession, forkRequest, forkFromSession, startWorktreeSession, waitForSessionReady, deleteSession, updateSession } = createSessionLifecycle({  views: sessionViews,
   readAttachments,
   subagents: () => subagents,
   taskSuggestions: () => taskSuggestions,
   watchers: () => watchers,
   managedBrowser: () => managedBrowser,
+});
+/** Why an expensive session or pull request was expensive: a new session, prompted from the Usage report. */
+const usageInvestigation = createUsageInvestigation({
+  usage: (query) => usageReports.get(query),
+  readRegistry,
+  liveSessions,
+  lifecycle: { createSession, waitForSessionReady },
+  views: sessionViews,
+  directoryExists: async (path) => stat(path).then((info) => info.isDirectory()).catch(() => false),
+  costSkillEnabled: async () => bundledSkillEnabled("cost-investigation", (await readHuiSettings()).disabledSkills),
+});
+export const diagnosticsRoutes = createDiagnosticsRoutes({
+  observability: async () => readObservability(await readRegistry(), durableUsage),
+  usage: (query, refresh) => usageReports.get(query, refresh),
+  investigate: (request) => usageInvestigation.investigate(request),
 });
 export const bots = new BotService({
   registry: botRegistry,
@@ -198,6 +215,14 @@ export const bots = new BotService({
   // A bot made on a worker keeps its conversation, memory and SOUL.md there, where its chat runs; what deleting one
   // leaves there while it is offline waits in BOT_CLEANUP_FILE for its next connection.
   workers: botWorkers,
+  // On Windows PI runs key commands synchronously, which would block the gateway's event loop.
+  ...(process.platform === "win32" ? {} : {
+    modelKeyUnavailable: async (provider: string, signal: AbortSignal) => {
+      const host = durableHost();
+      await host.open();
+      return keyCommandFails(host.modelRuntime, provider, signal);
+    },
+  }),
   files: localBotFiles(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
@@ -320,10 +345,22 @@ export const watchers = new WatcherService({
   onChange: (id) => liveSessions.notifySnapshot(id),
 });
 export const watcherRoutes = createWatcherRoutes({ watchers, readRegistry });
-/** One managed browser per gateway; its settings are re-read on every call. */
+/** One managed browser per gateway; its settings are re-read on every call. With mirroring on it seeds itself from
+ * what any worker sent, and hands what it captured to every worker's document. State goes through this machine: a
+ * worker's document never reaches another worker. */
 export const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
   readSettings: async () => (await readHuiSettings()).browser,
+  mirror: {
+    read: async () => (await readHuiSettings()).browser.mirrorState ? browserMirror.everything() : { cookies: [], origins: [] },
+    write: (state) => {
+      void (async () => {
+        if (!(await readHuiSettings()).browser.mirrorState) return;
+        const ids = [...new Set([...(await workers.list()).map((worker) => worker.id), ...(await browserMirror.workers())])];
+        for (const id of ids) await browserMirror.merge(id, state).catch(() => undefined);
+      })();
+    },
+  },
 });
 /** One VS Code server per gateway for every VS Code view, started on the first open (`vscode.ts`). Nothing runs or
  * downloads before that; an openvscode-server install happens only when the operator asks for it. */
@@ -348,7 +385,9 @@ export const vscodeRoutes = createVscodeRoutes({ vscode, readRegistry });
 export const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 export const powerRoutes = createPowerRoutes({ macPower });
 export const appRoutes = createAppRoutes({ openChatInApp });
-export const hostMetricsRoutes = createHostMetricsRoutes({ hostMetrics: createHostMetrics() });
+const hostMetrics = createHostMetrics();
+sampleInBackground(hostMetrics);
+export const hostMetricsRoutes = createHostMetricsRoutes({ hostMetrics, history: hostMetrics.history });
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 /** A goal that is still active gets its next turn from the queue, never from a timer of its own. */
 liveSessions.setGoalContinuation((id) => claimGoalContinuation(id));

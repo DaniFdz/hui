@@ -9,13 +9,18 @@
  * through the generic RuntimeSession contract (`session.*` frames). Sessions
  * are keyed by HUI session id; reopening a key reattaches to the running one,
  * whose pending questions travel in its state. Credentials and HUI agent
- * tools are served by whichever gateway is connected; credentials are kept in
+ * tools are served by whichever gateway is connected; PI credentials are kept in
  * memory until they expire, and literal models.json header values until the
- * host stops, never on disk. The one secret written here is the answer to a
- * session's `secret_request`, in a private file its agent reads (SecretFiles).
+ * host stops, never on disk. The secrets this host does keep on disk are the
+ * integration logins its mirror carries and the answer to a session's
+ * `secret_request`, in a private file its agent reads (SecretFiles).
  * A bot whose chat runs here keeps its conversation and memory in this host's
  * store (`host-bots.ts`); its `bots` prompt section comes from the connected
- * gateway, which owns the roster.
+ * gateway, which owns the roster. Sessions here browse in this machine's own
+ * managed browser (`browser/manager.ts`), one profile under the data
+ * directory, so a page a session opens is that machine's and its tabs never
+ * leave it. It also samples its own machine's resources (`host.metrics`) for
+ * the gateway's Dashboard.
  */
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -24,6 +29,9 @@ import { chmod, lstat, mkdir, readdir, readFile, realpath, rm, stat, unlink, wri
 import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { ConversationId } from "@earendil-works/pi-durable";
+import { ManagedBrowser } from "../browser/manager.ts";
+import { BrowserStateFile } from "../browser/mirror.ts";
+import { EMPTY_BROWSER_STATE, mergeBrowserState, sizeOf, type BrowserState } from "../browser/state.ts";
 import type { BotTurnOrigin } from "../runtimes/turn-origins.ts";
 import { registerAgentToolHandler, stopAgentToolBridge } from "../agent-tools/bridge.ts";
 import { operatorName } from "../bots/home.ts";
@@ -36,15 +44,20 @@ import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
 import { searchTranscripts } from "../runtimes/transcript-search.ts";
 import type { RuntimeSession, TranscriptEntry } from "../runtimes/types.ts";
-import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
+import { installBrokeredCredentials, OfflineError, setCredentialTransport, setIntegrationEnv, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../git/working-directories.ts";
 import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, removeSessionWorktree } from "../git/worktrees.ts";
-import { attachPeer, isRecord, PROTOCOL_VERSION, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
+import { attachPeer, HOST_METRICS_FEATURE, isRecord, PROTOCOL_VERSION, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
 import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE, hostBots } from "./host-bots.ts";
-import { GATEWAY_ONLY_TOOLS } from "./gateway-tools.ts";
+import { GATEWAY_ONLY_TOOLS, HOST_BROWSER_FEATURE } from "./gateway-tools.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
 import type { WorkerPaths } from "./paths.ts";
+import { createHostMetrics, sampleInBackground } from "../host-metrics.ts";
+
+/** This machine's resources, sampled when a gateway asks (the Dashboard's poll) and kept for its chart meanwhile. */
+const hostMetrics = createHostMetrics();
+sampleInBackground(hostMetrics);
 
 /** Detached, idle sessions are stopped after this; their transcript stays on disk. */
 const DETACHED_IDLE_MS = 10 * 60_000;
@@ -61,7 +74,7 @@ const TRANSCRIPT_PAGE_BYTES = 8 * 1024 * 1024;
 const BOT_SECTION_TIMEOUT_MS = 10_000;
 
 /** The runtime methods a gateway may call; anything else is refused. */
-const CALLS = new Set(["prompt", "steer", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion",
+const CALLS = new Set(["prompt", "steer", "takeSteeringQueue", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion",
   "clear", "reload", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "waitForTrackedPrompt", "cancelTrackedPrompt"]);
 /** PI calls that start a run, recorded before they reach the runtime. */
 const RUN_CALLS = new Set(["prompt", "continueRun"]);
@@ -74,6 +87,8 @@ type Hosted = {
   key: string;
   tool: string;
   runtime: RuntimeSession;
+  /** Where this session's commands run. */
+  cwd: string;
   /** A PI runtime started where the last one stopped mid-run: HUI recovers that
    * run, as it would locally, until this one runs again. */
   interrupted: boolean;
@@ -125,9 +140,27 @@ export class WorkerHost {
   #nextStep = 0;
   #secretFiles = new SecretFiles();
   #bots: ReturnType<typeof hostBots>;
+  /** This machine's browser for its sessions, with a profile of its own: no page, cookie or login here is the
+   * gateway's, whose browser serves the sessions on that machine. Stopped when the last tab closes, as there. */
+  readonly #browser: ManagedBrowser;
+  /** This worker's mirrored browser state, kept beside its profile. */
+  readonly #browserState: BrowserStateFile;
 
   constructor(paths: WorkerPaths) {
     this.paths = paths;
+    this.#browserState = new BrowserStateFile(join(paths.dataDir, "browser", "state.json"));
+    this.#browser = new ManagedBrowser({
+      profileDir: join(paths.dataDir, "browser", "profile"),
+      // The mirrored settings carry the operator's choices; an executable path from the gateway's machine would name
+      // no file here, so this machine finds its own.
+      readSettings: async () => (await readHuiSettings()).browser,
+      // With Settings → Tools → Browser mirroring, a login made here and a login made on the machine HUI runs on are
+      // the same login: the merged document is what both browsers seed from.
+      mirror: {
+        read: async () => (await readHuiSettings()).browser.mirrorState ? this.#browserStateIn() : EMPTY_BROWSER_STATE,
+        write: (state) => { void this.#browserStateOut(state); },
+      },
+    });
     this.#callersFile = join(paths.stateDir, "conversations.json");
     this.#piRunsFile = join(paths.stateDir, "pi-runs.json");
     this.#durable = new DurableHost({
@@ -140,8 +173,9 @@ export class WorkerHost {
     });
     this.#bots = hostBots({
       durable: this.#durable, home: paths.home, botsDir: join(paths.dataDir, "bots"),
-      // A bot without a model of its own starts on Settings' primary model, as on the gateway.
+      // A bot without a model or level of its own starts on Settings' primary model and default reasoning, as on the gateway.
       primaryModel: async () => (await readHuiSettings()).models.primary || undefined,
+      defaultThinking: async () => (await readHuiSettings()).models.thinking || undefined,
       // A bot's chat here lists the other bots as the gateway that owns them says, and a session the bots it may tag.
       section: (botId, conversationId) => this.#botSection(botId, conversationId),
       // The operator's name comes from the Settings the gateway mirrors here, as the gateway reads its own.
@@ -156,7 +190,7 @@ export class WorkerHost {
 
   info(): HostInfo {
     return {
-      version: PROTOCOL_VERSION, release: this.#release, features: [BOT_FACTS_FEATURE, BOTS_FEATURE, BOT_ACCESS_FEATURE, BOT_SKILLS_FEATURE, BOT_SKILL_FILES_FEATURE], pid: process.pid, hostname: hostname(),
+      version: PROTOCOL_VERSION, release: this.#release, features: [BOT_FACTS_FEATURE, BOTS_FEATURE, BOT_ACCESS_FEATURE, BOT_SKILLS_FEATURE, BOT_SKILL_FILES_FEATURE, HOST_BROWSER_FEATURE, HOST_METRICS_FEATURE], pid: process.pid, hostname: hostname(),
       platform: process.platform, arch: process.arch, node: process.version, home: this.paths.home,
       dataDir: this.paths.dataDir, mirrorDir: this.paths.mirrorDir, agentDir: this.paths.agentDir,
       providersDir: this.paths.providersDir, releaseDir: this.releaseDir,
@@ -212,6 +246,8 @@ export class WorkerHost {
     for (const peer of this.#peers) peer.close("Remote worker host stopped.");
     stopAgentToolBridge();
     this.#secretFiles.dispose();
+    // Waited for, not just signalled: the browser flushes its profile and is reaped before the host exits.
+    await this.#browser.stop().catch(() => undefined);
     setCredentialTransport(undefined);
     // Running Durable work is recorded, not lost: it resumes on the next start.
     await this.#durable.close().catch(() => undefined);
@@ -237,6 +273,11 @@ export class WorkerHost {
       socket.destroy();
     });
     peer.handle("hello", () => this.info());
+    peer.handle("host.metrics", async (params) => {
+      const metrics = await hostMetrics();
+      const minutes = Number(params["history"]);
+      return Number.isFinite(minutes) && minutes > 0 ? { metrics, history: hostMetrics.history(minutes) } : metrics;
+    });
     peer.handle("session.start", (params) => this.#start(peer, params));
     peer.handle("session.call", (params) => this.#call(params));
     peer.handle("session.transcript", (params) => this.#transcriptPage(params));
@@ -288,6 +329,7 @@ export class WorkerHost {
     peer.handle("sync-commit", (params) => {
       // Before the mirrored models.json that names them takes effect.
       setSecretEnv(params["env"]);
+      setIntegrationEnv(params["env"]);
       return applySync(this.paths, params as unknown as SyncCommit).then(async (result) => {
         if (this.#durable.isOpen) await this.#durable.refreshModels().catch(() => undefined);
         return result;
@@ -360,8 +402,8 @@ export class WorkerHost {
         disabledSkills: launch.disabledSkills ?? [],
         bundledSkillPaths: strings(launch["bundledSkillPaths"]),
         disabledPluginIds: strings(launch["disabledPluginIds"]),
-        // The managed browser runs on the gateway machine.
-        browserTool: false,
+        // Settings → Tools → Browser, as the gateway mirrored it: this host runs the browser.
+        browserTool: launch.browserTool === true,
         fallbackAuth: join(this.paths.fallbackAgentDir, "auth.json"),
       },
     });
@@ -371,7 +413,7 @@ export class WorkerHost {
       runtime.dispose();
       throw error;
     }
-    const hosted: Hosted = { key, tool, runtime, lastActive: Date.now(), stop: () => undefined, seq: 0, paged: new Map(), interrupted: tool === "pi" && this.#piRuns.has(key) };
+    const hosted: Hosted = { key, tool, runtime, cwd, lastActive: Date.now(), stop: () => undefined, seq: 0, paged: new Map(), interrupted: tool === "pi" && this.#piRuns.has(key) };
     const unsubscribe = runtime.subscribe((event) => {
       this.#touch(hosted);
       this.#trackRun(hosted, event.type === "settled");
@@ -495,6 +537,8 @@ export class WorkerHost {
       throw error;
     }
     this.#trackRun(hosted);
+    // A stopped turn's tabs close, as on the gateway.
+    if (method === "abort") this.#browser.closeOwner(hosted.key);
     await this.#remember(hosted.key, hosted.runtime.sessionFile).catch((error: unknown) => console.error(`Could not record the conversation: ${error instanceof Error ? error.message : String(error)}`));
     if (method === "attachmentImage" && isRecord(result) && Buffer.isBuffer(result["data"])) result = { mimeType: result["mimeType"], data: result["data"].toString("base64") };
     return { ...(result === undefined ? {} : { result }), ...this.#snapshot(hosted, TRANSCRIPT_CALLS.has(method)) };
@@ -528,9 +572,11 @@ export class WorkerHost {
     return undefined;
   }
 
-  /** HUI tools act on the gateway; without one they fail at once, never replayed. A bot's chat sends who brought each
-   * input of its run (`runOrigins`), as its live chat here saw them, for the gateway's gated tools. */
+  /** HUI tools act on the gateway, except the managed browser, which is this machine's: without a gateway they fail at
+   * once, never replayed. A bot's chat sends who brought each input of its run (`runOrigins`), as its live chat here
+   * saw them, for the gateway's gated tools. */
   async #gatewayTool(key: string, action: string, params: Record<string, unknown>, signal?: AbortSignal, runOrigins?: readonly BotTurnOrigin[]): Promise<unknown> {
+    if (action === "browser") return this.#browser.tool(key, params, { cwd: this.#sessions.get(key)?.cwd ?? this.paths.home });
     const peer = this.#gateway(key);
     if (!peer) throw new Error("HUI is not connected to this worker right now; its tools are unavailable until it reconnects.");
     // A questionnaire waits for the operator, possibly for hours, and `agents_wait` for its subagents.
@@ -540,6 +586,26 @@ export class WorkerHost {
     // session's commands run, and only its path goes on to the agent.
     const answer = await peer.request<SecretAnswer>("secret-request", { key, params }, SECRET_REQUEST_TIMEOUT_MS + 60_000, signal);
     return this.#secretFiles.deliver(answer);
+  }
+
+  /** What this worker's browser seeds itself with: what it holds here, and what the gateway's browser holds there. */
+  async #browserStateIn(): Promise<BrowserState> {
+    const local = await this.#browserState.read();
+    const peer = this.#gateway();
+    if (!peer) return local;
+    const reply = await peer.request<{ state?: BrowserState }>("browser.state", { state: local }, 15_000).catch(() => undefined);
+    const merged = reply?.state ? mergeBrowserState(local, reply.state) : local;
+    await this.#browserState.merge(merged).catch(() => EMPTY_BROWSER_STATE);
+    return merged;
+  }
+
+  /** What this worker's browser holds now: kept here for its next launch, and lent to the gateway while it is
+   * connected. A gateway that is away learns it at the next launch. */
+  async #browserStateOut(state: BrowserState): Promise<void> {
+    const merged = await this.#browserState.merge(state).catch(() => state);
+    if (sizeOf(merged) > 8 * 1024 * 1024) return;
+    const peer = this.#gateway();
+    await peer?.request("browser.state", { state: merged }, 15_000).catch(() => undefined);
   }
 
   /** Gateway credentials, cached in memory until they expire so runs keep
@@ -612,6 +678,7 @@ export class WorkerHost {
     if (this.#sessions.get(hosted.key) !== hosted) return;
     this.#sessions.delete(hosted.key);
     hosted.stop();
+    this.#browser.closeOwner(hosted.key);
   }
 
   #touch(hosted?: Hosted): void {

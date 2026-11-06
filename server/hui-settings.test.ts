@@ -24,6 +24,7 @@ test("missing HUI settings use defaults", async () => {
     primary: "",
     fallback: "",
     utility: "",
+    thinking: "",
     routes: [],
   });
 });
@@ -42,6 +43,7 @@ test("normalizes HUI-owned model routes", async () => {
     primary: "openai/gpt-5.6-luna",
     fallback: "anthropic/claude-haiku-4-5",
     utility: "",
+    thinking: "",
     routes: [],
   });
 });
@@ -58,6 +60,21 @@ test("a route without a model inherits the caller's model; a malformed one is dr
     { name: "blank", description: "", model: "" },
     { name: "pinned", description: "", model: "openai/gpt-5.6-luna", thinking: "high" },
   ]);
+});
+
+test("the default reasoning keeps a PI level and drops Ultra or an unknown one", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "hui-settings-"));
+  const path = join(directory, "settings.json");
+  const level = async (thinking: unknown) => {
+    await writeFile(path, JSON.stringify({ models: { thinking } }));
+    return (await readHuiSettingsAt(path)).models.thinking;
+  };
+  assert.equal(await level(" high "), "", "levels are exact, not trimmed");
+  assert.equal(await level("high"), "high");
+  assert.equal(await level("max"), "max");
+  assert.equal(await level("ultra"), "", "Ultra is the session's own choice, not a default");
+  assert.equal(await level("turbo"), "");
+  assert.equal(await level(7), "");
 });
 
 const fixtures: { input: unknown; expected: ReturnType<typeof normalizeSettings> }[] = JSON.parse(readFileSync(new URL("./hui-settings.fixture.json", import.meta.url), "utf8"));

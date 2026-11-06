@@ -24,7 +24,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -51,6 +52,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -90,7 +92,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -117,6 +120,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -156,7 +160,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -183,6 +188,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -222,7 +228,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -249,6 +256,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -294,7 +302,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -321,6 +330,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -362,7 +372,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -389,6 +400,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -430,7 +442,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -457,6 +470,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -504,7 +518,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -531,6 +546,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -572,7 +588,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -599,6 +616,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -640,7 +658,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -667,6 +686,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -708,7 +728,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -735,6 +756,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -776,7 +798,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -803,6 +826,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -847,7 +871,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -874,6 +899,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -920,7 +946,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -947,6 +974,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -988,7 +1016,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1015,6 +1044,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1058,7 +1088,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1085,6 +1116,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1128,7 +1160,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": false
@@ -1155,6 +1188,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1196,7 +1230,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1223,6 +1258,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1264,7 +1300,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1291,6 +1328,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1332,7 +1370,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1359,6 +1398,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1402,7 +1442,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1429,6 +1470,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1472,7 +1514,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1499,6 +1542,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1542,7 +1586,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1569,6 +1614,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1612,7 +1658,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1639,6 +1686,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1682,7 +1730,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1709,6 +1758,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1752,7 +1802,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1779,6 +1830,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1822,7 +1874,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1849,6 +1902,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1892,7 +1946,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1919,6 +1974,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -1962,7 +2018,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -1989,6 +2046,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2032,7 +2090,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2059,6 +2118,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2078,7 +2138,8 @@
       "browser": {
         "enabled": "no",
         "headless": 0,
-        "executablePath": 7
+        "executablePath": 7,
+        "mirrorState": false
       }
     },
     "expected": {
@@ -2104,7 +2165,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2131,6 +2193,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2150,7 +2213,8 @@
       "browser": {
         "enabled": false,
         "headless": false,
-        "executablePath": "  /Applications/Brave Browser.app  "
+        "executablePath": "  /Applications/Brave Browser.app  ",
+        "mirrorState": false
       }
     },
     "expected": {
@@ -2176,7 +2240,8 @@
       "browser": {
         "enabled": false,
         "headless": false,
-        "executablePath": "/Applications/Brave Browser.app"
+        "executablePath": "/Applications/Brave Browser.app",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2203,6 +2268,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2220,7 +2286,8 @@
   {
     "input": {
       "browser": {
-        "executablePath": "/usr/bin/chrome\n--flag"
+        "executablePath": "/usr/bin/chrome\n--flag",
+        "mirrorState": false
       }
     },
     "expected": {
@@ -2246,7 +2313,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2273,6 +2341,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2290,7 +2359,8 @@
   {
     "input": {
       "browser": {
-        "executablePath": "/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "executablePath": "/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "mirrorState": false
       }
     },
     "expected": {
@@ -2316,7 +2386,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2343,6 +2414,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2389,7 +2461,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2416,6 +2489,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2459,7 +2533,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2486,6 +2561,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2529,7 +2605,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2556,6 +2633,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2599,7 +2677,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2626,6 +2705,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2669,7 +2749,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2696,6 +2777,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2739,7 +2821,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2766,6 +2849,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2809,7 +2893,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2836,6 +2921,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2879,7 +2965,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2906,6 +2993,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -2952,7 +3040,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -2979,6 +3068,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3022,7 +3112,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3049,6 +3140,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3093,7 +3185,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3120,6 +3213,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3169,7 +3263,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3196,6 +3291,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3243,7 +3339,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3270,6 +3367,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3314,7 +3412,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3341,6 +3440,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3386,7 +3486,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3413,6 +3514,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3454,7 +3556,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3481,6 +3584,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3522,7 +3626,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3549,6 +3654,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3590,7 +3696,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3617,6 +3724,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3658,7 +3766,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3685,6 +3794,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3726,7 +3836,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3753,6 +3864,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3794,7 +3906,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3821,6 +3934,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3862,7 +3976,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3889,6 +4004,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -3930,7 +4046,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -3957,6 +4074,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4016,7 +4134,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4043,6 +4162,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4110,7 +4230,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4137,6 +4258,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4184,7 +4306,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4211,6 +4334,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4252,7 +4376,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4279,6 +4404,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4320,7 +4446,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4347,6 +4474,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4388,7 +4516,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4415,6 +4544,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4456,7 +4586,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4483,6 +4614,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4524,7 +4656,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4551,6 +4684,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4592,7 +4726,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4619,6 +4754,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4660,7 +4796,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4687,6 +4824,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4735,7 +4873,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4762,6 +4901,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4805,7 +4945,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4832,6 +4973,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4875,7 +5017,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4902,6 +5045,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -4945,7 +5089,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -4972,6 +5117,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5015,7 +5161,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5042,6 +5189,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5085,7 +5233,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5112,6 +5261,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5155,7 +5305,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5182,6 +5333,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5225,7 +5377,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5252,6 +5405,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5295,7 +5449,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5322,6 +5477,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5365,7 +5521,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5392,6 +5549,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5435,7 +5593,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5462,6 +5621,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5505,7 +5665,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5532,6 +5693,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5575,7 +5737,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5602,6 +5765,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5645,7 +5809,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5672,6 +5837,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5717,7 +5883,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5744,6 +5911,7 @@
         "primary": "openai/model",
         "fallback": "anthropic/model",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5785,7 +5953,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5812,6 +5981,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5853,7 +6023,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5880,6 +6051,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5921,7 +6093,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -5948,6 +6121,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -5989,7 +6163,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6016,6 +6191,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6057,7 +6233,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6084,6 +6261,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6125,7 +6303,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6152,6 +6331,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6193,7 +6373,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6220,6 +6401,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6261,7 +6443,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6288,6 +6471,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6329,7 +6513,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6356,6 +6541,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6397,7 +6583,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6424,6 +6611,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6465,7 +6653,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6492,6 +6681,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6533,7 +6723,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6560,6 +6751,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6601,7 +6793,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6628,6 +6821,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6669,7 +6863,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6696,6 +6891,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6737,7 +6933,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6764,6 +6961,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6805,7 +7003,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6832,6 +7031,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6873,7 +7073,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6900,6 +7101,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -6941,7 +7143,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -6968,6 +7171,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -7009,7 +7213,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7036,6 +7241,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -7077,7 +7283,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7104,6 +7311,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -7145,7 +7353,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7172,6 +7381,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -7213,7 +7423,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7240,6 +7451,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -7281,7 +7493,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7308,6 +7521,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -7354,7 +7568,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7381,6 +7596,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -7427,7 +7643,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7454,6 +7671,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -7495,7 +7713,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7522,6 +7741,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": []
       },
       "calls": {
@@ -7619,7 +7839,8 @@
       "browser": {
         "enabled": true,
         "headless": true,
-        "executablePath": ""
+        "executablePath": "",
+        "mirrorState": false
       },
       "codemode": {
         "enabled": true
@@ -7646,6 +7867,7 @@
         "primary": "",
         "fallback": "",
         "utility": "",
+        "thinking": "",
         "routes": [
           {
             "name": "fast",

@@ -109,6 +109,7 @@ export const SessionView = Type.Object({
     active: Type.Literal(true), memoryBytes: Type.Optional(Type.Number()), bootDurationMs: Type.Optional(Type.Number()),
   })),
   interrupted: Type.Optional(Type.Literal(true)),
+  runFailed: Type.Optional(Type.Literal(true)),
   background: Type.Optional(Type.Literal(true)),
   model: Type.Optional(Type.String()),
   thinking: Type.Optional(Type.String()),
@@ -238,7 +239,7 @@ export const sessionRouteSchemas = [
 ];
 
 export const sessionActionRouteSchemas = [
-  ...["prompt", "steer", "follow-up"].map((action) => ({ method: "POST", path: `/__hui/sessions/:id/${action}`, response: SessionPromptResponse })),
+  ...["prompt", "steer", "steer-now", "follow-up"].map((action) => ({ method: "POST", path: `/__hui/sessions/:id/${action}`, response: SessionPromptResponse })),
   ...["continue", "compact", "reload", "abort", "rewind", "resume", "question"].map((action) => ({ method: "POST", path: `/__hui/sessions/:id/${action}`, response: SessionOk })),
   { method: "DELETE", path: "/__hui/sessions/:id/compact", response: SessionOk },
   { method: "POST", path: "/__hui/sessions/:id/fork", response: SessionResponse },

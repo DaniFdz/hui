@@ -25,7 +25,7 @@ type OriginalProviderQuota = {
   message?: string; checkedAt: number;
   plan?: string; email?: string;
   access?: "available" | "limited";
-  windows: { label: string; usedPercent: number; resetAt?: number; scope: "account" | "scoped" | "spend" }[];
+  windows: { label: string; usedPercent: number; resetAt?: number; detail?: string; scope: "account" | "scoped" | "spend" }[];
 };
 
 expectTypeOf<ProviderModel>().toEqualTypeOf<OriginalProviderModel>();
@@ -290,4 +290,32 @@ test("Go quota uses and caches each HUI account key independently, with monthly 
   assert.deepEqual(calls, ["Bearer synthetic-default", `Bearer synthetic-${backup}`]);
   assert.equal((await service.accounts.list("opencode-go"))[0]?.cooldownUntil, Date.parse(reset));
   assert.equal((await service.accounts.list("opencode-go"))[1]?.cooldownUntil, undefined);
+});
+
+test("Mistral quota reads both allowances from the HUI-saved key without cooling the account down", async (t) => {
+  const missing = await (await fixture(t)).service.quota("mistral");
+  assert.equal(missing.status, "unsupported");
+  assert.match(missing.message!, /requires an API key saved by HUI/);
+  const { service } = await fixture(t);
+  const { credentialStore } = await import("./provider-accounts.ts");
+  await service.accounts.update("mistral", () => [{ id: "default", name: "Student" }]);
+  await credentialStore(service.accounts.authPath()).modify("mistral", async () => ({ type: "api_key", key: "synthetic-mistral" }));
+  const reset = new Date(Date.now() + 86400000).toISOString();
+  const calls: string[] = [];
+  vi.stubGlobal("fetch", async (url: string) => {
+    calls.push(String(url));
+    if (String(url).endsWith("/billing/subscription")) return new Response(JSON.stringify({ plan_name: "EDU", payg_enabled: false, vibe_payg_enabled: false }));
+    return new Response(JSON.stringify({
+      api_budget: { usage_percentage: 100, initial_budget: 15, currency: "EUR", reset_at: reset },
+      vibe_budget: { usage_percentage: 5, initial_budget: 15, currency: "EUR", reset_at: reset },
+    }));
+  });
+  const quota = await service.quota("mistral");
+  assert.equal(quota.plan, "Student");
+  assert.deepEqual(quota.windows.map((w) => [w.label, w.usedPercent, w.detail]), [["API · monthly", 100, "15.00 EUR included"], ["Vibe Code · monthly", 5, "15.00 EUR included"]]);
+  assert.equal(quota.access, undefined);
+  await service.quota("mistral");
+  assert.equal(calls.length, 2, "a second read inside the minute reuses the cached reply without refetching");
+  assert.equal((await service.accounts.list("mistral"))[0]?.cooldownUntil, undefined, "a spend allowance never disables the account");
+  vi.unstubAllGlobals();
 });

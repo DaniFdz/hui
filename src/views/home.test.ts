@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { test } from "vitest";
 
 test("effort preview owns a textContent property without destroying Lit child markers", () => {
-  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  assert.match(source, /class="chat-controls__effort-value"[^>]*\.textContent=\$\{THINKING_LABELS\[level\]\}/);
+  const source = readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8");
+  assert.match(source, /class="chat-controls__effort-value"[^>]*\.textContent=\$\{shown\}/);
   assert.doesNotMatch(source, /class="chat-controls__effort-value"[^>]*>\$\{/);
 });
 
@@ -51,6 +51,19 @@ test("the dynamic queue is announced as a polite live status", () => {
   assert.match(source, /class="chat-queue"\s+role="status"/);
   assert.match(source, /role="status"\s+aria-live="polite"\s+aria-atomic="false"/);
   assert.match(source, /aria-label="Queued messages"/);
+});
+
+test("the queue offers sending its steers now, only while one is queued", async () => {
+  const steering = await renderWorkerSession("running", { streaming: true, queue: { steering: ["How is it going?", "Skip the slow part."], followUp: [] } });
+  assert.match(steering, /class="chat-queue__send-now"/u);
+  assert.match(steering, /title="Stops this turn and sends every steered message now"/u);
+  assert.match(steering, /<span>Send now<\/span>/u);
+  const queuedFollowUp = await renderWorkerSession("running", { streaming: true, queue: { steering: [], followUp: ["later"] } });
+  assert.doesNotMatch(queuedFollowUp, /chat-queue__send-now/u);
+  // PI keeps its steering queue through Stop and delivers it with the next run, so there is nothing to force there.
+  const pi = await renderWorkerSession("running", { streaming: true, session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "repo", tool: "pi", status: "running" }, queue: { steering: ["How is it going?"], followUp: [] } });
+  assert.match(pi, /class="chat-queue__item/u);
+  assert.doesNotMatch(pi, /chat-queue__send-now/u);
 });
 
 test("the composer routes Enter shortcuts through explicit steer and queue modes", () => {
@@ -160,8 +173,8 @@ test("the primary chat uses the OpenClaw transcript and composer hierarchy", () 
   assert.match(source, /chat-send-control chat-mobile-primary-action chat-desktop-primary-action/);
   assert.match(source, /const showStop = props\.streaming && !props\.draft\.trim\(\) && !props\.attachments\.some/);
   assert.match(source, /showStop \? html`<button[^>]*chat-send-btn--stop/);
-  assert.match(source, /chat-controls__inline-select-trigger chat-controls__effort-trigger/);
-  assert.match(source, /class="chat-controls__effort-gauge-needle" d="M12 12V6"/);
+  assert.match(readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8"), /chat-controls__inline-select-trigger chat-controls__effort-trigger/);
+  assert.match(readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8"), /class="chat-controls__effort-gauge-needle" d="M12 12V6"/);
   assert.match(source, /class="agent-chat__composer-footer"/);
   assert.match(source, /class="chat-controls__inline-select chat-controls__model-picker"/);
   assert.match(styles, /\.agent-chat__composer-combobox > :is\(textarea, input\):focus-visible\s*\{\s*box-shadow: none;/);
@@ -259,16 +272,19 @@ test("model and thinking reuse one exclusive composer picker pattern", () => {
 
   assert.match(source, /function prepareComposerPicker/);
   assert.match(source, /querySelectorAll<HTMLDetailsElement>\("details\[open\]"\)/);
-  assert.match(source, /@click=\$\{prepareComposerPicker\}/);
-  assert.match(source, /@keydown=\$\{closeComposerPicker\}/);
-  assert.match(source, /class="chat-controls__reasoning-range"/);
-  assert.match(source, /class="chat-controls__reasoning-dots"/);
-  assert.match(source, /@input=\$\{/);
+  assert.match(source, /onOpen: prepareComposerPicker/);
+  assert.match(source, /onKeydown: closeComposerPicker/);
+  const effort = readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8");
+  assert.match(effort, /class="chat-controls__reasoning-range/);
+  assert.match(effort, /class="chat-controls__reasoning-dots"/);
+  assert.match(effort, /class="chat-controls__reasoning-spectrum"/);
+  assert.match(effort, /@input=\$\{/);
   assert.match(styles, /\.chat-controls__effort-menu\s*\{[^}]*width: min\(330px,/s);
-  assert.match(styles, /\.chat-controls__reasoning-range::-webkit-slider-thumb\s*\{[^}]*width: 28px;[^}]*height: 20px;/s);
+  assert.match(styles, /\.chat-controls__reasoning-spectrum::before\s*\{[^}]*clip-path: inset\(0 calc\(\(1 - var\(--effort-fill, 0\)\) \* 100%\) 0 0\);/s);
+  assert.match(styles, /\.chat-controls__reasoning-range::-webkit-slider-thumb\s*\{[^}]*width: calc\(24px \+ 10px \* var\(--effort-fill, 0\)\);/s);
   assert.doesNotMatch(styles, /\.chat-controls__effort-picker\s*\{\s*display:\s*none;\s*\}/);
   assert.match(styles, /--chat-composer-chip-height:/);
-  assert.match(source, /@toggle=\$\{positionComposerPicker\}/);
+  assert.match(source, /onToggle: positionComposerPicker/);
 });
 
 test("the model control remains visible while PI has no model catalog", () => {
@@ -507,6 +523,9 @@ test("Effort offers the model's own levels up to Maximum, and Speed only where f
   const older = { ...opus, thinkingLevels: ["off", "minimal", "low", "medium", "high"] };
   const clamped = await renderWorkerSession("idle", { currentModel: older, thinking: "max" });
   assert.match(clamped, /<span class="chat-controls__inline-select-label">High<\/span>/u);
+  // Ultra is a mode above the levels, not where a higher saved level fits: the model's highest level is.
+  const durableAged = await renderWorkerSession("idle", { currentModel: { ...older, thinkingLevels: [...older.thinkingLevels, "ultra"] }, thinking: "xhigh" });
+  assert.match(durableAged, /<span class="chat-controls__inline-select-label">High<\/span>/u);
   assert.doesNotMatch(clamped, /chat-controls__speed-panel/u);
   assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: { ...opus, fast: undefined }, thinking: "high", fast: false }), /chat-controls__speed-panel/u);
 });
@@ -580,6 +599,7 @@ test("a reachable worker session shows neither notice, and a failed one keeps it
   const idle = await renderWorkerSession("idle");
   assert.doesNotMatch(idle, /Reconnecting to|Disconnected from|reconnect-session/u);
   assert.equal(sendButton(idle), "false");
+  assert.match(idle, /aria-label="Open terminal"/u, "its terminal opens on that machine through its connect command");
   assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
 });
 
@@ -822,4 +842,42 @@ test("an expanded goal reads the whole objective and edits it in place", async (
   const busy = await renderWorkerSession("running", { session: { ...session, status: "running" }, streaming: true, goalPanel: { expanded: true, editing: true, error: "" } });
   assert.match(busy, /Finish or stop the active turn before changing the objective\./u);
   assert.match(busy, /<button type="submit" class="btn btn--sm primary" \?disabled=true>Save goal</u);
+});
+
+test("a turn that invoked a skill names it, instead of showing PI's wrapper for the model", async () => {
+  const prompt = [
+    '<skill name="cost-investigation" location="/opt/hui/skills/cost-investigation/SKILL.md">',
+    "References are relative to /opt/hui/skills/cost-investigation.",
+    "",
+    "# Cost investigation",
+    "",
+    "Name the cheaper mechanism.",
+    "</skill>",
+    "",
+    "# Why was this expensive?",
+    "",
+    "It cost $1.25.",
+  ].join("\n");
+  const html = await renderWorkerSession("idle", { transcript: [{ kind: "message", role: "user", text: prompt }] });
+  assert.match(html, /class="chat-skill-invoked"[^>]*data-hui-tooltip=\/opt\/hui\/skills\/cost-investigation\/SKILL\.md/u);
+  assert.match(html, /<span class="chat-skill-invoked__label">Skill<\/span> <code>cost-investigation<\/code>/u);
+  assert.match(html, /Name the cheaper mechanism\./u, "the method stays readable in the turn");
+  assert.match(html, /# Why was this expensive\?/u);
+  assert.ok(!html.includes("&lt;skill name=") && !html.includes("<skill name="), "the wrapper PI writes for the model is not shown");
+  assert.ok(!html.includes("References are relative to"));
+});
+
+test("a presented file from the working directory offers to open in Files", async () => {
+  const id = "12345678-1234-4123-8123-123456789abc";
+  const media = { id, name: "notes.md", kind: "file", mimeType: "application/octet-stream", size: 7, url: `/__hui/media/${id}/notes.md` };
+  const transcript = (details: unknown) => [{ kind: "tool", id: "media", name: "present_media", status: "succeeded", details }];
+
+  const shown = await renderWorkerSession("idle", { fileLinks: true, transcript: transcript({ media: [{ ...media, path: "docs/notes.md" }] }) });
+  assert.match(shown, /<hui-file-ref class="chat-assistant-attachment-card__action chat-presented-media__reveal" data-path=docs\/notes\.md>/u);
+  assert.match(shown, /aria-label=Download notes\.md/u);
+
+  const outside = await renderWorkerSession("idle", { fileLinks: true, transcript: transcript({ media: [media] }) });
+  assert.doesNotMatch(outside, /chat-presented-media__reveal/u, "a file outside the working directory has nothing in Files to open");
+
+  assert.match(readStyles("../styles/openclaw-chat.css"), /hui-file-ref\.chat-presented-media__reveal:not\(\.is-linked\) \{ display: none; \}/u);
 });

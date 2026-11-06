@@ -12,7 +12,7 @@ import {
   SHELL_DRAWER_DEFAULT_OPEN,
   SHELL_NARROW_MEDIA,
 } from "./shell.ts";
-import { sessionAccessibleName } from "../lib/session/labels.ts";
+import { sessionAccessibleName, sessionGlyph } from "../lib/session/labels.ts";
 import {
   adaptedSettingsCopy,
   filterSettingsPages,
@@ -215,6 +215,25 @@ test("session accessible names expose live status, tool and pinned state", () =>
     sessionAccessibleName({ ...base, jiraIssues: [{ key: "CI-1", url: "https://x/CI-1", status: "To Do" }, { key: "CI-2", url: "https://x/CI-2", status: "In Progress", summary: "Fix flake" }] }, ["draft"]),
     "Fix navigation, status running, tool pi, draft, Jira CI-2, in progress: Fix flake, 1 more linked",
   );
+});
+
+test("a session whose last run failed is marked until its next turn replaces it", () => {
+  const failed = session("one", "Fix navigation", "Frontend", { runFailed: true });
+  assert.deepEqual(sessionGlyph(failed).attention, { label: "Session failed", tone: "error" });
+  assert.equal(sessionAccessibleName(failed), "Fix navigation, status error, tool pi");
+  // A turn in flight or a question waiting says what it is instead; a dead runtime reads the same failure.
+  for (const status of ["running", "starting", "waiting", "error"] as const) {
+    assert.equal(
+      sessionAccessibleName({ ...failed, status }),
+      `Fix navigation, status ${status === "error" ? "error" : status}, tool pi`,
+      status,
+    );
+  }
+  assert.equal(sessionGlyph({ ...failed, status: "running" }).busy, true, "a new turn works instead of showing the failure");
+  assert.equal(sessionGlyph(session("two", "Review styles", "Frontend")).attention, undefined);
+  // Its next turn's answer replaces the error entry, and with it the mark.
+  assert.equal(sessionGlyph({ ...failed, runFailed: undefined }).attention, undefined);
+  assert.equal(sessionAccessibleName({ ...failed, runFailed: undefined }), "Fix navigation, status idle, tool pi");
 });
 
 test("session rows expose group drag and a keyboard-accessible move menu", () => {
@@ -786,12 +805,40 @@ function markup(value: unknown): string {
   return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
 }
 
-function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents"): string {
+/** The handlers a rendered view binds to one template attribute, in render order. */
+function handlers(value: unknown, attribute: string): ((event: { preventDefault(): void }) => void)[] {
+  const found: ((event: { preventDefault(): void }) => void)[] = [];
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (node && typeof node === "object" && "strings" in node && "values" in node) {
+      const template = node as { strings: readonly string[]; values: unknown[] };
+      template.strings.forEach((part, index) => {
+        const bound = template.values[index];
+        if (part.includes(attribute) && typeof bound === "function") found.push(bound as (event: { preventDefault(): void }) => void);
+        visit(bound);
+      });
+      return;
+    }
+    if (node && typeof node === "object" && "_$litDirective$" in node && "values" in node) {
+      const [items, , render] = (node as { values: unknown[] }).values;
+      if (Array.isArray(items) && typeof render === "function") {
+        items.forEach((item, index) => visit((render as (item: unknown, index: number) => unknown)(item, index)));
+      }
+    }
+  };
+  visit(value);
+  return found;
+}
+
+function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents", loading = false): string {
   const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
   if (open) sessions.push(session(open, "Open", "Work"));
   const data = {
     view: "home", pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
-    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading, error: "",
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: open,
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
     groupDropTarget: undefined, groupReorderPending: false,
@@ -807,4 +854,35 @@ test("a session row draws its actions menu only once it opens, so a long list st
   assert.doesNotMatch(closed, /value="pin"/u, "a closed row's menu has no items");
   assert.ok(perRow > 5 && perRow <= 40, `each session row draws ${perRow} elements; draw what a row only shows on demand when it is asked for`);
   assert.equal(sidebar(100, `open-${crypto.randomUUID()}`).split('value="pin"').length - 1, 1, "the open row's menu has its items");
+});
+
+test("the session list draws placeholder rows until its first read answers", () => {
+  const loading = sidebar(0, "", "agents", true);
+  assert.match(loading, /role="status" aria-label="Loading sessions…"/u);
+  assert.equal(loading.split('class="sidebar-placeholder__row"').length - 1, 6, "the placeholder keeps the list's shape");
+  assert.doesNotMatch(loading, /sidebar-list__note/u, "no loading note stands beside the placeholder");
+  assert.doesNotMatch(sidebar(2), /sidebar-placeholder/u, "rows replace the placeholder");
+});
+
+test("a right click on a session row asks for the actions menu its button opens", () => {
+  const menus: string[] = [];
+  const selected: string[] = [];
+  const view = renderSidebar({
+    view: "home", pages: HUI_PAGES, selectedSessionId: "other", splitSessionId: "",
+    groups: [{ label: "Work", sessions: [session("ctx", "Build", "Work")] }],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "",
+    groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
+    groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    onToggleMenu: (id: string) => menus.push(id),
+    onSelectSession: (row: SessionView) => selected.push(row.id),
+  } as unknown as Parameters<typeof renderSidebar>[0]);
+  const [contextmenu] = handlers(view, "@contextmenu=");
+  assert.equal(typeof contextmenu, "function", "a session row answers a right click");
+  let prevented = false;
+  contextmenu!({ preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, true, "the browser's own link menu does not open");
+  assert.deepEqual(menus, ["ctx"], "the right click opens the row's actions menu");
+  assert.deepEqual(selected, [], "a right click never opens the session");
 });

@@ -41,7 +41,7 @@ test("routines and overview Activity explain retries and intervention without hi
   for (const view of ["routines", "overview"] as const) {
     const retryPage = markup(renderBotPanel({ ...props, view }));
     assert.match(retryPage, /Retry scheduled/);
-    assert.match(retryPage, /Attempt 1\/3 · Next retry/);
+    assert.match(retryPage, /Attempt 1 · Next retry/);
     assert.ok(retryPage.includes(formatTimestamp(run.retryAt)));
     assert.match(retryPage, /Worker is offline/);
     assert.doesNotMatch(retryPage, /A run is in progress/);
@@ -311,7 +311,7 @@ test("Settings → Workspace shows the machine a bot runs on, read-only, and off
   const field = between(source, "export function renderBotMachineField(", "/** What the directory row says");
   assert.match(field, /if \(!worker && !props\.workersExist\) return undefined;/u, "for a bot on a worker, and for one here while a worker exists");
   assert.match(field, /return html`Runs on \$\{renderBotMachine\(worker\)\}`;/u, "read-only: nothing to change it with");
-  assert.match(field, /bot\.worker\n\s+\? html`<p class="bot-panel__hint bot-settings__machine-hint">A bot stays on the machine it was created on: its chat and memory live there\. Terminals, the browser and watchers stay on this machine, so it can't use them\.<\/p>`/u, "a remote bot's limits");
+  assert.match(field, /bot\.worker\n\s+\? html`<p class="bot-panel__hint bot-settings__machine-hint">A bot stays on the machine it was created on: its chat and memory live there\. Watchers stay on this machine, so it can't use them; it browses in its own, and its terminal is a shell there\.<\/p>`/u, "a remote bot's limits");
   assert.match(between(source, "function directoryHint(", "function renderWorkspace("), /A folder on \$\{bot\.worker\.name\}\. Can change only while it is idle\./u);
   const workspace = between(source, "function renderWorkspace(", "export function renderBotSettings(");
   assert.match(workspace, /\$\{sectionHead\(props, "workspace", "Workspace", renderBotMachineField\(props\)\)\}/u, "Runs on beside the heading, as Model's note: no height, so the tab still fits 1440×900 with a worker around");

@@ -11,7 +11,7 @@ import { resolveBrowserExecutable } from "./executable.ts";
 import { browserLaunchArguments, BrowserToolError, ManagedBrowser, normalizeBrowserUrl, type BrowserViewFrame } from "./manager.ts";
 import type { BrowserViewAction, BrowserViewState } from "../api/browser.ts";
 
-const noBrowser = { platform: "linux" as const, env: { PATH: "/nowhere" }, home: "/home/nobody", isExecutable: async () => false };
+const noBrowser = { platform: "linux" as const, env: { PATH: "/nowhere" }, home: "/home/nobody", isExecutable: async () => false, readdir: async () => [] as string[] };
 
 test("URLs are normalized for agents and dangerous schemes are refused", () => {
   assert.equal(normalizeBrowserUrl("example.com/docs"), "https://example.com/docs");
@@ -40,7 +40,7 @@ test("launch arguments use the DevTools pipe, a dedicated profile and no debuggi
 });
 
 test("settings gate every call and a missing browser is reported, not guessed", async () => {
-  let settings: BrowserSettings = { enabled: false, headless: true, executablePath: "" };
+  let settings: BrowserSettings = { enabled: false, headless: true, executablePath: "", mirrorState: false };
   const browser = new ManagedBrowser({ profileDir: "/nonexistent/profile", readSettings: async () => settings, probe: noBrowser });
   await assert.rejects(browser.tool("alpha", { action: "status" }, { cwd: "/" }), /turned off/u);
   await assert.rejects(browser.start(), /Turn on the browser tool/u);
@@ -120,7 +120,7 @@ test("a real headless browser serves agent tabs end to end", {
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  let settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  let settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
   const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -228,7 +228,7 @@ test("a click passes through a transparent pseudo overlay but not an opaque one"
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
   const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -262,7 +262,7 @@ test("stopped or idle conversations never leave a headless browser running", {
   timeout: 60_000,
 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-browser-lifetime-"));
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
   const browsers: ManagedBrowser[] = [];
   t.onTestFinished(async () => {
     for (const browser of browsers) await browser.stop();
@@ -308,7 +308,7 @@ test("a browser killed behind the gateway's back is relaunched on the next open"
 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-browser-kill-"));
   const profileDir = join(dir, "profile");
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
   const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -334,7 +334,7 @@ test("an action racing an external kill names the exit instead of a protocol err
 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-browser-kill-action-"));
   const profileDir = join(dir, "profile");
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
   const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -367,7 +367,7 @@ test("another Chromium process owning the profile is reported instead of a conne
   t.onTestFinished(() => { if (squatter.exitCode === null && squatter.signalCode === null) squatter.kill("SIGKILL"); });
   assert.equal(await eventually(async () => (await readdir(profileDir).catch((): string[] => [])).includes("SingletonLock"), Boolean), true, "the squatter holds the profile");
 
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
   const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings });
   t.onTestFinished(async () => {
     // Cleanups run last-registered first, so stop the squatter here too: it writes its profile until it exits.
@@ -402,7 +402,7 @@ test("the live view follows the agent's tab, streams frames only while watched a
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
   const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();

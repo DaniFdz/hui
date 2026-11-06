@@ -15,7 +15,7 @@ export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreferenc
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 
 export const DEFAULT_BRANCH_PREFIX = "feature/";
-export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
+export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
-  models: { primary: "", fallback: "", utility: "", routes: [] },
+  models: { primary: "", fallback: "", utility: "", thinking: "", routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
@@ -101,6 +101,7 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
     enabled: source["enabled"] !== false,
     headless: source["headless"] !== false,
     executablePath: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
+    mirrorState: source["mirrorState"] === true,
   };
 }
 
@@ -147,6 +148,8 @@ function normalizeModels(value: unknown): Settings["models"] {
     primary: normalizeModelRef(source["primary"]),
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
+    // Empty follows PI's own defaultThinkingLevel.
+    thinking: PI_THINKING_LEVELS.find((level) => level === source["thinking"]) ?? "",
     routes: normalizeSubagentRoutes(source["routes"]),
   };
 }

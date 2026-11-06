@@ -10,7 +10,7 @@ import { agentReplyTo, BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, mentio
 import { botTurnOrigin } from "../runtimes/turn-origins.ts";
 import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
 import type { CallRecord } from "../calls-format.ts";
-import type { AutomationTask } from "../automation.ts";
+import { AutomationRetryError, type AutomationTask } from "../automation.ts";
 import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { DEFAULT_SETTINGS } from "../hui-settings.ts";
 import type { BotMemory } from "./memory.ts";
@@ -366,6 +366,7 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
   const removed: string[] = [];
   let failCreateSession: Error | undefined;
   let clock = Date.parse("2026-10-05T10:00:00.000Z");
+  const keys = { asked: [] as string[], unavailable: false };
   const registry = new BotRegistry(join(dir, "bots.json"));
   const service = new BotService({
     registry,
@@ -408,11 +409,12 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     },
     botsDir,
     now: () => clock,
+    modelKeyUnavailable: async (provider) => { keys.asked.push(provider); return keys.unavailable; },
     report: (event) => { reports.push(event); },
     ...(options.messagesPerHour ? { messagesPerHour: options.messagesPerHour } : {}),
   });
   return {
-    dir, botsDir, sessions, service, registry, conversations, memoryCalls, tasks, created, removed, chats, histories, remote, soulChecks, reports,
+    dir, botsDir, sessions, service, registry, conversations, memoryCalls, tasks, created, removed, chats, histories, remote, soulChecks, reports, keys,
     /** The bot's SOUL.md on disk, or undefined. */
     soulFile: (botId: string) => readFile(join(botsDir, botId, "SOUL.md"), "utf8").catch(() => undefined),
     records: () => records,
@@ -1222,6 +1224,29 @@ test("routine dispatch waits for its durable checkpoint and a failed checkpoint 
   assert.equal(checkpointCalls, 0, "pre-open disconnection is distinguishable from an ambiguous post-checkpoint dispatch");
 });
 
+test("a routine whose model key cannot be fetched sends nothing and asks to be retried", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  const record = h.record(bot.sessionId)!;
+  let checkpoints = 0;
+  const routine = async () => h.service.runRoutine((await h.registry.list())[0]!, record, { name: "Morning", prompt: "check" }, new AbortController().signal, {
+    requestId: `routine-${checkpoints}`, checkpoint: async () => { checkpoints += 1; },
+  });
+  h.keys.unavailable = true;
+  await assert.rejects(routine(), (error: unknown) => error instanceof AutomationRetryError && error.kind === "connection" && /fixture/u.test(error.message));
+  assert.deepEqual(h.keys.asked, ["fixture"]);
+  assert.equal(checkpoints, 0, "nothing was checkpointed, so the scheduler may try again");
+  assert.deepEqual(chat.prompts, []);
+  h.keys.unavailable = false;
+  const prompt = chat.nextPrompt();
+  const running = routine();
+  await prompt;
+  chat.answer("Done.");
+  assert.deepEqual(await running, { summary: "Done." });
+  assert.equal(checkpoints, 1);
+});
+
 test("resumed legacy routines select their exact input occurrence and never use a later turn's answer", async (t) => {
   const h = await harness(t);
   const bot = await h.service.create({ soul: SOUL, name: "Ada" });
@@ -1828,17 +1853,20 @@ test("a bot on a worker can't name the tools that stay on this machine: refused 
   const offer = { tools: [{ name: "bash", label: "Shell", description: "Run shell commands", group: "shell" as const, source: "Durable", powerful: true }], skills: [], alwaysOn: [], live: true };
   const none = { disabledTools: [], disabledSkills: [] };
   const elsewhere = { tools: GATEWAY_ONLY_TOOLS, worker: "devbox" };
-  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["terminal", "bash"] }, { elsewhere }),
-    (error: unknown) => error instanceof BotInputError && error.message === "terminal stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out.");
-  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["watcher", "browser"] }, { elsewhere }), /: watcher, browser stay on this machine, so a bot on devbox can't use them and there is nothing to turn off: leave them out\.$/u);
+  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["watcher", "bash"] }, { elsewhere }),
+    (error: unknown) => error instanceof BotInputError && error.message === "watcher stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out.");
+  const two = { tools: ["watcher", "browser"], worker: "devbox" };
+  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["watcher", "browser"] }, { elsewhere: two }), /: watcher, browser stay on this machine, so a bot on devbox can't use them and there is nothing to turn off: leave them out\.$/u);
   assert.throws(() => resolveAccess(offer, none, { disabledTools: ["teleport"] }, { elsewhere }), /: Unknown tool: teleport\./u);
-  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["terminal"] }), /: Unknown tool: terminal\./u, "for a bot here, whose host offers them, only a name its offer lacks gets this far");
+  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["terminal"] }), /: Unknown tool: terminal\./u, "a name its offer lacks: the worker's host offers the terminal, this fixture's offer does not");
   // A list from before its host left them out keeps them, harmlessly: nothing lists, counts or asks for them.
   assert.deepEqual(resolveAccess(offer, { disabledTools: ["terminal"], disabledSkills: [] }, { disabledTools: ["terminal", "bash"] }, { elsewhere }).disabledTools, ["terminal", "bash"]);
+  // The browser is not one of them: it runs where the bot's chat runs, so it can be turned off there.
+  assert.deepEqual(resolveAccess({ ...offer, tools: [...offer.tools, { name: "browser", label: "Browser", description: "Browse", group: "hui" as const, source: "HUI", powerful: true }] }, none, { disabledTools: ["browser"] }, { elsewhere }).disabledTools, ["browser"]);
   // Through the service: the worker's offer leaves them out, and the refusal names the worker.
   const h = await harness(t);
-  await assert.rejects(h.service.create({ name: "Termless", worker: "devbox", disabledTools: ["terminal"] }),
-    (error: unknown) => error instanceof BotInputError && error.message === "terminal stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out.");
+  await assert.rejects(h.service.create({ name: "Watched", worker: "devbox", disabledTools: ["watcher"] }),
+    (error: unknown) => error instanceof BotInputError && error.message === "watcher stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out.");
   assert.equal(h.remote.created.length, 0, "nothing created there");
 });
 

@@ -28,7 +28,7 @@ operator's accounts, workers, transcripts or scheduler state.
    release in an isolated home and connect it through Settings → Workers/API
    setup. Create its bot and an hourly routine, then disconnect the worker.
    Click the routine's **Run now** in the visible Routines page. Observe
-   **Retry scheduled**, **Attempt 1/3**, its original connection error and the
+   **Retry scheduled**, **Attempt 1**, its original connection error and the
    actual next retry. Open Automations and use **Cancel** before that time;
    verify **Cancelled** and no further retry promised. This uses a real worker
    host on loopback, not an external machine or billable provider.
@@ -40,8 +40,10 @@ operator's accounts, workers, transcripts or scheduler state.
 ## Recovery boundary proof
 
 - `server/automation.test.ts` uses an observable manual clock and disposable
-  registry: retries keep one run/deadline/count, survive restart and stop on
-  cancellation/exhaustion/end; classification never permits replay by itself.
+  registry: retries keep one run id and count, set a fresh deadline until the
+  prompt is sent and keep it once checkpointed, survive restart and stop on
+  cancellation, after 12 hours or at a temporary task's end; classification
+  never permits replay by itself.
 - `server/bots/schedules.test.ts` starts a real routine whose isolated command
   is held by the provider, stops/restarts the backend and asserts one input,
   one run id, the recorded result and one temporary-run consumption.

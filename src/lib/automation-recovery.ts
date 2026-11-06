@@ -38,7 +38,7 @@ const FAILURE_GUIDANCE: Record<NonNullable<AutomationRun["failure"]>["kind"], st
 /** Keep the recorded error alongside this explanation; it is never replaced. */
 export function automationRunRecoveryDetail(run: AutomationRun, formatTime: (value: string) => string): string {
   const details: string[] = [];
-  if (retryScheduled(run) || (run.attempt ?? 1) > 1) details.push(`Attempt ${run.attempt ?? 1}/3`);
+  if (retryScheduled(run) || (run.attempt ?? 1) > 1) details.push(`Attempt ${run.attempt ?? 1}`);
   if (retryScheduled(run)) details.push(`Next retry ${formatTime(run.retryAt!)}`);
   if (run.status === "failed" && run.failure?.needsAttention) details.push(FAILURE_GUIDANCE[run.failure.kind]);
   return details.join(" · ");

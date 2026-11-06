@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
-import { HostMetrics, HostMetricsError } from "../api/host.ts";
+import { HostMetrics, HostMetricsError, HostMetricsHistory } from "../api/host.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
 
 test("the host metrics route samples this host and refuses anything but GET", async (t) => {
@@ -48,4 +48,12 @@ test("the host metrics route samples this host and refuses anything but GET", as
   const refused = await fetch(url, { method: "POST", headers });
   assert.equal(refused.status, 405);
   expectSchema(HostMetricsError, await refused.json());
+
+  const history = await fetch(`${url}/history?minutes=5`, { headers });
+  assert.equal(history.status, 200);
+  const recorded: unknown = await history.json();
+  expectSchema(HostMetricsHistory, recorded);
+  assert.ok(recorded.history.length >= 1, "the reads above were kept");
+  assert.equal(recorded.history.at(-1)?.sampledAt, metrics.sampledAt);
+  assert.equal((await fetch(`${url}/history?minutes=9`, { headers })).status, 400, "only the windows the chart offers");
 });

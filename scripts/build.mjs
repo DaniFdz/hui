@@ -19,6 +19,8 @@ for (const [script, args] of [
 await cp(new URL("../themes/", import.meta.url), new URL("../build/themes/", import.meta.url), { recursive: true });
 await cp(new URL("../skills/", import.meta.url), new URL("../build/skills/", import.meta.url), { recursive: true });
 await cp(new URL("../staff/", import.meta.url), new URL("../build/staff/", import.meta.url), { recursive: true });
+// `hui completion <shell>` reads its program next to the compiled CLI, in both a checkout and a package.
+await cp(new URL("../cli/completions/", import.meta.url), new URL("../build/cli/completions/", import.meta.url), { recursive: true });
 // npm pack never ships the root package-lock.json, so the verified graph ships
 // in build/, which the remote worker release installs as its lockfile.
 // Installing the archive itself ignores it: npm resolves package.json alone,

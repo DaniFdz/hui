@@ -10,6 +10,7 @@ const fake = vi.hoisted(() => ({
   checkout: undefined as unknown as GitCheckoutInfo,
   directories: [] as { input: string; worker: string | undefined; resolve: (directories: string[]) => void }[],
   workers: [] as WorkerView[],
+  actions: [] as string[],
 }));
 vi.mock("../api/sessions.ts", () => ({
   loadGitCheckout: async (directory: string, worker?: string) => { fake.checkouts.push({ directory, worker }); return fake.checkout; },
@@ -17,13 +18,14 @@ vi.mock("../api/sessions.ts", () => ({
 vi.mock("../api/working-directories.ts", () => ({
   loadWorkingDirectorySuggestions: (input: string, worker?: string) => new Promise((resolve) => fake.directories.push({ input, worker, resolve })),
 }));
-vi.mock("../api/workers.ts", () => ({ loadWorkers: async () => fake.workers }));
+vi.mock("../api/workers.ts", () => ({ loadWorkers: async () => fake.workers, workerAction: async (id: string, action: string) => { fake.actions.push(`${action} ${id}`); } }));
 
 beforeEach(() => {
   fake.checkouts = [];
   fake.checkout = { available: true, headBranch: "feature/current", defaultBranch: "main", branches: ["main", "release"] } as GitCheckoutInfo;
   fake.directories = [];
   fake.workers = [];
+  fake.actions = [];
 });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -100,6 +102,17 @@ test("launch preferences seed once from Settings or PI, and a worker that is gon
   assert.equal(launch.props().launchWorkers, fake.workers);
 });
 
+test("New Session starts on Settings' default reasoning, adopts a change to it, and falls back to PI's default", () => {
+  const launch = new LaunchController(host);
+  const snapshot = { model: { defaultProvider: "pi", defaultModel: "m", thinking: "high" } } as PiSnapshot;
+  launch.seedPreferences(snapshot, "", "low");
+  assert.deepEqual([launch.model, launch.thinking], ["pi/m", "low"], "Settings' default reasoning beats PI's own");
+  launch.selectDefaultThinking("xhigh");
+  assert.equal(launch.thinking, "xhigh", "saving another default reaches the form at once, as a primary model does");
+  launch.selectDefaultThinking("");
+  assert.equal(launch.thinking, "high", "Use PI default: PI's own level, fitted to the model");
+});
+
 test("switching the machine inspects the same directory there, and drops the answer the other machine gave", async () => {
   const launch = new LaunchController(host);
   fake.workers = [{ id: "w1", name: "Remote" } as WorkerView];
@@ -115,6 +128,19 @@ test("switching the machine inspects the same directory there, and drops the ans
   );
   launch.requestCheckout("/repo");
   assert.equal(fake.checkouts.length, 2, "one machine's answer is reused until the machine or directory changes");
+});
+
+test("connecting a worker from the picker shows it connecting at once and follows the gateway through the connect", async () => {
+  const launch = new LaunchController(host);
+  fake.workers = [{ id: "w1", name: "Remote", state: "error", error: "ssh: connect to host box port 22: Connection refused" } as WorkerView];
+  launch.loadWorkers();
+  await settle();
+  launch.props().onConnectLaunchWorker!("w1");
+  assert.equal(launch.workers[0]!.state, "connecting", "the row leaves offline before the gateway answers");
+  assert.deepEqual(fake.actions, ["connect w1"]);
+  fake.workers = [{ id: "w1", name: "Remote", state: "connected", host: { hostname: "box" } } as WorkerView];
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(launch.workers[0]!.state, "connected", "the list follows the connection until it settles");
 });
 
 test("a group that names a worker opens New Session on it, and one that does not keeps the sticky choice", () => {
