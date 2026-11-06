@@ -1361,6 +1361,18 @@ of time leaves it unmarked, so run the command again. A bot on a worker keeps it
 home there, and doctor cannot read a worker's files offline: it lists the bot until
 you run the same command once the worker is connected.
 
+### Datadog sessions
+
+HUI lets pup keep its Datadog sessions as files in its own directory
+(`~/.config/hui/pup`), not in the system keychain, because a worker can only be
+given a session as a file ([Datadog link previews](#datadog-link-previews)). A
+session signed in before that change stays in the keychain, which HUI does not
+read, so every org shows *Sign in needed*. `hui doctor` lists each org with no
+session in its own directory, and signing in again in Settings → Integrations →
+Datadog fixes it. There is no `--fix` for it, since the sign-in runs in a
+browser. Until each org is signed in again, the check fails and `hui doctor`
+exits with status 1.
+
 ### HUI desktop app
 
 An installed app runs the release it was installed from. `hui update` reinstalls

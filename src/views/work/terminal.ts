@@ -2,7 +2,8 @@
  * The terminal Work view kind: one tab per shared terminal of the conversation, drawn by `<hui-terminal-pane>`.
  * "New terminal" creates a PTY in the gateway; closing the tab only hides it (the shell keeps running and can be
  * reopened from the launcher menu); "End terminal" inside the view stops it. The PTYs and the agent's terminal tool
- * belong to the gateway (`server/terminals/terminals.ts`).
+ * belong to the gateway (`server/terminals/terminals.ts`), which also serves a conversation on a remote worker
+ * through that worker's connect command.
  */
 import { html, svg } from "lit";
 import { createTerminal, listTerminals } from "../../api/terminals.ts";
@@ -15,8 +16,6 @@ export type TerminalWorkViewRef = { kind: "terminal"; terminalId: string };
 export type TerminalWorkViewEnvironment = {
   /** The Appearance → terminal font. */
   fontFamily(): string;
-  /** Why this conversation cannot have a terminal here, if it cannot. */
-  unavailable?(sessionId?: string): string | undefined;
 };
 
 export const TERMINAL_WORK_VIEW_SHORTCUT = WORK_SHORTCUTS.terminal;
@@ -33,7 +32,6 @@ export function terminalWorkViewKind(env: TerminalWorkViewEnvironment): WorkView
     label: "New terminal",
     icon: terminalWorkViewIcon,
     shortcut: TERMINAL_WORK_VIEW_SHORTCUT,
-    unavailable: (sessionId?: string) => env.unavailable?.(sessionId),
     async create(sessionId) {
       const view = await createTerminal(sessionId);
       remember(view);

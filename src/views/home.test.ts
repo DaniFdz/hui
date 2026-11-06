@@ -599,6 +599,7 @@ test("a reachable worker session shows neither notice, and a failed one keeps it
   const idle = await renderWorkerSession("idle");
   assert.doesNotMatch(idle, /Reconnecting to|Disconnected from|reconnect-session/u);
   assert.equal(sendButton(idle), "false");
+  assert.match(idle, /aria-label="Open terminal"/u, "its terminal opens on that machine through its connect command");
   assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
 });
 

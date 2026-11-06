@@ -349,7 +349,6 @@ export class HuiApp extends HuiElement {
     paletteOpen: () => this.commandPaletteOpen,
     terminalFont: () => this.control.settings.fontTerminal,
     browserEnabled: () => this.control.settings.browser.enabled,
-    remoteSession: (sessionId) => Boolean(this.listedSession(sessionId)?.worker),
   });
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
   @property({ attribute: "pane-session-id" }) paneSessionId = "";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IPty, spawn } from "@lydell/node-pty";
 import { TerminalService, TERMINAL_BUFFER_BYTES, terminalSize, type TerminalStreamEvent } from "./terminals.ts";
@@ -9,12 +9,27 @@ import { TerminalService, TERMINAL_BUFFER_BYTES, terminalSize, type TerminalStre
 function fixture() {
   const written: string[] = [];
   const sizes: number[][] = [];
+  const spawned: { file: string; args: string[]; cwd: string }[] = [];
   let data!: (value: string) => void;
   let exit!: (value: { exitCode: number }) => void;
   const pty = { pid: -1, write: (value: string) => written.push(value), resize: (cols: number, rows: number) => sizes.push([cols, rows]), kill: () => exit({ exitCode: 0 }), onData: (fn: typeof data) => { data = fn; }, onExit: (fn: typeof exit) => { exit = fn; } } as unknown as IPty;
-  const service = new TerminalService((() => pty) as typeof spawn);
-  return { service, written, sizes, data: (value: string) => data(value), exit: (exitCode: number) => exit({ exitCode }) };
+  const service = new TerminalService(((file: string, args: string[], options: { cwd: string }) => {
+    spawned.push({ file, args, cwd: options.cwd });
+    return pty;
+  }) as unknown as typeof spawn);
+  return { service, written, sizes, spawned, data: (value: string) => data(value), exit: (exitCode: number) => exit({ exitCode }) };
 }
+
+test("a conversation on a worker runs that worker's connect command and moves to its directory", () => {
+  const f = fixture();
+  const terminal = f.service.create("alpha", "/srv/its a 'worktree'", {}, ["ssh", "-p", "2222", "devbox"]);
+  assert.deepEqual(f.spawned, [{ file: "ssh", args: ["-p", "2222", "devbox"], cwd: homedir() }], "the PTY runs the connect command here, not a local shell");
+  assert.deepEqual(f.written, [`cd '/srv/its a '"'"'worktree'"'"''\r`], "a remote shell cannot be given its directory when it starts");
+  assert.equal(terminal.cwd, "/srv/its a 'worktree'", "the view names the directory on that machine");
+  f.service.create("alpha", "/tmp");
+  assert.equal(f.spawned[1]?.cwd, "/tmp", "a local shell starts in the conversation's directory, with nothing typed into it");
+  f.service.dispose();
+});
 
 test("shared terminals scope IDs to the owner and preserve exact input", () => {
   const f = fixture();
