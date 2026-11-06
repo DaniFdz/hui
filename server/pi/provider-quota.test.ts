@@ -123,3 +123,57 @@ test("Claude profile and usage fail independently and never expose profile secre
     assert(!JSON.stringify(quota).includes("private"));
   }
 });
+
+test("Mistral reads both monthly allowances, the student plan and pay-as-you-go from an API key", async () => {
+  const reset = "2030-02-01T00:00:00Z";
+  const quota = await fetchProviderQuota("mistral", "synthetic-mistral-key", undefined, (async (url, init) => {
+    assert.equal(init?.redirect, "error");
+    const headers = init?.headers as Record<string, string>;
+    assert.equal(headers.Authorization, "Bearer synthetic-mistral-key");
+    assert.equal(headers["x-api-key"], "synthetic-mistral-key");
+    if (String(url).endsWith("/billing/subscription")) return new Response(JSON.stringify({ plan_name: "EDU", payg_enabled: true, vibe_payg_enabled: false, enterprise: false }));
+    assert.equal(url, "https://api.mistral.ai/v1/billing/budget");
+    return new Response(JSON.stringify({
+      api_budget: { usage_percentage: 42.5, initial_budget: 25.5, currency: "EUR", reset_at: reset, payg_enabled: false },
+      vibe_budget: { usage_percentage: 0, initial_budget: 15, currency: "EUR", reset_at: reset, payg_enabled: true },
+    }));
+  }) as typeof fetch);
+  assert.equal(quota.status, "available");
+  assert.equal(quota.plan, "Student");
+  assert.equal(quota.access, undefined, "Monthly allowances are spend budgets, not account exhaustion");
+  assert.deepEqual(quota.windows, [
+    { label: "API · monthly", usedPercent: 42.5, scope: "spend", resetAt: Date.parse(reset), detail: "25.50 EUR included" },
+    { label: "Vibe Code · monthly", usedPercent: 0, scope: "spend", resetAt: Date.parse(reset), detail: "15.00 EUR included" },
+  ]);
+  assert.match(quota.message!, /Pay-as-you-go is enabled above the included budget\./);
+});
+
+test("Mistral keeps usable allowances when the plan read fails and never invents one", async () => {
+  const failedPlan = await fetchProviderQuota("mistral", "synthetic-mistral-key", undefined, (async (url) => {
+    if (String(url).endsWith("/billing/subscription")) return new Response("private upstream details", { status: 403 });
+    return new Response(JSON.stringify({ api_budget: { usage_percentage: 12, initial_budget: 25.5, currency: "EUR", reset_at: "2030-02-01T00:00:00Z" } }));
+  }) as typeof fetch);
+  assert.equal(failedPlan.status, "available"); assert.equal(failedPlan.plan, undefined);
+  assert.equal(failedPlan.windows[0]?.label, "API · monthly");
+  assert.equal(failedPlan.windows[0]?.detail, "25.50 EUR included");
+  assert(!JSON.stringify(failedPlan).includes("private"));
+
+  const zero = parseProviderQuota("mistral", {
+    api_budget: { usage_percentage: 0, initial_budget: 0, currency: "EUR", reset_at: "2030-02-01T00:00:00Z" },
+    vibe_budget: { usage_percentage: 104, initial_budget: 15, currency: null, reset_at: "2030-02-01T00:00:00Z" },
+  });
+  assert.deepEqual(zero.windows, [{ label: "Vibe Code · monthly", usedPercent: 104, scope: "spend", resetAt: Date.parse("2030-02-01T00:00:00Z") }]);
+  assert.equal(zero.message, "This plan reports no included monthly allowance.");
+  const none = parseProviderQuota("mistral", { api_budget: { usage_percentage: 0, initial_budget: 0 }, vibe_budget: { usage_percentage: 0, initial_budget: 0 } });
+  assert.equal(none.status, "unavailable"); assert.equal(none.message, "This plan reports no included monthly allowance.");
+  assert.equal(zero.access, undefined, "Over-limit allowances never claim account exhaustion");
+  assert.equal(zero.plan, undefined);
+
+  const malformed = parseProviderQuota("mistral", { api_budget: { usage_percentage: "42" }, vibe_budget: {} });
+  assert.equal(malformed.status, "unavailable"); assert.match(malformed.message!, /Some reported limits/);
+
+  for (const status of [401, 403, 500]) {
+    const failed = await fetchProviderQuota("mistral", "synthetic-mistral-key", undefined, (async () => new Response("private upstream details", { status })) as typeof fetch);
+    assert.equal(failed.status, "unavailable"); assert(!JSON.stringify(failed).includes("private"));
+  }
+});

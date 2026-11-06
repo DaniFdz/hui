@@ -770,7 +770,7 @@ HUI does not reimplement transcripts. It asks pi to resume a session file.
 
 The available model catalog combines HUI-managed built-in connections with PI's
 custom providers. Settings → Models starts with **Add provider** and a modal
-limited to OpenCode Go, OpenAI and Claude. Each brand groups its available account,
+limited to OpenCode Go, OpenAI, Claude and Mistral. Each brand groups its available account,
 API-key or native CLI login methods. After sign-in, HUI adds the connection with
 no models selected (or preserves an existing selection). Added cards load quota
 independently and expose multiple models in a collapsed searchable dropdown.
@@ -788,7 +788,9 @@ label when unavailable. Emails are display-only: accounts with the same email
 remain separate. OpenCode Go API-key connections show their reported 5-hour,
 weekly and monthly limits. Their connection dialog requires a name and explains
 below the input that OpenCode does not report an account name or email. Reconnect
-prefills the existing label. Subscription/usage status and all reported
+prefills the existing label. Mistral API-key connections show their reported API
+and Vibe Code monthly allowances, the included amount and a pay-as-you-go note,
+with the plan (EDU) shown as Student. Subscription/usage status and all reported
 hourly, weekly, monthly and model/feature-specific limits stay visible per
 account, including reset times. Unknown plan or billing status stays explicitly
 not reported; stored credentials do not prove an active subscription. SDK requests use the first ready account;

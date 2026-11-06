@@ -346,6 +346,16 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
+    id: "SET-082",
+    title: "Connect Mistral with an API key",
+    behaviour: "Add provider also offers Mistral; choosing it shows its API key method, which opens the “Enter Mistral API key” prompt. Cancelling that sign-in leaves no card and keeps Settings → Models open.",
+    spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#post-__huiprovidersproviderlogin", "docs/api.md#delete-__huiprovidersloginid"],
+    surfaces: ["route:POST /__hui/providers/:provider/login", "route:DELETE /__hui/providers/login/:id"],
+    journeys: ["providers"],
+    web: "required",
+    ios: "backlog",
+  },
+  {
     id: "SET-034",
     title: "Sign in to a provider with a subscription account",
     behaviour: "Choosing “ChatGPT account” or “Claude Pro / Max” shows the provider's sign-in step with “Open sign-in page”, a device code or a prompt to answer, and adds the card once the provider confirms. A reload during sign-in reopens the same pending step.",
