@@ -7,12 +7,18 @@ test("Mistral is offered with API-key sign-in and a cancelled sign-in adds no ca
   const add = screen.getByRole("button", "Add provider");
   await expect(add).toBeVisible();
   await add.tap();
-  await expect(screen.getByRole("button", "Close provider dialog")).toBeVisible();
+  const close = screen.getByRole("button", "Close provider dialog");
+  await expect(close).toBeVisible();
   await screen.getByRole("button", /^Mistral /u).tap();
   await screen.getByRole("button", /^API key /u).tap();
   await expect(screen.getByLabel("Enter Mistral API key", { exact: true })).toBeVisible();
-  await screen.getByRole("button", "Cancel sign-in").tap();
-  await screen.getByRole("button", "Close provider dialog").tap();
+  const cancel = screen.getByRole("button", "Cancel sign-in");
+  // The picker stays busy until the host answers the start request.
+  await expect(cancel).toBeEnabled();
+  await cancel.tap();
+  await expect(cancel).toBeHidden();
+  await expect(close).toBeEnabled();
+  await close.tap();
   await expect(screen.getByText("No providers added yet. Add one to get started.", { exact: true })).toBeVisible();
-  await expect(screen.getByRole("button", "Close provider dialog")).toBeHidden();
+  await expect(close).toBeHidden();
 });
