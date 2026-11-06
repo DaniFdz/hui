@@ -17,9 +17,10 @@ fixed endpoints, response bounds and failure redaction), and
 
 1. Open the launch receipt URL. Navigate Settings → Models.
 2. Verify the empty state has **Add provider**, no provider model lists and no
-   quota section. Add provider opens a modal with exactly OpenCode Go, OpenAI and
-   Claude. OpenAI groups ChatGPT account and API key; Claude groups Pro/Max
-   and API key. Escape closes the modal and restores focus.
+   quota section. Add provider opens a modal with exactly OpenCode Go, OpenAI,
+   Claude and Mistral. OpenAI groups ChatGPT account and API key; Claude groups
+   Pro/Max and API key; Mistral offers its API key. Escape closes the modal and
+   restores focus.
 3. Choose OpenCode Go → API key. Submit the synthetic key in the password input.
    The modal closes, Provider configuration opens and the added card appears; quota loads independently and
    truthfully reports unsupported. Models remain collapsed until opened.
@@ -45,9 +46,11 @@ fixed endpoints, response bounds and failure redaction), and
 ## Collapsible provider configuration
 
 SET-081 owns the parent disclosure. Use `--quota-fixture` for the configured
-layout: Provider configuration shows four providers and starts closed. Add
-provider, status messages and HUI model routing remain outside it. Open the
-parent with Enter and inspect the unchanged accounts, quotas and model pickers.
+layout: Provider configuration shows five providers and starts closed, with
+Mistral showing its Student plan, API and Vibe Code allowances and included
+amounts. Add provider, status messages and HUI model routing remain outside it.
+Open the parent with Enter and inspect the unchanged accounts, quotas and model
+pickers.
 Open a Models dropdown, change its search and unsaved selections, fold the parent
 with Space, then reopen it. The dropdown and draft must stay intact, including
 after Refresh limits. From the folded state, Add provider can open and cancel

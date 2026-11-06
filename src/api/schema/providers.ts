@@ -16,7 +16,7 @@ export type ProviderOk = { "ok": true; };
 
 export type ProviderOrderRequest = { "order": Array<string>; };
 
-export type ProviderQuota = { "status": ("available") | ("unsupported") | ("unavailable"); "message"?: string; "checkedAt": number; "plan"?: string; "email"?: string; "access"?: ("available") | ("limited"); "windows": Array<{ "label": string; "usedPercent": number; "resetAt"?: number; "scope": ("account") | ("scoped") | ("spend"); }>; };
+export type ProviderQuota = { "status": ("available") | ("unsupported") | ("unavailable"); "message"?: string; "checkedAt": number; "plan"?: string; "email"?: string; "access"?: ("available") | ("limited"); "windows": Array<{ "label": string; "usedPercent": number; "resetAt"?: number; "detail"?: string; "scope": ("account") | ("scoped") | ("spend"); }>; };
 
 export type ProviderSnapshot = { "providers": Array<ProviderSummary>; "login"?: ProviderLogin; };
 
