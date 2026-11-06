@@ -67,6 +67,8 @@ export type HostBotsOptions = {
   botsDir: string;
   /** The model a bot without one of its own starts on: Settings' primary model, as the gateway mirrors it here. */
   primaryModel?: () => Promise<string | undefined>;
+  /** The reasoning a bot without its own starts on: Settings' default reasoning, as the gateway mirrors it here. */
+  defaultThinking?: () => Promise<string | undefined>;
   /** A chat's `bots` section, as a connected gateway gives it. */
   section: DurableBotsDeps["section"];
   /** Settings' profile name, for a bot's first conversation. */
@@ -145,7 +147,10 @@ function skillFiles(value: unknown): BotOwnSkill[] {
 /** The bots a gateway runs on this host: request handlers for each connected gateway, and the memories it watches. */
 export function hostBots(options: HostBotsOptions) {
   const memory = optChatBotMemory(options.durable);
-  const conversations = durableBotConversations(options.durable, memory, options.primaryModel ? { primaryModel: options.primaryModel } : {});
+  const conversations = durableBotConversations(options.durable, memory, {
+    ...(options.primaryModel ? { primaryModel: options.primaryModel } : {}),
+    ...(options.defaultThinking ? { defaultThinking: options.defaultThinking } : {}),
+  });
   /** A bot's home on this worker: HUI's private folder for it, where its SOUL.md lives. */
   const home = (id: string) => join(options.botsDir, botId(id));
   /** SOUL.md in those homes, with the gateway's guard: a deleted bot's home goes only when it really is that folder of

@@ -750,16 +750,24 @@ Disabling a HUI default excludes only that fallback, not a same-name override.
 An empty opt-out list enables the default without writing PI configuration.
 Read-only catalog probes never load bundled skills.
 
-The same settings document includes `models: { primary, fallback, utility }`.
-Each non-empty value is a canonical `provider/id` from PI's filtered catalog.
+The same settings document includes `models: { primary, fallback, utility, thinking }`.
+Each non-empty model value is a canonical `provider/id` from PI's filtered catalog.
 Primary is the default for new sessions; fallback is an automatic one-time retry
 when a primary turn fails before text, thinking, or tool activity, after which
 the session switches back to its own model; utility is a
 cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 
 ```json
-{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
+{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "thinking": "high", "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
 ```
+
+`thinking` is the reasoning level new sessions and new bots start on, and the
+level the New Session form is seeded with: one of PI's levels from `off` through
+`max`, or `""` (the default) to follow PI's own `defaultThinkingLevel`. A level
+the chosen model does not offer is fitted to its closest supported one. HUI's
+`ultra` is a session's own delegation mode, never a saved default. A session
+started without a level (a suggestion or backlog item) takes this default; one
+that names a level, as the New Session form always does, keeps that instead.
 
 The same block carries `routes`: the named models a `sessions_spawn` call can pass
 as `route`. An entry is `{ name, description, model, thinking? }`; a name must be

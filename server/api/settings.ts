@@ -23,6 +23,9 @@ const TypefaceId = Type.Union([
   Type.Literal("jetbrains-mono"), Type.Literal("system"),
 ]);
 
+/** HUI's default reasoning is one of PI's levels: Ultra is the orchestrating session's own choice. */
+const SavedReasoningLevel = Type.Exclude(ThinkingLevel, Type.Literal("ultra"));
+
 export const Settings = Type.Object({
   theme: Type.String(),
   themeMode: Type.Union([Type.Literal("system"), Type.Literal("light"), Type.Literal("dark")]),
@@ -41,9 +44,11 @@ export const Settings = Type.Object({
   notifications: Type.Object({ tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean() }),
   models: Type.Object({
     primary: Type.String(), fallback: Type.String(), utility: Type.String(),
+    // Empty follows PI's own defaultThinkingLevel.
+    thinking: Type.Union([Type.Literal(""), SavedReasoningLevel]),
     routes: Type.Immutable(Type.Array(Type.Object({
       name: Type.String(), description: Type.String(), model: Type.String(),
-      thinking: Type.Optional(Type.Exclude(ThinkingLevel, Type.Literal("ultra"))),
+      thinking: Type.Optional(SavedReasoningLevel),
     }))),
   }),
   calls: Type.Object({ voice: Type.Union([

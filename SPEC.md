@@ -808,6 +808,12 @@ provider/model selection using the `model-name` extension's rules. HUI owns thre
 normal sessions, **fallback** retries a primary failure only when no useful output
 or tool activity has occurred, then returns the session to its own model, and **utility** runs cheap, fast, tool-free calls
 for concise (3–6 word, at most 60 character) new-session names in the prompt's language, generated worktree branch names and `/btw`. These settings never rewrite PI files.
+The same page saves the **default reasoning** new sessions and bots start on:
+PI's levels from Off through Maximum, or **Use PI default** (the default), which
+follows PI's own `defaultThinkingLevel` at the runtime. A model that supports
+fewer levels is sent the closest one it has. New Session starts on this level,
+and a session created without one (a suggestion or backlog item) takes it too;
+HUI's Ultra is a session's own delegation mode, never a saved default.
 **Subagent routes** are a fourth, operator-named part of that block: each route
 names a model (and optionally a reasoning level), and a session spawns a subagent
 on one by name instead of a model id. See

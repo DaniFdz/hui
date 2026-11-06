@@ -274,7 +274,7 @@ export class HuiApp extends HuiElement {
   private readonly automation = new AutomationController(this);
   private readonly dashboard = new DashboardController(this, () => this.view === "surface" && this.activePage?.id === "dashboard" && !this.settingsOpen, () => this.listedGroups);
   private readonly control = new SettingsController(this, {
-    piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary),
+    piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary, this.control.settings.models.thinking),
     copyFailed: (message) => {
       this.note = message;
       this.noteLevel = "error";
@@ -2359,7 +2359,7 @@ export class HuiApp extends HuiElement {
 
   private loadLaunchPreferences() {
     if (this.control.pi) {
-      this.launcher.seedPreferences(this.control.pi, this.control.settings.models.primary);
+      this.launcher.seedPreferences(this.control.pi, this.control.settings.models.primary, this.control.settings.models.thinking);
       return;
     }
     this.control.loadPi();
@@ -2983,6 +2983,7 @@ export class HuiApp extends HuiElement {
           onSelectPage: this.selectSettingsPage,
           onChangeModels: (models) => {
             this.launcher.selectModel(models.primary);
+            this.launcher.selectDefaultThinking(models.thinking);
             void this.control.save({ models });
           },
           onClose: this.closeSettings,

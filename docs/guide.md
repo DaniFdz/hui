@@ -295,6 +295,13 @@ fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Cal
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
 
+**Default reasoning** on the same page is the effort new sessions and new bots
+start with: one of PI's levels through Maximum, or **Use PI default** to follow
+PI's own setting. New Session opens on it (you can still change the level there
+for one launch), and a model that supports fewer levels uses the closest one it
+has. HUI's Ultra is chosen per session from the composer's Effort slider, not
+saved as a default.
+
 **Subagent routes** sit under the same page. Choose **Add route** to open a
 form for its name, one-line description, model and optional reasoning level.
 The model starts on your primary model when available, and thinking inherits

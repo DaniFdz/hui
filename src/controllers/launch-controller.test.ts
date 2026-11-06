@@ -102,6 +102,17 @@ test("launch preferences seed once from Settings or PI, and a worker that is gon
   assert.equal(launch.props().launchWorkers, fake.workers);
 });
 
+test("New Session starts on Settings' default reasoning, adopts a change to it, and falls back to PI's default", () => {
+  const launch = new LaunchController(host);
+  const snapshot = { model: { defaultProvider: "pi", defaultModel: "m", thinking: "high" } } as PiSnapshot;
+  launch.seedPreferences(snapshot, "", "low");
+  assert.deepEqual([launch.model, launch.thinking], ["pi/m", "low"], "Settings' default reasoning beats PI's own");
+  launch.selectDefaultThinking("xhigh");
+  assert.equal(launch.thinking, "xhigh", "saving another default reaches the form at once, as a primary model does");
+  launch.selectDefaultThinking("");
+  assert.equal(launch.thinking, "high", "Use PI default: PI's own level, fitted to the model");
+});
+
 test("switching the machine inspects the same directory there, and drops the answer the other machine gave", async () => {
   const launch = new LaunchController(host);
   fake.workers = [{ id: "w1", name: "Remote" } as WorkerView];
