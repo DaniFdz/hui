@@ -118,7 +118,7 @@ import { isPiSurface, renderPiSurface } from "./views/pi-surfaces.ts";
 import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
-import { HUI_PAGES, availablePages, isPageAvailable, type HuiPage } from "./lib/pages.ts";
+import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
 import { activeSessionPane, closeSessionPane, focusSessionPane, isChatPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
@@ -867,10 +867,6 @@ export class HuiApp extends HuiElement {
   }
 
   private applyNavigation(target: NavigationTarget) {
-    if (target.kind === "page" && !isPageAvailable(target.page, this.control.settings.labs)) {
-      this.navigate({ kind: "home" }, true);
-      return;
-    }
     if (target.kind === "settings") {
       this.settingsPage = target.page;
       this.settingsOpen = true;
@@ -1036,7 +1032,7 @@ export class HuiApp extends HuiElement {
       open: this.commandPaletteOpen,
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
-      pages: availablePages(this.control.settings.labs),
+      pages: HUI_PAGES,
       groups: this.listedGroups,
       bots: this.bots.list,
       onQuery: (query) => {
@@ -2999,7 +2995,7 @@ export class HuiApp extends HuiElement {
     const props = {
       view: this.view,
       activePage: this.activePage,
-      pages: availablePages(this.control.settings.labs),
+      pages: HUI_PAGES,
       selectedSessionId: this.view === "bot" ? "" : this.conversation.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.work.layout && sessionPanes(this.work.layout).length > 1 ? sessionPanes(this.work.layout).map(({ sessionId }) => sessionId) : []),
