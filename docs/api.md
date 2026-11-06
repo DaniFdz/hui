@@ -641,7 +641,7 @@ their account; removal/order changes affect subsequent requests. PI-owned custom
 providers and cross-provider fallback are outside this policy.
 
 Quota requests use fixed first-party HTTPS endpoints for Anthropic and OpenAI
-Codex OAuth accounts and OpenCode Go API keys saved in HUI, disable redirects, bound response size/time,
+Codex OAuth accounts and OpenCode Go and Mistral API keys saved in HUI, disable redirects, bound response size/time,
 and cache/coalesce for one minute. Tokens refresh through PI's locked HUI auth
 store. Other API-key accounts and providers without a supported quota API explicitly
 report unsupported; malformed/missing windows and failures are unavailable,
@@ -661,6 +661,18 @@ OpenCode Go reads `/zen/go/v1/usage` on `opencode.ai`, retaining its rolling
 requested HUI account's key is used, never ambient credentials. An HTTP failure
 (including 403, which can mean no Go subscription) remains unavailable; HUI does
 not infer a billing state or an email from an API key.
+
+Mistral reads `/v1/billing/budget` on `api.mistral.ai` for its two documented
+monthly allowances, `api_budget` and `vibe_budget`, sending the saved key as both
+`Authorization: Bearer` and `x-api-key`. A best-effort
+`/v1/billing/subscription` read adds the plan (`EDU` shown as Student,
+`INDIVIDUAL` as Pro) and a pay-as-you-go note; either read survives the other
+failing. Each budget keeps its reported percentage (already 0–100, above 100 when
+overage is billed), reset date and included amount in `detail` (for example
+`25.50 EUR included`); a plan without an included allowance is omitted rather
+than shown as 0% used. Both are `spend` windows, so a monthly allowance never
+disables models or sets an account cooldown. `detail` is display-only and absent
+for providers that report no amount.
 
 Codex `accounts[].email` is derived locally from the OAuth token's profile/email
 claims; quota responses can also include the refreshed email. Claude quota reads

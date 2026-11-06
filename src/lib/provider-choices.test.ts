@@ -24,14 +24,20 @@ test("Claude offers only PI-owned subscription and API-key auth", () => {
   assert.equal(providerBrand("claude-code"), undefined);
 });
 
-test("add flow exposes only the three requested brands and available SDK methods", () => {
-  assert.deepEqual(providerBrands.map((brand) => brand.name), ["OpenCode Go", "OpenAI", "Claude"]);
+test("add flow exposes only the four requested brands and available SDK methods", () => {
+  assert.deepEqual(providerBrands.map((brand) => brand.name), ["OpenCode Go", "OpenAI", "Claude", "Mistral"]);
   assert.deepEqual(connectionMethods("openai", []), []);
   const go = connectionMethods("opencode-go", [provider("opencode-go", ["api_key"]), provider("opencode", ["api_key"])]);
   assert.equal(go.length, 1);
   assert.equal(go[0]!.provider.id, "opencode-go");
   assert.equal(providerBrand("custom-provider"), undefined);
   assert.deepEqual(connectionMethods("opencode", [provider("opencode", ["api_key"])]), []);
+});
+
+test("Mistral connects with the API key whose monthly allowances it reports", () => {
+  const methods = connectionMethods("mistral", [provider("mistral", ["api_key"]), provider("mistral-zen", ["api_key"])]);
+  assert.deepEqual(methods.map(({ provider, method, label }) => [provider.id, method, label]), [["mistral", "api_key", "API key"]]);
+  assert.equal(providerBrand("mistral")?.name, "Mistral");
 });
 
 
