@@ -10,8 +10,9 @@
  *   snapshot.json   — what `api v1/graph/snapshot` prints (absent: HTTP 403)
  *   expired         — org names, one per line, whose calls fail as pup does when it cannot
  *                     renew a token; `auth refresh` removes the name
- *   calls           — every call, appended as one JSON line { args, site, leaked } (`leaked`: the
- *                     identity or output settings HUI should have removed, by name) */
+ *   calls           — every call, appended as one JSON line { args, site, leaked, storage, configDir } (`leaked`: the
+ *                     identity or output settings HUI should have removed, by name; `storage`: the pup token
+ *                     storage HUI asked for; `configDir`: the config directory HUI named) */
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -39,7 +40,7 @@ const requireSession = () => {
 };
 
 const leaked = ["DD_API_KEY", "DD_APP_KEY", "DD_ACCESS_TOKEN", "DD_ORG", "DD_OUTPUT", "PUP_OUTPUT", "PUP_FILTER", "PUP_AGENT_MODE"].filter((name) => process.env[name]);
-appendFileSync(file("calls"), `${JSON.stringify({ args, site: process.env.DD_SITE ?? null, leaked })}\n`);
+appendFileSync(file("calls"), `${JSON.stringify({ args, site: process.env.DD_SITE ?? null, leaked, storage: process.env.DD_TOKEN_STORAGE ?? null, configDir: process.env.PUP_CONFIG_DIR ?? null })}\n`);
 
 if (args[0] === "--version") {
   process.stdout.write("pup 9.9.9\n");

@@ -6,9 +6,11 @@
  * every local path named in PI settings (packages, skills, extensions,
  * prompts), HUI's settings and provider selections and the worker's extra
  * paths. Never
- * mirrored: credentials (they are brokered, as are literal keys and header
+ * mirrored: PI credentials (they are brokered, as are literal keys and header
  * values in PI's models.json: `brokeredModels`), transcripts, installed
  * npm/git packages (the remote installs its own), `node_modules` and `.git`.
+ * The operator's own integration logins travel beside these files, from their
+ * collectors in `integration-logins.ts`, not from this plan.
  *
  * Local paths in settings become absolute mirror paths, so relative sources and
  * `~` keep meaning the same files on a remote with another home directory.
