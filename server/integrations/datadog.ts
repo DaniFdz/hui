@@ -5,8 +5,10 @@
  * session, and the Datadog host its links use) in `~/.config/hui/datadog.json`, written with mode 0600; reads their
  * status from `pup auth list`; runs every lookup as one read-only pup call for exactly that session (`--org=<name>`
  * with `DD_SITE`, and none of the environment that would make pup use another identity); and, on request, runs
- * `pup auth login` so the operator approves it in the browser pup opens on this machine. pup keeps the tokens.
- * Lookup output never leaves the gateway; only a failed sign-in's last line does.
+ * `pup auth login` so the operator approves it in the browser pup opens on this machine. pup keeps the tokens, in
+ * its own files (`DD_TOKEN_STORAGE=file`: a keychain entry is the one thing a worker cannot be given), which every
+ * sync copies to a worker that has this gateway's logins. Lookup output never leaves the gateway; only a failed
+ * sign-in's last line does.
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -18,6 +20,9 @@ import type { DatadogConnection, DatadogLoginState, DatadogOrg, DatadogOrgStatus
 import { CONFIG_DIR } from "../paths.ts";
 
 const DATADOG_CONFIG_FILE = join(CONFIG_DIR, "datadog.json");
+/** HUI's own pup sessions. pup's platform directory differs per OS (`~/Library/Application Support` on macOS), so HUI
+ * names one it can read and copy on any machine (`worker/integration-logins.ts`). */
+export const PUP_CONFIG_DIR = join(CONFIG_DIR, "pup");
 const CONFIG_VERSION = 1;
 /** pup gives up on the browser callback after 300 s; HUI stops waiting a little later. */
 const LOGIN_TIMEOUT_MS = 6 * 60_000;
@@ -161,7 +166,9 @@ export class DatadogOrgStore {
 export type PupRun = (args: readonly string[], org?: DatadogOrg) => Promise<unknown>;
 
 function pupEnv(env: NodeJS.ProcessEnv, org?: DatadogOrg): NodeJS.ProcessEnv {
-  const next: NodeJS.ProcessEnv = { ...env, NO_COLOR: "1" };
+  // File storage in HUI's own directory, not the OS keychain: a worker is given these sessions as files
+  // (`worker/integration-logins.ts`).
+  const next: NodeJS.ProcessEnv = { ...env, NO_COLOR: "1", DD_TOKEN_STORAGE: "file", PUP_CONFIG_DIR };
   for (const name of IDENTITY_ENV) delete next[name];
   if (org) next["DD_SITE"] = pupSite(org.site);
   return next;

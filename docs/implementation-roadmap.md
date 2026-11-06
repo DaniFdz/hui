@@ -1345,3 +1345,11 @@ Verified desktop/mobile behavior and checks are recorded in
   multi-account quota rotation and usage totals. A session there browses in the
   worker's own managed browser (`server/browser/`, a profile under its data
   directory, no live view here), found with the same executable detection.
+- Follow-up 2026-11-06: the gateway also shares its integration logins, so
+  agents on a worker can use Datadog, GitHub and Jira as the operator is signed
+  in to them here: a `gh` hosts file with every account, pup's session files
+  (HUI's own pup calls keep them in files, not the system keychain) and Jira's
+  token in the host's environment. Proof:
+  `server/worker/integration-logins.test.ts` and "the gateway's integration
+  logins reach the worker, and every shell there reads them" in
+  `server/workers.test.ts`.

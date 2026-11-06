@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, test } from "vitest";
@@ -907,5 +907,59 @@ test("a host restarted mid-run resumes Durable work, whose HUI tool calls still 
     }
   } finally {
     await rm(join(remoteHome, ".pi"), { recursive: true, force: true });
+  }
+});
+
+test("the gateway's integration logins reach the worker, and every shell there reads them", async () => {
+  const mirror = join(remoteHome, ".local", "share", "hui-worker", "mirror", "hui", "integrations");
+  const fakeGh = join(root, "fake-gh");
+  const pup = join(process.env["XDG_CONFIG_HOME"]!, "hui", "pup");
+  const jiraFile = join(process.env["XDG_CONFIG_HOME"]!, "hui", "jira.json");
+  const datadogFile = join(process.env["XDG_CONFIG_HOME"]!, "hui", "datadog.json");
+  await mkdir(pup, { recursive: true });
+  await mkdir(dirname(jiraFile), { recursive: true });
+  await writeFile(datadogFile, JSON.stringify({ version: 1, orgs: [{ name: "prod", site: "app.datadoghq.com" }] }));
+  await writeFile(join(pup, "sessions.json"), JSON.stringify([{ site: "datadoghq.com", org: "prod", org_uuid: "8dee" }, { site: "datadoghq.com", org: "staging", org_uuid: "9eee" }]));
+  await writeFile(fakeGh, `#!/bin/sh
+case "$*" in
+  *"auth status"*) printf '%s' '{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"me"},{"state":"success","active":false,"host":"github.com","login":"other"}]}}' ;;
+  *"--user me"*) printf 'gho_me_token\\n' ;;
+  *"--user other"*) printf 'gho_other_token\\n' ;;
+  *) exit 1 ;;
+esac
+`);
+  await chmod(fakeGh, 0o755);
+  await writeFile(join(pup, "tokens_datadoghq_com.json"), JSON.stringify({ prod: { access_token: "datadog-access", refresh_token: "datadog-refresh" }, staging: { access_token: "unlisted" } }));
+  await writeFile(jiraFile, JSON.stringify({ site: "https://acme.atlassian.net", email: "me@example.test", token: "jira-token", defaultProject: "" }));
+  process.env["HUI_GITHUB_CLI"] = fakeGh;
+  try {
+    await workers.sync(workerId);
+    const hosts = await readFile(join(mirror, "gh", "hosts.yml"), "utf8");
+    assert.equal(hosts, ["github.com:", "    users:", "        me:", "            oauth_token: gho_me_token", "        other:", "            oauth_token: gho_other_token", "    user: me", "    oauth_token: gho_me_token", ""].join("\n"));
+    assert.deepEqual(JSON.parse(await readFile(join(mirror, "pup", "tokens_datadoghq_com.json"), "utf8")), { prod: { access_token: "datadog-access", refresh_token: "datadog-refresh" } }, "an org HUI does not list is not shared");
+    assert.deepEqual(JSON.parse(await readFile(join(mirror, "pup", "sessions.json"), "utf8")).map((entry: { org: string }) => entry.org), ["prod"]);
+
+    const session = await durable.start({ cwd: project, worker: workerId, huiSessionId: "remote-integrations" });
+    try {
+      const done = settled(session);
+      await session.prompt("E2E_PRINT_INTEGRATIONS");
+      await done;
+      const tool = session.transcript().find((entry) => entry.kind === "tool" && entry.name === "bash");
+      assert.ok(tool?.kind === "tool" && tool.output?.includes("integrations-done"), JSON.stringify(tool));
+      assert.equal(tool.output!.replace("integrations-done", "").trim(),
+        `GH=${join(mirror, "gh")}\nPUP=${join(mirror, "pup")}\nSTORAGE=file\nATLASSIAN=jira-token`);
+    } finally {
+      session.dispose();
+    }
+  } finally {
+    delete process.env["HUI_GITHUB_CLI"];
+    await rm(fakeGh, { force: true });
+    await rm(pup, { recursive: true, force: true });
+    await rm(jiraFile, { force: true });
+    await rm(datadogFile, { force: true });
+    // The mirror drops what the gateway no longer shares, and the host forgets the token.
+    await workers.sync(workerId);
+    assert.ok(!existsSync(join(mirror, "gh", "hosts.yml")));
+    assert.ok(!existsSync(join(mirror, "pup", "tokens_datadoghq_com.json")));
   }
 });
