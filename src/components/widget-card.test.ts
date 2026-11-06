@@ -25,3 +25,15 @@ test("full screen promotes the same card instead of moving its frame", () => {
   assert.match(source, /role=\$\{this\.expanded \? "dialog" : "group"\}/u);
   assert.match(source, /aria-modal=\$\{this\.expanded \? "true" : nothing\}/u);
 });
+
+test("a card the user can see never stays loading: the sandbox and the widget document both run out of time", () => {
+  assert.match(source, /const SANDBOX_READY_MS = 5_000;/u);
+  assert.match(source, /const WIDGET_LOAD_MS = 20_000;/u);
+  // Armed for a card in view only, so a cached session's hidden pane waits for its frame.
+  assert.match(source, /if \(this\.#inView\) this\.#watchdog\(\);\n      else this\.#clearTimer\(\);/u);
+  assert.match(source, /if \(this\.#proxyReady\) this\.#arm\(WIDGET_LOAD_MS/u);
+  assert.match(source, /else this\.#arm\(SANDBOX_READY_MS/u);
+  // The old watchdog only started after the frame's load event, which a blocked frame never fires.
+  assert.doesNotMatch(source, /@load=\$\{this\.#onFrameLoad\}/u);
+  assert.match(source, /case "loaded":[\s\S]*?this\.#clearTimer\(\);/u);
+});

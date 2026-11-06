@@ -1449,9 +1449,9 @@ only when the sandbox page posts as the opaque origin `"null"`.
 
 | From → to | Method | Params | Contract |
 |---|---|---|---|
-| page → chat | `ui/notifications/sandbox-proxy-ready` | `{}` | the page is ready; within 5 s of its load or the card fails |
+| page → chat | `ui/notifications/sandbox-proxy-ready` | `{}` | the page is ready; a card in view that is still loading after 5 s fails |
 | chat → page | `ui/notifications/sandbox-resource-ready` | `{ html, renderId, title }` | the composed document; replaces the widget frame |
-| page → chat | `ui/notifications/sandbox-resource-loaded` | `{ renderId }` | the widget frame's first load |
+| page → chat | `ui/notifications/sandbox-resource-loaded` | `{ renderId }` | the widget frame's first load; a card in view that is still loading after 20 s fails with the reason and a retry |
 | page → chat | `ui/notifications/sandbox-resource-navigated` | `{ renderId }` | HUI addition: a later load means the widget navigated; the frame is removed and the card stops |
 | widget → chat | `ui/notifications/size-changed` | `{ height }` | body height; the frame is clamped to 48–8,000 px |
 | chat → widget | `ui/notifications/host-context-changed` | `{ theme, displayMode, styles: { variables } }` | after load and on every theme or display-mode change |

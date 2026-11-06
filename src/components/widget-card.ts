@@ -23,9 +23,12 @@ import {
 const expandIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>`;
 const collapseIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" /></svg>`;
 
-/** The sandbox page posts its ready message while it loads; silence after its
- * load event means it refused to run (not framed by HUI, or not isolated). */
+/** The sandbox page posts its ready message while it loads; a frame that never
+ * gets there (blocked, or not framed by HUI) fails once the card is in view. */
 const SANDBOX_READY_MS = 5_000;
+/** The sandbox page reports the widget document's first load; one that never
+ * arrives means a resource it fetches stalled, and the card must say so. */
+const WIDGET_LOAD_MS = 20_000;
 
 const cards = new Set<WidgetCard>();
 let watching = false;
@@ -95,6 +98,8 @@ export class WidgetCard extends HuiElement {
   declare expanded: boolean;
 
   #frame: HTMLIFrameElement | undefined;
+  #viewer: IntersectionObserver | undefined;
+  #inView = false;
   #generation = 0;
   #src: string = WIDGET_SANDBOX_PATH;
   #renderId = "";
@@ -122,11 +127,22 @@ export class WidgetCard extends HuiElement {
     super.connectedCallback();
     cards.add(this);
     watchFrames();
+    // A cached session keeps its cards in a hidden pane, where their frames
+    // legitimately wait; the watchdog only runs for a card the user can see.
+    this.#viewer ??= new IntersectionObserver((entries) => {
+      this.#inView = entries.some((entry) => entry.isIntersecting);
+      if (this.#inView) this.#watchdog();
+      else this.#clearTimer();
+    });
+    this.#viewer.observe(this);
   }
 
   override disconnectedCallback() {
     cards.delete(this);
     this.#clearTimer();
+    this.#viewer?.disconnect();
+    this.#viewer = undefined;
+    this.#inView = false;
     if (this.expanded) this.#leaveFullScreen(false);
     super.disconnectedCallback();
   }
@@ -163,19 +179,23 @@ export class WidgetCard extends HuiElement {
     this.frameHeight = 0;
     // Fixed for the frame's life: later theme changes go by message, never navigation.
     this.#src = `${WIDGET_SANDBOX_PATH}#scheme=${themeMode()}`;
+    if (this.#inView) this.#watchdog();
   }
 
   #handle(message: WidgetFrameMessage, origin: string): void {
     switch (message.kind) {
       case "proxy-ready":
         this.#proxyReady = true;
-        this.#clearTimer();
         // An opaque origin posts as "null"; anything else is not isolated.
         if (origin !== "null") this.#fail("The widget sandbox is not isolated in this browser, so the widget was not loaded.");
-        else this.#deliver();
+        else {
+          this.#deliver();
+          if (this.#inView) this.#watchdog();
+        }
         return;
       case "loaded":
         if (message.renderId !== this.#renderId) return;
+        this.#clearTimer();
         this.frameState = "ready";
         this.#sendContext(true);
         return;
@@ -300,13 +320,20 @@ export class WidgetCard extends HuiElement {
     this.#leaveFullScreen(true);
   };
 
-  #onFrameLoad = (): void => {
-    if (this.#proxyReady || this.frameState !== "loading") return;
+  /** Arms the bound for the state the card is waiting on, so a visible card
+   * always ends up ready or failed: never loading forever. */
+  #watchdog(): void {
+    if (this.frameState !== "loading") return;
+    if (this.#proxyReady) this.#arm(WIDGET_LOAD_MS, "The widget did not finish loading. A library it fetches may be blocked on this connection.");
+    else this.#arm(SANDBOX_READY_MS, "The widget sandbox did not start. Reload the page to try again.");
+  }
+
+  #arm(ms: number, reason: string): void {
     this.#clearTimer();
     this.#timer = setTimeout(() => {
-      if (!this.#proxyReady) this.#fail("The widget sandbox did not start. Reload the page to try again.");
-    }, SANDBOX_READY_MS);
-  };
+      if (this.frameState === "loading") this.#fail(reason);
+    }, ms);
+  }
 
   #bindFrame = (element?: Element): void => {
     if (element instanceof HTMLIFrameElement) this.#frame = element;
@@ -348,7 +375,6 @@ export class WidgetCard extends HuiElement {
         loading="lazy"
         style=${`--hui-widget-height:${this.frameHeight || 160}px`}
         ${ref(this.#bindFrame)}
-        @load=${this.#onFrameLoad}
       ></iframe>`)}
       ${this.frameState === "loading" ? html`<div class="hui-widget-card__loading" role="status"><span class="session-run-spinner" aria-hidden="true"></span>Loading widget…</div>` : nothing}`;
   }
