@@ -17,6 +17,7 @@ export { filterSessionGroups } from "../lib/session/sidebar-sessions.ts";
 import type { HuiPage } from "../lib/pages.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { writeSessionDrag } from "../lib/session/pane-layout.ts";
+import { applySidebarWidth, sidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from "../lib/sidebar-width.ts";
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
 import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
 import { primaryJiraIssue } from "../lib/jira.ts";
@@ -819,7 +820,7 @@ export function renderSidebar(props: ShellProps) {
       aria-label="Close navigation"
       @click=${(event: Event) => closeContainingDrawer(event, true)}
     ></button>
-    <div class="shell-nav" id="primary-navigation-drawer">
+    <div class="shell-nav" id="primary-navigation-drawer" data-testid="shell-sidebar">
     <aside
       class="sidebar"
       data-open=${String(SHELL_DRAWER_DEFAULT_OPEN)}
@@ -948,6 +949,18 @@ export function renderSidebar(props: ShellProps) {
           </div>
         </div>
     </aside>
+    <div
+      class="sidebar-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      aria-valuemin=${SIDEBAR_WIDTH_MIN}
+      aria-valuemax=${SIDEBAR_WIDTH_MAX}
+      aria-valuenow=${sidebarWidth()}
+      tabindex="0"
+      @pointerdown=${startSidebarResize}
+      @keydown=${resizeSidebarWithKeys}
+    ></div>
     </div>
     <button type="button" class="shell-chrome-controls" aria-label="Expand sidebar" @click=${toggleDesktopSidebar}>${icons.panelLeftOpen}</button>
   </hui-session-hovercard-provider>`;
@@ -985,6 +998,63 @@ function toggleDesktopSidebar(event: Event) {
   // whichever is now shown: a second click or Enter in place undoes the first.
   const next = collapsed ? ".shell-chrome-controls" : ".sidebar-brand__collapse";
   requestAnimationFrame(() => shell.querySelector<HTMLElement>(next)?.focus());
+}
+
+/** One drag at a time, so a second finger cannot compete with the one that started it. */
+let sidebarResizing = false;
+
+/** The sidebar's right edge. A drag writes `--hui-sidebar-width` straight to the
+ * document, so resizing never re-renders the shell; the choice is stored once
+ * the pointer is released. */
+function startSidebarResize(event: PointerEvent) {
+  const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  const nav = handle?.closest<HTMLElement>(".shell-nav");
+  const startWidth = nav?.getBoundingClientRect().width ?? 0;
+  if (!handle || !nav || event.button !== 0 || startWidth <= 0 || sidebarResizing) return;
+  const shell = nav.closest<HTMLElement>(".app-shell");
+  const { pointerId } = event;
+  const startX = event.clientX;
+  let width = startWidth;
+  let done = false;
+  const resize = (value: number) => {
+    width = applySidebarWidth(value);
+    handle.setAttribute("aria-valuenow", String(width));
+  };
+  const move = (moveEvent: PointerEvent) => {
+    if (moveEvent.pointerId === pointerId) resize(startWidth + moveEvent.clientX - startX);
+  };
+  const finish = (endEvent?: Event) => {
+    if (done || (endEvent instanceof PointerEvent && endEvent.pointerId !== pointerId)) return;
+    done = true;
+    sidebarResizing = false;
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", finish);
+    handle.removeEventListener("pointercancel", finish);
+    handle.removeEventListener("lostpointercapture", finish);
+    window.removeEventListener("blur", finish);
+    shell?.classList.remove("shell--sidebar-resizing");
+    if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+    applySidebarWidth(width, true);
+  };
+  event.preventDefault();
+  sidebarResizing = true;
+  handle.focus({ preventScroll: true });
+  handle.setPointerCapture(pointerId);
+  shell?.classList.add("shell--sidebar-resizing");
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", finish);
+  handle.addEventListener("pointercancel", finish);
+  handle.addEventListener("lostpointercapture", finish);
+  window.addEventListener("blur", finish);
+}
+
+function resizeSidebarWithKeys(event: KeyboardEvent) {
+  const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  const step = event.shiftKey ? 48 : 16;
+  const delta = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+  if (!handle || delta === 0) return;
+  event.preventDefault();
+  handle.setAttribute("aria-valuenow", String(applySidebarWidth(sidebarWidth() + delta, true)));
 }
 
 export function closeDrawerOnEscape(event: KeyboardEvent) {

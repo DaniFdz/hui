@@ -41,6 +41,11 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   header's New session and Search buttons on 2026-10-06; new sessions start from
   a group's +). Settings is the last primary-navigation destination, not a
   header button.
+- The wide layout's sidebar can be widened or narrowed by dragging the boundary
+  at its right edge, between 200px and 460px, and the browser keeps that width
+  for the next visit. The boundary is a separator named *Resize sidebar* that
+  the arrow keys also move, 16px a press and 48px with Shift. Narrow screens
+  show the drawer at its own width, with no boundary.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
   system modes. Theme, accent, interface-font and chat-prose-font preferences
   persist in HUI settings. A custom or imported theme's colors must read where
