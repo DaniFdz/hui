@@ -538,6 +538,16 @@ const cases: UseCase[] = [
         "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
     },
   },
+  {
+    id: "SHELL-048",
+    title: "Widen or narrow the sidebar",
+    behaviour: "Dragging the boundary at the sidebar's right edge widens or narrows it, and it stops at 200px and at 460px. The boundary is a separator named **Resize sidebar** that also takes the arrow keys, 16px a press and 48px with Shift, and the sidebar comes back at the width it was left at after a reload.",
+    spec: [BEHAVIOUR, LAYOUT],
+    surfaces: [],
+    journeys: ["sidebar-toolbar", "shell-navigation"],
+    web: "required",
+    ios: { excluded: "The iPhone app is always narrow, so its sidebar is the drawer, which has no boundary.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
+  },
 ];
 
 export default cases;

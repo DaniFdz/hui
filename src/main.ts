@@ -41,6 +41,7 @@ import { loadSettings } from "./lib/settings/settings-store.ts";
 import { applyTheme, loadThemes } from "./lib/theme/theme-store.ts";
 import { finishBoot, rememberBootLook, showBootFailure } from "./lib/boot-screen.ts";
 import { installCodeBlockInteractions } from "./lib/markdown/blocks.ts";
+import { applySidebarWidth, sidebarWidth } from "./lib/sidebar-width.ts";
 import { viewAssetsLoaded } from "./lib/view-assets.ts";
 import { keepReopenedSubmenuVisible, returnFocusFromClosedMenu } from "./lib/web-awesome.ts";
 
@@ -70,6 +71,9 @@ installCodeBlockInteractions();
 // and nothing about it depends on the appearance. index.html's boot screen
 // covers both until the app has painted.
 try {
+  // The sidebar's saved width applies before its first paint, so a narrowed or
+  // widened column never jumps.
+  applySidebarWidth(sidebarWidth());
   const [{ defineHuiApp }] = await Promise.all([import("./hui-app.ts"), resolveAppearance()]);
   // Every view module has registered its stylesheets by now; they load together.
   await viewAssetsLoaded();

@@ -440,7 +440,7 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   const css = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
 
-  assert.match(css, /--shell-nav-expanded-width:\s*258px/);
+  assert.match(css, /--shell-nav-expanded-width:\s*var\(--hui-sidebar-width, 258px\)/);
   assert.match(css, /--shell-topbar-height:\s*58px/);
   assert.match(css, /--shell-chrome-safe-area-left:\s*12px/);
   assert.match(
@@ -885,4 +885,19 @@ test("a right click on a session row asks for the actions menu its button opens"
   assert.equal(prevented, true, "the browser's own link menu does not open");
   assert.deepEqual(menus, ["ctx"], "the right click opens the row's actions menu");
   assert.deepEqual(selected, [], "a right click never opens the session");
+});
+
+test("the sidebar's right edge is a separator the arrow keys move, with none in the drawer", () => {
+  const css = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
+  const handle = sidebar(1).match(/<div\s+class="sidebar-resize-handle"[\s\S]*?>/u)?.[0] ?? "";
+  assert.match(handle, /role="separator"/);
+  assert.match(handle, /aria-orientation="vertical"/);
+  assert.match(handle, /aria-label="Resize sidebar"/);
+  assert.match(handle, /tabindex="0"/);
+  assert.match(handle, /aria-valuemin=200/);
+  assert.match(handle, /aria-valuemax=460/);
+  assert.match(handle, /aria-valuenow=258/);
+  assert.match(css, /\.app-shell \.sidebar-resize-handle \{[^}]*cursor: col-resize/);
+  // The drawer has its own width, so it shows no boundary.
+  assert.match(css, /@media \(max-width: 900px\)[^@]*?\.app-shell \.sidebar-resize-handle \{\s*display: none;/u);
 });
