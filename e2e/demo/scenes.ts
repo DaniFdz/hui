@@ -371,9 +371,9 @@ export const scenes: Scene[] = [
       // HUI checks on watchers every 10 s; skip to the moment CI is green.
       await d.cut(() => d.waitFor({ contains: "CI green, merged #142" }, 30_000));
       await d.pause(1_200);
-      await d.click({ css: ".chat-watcher" });
-      await d.waitFor({ css: ".chat-watcher__log" });
-      await d.pause(2_200);
+      // A settled watcher folds its last event onto what it reported, so the outcome stays readable.
+      await d.zoom({ css: ".chat-watcher", last: true }, 1.5);
+      await d.pause(2_400);
       await d.zoom();
       await d.caption();
     },
