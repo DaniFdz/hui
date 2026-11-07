@@ -629,9 +629,13 @@ each SDK request. Credentials are pinned per async request across OAuth refresh;
 parallel sessions never change a shared active key. Both `stream` and
 `streamSimple` (including their completion helpers) route accounts. SDK request
 retries are disabled for these calls so rotation is bounded to one attempt per
-ready account. A 429 or explicit quota/usage-limit error before content triggers
-the next account; no replay after content/thinking/tool events, on Stop, auth or
-server/network errors. Exhaustion is an explicit error, not a retry loop.
+ready account. A 429 that reports quota/rate exhaustion, or an explicit
+quota/usage-limit error, before content triggers the next account; a 429 that
+reports the provider's own capacity (an overloaded upstream, not this account's
+allowance) keeps the account and surfaces the provider's error, so it cannot
+block the account's other models. No replay after content/thinking/tool events,
+on Stop, auth or server/network errors. Exhaustion is an explicit error, not a
+retry loop.
 `Retry-After`/`retry-after-ms`, or a Codex-reported retry time, determine cooldown;
 without them HUI retries the account after 60 seconds. Account quota reads can
 extend cooldown to the reported reset of an exhausted global window, but never

@@ -17,7 +17,11 @@ const piAiPackage = findPackageJSON("@earendil-works/pi-ai", import.meta.resolve
 const { AssistantMessageEventStream } = await import(new URL("./dist/utils/event-stream.js", pathToFileURL(piAiPackage)).href) as { AssistantMessageEventStream: new() => Stream };
 
 export function quotaFailure(status: number | undefined, message = ""): boolean {
-  return status === 429 || /\b(?:429|rate_limit_exceeded|insufficient_quota|usage_limit_reached|quota_exceeded)\b|\b(?:rate|usage|quota) limit (?:reached|exceeded)\b/i.test(message);
+  if (/\b(?:rate_limit_exceeded|insufficient_quota|usage_limit_reached|quota_exceeded)\b|\b(?:rate|usage|quota) limit (?:reached|exceeded)\b/i.test(message)) return true;
+  // A provider can use 429 for its own capacity, not this account's quota. Rotating
+  // or cooling the account cannot help and would block its other models too.
+  if (/\b(?:prefill_cap_refused|at capacity|overloaded)\b/i.test(message)) return false;
+  return status === 429 || /\b429\b/.test(message);
 }
 export function retryAt(headers: Record<string, string>, now = Date.now(), message = ""): number {
   const value = headers["retry-after"];
