@@ -118,9 +118,28 @@ test("in-flight requests pin credentials while another request uses reordered ac
 test("quota classification and provider reset headers are conservative", () => {
   assert(quotaFailure(429)); assert(quotaFailure(undefined, "insufficient_quota"));
   assert(!quotaFailure(401, "Unauthorized")); assert(!quotaFailure(500, "overloaded"));
+  assert(!quotaFailure(429, '429: {"type":"server_error","message":"Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 30 s)"}'));
+  assert(quotaFailure(429, "429: usage limit reached"));
   assert.equal(retryAt({ "retry-after": "120" }, 1000), 121000);
   assert.equal(retryAt({ "retry-after-ms": "50" }, 1000), 1050);
   assert.equal(retryAt({ "retry-after": "nonsense" }, 1000), 61000);
+});
+
+test("a provider's capacity 429 keeps the account usable and surfaces its own error", async (t) => {
+  const f = await fixture(t);
+  const capacity = '429: {"type":"server_error","message":"Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 30 s)"}';
+  f.install(async (_key, out, options) => {
+    await options?.onResponse?.({ status: 429, headers: { "retry-after": "30" } }, f.model);
+    out.push({ type: "error", reason: "error", error: f.message(capacity) });
+  });
+  const result = await f.runtime.completeSimple(f.model, { messages: [] });
+  assert.equal(result.stopReason, "error");
+  assert.equal(result.errorMessage, capacity);
+  assert.deepEqual(f.attempts, ["first-key"]);
+  assert.equal((await new ProviderAccounts(f.dir).list("openai"))[0]!.cooldownUntil, undefined);
+  // The next request tries the same preferred account rather than an exhausted-account error.
+  await f.runtime.completeSimple(f.model, { messages: [] });
+  assert.deepEqual(f.attempts, ["first-key", "first-key"]);
 });
 
 test("real PI OpenAI HTTP adapter rotates credentials after 429 and streams the second response", async (t) => {
