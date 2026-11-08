@@ -206,7 +206,7 @@ inventing a dead link.
   sent on init and on document theme changes; `open` opens only an `https:` URL
   with `noopener`; closing the Work view aborts in-flight calls and removes the
   listener.
-- [x] **P2-A6** Use case **WORK-083** (web required, iOS excluded per E17) has a
+- [x] **P2-A6** Use case **WORK-085** (web required, iOS excluded per E17) has a
   shared e2e test with the real fixture panel: Settings → Open panel, the + menu,
   the iframe's sandbox/src, the bridge's greeting in the bar, a reported height
   that differs from the default, and a restore after reload. Screenshots at
@@ -238,7 +238,7 @@ Result: typecheck 0; build 0; 33 failed / 2808 passed, the same baseline set
         (added 0, removed 0)
 Exit: typecheck/build 0, tests 1 (pre-existing failures only)
 
-P2-V5  npm run e2e -- --tag WORK-083
+P2-V5  npm run e2e -- --tag WORK-085
 Result: 1 file, 1 test passed
 Exit: 0
 ```
