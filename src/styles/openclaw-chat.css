@@ -1726,16 +1726,16 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   display: grid;
   place-items: center;
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-  font-size: 14px;
   line-height: 1;
   font-variant-emoji: emoji;
 }
 
-.tool-call-group__emoji { font-size: 13px; }
-
 /* Emoji read best a touch larger than the stroke marks at the same box. */
 .tool-call-row__icon--emoji { font-size: 15px; }
-.tool-call-group__emoji { font-size: 14px; }
+
+/* Inside a group's 24px ring an emoji's ink covers all but the ring itself at 14px, so three marks read as three
+   different sizes. Its ink is about 1.28em, which leaves the ring clear at 10px. */
+.tool-call-group__emoji { font-size: 10px; }
 
 /* HUI sends a run's queued steers now, so the queue carries one row above them: a blocking tool call can hold a steer
    for minutes, and stopping the turn is the only way past it. */
