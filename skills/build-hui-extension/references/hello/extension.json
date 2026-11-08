@@ -1,0 +1,21 @@
+{
+  "apiVersion": 1,
+  "name": "Hello",
+  "description": "A small reference gateway extension: one route and one panel.",
+  "main": "index.mjs",
+  "version": "0.1.0",
+  "engines": {
+    "hui": {
+      "min": "0.1.0"
+    }
+  },
+  "ui": {
+    "title": "Hello",
+    "icon": "package",
+    "page": {
+      "title": "Hello page",
+      "entry": "page.html",
+      "icon": "github"
+    }
+  }
+}

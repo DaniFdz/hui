@@ -295,6 +295,11 @@ fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Cal
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
 
+**Provider retries** sets how many times a failed model request is retried on the
+same model before the fallback is used (default 3). Retries keep the model and its
+cached context, and wait for the provider's retry hint, so a capacity error does
+not immediately reload the context on another model.
+
 **Default reasoning** on the same page is the effort new sessions and new bots
 start with: one of PI's levels through Maximum, or **Use PI default** to follow
 PI's own setting. New Session opens on it (you can still change the level there
@@ -304,10 +309,12 @@ saved as a default.
 
 **Subagent routes** sit under the same page. Choose **Add route** to open a
 form for its name, one-line description, model and optional reasoning level.
-The model starts on your primary model when available, and thinking inherits
+The model starts on **Inherit the caller's model**, and thinking inherits
 the parent's level. **Add route** saves the completed form; **Cancel** or Escape
 closes it without adding anything. A failed save keeps the form for retry.
 Saved routes show a brief summary of their description, model and thinking level.
+A route without a model runs its subagent on the caller's model and reasoning
+level, so it follows your primary model as that changes.
 Choose **Edit** to open the same form with the current values. **Save changes**
 applies the edit; Cancel or Escape leaves the saved configuration unchanged.
 **Remove** stays beside Edit. An agent that spawns a subagent can pass the name
@@ -504,6 +511,49 @@ default (Settings' utility model, then the chat's own model).
 A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
 and deleting the session all answer with an explanation instead.
 
+### The staff pack and the Chief of Staff
+
+A fresh gateway seeds one **Chief of Staff** bot from HUI's **staff pack**. It
+starts idle: it has a SOUL.md and its skills, and it says nothing until you
+message it. Its home folder holds the pack's skills under `skills/`, and the
+bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
+with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
+`learn`, `lessons`,
+`verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
+`figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
+`principles` reference. No other chat loads them.
+
+The same seed adds five **Subagent routes** on Settings → Models: `planner`,
+`explorer`, `worker`, `reviewer` and `verifier`. Each inherits the caller's
+model until you give it one, so they follow your primary model. The chief picks
+one per task; `sessions_spawn` also takes `worktree: true`, which gives a
+writing worker its own Git worktree and branch instead of sharing the chief's.
+
+A task with more than one step or more than one worker goes to one **lead**, not
+to N workers: the lead owns it, spawns its own workers and reports one rollup.
+Its workers' completions land in the lead's transcript, so the chief's chat
+stays a conversation. The lead messages the chief with `sessions_send` only for
+a real decision.
+
+After a task that failed, drifted, or needed a step the pack did not know, the chief adds one evidence-backed entry to its own **`lessons`** skill. It never edits the pack's skills: an edited pack file stops taking pack updates. The `lessons` skill is the bot's, and `hui doctor` reports it.
+
+The chief's chat uses OptChat. Its compactor model defaults to Settings' utility
+model; for a chief that lives for months, set a stronger one in the bot's
+Settings → Memory. The ledger in `work/` and MEMORY.md are the durable record;
+the chat is not.
+
+The pack is versioned. On a later start HUI replaces a skill file nobody edited,
+keeps a skill with any edited file whole, and adds only routes whose names are
+missing; it never writes SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md after
+creation. `hui doctor` reports a skill that can take the shipped text and one
+you edited; `hui doctor --fix` installs the untouched updates.
+
+A **custom session group** is a project here, so its ⋯ menu offers **Create Chief of Staff**: one bot named *Chief of Staff · <group>* whose chat works in that project's folder, with its own OptChat memory and its own copy of the pack's skills. Asking again opens that same chief. The seeded default chief stays for work that belongs to no group.
+
+Deleting the Chief of Staff is how you opt out: HUI records the seed in
+`staff.json` and does not create another. To get it back, stop the gateway,
+delete `staff.json` from HUI's configuration directory, and start it again.
+
 ### Soul and the first conversation
 
 A bot's persona is its **SOUL.md**: who it is, what it looks after, how it works
@@ -566,6 +616,8 @@ powerful: it only shows you a Secret card in the bot's chat, and you decide
 whether to answer. Its own tools are always on and listed at the bottom: writing its
 SOUL.md, changing its name, title or look, asking for access, loading its skills, and
 its memory.
+
+Each skill in the bot's own folder shows **Edit**: the whole `SKILL.md` in a textarea, with **Save skill** and **Cancel**; the files beside it stay. A pack update never overwrites an edited skill, and `hui doctor` reports it. Skills HUI ships or PI provides have no Edit.
 
 ```sh
 hui bot tools ada                      # what it has, grouped, on or off
@@ -1190,6 +1242,114 @@ Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`):
 ```
 
 Icon files go in `HUI_CONFIG_DIR/tool-icons/` and are served read-only at `/__hui/tool-icons/<file>`; the browser only ever draws them in an `<img>`, so an SVG cannot run script. Names are flat file names — no paths — with an `.svg`, `.png`, `.webp`, `.jpg` or `.jpeg` extension, at most 256 KB. Keys are a CLI binary or a tool name, lowercased. Restart the gateway after adding files or editing the maps.
+
+## Gateway extensions
+
+A gateway extension is a small local module that answers JSON routes under
+`/__hui/ext/` and may add a sandboxed panel or page, prompt text and agent tools.
+You put one in `HUI_CONFIG_DIR/extensions/<id>/` and enable it over HTTP or in
+Settings. The extension runs **inside the gateway process** with the gateway's
+full access to your machine, credentials and data — the same trust as a PI
+extension and no sandbox for that code. Only add code you would run yourself.
+[What a gateway extension can and cannot do](extensions.md) is the capability
+matrix; the rest of this section is the working guide.
+
+An extension directory holds a manifest and its entry module:
+
+```
+HUI_CONFIG_DIR/extensions/hello/
+  extension.json
+  index.mjs
+```
+
+```json
+{ "apiVersion": 1, "name": "Hello", "description": "Greets people.", "main": "index.mjs" }
+```
+
+```js
+// index.mjs: one route per method and path below /__hui/ext/hello/
+export const routes = [
+  {
+    method: "GET",
+    path: "hello",
+    description: "Greets a name from the query.",
+    handle: async ({ query }) => ({ body: { greeting: `hello, ${query.get("name") ?? "world"}` } }),
+  },
+];
+```
+
+An id is a lowercase directory name (letters, digits and `-`, at most 32
+characters), `apiVersion` must be `1`, and `main` must stay inside the extension's
+directory. A panel is optional: `"ui": { "title": "Hello panel", "entry": "index.html" }`
+serves the files under the extension's `ui/` directory at `/__hui/ext-ui/<id>/` and
+shows the entry page in a sandboxed Work pane frame that can only call the
+extension's own routes through HUI. Its optional `icon` names the Work pane tab's
+mark — `package` (the default), `github` or `pull-request`; another name is
+refused when the manifest loads. A page is optional too:
+`"ui": { "title": "Hello", "page": { "title": "Hello page", "entry": "page.html" } }`
+adds a sidebar destination at `/ext/<id>` that renders `ui/page.html` in the same
+sandbox; its bridge may also ask HUI to open an allowlisted conversation. A route
+can read read-only gateway data through `context.hui` (`github.contributions`
+first); no service handles or HUI routes are exposed. An extension can also declare static prompt
+sections for Durable conversations and agent tools, whose handlers are exported by
+the entry module under the tool's name, and a route can stream events with
+`stream: true` (see `e2e/fixtures/extensions/hello`). Panel files are public to anyone who can reach
+the gateway, so keep secrets out of them. A route path is one to four clean segments. A handler gets
+`{ method, path, query, body, signal, extension }` and returns
+`{ status?, body }` where `body` is a JSON object (at most 256 KiB); there are no
+response headers, files, redirects or streams, and a request body follows the
+ordinary 64 KiB JSON limit. The same `x-hui` gate as every other route applies.
+
+Installed extensions start out off. **Settings → Extensions** lists each one with
+its state, its routes and any error, and its switch turns it on or off; **Open
+panel** shows an enabled extension's panel in the current conversation's Work pane
+(or add it from the Work pane's + menu). The same
+is available from a terminal (the gateway must be running; replace the port with
+your own):
+
+```sh
+curl -sS http://127.0.0.1:5173/__hui/ext -H 'x-hui: 1'
+curl -sS -X PUT http://127.0.0.1:5173/__hui/ext/hello \
+  -H 'x-hui: 1' -H 'content-type: application/json' -d '{"enabled":true}'
+curl -sS 'http://127.0.0.1:5173/__hui/ext/hello/hello?name=Ada' -H 'x-hui: 1'
+hui extension list
+hui extension enable hello
+hui extension disable hello
+```
+
+A manifest can set `"mode": "process"` to run in a supervised child process (at most
+eight at once): its routes and streams are forwarded, a crash restarts it after 1, 2
+and 4 seconds while routes answer 503, and three crashes in five minutes leave it
+failed until a reload. That is crash isolation, not a sandbox; tools require the
+default in-process mode.
+
+HUI ships some extensions in its package, beside `skills/`; a packaged page
+listed in `extensions/defaults.json` is on until `extensions.json` exists. A config
+copy with the same id overrides it; `hui extension eject <id>` copies the packaged
+source into your config directory without enabling it, so you can edit it and reload.
+
+`hui extension add <path> [--link]` validates a local module and installs it
+(copied, or linked with `--link`), enabling it now when the gateway runs and at the
+next start otherwise; `hui extension remove <id>` needs it disabled, and only
+`--delete` removes its directory. A manifest may carry `version` and `engines.hui`
+bounds; a gateway outside them refuses to load it. **Reload** on Settings →
+Extensions (or `hui extension reload <id>`) re-imports a changed module. `hui
+doctor` reports enabled extensions that cannot load.
+
+The bundled **build-hui-extension** skill walks an agent through this surface,
+copies a working reference extension and verifies it against the gateway; turn it
+off in Settings → Skills if you do not want it offered.
+
+The choice is saved in `HUI_CONFIG_DIR/extensions.json` (`{ "version": 1,
+"enabled": ["hello"] }`) and applies immediately: enabling imports the module,
+disabling withdraws its routes at once (Node keeps the module cached). The same
+call with `"enabled":false` turns it off. A manifest or import failure answers
+200 with `state: "failed"` and an `error`, is listed by the first route above and
+is reported once as a gateway diagnostic; other extensions and the rest of HUI keep
+working. A changed manifest is read again when the extension is toggled off and
+on; changing a module's code takes effect when the gateway restarts. HUI 0.1.5 has
+no Settings page for extensions yet; the HTTP surface in the [API contract](api.md)
+is the operator interface.
 
 ## Codemode: one script, many tool calls
 

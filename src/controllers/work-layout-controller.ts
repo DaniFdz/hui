@@ -24,6 +24,7 @@ import {
 } from "../lib/work-pane.ts";
 import { browserWorkViewKind } from "../views/work/browser.ts";
 import { diffWorkViewKind } from "../views/work/diff.ts";
+import { extensionWorkViewKind } from "../views/work/extension.ts";
 import { filesViewToReveal, filesWorkViewKind, type FilesWorkViewRef } from "../views/work/files.ts";
 import { terminalWorkViewKind } from "../views/work/terminal.ts";
 import { vscodeWorkViewKind } from "../views/work/vscode.ts";
@@ -139,6 +140,7 @@ export class WorkLayoutController {
     registerWorkViewKind(filesWorkViewKind);
     registerWorkViewKind(vscodeWorkViewKind);
     registerWorkViewKind(diffWorkViewKind);
+    registerWorkViewKind(extensionWorkViewKind);
     // A launcher's reason can change outside this app's state (VS Code's gateway status): redraw the narrow chooser.
     for (const stop of this.#stopAvailability) stop();
     this.#stopAvailability = workViewKinds().flatMap((kind) => kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.#host.requestUpdate())] : []);

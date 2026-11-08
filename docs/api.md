@@ -627,11 +627,16 @@ than silently using a different account. No transcript format changes.
 Within an already managed provider, account order and cooldowns are re-read for
 each SDK request. Credentials are pinned per async request across OAuth refresh;
 parallel sessions never change a shared active key. Both `stream` and
-`streamSimple` (including their completion helpers) route accounts. SDK request
-retries are disabled for these calls so rotation is bounded to one attempt per
-ready account. A 429 or explicit quota/usage-limit error before content triggers
-the next account; no replay after content/thinking/tool events, on Stop, auth or
-server/network errors. Exhaustion is an explicit error, not a retry loop.
+`streamSimple` (including their completion helpers) route accounts. Provider-SDK
+retries inside one account are disabled so rotation stays bounded to one attempt
+per ready account. A 429 that reports quota/rate exhaustion, or an explicit
+quota/usage-limit error, before content triggers the next account; a 429 that
+reports the provider's own capacity (an overloaded upstream, not this account's
+allowance) keeps the account ready so the Durable harness can retry the same model
+and cached context up to `models.retryAttempts`, waiting for the provider's retry
+hint; only after that budget is spent does the provider's error surface. No replay
+after content/thinking/tool events, on Stop, auth or server/network errors. Account
+exhaustion is an explicit error, not an unbounded retry loop.
 `Retry-After`/`retry-after-ms`, or a Codex-reported retry time, determine cooldown;
 without them HUI retries the account after 60 seconds. Account quota reads can
 extend cooldown to the reported reset of an exhausted global window, but never
@@ -750,16 +755,23 @@ Disabling a HUI default excludes only that fallback, not a same-name override.
 An empty opt-out list enables the default without writing PI configuration.
 Read-only catalog probes never load bundled skills.
 
-The same settings document includes `models: { primary, fallback, utility, thinking }`.
+The same settings document includes `models: { primary, fallback, utility, thinking, retryAttempts }`.
 Each non-empty model value is a canonical `provider/id` from PI's filtered catalog.
-Primary is the default for new sessions; fallback is an automatic one-time retry
-when a primary turn fails before text, thinking, or tool activity, after which
-the session switches back to its own model; utility is a
+Primary is the default for new sessions; fallback is an automatic retry when a
+primary turn fails before text, thinking, or tool activity and its retry budget
+is spent, after which the session switches back to its own model; utility is a
 cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 
 ```json
-{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "thinking": "high", "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
+{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "thinking": "high", "retryAttempts": 3, "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
 ```
+
+`retryAttempts` is the number of provider-error retries before the fallback is
+tried, from 0 to 5 (default 3). A retry keeps the same model and account, so the
+provider can reuse its cached context; a provider-supplied `Retry-After` or retry
+hint decides the wait, with PI's exponential backoff when it gives none. A
+capacity 429 is not account exhaustion and never cools the account down; the
+retry budget is spent first.
 
 `thinking` is the reasoning level new sessions and new bots start on, and the
 level the New Session form is seeded with: one of PI's levels from `off` through
@@ -856,8 +868,8 @@ runs `open -a ~/Applications/HUI.app hui://<kind>/<id>`.
 ### `GET /__hui/host-metrics`
 
 Read-only resource use of the machine the gateway runs on, for the Dashboard
-page (Labs → Dashboard). It answers whether or not the page is on: it reads
-nothing private and starts nothing until it is asked.
+page. It answers whether or not the page is open: it reads nothing private and
+starts nothing until it is asked.
 
 ```ts
 {
@@ -1750,9 +1762,11 @@ type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead:
 
 type BotSoul = { soul: string | null }; // GET/PUT /__hui/bots/:id/soul: SOUL.md's text, null while there is none
 
+type BotOwnSkill = { name: string; text: string }; // GET/PUT /__hui/bots/:id/skills/:name: one of its own SKILL.md files
+
 type BotCatalog = {             // GET /__hui/bots/:id/catalog
   tools: BotCatalogTool[];      // what the operator can turn off, in offer order
-  skills: (BotSkillRef & { description: string; source: string /* "HUI defaults" or the directory holding it */; enabled: boolean })[];
+  skills: (BotSkillRef & { description: string; source: string /* "HUI defaults" or the directory holding it */; enabled: boolean; own?: boolean /* in the bot's home folder, so the operator may edit it */ })[];
   alwaysOn: { name: string; description: string }[]; // never offered: the bot's own tools and OptChat's memory
   disabledTools: string[];
   disabledSkills: BotSkillRef[];
@@ -1984,6 +1998,10 @@ Query `id=&n=`.
 
 200 `{ text }`. OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400)
 
+### `POST /__hui/staff/chiefs`
+
+201 `BotResponse`. `{ group, cwd }`, nothing else: the custom session group's label (1-200 characters) and its project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its home, its `group` set, and its chat in `cwd`; the pack's routes are added to Settings when missing. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, cwd or an unknown field
+
 ### `GET /__hui/bots/:id/catalog`
 
 200 `BotCatalog`. What the operator can turn off in the bot's chat and what is off, read from its `hui.bot` document; a roster copy that differs is repaired. It opens the chat (as a message would), so an extension's tools are listed; an archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). An access request the chat waits on comes along as `request`. Archived bots too
@@ -1999,6 +2017,14 @@ Query `id=&n=`.
 ### `PUT /__hui/bots/:id/soul`
 
 200 `BotSoul`. `{ soul }`, nothing else: text of at most 20,000 characters after trimming (line ends become `\n`), written atomically (a temporary file and a rename, mode 0600) in the bot's home folder; `""` removes SOUL.md, which brings the first conversation back at the bot's next turn (no kickoff). Answers what was stored. The bot's `updatedAt` moves, so every screen reads it again. Archived bots are 409
+
+### `GET /__hui/bots/:id/skills/:name`
+
+200 `BotOwnSkill`. One of the bot's own skills: the `SKILL.md` in `skills/<name>/` in its home folder. 404 for a name it does not have. Local bots only; a bot on a worker is 409 (edit its files on that worker's Files view), as on a gateway that keeps no bot homes. Archived bots too
+
+### `PUT /__hui/bots/:id/skills/:name`
+
+200 `BotOwnSkill`. `{ text }`, nothing else: the whole `SKILL.md`, at most 256 KiB after reading, with frontmatter whose `name` equals the folder's name (400 otherwise); the files beside it stay. Written atomically in the bot's home folder. Archived bots and bots on a worker are 409. The body applies from the bot's next read; the prompt's name and description list refreshes with the next request
 
 ### `GET /__hui/bots/:id/files/:file`
 
@@ -4272,6 +4298,96 @@ Missing or invalid fields use their defaults rather than the previous values.
 The gateway applies the settings to its running services. Neither route changes
 PI's configuration.
 
+### `GET /__hui/ext`
+
+Returns `ExtensionsResponse`: every directory under `$XDG_CONFIG_HOME/hui/extensions`
+plus every id the enable store lists, sorted by id. Each `ExtensionStatus` carries
+the extension's `id`, `name`, `description`, `enabled`, its `routes` metadata, `panel`
+(`title` and `entry`) when it ships a sandboxed panel, its declared `prompt` sections
+and agent `tools` (with each tool's declared and `ext_<id>_<name>` runtime name) when
+it declares them, its `version` and `engines`, its `mode` (`in-process` or `process`) and
+`restarts` count, and a `state` of `loaded`, `disabled`, `failed` or `missing`;
+`error` explains a failure. `reloadedAt` marks a successful reload.
+`storeError` appears when `extensions.json` cannot be read; the list then behaves as
+if nothing is enabled. Listing rescans the directory, but it never imports an
+extension: a disabled extension stays `disabled` and its module is never loaded.
+
+### `PUT /__hui/ext/:id`
+
+Accepts `ExtensionToggleRequest` (`{ "enabled": boolean }`), persists the choice to
+`extensions.json` (atomic write, mode 0600) and reconciles the running set before
+answering `ExtensionStatus`. Enabling imports the module and registers its routes
+without a restart; disabling removes them immediately, although Node keeps the
+module cached. The choice is recorded, not a promise it loaded: an extension whose
+manifest or import fails answers 200 with `state: "failed"` and its `error`. An id
+with no directory returns 404, a malformed body 400, any other method 405.
+
+### `POST /__hui/ext/:id/reload`
+
+Re-imports the extension's entry module with a cache-busting URL and returns
+`ExtensionStatus` with `reloadedAt`. Its routes and panel files use the new table at
+once, its prompt text on the next assembly and its tools on the next new Durable
+session. A failed reload answers 200 with `state: "failed"` and the error, and
+withdraws the routes; an unknown id is 404. `reload` is a reserved path for an
+extension's own routes.
+
+### Process-mode extensions
+
+A manifest may set `mode: "process"`; the extension then runs in one child process
+the gateway supervises (at most eight at once). Its routes and streams are forwarded
+over a newline-framed, versioned protocol, its prompt text travels at start, and its
+tools are refused (`tools require in-process mode`). A crash restarts it after 1, 2
+and 4 seconds, answering `503 { "error": "extension process is restarting" }` while
+it is down; three crashes in five minutes leave it `failed` until a reload. This is
+crash isolation, not a security sandbox: the child runs as the same user with the
+same file access.
+
+### Extension panel files
+
+An extension with a `ui` manifest entry ships its panel's files under the gateway
+prefix `/__hui/ext-ui/<id>/<path>`, mapped to the extension's `ui/` directory. They
+are served **before** the `x-hui` gate, like the widget sandbox page, because an
+iframe cannot send that header; they are public to anyone who can reach the gateway
+and must hold no secrets. Only files inside that `ui/` directory are served
+(realpath containment; symlinks that leave it are refused), only these types:
+`html`, `js`, `mjs`, `css`, `json`, `svg`, `png`, `webp`, `jpg`, `jpeg`,
+`woff2`; at most 10 MiB each; `GET` and `HEAD` only. Every response carries
+`no-store`, `nosniff`, cross-origin CORP (the sandboxed frame's opaque origin is
+cross-origin to the gateway), no referrer, a restrictive permissions policy, and a CSP whose `sandbox` makes the document an opaque origin, whose
+sources are limited to that extension's own prefix, and whose `connect-src 'none'`
+blocks every network call: a panel's only channel is its parent bridge. Files are
+served only while the extension is enabled and loaded.
+
+### Extension routes
+
+An installed extension answers under `/__hui/ext/<id>/<path>`, where `<path>` is one
+to four `/`-separated segments it declares. Any of the five JSON methods is allowed.
+The `x-hui` gate applies unchanged: a request without the header is rejected before
+extension code runs, and the same diagnostics hook records the outcome. Each answer
+is a `PluginPayload` (a JSON object HUI does not type) or a `PluginError`
+(`{ "error": string }`); extension payloads are deliberately absent from
+`docs/api.schema.json` because they exist only at runtime. Request bodies are the
+ordinary 64 KiB JSON body; an answer is at most 256 KiB and cannot set headers,
+stream, redirect or return a file. Unknown ids and paths return 404, a wrong method
+405, invalid JSON 400, an oversized request 413, and a handler that throws or
+returns something other than a JSON object 500 `{ "error": "extension failed" }`.
+
+A route declared `stream: true` answers `text/event-stream` instead: its handler
+returns `{ events }`, an async iterable of JSON objects, and each object becomes one
+unnamed `data:` event, with a heartbeat comment while it waits. Caps: ten minutes,
+5 000 events, 256 KiB per event and 5 MiB in total; a throw, an oversized event or a
+cap ends the stream with one `event: error` carrying the reason (and one
+diagnostic), and a client that leaves aborts the handler's `signal`. A streaming
+route's metadata carries `stream: true`.
+
+Extensions are trusted local code: they run in the gateway process with the
+gateway's access to the machine, its credentials and its data, exactly like a PI
+extension. There is no sandbox, no permission prompt and no timeout. The manifest's
+`apiVersion` must be `1`; any other value refuses to load with a named reason. HUI
+ships packaged extensions beside `skills/`; their page defaults are enabled until
+the operator's `extensions.json` exists, and a config extension with the same id
+overrides one. Extensions the operator installs start disabled.
+
 ### HUI-owned presentation state
 
 `PUT /__hui/settings` also persists the validated `#rrggbb` accent override,
@@ -4282,8 +4398,7 @@ OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
 [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
 Profile presentation fields and reversible Labs flags (`labs`:
-`denseObservability`, `detailedDebug` and `dashboard`, each off unless
-explicitly `true`).
+`denseObservability` and `detailedDebug`, each off unless explicitly `true`).
 These values affect HUI only. They never change PI configuration, provider
 identity, runtime permissions or transcripts.
 
