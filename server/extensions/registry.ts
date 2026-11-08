@@ -114,6 +114,13 @@ export type ExtensionManifest = {
   readonly mode?: "in-process" | "process";
 };
 
+/** The read-only gateway data an extension route may ask for. Values are plain JSON; no service handles. */
+export type ExtensionGatewayContext = {
+  readonly github: {
+    contributions(year?: number): Promise<unknown>;
+  };
+};
+
 export type ExtensionContext = {
   readonly method: string;
   /** The subpath below `/__hui/ext/<id>/`, as declared. */
@@ -124,6 +131,7 @@ export type ExtensionContext = {
   /** Aborts when the browser goes away. */
   readonly signal: AbortSignal;
   readonly extension: string;
+  readonly hui: ExtensionGatewayContext;
 };
 
 export type ExtensionResult = { readonly status?: number; readonly body: unknown };

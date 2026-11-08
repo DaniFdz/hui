@@ -471,3 +471,17 @@ is marked DONE, or start a phase with the previous phase's required checks red.
 Total: roughly 9–15 focused weeks of work, executed in one long-running goal
 with a checkpoint per phase. The numbers size the scope; they are not a
 commitment.
+
+## 10. P7 — page extensions
+
+The follow-up program turns Contributions, Dashboard and Kanban into bundled
+extensions. Its detailed plan and P7 acceptance criteria live in
+[PLAN-PAGE-EXTENSIONS.md](PLAN-PAGE-EXTENSIONS.md); P7 is the foundation only:
+
+- a sandboxed page contribution (`ui.page`, `/ext/<id>`, sidebar entry, page
+  bridge with an allowlisted conversation `navigate`);
+- a read-only `context.hui` facade (GitHub contributions first);
+- a fixture page and its shared e2e test; the native pages stay untouched.
+
+The Contributions port is P8. Packaged/default-on/eject and the process-mode
+context proxy move with P8 because they need a real shipped page.

@@ -23,9 +23,11 @@ page.
 | --- | --- |
 | JSON data or actions under `/__hui/ext/<id>/` | yes, a route |
 | A panel beside the conversation | yes, a sandboxed Work-pane panel |
+| A page in the sidebar | yes, a sandboxed page at `/ext/<id>` |
+| Read-only gateway data in a route | yes, `context.hui` (GitHub contributions first) |
 | A prompt section or an agent tool (Durable sessions) | yes |
 | Streaming events | yes, `stream: true` routes |
-| The app header, a status bar, a new page or nav entry | no — that is a core HUI change |
+| The app header or a status bar | no — that is a core HUI change |
 | A new Work view (terminal, diff, VS Code…) | no — that is a core HUI change |
 | A transcript row, tool card or message renderer | no — that is a core HUI change |
 | HUI's session data, usage, backlog, goals or settings | no context API yet; a route has no session or cwd |
@@ -79,6 +81,9 @@ extensions/hello/
   module.
 - `ui` is optional. `entry` defaults to `index.html`; `icon` is `package`,
   `github` or `pull-request`.
+- `ui.page` adds a full page: `{ "title": "Hello page", "entry": "page.html",
+  "icon": "github" }`. It is served at `/ext/<id>`, listed in the sidebar while
+  loaded, and rendered in the same sandbox as a panel.
 - `version` and `engines.hui` are optional; a gateway outside the range refuses to
   load with a named reason.
 - `mode: "process"` runs routes and streams in a supervised child, but **no
@@ -112,15 +117,17 @@ caps. The reference does not stream; add it only when the request needs live dat
 
 Files under `ui/` are served at `/__hui/ext-ui/<id>/` **before the `x-hui` gate**,
 so they are public to anyone who can reach the gateway: never put secrets in them.
-The page runs in a sandboxed iframe with no network. It can only ask its parent,
-over `postMessage`, for this extension's own declared routes:
+The document runs in a sandboxed iframe with no network. It can only ask its
+parent, over `postMessage`, for this extension's own declared routes:
 
 - panel → parent: `{ channel: "hui-extension", type: "ready" }`, `{ type: "call",
   callId, method, path, body }`, `{ type: "height", value }`, `{ type: "title",
   value }`, `{ type: "open", value }` (https only).
-- parent → panel: `{ type: "init", extensionId, sessionId, theme }`, `{ type:
+- parent → document: `{ type: "init", extensionId, sessionId, theme }`, `{ type:
   "theme" }`, `{ type: "result", callId, status, body }`, `{ type: "error",
   callId, error }`.
+- a page adds `{ type: "navigate", value: "/sessions/<id>" }`; only that HUI
+  conversation path is accepted, never an arbitrary URL or API route.
 
 `ui/panel.js` in the reference has the complete small client. Reuse it; do not
 invent another channel. The parent enforces the route list, method, path, body,
@@ -128,7 +135,14 @@ response and time limits. The frame's height comes from the panel's `height`
 message, so measure `document.documentElement` after rendering. Render with
 `textContent`/DOM nodes, not untrusted HTML.
 
-## 6. Prompt sections and tools
+## 6. Gateway context
+
+A route handler receives `context.hui`: read-only plain JSON for gateway data,
+starting with `hui.github.contributions(year?)`. It is not a handle to HUI's
+services, and process-mode context is still a follow-up. Keep HUI's state out of
+the page itself; ask the route.
+
+## 7. Prompt sections and tools
 
 Declare them in the manifest; export each tool's handler under the tool's name:
 
@@ -158,7 +172,7 @@ sessions** only; already-running sessions keep what they started with. A prompt
 section is static text for new sessions after the goal. Process-mode extensions
 cannot provide tools.
 
-## 7. Install, enable, verify
+## 8. Install, enable, verify
 
 From the installed HUI:
 
@@ -186,7 +200,7 @@ Extensions → Open panel** (or the Work pane's **+ → Extension panel**) and c
 the panel, its route call and its reload behavior. A failed reload withdraws the
 routes and reports `failed`; `hui doctor` names the reason.
 
-## 8. Checklist
+## 9. Checklist
 
 - [ ] The manifest parses and the entry stays inside the directory.
 - [ ] Every route answers under `/__hui/ext/<id>/` with a JSON body; no secrets

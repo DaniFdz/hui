@@ -18,7 +18,7 @@ import { MAX_PROCESS_EXTENSIONS } from "./protocol.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import {
   checkedResult, checkedStream, entryPath, extensionId, MAX_EXTENSION_DIRECTORIES, MAX_ERROR_CHARS, parseManifest, parseRoutes, satisfiesEngines,
-  routeInfo, routeKey, type ExtensionManifest, type ExtensionRoute, type ExtensionTool, type ExtensionToolHandler,
+  routeInfo, routeKey, type ExtensionGatewayContext, type ExtensionManifest, type ExtensionRoute, type ExtensionTool, type ExtensionToolHandler,
 } from "./registry.ts";
 import { readExtensions, writeExtensions } from "./store.ts";
 
@@ -104,6 +104,8 @@ export type ExtensionsService = {
   contributions(): Readonly<Record<string, ExtensionAgentContribution>>;
   /** The tool a conversation may call, looked up at call time so a disabled extension answers nothing. */
   toolFor(extensionId: string, name: string): ExtensionTool | undefined;
+  /** The gateway data routes may read; set after the services it reads exist. */
+  setGatewayContext(context: ExtensionGatewayContext): void;
 };
 
 function message(error: unknown): string {
@@ -119,6 +121,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
   const loaded = new Map<string, Loaded>();
   const reloadedAt = new Map<string, number>();
   const failures = new Map<string, string>();
+  let gatewayContext: ExtensionGatewayContext | undefined;
   let chain: Promise<void> = Promise.resolve();
 
   async function scan(): Promise<Map<string, string>> {
@@ -411,6 +414,10 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return loaded.get(extensionId)?.tools.find((tool) => tool.name === name);
   }
 
+  function setGatewayContext(context: ExtensionGatewayContext): void {
+    gatewayContext = context;
+  }
+
   async function panelRoot(id: string): Promise<string | undefined> {
     const active = loaded.get(id);
     return active?.manifest.ui ? join(dir, id, "ui") : undefined;
@@ -488,7 +495,12 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     }
     let result: unknown;
     try {
-      result = await route.handle({ method, path: subpath, query: request.query, body, signal: request.signal, extension: id });
+      result = await route.handle({
+        method, path: subpath, query: request.query, body, signal: request.signal, extension: id,
+        hui: gatewayContext ?? {
+          github: { contributions: async () => { throw new Error("The HUI gateway context is not available in this process."); } },
+        },
+      });
     } catch (error) {
       record({
         area: "gateway", level: "error", action: "extension_failed",
@@ -527,5 +539,5 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return { status: checked.value.status, body: checked.value.body };
   }
 
-  return { list, setEnabled, reload, reconcile, stop, invoke, panelRoot, promptText, agentTools, contributions, toolFor };
+  return { list, setEnabled, reload, reconcile, stop, invoke, panelRoot, promptText, agentTools, contributions, toolFor, setGatewayContext };
 }

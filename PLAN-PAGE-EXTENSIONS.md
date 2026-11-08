@@ -95,12 +95,13 @@ The panel channel (`hui-extension`) gains a page mode:
 ### P7 — primitives (this goal)
 
 - The `ui.page` manifest, status, schema and validation.
-- `context.hui` read-only: GitHub contributions first; sessions and host metrics
-  as the facade takes shape.
+- `context.hui` read-only in-process: GitHub contributions first; sessions and
+  host metrics as the facade takes shape. The process-mode proxy is P8, not P7.
 - The sandboxed page host, sidebar entry, `/ext/<id>` route and bridge.
-- Packaged extension discovery, default enablement, disable, eject and doctor.
 - A fixture page extension with an e2e test, proving page rendering, bridge calls
   and disable/restore.
+- Packaged discovery, default enablement, eject and doctor are **P8**: they need a
+  real page to ship and belong with the first port.
 - Spec, guide and API documentation; no native page is moved yet.
 
 ### P8 — Contributions

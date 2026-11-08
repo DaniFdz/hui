@@ -115,7 +115,7 @@ test("the primary sidebar lists work destinations above a Settings footer", () =
 
 test("each destination marks itself current, and Settings never does", () => {
   const rendered = markup(renderSidebar({
-    view: "surface", activePage: { id: "usage" }, pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [], draftSessionIds: new Set(),
+    view: "surface", activePage: { id: "usage" }, pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [], draftSessionIds: new Set(),
     collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "", importFailed: false, search: "",
     sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "",
     sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
@@ -129,7 +129,7 @@ test("each destination marks itself current, and Settings never does", () => {
 
 test("the sidebar lists Dashboard only while Labs → Dashboard is on", () => {
   const rendered = (dashboard: boolean) => markup(renderSidebar({
-    view: "home", pages: availablePages({ ...DEFAULT_SETTINGS.labs, dashboard }), selectedSessionId: "", splitSessionId: "", groups: [],
+    view: "home", pages: availablePages({ ...DEFAULT_SETTINGS.labs, dashboard }), extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "",
     importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "",
     draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined,
@@ -838,7 +838,7 @@ function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents", lo
   const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
   if (open) sessions.push(session(open, "Open", "Work"));
   const data = {
-    view: "home", pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading, error: "",
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: open,
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
@@ -869,7 +869,7 @@ test("a right click on a session row asks for the actions menu its button opens"
   const menus: string[] = [];
   const selected: string[] = [];
   const view = renderSidebar({
-    view: "home", pages: HUI_PAGES, selectedSessionId: "other", splitSessionId: "",
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "other", splitSessionId: "",
     groups: [{ label: "Work", sessions: [session("ctx", "Build", "Work")] }],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "",
@@ -886,4 +886,21 @@ test("a right click on a session row asks for the actions menu its button opens"
   assert.equal(prevented, true, "the browser's own link menu does not open");
   assert.deepEqual(menus, ["ctx"], "the right click opens the row's actions menu");
   assert.deepEqual(selected, [], "a right click never opens the session");
+});
+
+test("an enabled extension page is a primary destination with its own icon", () => {
+  const rendered = markup(renderSidebar({
+    view: "surface", activePage: undefined, activeExtensionPageId: "hello",
+    pages: HUI_PAGES, extensionPages: [{ id: "hello", title: "Hello page", icon: "github" }],
+    onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS,
+    menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "",
+    draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+  } as unknown as Parameters<typeof renderSidebar>[0]));
+  assert.match(rendered, /href=\/ext\/hello\b/u);
+  assert.match(rendered, /aria-current=page/u);
+  assert.match(rendered, />Hello page</u);
+  assert.match(rendered, /viewBox="0 0 16 16"/u, "the named icon is drawn");
 });

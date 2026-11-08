@@ -3,7 +3,7 @@ import { test } from "vitest";
 
 import type { ExtensionRouteInfo } from "../../api/schema/extensions.ts";
 import {
-  BRIDGE_CHANNEL, BRIDGE_MAX_REQUEST_BYTES, callIsAllowed, jsonBytes, normalizeCallPath, parseBridgeCall,
+  BRIDGE_CHANNEL, BRIDGE_MAX_REQUEST_BYTES, allowedNavigatePath, callIsAllowed, jsonBytes, normalizeCallPath, parseBridgeCall,
 } from "./bridge.ts";
 
 const ROUTES: ExtensionRouteInfo[] = [
@@ -54,4 +54,12 @@ test("body bytes are counted as UTF-8", () => {
   const cyclic: Record<string, unknown> = {};
   cyclic["self"] = cyclic;
   assert.equal(jsonBytes(cyclic), undefined);
+});
+
+test("a page may ask to open a conversation, never another path", () => {
+  const id = "85420f31-291e-41ba-bb6e-cb2322edb135";
+  assert.equal(allowedNavigatePath(`/sessions/${id}`), `/sessions/${id}`);
+  for (const value of ["/", "/settings/extensions", "/sessions/../settings", `https://example.test/sessions/${id}`, "/sessions/not-a-uuid", 7, null]) {
+    assert.equal(allowedNavigatePath(value), undefined, String(value));
+  }
 });

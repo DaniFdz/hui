@@ -4,7 +4,12 @@
   "description": "Documentation fixture: greets a name, echoes a body and fails on purpose.",
   "main": "index.mjs",
   "ui": {
-    "title": "Hello panel"
+    "title": "Hello panel",
+    "page": {
+      "title": "Hello page",
+      "entry": "page.html",
+      "icon": "github"
+    }
   },
   "prompt": [
     {

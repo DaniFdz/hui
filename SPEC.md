@@ -2512,6 +2512,11 @@ trusted local module can answer JSON routes on the gateway.
   runs, else at the next start); `hui extension remove <id> [--delete]` requires it
   disabled and only deletes with `--delete`; `hui doctor` reports enabled
   extensions that cannot load, without a `--fix`.
+- **Gateway context.** A route handler receives `context.hui`, a read-only facade
+  for gateway data: `github.contributions` first, with sessions and host metrics
+  following. It returns plain JSON, never a service handle; in-process handlers call
+  the gateway's own services. Process-mode context is a follow-up. The facade is
+  additive within `apiVersion: 1`.
 - **Streaming.** A route may declare `stream: true` and return an async iterable of
   events; HUI writes them as server-sent events with a heartbeat, caps (ten
   minutes, 5 000 events, 256 KiB each, 5 MiB total), an `error` event on a throw or
@@ -2532,7 +2537,12 @@ trusted local module can answer JSON routes on the gateway.
   bridge may ask the parent for that extension's own declared routes, with the
   browser's session, under fixed size, count and time limits. An optional
   `ui.icon` (`package`, `github` or `pull-request`) is the Work pane tab and rail
-  mark; absent, it is the package. Settings → Extensions
+  mark; absent, it is the package. **A page** is the same sandboxed document in a
+  full routed surface: `ui.page` names its title, its entry inside `ui/` and an
+  icon, the sidebar lists it while the extension is loaded, and `/ext/<id>`
+  renders it. Its bridge adds `navigate` for allowlisted HUI conversation paths
+  only; it cannot reach another HUI route. Extension pages are web-only. Settings →
+  Extensions
   opens a panel in the current conversation's Work pane, and the Work pane's
   launcher opens the first enabled panel. HUI ships a **build-hui-extension**
   skill that scaffolds and verifies one; it is on by default and the operator can

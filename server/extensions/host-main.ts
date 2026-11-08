@@ -99,6 +99,9 @@ async function call(frame: Extract<ParentFrame, { t: "call" | "stream" }>, signa
       body: frame.body,
       signal,
       extension: "process",
+      hui: {
+        github: { contributions: async () => { throw new Error("context.hui is not available to a process-mode extension yet"); } },
+      },
     });
   } catch (error) {
     send({ t: "error", id: frame.id, error: message(error) });

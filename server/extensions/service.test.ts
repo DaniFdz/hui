@@ -81,6 +81,19 @@ test("an installed extension lists as disabled and is never imported", async (t)
   assert.equal(answer.status, 404);
 });
 
+test("a route reads the gateway context it was given", async (t) => {
+  const root = await temp(t);
+  await installed(root, "hello", MANIFEST, `
+export const routes = [{ method: "GET", path: "year", description: "Reads the gateway context.",
+  handle: async ({ query, hui }) => ({ body: await hui.github.contributions(query.get("year") ? Number(query.get("year")) : undefined) }) }];
+`);
+  const service = serviceAt(root);
+  service.setGatewayContext({ github: { contributions: async (year) => ({ year: year ?? "last", fake: true }) } });
+  await service.setEnabled("hello", true);
+  const answer = await service.invoke({ id: "hello", method: "GET", subpath: "year", request: request0({ path: "/__hui/ext/hello/year", query: new URLSearchParams("year=2024") }) });
+  assert.deepEqual(answer, { status: 200, body: { year: 2024, fake: true } });
+});
+
 test("enabling imports once, persists the choice and answers its routes", async (t) => {
   const root = await temp(t);
   await installed(root, "hello", MANIFEST, HELLO);

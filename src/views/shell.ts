@@ -15,6 +15,8 @@ import { kanbanIcon } from "./kanban.ts";
 import { isSessionStage } from "../lib/kanban.ts";
 export { filterSessionGroups } from "../lib/session/sidebar-sessions.ts";
 import type { HuiPage } from "../lib/pages.ts";
+import type { ExtensionPageLink } from "../lib/extensions/pages.ts";
+import { extensionPanelIcon } from "../lib/extensions/panel-icons.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { writeSessionDrag } from "../lib/session/pane-layout.ts";
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
@@ -142,6 +144,10 @@ export type ShellProps = {
   view: NavId;
   activePage?: HuiPage;
   pages: readonly HuiPage[];
+  /** Sidebar entries from enabled extension pages, after the built-in destinations. */
+  extensionPages: readonly ExtensionPageLink[];
+  activeExtensionPageId: string;
+  onOpenExtensionPage: (id: string) => void;
   selectedSessionId: string;
   splitSessionId: string;
   openSessionIds?: ReadonlySet<string>;
@@ -885,6 +891,21 @@ export function renderSidebar(props: ShellProps) {
                   <span class="nav-item__text">${item.label}</span>
                 </a>${item.id === "contributions" ? kanbanNavItem(props) : nothing}` : nothing;
             })}
+            ${props.extensionPages.map((page) => html`<a
+              href=${navigationPath({ kind: "extension-page", id: page.id })}
+              class="nav-item sidebar-nav__item ${props.activeExtensionPageId === page.id ? "nav-item--active" : ""}"
+              data-testid="nav-extension-page"
+              aria-current=${props.activeExtensionPageId === page.id ? "page" : "false"}
+              @click=${(event: MouseEvent) => {
+                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                closeContainingDrawer(event, false, true);
+                props.onOpenExtensionPage(page.id);
+              }}
+            >
+              <span class="nav-item__icon" aria-hidden="true">${extensionPanelIcon(page.icon)}</span>
+              <span class="nav-item__text">${page.title}</span>
+            </a>`)}
           </nav>`}
 
           <div class=${botsTab ? "sidebar-sessions sidebar-sessions--bots" : "sidebar-sessions"}>

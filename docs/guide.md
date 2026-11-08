@@ -1224,7 +1224,12 @@ serves the files under the extension's `ui/` directory at `/__hui/ext-ui/<id>/` 
 shows the entry page in a sandboxed Work pane frame that can only call the
 extension's own routes through HUI. Its optional `icon` names the Work pane tab's
 mark — `package` (the default), `github` or `pull-request`; another name is
-refused when the manifest loads. An extension can also declare static prompt
+refused when the manifest loads. A page is optional too:
+`"ui": { "title": "Hello", "page": { "title": "Hello page", "entry": "page.html" } }`
+adds a sidebar destination at `/ext/<id>` that renders `ui/page.html` in the same
+sandbox; its bridge may also ask HUI to open an allowlisted conversation. A route
+can read read-only gateway data through `context.hui` (`github.contributions`
+first); no service handles or HUI routes are exposed. An extension can also declare static prompt
 sections for Durable conversations and agent tools, whose handlers are exported by
 the entry module under the tool's name, and a route can stream events with
 `stream: true` (see `e2e/fixtures/extensions/hello`). Panel files are public to anyone who can reach

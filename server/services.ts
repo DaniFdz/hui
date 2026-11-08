@@ -549,6 +549,7 @@ export const triggers = createGatewayTriggers({
 });
 const githubPreviews = new GitHubPreviews(ghGraphQL(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
+extensions.setGatewayContext({ github: { contributions: (year) => githubContributions.read(year) } });
 export const githubRoutes = createGitHubRoutes({ githubCli, githubPreviews, githubContributions });
 
 /* ── Datadog ── orgs, sign-in and previews run through the operator's `pup`; HUI never sees a token.
