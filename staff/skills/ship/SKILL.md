@@ -34,6 +34,10 @@ A user-visible change also needs its `e2e/catalogue/` entry, its shared test in
 changed but the behaviour did not, put the use-case IDs on the
 `Unchanged behaviour:` line instead.
 
+When a check, a CI run or an approval will take minutes, start a `watcher` and end the
+turn. HUI writes one event when it settles, and nothing polls in the meantime. `babysit`
+owns the per-PR watcher shape.
+
 ## Screenshots
 
 Capture fresh images of this branch's HEAD through

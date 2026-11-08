@@ -11,7 +11,9 @@ driven to a predicate is `autonomous-run`.
    task's brief, upstream reports pasted in full, decision log, and evidence. The ledger is
    the program's state, so a dead worker loses nothing that matters.
 2. Keep three levels maximum: coordinator, sub-coordinators when one area has many
-   parallel workers, workers. No fourth level. Keep about ten workers in flight per
+   parallel workers, workers. No fourth level. A sub-coordinator is a `lead` session you
+   spawn as one `worker`-route child, not a bot: it owns that area's workers and sends you
+   one rollup; it messages you only for a decision. Keep about ten workers in flight per
    coordinator: 8 ordinary children plus collected ones, or all collected in one
    `codemode` script. Start the next worker as one finishes instead of waiting on a
    batch.

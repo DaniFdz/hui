@@ -34,6 +34,8 @@ Pass one route name to `sessions_spawn`, never a route and a model together.
 
 Choose the narrowest route that finishes the job. A fix round, a retry, and a follow-up each get a fresh child with a consolidated brief: the original goal, the prior result, the branch, and the new feedback. Resume an existing child only when the work needs state that cannot move, such as its checkout, uncommitted changes, or a running process.
 
+A **lead** is a `worker`-route child with a different brief, not a sixth route. Use one when the task has more than one step or more than one worker: give it the whole task, name the `lead` skill, and tell it to spawn its own workers and report once. Its workers' completions go to the lead. It messages you with `sessions_send` only for a real decision.
+
 A route HUI refuses is not usable: it is unknown, or its model is missing from the catalog. Spawn without a route, inherit the caller's model, and say so in the ledger row.
 
 ## Fan out
@@ -49,5 +51,7 @@ For several independent units, spawn them from one `codemode` script with `colle
 Read the diff, not the summary. Re-run the deciding command. A child's report is evidence of what it ran, not proof that the result is right.
 
 One owner per PR. The session that opened the PR, or the one handed it, pushes that branch, answers review, and merges. A handoff is explicit in the ledger row: branch, PR, and what remains. Never let two sessions write one branch.
+
+A lead's rollup is one report. Read the lead's diff and evidence, not each worker's summary; the workers reported to the lead for a reason.
 
 Record the dispatch and the settle in `work/index.md`, following `show-me-your-work`.

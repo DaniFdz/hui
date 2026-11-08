@@ -512,7 +512,7 @@ A fresh gateway seeds one **Chief of Staff** bot from HUI's **staff pack**. It
 starts idle: it has a SOUL.md and its skills, and it says nothing until you
 message it. Its home folder holds the pack's skills under `skills/`, and the
 bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
-with its playbooks, plus `delegate`, `plan`, `investigate`, `review`,
+with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
 `verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
 `figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
 `principles` reference. No other chat loads them.
@@ -522,6 +522,17 @@ The same seed adds five **Subagent routes** on Settings → Models: `planner`,
 model until you give it one, so they follow your primary model. The chief picks
 one per task; `sessions_spawn` also takes `worktree: true`, which gives a
 writing worker its own Git worktree and branch instead of sharing the chief's.
+
+A task with more than one step or more than one worker goes to one **lead**, not
+to N workers: the lead owns it, spawns its own workers and reports one rollup.
+Its workers' completions land in the lead's transcript, so the chief's chat
+stays a conversation. The lead messages the chief with `sessions_send` only for
+a real decision.
+
+The chief's chat uses OptChat. Its compactor model defaults to Settings' utility
+model; for a chief that lives for months, set a stronger one in the bot's
+Settings → Memory. The ledger in `work/` and MEMORY.md are the durable record;
+the chat is not.
 
 The pack is versioned. On a later start HUI replaces a skill file nobody edited,
 keeps a skill with any edited file whole, and adds only routes whose names are
