@@ -743,6 +743,16 @@ frame's field unreachable on any origin),
 value, survives a reload and deletes) and the secrets section of
 `e2e/browser-tool.browser.md`.
 
+Follow-up 2026-11-08: the browser tool gains `steps`: 1–20 `act` steps in one
+call on one tab, because dependent interactions (an open menu, a hover, a
+selected row) are transient and one round trip per step loses them. Each step is
+the same validated, navigation-watched `act` the tool already exposes, the
+sequence never retargets the call's tab, and the result lists each step while a
+failure names itself and the steps that ran. Proof:
+`server/browser/manager.test.ts` (a real headless browser: type, click and the
+wait that proves the click rendered, a failing step's message, and the 1–20
+bound) and the steps section of `e2e/browser-tool.browser.md`.
+
 ### HUI-16 — macOS sleep prevention
 
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on

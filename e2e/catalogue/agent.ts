@@ -576,6 +576,16 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
+    id: "AGENT-064",
+    title: "Run a dependent browser flow in one call",
+    behaviour: "An agent runs 1–20 act steps in one browser call on the same tab: type, click, press, hover, select, scroll and wait, each validated as act validates it and using refs from the latest snapshot. The result lists every step in order with what it did, an activity row says it ran a sequence, and a failing step names itself and the steps that already ran. A navigation inside the sequence retires the refs the earlier snapshot handed out.",
+    spec: ["docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+    ios: "backlog",
+  },
+  {
     id: "AGENT-058",
     title: "Stop a turn that is browsing",
     behaviour: "Stop during browsing ends the turn with This operation was aborted, the preview turns Closed with its last frame, and the conversation's tabs close; with no tabs left the browser stops. Tabs left unused for 10 minutes close the same way.",

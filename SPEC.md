@@ -976,6 +976,15 @@ names are not resolved, so a name that turns out to point at a private address
 after the check is outside this model. A pattern that cannot be parsed matches
 nothing, so a typo locks pages out loudly instead of opening them quietly.
 
+**A sequence in one call.** `steps` runs 1–20 `act` steps in order on one tab:
+type, click, press, hover, select, scroll and wait, each validated exactly as
+`act` validates it, with refs from the latest snapshot. It exists because a
+dependent interaction is transient — an open menu, a hover, a selected row — and
+one round trip per step loses it, while a flow that takes several actions costs
+a model turn each. The result lists each step with what it did, in order; a
+failing step names itself and every step that already ran, and a navigation
+inside the sequence retires the refs, as any page change does.
+
 **Site secrets, if the operator stores them.** Settings → Tools → Browser → *Site
 secrets* keeps values under a name and an exact http(s) origin in
 `browser-secrets.json` (mode 0600, separate from `settings.json`, which is
