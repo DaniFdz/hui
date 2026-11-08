@@ -56,9 +56,11 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 // with every other HUI subsystem. Provider requests use Node's fetch, whose
 // 5-minute body timeout matches PI's default HTTP idle timeout.
 
+export type HarnessRetry = { attempts: () => number; hint: () => { at: number; ms: number } | undefined };
+
 /** Harness policy read at every use, so PI settings edits apply to the next turn. `extensions` is the default
  * selection: each session's PI extensions are installed beside it and only that session's conversation adds them. */
-function harnessSettings(settings: SettingsManager, extensions: readonly Extension[]): HarnessSettings {
+export function harnessSettings(settings: SettingsManager, extensions: readonly Extension[], retry: HarnessRetry): HarnessSettings {
   return {
     extensions,
     get stream() {
@@ -71,7 +73,18 @@ function harnessSettings(settings: SettingsManager, extensions: readonly Extensi
       };
     },
     get compaction() { return settings.getCompactionSettings(); },
-    get retry() { return settings.getRetrySettings(); },
+    get retry() {
+      const policy = settings.getRetrySettings();
+      const hint = retry.hint();
+      // A provider's requested wait belongs to the failure that just happened; never
+      // hand it to an unrelated session after the retry has been scheduled.
+      const fresh = hint !== undefined && Date.now() - hint.at <= 5_000 ? hint.ms : undefined;
+      return {
+        ...policy,
+        maxRetries: retry.attempts(),
+        ...(fresh === undefined ? {} : { baseDelayMs: Math.max(policy.baseDelayMs, fresh), maxAgentDelayMs: fresh }),
+      };
+    },
     // Every steer waiting at a boundary is placed with the others: a watcher, a subagent and a bot report at once.
     steeringMode: "all",
     get followUpMode() { return settings.getFollowUpMode(); },
@@ -283,6 +296,10 @@ export class DurableHost implements ExtensionHost {
   #chatWaiters = new Set<{ conversationId: ConversationId; resolve(chat: BotChat): void }>();
   #readyChats = new WeakSet<BotChat>();
   #models = new CurrentModels((options) => this.#requestEnv(options), (options) => this.#requestCallbacks(options));
+  /** HUI's retry budget for a failed model turn (`Settings.models.retryAttempts`). */
+  #retryAttempts = 3;
+  /** The last provider-requested retry wait, for the harness retry scheduled right after it. */
+  #retryHint: { at: number; ms: number } | undefined;
   #registry: Registry = createRegistry();
   /** PI's `codemode` tool and its prompt section, selected by default; Settings → Tools → Codemode off removes it.
    * Each script runs in a worker thread of its own, which closing the store stops by aborting the call. */
@@ -334,7 +351,12 @@ export class DurableHost implements ExtensionHost {
     this.dir = options.dir;
     this.agentDir = options.agentDir;
     this.#resume = options.resume !== false;
-    this.settings = options.readSettings ?? readHuiSettings;
+    const readSettings = options.readSettings ?? readHuiSettings;
+    this.settings = async () => {
+      const value = await readSettings();
+      this.#retryAttempts = value.models.retryAttempts;
+      return value;
+    };
     this.gatewayOnlyTools = options.gatewayOnlyTools ?? [];
     this.optchat = new OptChatManager({
       dir: options.dir, models: () => this.models,
@@ -561,7 +583,9 @@ export class DurableHost implements ExtensionHost {
     this.#release = acquireStoreLock(join(this.dir, "harness.lock"));
     try {
       const settings = SettingsManager.create(this.agentDir, this.agentDir);
-      this.#models.target = await createSessionModelRuntime(this.agentDir);
+      await this.settings();
+      const onRetryHint = (ms: number) => { this.#retryHint = { at: Date.now(), ms }; };
+      this.#models.target = await createSessionModelRuntime(this.agentDir, undefined, { onRetryHint });
       // OptChat's hooks come before every session's PI extensions: its compaction decline is the first decision, and its
       // request is what their context handlers see. OptChat's tools and bots' tools are installed but not in the default
       // selection: only an OptChat conversation, or a bot's chat, adds them.
@@ -572,7 +596,10 @@ export class DurableHost implements ExtensionHost {
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
         registry: this.#registry,
-        settings: harnessSettings(settings, base),
+        settings: harnessSettings(settings, base, {
+          attempts: () => this.#retryAttempts,
+          hint: () => this.#retryHint,
+        }),
         env: (target) => this.#env(target),
         onReport: (error) => recordDiagnosticEvent({
           area: "runtime", level: "warning", action: "durable_report",
@@ -716,7 +743,9 @@ export class DurableHost implements ExtensionHost {
 
   /** Re-read HUI and PI provider configuration for the next model request. */
   async refreshModels(): Promise<void> {
-    this.#models.target = await createSessionModelRuntime(this.agentDir);
+    this.#models.target = await createSessionModelRuntime(this.agentDir, undefined, {
+      onRetryHint: (ms) => { this.#retryHint = { at: Date.now(), ms }; },
+    });
   }
 
   bindCaller(conversationId: ConversationId, huiSessionId: string | undefined): void {

@@ -676,6 +676,7 @@ function renderModelsPage(props: SettingsProps) {
       props.onChangeModels({ ...props.settings.models, [key]: value });
     });
   const reasoningLevel = props.settings.models.thinking;
+  const retryAttempts = props.settings.models.retryAttempts;
   const reasoningSelector = renderEffortSelector({
     label: "Default reasoning",
     level: reasoningLevel,
@@ -707,7 +708,7 @@ function renderModelsPage(props: SettingsProps) {
     <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
     ${renderSection(
       "HUI model routing",
-      "Saved by HUI and applied to new sessions.",
+      "Saved by HUI. Model choices apply to new sessions; retries apply to every Durable session.",
       html`
         ${renderRow(
           "Primary model",
@@ -718,6 +719,13 @@ function renderModelsPage(props: SettingsProps) {
           "Fallback model",
           "Tried when the primary fails before producing useful output. Example: Anthropic Sonnet when OpenAI is unavailable.",
           routePicker("Fallback model", "fallback"),
+        )}
+        ${renderRow(
+          "Provider retries",
+          "How many times a failed model request is retried on the same model before the fallback is tried. Retries keep the same model and cached context, and wait as long as the provider asks (for example, 30 seconds for an OpenCode Go capacity error).",
+          renderSettingsPicker("Provider retries", String(retryAttempts),
+            [0, 1, 2, 3, 4, 5].map((attempts) => ({ value: String(attempts), label: attempts ? String(attempts) : "Off" })),
+            (value) => props.onChangeModels({ ...props.settings.models, retryAttempts: Number(value) })),
         )}
         ${renderRow(
           "Utility model",

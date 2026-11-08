@@ -106,11 +106,11 @@ export const DEFAULT_SETTINGS: Settings = {
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
-  models: { primary: "", fallback: "", utility: "", thinking: "", routes: [] },
+  models: { primary: "", fallback: "", utility: "", thinking: "", retryAttempts: 3, routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
-  labs: { denseObservability: false, detailedDebug: false, dashboard: false },
+  labs: { denseObservability: false, detailedDebug: false },
 };
 
 export function normalizeSettings(raw: unknown): Settings {
@@ -197,11 +197,13 @@ function normalizeModelRef(value: unknown): string {
 
 function normalizeModels(value: unknown): Settings["models"] {
   const source = isRecord(value) ? value : {};
+  const attempts = Number(source["retryAttempts"]);
   return {
     primary: normalizeModelRef(source["primary"]),
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
     thinking: savedReasoningLevel(source["thinking"]) ?? "",
+    retryAttempts: Number.isFinite(attempts) ? Math.min(5, Math.max(0, Math.trunc(attempts))) : 3,
     routes: normalizeSubagentRoutes(source["routes"]),
   };
 }
@@ -349,7 +351,6 @@ function normalizeLabs(value: unknown): Settings["labs"] {
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
-    dashboard: source["dashboard"] === true,
   };
 }
 

@@ -627,11 +627,16 @@ than silently using a different account. No transcript format changes.
 Within an already managed provider, account order and cooldowns are re-read for
 each SDK request. Credentials are pinned per async request across OAuth refresh;
 parallel sessions never change a shared active key. Both `stream` and
-`streamSimple` (including their completion helpers) route accounts. SDK request
-retries are disabled for these calls so rotation is bounded to one attempt per
-ready account. A 429 or explicit quota/usage-limit error before content triggers
-the next account; no replay after content/thinking/tool events, on Stop, auth or
-server/network errors. Exhaustion is an explicit error, not a retry loop.
+`streamSimple` (including their completion helpers) route accounts. Provider-SDK
+retries inside one account are disabled so rotation stays bounded to one attempt
+per ready account. A 429 that reports quota/rate exhaustion, or an explicit
+quota/usage-limit error, before content triggers the next account; a 429 that
+reports the provider's own capacity (an overloaded upstream, not this account's
+allowance) keeps the account ready so the Durable harness can retry the same model
+and cached context up to `models.retryAttempts`, waiting for the provider's retry
+hint; only after that budget is spent does the provider's error surface. No replay
+after content/thinking/tool events, on Stop, auth or server/network errors. Account
+exhaustion is an explicit error, not an unbounded retry loop.
 `Retry-After`/`retry-after-ms`, or a Codex-reported retry time, determine cooldown;
 without them HUI retries the account after 60 seconds. Account quota reads can
 extend cooldown to the reported reset of an exhausted global window, but never
@@ -750,16 +755,23 @@ Disabling a HUI default excludes only that fallback, not a same-name override.
 An empty opt-out list enables the default without writing PI configuration.
 Read-only catalog probes never load bundled skills.
 
-The same settings document includes `models: { primary, fallback, utility, thinking }`.
+The same settings document includes `models: { primary, fallback, utility, thinking, retryAttempts }`.
 Each non-empty model value is a canonical `provider/id` from PI's filtered catalog.
-Primary is the default for new sessions; fallback is an automatic one-time retry
-when a primary turn fails before text, thinking, or tool activity, after which
-the session switches back to its own model; utility is a
+Primary is the default for new sessions; fallback is an automatic retry when a
+primary turn fails before text, thinking, or tool activity and its retry budget
+is spent, after which the session switches back to its own model; utility is a
 cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 
 ```json
-{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "thinking": "high", "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
+{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "thinking": "high", "retryAttempts": 3, "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
 ```
+
+`retryAttempts` is the number of provider-error retries before the fallback is
+tried, from 0 to 5 (default 3). A retry keeps the same model and account, so the
+provider can reuse its cached context; a provider-supplied `Retry-After` or retry
+hint decides the wait, with PI's exponential backoff when it gives none. A
+capacity 429 is not account exhaustion and never cools the account down; the
+retry budget is spent first.
 
 `thinking` is the reasoning level new sessions and new bots start on, and the
 level the New Session form is seeded with: one of PI's levels from `off` through
@@ -856,8 +868,8 @@ runs `open -a ~/Applications/HUI.app hui://<kind>/<id>`.
 ### `GET /__hui/host-metrics`
 
 Read-only resource use of the machine the gateway runs on, for the Dashboard
-page (Labs → Dashboard). It answers whether or not the page is on: it reads
-nothing private and starts nothing until it is asked.
+page. It answers whether or not the page is open: it reads nothing private and
+starts nothing until it is asked.
 
 ```ts
 {
@@ -4282,8 +4294,7 @@ OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
 [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
 Profile presentation fields and reversible Labs flags (`labs`:
-`denseObservability`, `detailedDebug` and `dashboard`, each off unless
-explicitly `true`).
+`denseObservability` and `detailedDebug`, each off unless explicitly `true`).
 These values affect HUI only. They never change PI configuration, provider
 identity, runtime permissions or transcripts.
 

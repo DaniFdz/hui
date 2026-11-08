@@ -467,10 +467,10 @@ const cases: UseCase[] = [
   },
   {
     id: "SET-045",
-    title: "Choose the models and default reasoning new sessions use",
-    behaviour: "“HUI model routing” has Primary, Fallback and Utility model pickers listing the available catalog plus “Use PI default”, each explaining when it runs, then a “Default reasoning” effort selector: its slider moves through PI's levels from Off to Maximum and “Use PI default” clears it. The choices persist across reloads.",
+    title: "Choose the models, retries and default reasoning new sessions use",
+    behaviour: "“HUI model routing” has Primary, Fallback and Utility model pickers listing the available catalog plus “Use PI default”, each explaining when it runs, then a “Provider retries” picker from Off to 5 and a “Default reasoning” effort selector: its slider moves through PI's levels from Off to Maximum and “Use PI default” clears it. The choices persist across reloads.",
     spec: ["docs/api.md#pi-package-and-skill-mutations", "docs/api.md#put-__huisettings"],
-    surfaces: ["setting:models.primary", "setting:models.fallback", "setting:models.utility", "setting:models.thinking", "route:PUT /__hui/settings"],
+    surfaces: ["setting:models.primary", "setting:models.fallback", "setting:models.utility", "setting:models.thinking", "setting:models.retryAttempts", "route:PUT /__hui/settings"],
     journeys: ["model-routing"],
     web: "required",
     ios: "required",

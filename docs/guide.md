@@ -295,6 +295,11 @@ fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Cal
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
 
+**Provider retries** sets how many times a failed model request is retried on the
+same model before the fallback is used (default 3). Retries keep the model and its
+cached context, and wait for the provider's retry hint, so a capacity error does
+not immediately reload the context on another model.
+
 **Default reasoning** on the same page is the effort new sessions and new bots
 start with: one of PI's levels through Maximum, or **Use PI default** to follow
 PI's own setting. New Session opens on it (you can still change the level there
