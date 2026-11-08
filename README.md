@@ -43,13 +43,13 @@ offline reading only.
 
 The Dashboard shows what every session is doing and what needs you first; the board puts the same sessions in their stage. Agents move their own cards, a backlog item starts in its own worktree, and every session gets a task progress card.
 
-https://github.com/user-attachments/assets/09c6a72c-3dc9-49e0-99e0-a8645a8eb931
+https://github.com/user-attachments/assets/087b9089-c693-4c8d-88c4-ee0d6f79490e
 
 ### Rich results in the chat
 
 Interactive widgets, a browser the agent drives with a live preview, and GitHub, Slack and Datadog links that unfurl.
 
-https://github.com/user-attachments/assets/6ca43cc4-c590-4647-af43-a59c8e0db7d7
+https://github.com/user-attachments/assets/23af240f-153f-4dcd-8493-527cb2614e27
 
 ### Work pane
 
@@ -61,13 +61,13 @@ https://github.com/user-attachments/assets/2f9174e7-41ee-428f-87bd-60480ec1b1cf
 
 Parallel reviewers tracked on one card, a goal the conversation keeps pursuing, and a watcher that waits for CI and merges.
 
-https://github.com/user-attachments/assets/0ee16b78-768b-4866-83e6-a37d94fb3f8c
+https://github.com/user-attachments/assets/5b495fa9-2295-4a63-b11a-197a75687b59
 
 ### Bots
 
 Long-lived agents with a face, one chat, a memory and routines they schedule themselves, and a Usage page that reports what all of it cost.
 
-https://github.com/user-attachments/assets/d07095f4-4e0f-4193-9d82-20d88d16b11c
+https://github.com/user-attachments/assets/7dcb06ef-3652-4b4b-aecd-6cf56ef2696b
 
 ### Bots working together
 
