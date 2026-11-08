@@ -109,3 +109,9 @@ hui-work-pane { display: flex; flex: none; min-height: 0; max-width: 100%; }
 .extension-panel__note { margin: 16px; color: var(--muted); font-size: 13px; }
 .extension-panel__note--error { color: var(--danger); }
 .extension-panel__frame { display: block; width: 100%; border: 0; background: transparent; }
+
+/* An extension's full page (components/extension-page.ts): its sandboxed entry document fills the routed surface. */
+.extension-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.extension-page__frame { display: block; flex: 1; width: 100%; min-height: 0; border: 0; background: transparent; }
+.extension-page__note { margin: 16px; color: var(--muted); font-size: 13px; }
+.extension-page__note--error { color: var(--danger); }

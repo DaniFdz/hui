@@ -221,6 +221,15 @@ const cases: UseCase[] = [
     web: "required",
     ios: { excluded: "The Dashboard is the gateway's web page; no iOS screen renders it. The app's own Dashboard proves its use case there when it exists.", decision: "SPEC.md#the-dashboard-is-proven-in-the-browser-2026-11-04" },
   },
+  {
+    id: "PAGE-047",
+    title: "Open an extension's page",
+    behaviour: "Settings → Extensions says *Page · <title>* for an extension that declares a page. While it is enabled the sidebar lists the page; opening it renders the extension's entry document in a sandboxed frame whose only channel is the bridge, and its title reports *hello, Ada* from its own route. Disabling the extension removes the sidebar entry, and visiting /ext/hello says the extension is disabled.",
+    spec: ["SPEC.md#gateway-extensions"],
+    surfaces: ["settings-page:extensions"],
+    web: "required",
+    ios: { excluded: "Gateway extension pages are web-only in this version; the iPhone has no extension surface.", decision: "SPEC.md#gateway-extensions" },
+  },
 ];
 
 export default cases;

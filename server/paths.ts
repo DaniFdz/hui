@@ -3,6 +3,7 @@
  * without changing `XDG_CONFIG_HOME` for the agent's own shells. */
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const CONFIG_DIR = process.env["HUI_CONFIG_DIR"]
   || (process.env["XDG_CONFIG_HOME"] ? join(process.env["XDG_CONFIG_HOME"], "hui") : join(homedir(), ".config", "hui"));
@@ -11,6 +12,11 @@ export const CONFIG_DIR = process.env["HUI_CONFIG_DIR"]
  * directory and the enable list beside it; nothing writes there but the operator and the toggle route. */
 export const EXTENSIONS_DIR = join(CONFIG_DIR, "extensions");
 export const EXTENSIONS_FILE = join(CONFIG_DIR, "extensions.json");
+
+/** Extensions HUI ships inside its package, beside `skills/`; a config extension with the same id wins. */
+export const EXTENSIONS_BUNDLED_DIR = fileURLToPath(new URL("../../extensions/", import.meta.url));
+/** The packaged ids a fresh config has on until `extensions.json` exists. */
+export const EXTENSIONS_DEFAULTS_FILE = join(EXTENSIONS_BUNDLED_DIR, "defaults.json");
 
 export const USER_THEME_DIR = join(CONFIG_DIR, "themes");
 

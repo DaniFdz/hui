@@ -113,6 +113,7 @@ export class HuiExtensionsSettings extends LitElement {
         </span>
         <span class="settings-row__desc"><code>${extension.id}</code>${extension.description ? html` · ${extension.description}` : nothing}${extension.version ? html` · v${extension.version}` : nothing}${extension.engines ? html` · HUI ${[extension.engines.min ? `>=${extension.engines.min}` : "", extension.engines.max ? `<=${extension.engines.max}` : ""].filter(Boolean).join(" ")}` : nothing}${extension.mode === "process" ? html` · process${extension.restarts ? ` · ${extension.restarts} restart${extension.restarts === 1 ? "" : "s"}` : ""}` : nothing}</span>
         ${extension.reloadedAt ? html`<span class="settings-row__desc" data-extension-reloaded>Reloaded ${new Date(extension.reloadedAt).toLocaleTimeString()}</span>` : nothing}
+        ${extension.page ? html`<span class="settings-row__desc" data-extension-page data-testid="extension-page-info">Page · ${extension.page.title}</span>` : nothing}
         <span class="settings-row__desc" data-extension-routes>${extensionRoutesSummary(extension.routes)}</span>
         ${extension.error ? html`<span class="settings-row__desc" role="alert" data-extension-error data-testid="extension-error">${extension.error}</span>` : nothing}
       </div>

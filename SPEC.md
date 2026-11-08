@@ -2491,15 +2491,18 @@ The contract is [docs/api.md#bots](docs/api.md#bots).
 HUI's first extendability seam beside PI's own packages, extensions and skills: a
 trusted local module can answer JSON routes on the gateway.
 
-- **Installed, not built in.** An extension is a directory
-  `$XDG_CONFIG_HOME/hui/extensions/<id>/` holding `extension.json`
+- **Local and packaged.** An extension is a directory holding `extension.json`
   (`apiVersion: 1`, `name`, `description`, relative `main`) and an ESM entry
-  module exporting `routes`. HUI ships none and enables none.
+  module exporting `routes`. The operator's extensions live in
+  `$XDG_CONFIG_HOME/hui/extensions/<id>/`; HUI ships packaged ones beside
+  `skills/`, and `extensions/defaults.json` lists the page ids enabled until the
+  operator's `extensions.json` exists (the list is empty until P8 ships a page).
+  A config extension with the same id overrides the packaged one.
 - **Path-confined namespace.** The status route is `GET /__hui/ext`; the enable
   switch is `PUT /__hui/ext/:id` with `{ "enabled": boolean }`; an extension's own
   routes live below `/__hui/ext/<id>/` and can never shadow a HUI route. A route
   path is one to four clean segments; a handler receives
-  `{ method, path, query, body, signal, extension }` and answers
+  `{ method, path, query, body, signal, extension, hui }` and answers
   `{ status?, body }`.
 - **Generic payloads on purpose.** An extension route answers `PluginPayload` (a
   JSON object HUI does not type) or `PluginError`; only the two fixed routes join
@@ -2531,6 +2534,11 @@ trusted local module can answer JSON routes on the gateway.
   crashes in five minutes leave it `failed` until a reload. The child runs as the
   same user with the same file access: crash isolation, not a sandbox. Settings shows
   the mode and restart count.
+- **Packaged extensions.** HUI ships extensions beside `skills/`; `extensions/defaults.json`
+  lists the packaged page ids a fresh config enables until `extensions.json` exists.
+  A config extension with the same id overrides the packaged one, and `hui extension
+  eject <id>` copies a packaged extension into the config directory for editing.
+  `hui doctor` reports an invalid override, a stale copy and a failed default.
 - **Lifecycle.** A manifest may declare its `version` and the HUI `engines.hui`
   range; a gateway outside it refuses to load with a named reason. `POST
   /__hui/ext/:id/reload` re-imports a changed module (routes and panel files at
@@ -2540,6 +2548,11 @@ trusted local module can answer JSON routes on the gateway.
   runs, else at the next start); `hui extension remove <id> [--delete]` requires it
   disabled and only deletes with `--delete`; `hui doctor` reports enabled
   extensions that cannot load, without a `--fix`.
+- **Gateway context.** A route handler receives `context.hui`, a read-only facade
+  for gateway data: `github.contributions` first, with sessions and host metrics
+  following. It returns plain JSON, never a service handle; in-process handlers call
+  the gateway's own services, and a process-mode handler asks the supervising gateway
+  over the host protocol. The facade is additive within `apiVersion: 1`.
 - **Streaming.** A route may declare `stream: true` and return an async iterable of
   events; HUI writes them as server-sent events with a heartbeat, caps (ten
   minutes, 5 000 events, 256 KiB each, 5 MiB total), an `error` event on a throw or
@@ -2560,7 +2573,12 @@ trusted local module can answer JSON routes on the gateway.
   bridge may ask the parent for that extension's own declared routes, with the
   browser's session, under fixed size, count and time limits. An optional
   `ui.icon` (`package`, `github` or `pull-request`) is the Work pane tab and rail
-  mark; absent, it is the package. Settings → Extensions
+  mark; absent, it is the package. **A page** is the same sandboxed document in a
+  full routed surface: `ui.page` names its title, its entry inside `ui/` and an
+  icon, the sidebar lists it while the extension is loaded, and `/ext/<id>`
+  renders it. Its bridge adds `navigate` for allowlisted HUI conversation paths
+  only; it cannot reach another HUI route. Extension pages are web-only. Settings →
+  Extensions
   opens a panel in the current conversation's Work pane, and the Work pane's
   launcher opens the first enabled panel. HUI ships a **build-hui-extension**
   skill that scaffolds and verifies one; it is on by default and the operator can

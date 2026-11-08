@@ -20,6 +20,7 @@ async function fixture(t: TestContext) {
   await writeFile(join(directory, "index.mjs"), `
 export const routes = [
   { method: "GET", path: "ping", handle: async () => ({ body: { ok: true } }) },
+  { method: "GET", path: "year", handle: async ({ query, hui }) => ({ body: await hui.github.contributions(query.get("year") ? Number(query.get("year")) : undefined) }) },
   { method: "GET", path: "crash", handle: async () => { process.exit(1); } },
   { method: "GET", path: "stream", stream: true, handle: async () => ({ events: (async function* () { yield { n: 0 }; })() }) },
 ];
@@ -30,25 +31,33 @@ export const routes = [
 
 let service: ReturnType<typeof createExtensionsService> | undefined;
 
-function request(): RouteRequest {
+function request(overrides: Partial<RouteRequest> = {}): RouteRequest {
   return {
     method: "GET", path: "/__hui/ext/hello/ping", query: new URLSearchParams(), headers: {},
     json: async () => undefined, bytes: async () => Buffer.alloc(0), stream: async function* () { yield Buffer.alloc(0); },
     signal: new AbortController().signal,
+    ...overrides,
   };
 }
 
 test("a process-mode extension answers through its host, restarts after a crash and stops with the gateway", { timeout: 30_000 }, async (t) => {
   const f = await fixture(t);
   service = f.service;
+  service.setGatewayContext({ github: { contributions: async (year) => ({ year: year ?? "last", process: true }) } });
   const enabled = await service.setEnabled("hello", true);
   assert.equal(enabled.mode, "process");
   assert.deepEqual(enabled.routes.map((route) => [route.method, route.path, route.stream]), [
     ["GET", "ping", false],
+    ["GET", "year", false],
     ["GET", "crash", false],
     ["GET", "stream", true],
   ]);
   assert.deepEqual(await service.invoke({ id: "hello", method: "GET", subpath: "ping", request: request() }), { status: 200, body: { ok: true } });
+  assert.deepEqual(
+    await service.invoke({ id: "hello", method: "GET", subpath: "year", request: request({ path: "/__hui/ext/hello/year", query: new URLSearchParams("year=2024") }) }),
+    { status: 200, body: { year: 2024, process: true } },
+    "a process route reads the gateway context through the parent",
+  );
 
   const crashed = await service.invoke({ id: "hello", method: "GET", subpath: "crash", request: request() });
   assert.equal(crashed.status, 503, "the call loses its host");

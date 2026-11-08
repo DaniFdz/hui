@@ -45,7 +45,17 @@ export type ExtensionPanel = {
   readonly icon?: ExtensionPanelIcon;
 };
 
-/** The icons a panel may name for its Work pane tab; anything else is the package icon. */
+/** A full page the extension contributes to HUI's sidebar and router. */
+export type ExtensionPage = {
+  readonly title: string;
+  readonly entry: string;
+  readonly icon?: ExtensionPanelIcon;
+};
+
+/** The optional `ui` block: a panel, a page, or both. */
+export type ExtensionManifestUi = ExtensionPanel & { readonly page?: ExtensionPage };
+
+/** The icons a panel or page may name; anything else is the package icon. */
 export const EXTENSION_PANEL_ICONS = ["package", "github", "pull-request"] as const;
 export type ExtensionPanelIcon = (typeof EXTENSION_PANEL_ICONS)[number];
 
@@ -90,8 +100,8 @@ export type ExtensionManifest = {
   readonly description: string;
   /** Relative to the extension's directory. */
   readonly main: string;
-  /** Present when the extension ships a sandboxed panel under `ui/`. */
-  readonly ui?: ExtensionPanel;
+  /** Present when the extension ships a sandboxed panel or page under `ui/`. */
+  readonly ui?: ExtensionManifestUi;
   /** Static prompt sections for Durable sessions. */
   readonly prompt?: readonly ExtensionPromptSection[];
   /** Agent tools for Durable sessions; their handlers come from the entry module. */
@@ -104,6 +114,13 @@ export type ExtensionManifest = {
   readonly mode?: "in-process" | "process";
 };
 
+/** The read-only gateway data an extension route may ask for. Values are plain JSON; no service handles. */
+export type ExtensionGatewayContext = {
+  readonly github: {
+    contributions(year?: number): Promise<unknown>;
+  };
+};
+
 export type ExtensionContext = {
   readonly method: string;
   /** The subpath below `/__hui/ext/<id>/`, as declared. */
@@ -114,6 +131,7 @@ export type ExtensionContext = {
   /** Aborts when the browser goes away. */
   readonly signal: AbortSignal;
   readonly extension: string;
+  readonly hui: ExtensionGatewayContext;
 };
 
 export type ExtensionResult = { readonly status?: number; readonly body: unknown };
@@ -281,7 +299,7 @@ export function parseManifest(raw: unknown): Parsed<ExtensionManifest> {
   if (main.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
     return fail("main must stay inside the extension directory");
   }
-  let ui: ExtensionPanel | undefined;
+  let ui: ExtensionManifestUi | undefined;
   if (raw["ui"] !== undefined) {
     if (!isRecord(raw["ui"])) return fail("ui must be an object");
     const title = boundedText(raw["ui"]["title"], MAX_NAME_CHARS);
@@ -297,7 +315,25 @@ export function parseManifest(raw: unknown): Parsed<ExtensionManifest> {
     if (icon !== undefined && (typeof icon !== "string" || !(EXTENSION_PANEL_ICONS as readonly string[]).includes(icon))) {
       return fail(`ui.icon must be one of ${EXTENSION_PANEL_ICONS.join(", ")}`);
     }
-    ui = { title, entry, ...(icon === undefined ? {} : { icon: icon as ExtensionPanelIcon }) };
+    let page: ExtensionPage | undefined;
+    if (raw["ui"]["page"] !== undefined) {
+      if (!isRecord(raw["ui"]["page"])) return fail("ui.page must be an object");
+      const pageTitle = boundedText(raw["ui"]["page"]["title"], MAX_NAME_CHARS);
+      if (!pageTitle) return fail(`ui.page.title must be 1-${MAX_NAME_CHARS} characters without control characters`);
+      const pageEntry = raw["ui"]["page"]["entry"];
+      if (typeof pageEntry !== "string" || pageEntry.length > 256 || !pageEntry.endsWith(".html")) {
+        return fail("ui.page.entry must be a relative .html file inside the ui directory");
+      }
+      if (pageEntry.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(pageEntry) || pageEntry.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
+        return fail("ui.page.entry must stay inside the ui directory");
+      }
+      const pageIcon = raw["ui"]["page"]["icon"];
+      if (pageIcon !== undefined && (typeof pageIcon !== "string" || !(EXTENSION_PANEL_ICONS as readonly string[]).includes(pageIcon))) {
+        return fail(`ui.page.icon must be one of ${EXTENSION_PANEL_ICONS.join(", ")}`);
+      }
+      page = { title: pageTitle, entry: pageEntry, ...(pageIcon === undefined ? {} : { icon: pageIcon as ExtensionPanelIcon }) };
+    }
+    ui = { title, entry, ...(icon === undefined ? {} : { icon: icon as ExtensionPanelIcon }), ...(page ? { page } : {}) };
   }
   let mode: "in-process" | "process" = "in-process";
   if (raw["mode"] !== undefined) {

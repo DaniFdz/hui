@@ -130,7 +130,10 @@ import { PANE_COLUMN_MIN_WIDTH } from "./lib/session/pane-geometry.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/files/file-link-store.ts";
 import { OPEN_SETTINGS_EVENT, requestOpenSettings, type OpenSettingsDetail } from "./lib/open-settings.ts";
 import { OPEN_EXTENSION_PANEL_EVENT, type OpenExtensionPanelDetail } from "./lib/extensions/open-panel.ts";
+import { EXTENSION_NAVIGATE_EVENT } from "./lib/extensions/bridge.ts";
+import { extensionPageLinks, type ExtensionPageLink } from "./lib/extensions/pages.ts";
 import { loadExtensions } from "./api/extensions.ts";
+import "./components/extension-page.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import "./components/work-pane.ts";
 import "./components/terminal-pane.ts";
@@ -175,6 +178,8 @@ const paneBotsProperty = { attribute: false, hasChanged: (value: unknown, old: u
 export class HuiApp extends HuiElement {
   @state() private view: NavId = "home";
   @state() private activePage: HuiPage | undefined;
+  @state() private extensionPages: readonly ExtensionPageLink[] = [];
+  @state() private activeExtensionPageId = "";
   @state() private search = "";
   private readonly sessions = new SessionsController(this, {
     presented: (id) => this.isSessionPresented(id),
@@ -529,8 +534,9 @@ export class HuiApp extends HuiElement {
       this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
       this.addEventListener("hui-files-connection", this.onFilesConnection);
       this.addEventListener(OPEN_EXTENSION_PANEL_EVENT, this.onOpenExtensionPanelRequest);
+      this.addEventListener(EXTENSION_NAVIGATE_EVENT, this.onExtensionNavigate);
       this.addEventListener("hui-extensions-changed", this.onExtensionsChanged);
-      void loadExtensions().then(() => this.requestUpdate()).catch(() => undefined);
+      void this.loadExtensionPages();
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -554,6 +560,7 @@ export class HuiApp extends HuiElement {
     this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
     this.removeEventListener("hui-files-connection", this.onFilesConnection);
     this.removeEventListener(OPEN_EXTENSION_PANEL_EVENT, this.onOpenExtensionPanelRequest);
+    this.removeEventListener(EXTENSION_NAVIGATE_EVENT, this.onExtensionNavigate);
     this.removeEventListener("hui-extensions-changed", this.onExtensionsChanged);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
@@ -877,6 +884,7 @@ export class HuiApp extends HuiElement {
   }
 
   private applyNavigation(target: NavigationTarget) {
+    if (target.kind !== "extension-page") this.activeExtensionPageId = "";
     if (target.kind === "settings") {
       this.settingsPage = target.page;
       this.settingsOpen = true;
@@ -922,6 +930,15 @@ export class HuiApp extends HuiElement {
       this.view = "kanban";
       void this.refreshSessions(true);
       void this.backlog.refresh();
+      return;
+    }
+    if (target.kind === "extension-page") {
+      this.conversation.suspend();
+      this.resetSessionEphemeral();
+      this.pendingSessionId = "";
+      this.activePage = undefined;
+      this.activeExtensionPageId = target.id;
+      this.view = "surface";
       return;
     }
     if (target.kind === "page") {
@@ -2382,7 +2399,27 @@ export class HuiApp extends HuiElement {
    * and optionally the section to scroll to. Cancelling the event tells it the app navigated, so its link does not
    * load the page. The section is scrolled to once it renders and kept there while sections above it load. */
   private stopSettingsScroll: (() => void) | undefined;
-  private onExtensionsChanged = () => this.requestUpdate();
+  private onExtensionsChanged = () => { void this.loadExtensionPages(); };
+
+  private async loadExtensionPages() {
+    try {
+      const { extensions } = await loadExtensions();
+      // A page that was open when its extension was disabled stays on screen; its component reports the state.
+      this.extensionPages = extensionPageLinks(extensions);
+    } catch {
+      this.extensionPages = [];
+    }
+    this.requestUpdate();
+  }
+
+  private onExtensionNavigate = (event: Event) => {
+    const path = (event as CustomEvent<{ path?: unknown }>).detail?.path;
+    if (typeof path !== "string") return;
+    const resolved = resolveNavigation(path);
+    if (resolved.target.kind !== "session") return;
+    event.preventDefault();
+    this.navigate(resolved.target);
+  };
 
   private onOpenExtensionPanelRequest = (event: Event) => {
     const layout = this.work.layout;
@@ -3048,6 +3085,9 @@ export class HuiApp extends HuiElement {
       view: this.view,
       activePage: this.activePage,
       pages: HUI_PAGES,
+      extensionPages: this.extensionPages,
+      activeExtensionPageId: this.activeExtensionPageId,
+      onOpenExtensionPage: (id: string) => this.navigate({ kind: "extension-page", id }),
       selectedSessionId: this.view === "bot" ? "" : this.conversation.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.work.layout && sessionPanes(this.work.layout).length > 1 ? sessionPanes(this.work.layout).map(({ sessionId }) => sessionId) : []),
@@ -3158,6 +3198,8 @@ export class HuiApp extends HuiElement {
           ? this.renderSessionMultiplex()
           : this.view === "bot"
             ? this.renderBotWorkspace()
+          : this.view === "surface" && this.activeExtensionPageId
+            ? html`<hui-extension-page .extensionId=${this.activeExtensionPageId}></hui-extension-page>`
           : this.view === "kanban"
             ? renderKanbanPage({
                 groups: this.listedGroups,

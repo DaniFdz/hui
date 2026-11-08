@@ -18,6 +18,7 @@ for (const [script, args] of [
 ]) execFileSync(process.execPath, [`${root}node_modules/${script}`, ...args], { cwd: root, stdio: "inherit" });
 await cp(new URL("../themes/", import.meta.url), new URL("../build/themes/", import.meta.url), { recursive: true });
 await cp(new URL("../skills/", import.meta.url), new URL("../build/skills/", import.meta.url), { recursive: true });
+await cp(new URL("../extensions/", import.meta.url), new URL("../build/extensions/", import.meta.url), { recursive: true });
 await cp(new URL("../staff/", import.meta.url), new URL("../build/staff/", import.meta.url), { recursive: true });
 // `hui completion <shell>` reads its program next to the compiled CLI, in both a checkout and a package.
 await cp(new URL("../cli/completions/", import.meta.url), new URL("../build/cli/completions/", import.meta.url), { recursive: true });

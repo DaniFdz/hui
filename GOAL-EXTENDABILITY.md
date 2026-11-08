@@ -530,3 +530,30 @@ Owner:
 - [ ] Reviewed the branch commit by commit
 - [ ] Approved the PR
 - [ ] Merged
+
+---
+
+## 11. P7 — page extensions
+
+**Status:** done (P7 primitives) · **Branch:** `danifdz/hui-page-extensions` (stacked on
+`danifdz/hui-extendability`) · **Plan:** `PLAN-PAGE-EXTENSIONS.md` · **Detailed
+ledger:** `GOAL-PAGE-EXTENSIONS.md`.
+
+P7 adds the page contribution and read-only gateway context primitives; it does
+not port Contributions, Dashboard or Kanban (P8–P10).
+
+- [x] **P7-A1** `ui.page` manifest, contained entry, named icon,
+      `ExtensionStatus.page`, generated schema; Settings shows *Page · <title>*.
+- [x] **P7-A2** A loaded page adds a sidebar entry and `/ext/<id>`; it renders in a
+      sandboxed frame with theme, title, height, https `open` and an allowlisted
+      conversation `navigate`.
+- [x] **P7-A3** `context.hui.github.contributions` reaches in-process route
+      handlers as plain JSON. The process-mode proxy is a P8 deviation.
+- [x] **P7-A5** The Hello fixture declares `ui.page`; PAGE-047 proves the sidebar,
+      sandbox, bridge route (`data-page-title="hello, Ada"`) and disable behavior.
+- [x] **P7-A6** SPEC.md and docs/guide.md describe the page contract, bridge and
+      in-process context.
+- [x] **P7-A7** Full suite, typecheck, build, CI and manual 1440×900 / 390×844
+      proof. Evidence: `GOAL-PAGE-EXTENSIONS.md`. CI green at `5c77dd36`.
+- [x] **P7-A4** Packaged discovery, default-on until the store exists, config
+      override, eject and doctor.

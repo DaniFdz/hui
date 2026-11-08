@@ -48,3 +48,28 @@ test("doctor reports a corrupt enable store", async (t) => {
   assert.equal(report.items[0]?.id, f.file);
   assert.match(report.items[0]?.detail ?? "", /not valid JSON/u);
 });
+
+test("doctor checks packaged defaults, a config override and a stale ejected copy", async (t) => {
+  const f = await fixture(t);
+  const bundled = join(f.dir, "..", "bundled");
+  const defaults = join(f.dir, "..", "defaults.json");
+  await mkdir(join(bundled, "page"), { recursive: true });
+  await writeFile(join(bundled, "page", "extension.json"), JSON.stringify(manifest({ name: "Packaged", version: "1.0.0", ui: { title: "Panel", page: { title: "Page", entry: "page.html" } } })));
+  await writeFile(defaults, JSON.stringify({ version: 1, enabled: ["page"] }));
+  const check = extensionsCheck(f.packageRoot, { dir: f.dir, file: f.file, bundledDir: bundled, defaultsFile: defaults });
+
+  assert.equal((await check.inspect()).status, "ok", "a packaged default loads without extensions.json");
+  await mkdir(join(f.dir, "page"), { recursive: true });
+  await writeFile(join(f.dir, "page", "extension.json"), "{}");
+  let report = await check.inspect();
+  assert.equal(report.status, "issue");
+  assert.match(report.items[0]?.detail ?? "", /config override cannot load/u);
+
+  await writeFile(join(f.dir, "page", "extension.json"), JSON.stringify(manifest({ name: "Edited", version: "0.9.0" })));
+  report = await check.inspect();
+  assert.equal(report.status, "issue");
+  assert.match(report.items[0]?.detail ?? "", /older than the packaged 1\.0\.0/u);
+
+  await writeFile(join(f.dir, "page", "extension.json"), JSON.stringify(manifest({ name: "Edited", version: "1.1.0" })));
+  assert.equal((await check.inspect()).status, "ok");
+});

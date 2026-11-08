@@ -81,6 +81,62 @@ test("an installed extension lists as disabled and is never imported", async (t)
   assert.equal(answer.status, 404);
 });
 
+test("a packaged page is enabled by default until the store exists, and a config copy wins", async (t) => {
+  const root = await temp(t);
+  const bundled = join(root, "bundled");
+  const defaults = join(root, "defaults.json");
+  const directory = join(bundled, "page");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "extension.json"), JSON.stringify({
+    ...MANIFEST, name: "Packaged", ui: { title: "Panel", page: { title: "Packaged page", entry: "page.html" } },
+  }));
+  await writeFile(join(directory, "index.mjs"), HELLO);
+  await mkdir(join(directory, "ui"), { recursive: true });
+  await writeFile(join(directory, "ui", "page.html"), "<!doctype html><title>Packaged</title>");
+  await writeFile(defaults, JSON.stringify({ version: 1, enabled: ["page"] }));
+  const service = createExtensionsService({
+    dir: join(root, "extensions"), file: join(root, "extensions.json"),
+    bundledDir: bundled, defaultsFile: defaults, record: () => undefined,
+  });
+
+  await service.reconcile();
+  const first = await service.list();
+  assert.deepEqual(first.extensions.map(({ id, enabled, state, page }) => ({ id, enabled, state, title: page?.title })), [
+    { id: "page", enabled: true, state: "loaded", title: "Packaged page"},
+  ]);
+  assert.equal(await service.panelRoot("page"), join(directory, "ui"));
+
+  await service.setEnabled("page", false);
+  assert.equal((await service.list()).extensions[0]?.state, "disabled");
+  assert.deepEqual(JSON.parse(await readFile(join(root, "extensions.json"), "utf8")), { version: 1, enabled: [] });
+
+  await service.eject("page");
+  await writeFile(join(root, "extensions", "page", "extension.json"), JSON.stringify({
+    ...MANIFEST, name: "Edited", ui: { title: "Panel", page: { title: "Edited page", entry: "page.html" } },
+  }));
+  await writeFile(join(root, "extensions", "page", "index.mjs"), HELLO);
+  await mkdir(join(root, "extensions", "page", "ui"), { recursive: true });
+  await writeFile(join(root, "extensions", "page", "ui", "page.html"), "<!doctype html><title>Edited</title>");
+  const edited = await service.setEnabled("page", true);
+  assert.equal(edited.name, "Edited");
+  assert.equal(edited.page?.title, "Edited page");
+  await assert.rejects(service.eject("page"), /already/);
+  await assert.rejects(service.eject("missing"), /unknown/);
+});
+
+test("a route reads the gateway context it was given", async (t) => {
+  const root = await temp(t);
+  await installed(root, "hello", MANIFEST, `
+export const routes = [{ method: "GET", path: "year", description: "Reads the gateway context.",
+  handle: async ({ query, hui }) => ({ body: await hui.github.contributions(query.get("year") ? Number(query.get("year")) : undefined) }) }];
+`);
+  const service = serviceAt(root);
+  service.setGatewayContext({ github: { contributions: async (year) => ({ year: year ?? "last", fake: true }) } });
+  await service.setEnabled("hello", true);
+  const answer = await service.invoke({ id: "hello", method: "GET", subpath: "year", request: request0({ path: "/__hui/ext/hello/year", query: new URLSearchParams("year=2024") }) });
+  assert.deepEqual(answer, { status: 200, body: { year: 2024, fake: true } });
+});
+
 test("enabling imports once, persists the choice and answers its routes", async (t) => {
   const root = await temp(t);
   await installed(root, "hello", MANIFEST, HELLO);

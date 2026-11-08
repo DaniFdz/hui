@@ -5220,6 +5220,37 @@
         }
       }
     },
+    "ExtensionPage": {
+      "type": "object",
+      "required": [
+        "title",
+        "entry"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "package"
+            },
+            {
+              "type": "string",
+              "const": "github"
+            },
+            {
+              "type": "string",
+              "const": "pull-request"
+            }
+          ]
+        }
+      }
+    },
     "ExtensionPanel": {
       "type": "object",
       "required": [
@@ -5383,6 +5414,9 @@
         },
         "panel": {
           "$ref": "#/$defs/ExtensionPanel"
+        },
+        "page": {
+          "$ref": "#/$defs/ExtensionPage"
         },
         "prompt": {
           "type": "array",
@@ -14717,6 +14751,7 @@
     ],
     "extensions": [
       "ExtensionEnginesInfo",
+      "ExtensionPage",
       "ExtensionPanel",
       "ExtensionPromptInfo",
       "ExtensionRouteInfo",

@@ -1246,11 +1246,13 @@ Icon files go in `HUI_CONFIG_DIR/tool-icons/` and are served read-only at `/__hu
 ## Gateway extensions
 
 A gateway extension is a small local module that answers JSON routes under
-`/__hui/ext/`. HUI ships none and enables none: you install one by putting it in
-`HUI_CONFIG_DIR/extensions/<id>/` and turn it on over HTTP. The extension runs
-**inside the gateway process** with the gateway's full access to your machine,
-credentials and data — the same trust as a PI extension and no sandbox. Only add
-code you would run yourself.
+`/__hui/ext/` and may add a sandboxed panel or page, prompt text and agent tools.
+You put one in `HUI_CONFIG_DIR/extensions/<id>/` and enable it over HTTP or in
+Settings. The extension runs **inside the gateway process** with the gateway's
+full access to your machine, credentials and data — the same trust as a PI
+extension and no sandbox for that code. Only add code you would run yourself.
+[What a gateway extension can and cannot do](extensions.md) is the capability
+matrix; the rest of this section is the working guide.
 
 An extension directory holds a manifest and its entry module:
 
@@ -1283,7 +1285,12 @@ serves the files under the extension's `ui/` directory at `/__hui/ext-ui/<id>/` 
 shows the entry page in a sandboxed Work pane frame that can only call the
 extension's own routes through HUI. Its optional `icon` names the Work pane tab's
 mark — `package` (the default), `github` or `pull-request`; another name is
-refused when the manifest loads. An extension can also declare static prompt
+refused when the manifest loads. A page is optional too:
+`"ui": { "title": "Hello", "page": { "title": "Hello page", "entry": "page.html" } }`
+adds a sidebar destination at `/ext/<id>` that renders `ui/page.html` in the same
+sandbox; its bridge may also ask HUI to open an allowlisted conversation. A route
+can read read-only gateway data through `context.hui` (`github.contributions`
+first); no service handles or HUI routes are exposed. An extension can also declare static prompt
 sections for Durable conversations and agent tools, whose handlers are exported by
 the entry module under the tool's name, and a route can stream events with
 `stream: true` (see `e2e/fixtures/extensions/hello`). Panel files are public to anyone who can reach
@@ -1315,6 +1322,11 @@ eight at once): its routes and streams are forwarded, a crash restarts it after 
 and 4 seconds while routes answer 503, and three crashes in five minutes leave it
 failed until a reload. That is crash isolation, not a sandbox; tools require the
 default in-process mode.
+
+HUI ships some extensions in its package, beside `skills/`; a packaged page
+listed in `extensions/defaults.json` is on until `extensions.json` exists. A config
+copy with the same id overrides it; `hui extension eject <id>` copies the packaged
+source into your config directory without enabling it, so you can edit it and reload.
 
 `hui extension add <path> [--link]` validates a local module and installs it
 (copied, or linked with `--link`), enabling it now when the gateway runs and at the

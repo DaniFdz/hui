@@ -29,13 +29,15 @@ export type HostFrame =
   | { t: "event"; id: number; event: unknown }
   | { t: "end"; id: number }
   | { t: "error"; id: number; error: string }
-  | { t: "log"; line: string };
+  | { t: "log"; line: string }
+  | { t: "context"; id: number; capability: string; args?: unknown };
 
 export type ParentFrame =
   | { t: "call"; id: number; method: string; path: string; body?: unknown }
   | { t: "stream"; id: number; method: string; path: string; body?: unknown }
   | { t: "cancel"; id: number }
-  | { t: "stop" };
+  | { t: "stop" }
+  | { t: "context-result"; id: number; value?: unknown; error?: string };
 
 export type Frame = HostFrame | ParentFrame;
 

@@ -22,6 +22,15 @@ export const ExtensionPanel = Type.Object({
 }, { $id: "ExtensionPanel" });
 export type ExtensionPanel = Static<typeof ExtensionPanel>;
 
+export const ExtensionPage = Type.Object({
+  title: Type.String(),
+  entry: Type.String(),
+  icon: Type.Optional(Type.Union([
+    Type.Literal("package"), Type.Literal("github"), Type.Literal("pull-request"),
+  ])),
+}, { $id: "ExtensionPage" });
+export type ExtensionPage = Static<typeof ExtensionPage>;
+
 export const ExtensionPromptInfo = Type.Object({
   id: Type.String(),
   title: Type.String(),
@@ -57,6 +66,7 @@ export const ExtensionStatus = Type.Object({
   mode: Type.Union([Type.Literal("in-process"), Type.Literal("process")]),
   restarts: Type.Number(),
   panel: Type.Optional(ExtensionPanel),
+  page: Type.Optional(ExtensionPage),
   prompt: Type.Optional(Type.Array(ExtensionPromptInfo)),
   tools: Type.Optional(Type.Array(ExtensionToolInfo)),
   routes: Type.Array(ExtensionRouteInfo),

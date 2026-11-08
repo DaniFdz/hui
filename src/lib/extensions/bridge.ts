@@ -6,6 +6,9 @@
 import type { ExtensionRouteInfo } from "../../api/schema/extensions.ts";
 
 export const BRIDGE_CHANNEL = "hui-extension";
+/** A page asks the app to open a HUI route; the app answers only these paths. */
+export const EXTENSION_NAVIGATE_EVENT = "hui-extension-navigate";
+const SESSION_PATH = /^\/sessions\/([0-9a-f-]{36})$/u;
 export const BRIDGE_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 export const BRIDGE_CALL_TIMEOUT_MS = 30_000;
 export const BRIDGE_MAX_IN_FLIGHT = 20;
@@ -25,6 +28,13 @@ export type BridgeCall = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** A page may ask to open a conversation, never an arbitrary HUI path or URL. */
+export function allowedNavigatePath(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const match = SESSION_PATH.exec(value);
+  return match ? `/sessions/${match[1]}` : undefined;
 }
 
 /** The bytes a JSON body occupies, or undefined when it cannot be serialized. */

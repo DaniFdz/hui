@@ -93,3 +93,25 @@ test("reload asks the gateway to re-import the extension", async () => {
   await extensionsCommand("http://gateway", "reload", "hello", { send });
   assert.deepEqual(seen, [{ path: "/__hui/ext/hello/reload", options: { method: "POST" } }]);
 });
+
+test("eject copies a packaged extension into the config directory and refuses an existing copy", async () => {
+  const { mkdtemp, mkdir, writeFile, stat, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { ejectExtension } = await import("./extensions.ts");
+  const root = await mkdtemp(join(tmpdir(), "hui-cli-eject-"));
+  try {
+    const bundled = join(root, "bundled", "hello");
+    await mkdir(bundled, { recursive: true });
+    await writeFile(join(bundled, "extension.json"), JSON.stringify({ apiVersion: 1, name: "Hello", description: "", main: "index.mjs" }));
+    await writeFile(join(bundled, "index.mjs"), "export const routes = [];\n");
+
+    const ejected = await ejectExtension(join(root, "bundled"), join(root, "config"), "hello");
+    assert.deepEqual(ejected, { id: "hello", path: join(root, "config", "hello") });
+    assert.equal((await stat(join(ejected.path, "extension.json"))).isFile(), true);
+    await assert.rejects(ejectExtension(join(root, "bundled"), join(root, "config"), "hello"), /already exists/u);
+    await assert.rejects(ejectExtension(join(root, "bundled"), join(root, "config"), "missing"), /no packaged extension/u);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
