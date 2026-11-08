@@ -12,6 +12,8 @@ import { BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineErro
 import { localBotSkills, type BotSkillFiles } from "../bots/skills.ts";
 import { BotResponse, type BotView } from "../api/bots.ts";
 import { routeSchemas } from "../api/staff.ts";
+
+export { routeSchemas };
 import type { Settings } from "../hui-settings.ts";
 import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 import { readStaffPack } from "../staff/pack.ts";
