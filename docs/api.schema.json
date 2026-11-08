@@ -10328,6 +10328,7 @@
             "fallback",
             "utility",
             "thinking",
+            "retryAttempts",
             "routes"
           ],
           "properties": {
@@ -10379,6 +10380,9 @@
                   ]
                 }
               ]
+            },
+            "retryAttempts": {
+              "type": "number"
             },
             "routes": {
               "type": "array",

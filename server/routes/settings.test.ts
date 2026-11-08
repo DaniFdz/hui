@@ -59,6 +59,7 @@ type OriginalSettings = {
     fallback: string;
     utility: string;
     thinking: "" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+    retryAttempts: number;
     routes: readonly {
       name: string;
       description: string;
