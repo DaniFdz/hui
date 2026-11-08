@@ -87,14 +87,18 @@ export function createHuiModelRuntime(dir = PROVIDERS_DIR) {
 /** Compose the already-resolved PI providers with managed built-ins in a clean
  * registry. Re-registering into PI's original registry would reapply models.json
  * overrides, potentially routing HUI credentials to the wrong endpoint. */
-export async function createSessionModelRuntime(agentDir: string, dir = PROVIDERS_DIR) {
+export async function createSessionModelRuntime(
+  agentDir: string,
+  dir = PROVIDERS_DIR,
+  options: { onRetryHint?: (delayMs: number) => void } = {},
+) {
   const selections = await readProviderSelections(dir);
   const pi = await ModelRuntime.create({ credentials: credentialStore(join(agentDir, "auth.json")), modelsPath: join(agentDir, "models.json") });
   const commands = await keyCommands(agentDir, selections);
   if (!Object.keys(selections).length) return runKeyCommandsAsync(pi, commands);
   const managed = await createHuiModelRuntime(dir);
   const accounts = new ProviderAccounts(dir);
-  const routing = await accountRouting(accounts);
+  const routing = await accountRouting(accounts, options);
   const huiStore = routing.credentials;
   const piStore = credentialStore(join(agentDir, "auth.json"));
   const store = (id: string) => Object.hasOwn(selections, id) ? huiStore : piStore;
