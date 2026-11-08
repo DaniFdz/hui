@@ -93,6 +93,36 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Operator handoff
+
+Verified on 2026-11-08 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_HANDOFF` opens `/browser-handoff-fixture` (a page whose Name field
+sits at the viewport's centre) and then calls `handoff` with "Type your name
+into the Name field and click Greet, then press I'm done — continue" and a
+five-minute timeout, instead of typing into the page itself.
+
+- The chat's browser preview card showed **Your turn.** with that instruction and
+  **Take over**, and its footer read "Waiting for you in tab t1: …". The agent
+  had not typed into the page; the Name field was empty.
+- **Take over** opened the conversation's one Browser view. It showed the
+  **Your turn.** banner with the message, the **I'm done — continue** button,
+  "Your turn" as the status, a highlighted frame and "You have control; the
+  agent waits." under it.
+- Clicking the middle of the frame put a caret in the page's Name field (the
+  frame took focus and the click reached the page); typing appeared in the field
+  as it would in the page; Tab then Enter on Greet rendered
+  "Hello, <name>! Typed by the operator." in both the view and the preview.
+- **I'm done — continue** settled the waiting row: its result opened with
+  "The operator finished in tab t1." and carried the page's snapshot with the
+  greeting; the agent's reply quoted it ("The operator finished in the browser:
+  **Hello, Ada! Typed by the operator.**"), and the view returned to
+  "Live · headless" with "You finished; the agent is back in control".
+- At 390×844 the banner and its button shared one row above a smaller frame, the
+  page could still be clicked and typed into (a second session typed "Mob" and
+  Greet rendered "Hello, Mob! Typed by the operator."), Continue settled it the
+  same way, and nothing scrolled sideways.
+- The page reported no console errors.
+
 ## Limits
 
 - Windowed mode was verified only as a refusal on a display-less Linux host;
@@ -104,3 +134,6 @@ fixture at 1440×900 and 390×844.
 - Previews are not recorded: after a reload the latest one shows the tab's
   current page, and nothing once the tab is gone; earlier browser activity never
   carries one.
+- A handoff nobody answers, a tab that closes under the operator and a browser
+  that stops are proven by `server/browser/manager.test.ts` (a real headless
+  browser and a five-second wait), not by waiting in the Browser check.

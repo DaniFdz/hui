@@ -107,6 +107,45 @@ const BROWSER_FIXTURE_PAGE = `<!doctype html>
   </script>
 </body>
 </html>`;
+/** For a handoff check: the Name field sits at the viewport's centre, so the
+ * operator's click on the middle of the live view lands on it; Greet follows it. */
+const HANDOFF_FIXTURE_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HUI handoff fixture</title>
+  <style>
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1f2328; background: #f6f8fa; }
+    header { padding: 24px 32px; }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    header p { margin: 0; }
+    /* The field's centre is the viewport's centre: a click on the middle of the
+       live view lands in it, which is where a person would click anyway. */
+    label { position: fixed; left: 50%; top: calc(50% - 54px); transform: translateX(-50%); font-weight: 600; }
+    input { position: fixed; left: 50%; top: 50%; width: 320px; height: 48px; box-sizing: border-box; transform: translate(-50%, -50%); padding: 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; font: inherit; }
+    button { position: fixed; left: 50%; top: calc(50% + 42px); transform: translateX(-50%); padding: 10px 18px; border: 0; border-radius: 6px; color: #fff; background: #0969da; font: inherit; cursor: pointer; }
+    #greeting { position: fixed; left: 50%; top: calc(50% + 108px); transform: translateX(-50%); min-height: 1.5em; margin: 0; font-size: 18px; font-weight: 600; color: #1a7f37; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>HUI handoff fixture</h1>
+    <p>Only a person can finish this page.</p>
+  </header>
+  <label for="name">Name</label>
+  <input id="name" autocomplete="off">
+  <button type="button" id="greet">Greet</button>
+  <p id="greeting" role="status"></p>
+  <script>
+    document.getElementById("greet").addEventListener("click", () => {
+      const name = document.getElementById("name").value;
+      document.getElementById("greeting").textContent = "Hello, " + name + "! Typed by the operator.";
+      console.log("greeted", name);
+    });
+  </script>
+</body>
+</html>`;
+
 /** A small built-in widget for show_widget checks. */
 const COUNTER_WIDGET = `<div id="counter" class="row">
 <style>#counter{gap:12px}#counter output{min-width:3ch;font:600 22px/1 var(--font-mono);color:var(--text-strong)}</style>
@@ -161,6 +200,10 @@ const server = createServer(async (request, response) => {
   if (request.method === "GET" && url.pathname === "/browser-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(BROWSER_FIXTURE_PAGE);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-handoff-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(HANDOFF_FIXTURE_PAGE);
   }
   if (request.method === "GET" && url.pathname === "/control/wait-subagent-parent") {
     subagentParentWaiting = true;
@@ -415,10 +458,38 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent opens the page, then hands the tab to the operator when only a person can finish.
+  if (source.includes("E2E_BROWSER_HANDOFF") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-handoff-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-handoff-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-handoff-open") {
+    await browserPace(body);
+    toolUse(response, "tool-e2e-handoff-wait", "browser", {
+      action: "handoff",
+      message: "Type your name into the Name field and click Greet, then press I'm done — continue.",
+      timeoutMs: 300_000,
+    });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-handoff-wait") {
+    // The handoff's result carries the page as the operator left it.
+    const greeting = /Hello, [^\n]*/u.exec(toolResultTexts(body.messages).join("\n"))?.[0];
+    text(response, greeting
+      ? `The operator finished in the browser: **${greeting}**`
+      : "The handoff returned without the greeting page state.");
+    return finish(response);
+  }
+
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);

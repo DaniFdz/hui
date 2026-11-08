@@ -3601,6 +3601,25 @@
         }
       }
     },
+    "BrowserHandoff": {
+      "type": "object",
+      "required": [
+        "tabId",
+        "message",
+        "since"
+      ],
+      "properties": {
+        "tabId": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "since": {
+          "type": "string"
+        }
+      }
+    },
     "BrowserPreview": {
       "type": "object",
       "required": [
@@ -3799,27 +3818,153 @@
       }
     },
     "BrowserViewControl": {
-      "type": "object",
-      "required": [
-        "action",
-        "tabId"
-      ],
-      "properties": {
-        "action": {
-          "type": "string",
-          "const": "select"
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "select"
+            },
+            "tabId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
         },
-        "tabId": {
-          "anyOf": [
-            {
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId",
+            "kind",
+            "x",
+            "y",
+            "button"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "pointer"
+            },
+            "tabId": {
               "type": "string"
             },
-            {
-              "type": "null"
+            "kind": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "move"
+                },
+                {
+                  "type": "string",
+                  "const": "down"
+                },
+                {
+                  "type": "string",
+                  "const": "up"
+                }
+              ]
+            },
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "button": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "left"
+                },
+                {
+                  "type": "string",
+                  "const": "right"
+                }
+              ]
             }
-          ]
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId",
+            "x",
+            "y",
+            "deltaX",
+            "deltaY"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "wheel"
+            },
+            "tabId": {
+              "type": "string"
+            },
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "deltaX": {
+              "type": "number"
+            },
+            "deltaY": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId",
+            "key"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "key"
+            },
+            "tabId": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "tabId"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "continue"
+            },
+            "tabId": {
+              "type": "string"
+            }
+          }
         }
-      }
+      ]
     },
     "BrowserViewMessage": {
       "anyOf": [
@@ -3831,7 +3976,8 @@
             "tabs",
             "current",
             "watching",
-            "following"
+            "following",
+            "handoff"
           ],
           "properties": {
             "type": {
@@ -3881,6 +4027,16 @@
             },
             "following": {
               "type": "boolean"
+            },
+            "handoff": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/BrowserHandoff"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           }
         },
@@ -3932,7 +4088,8 @@
         "tabs",
         "current",
         "watching",
-        "following"
+        "following",
+        "handoff"
       ],
       "properties": {
         "running": {
@@ -3978,6 +4135,16 @@
         },
         "following": {
           "type": "boolean"
+        },
+        "handoff": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BrowserHandoff"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -14194,6 +14361,7 @@
       "BrowserControl",
       "BrowserError",
       "BrowserExecutableView",
+      "BrowserHandoff",
       "BrowserPreview",
       "BrowserState",
       "BrowserStatus",

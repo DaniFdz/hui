@@ -4497,10 +4497,12 @@ one conversation (unknown conversations return 404). The WebSocket upgrade at
 `/__hui/browser-stream` also checks same-origin and the allowed Host, like
 terminal streams. The server sends JSON text messages:
 
-- `{ type: "state", running, mode?, tabs: [{ id, title, url }], current, watching, following }`
+- `{ type: "state", running, mode?, tabs: [{ id, title, url }], current, watching, following, handoff }`
   on connect and whenever the conversation's tabs, the agent's current tab or
   the process change. `watching` is the tab whose frames follow; `following` is
-  false while the viewer watches a tab other than the agent's.
+  false while the viewer watches a tab other than the agent's. `handoff` is
+  `null`, or `{ tabId, message, since }` while the agent waits for the operator
+  in that tab.
 - `{ type: "action", tabId, text, point?, at }` for each agent browser action.
   `text` summarizes it (for example `Clicked e2 (button "Greet")`) and never
   contains typed text; `point` is the viewport CSS pixel of a click or hover.
@@ -4511,10 +4513,18 @@ Frames are binary messages: a big-endian `u32` header length, a JSON header
 `{ tabId, width, height, seq }` (`width`/`height` are the viewport in CSS
 pixels) and the JPEG bytes. A frame is sent only when the watched page repaints,
 at most about every 100 ms; a slow client skips frames and then receives the
-newest. Switching tabs sends that tab's last frame at once. The only client
-message is `{ action: "select", tabId }`: a tab of the same conversation to
-watch, or `null` (or the agent's current tab) to follow the agent. The stream is
-view-only and never launches the browser.
+newest. Switching tabs sends that tab's last frame at once.
+
+The client sends `BrowserViewControl`; anything else is ignored. `{ action:
+"select", tabId }` watches a tab of the same conversation, or `null` to follow
+the agent. The rest reach the page only while that tab's handoff waits, only for
+the conversation that owns it: `{ action: "pointer", tabId, kind: "move" |
+"down" | "up", x, y, button: "left" | "right" }` and `{ action: "wheel",
+ tabId, x, y, deltaX, deltaY }` (page CSS pixels, from the view's scaled frame),
+`{ action: "key", tabId, key }` (a key name such as `Enter`, `Tab` or `a`, or a
+chord such as `Control+a`) and `{ action: "continue", tabId }`, which ends the
+wait. Every other message leaves the view untouched, and a view that never
+selects a tab can only watch.
 
 The PI tool `browser` uses the authenticated agent bridge in both SDK and CLI
 backends and is registered only while `browser.enabled` is on. Caller identity
@@ -4532,6 +4542,7 @@ comes from the per-conversation token. `action` is one of:
 | `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory) |
 | `console` | The latest 50 of up to 200 recorded console, exception, log and dialog entries; `errorsOnly`, `clear` |
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
+| `handoff` | Give the current (or `tabId`) tab to the operator and wait: `message` (at most 500 characters) and `timeoutMs` (5000–1 800 000, default 600 000) |
 
 Tab handles are `t1`, `t2`…; element refs are `e1`, `e2`… from the latest
 snapshot of that tab. A ref stays bound to its DOM node within one document; a
@@ -4556,6 +4567,18 @@ it. The tool result stores
 model-facing text, a PNG image for `screenshot`, and small `details` (`action`,
 tab id/title/URL and outcome flags) in PI's transcript; no route or registry
 format changes.
+
+A handoff makes the agent wait for the operator in one tab: the call runs in
+`server/browser/manager.ts`, keeps the browser and that tab alive, and refuses
+every other agent action with 409 until it settles. The operator acts through
+the live view, so a view must be open (the chat's preview card says so and opens
+it). It settles as `continued` (the result carries the page as it is now: title,
+URL and a fresh snapshot, at most 8 000 characters, whose refs the agent acts on
+next), `timeout` (the operator may be away; the tab returns to the agent),
+`closed` (the tab went away under them) or `stopped` (the browser did). Input
+from the live view is applied to the handed-over tab only and is ignored once
+the handoff settles. The bridge waits `timeoutMs` plus 30 seconds, and stopping
+the turn settles the handoff with `closed`.
 
 ### Files view API
 

@@ -1231,6 +1231,24 @@ reply. The transcript marks the questions as expired, with their options, so
 you can see what it asked; reply in the chat to decide. The timeout applies to
 questions asked after you change it.
 
+## When the agent asks you to take over the browser
+
+Some browser steps only a person can finish: a password, a two-factor code, a
+passkey, a payment, or a site's bot check. When an agent gets there it hands the
+tab to you instead of guessing. The chat's browser preview card says **Your
+turn** with the agent's one-line instruction, and **Take over** opens the
+conversation's browser view. Once there, the page is yours: click, type, scroll
+and paste as you would in any browser, then press **I'm done — continue**. The
+agent gets the page as it is then, with fresh element refs, and carries on.
+
+While you have the tab the agent waits and cannot act on the browser, the tab
+never closes, and the view says *You have control; the agent waits*. A tab you
+leave in another view, or a handoff you never answer, ends by itself after ten
+minutes (the agent is told you may be away and gets the tab back); a handoff can
+ask for up to thirty. If the tab closes or the browser stops first, the agent is
+told that instead. Opening the browser view from the header's globe button shows
+the same view: it stays view-only unless a handoff is waiting.
+
 ## Giving a conversation a goal
 
 A goal is one objective a conversation keeps pursuing, for work that outlasts a

@@ -83,6 +83,11 @@ const PAGES: Record<string, string> = {
     </script>`,
   "/next": "<!doctype html><title>Next</title><h1>Second page</h1><script>console.error('boom from next')</script>",
   "/popup": "<!doctype html><title>Popup</title><h1>Popup page</h1>",
+  "/handoff": `<!doctype html><title>Handoff page</title>
+    <style>body{margin:0} #go{position:absolute;left:0;top:0;width:200px;height:60px}</style>
+    <button id="go" onclick="document.getElementById('out').textContent = 'clicked'">Go</button>
+    <input id="field" autofocus style="position:absolute;left:0;top:100px" oninput="document.getElementById('out').textContent = 'typed ' + this.value">
+    <p id="out">idle</p>`,
   "/overlay": `<!doctype html><title>Pseudo overlay</title>
     <style>
       .surface { position: relative; }
@@ -428,14 +433,14 @@ test("the live view follows the agent's tab, streams frames only while watched a
   const latest = () => states.at(-1)!;
 
   // A copy: deepEqual would otherwise narrow the live array's type for later checks.
-  assert.deepEqual([...states], [{ running: false, tabs: [], current: null, watching: null, following: true }], "watching never launches the browser");
+  assert.deepEqual([...states], [{ running: false, tabs: [], current: null, watching: null, following: true, handoff: null }], "watching never launches the browser");
   assert.equal(browser.running, false);
 
   const opened = await call("alpha", { action: "open", url: `${origin}/form` });
   await until("the agent's tab to be watched", () => latest().watching === "t1");
   assert.deepEqual(latest(), {
     running: true, mode: "headless", tabs: [{ id: "t1", title: "Browser form", url: `${origin}/form` }],
-    current: "t1", watching: "t1", following: true,
+    current: "t1", watching: "t1", following: true, handoff: null,
   });
   await until("a first frame", () => frames.some((frame) => frame.tabId === "t1"));
   const first = frames.find((frame) => frame.tabId === "t1")!;
@@ -503,8 +508,73 @@ test("the live view follows the agent's tab, streams frames only while watched a
   assert.equal(actions.at(-1)!.text, `Switched to ${popup}`);
   browser.closeOwner("alpha");
   await until("the closed tabs to leave the view", () => other.at(-1)?.tabs.length === 0);
-  assert.deepEqual(other.at(-1), { running: true, mode: "headless", tabs: [], current: null, watching: null, following: true });
+  assert.deepEqual(other.at(-1), { running: true, mode: "headless", tabs: [], current: null, watching: null, following: true, handoff: null });
   await browser.stop();
   await until("the stopped browser in the view", () => other.at(-1)?.running === false);
   second.close();
+});
+
+
+test("a handoff hands one tab to the operator and returns a fresh snapshot", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-handoff-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  assert.match((await call({ action: "open", url: `${origin}/handoff` })).text, /Opened tab t1/u);
+
+  // A viewer learns the tab is waiting for it, and the agent may not touch the tab meanwhile.
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+  const waiting = call({ action: "handoff", message: "Type your name, then click Go.", timeoutMs: 30_000 });
+  const latest = () => Promise.resolve(states.at(-1));
+  await eventually(latest, (state) => state?.handoff?.tabId === "t1");
+  assert.equal(states.at(-1)?.handoff?.message, "Type your name, then click Go.");
+  await assert.rejects(call({ action: "snapshot" }), /operator has taken over t1/u);
+  await assert.rejects(call({ action: "act", kind: "click", ref: "e1" }), /operator has taken over t1/u);
+
+  // Their click focuses the field, their keys type into it.
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "down", x: 10, y: 110, button: "left" });
+  browser.operator("alpha", { action: "pointer", tabId: "t1", kind: "up", x: 10, y: 110, button: "left" });
+  for (const key of ["a", "b", "c"]) browser.operator("alpha", { action: "key", tabId: "t1", key });
+  // Input for another conversation's view, or another tab, is ignored.
+  browser.operator("beta", { action: "continue", tabId: "t1" });
+  browser.operator("alpha", { action: "key", tabId: "t2", key: "x" });
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+
+  const finished = await waiting;
+  assert.equal(finished.details["outcome"], "continued");
+  assert.match(finished.text, /^The operator finished in tab t1\./u);
+  assert.match(finished.text, /typed abc/u);
+  assert.match(finished.text, /The snapshot above is current/u);
+  await eventually(latest, (state) => state?.handoff === null);
+
+  // Control is back: the agent acts on the refs the handoff returned.
+  const go = /button "Go" \[ref=(e\d+)\]/u.exec(finished.text)?.[1];
+  assert.ok(go, finished.text);
+  assert.match((await call({ action: "act", kind: "click", ref: go })).text, /^Clicked e\d+ \(button "Go"\)\./u);
+  assert.match((await call({ action: "text", selector: "#out" })).text, /clicked$/u);
+
+  // Nobody comes: the wait ends by itself and says so, and the tab is usable again.
+  const timedOut = await call({ action: "handoff", message: "Sign in.", timeoutMs: 5_000 });
+  assert.equal(timedOut.details["outcome"], "timeout");
+  assert.match(timedOut.text, /did not take over tab t1 within 5 seconds/u);
+  assert.match((await call({ action: "snapshot" })).text, /heading|button|textbox/u);
 });

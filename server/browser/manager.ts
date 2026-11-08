@@ -8,13 +8,17 @@
  * nor drive another conversation's tabs. With a mirror (`state.ts`), it seeds a
  * launching profile from another machine's cookies and per-origin storage and
  * hands back what it captured, so a login made once works on both.
+ *
+ * A `handoff` gives one tab to the operator: the agent waits, the live view
+ * forwards their pointer and keys to that tab over the same CDP session, and
+ * the call returns a fresh snapshot once they continue.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 
-import type { BrowserStatus, BrowserViewAction, BrowserViewState } from "../api/browser.ts";
+import type { BrowserStatus, BrowserViewAction, BrowserViewControl, BrowserViewState } from "../api/browser.ts";
 import type { BrowserSettings } from "../hui-settings.ts";
 import { CdpConnection, CdpError, type CdpEvent } from "./cdp.ts";
 import { defaultExecutableProbe, resolveBrowserExecutable, type BrowserExecutable, type ExecutableProbe } from "./executable.ts";
@@ -55,7 +59,7 @@ export type BrowserViewHandle = {
 
 export const BROWSER_ACTIONS = [
   "status", "tabs", "open", "navigate", "back", "forward", "reload", "focus", "close",
-  "snapshot", "act", "text", "screenshot", "console", "resize",
+  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff",
 ] as const;
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
 export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "scroll", "wait"] as const;
@@ -72,6 +76,10 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 60_000;
 /** A conversation's tabs close after this long without a browser call from it. */
 const IDLE_TAB_MS = 10 * 60_000;
+/** How long an agent waits for the operator: ten minutes, up to half an hour. */
+const DEFAULT_HANDOFF_MS = 10 * 60_000;
+const MAX_HANDOFF_MS = 30 * 60_000;
+const MIN_HANDOFF_MS = 5_000;
 /** A click that navigates starts doing so within a few frames. */
 const NAVIGATION_START_MS = 300;
 const CONSOLE_LIMIT = 200;
@@ -116,6 +124,20 @@ type Tab = {
 
 type Viewer = { owner: string; listener: BrowserViewListener; pinned: string | null; watching: string | null; closed: boolean };
 type Screencast = { viewers: number; ackedAt: number; timers: Set<ReturnType<typeof setTimeout>> };
+
+/** One tab waiting for its operator. `resolve` settles the agent's call. */
+type Handoff = {
+  tabId: string;
+  message: string;
+  since: string;
+  resolve: (outcome: HandoffOutcome) => void;
+  timer: ReturnType<typeof setTimeout>;
+  /** The mouse button the operator is holding down, for the moves between press and release. */
+  button?: "left" | "right";
+};
+/** `continued`: the operator finished. `timeout`: nobody came. `closed`: the tab went away under them.
+ * `stopped`: the browser did. */
+export type HandoffOutcome = "continued" | "timeout" | "closed" | "stopped";
 
 type Instance = {
   child: ChildProcess;
@@ -250,6 +272,23 @@ function optionalText(params: Record<string, unknown>, key: string, maximum: num
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !value || value.length > maximum) {
     throw new BrowserToolError(`${key} must be a non-empty string of at most ${maximum} characters.`);
+  }
+  return value;
+}
+
+function requiredText(params: Record<string, unknown>, key: string, maximum: number): string {
+  const value = params[key];
+  if (typeof value !== "string" || !value.trim() || value.length > maximum) {
+    throw new BrowserToolError(`${key} must be non-empty text of at most ${maximum} characters.`);
+  }
+  return value.trim();
+}
+
+/** `handoff` waits for a person, so it takes a longer, separately bounded timeout. */
+function handoffTimeoutFrom(value: unknown): number {
+  if (value === undefined) return DEFAULT_HANDOFF_MS;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < MIN_HANDOFF_MS || value > MAX_HANDOFF_MS) {
+    throw new BrowserToolError(`timeoutMs must be an integer from ${MIN_HANDOFF_MS} to ${MAX_HANDOFF_MS}.`);
   }
   return value;
 }
@@ -446,6 +485,8 @@ export class ManagedBrowser {
   readonly #epochs = new Map<string, number>();
   readonly #idle = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #viewers = new Set<Viewer>();
+  /** Each conversation's tab waiting for its operator; the agent's call waits with it. */
+  readonly #handoffs = new Map<string, Handoff>();
   /** Each conversation's latest agent action, for viewers that join later. */
   readonly #lastActions = new Map<string, BrowserViewAction>();
   readonly #casts = new Map<string, Screencast>();
@@ -500,6 +541,33 @@ export class ManagedBrowser {
         this.#setWatching(viewer, null);
       },
     };
+  }
+
+  /** Operator input for a tab the agent handed over. Anything outside that tab's pending handoff is
+   * ignored: viewing never gives a conversation control over the browser. */
+  operator(owner: string, control: BrowserViewControl): void {
+    if (control.action === "select") return;
+    const handoff = this.#handoffs.get(owner);
+    const instance = this.#instance;
+    if (!handoff || !instance || instance.connection.closed) return;
+    if (control.tabId !== handoff.tabId) return;
+    const tab = this.#tabs.get(handoff.tabId);
+    if (!tab || tab.owner !== owner) return;
+    if (control.action === "continue") { this.#settleHandoff(owner, "continued"); return; }
+    if (control.action === "key") { void this.#operatorKey(instance, tab, control.key); return; }
+    if (control.action === "wheel") {
+      void instance.connection.send("Input.dispatchMouseEvent", {
+        type: "mouseWheel", x: control.x, y: control.y, deltaX: control.deltaX, deltaY: control.deltaY,
+      }, tab.session, 5_000).catch(() => undefined);
+      return;
+    }
+    const held = control.kind === "down" ? control.button : control.kind === "up" ? undefined : handoff.button;
+    if (control.kind === "down") handoff.button = control.button;
+    else if (control.kind === "up") handoff.button = undefined;
+    void instance.connection.send("Input.dispatchMouseEvent", {
+      type: control.kind === "down" ? "mousePressed" : control.kind === "up" ? "mouseReleased" : "mouseMoved",
+      x: control.x, y: control.y, button: held ?? "none", buttons: held === "left" ? 1 : held === "right" ? 2 : 0, clickCount: 1,
+    }, tab.session, 5_000).catch(() => undefined);
   }
 
   async status(ownerTitle: (sessionId: string) => string = () => ""): Promise<BrowserStatus> {
@@ -562,6 +630,7 @@ export class ManagedBrowser {
    * the browser unused closes them. */
   closeOwner(owner: string): void {
     this.#epochs.set(owner, this.#epoch(owner) + 1);
+    this.#settleHandoff(owner, "closed");
     clearTimeout(this.#idle.get(owner));
     this.#idle.delete(owner);
     const instance = this.#instance;
@@ -660,6 +729,11 @@ export class ManagedBrowser {
     epoch: number,
   ): Promise<BrowserToolResult> {
     const name = action;
+    // A tab the operator is working in is theirs until they continue.
+    if (name !== "status" && name !== "tabs" && name !== "handoff" && this.#handoffs.has(owner)) {
+      const waiting = this.#handoffs.get(owner)!;
+      throw new BrowserToolError(`The operator has taken over ${waiting.tabId}. Call handoff to wait for them, or stop and tell the user.`, 409);
+    }
     switch (name) {
       case "status": return this.#statusResult(owner, settings);
       case "tabs": return this.#tabsResult(owner);
@@ -703,7 +777,100 @@ export class ManagedBrowser {
       case "screenshot": return this.#screenshot(owner, params, context.cwd);
       case "console": return this.#console(owner, params);
       case "resize": return this.#resize(owner, params);
+      case "handoff": return this.#handoff(owner, params);
     }
+  }
+
+  // ── Operator handoff ──────────────────────────────────────────────────────
+
+  /** Give one tab to the operator and wait for them. The live view forwards their input to that tab only;
+   * the call returns what the page looks like once they continue, or why they did not. */
+  async #handoff(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    this.#live();
+    const message = requiredText(params, "message", 500);
+    const timeoutMs = handoffTimeoutFrom(params["timeoutMs"]);
+    if (this.#handoffs.has(owner)) throw new BrowserToolError("A handoff is already waiting in this conversation.", 409);
+    const since = new Date().toISOString();
+    // Whoever was watching follows the agent, which is now this tab; an explicit pin is theirs to keep.
+    for (const viewer of this.#viewers) if (viewer.owner === owner) viewer.pinned = null;
+    const outcome = await new Promise<HandoffOutcome>((resolve) => {
+      const handoff: Handoff = {
+        tabId: tab.id, message, since, resolve,
+        timer: setTimeout(() => this.#settleHandoff(owner, "timeout"), timeoutMs),
+      };
+      handoff.timer.unref();
+      this.#handoffs.set(owner, handoff);
+      this.#emitAction(tab, `Waiting for you in tab ${tab.id}: ${message}`);
+      this.#changed(owner);
+    });
+    const waited = timeoutMs >= 60_000 ? `${Math.round(timeoutMs / 60_000)} minute${Math.round(timeoutMs / 60_000) === 1 ? "" : "s"}` : `${Math.round(timeoutMs / 1_000)} seconds`;
+    let lines: string[];
+    const live = this.#instance;
+    const current = this.#tabs.get(tab.id);
+    if (outcome === "continued" && live && !live.connection.closed && current?.owner === owner) {
+      await this.#refreshInfo(live, current);
+      const snapshot = await this.#snapshot(live, current, { maxChars: PAGE_SNAPSHOT_CHARS });
+      lines = [
+        `The operator finished in tab ${current.id}.`,
+        this.#header(current),
+        "",
+        snapshot.text || "(No accessible content matched.)",
+        ...(snapshot.truncated ? [TRUNCATED_NOTE] : []),
+        "",
+        "The snapshot above is current: act on its refs.",
+      ];
+    } else if (outcome === "timeout") {
+      lines = [`The operator did not take over tab ${tab.id} within ${waited}; they may be away. The tab is back in your control. Ask them in chat with ask_user_question, or stop and report what needs a person.`];
+    } else if (outcome === "continued") {
+      lines = [`The operator continued, but tab ${tab.id} or the browser is gone now. Call open to start again.`];
+    } else if (outcome === "closed") {
+      lines = [`Tab ${tab.id} closed while the operator had it. Open a new tab to continue.`];
+    } else {
+      lines = [`The managed browser stopped while the operator had tab ${tab.id}. Call open to start it again.`];
+    }
+    return { text: lines.join("\n"), details: { action: "handoff", tab: this.#tabDetails(tab), outcome } };
+  }
+
+  /** Ends the wait exactly once: the call, the timer and a closing tab all take this path. */
+  #settleHandoff(owner: string, outcome: HandoffOutcome): void {
+    const handoff = this.#handoffs.get(owner);
+    if (!handoff) return;
+    clearTimeout(handoff.timer);
+    this.#handoffs.delete(owner);
+    handoff.resolve(outcome);
+    // The view's activity line stops claiming the tab is waiting, and a late
+    // viewer replays how the wait ended rather than the wait itself.
+    const tab = this.#tabs.get(handoff.tabId);
+    if (tab && tab.owner === owner && (outcome === "continued" || outcome === "timeout")) {
+      this.#emitAction(tab, outcome === "continued" ? "You finished; the agent is back in control" : "No answer; the agent has the tab back");
+    }
+    this.#changed(owner);
+  }
+
+  /** Their keys, through the same CDP input path the agent's actions use. Named keys and single letters
+   * and digits arrive as key events; every other character is inserted as text. */
+  async #operatorKey(instance: Instance, tab: Tab, key: string): Promise<void> {
+    const characters = [...key];
+    if (characters.length === 1 && !/^[a-z0-9]$/iu.test(key)) {
+      await instance.connection.send("Input.insertText", { text: key }, tab.session, 5_000).catch(() => undefined);
+      return;
+    }
+    let stroke: KeyStroke;
+    try {
+      stroke = parseKey(key === " " ? "space" : key);
+    } catch (error) {
+      if (error instanceof KeyParseError) return;
+      throw error;
+    }
+    const base = {
+      key: stroke.key, code: stroke.code, modifiers: stroke.modifiers,
+      ...(stroke.keyCode ? { windowsVirtualKeyCode: stroke.keyCode, nativeVirtualKeyCode: stroke.keyCode } : {}),
+    };
+    await instance.connection.send("Input.dispatchKeyEvent", {
+      type: stroke.text ? "keyDown" : "rawKeyDown", ...base, ...(stroke.text ? { text: stroke.text, unmodifiedText: stroke.text } : {}),
+    }, tab.session, 5_000).catch(() => undefined);
+    await instance.connection.send("Input.dispatchKeyEvent", { type: "keyUp", ...base }, tab.session, 5_000).catch(() => undefined);
   }
 
   /** Tells live viewers what the agent just did; act reports its own, with the pointer position. */
@@ -972,6 +1139,7 @@ export class ManagedBrowser {
   }
 
   #forgetTabs(): void {
+    for (const owner of [...this.#handoffs.keys()]) this.#settleHandoff(owner, "stopped");
     this.#tabs.clear();
     this.#byTarget.clear();
     this.#bySession.clear();
@@ -1017,6 +1185,7 @@ export class ManagedBrowser {
     const next = viewer.pinned ?? current;
     const changed = this.#setWatching(viewer, next);
     const instance = this.#instance;
+    const handoff = this.#handoffs.get(viewer.owner);
     const state: BrowserViewState = {
       running: instance !== undefined,
       ...(instance ? { mode: instance.headless ? "headless" as const : "windowed" as const } : {}),
@@ -1024,6 +1193,7 @@ export class ManagedBrowser {
       current,
       watching: viewer.watching,
       following: viewer.pinned === null,
+      handoff: handoff ? { tabId: handoff.tabId, message: handoff.message, since: handoff.since } : null,
     };
     this.#notify(viewer, (listener) => listener.state(state));
     if (replay) this.#notify(viewer, (listener) => listener.action(replay));
@@ -1286,6 +1456,7 @@ export class ManagedBrowser {
   #drop(targetId: string): void {
     const tab = this.#byTarget.get(targetId);
     if (!tab) return;
+    if (this.#handoffs.get(tab.owner)?.tabId === tab.id) this.#settleHandoff(tab.owner, "closed");
     this.#tabs.delete(tab.id);
     this.#byTarget.delete(targetId);
     this.#bySession.delete(tab.session);

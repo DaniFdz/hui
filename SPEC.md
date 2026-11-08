@@ -992,13 +992,28 @@ preview, or the globe button in the conversation header, opens the conversation'
 **browser view** in its Work pane (at most one per conversation; also launched
 from the pane's **+** menu, Ctrl+Alt+Shift+B / ⌥⇧⌘B): a larger live view beside the chat
 that follows the agent's tab or watches another of the conversation's tabs until
-Follow agent. Both are
-read-only. Frames come from a CDP screencast that runs only while someone
+Follow agent. Both only watch, except while the agent has handed a tab over (see
+below). Frames come from a CDP screencast that runs only while someone
 watches and only when the page repaints (at most about ten frames a second).
 Headless tabs each get their own window, so conversations never hide each
 other's pages. A browser on a worker is not streamed here: its tabs stay on that
 machine, no preview or browser view shows them, and what the agent sees arrives
 as tool results, a screenshot included (which `present_media` shows in the chat).
+
+**A handoff is the operator's turn.** When only a person can continue — a
+password, 2FA, a passkey, a payment or a bot check — the agent calls `handoff`
+with one sentence saying what to do and waits: ten minutes by default, at most
+thirty. That tab is the operator's until they continue. It stays open, the
+live view shows Your turn with the message and a Continue button, and every
+other agent action on the browser is refused. The browser view forwards the
+operator's pointer, wheel and keys to that one tab over the existing live-view
+socket; nothing else about a view becomes interactive, and input is ignored once
+the wait ends. Continue returns the page as it is then — title, URL and a fresh
+snapshot — so the agent acts on current refs rather than guessing whether the
+human step worked. A wait nobody answers ends with the tab back in the agent's
+control and a result saying the operator may be away; a tab that closes or a
+browser that stops ends it too. The chat's preview card carries the same
+message and opens the browser view where the operator can act.
 
 No new dependency is added: HUI speaks CDP directly. Browser settings are an
 additive `browser` block in `settings.json`; the browser view is a
