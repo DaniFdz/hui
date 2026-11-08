@@ -7,7 +7,7 @@ import { isIP } from "node:net";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { EXTENSIONS_DIR, EXTENSIONS_FILE } from "../server/paths.ts";
+import { EXTENSIONS_BUNDLED_DIR, EXTENSIONS_DIR, EXTENSIONS_FILE } from "../server/paths.ts";
 import { readExtensions, writeExtensions } from "../server/extensions/store.ts";
 import { request } from "./gateway-client.ts";
 import { allowedHostsFromEnv, hostName, tailnetFromStatus } from "../server/host.ts";
@@ -48,6 +48,7 @@ export const HELP = `Usage:
   hui extension reload <id> [--json]
   hui extension add <path> [--link] [--json]
   hui extension remove <id> [--delete] [--json]
+  hui extension eject <id> [--json]
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
   hui bot add [--name <name>] [--title <text>] [--description <text>] [--tagging <anyone|mention|nobody>]
@@ -251,11 +252,12 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   // `workers edit` and `workers remove` name the worker they act on.
   const target = command === "workers edit" || command === "workers remove" ? extra.shift()
     : command === "extension enable" || command === "extension disable" || command === "extension reload"
-      || command === "extension add" || command === "extension remove" ? extra.shift() : undefined;
+      || command === "extension add" || command === "extension remove" || command === "extension eject" ? extra.shift() : undefined;
   if ((command === "extension enable" || command === "extension disable" || command === "extension reload" || command === "extension remove") && !target) {
     throw new Error(`${command} needs an extension id: see hui extension list.`);
   }
   if (command === "extension add" && !target) throw new Error("extension add needs a directory: hui extension add <path> [--link].");
+  if (command === "extension eject" && !target) throw new Error("extension eject needs an extension id: see hui extension list.");
   // A bot command's operands: the bot, then a message or a routine; a schedule command's, the schedule.
   const operands = bots || schedules ? extra.splice(0) : [];
   // `hui completion <shell>` takes exactly one shell; every other command's words are checked by the table.
@@ -438,6 +440,12 @@ export async function main(args: string[], installation: Installation): Promise<
     const action = command.slice("workers ".length);
     const result = await workersCommand(status.url, action, target, values);
     if (action === "list" && !values.json) console.log(formatWorkers(result as Parameters<typeof formatWorkers>[0])); else report(result);
+    return;
+  }
+  if (command === "extension eject") {
+    const { ejectExtension } = await import("./extensions.ts");
+    const ejected = await ejectExtension(EXTENSIONS_BUNDLED_DIR, EXTENSIONS_DIR, target!);
+    report(values.json ? ejected : `Ejected ${ejected.id} to ${ejected.path}; enable it when you are ready.`);
     return;
   }
   if (command === "extension add" || command === "extension remove") {

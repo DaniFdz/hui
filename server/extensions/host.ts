@@ -13,7 +13,7 @@ import {
   CALL_TIMEOUT_MS, CRASH_LIMIT, CRASH_WINDOW_MS, EXTENSION_PROTOCOL_VERSION, HANDSHAKE_TIMEOUT_MS, RESTART_BACKOFF_MS,
   decodeFrame, encodeFrame, type HostFrame, type ParentFrame,
 } from "./protocol.ts";
-import type { ExtensionPromptSection } from "./registry.ts";
+import type { ExtensionGatewayContext, ExtensionPromptSection } from "./registry.ts";
 
 const STDERR_LIMIT = 4_096;
 const STOP_GRACE_MS = 2_000;
@@ -40,6 +40,8 @@ export type ExtensionHostOptions = {
   directory: string;
   callTimeoutMs?: number;
   record?: (event: { area: "gateway"; level: "info" | "warning"; action: string; summary: string; detail?: string }) => void;
+  /** The read-only gateway data a process-mode route may ask for; resolved at call time. */
+  context?: () => ExtensionGatewayContext | undefined;
 };
 
 /** A queue an async iterable reads while the child's `event` frames arrive. */
@@ -85,6 +87,7 @@ export class ExtensionHost {
   readonly id: string;
   #directory: string;
   #record: NonNullable<ExtensionHostOptions["record"]>;
+  #context: NonNullable<ExtensionHostOptions["context"]>;
   #callTimeoutMs: number;
   #child?: ChildProcessWithoutNullStreams;
   #routes: readonly ExtensionRouteInfo[] = [];
@@ -105,6 +108,7 @@ export class ExtensionHost {
     this.id = options.id;
     this.#directory = options.directory;
     this.#record = options.record ?? (() => undefined);
+    this.#context = options.context ?? (() => undefined);
     this.#callTimeoutMs = options.callTimeoutMs ?? CALL_TIMEOUT_MS;
   }
 
@@ -293,6 +297,9 @@ export class ExtensionHost {
       case "event":
         this.#pending.get(frame.id)?.push?.(frame.event);
         return;
+      case "context":
+        void this.#answerContext(frame);
+        return;
       case "end": {
         const pending = this.#pending.get(frame.id);
         if (!pending) return;
@@ -313,6 +320,22 @@ export class ExtensionHost {
       }
       default:
         return;
+    }
+  }
+
+  async #answerContext(frame: Extract<HostFrame, { t: "context" }>): Promise<void> {
+    const context = this.#context();
+    try {
+      if (!context) throw new Error("The HUI gateway context is not available.");
+      if (frame.capability === "github.contributions") {
+        const args = frame.args && typeof frame.args === "object" ? frame.args as { year?: unknown } : {};
+        const year = typeof args.year === "number" ? args.year : undefined;
+        this.#write({ t: "context-result", id: frame.id, value: await context.github.contributions(year) });
+        return;
+      }
+      throw new Error(`unknown gateway context capability: ${frame.capability}`);
+    } catch (error) {
+      this.#write({ t: "context-result", id: frame.id, error: error instanceof Error ? error.message : String(error) });
     }
   }
 

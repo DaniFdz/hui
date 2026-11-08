@@ -89,3 +89,15 @@ export async function removeExtension(root: string, id: string, options: { delet
   else await rm(path, { recursive: true, force: true });
   return { path, deleted: true };
 }
+
+/** Copies a packaged extension into the config directory without enabling it; an existing copy wins. */
+export async function ejectExtension(bundledRoot: string, root: string, id: string): Promise<{ id: string; path: string }> {
+  if (!extensionId(id)) throw new Error(`invalid extension id: ${id}`);
+  const source = join(bundledRoot, id);
+  if (!(await stat(source).catch(() => undefined))?.isDirectory()) throw new Error(`no packaged extension named ${id}`);
+  const target = join(root, id);
+  if (await lstat(target).catch(() => undefined)) throw new Error(`extension ${id} already exists at ${target}; remove it first`);
+  await mkdir(root, { recursive: true });
+  await cp(source, target, { recursive: true });
+  return { id, path: target };
+}

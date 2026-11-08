@@ -5,14 +5,14 @@
  * effect on any other route. Enablement is `extensions.json` (store.ts); nothing here writes it but `setEnabled`.
  */
 import { readFileSync } from "node:fs";
-import { readFile, readdir, realpath, stat } from "node:fs/promises";
+import { cp, readFile, readdir, realpath, stat } from "node:fs/promises";
 import { findPackageJSON } from "node:module";
 import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import type { ExtensionRouteInfo, ExtensionStatus, ExtensionsResponse } from "../api/extensions.ts";
 import type { JsonResult, RouteRequest, RouteResult } from "../http/route.ts";
-import { EXTENSIONS_DIR, EXTENSIONS_FILE } from "../paths.ts";
+import { EXTENSIONS_BUNDLED_DIR, EXTENSIONS_DEFAULTS_FILE, EXTENSIONS_DIR, EXTENSIONS_FILE } from "../paths.ts";
 import { ExtensionHost, HostUnavailableError } from "./host.ts";
 import { MAX_PROCESS_EXTENSIONS } from "./protocol.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
@@ -32,8 +32,11 @@ export class UnknownExtensionError extends Error {
   }
 }
 
+type Installed = { readonly directory: string; readonly bundled: boolean };
+
 type Loaded = {
   readonly id: string;
+  readonly directory: string;
   readonly manifest: ExtensionManifest;
   readonly tools: readonly ExtensionTool[];
   /** Set for a `mode: "process"` extension: its routes, prompt text and answers come from this child. */
@@ -49,6 +52,9 @@ type RecordEvent = typeof recordDiagnosticEvent;
 export type ExtensionsServiceOptions = {
   dir?: string;
   file?: string;
+  /** Packaged extensions beside the server; a config extension with the same id wins. */
+  bundledDir?: string;
+  defaultsFile?: string;
   record?: RecordEvent;
   /** The running HUI version `engines.hui` is checked against; read from package.json by default. */
   huiVersion?: string;
@@ -88,6 +94,8 @@ export type InvokeInput = {
 export type ExtensionsService = {
   list(): Promise<ExtensionsResponse>;
   setEnabled(id: string, enabled: boolean): Promise<ExtensionStatus>;
+  /** Copy a packaged extension to the config directory; the copy shadows it. */
+  eject(id: string): Promise<{ path: string }>;
   /** Re-imports one extension's module now; a failed reload withdraws its routes and reports `failed`. */
   reload(id: string): Promise<ExtensionStatus>;
   /** Stops every process-mode host; the gateway calls it on shutdown. */
@@ -116,6 +124,8 @@ function message(error: unknown): string {
 export function createExtensionsService(options: ExtensionsServiceOptions = {}): ExtensionsService {
   const dir = options.dir ?? EXTENSIONS_DIR;
   const file = options.file ?? EXTENSIONS_FILE;
+  const bundledDir = options.bundledDir ?? EXTENSIONS_BUNDLED_DIR;
+  const defaultsFile = options.defaultsFile ?? EXTENSIONS_DEFAULTS_FILE;
   const record = options.record ?? recordDiagnosticEvent;
   const huiVersion = options.huiVersion ?? packageVersion();
   const loaded = new Map<string, Loaded>();
@@ -124,22 +134,43 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
   let gatewayContext: ExtensionGatewayContext | undefined;
   let chain: Promise<void> = Promise.resolve();
 
-  async function scan(): Promise<Map<string, string>> {
-    const found = new Map<string, string>();
+  async function scanRoot(root: string, bundled: boolean, found: Map<string, Installed>): Promise<void> {
     let entries;
     try {
-      entries = await readdir(dir, { withFileTypes: true });
+      entries = await readdir(root, { withFileTypes: true });
     } catch {
-      return found;
+      return;
     }
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       if (found.size >= MAX_EXTENSION_DIRECTORIES) break;
       if (!entry.isDirectory()) continue;
       const id = extensionId(entry.name);
-      if (!id) continue;
-      found.set(id, join(dir, entry.name));
+      if (!id || found.has(id)) continue;
+      found.set(id, { directory: join(root, entry.name), bundled });
     }
+  }
+
+  /** Config extensions first, then packaged ones that do not override them. */
+  async function scan(): Promise<Map<string, Installed>> {
+    const found = new Map<string, Installed>();
+    await scanRoot(dir, false, found);
+    if (bundledDir !== dir) await scanRoot(bundledDir, true, found);
     return found;
+  }
+
+  async function defaultIds(): Promise<string[]> {
+    try {
+      const raw = JSON.parse(await readFile(defaultsFile, "utf8")) as { enabled?: unknown };
+      if (!Array.isArray(raw.enabled)) return [];
+      return raw.enabled.flatMap((value) => typeof value === "string" && extensionId(value) ? [value] : []);
+    } catch {
+      return [];
+    }
+  }
+
+  async function enabledIds(store: { enabled: readonly string[] }): Promise<Set<string>> {
+    const exists = await stat(file).then(() => true, () => false);
+    return new Set([...store.enabled, ...(exists ? [] : await defaultIds())]);
   }
 
   async function readManifest(directory: string): Promise<{ manifest: ExtensionManifest } | { error: string }> {
@@ -154,7 +185,8 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return parsed.ok ? { manifest: parsed.value } : { error: parsed.error };
   }
 
-  async function load(id: string, directory: string, bust = false): Promise<{ loaded: Loaded } | { error: string }> {
+  async function load(id: string, installed: Installed, bust = false): Promise<{ loaded: Loaded } | { error: string }> {
+    const directory = installed.directory;
     const read = await readManifest(directory);
     if ("error" in read) return { error: read.error };
     const requires = read.manifest.engines?.hui;
@@ -164,7 +196,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     if (read.manifest.mode === "process") {
       const count = [...loaded.values()].filter((entry) => entry.host !== undefined).length;
       if (count >= MAX_PROCESS_EXTENSIONS) return { error: `at most ${MAX_PROCESS_EXTENSIONS} process-mode extensions can run at once` };
-      const host = new ExtensionHost({ id, directory, record });
+      const host = new ExtensionHost({ id, directory, record, context: () => gatewayContext });
       const started = await host.start();
       if (!started.ok) {
         await host.stop();
@@ -173,6 +205,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
       return {
         loaded: {
           id,
+          directory,
           manifest: read.manifest,
           tools: [],
           routes: [],
@@ -222,6 +255,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return {
       loaded: {
         id,
+        directory,
         manifest: read.manifest,
         tools,
         routes: routes.value,
@@ -253,7 +287,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
         summary: store.error,
       });
     }
-    const enabled = new Set(store.enabled);
+    const enabled = await enabledIds(store);
     for (const id of [...loaded.keys()]) {
       if (!enabled.has(id)) {
         await loaded.get(id)?.host?.stop();
@@ -263,13 +297,13 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     }
     const directories = await scan();
     for (const id of enabled) {
-      const directory = directories.get(id);
-      if (!directory) {
+      const installed = directories.get(id);
+      if (!installed) {
         fail(id, "no extension directory");
         continue;
       }
       if (loaded.has(id)) continue;
-      const result = await load(id, directory);
+      const result = await load(id, installed);
       if ("error" in result) {
         fail(id, result.error);
         continue;
@@ -281,10 +315,10 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
 
   async function reload(id: string): Promise<ExtensionStatus> {
     if (!extensionId(id)) throw new UnknownExtensionError(id);
-    const directory = (await scan()).get(id);
-    if (!directory) throw new UnknownExtensionError(id);
+    const installed = (await scan()).get(id);
+    if (!installed) throw new UnknownExtensionError(id);
     await loaded.get(id)?.host?.stop();
-    const result = await load(id, directory, true);
+    const result = await load(id, installed, true);
     if ("error" in result) fail(id, result.error);
     else {
       loaded.set(id, result.loaded);
@@ -307,9 +341,9 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return run;
   }
 
-  async function statusOf(id: string, storeEnabled: ReadonlySet<string>, directories: ReadonlyMap<string, string>): Promise<ExtensionStatus> {
+  async function statusOf(id: string, storeEnabled: ReadonlySet<string>, directories: ReadonlyMap<string, Installed>): Promise<ExtensionStatus> {
     const enabled = storeEnabled.has(id);
-    const directory = directories.get(id);
+    const directory = directories.get(id)?.directory;
     const active = loaded.get(id);
     const host = active?.host;
     const base = {
@@ -346,8 +380,8 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
   async function list(): Promise<ExtensionsResponse> {
     const store = await readExtensions(file);
     const directories = await scan();
-    const enabled = new Set(store.enabled);
-    const ids = [...new Set([...directories.keys(), ...store.enabled, ...loaded.keys()])].sort();
+    const enabled = await enabledIds(store);
+    const ids = [...new Set([...directories.keys(), ...enabled, ...loaded.keys()])].sort();
     const statuses: ExtensionStatus[] = [];
     for (const id of ids) statuses.push(await statusOf(id, enabled, directories));
     return { extensions: statuses, ...(store.error ? { storeError: store.error } : {}) };
@@ -355,14 +389,9 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
 
   async function setEnabled(id: string, enabled: boolean): Promise<ExtensionStatus> {
     if (!extensionId(id)) throw new UnknownExtensionError(id);
-    try {
-      if (!(await stat(join(dir, id))).isDirectory()) throw new UnknownExtensionError(id);
-    } catch (error) {
-      if (error instanceof UnknownExtensionError) throw error;
-      throw new UnknownExtensionError(id);
-    }
+    if (!(await scan()).get(id)) throw new UnknownExtensionError(id);
     const store = await readExtensions(file);
-    const next = new Set(store.enabled);
+    const next = await enabledIds(store);
     if (enabled) next.add(id);
     else next.delete(id);
     await writeExtensions([...next], file);
@@ -418,9 +447,20 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     gatewayContext = context;
   }
 
+  /** Copies a packaged extension into the config directory; the operator's copy then wins. */
+  async function eject(id: string): Promise<{ path: string }> {
+    if (!extensionId(id)) throw new UnknownExtensionError(id);
+    const source = join(bundledDir, id);
+    if (!(await stat(source).then((info) => info.isDirectory(), () => false))) throw new UnknownExtensionError(id);
+    const target = join(dir, id);
+    if (await stat(target).then(() => true, () => false)) throw new Error(`extension ${id} is already in ${target}`);
+    await cp(source, target, { recursive: true });
+    return { path: target };
+  }
+
   async function panelRoot(id: string): Promise<string | undefined> {
     const active = loaded.get(id);
-    return active?.manifest.ui ? join(dir, id, "ui") : undefined;
+    return active?.manifest.ui ? join(active.directory, "ui") : undefined;
   }
 
   async function installed(id: string): Promise<boolean> {
@@ -453,12 +493,13 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
             : { status: 400, body: { error: "body must be JSON" } };
         }
       }
+      const path = request.query.size ? `${subpath}?${request.query.toString()}` : subpath;
       try {
         if (declared.stream) {
           return {
             status: 200,
             sse: {
-              events: active.host.stream(method, subpath, body, request.signal),
+              events: active.host.stream(method, path, body, request.signal),
               onError: (reason) => record({
                 area: "gateway", level: "error", action: "extension_stream_failed",
                 summary: `extension ${id} stream ended: ${reason}`, detail: `${method} ${subpath}`,
@@ -466,7 +507,7 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
             },
           };
         }
-        const answer = await active.host.call(method, subpath, body);
+        const answer = await active.host.call(method, path, body);
         return { status: answer.status, body: answer.body };
       } catch (error) {
         if (error instanceof HostUnavailableError) return { status: 503, body: { error: "extension process is restarting" } };
@@ -539,5 +580,5 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
     return { status: checked.value.status, body: checked.value.body };
   }
 
-  return { list, setEnabled, reload, reconcile, stop, invoke, panelRoot, promptText, agentTools, contributions, toolFor, setGatewayContext };
+  return { list, setEnabled, eject, reload, reconcile, stop, invoke, panelRoot, promptText, agentTools, contributions, toolFor, setGatewayContext };
 }

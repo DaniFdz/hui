@@ -5,8 +5,7 @@ and context primitives. The Contributions port is P8 and is not accepted here.
 
 ## State
 
-**Status:** DONE (P7 primitives; A4 and the process context proxy are P8
-deviations) · **Branch:** `danifdz/hui-page-extensions` (stacked on
+**Status:** DONE (P7 primitives) · **Branch:** `danifdz/hui-page-extensions` (stacked on
 `danifdz/hui-extendability`) · **HEAD:** `2e229bb4` · **CI:** green.
 
 ## P7 acceptance criteria
@@ -18,11 +17,12 @@ deviations) · **Branch:** `danifdz/hui-page-extensions` (stacked on
   `/ext/<id>`; the page renders in a sandboxed frame that receives the theme and
   may call only its declared routes through the bridge.
   `navigate` accepts an allowlisted HUI path and refuses everything else.
-- [x] **P7-A3** `context.hui` is a typed read-only facade on every in-process
-  route handler: `github.contributions` first; it returns plain JSON, never a
-  handle. The process-mode proxy moved to P8 (deviation).
-- [x] **P7-A4** Moved to P8: packaged extensions, default enablement, eject and the
-  doctor checks need the first shipped page.
+- [x] **P7-A3** `context.hui` is a typed read-only facade on every route handler:
+  `github.contributions` first; it returns plain JSON, never a handle, and a
+  process-mode route asks the parent over the host protocol.
+- [x] **P7-A4** Packaged extensions are discovered beside the config ones, defaults
+  apply until `extensions.json` exists, a config copy overrides, eject copies and
+  doctor reports an invalid override or a stale copy.
 - [x] **P7-A5** A fixture page extension proves the contract in a shared e2e test:
   navigation, sandbox attributes, a route answer through the bridge, disable, and an
   invalid `navigate` target.
@@ -66,24 +66,28 @@ Result: 15 tests passed (a route reads context.hui.github.contributions)
 Exit: 0
 ```
 
-**P7-A6.** SPEC.md and docs/guide.md gained the page and in-process context
-contracts; `skills/build-hui-extension` teaches both.
+**P7-A6.** SPEC.md and docs/guide.md gained the page, context and packaged/eject
+contracts; `skills/build-hui-extension` teaches pages and context.
 
-**P7-A7.** `npm run typecheck` 0; `npm run build` 0; `npm run api:schema` no
-diff. Full suite: 34 failed / 2912 passed against the 33-failure environment
-baseline; the extra `workers.test.ts` "tracked routine receipt" failure passed
-alone and is the known remote-worker flake. CI at `2e229bb4`: Test, web 1/4–4/4,
-catalogue, package and lockfile pass. Manual proof: `/ext/hello` at 1440×900 and
-390×844, desktop/mobile screenshots outside the tree (`page-desktop.png`,
-`page-mobile.png`), showing the sidebar entry, the sandboxed page and
-`hello, Ada` from its route.
+**P7-A4 / process context.** `server/extensions/service.test.ts` covers a packaged
+page enabled by default until the store exists, a config override and eject;
+`server/extensions/process.test.ts` covers `context.hui.github.contributions`
+through the parent; `cli/extensions.test.ts` covers eject;
+`cli/doctor-extensions.test.ts` covers the packaged default, a broken override and
+a stale copy.
+
+**P7-A7.** `npm run typecheck` 0; `npm run build` 0 and `build/extensions`
+holds the packaged defaults; `npm run api:schema` no diff. Focused extension,
+process, CLI and doctor tests: 50 passed. Full suite: 33 failed / 2916 passed, the
+known environment set only. `npm run e2e -- --tag PAGE-047` 1/1 passes. Manual
+proof: `/ext/hello` at 1440×900 and 390×844, screenshots outside the tree
+(`page-desktop.png`, `page-mobile.png`), showing the sidebar entry, the sandboxed
+page and `hello, Ada` from its route. CI is run at this HEAD after the commit.
 
 ## Deviations
 
-- **P7-A4 moved to P8.** Packaged discovery, default enablement, eject and the
-  doctor checks only matter once a real page ships; they move with the
-  Contributions port.
-- **P7-A3 is in-process only.** The process-mode context proxy needs a new
-  bidirectional host frame; it moves to P8. A process-mode route gets a facade that
-  refuses with a named error today.
+- The process context proxy adds `context` / `context-result` frames to the
+  versioned host protocol; the protocol version stays 1 because the pair is
+  additive. The process call path now passes the query string, which earlier
+  process routes silently dropped.
 

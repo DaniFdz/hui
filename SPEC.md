@@ -2503,6 +2503,11 @@ trusted local module can answer JSON routes on the gateway.
   crashes in five minutes leave it `failed` until a reload. The child runs as the
   same user with the same file access: crash isolation, not a sandbox. Settings shows
   the mode and restart count.
+- **Packaged extensions.** HUI ships extensions beside `skills/`; `extensions/defaults.json`
+  lists the packaged page ids a fresh config enables until `extensions.json` exists.
+  A config extension with the same id overrides the packaged one, and `hui extension
+  eject <id>` copies a packaged extension into the config directory for editing.
+  `hui doctor` reports an invalid override, a stale copy and a failed default.
 - **Lifecycle.** A manifest may declare its `version` and the HUI `engines.hui`
   range; a gateway outside it refuses to load with a named reason. `POST
   /__hui/ext/:id/reload` re-imports a changed module (routes and panel files at
@@ -2515,8 +2520,8 @@ trusted local module can answer JSON routes on the gateway.
 - **Gateway context.** A route handler receives `context.hui`, a read-only facade
   for gateway data: `github.contributions` first, with sessions and host metrics
   following. It returns plain JSON, never a service handle; in-process handlers call
-  the gateway's own services. Process-mode context is a follow-up. The facade is
-  additive within `apiVersion: 1`.
+  the gateway's own services, and a process-mode handler asks the supervising gateway
+  over the host protocol. The facade is additive within `apiVersion: 1`.
 - **Streaming.** A route may declare `stream: true` and return an async iterable of
   events; HUI writes them as server-sent events with a heartbeat, caps (ten
   minutes, 5 000 events, 256 KiB each, 5 MiB total), an `error` event on a throw or

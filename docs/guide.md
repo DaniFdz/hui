@@ -1262,6 +1262,11 @@ and 4 seconds while routes answer 503, and three crashes in five minutes leave i
 failed until a reload. That is crash isolation, not a sandbox; tools require the
 default in-process mode.
 
+HUI ships some extensions in its package, beside `skills/`; a packaged page
+listed in `extensions/defaults.json` is on until `extensions.json` exists. A config
+copy with the same id overrides it; `hui extension eject <id>` copies the packaged
+source into your config directory without enabling it, so you can edit it and reload.
+
 `hui extension add <path> [--link]` validates a local module and installs it
 (copied, or linked with `--link`), enabling it now when the gateway runs and at the
 next start otherwise; `hui extension remove <id>` needs it disabled, and only

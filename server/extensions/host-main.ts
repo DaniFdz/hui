@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
 
-import { checkedResult, checkedStream, entryPath, parseManifest, parseRoutes, type ExtensionRoute } from "./registry.ts";
+import { checkedResult, checkedStream, entryPath, parseManifest, parseRoutes, type ExtensionGatewayContext, type ExtensionRoute } from "./registry.ts";
 import {
   CALL_TIMEOUT_MS, EXTENSION_PROTOCOL_VERSION, decodeFrame, encodeFrame, type HostFrame, type ParentFrame,
 } from "./protocol.ts";
@@ -29,6 +29,39 @@ function message(error: unknown): string {
 }
 
 let routes: readonly ExtensionRoute[] = [];
+let nextContextId = 1;
+const contextPending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+
+/** Ask the supervising gateway for one context capability; the parent answers on this stdin. */
+function callContext(capability: string, args: unknown, signal: AbortSignal): Promise<unknown> {
+  const id = nextContextId++;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      contextPending.delete(id);
+      reject(new Error("the gateway context call timed out"));
+    }, CALL_TIMEOUT_MS);
+    const abort = () => {
+      clearTimeout(timer);
+      contextPending.delete(id);
+      reject(new Error("the gateway context call was cancelled"));
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    contextPending.set(id, {
+      resolve: (value) => { clearTimeout(timer); signal.removeEventListener("abort", abort); resolve(value); },
+      reject: (error) => { clearTimeout(timer); signal.removeEventListener("abort", abort); reject(error); },
+      timer,
+    });
+    send({ t: "context", id, capability, args });
+  });
+}
+
+function processContext(signal: AbortSignal): ExtensionGatewayContext {
+  return {
+    github: {
+      contributions: async (year) => await callContext("github.contributions", { year }, signal),
+    },
+  };
+}
 
 async function main(): Promise<void> {
   let raw: unknown;
@@ -79,29 +112,28 @@ function routeFor(method: string, path: string): ExtensionRoute | undefined {
 }
 
 async function call(frame: Extract<ParentFrame, { t: "call" | "stream" }>, signal: AbortSignal): Promise<void> {
-  const route = routeFor(frame.method, frame.path);
+  const question = frame.path.indexOf("?");
+  const path = question < 0 ? frame.path : frame.path.slice(0, question);
+  const route = routeFor(frame.method, path);
   if (!route) {
-    send({ t: "error", id: frame.id, error: `unknown extension route: ${frame.path}` });
+    send({ t: "error", id: frame.id, error: `unknown extension route: ${path}` });
     return;
   }
   if ((frame.t === "stream") !== route.stream) {
     send({ t: "error", id: frame.id, error: "the route and the call disagree about streaming" });
     return;
   }
-  const question = frame.path.indexOf("?");
   const url = new URL(`http://extension/${frame.path}`);
   let result: unknown;
   try {
     result = await route.handle({
       method: frame.method,
-      path: frame.path,
+      path,
       query: question < 0 ? new URLSearchParams() : url.searchParams,
       body: frame.body,
       signal,
       extension: "process",
-      hui: {
-        github: { contributions: async () => { throw new Error("context.hui is not available to a process-mode extension yet"); } },
-      },
+      hui: processContext(signal),
     });
   } catch (error) {
     send({ t: "error", id: frame.id, error: message(error) });
@@ -136,6 +168,14 @@ const controllers = new Map<number, AbortController>();
 createInterface({ input: process.stdin }).on("line", (line) => {
   const frame = decodeFrame(line);
   if (!frame || !("t" in frame)) return;
+  if (frame.t === "context-result") {
+    const pending = contextPending.get(frame.id);
+    if (!pending) return;
+    contextPending.delete(frame.id);
+    if (frame.error !== undefined) pending.reject(new Error(frame.error));
+    else pending.resolve(frame.value);
+    return;
+  }
   if (frame.t === "stop") process.exit(0);
   if (frame.t === "cancel") {
     controllers.get(frame.id)?.abort();
