@@ -67,6 +67,7 @@ import {
   sessionList,
   sessionRoutes,
   settingsRoutes,
+  staffRoutes,
   taskSuggestionRoutes,
   terminalRoutes,
   themeRoutes,
@@ -384,6 +385,11 @@ async function handleRequest(
 
   if (path === CALLS_ROUTE || BOT_CALLS.test(path)) {
     await serveCallRoute(response, routed);
+    return;
+  }
+
+  if (path === "/__hui/staff/chiefs") {
+    sendRouteResult(response, path, await staffRoutes.handle(routed));
     return;
   }
 

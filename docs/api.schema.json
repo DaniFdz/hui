@@ -2171,6 +2171,9 @@
         "description": {
           "type": "string"
         },
+        "group": {
+          "type": "string"
+        },
         "tagging": {
           "$ref": "#/$defs/BotTagging"
         },
@@ -2461,6 +2464,9 @@
           "type": "string"
         },
         "description": {
+          "type": "string"
+        },
+        "group": {
           "type": "string"
         },
         "tagging": {
@@ -3442,6 +3448,9 @@
           "type": "string"
         },
         "description": {
+          "type": "string"
+        },
+        "group": {
           "type": "string"
         },
         "tagging": {
@@ -10614,6 +10623,21 @@
         }
       }
     },
+    "StaffChiefInput": {
+      "type": "object",
+      "required": [
+        "group",
+        "cwd"
+      ],
+      "properties": {
+        "group": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        }
+      }
+    },
     "SubagentStatus": {
       "anyOf": [
         {
@@ -14446,6 +14470,9 @@
       "ThemeImportResponse",
       "ThemeRef",
       "ThemesResponse"
+    ],
+    "staff": [
+      "StaffChiefInput"
     ]
   },
   "x-hui-routes": [
@@ -15827,6 +15854,16 @@
       },
       "response": {
         "$ref": "#/$defs/Settings"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/staff/chiefs",
+      "request": {
+        "$ref": "#/$defs/StaffChiefInput"
+      },
+      "response": {
+        "$ref": "#/$defs/BotResponse"
       }
     },
     {

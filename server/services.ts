@@ -13,6 +13,7 @@ import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots/b
 import { BotService } from "./bots/service.ts";
 import { remoteBots } from "./bots/remote.ts";
 import { createBotRoutes } from "./routes/bots.ts";
+import { createStaffRoutes } from "./routes/staff.ts";
 import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
 import { accountFullName, BotExportService } from "./bots/export.ts";
 import { nameFromUsername } from "./bots/templates/cleanup.ts";
@@ -239,6 +240,15 @@ export const bots = new BotService({
     },
   },
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+});
+export const staffRoutes = createStaffRoutes({
+  bots: () => botRegistry.list(),
+  getBot: (id) => bots.get(id),
+  createBot: (body) => bots.create(body),
+  restoreBot: (id) => bots.restore(id),
+  skills: localBotSkills(),
+  readSettings: readHuiSettings,
+  writeSettings: writeHuiSettings,
 });
 export const botRoutes = createBotRoutes({
   service: bots,

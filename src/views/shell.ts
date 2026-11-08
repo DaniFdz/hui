@@ -110,7 +110,7 @@ export function unbindDrawerMedia(drawer: HTMLElement) {
 }
 
 export type NavId = "home" | "surface" | "kanban" | "bot";
-export type GroupMenuAction = "defaults" | "rename" | "new" | "delete";
+export type GroupMenuAction = "defaults" | "rename" | "new" | "delete" | "chief";
 export type SessionCopyAction = "link" | "markdown" | "id" | "jira";
 export type SessionOpenAction = "tab" | "window" | "editor" | "jira";
 export type GroupDropTarget = { group: string; position: "before" | "after" };
@@ -685,7 +685,7 @@ function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: 
                   (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]')?.focus();
                   return;
                 }
-                if (action !== "defaults" && action !== "rename" && action !== "new" && action !== "delete") return;
+                if (action !== "defaults" && action !== "rename" && action !== "new" && action !== "delete" && action !== "chief") return;
                 (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]')?.focus();
                 props.onCloseGroupMenu();
                 props.onGroupAction(action, group);
@@ -696,6 +696,7 @@ function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: 
                 ["defaults", "New session defaults", icons.settings],
                 ["rename", "Rename group", icons.edit],
                 ["new", "New group", icons.folder],
+                ["chief", "Create Chief of Staff", icons.zap],
               ] as const).map(([action, label, icon]) => html`
                 <wa-dropdown-item value=${action} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icon}</span><span class="session-menu__text">${label}</span></wa-dropdown-item>
               `)}

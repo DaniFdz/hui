@@ -1998,6 +1998,10 @@ Query `id=&n=`.
 
 200 `{ text }`. OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400)
 
+### `POST /__hui/staff/chiefs`
+
+201 `BotResponse`. `{ group, cwd }`, nothing else: the custom session group's label (1-200 characters) and its project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its home, its `group` set, and its chat in `cwd`; the pack's routes are added to Settings when missing. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, cwd or an unknown field
+
 ### `GET /__hui/bots/:id/catalog`
 
 200 `BotCatalog`. What the operator can turn off in the bot's chat and what is off, read from its `hui.bot` document; a roster copy that differs is repaired. It opens the chat (as a message would), so an extension's tools are listed; an archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). An access request the chat waits on comes along as `request`. Archived bots too
