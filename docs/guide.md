@@ -1136,14 +1136,20 @@ it survives a reload and can be opened full screen or saved.
   endpoint OpenAI's Codex client uses. No API key is involved. A plan that does
   not include image generation is refused by OpenAI; the agent reports that
   instead of retrying.
+- **Gemini account.** With **Settings → Tools → Browser** on, set
+  `"preferred": {"image": "gemini-web"}` in `~/.config/hui/media.json`. HUI opens
+  the Gemini web app in its own browser and reads the image out of the answer, so
+  a Google AI Pro or Ultra plan works with no API key. Sign in to Gemini once in
+  that browser; the session stays in HUI's browser profile, never in HUI's
+  configuration. This route is opt-in and never picked by default, because it
+  opens a tab and drives a page whose markup Google changes without notice.
 - **Gemini API key.** Add `GEMINI_API_KEY` to the environment HUI starts with,
   or put `{"gemini":{"apiKey":"…"}}` in `~/.config/hui/media.json` (HUI writes
   that file with 0600 permissions). Requests use the Nano Banana image models
   and count against that key's free tier or billing.
 - A **Google AI Pro or Ultra subscription is not an API credential**: Google
   authorizes the Gemini API by key and Cloud project, and the Gemini CLI has no
-  image tool. That is why a Gemini account does not make `gen_image` work on its
-  own, and why HUI does not drive the Gemini web app.
+  image tool. The account route above is the only way a plan pays for an image.
 - `~/.config/hui/media.json` also holds `preferred.image` (`openai-codex` or
   `gemini`) and a per-provider `models` entry, so a request without a provider
   uses your choice. A dedicated Settings page for these keys is not built yet;

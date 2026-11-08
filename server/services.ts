@@ -73,6 +73,7 @@ import { registerAgentToolHandler } from "./agent-tools/bridge.ts";
 import { SubagentService } from "./agent-tools/subagents.ts";
 import { presentMediaForSession } from "./agent-tools/presented-media.ts";
 import { generateMediaForSession } from "./agent-tools/media-generation.ts";
+import { MediaGenerationInputError } from "./agent-tools/media-generation.ts";
 import { deliverDesktopNotification, notifyUser } from "./agent-tools/notifications.ts";
 import { watchSessionNotifications, type NotificationTarget } from "./sessions/session-notifications.ts";
 import { GitHubCli } from "./integrations/github.ts";
@@ -473,7 +474,21 @@ registerAgentToolHandler(async (invocation) => {
     if (!caller) throw new BrowserToolError("Conversation no longer exists.", 404);
     return managedBrowser.tool(caller.id, invocation.params, { cwd: resolveWorkingDirectory(caller.cwd) });
   }
-  if (invocation.action === "gen_image") return generateMediaForSession(invocation.callerSessionId, "image", invocation.params);
+  if (invocation.action === "gen_image") {
+    const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
+    if (!caller) throw new MediaGenerationInputError("Conversation no longer exists.");
+    const browser = await readHuiSettings();
+    return generateMediaForSession(caller.id, "image", invocation.params, {
+      session: async () => ({ cwd: caller.cwd }),
+      geminiPage: async () => ({
+        enabled: async () => browser.browser.enabled,
+        open: async (url) => {
+          await managedBrowser.tool(caller.id, { action: "open", url }, { cwd: resolveWorkingDirectory(caller.cwd) });
+        },
+        evaluate: (expression, options) => managedBrowser.evaluate(caller.id, expression, options),
+      }),
+    });
+  }
   return invocation.action === "present_media"
     ? presentMediaForSession(invocation.callerSessionId, invocation.params)
     : subagents.handle(invocation.callerSessionId, invocation.action, invocation.params, invocation.signal);

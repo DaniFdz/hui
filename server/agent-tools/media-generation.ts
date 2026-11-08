@@ -8,6 +8,7 @@ import { generateMedia, type GeneratedMedia } from "../media/service.ts";
 import { createMediaRegistry, type MediaRegistry } from "../media/registry.ts";
 import { codexCredentialResolver } from "../media/codex-credential.ts";
 import { readMediaSettings } from "../media/settings.ts";
+import type { GeminiPage } from "../media/gemini-web.ts";
 import type { MediaAspect, MediaKind } from "../media/provider.ts";
 
 export class MediaGenerationInputError extends Error {}
@@ -21,6 +22,8 @@ export type MediaGenerationDeps = {
   session?: (sessionId: string) => Promise<{ cwd: string } | undefined>;
   /** Where staged media is kept; tests point it at a temporary directory. */
   storeRoot?: string;
+  /** HUI's browser for the calling conversation, which the Gemini account route drives. */
+  geminiPage?: () => Promise<GeminiPage | undefined>;
 };
 
 function aspectOf(value: unknown): MediaAspect {
@@ -36,12 +39,13 @@ function optionalId(value: unknown, field: string): string | undefined {
   return value.trim();
 }
 
-function defaultRegistry(): MediaRegistry {
+function defaultRegistry(deps: MediaGenerationDeps): MediaRegistry {
   return createMediaRegistry({
     settings: () => readMediaSettings(),
     codexCredential: codexCredentialResolver(),
     // A key saved in Settings wins; the environment variable keeps a headless gateway usable before that page exists.
     geminiKey: async () => (await readMediaSettings()).gemini.apiKey ?? process.env["GEMINI_API_KEY"]?.trim() ?? undefined,
+    ...(deps.geminiPage ? { geminiPage: deps.geminiPage } : {}),
   });
 }
 
@@ -60,7 +64,7 @@ export async function generateMediaForSession(
   if (!session) throw new MediaGenerationInputError("Conversation no longer exists.");
   const provider = optionalId(params["provider"], "provider");
   const model = optionalId(params["model"], "model");
-  return generateMedia(deps.registry ?? defaultRegistry(), {
+  return generateMedia(deps.registry ?? defaultRegistry(deps), {
     kind,
     prompt: prompt.trim(),
     aspect: aspectOf(params["aspect"]),

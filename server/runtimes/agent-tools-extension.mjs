@@ -158,13 +158,13 @@ Every question also offers a free-text answer the card adds itself, and the user
   pi.registerTool({
     name: "gen_image",
     label: "Generate image",
-    description: "Generate one image from a text prompt with the operator's connected provider: the ChatGPT subscription HUI already signed in for chat, or a Gemini API key saved in Settings → Media providers. The image is stored in HUI and rendered in this conversation, and the ChatGPT route needs no API key.",
+    description: "Generate one image from a text prompt with the operator's connected provider: the ChatGPT subscription HUI already signed in for chat, the Gemini web app on the operator's Google account, or a Gemini API key. The image is stored in HUI and rendered in this conversation; no API key is needed for the ChatGPT or Gemini account routes.",
     promptSnippet: "Generate an image from a prompt with the operator's connected subscription or API key",
     promptGuidelines: [
       "Use gen_image when the operator wants a picture, illustration, logo, mockup or edit of an image described in words, rather than a web search.",
       "Write the prompt as the image model's brief: subject, style, composition, colors and any text to render. Never describe the tool call itself.",
       "The result is already in the conversation: do not call present_media on it. Say in one line what you asked for.",
-      "aspect is square (default), landscape or portrait. provider is openai-codex or gemini; leave it out unless the operator named one, and never guess a model id.",
+      "aspect is square (default), landscape or portrait. provider is openai-codex, gemini-web (the Gemini app on the operator's account) or gemini (an API key); leave it out unless the operator named one, and never guess a model id.",
       "A failure names its reason, such as a ChatGPT plan without image generation or a missing Gemini key. Relay that reason instead of retrying blindly.",
     ],
     parameters: Type.Object({

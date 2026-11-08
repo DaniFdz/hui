@@ -1456,8 +1456,10 @@ click-to-open placeholders.
 Image generation uses HUI's `gen_image` tool, never a provider's web interface.
 The gateway asks one configured provider for one image from a prompt: the
 ChatGPT/Codex subscription HUI already holds as an OAuth credential, through the
-native Codex images endpoint a subscription authorizes, with no API key; or a
-Gemini AI Studio key kept in `~/.config/hui/media.json` with 0600 permissions.
+native Codex images endpoint a subscription authorizes, with no API key; the
+Gemini web app driven in HUI's own browser profile, so a Google AI Pro or Ultra
+plan works without an API key; or a Gemini AI Studio key. Keys and preferences
+live in `~/.config/hui/media.json` with 0600 permissions.
 That file also holds the operator's preferred provider and model; a request may
 name a provider, and a provider without credentials is never chosen silently. A
 plan that does not include image generation, a rejected credential and a spent
@@ -1466,8 +1468,11 @@ failure. The result is staged in HUI's immutable media store exactly as
 `present_media` stages a file, so the transcript renders it inline and the
 temporary file the provider wrote never reaches the conversation's workspace; a generated image reports no Files-view path. `gen_image` keeps its own
 transcript row like the other presentation tools. A Google AI Pro or Ultra
-subscription does not authorize the Gemini API, so a Google account is not a
-media credential; video generation is not part of this contract yet.
+subscription does not authorize the Gemini API, so the Gemini app is driven as a
+page: that route is opt-in, keeps the Google session in HUI's browser profile
+rather than its configuration, and reports what the page showed when it cannot
+find the prompt box or the image. Video generation is not part of this contract
+yet.
 
 HUI's turn-time presentation guidance is generated from one compact capability
 catalog. It advertises Mermaid, self-contained Vega-Lite charts, KaTeX math,

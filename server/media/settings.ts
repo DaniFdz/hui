@@ -13,7 +13,7 @@ import type { MediaKind } from "./provider.ts";
 export const MEDIA_SETTINGS_FILE = join(CONFIG_DIR, "media.json");
 
 /** Providers HUI can serve media from, in the order a new installation tries them. */
-export const MEDIA_PROVIDERS = ["openai-codex", "gemini"] as const;
+export const MEDIA_PROVIDERS = ["openai-codex", "gemini-web", "gemini"] as const;
 export type MediaProviderId = (typeof MEDIA_PROVIDERS)[number];
 
 export type MediaSettings = {

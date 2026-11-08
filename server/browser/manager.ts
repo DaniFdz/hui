@@ -604,6 +604,22 @@ export class ManagedBrowser {
     }
   }
 
+  /** Runs one script in this conversation's current tab and returns its value. Internal to HUI's own
+   * integrations (media generation drives the Gemini web app): it is deliberately not a tool action, so an agent
+   * cannot evaluate arbitrary script in a signed-in page. The page is untrusted, so callers treat the value as
+   * data only. */
+  async evaluate(owner: string, expression: string, options: { timeoutMs?: number } = {}): Promise<unknown> {
+    const tab = this.#tabFor(owner, undefined);
+    const instance = this.#live();
+    const result = await instance.connection.send("Runtime.evaluate", {
+      expression, awaitPromise: true, returnByValue: true,
+    }, tab.session, options.timeoutMs ?? 30_000);
+    if (isRecord(result["exceptionDetails"])) {
+      throw new BrowserToolError(`The page script failed: ${exceptionText(result["exceptionDetails"])}`);
+    }
+    return isRecord(result["result"]) ? result["result"]["value"] : undefined;
+  }
+
   async tool(owner: string, params: Record<string, unknown>, context: { cwd: string }): Promise<BrowserToolResult> {
     const action = params["action"];
     if (typeof action !== "string" || !(BROWSER_ACTIONS as readonly string[]).includes(action)) {
