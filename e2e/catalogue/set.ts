@@ -476,6 +476,16 @@ const cases: UseCase[] = [
     ios: "required",
   },
   {
+    id: "SET-089",
+    title: "Store a site secret an agent can type without seeing it",
+    behaviour: "Settings → Tools → Browser → Site secrets stores a value under a name and an exact http(s) origin, lists each name with its origin (never the value), and Delete <name> removes it; the value field is empty again afterwards and loading the page never renders a stored value. The agent's browser secret action types that value only into a field whose page is the same origin, and neither its result nor its details carry the value; an unknown name is refused with the stored names.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["settings-page:tools", "route:GET /__hui/browser/secrets", "route:POST /__hui/browser/secrets", "route:POST /__hui/browser/secrets/remove", "tool:browser"],
+    journeys: ["browser-tool"],
+    web: "required",
+    ios: { excluded: "The iPhone app has no browser settings or managed browser.", decision: "SPEC.md#managed-browser" },
+  },
+  {
     id: "SET-088",
     title: "Limit the managed browser to named origins",
     behaviour: "Settings → Tools → Browser's “Allowed origins” takes one pattern per line (example.com, example.com:8443, https://app.example.com, or *.example.com for subdomains only) and saves them with the rest of the browser settings; empty, which is the default, lets agents browse anywhere. With a list set, the agent's browser opens and navigates only to those pages, a link, redirect or popup that leaves them is stopped and its tab left on about:blank with the reason in the tool result, and a local file is refused; a private or loopback address needs its exact host, never a wildcard.",

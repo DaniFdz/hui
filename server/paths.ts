@@ -31,6 +31,10 @@ export const WORKTREES_DIR = join(CONFIG_DIR, "worktrees");
  * logins persist here; it is never the operator's personal browser profile. */
 export const BROWSER_PROFILE_DIR = join(CONFIG_DIR, "browser", "profile");
 
+/** The operator's site secrets (mode 0600): values an agent may type into a
+ * login form without ever seeing them. Never part of the synced settings file. */
+export const BROWSER_SECRETS_FILE = join(CONFIG_DIR, "browser-secrets.json");
+
 /** The VS Code view's openvscode-server: its server data, user data and
  * extensions, the connection-token file of the running server and its pid. */
 export const VSCODE_DIR = join(CONFIG_DIR, "vscode");

@@ -35,3 +35,7 @@ hui-browser-settings .settings-section { margin: 28px 0; }
 hui-workers-settings { display: contents; }
 .browser-settings__origins-input { display: block; width: 100%; min-height: 76px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: inherit; font: 12px/1.6 var(--mono, var(--font-mono)); resize: vertical; }
 .browser-settings__origins-input:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.browser-settings__secrets .settings-row { align-items: flex-start; }
+.browser-settings__secret-fields { display: grid; gap: 6px; width: 100%; max-width: 340px; }
+.browser-settings__label { font-size: 11px; font-weight: 600; color: var(--muted-strong); }
+.browser-settings__secret-fields .btn { justify-self: start; margin-top: 2px; }
