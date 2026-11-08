@@ -245,6 +245,19 @@ test("an image larger than the provider accepts reaches it shrunk, on every turn
   assert.equal((await session.attachmentImage(0, 0))?.data.toString("base64"), tall);
 });
 
+test("a session the provider refuses for the size of its images carries fewer of them on the next turn", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-image-size" }, f.host());
+  const shots = Array.from({ length: 5 }, () => solidPng(2, 2).toString("base64"));
+  await session.prompt("E2E_TOO_LONG look at these", shots.map((dataBase64, index) => ({ kind: "image" as const, mimeType: "image/png", dataBase64, name: `shot-${index}.png` })), { requestId: "too-long" });
+  await assert.rejects(session.waitForTrackedPrompt("too-long"), /model_error: .*Input is too long/u);
+  await turns(session, ["and now"]);
+  const requests = await providerRequests(f.log);
+  const images = requests.map((request) => [...JSON.stringify(request.messages).matchAll(/"data":"([^"]+)"/gu)].length);
+  assert.deepEqual(images, [5, 2], "the refused request carried every image, the next the half the refusal taught");
+  assert.match(JSON.stringify(requests.at(-1)?.messages), /3 earlier images left out: this model takes at most 2 images per request/u);
+});
+
 test("fast mode asks a Claude Opus model for speed: fast, while the session has it on", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t, { models: ["fixture", "claude-opus-5-5"] });
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fast", model: "hui-e2e/claude-opus-5-5" }, f.host());
