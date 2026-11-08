@@ -11,6 +11,8 @@ test("a custom group's menu creates one Chief of Staff working in its project", 
   await screen.getByRole("button", `Group options for ${group}`).tap();
   await screen.getByText("Create Chief of Staff", { exact: true, visible: true }).first().tap();
 
+  // Creating the bot also creates its conversation and writes its skills: wait for it instead of racing the request.
+  await expect.poll(async () => (await hui.api<{ bots: Array<{ group?: string }> }>("GET", "/__hui/bots")).bots.some((bot) => bot.group === group), { timeout: 60_000 }).toBe(true);
   const bots = (await hui.api<{ bots: Array<{ id: string; group?: string; name: string; cwd: string }> }>("GET", "/__hui/bots")).bots;
   const chief = bots.find((bot) => bot.group === group)!;
   expect(chief).toBeTruthy();
