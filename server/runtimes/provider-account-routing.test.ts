@@ -8,14 +8,14 @@ import { pathToFileURL } from "node:url";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { ProviderAccounts, credentialStore } from "../pi/provider-accounts.ts";
 import { createSessionModelRuntime, writeProviderSelections } from "./hui-models.ts";
-import { quotaFailure, retryAt } from "./provider-account-routing.ts";
+import { quotaFailure, retryAt, retryDelayHint } from "./provider-account-routing.ts";
 
 type Stream = ReturnType<ModelRuntime["streamSimple"]>;
 type Message = Awaited<ReturnType<Stream["result"]>>;
 const piAiPackage = findPackageJSON("@earendil-works/pi-ai", import.meta.resolve("@earendil-works/pi-coding-agent"))!;
 const { AssistantMessageEventStream } = await import(new URL("./dist/utils/event-stream.js", pathToFileURL(piAiPackage)).href) as { AssistantMessageEventStream: new() => Stream };
 const second = "11111111-1111-4111-8111-111111111111";
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, options: { onRetryHint?: (delayMs: number) => void } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-account-routing-"));
   t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const accounts = new ProviderAccounts(dir);
@@ -23,7 +23,7 @@ async function fixture(t: TestContext) {
   await credentialStore(accounts.authPath(second)).modify("openai", async () => ({ type: "api_key", key: "second-key" }));
   await accounts.update("openai", () => [{ id: "default", name: "First" }, { id: second, name: "Second" }]);
   await writeProviderSelections({ openai: { models: ["gpt-4o"] } }, dir);
-  const runtime = await createSessionModelRuntime(join(dir, "pi"), dir);
+  const runtime = await createSessionModelRuntime(join(dir, "pi"), dir, options);
   const model = runtime.getModel("openai", "gpt-4o")!;
   assert(model);
   const message = (error?: string): Message => ({ role: "assistant", content: error ? [] : [{ type: "text", text: "OK" }], api: model.api, provider: model.provider, model: model.id, stopReason: error ? "error" : "stop", ...(error ? { errorMessage: error } : {}), timestamp: Date.now(), usage: { input: 1, output: 1, totalTokens: 2, cacheRead: 0, cacheWrite: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } });
@@ -123,10 +123,14 @@ test("quota classification and provider reset headers are conservative", () => {
   assert.equal(retryAt({ "retry-after": "120" }, 1000), 121000);
   assert.equal(retryAt({ "retry-after-ms": "50" }, 1000), 1050);
   assert.equal(retryAt({ "retry-after": "nonsense" }, 1000), 61000);
+  assert.equal(retryDelayHint({}, 1000, "retry shortly (after 30 s)"), 30_000);
+  assert.equal(retryDelayHint({ "retry-after": "45" }, 1000), 45_000);
+  assert.equal(retryDelayHint({}, 1000, "overloaded"), undefined);
 });
 
 test("a provider's capacity 429 keeps the account usable and surfaces its own error", async (t) => {
-  const f = await fixture(t);
+  const hints: number[] = [];
+  const f = await fixture(t, { onRetryHint: (delayMs) => hints.push(delayMs) });
   const capacity = '429: {"type":"server_error","message":"Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 30 s)"}';
   f.install(async (_key, out, options) => {
     await options?.onResponse?.({ status: 429, headers: { "retry-after": "30" } }, f.model);
@@ -137,6 +141,7 @@ test("a provider's capacity 429 keeps the account usable and surfaces its own er
   assert.equal(result.errorMessage, capacity);
   assert.deepEqual(f.attempts, ["first-key"]);
   assert.equal((await new ProviderAccounts(f.dir).list("openai"))[0]!.cooldownUntil, undefined);
+  assert.deepEqual(hints, [30_000], "the provider's retry hint reaches the durable retry policy");
   // The next request tries the same preferred account rather than an exhausted-account error.
   await f.runtime.completeSimple(f.model, { messages: [] });
   assert.deepEqual(f.attempts, ["first-key", "first-key"]);

@@ -23,19 +23,26 @@ export function quotaFailure(status: number | undefined, message = ""): boolean 
   if (/\b(?:prefill_cap_refused|at capacity|overloaded)\b/i.test(message)) return false;
   return status === 429 || /\b429\b/.test(message);
 }
+/** A provider-requested delay, without the 60-second default a cooldown needs. */
+export function retryDelayHint(headers: Record<string, string>, now = Date.now(), message = ""): number | undefined {
+  const milliseconds = Number(headers["retry-after-ms"]);
+  if (Number.isFinite(milliseconds) && milliseconds > 0) return milliseconds;
+  const seconds = Number(headers["retry-after"]);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = headers["retry-after"] === undefined ? NaN : Date.parse(headers["retry-after"]);
+  if (Number.isFinite(date) && date > now) return date - now;
+  const minutes = /(?:try again|retry) in ~?(\d+) min/i.exec(message);
+  if (minutes) return Number(minutes[1]) * 60_000;
+  const afterSeconds = /(?:after|in)\s+(\d+)\s*(?:s|sec|seconds?)\b/i.exec(message);
+  if (afterSeconds) return Number(afterSeconds[1]) * 1000;
+  return undefined;
+}
 export function retryAt(headers: Record<string, string>, now = Date.now(), message = ""): number {
-  const value = headers["retry-after"];
-  const ms = Number(headers["retry-after-ms"]);
-  const seconds = value === undefined ? NaN : Number(value);
-  const date = value === undefined ? NaN : Date.parse(value);
-  const until = Number.isFinite(ms) && ms > 0 ? now + ms : Number.isFinite(seconds) && seconds >= 0 ? now + seconds * 1000 : date;
-  if (Number.isFinite(until) && until > now) return until;
-  const minutes = /try again in ~?(\d+) min/i.exec(message);
-  if (minutes) return now + Math.max(1, Number(minutes[1])) * 60_000;
-  return now + 60_000;
+  const hint = retryDelayHint(headers, now, message);
+  return hint === undefined ? now + 60_000 : now + Math.max(1, hint);
 }
 
-export async function accountRouting(accounts: ProviderAccounts) {
+export async function accountRouting(accounts: ProviderAccounts, routing: { onRetryHint?: (delayMs: number) => void } = {}) {
   // Each request pins its account across async OAuth read/modify/refresh. No
   // process-global active key: concurrent sessions cannot refresh another account.
   const initialAccounts = await accounts.all();
@@ -105,6 +112,14 @@ export async function accountRouting(accounts: ProviderAccounts) {
             if (event.type === "error" && event.reason !== "aborted" && !options?.signal?.aborted && quotaFailure(status, event.error.errorMessage)) {
               await accounts.cooldown(model.provider, account.id, retryAt(headers, Date.now(), event.error.errorMessage));
               if (!emitted && !event.error.content.length) { lastError = event; retry = true; break; }
+            }
+            // The pre-content capacity errors are retried by the Durable harness. Tell it how
+            // long the provider asked us to wait so it keeps the model and its cached context.
+            if (event.type === "error" && event.reason !== "aborted" && !options?.signal?.aborted
+              && (status === 429 || (status ?? 0) >= 500 || /\b(?:prefill_cap_refused|at capacity|overloaded)\b/i.test(event.error.errorMessage ?? ""))
+              && !quotaFailure(status, event.error.errorMessage)) {
+              const hint = retryDelayHint(headers, Date.now(), event.error.errorMessage ?? "");
+              if (hint !== undefined) routing.onRetryHint?.(Math.min(hint, 60_000));
             }
             // Hold only the empty start event. Once any content/tool/thinking
             // event is emitted, never replay this request with another account.
