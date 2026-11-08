@@ -725,7 +725,7 @@ function renderModelsPage(props: SettingsProps) {
         )}
         ${renderRow(
           "Provider retries",
-          "How many times a failed model request is retried on the same model before the fallback is tried. Retries keep the same model and cached context, and wait as long as the provider asks (for example, 30 seconds for an OpenCode Go capacity error).",
+          "How many times a failed model request is retried on the same model before the fallback is tried. Retries keep the same model and cached context, and wait as long as the provider asks.",
           renderSettingsPicker("Provider retries", String(retryAttempts),
             [0, 1, 2, 3, 4, 5].map((attempts) => ({ value: String(attempts), label: attempts ? String(attempts) : "Off" })),
             (value) => props.onChangeModels({ ...props.settings.models, retryAttempts: Number(value) })),
