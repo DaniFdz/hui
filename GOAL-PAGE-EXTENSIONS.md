@@ -5,9 +5,9 @@ and context primitives. The Contributions port is P8 and is not accepted here.
 
 ## State
 
-**Status:** IN PROGRESS · **Branch:** `danifdz/hui-page-extensions` (stacked on
-`danifdz/hui-extendability`) · **Baseline:** the green extension host at
-`0b984220`.
+**Status:** DONE (P7 primitives; A4 and the process context proxy are P8
+deviations) · **Branch:** `danifdz/hui-page-extensions` (stacked on
+`danifdz/hui-extendability`) · **HEAD:** `2e229bb4` · **CI:** green.
 
 ## P7 acceptance criteria
 
@@ -28,9 +28,9 @@ and context primitives. The Contributions port is P8 and is not accepted here.
   invalid `navigate` target.
 - [x] **P7-A6** `SPEC.md` and `docs/guide.md` describe the manifest,
   the context facade and the page bridge. The eject/override rules belong to P8.
-- [ ] **P7-A7** Focused tests, `npm run api:schema`, typecheck, build, the full
-  suite (same known failures) and CI pass; the page is exercised at 1440×900 and
-  390×844.
+- [x] **P7-A7** Focused tests, `npm run api:schema`, typecheck, build, the full
+  suite (the known environment set; one worker flake passed alone) and CI pass; the
+  page is exercised at 1440×900 and 390×844.
 
 ## Evidence
 
@@ -68,6 +68,15 @@ Exit: 0
 
 **P7-A6.** SPEC.md and docs/guide.md gained the page and in-process context
 contracts; `skills/build-hui-extension` teaches both.
+
+**P7-A7.** `npm run typecheck` 0; `npm run build` 0; `npm run api:schema` no
+diff. Full suite: 34 failed / 2912 passed against the 33-failure environment
+baseline; the extra `workers.test.ts` "tracked routine receipt" failure passed
+alone and is the known remote-worker flake. CI at `2e229bb4`: Test, web 1/4–4/4,
+catalogue, package and lockfile pass. Manual proof: `/ext/hello` at 1440×900 and
+390×844, desktop/mobile screenshots outside the tree (`page-desktop.png`,
+`page-mobile.png`), showing the sidebar entry, the sandboxed page and
+`hello, Ada` from its route.
 
 ## Deviations
 

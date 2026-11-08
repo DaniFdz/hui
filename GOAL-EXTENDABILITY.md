@@ -535,7 +535,7 @@ Owner:
 
 ## 11. P7 — page extensions
 
-**Status:** in progress · **Branch:** `danifdz/hui-page-extensions` (stacked on
+**Status:** done (P7 primitives; A4 and process context deferred to P8) · **Branch:** `danifdz/hui-page-extensions` (stacked on
 `danifdz/hui-extendability`) · **Plan:** `PLAN-PAGE-EXTENSIONS.md` · **Detailed
 ledger:** `GOAL-PAGE-EXTENSIONS.md`.
 
@@ -553,7 +553,7 @@ not port Contributions, Dashboard or Kanban (P8–P10).
       sandbox, bridge route (`data-page-title="hello, Ada"`) and disable behavior.
 - [x] **P7-A6** SPEC.md and docs/guide.md describe the page contract, bridge and
       in-process context.
-- [ ] **P7-A7** Full suite, typecheck, build, CI and manual 1440×900 / 390×844
-      proof. Evidence: `GOAL-PAGE-EXTENSIONS.md`.
+- [x] **P7-A7** Full suite, typecheck, build, CI and manual 1440×900 / 390×844
+      proof. Evidence: `GOAL-PAGE-EXTENSIONS.md`. CI green at `2e229bb4`.
 - [x] **P7-A4** Moved to P8 with the first shipped page (packaged discovery,
       default-on, eject, doctor); recorded as a deviation.
