@@ -1945,6 +1945,19 @@ the same with the chips, rows, *Back*, *Next*, *Submit* and *Cancel*; the
 actions stay in reach when the card scrolls. *Submit* needs at least one
 answer; a question left blank is left out.
 
+The card can cover most of the conversation it is asked about. Its top line,
+which carries the card's title and the progress, is also its fold control:
+clicking it, or Enter or Space on it, folds the card to one row above the
+composer with the same title, the progress (*2/3*), how many questions are
+already answered once one is (*1 answered*) and an up chevron, so the
+transcript takes back the room the card was using. Every pick and the current
+question are kept, and the card stays folded while the operator writes in the
+composer. The folded row, Enter on it or Escape opens the card again where the
+operator left it; Escape on the folded row opens it rather than declining the
+questions. A new call's card, and a reload, open unfolded.
+The fold is the web card's: the iPhone app draws questions in its own card
+(`docs/native-ios-plan.md`).
+
 The agent learns each answer as `"question"="answer"` (several joined by
 commas, a chosen option's preview after it), or that the operator declined:
 *Cancel*, Escape, Stop and a gateway stop all decline. Once answered, the
