@@ -262,6 +262,11 @@ const server = createServer(async (request, response) => {
   if (!recovering && source.includes("E2E_OVERFLOW") && !flattenedText(body.messages).includes("FIXTURE_SUMMARY") && !flattenedText(body.system).includes("context summarization assistant")) {
     return json(response, 400, { type: "error", error: { type: "invalid_request_error", message: "prompt is too long: 213462 tokens > 200000 maximum" } });
   }
+  // E2E_TOO_LONG is Amazon Bedrock's bare refusal of a request past the size the provider takes: it names neither the
+  // images nor a limit, so only the history's own images can be what filled it.
+  if (!recovering && source.includes("E2E_TOO_LONG")) {
+    return json(response, 400, { type: "error", error: { type: "invalid_request_error", message: "Input is too long." } });
+  }
   // E2E_PRIMARY_ERROR fails only the primary fixture model, so the run falls back to another model that answers it.
   if (!recovering && source.includes("E2E_PRIMARY_ERROR") && body.model === "fixture") return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
   if (!recovering && source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
