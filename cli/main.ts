@@ -7,6 +7,9 @@ import { isIP } from "node:net";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { EXTENSIONS_DIR, EXTENSIONS_FILE } from "../server/paths.ts";
+import { readExtensions, writeExtensions } from "../server/extensions/store.ts";
+import { request } from "./gateway-client.ts";
 import { allowedHostsFromEnv, hostName, tailnetFromStatus } from "../server/host.ts";
 import { gatewayLogs, gatewayStatus, startGateway, stopGateway } from "./gateway.ts";
 import { packageVersion, type Installation } from "./installation.ts";
@@ -39,6 +42,12 @@ export const HELP = `Usage:
   hui workers add --name <name> --command <connect command> [--extra-path <path>] [--json]
   hui workers edit <name|id> [--name <name>] [--command <connect command>] [--extra-path <path>] [--json]
   hui workers remove <name|id> [--json]
+  hui extension list [--json]
+  hui extension enable <id> [--json]
+  hui extension disable <id> [--json]
+  hui extension reload <id> [--json]
+  hui extension add <path> [--link] [--json]
+  hui extension remove <id> [--delete] [--json]
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
   hui bot add [--name <name>] [--title <text>] [--description <text>] [--tagging <anyone|mention|nobody>]
@@ -210,7 +219,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "no-open": { type: "boolean" }, from: { type: "string" }, sha256: { type: "string" }, rollback: { type: "boolean" },
     check: { type: "boolean" }, fix: { type: "boolean" }, nightly: { type: "boolean" },
     name: { type: "string" }, command: { type: "string" }, "extra-path": { type: "string", multiple: true },
-    archived: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" }, yes: { type: "boolean", short: "y" },
+    archived: { type: "boolean" }, link: { type: "boolean" }, delete: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" }, yes: { type: "boolean", short: "y" },
     cwd: { type: "string" }, worker: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" }, "utility-model": { type: "string" },
     emoji: { type: "string" }, shape: { type: "string" }, ears: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
     tagging: { type: "string" },
@@ -232,19 +241,27 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   const [first, second, ...extra] = positionals;
   const bots = first === "bot" || first === "bots";
   const schedules = first === "schedule" || first === "schedules";
+  const extensions = first === "extension" || first === "extensions";
   const routine = bots && (second === "routine" || second === "routines");
   const trigger = bots && (second === "trigger" || second === "triggers");
   const command = bots ? (routine ? `bot routine ${extra.shift() ?? "list"}` : trigger ? `bot trigger ${extra.shift() ?? "list"}` : `bot ${second ?? "list"}`)
     : schedules ? `schedule ${second ?? "list"}`
+    : extensions ? `extension ${second ?? "list"}`
     : first === "gateway" ? `gateway ${second ?? "run"}` : first === "workers" ? `workers ${second ?? "list"}` : first;
   // `workers edit` and `workers remove` name the worker they act on.
-  const target = command === "workers edit" || command === "workers remove" ? extra.shift() : undefined;
+  const target = command === "workers edit" || command === "workers remove" ? extra.shift()
+    : command === "extension enable" || command === "extension disable" || command === "extension reload"
+      || command === "extension add" || command === "extension remove" ? extra.shift() : undefined;
+  if ((command === "extension enable" || command === "extension disable" || command === "extension reload" || command === "extension remove") && !target) {
+    throw new Error(`${command} needs an extension id: see hui extension list.`);
+  }
+  if (command === "extension add" && !target) throw new Error("extension add needs a directory: hui extension add <path> [--link].");
   // A bot command's operands: the bot, then a message or a routine; a schedule command's, the schedule.
   const operands = bots || schedules ? extra.splice(0) : [];
   // `hui completion <shell>` takes exactly one shell; every other command's words are checked by the table.
   const completion = first === "completion";
   const shell = completion ? completionShell(extra.length ? undefined : second) : undefined;
-  if (!command || !COMMAND_FLAGS[command] || (!completion && extra.length) || first !== "gateway" && first !== "workers" && !bots && !schedules && !completion && second) throw new Error("Unknown command. Run hui --help.");
+  if (!command || !COMMAND_FLAGS[command] || (!completion && extra.length) || first !== "gateway" && first !== "workers" && !extensions && !bots && !schedules && !completion && second) throw new Error("Unknown command. Run hui --help.");
   // Where a bot runs is chosen once; an edit cannot move it.
   if (command === "bot edit" && values.worker !== undefined) throw new Error("A bot stays on the machine it was created on: --worker only applies to bot add.");
   if (command === "bot edit" && values["soul-file"] !== undefined) throw new Error("bot edit does not change SOUL.md: use hui bot soul <bot> --file <path|->.");
@@ -421,6 +438,44 @@ export async function main(args: string[], installation: Installation): Promise<
     const action = command.slice("workers ".length);
     const result = await workersCommand(status.url, action, target, values);
     if (action === "list" && !values.json) console.log(formatWorkers(result as Parameters<typeof formatWorkers>[0])); else report(result);
+    return;
+  }
+  if (command === "extension add" || command === "extension remove") {
+    const { installExtension, removeExtension } = await import("./extensions.ts");
+    if (command === "extension add") {
+      const installed = await installExtension(EXTENSIONS_DIR, target!, { link: values.link === true });
+      const status = await gatewayStatus();
+      let applied = false;
+      if (status.status === "running" && status.url) {
+        await request(status.url, `/__hui/ext/${encodeURIComponent(installed.id)}`, { method: "PUT", body: { enabled: true } });
+        applied = true;
+      } else {
+        const store = await readExtensions(EXTENSIONS_FILE);
+        await writeExtensions([...new Set([...store.enabled, installed.id])], EXTENSIONS_FILE);
+      }
+      report(values.json
+        ? { ...installed, enabled: true, applied }
+        : `Installed ${installed.id}${installed.linked ? " (linked)" : ""} at ${installed.path} and enabled it${applied ? "." : "; it applies at the next gateway start."}`);
+      return;
+    }
+    const store = await readExtensions(EXTENSIONS_FILE);
+    if (store.enabled.includes(target!)) throw new Error(`extension ${target} is enabled: hui extension disable ${target} first.`);
+    const removed = await removeExtension(EXTENSIONS_DIR, target!, { delete: values.delete === true });
+    report(values.json
+      ? { id: target, ...removed }
+      : removed.deleted
+        ? `Removed ${target} from ${removed.path}.`
+        : `${target} is at ${removed.path}; nothing was deleted (pass --delete to remove it).`);
+    return;
+  }
+  if (command.startsWith("extension ")) {
+    const status = await gatewayStatus();
+    if (status.status !== "running" || !status.url) throw new Error("Gateway is not running. Start it with hui gateway start.");
+    const { extensionsCommand, formatExtension, formatExtensions } = await import("./extensions.ts");
+    const action = command.slice("extension ".length) as "list" | "enable" | "disable" | "reload";
+    const result = await extensionsCommand(status.url, action, target);
+    if (values.json) report(result);
+    else console.log(action === "list" ? formatExtensions(result as Parameters<typeof formatExtensions>[0]) : formatExtension(result as Parameters<typeof formatExtension>[0]));
     return;
   }
   if (command.startsWith("bot trigger ")) {

@@ -16,6 +16,7 @@ export const ROUTABLE_SETTINGS_PAGES = [
   "skills",
   "automation",
   "plugins",
+  "extensions",
   "memory",
   "security",
   "diagnostics",

@@ -10,6 +10,7 @@ import { staffCheck } from "./doctor-staff.ts";
 import { datadogCheck } from "./doctor-datadog.ts";
 import { piSessionsCheck } from "./doctor-pi-sessions.ts";
 import { triggersCheck } from "./doctor-triggers.ts";
+import { extensionsCheck } from "./doctor-extensions.ts";
 import { withLifecycleLock } from "./state.ts";
 import type { Installation } from "./installation.ts";
 import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor-types.ts";
@@ -18,7 +19,7 @@ export type DoctorReport = { ok: boolean; checks: DoctorResult[] };
 
 /** Every check, in report order. The app check needs the installation: `--fix` reinstalls the app from it. */
 export function doctorChecks(installation: Installation): readonly DoctorCheck[] {
-  return [piSessionsCheck, triggersCheck, botsCheck, staffCheck, datadogCheck, appCheck(installation)];
+  return [piSessionsCheck, triggersCheck, botsCheck, staffCheck, datadogCheck, extensionsCheck(installation.packageRoot), appCheck(installation)];
 }
 
 export async function runDoctor(options: {

@@ -95,3 +95,17 @@ hui-work-pane { display: flex; flex: none; min-height: 0; max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .work-pane__resizer::after { transition: none; }
 }
+
+/* An extension's panel (components/extension-panel.ts): a bar above a sandboxed frame whose height the panel reports. */
+.extension-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.extension-panel__bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel); font-size: 12px; }
+.extension-panel__title { min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.extension-panel__pick { display: inline-flex; flex: none; align-items: center; gap: 8px; min-width: 0; color: var(--muted); }
+.extension-panel__pick-label { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; }
+.extension-panel__picker { width: min(220px, 42vw); min-width: 0; }
+.extension-panel__picker .picker-select__trigger { width: 100%; min-height: 26px; padding-inline: 8px; font-size: 12px; }
+.extension-panel__picker .picker-select__copy { min-width: 0; }
+.extension-panel__picker .picker-select__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.extension-panel__note { margin: 16px; color: var(--muted); font-size: 13px; }
+.extension-panel__note--error { color: var(--danger); }
+.extension-panel__frame { display: block; width: 100%; border: 0; background: transparent; }

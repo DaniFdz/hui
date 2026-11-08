@@ -839,6 +839,15 @@ const cases: UseCase[] = [
     web: "required",
     ios: { excluded: "The Diff view's changed-file list has no side-by-side boundary on a narrow iPhone screen, and a touch screen has no hover for the full path; the list and a tap's diff stay.", decision: "SPEC.md#a-file-lists-boundary-and-hover-path-stay-on-the-web-2026-11-08" },
   },
+  {
+    id: "WORK-085",
+    title: "Open an extension panel in the Work pane",
+    behaviour: "An enabled gateway extension that ships a ui entry adds Extension panel to the Work pane's + menu. Choosing it opens the extension's title bar and a sandboxed frame in the conversation's Work pane; the frame cannot reach HUI or the network directly and calls only that extension's own routes through HUI. Settings → Extensions' Open panel opens the same view, and a saved panel returns with the conversation.",
+    spec: ["SPEC.md#gateway-extensions"],
+    surfaces: ["work-view:extension", "settings-page:extensions"],
+    web: "required",
+    ios: { excluded: "The iPhone has no Work pane and no extension surface in this version.", decision: "SPEC.md#gateway-extensions" },
+  },
 ];
 
 export default cases;

@@ -2486,7 +2486,110 @@ everything the Bots tab can, through the same routes.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
+## Gateway extensions
+
+HUI's first extendability seam beside PI's own packages, extensions and skills: a
+trusted local module can answer JSON routes on the gateway.
+
+- **Installed, not built in.** An extension is a directory
+  `$XDG_CONFIG_HOME/hui/extensions/<id>/` holding `extension.json`
+  (`apiVersion: 1`, `name`, `description`, relative `main`) and an ESM entry
+  module exporting `routes`. HUI ships none and enables none.
+- **Path-confined namespace.** The status route is `GET /__hui/ext`; the enable
+  switch is `PUT /__hui/ext/:id` with `{ "enabled": boolean }`; an extension's own
+  routes live below `/__hui/ext/<id>/` and can never shadow a HUI route. A route
+  path is one to four clean segments; a handler receives
+  `{ method, path, query, body, signal, extension }` and answers
+  `{ status?, body }`.
+- **Generic payloads on purpose.** An extension route answers `PluginPayload` (a
+  JSON object HUI does not type) or `PluginError`; only the two fixed routes join
+  the build-time generated browser types. Extension payloads never enter
+  `docs/api.schema.json`. No headers, files, redirects, SSE or WebSocket; request
+  bodies keep the ordinary 64 KiB JSON limit and an answer is at most 256 KiB.
+- **The ordinary gate and diagnostics.** Every extension route sits behind the
+  `x-hui` header and the diagnostics hook. A handler that throws or answers with
+  something that is not a JSON object produces `500 { "error": "extension
+  failed" }`; a failing extension never affects another route or the gateway.
+- **Enablement is data.** `$XDG_CONFIG_HOME/hui/extensions.json`
+  (`{ "version": 1, "enabled": [] }`) records the choice; enabling imports the
+  module and registers its routes without a restart, disabling withdraws them at
+  once while Node keeps the module cached. A missing directory reads `missing`, a
+  bad manifest or import reads `failed` with its error and one warning diagnostic.
+- **Trusted code, stated plainly.** An extension runs in the gateway process with
+  the gateway's access to the machine, its credentials and its data, exactly like
+  a PI extension: no sandbox, no permission prompt, no timeout. `apiVersion`
+  refuses anything but `1`.
+- **Operator surface.** Settings → Extensions lists every installed extension with
+  its state, its routes and any error; the switch calls the enable route and the
+  row shows the state that came back. `hui extension list|enable|disable` does the
+  same from a terminal against the running gateway. The page is web-only; the
+  iPhone has no extension surface.
+- **Out-of-process mode.** A manifest may set `mode: "process"`: the extension
+  runs in one gateway-supervised child (at most eight), its routes and streams
+  forwarded over a versioned newline protocol, its prompt text read at start and its
+  tools refused. A crash restarts it after 1/2/4 s while routes answer 503; three
+  crashes in five minutes leave it `failed` until a reload. The child runs as the
+  same user with the same file access: crash isolation, not a sandbox. Settings shows
+  the mode and restart count.
+- **Lifecycle.** A manifest may declare its `version` and the HUI `engines.hui`
+  range; a gateway outside it refuses to load with a named reason. `POST
+  /__hui/ext/:id/reload` re-imports a changed module (routes and panel files at
+  once, prompt text next assembly, tools next new Durable session), and a failed
+  reload withdraws the routes and reports `failed`. `hui extension add <path>
+  [--link]` validates and installs a local module (enabling it now when a gateway
+  runs, else at the next start); `hui extension remove <id> [--delete]` requires it
+  disabled and only deletes with `--delete`; `hui doctor` reports enabled
+  extensions that cannot load, without a `--fix`.
+- **Streaming.** A route may declare `stream: true` and return an async iterable of
+  events; HUI writes them as server-sent events with a heartbeat, caps (ten
+  minutes, 5 000 events, 256 KiB each, 5 MiB total), an `error` event on a throw or
+  cap, and the handler's `signal` aborted when the client leaves. The route's
+  metadata says `stream: true`.
+- **Agent contributions.** An extension may declare static `prompt` sections and
+  agent `tools` in its manifest, with each tool's handler exported under the same
+  name by the entry module. Enabled contributions reach every new Durable
+  conversation: its prompt text after the goal, its tool under the namespaced
+  `ext_<id>_<name>` with its snippet and guidelines, its arguments checked against
+  the declared schema, and its failure an `isError` result rather than a failed
+  turn. Sessions on the older PI worker and already-running Durable conversations
+  keep what they started with. Settings → Extensions shows each section and tool.
+- **Sandboxed panels.** An extension may ship `ui/` with an entry page; its files
+  are served before the `x-hui` gate at `/__hui/ext-ui/<id>/` (public, contained,
+  typed and size-capped) and the page renders in a Work pane iframe whose CSP makes
+  it an opaque origin with no network. It cannot call HUI: only a `postMessage`
+  bridge may ask the parent for that extension's own declared routes, with the
+  browser's session, under fixed size, count and time limits. An optional
+  `ui.icon` (`package`, `github` or `pull-request`) is the Work pane tab and rail
+  mark; absent, it is the package. Settings → Extensions
+  opens a panel in the current conversation's Work pane, and the Work pane's
+  launcher opens the first enabled panel. HUI ships a **build-hui-extension**
+  skill that scaffolds and verifies one; it is on by default and the operator can
+  turn it off in Settings → Skills. Per-extension generated types, SSE routes and
+  an out-of-process host are follow-ups.
+
 ## Decisions
+
+### Gateway extensions are path-confined and payload-silent (2026-11-04)
+
+The owner asked how far HUI could open its harness to people, and chose the
+gateway route seam as the first step. The shape follows from HUI's own contracts:
+the browser's payload types are generated at build time, the `/__hui/` dispatch is
+hand-ordered and pinned by tests, and every route needs a schema and a documented
+heading. So an extension is confined to a namespace HUI names, answers a generic
+JSON envelope instead of adding generated types, and reaches the operator as
+`extensions.json` plus two fixed routes rather than a new UI surface.
+
+- **No privileged placement.** Path confinement replaces ordering negotiation: a
+  plugin cannot claim `/__hui/settings` or race another route, so the dispatch
+  chain and `routes/order.test.ts` stay meaningful.
+- **Scriptable without a build step.** A plugin payload is untyped on purpose;
+  its own schemas stay in the extension and out of `docs/api.schema.json`, so a
+  third-party route can never break the generated browser contract.
+- **Trust before breadth.** Extensions are trusted code in the gateway process,
+  documented as such. The alternative — a sandbox or a child process — would need
+  its own IPC contract, streaming and supervision before it could carry a first
+  route, and was deliberately left to a later decision.
+
 
 ### A bot's prompt is four files, and only two of them travel (2026-10-25)
 
@@ -4023,10 +4126,11 @@ currently configured PI source on the server. A skill operation is successful
 only when a fresh PI inventory discovers a new `SKILL.md`; process exit alone
 is not success. HUI never edits PI's settings or skill directories itself.
 
-HUI also ships `create-verification-skill`, a portable generator for project-local
-verification workflows, and `git-selective-staging`, which commits only a
-session's own hunks when a shared or reused checkout already holds other
-uncommitted work, both with the **good practices** tag. Each is available by
+HUI also ships `build-hui-extension`, a v1-aware guide and working reference for
+local gateway extensions; `create-verification-skill`, a portable generator for
+project-local verification workflows; and `git-selective-staging`, which commits
+only a session's own hunks when a shared or reused checkout already holds other
+uncommitted work, all with the **good practices** tag. Each is available by
 default in new SDK and CLI runtimes, not automatically executed. Their read-only
 files live in HUI's installed package; no installation agent, provider call or PI
 configuration write is needed. Skills and Settings → Skills expose the same

@@ -184,6 +184,15 @@ test("loading tolerates garbage and drops unknown kinds, invalid refs and duplic
   assert.deepEqual(parseWorkPaneStore({ sessions: { s1: { views: [{ kind: "vscode" }], active: "vscode" } } }, () => true).s1?.views, [{ kind: "vscode" }]);
 });
 
+test("an extension tab keeps its panel icon when a valid one is saved", () => {
+  const store = openWorkView({}, "s1", { kind: "extension", id: "prs", icon: "pull-request" });
+  assert.deepEqual(parseWorkPaneStore(JSON.parse(JSON.stringify(serializeWorkPaneStore(store))), () => true).s1?.views, [
+    { kind: "extension", id: "prs", icon: "pull-request" },
+  ]);
+  const damaged = parseWorkPaneStore({ sessions: { s1: { views: [{ kind: "extension", id: "prs", icon: 7 }] } } }, () => true);
+  assert.deepEqual(damaged.s1?.views, [{ kind: "extension", id: "prs" }]);
+});
+
 test("the stored shape round-trips and leaves untouched conversations out", () => {
   let store: WorkPaneStore = openWorkView({}, "s1", { kind: "terminal", terminalId: T1 });
   store = setWorkPaneWidth(store, "s2", 700);

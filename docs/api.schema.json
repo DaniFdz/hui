@@ -5209,6 +5209,231 @@
         }
       }
     },
+    "ExtensionEnginesInfo": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "string"
+        },
+        "max": {
+          "type": "string"
+        }
+      }
+    },
+    "ExtensionPanel": {
+      "type": "object",
+      "required": [
+        "title",
+        "entry"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "package"
+            },
+            {
+              "type": "string",
+              "const": "github"
+            },
+            {
+              "type": "string",
+              "const": "pull-request"
+            }
+          ]
+        }
+      }
+    },
+    "ExtensionPromptInfo": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "ExtensionRouteInfo": {
+      "type": "object",
+      "required": [
+        "method",
+        "path",
+        "description"
+      ],
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "stream": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ExtensionsResponse": {
+      "type": "object",
+      "required": [
+        "extensions"
+      ],
+      "properties": {
+        "extensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionStatus"
+          }
+        },
+        "storeError": {
+          "type": "string"
+        }
+      }
+    },
+    "ExtensionStatus": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "description",
+        "enabled",
+        "state",
+        "mode",
+        "restarts",
+        "routes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "loaded"
+            },
+            {
+              "type": "string",
+              "const": "disabled"
+            },
+            {
+              "type": "string",
+              "const": "failed"
+            },
+            {
+              "type": "string",
+              "const": "missing"
+            }
+          ]
+        },
+        "error": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "engines": {
+          "$ref": "#/$defs/ExtensionEnginesInfo"
+        },
+        "reloadedAt": {
+          "type": "number"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "in-process"
+            },
+            {
+              "type": "string",
+              "const": "process"
+            }
+          ]
+        },
+        "restarts": {
+          "type": "number"
+        },
+        "panel": {
+          "$ref": "#/$defs/ExtensionPanel"
+        },
+        "prompt": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionPromptInfo"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionToolInfo"
+          }
+        },
+        "routes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ExtensionRouteInfo"
+          }
+        }
+      }
+    },
+    "ExtensionToggleRequest": {
+      "type": "object",
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ExtensionToolInfo": {
+      "type": "object",
+      "required": [
+        "name",
+        "runtimeName",
+        "description"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "runtimeName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
     "FileCreateRequest": {
       "type": "object",
       "required": [
@@ -7255,6 +7480,22 @@
           "type": "string"
         }
       }
+    },
+    "PluginError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "PluginPayload": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": true
     },
     "PowerError": {
       "type": "object",
@@ -14473,6 +14714,18 @@
     ],
     "staff": [
       "StaffChiefInput"
+    ],
+    "extensions": [
+      "ExtensionEnginesInfo",
+      "ExtensionPanel",
+      "ExtensionPromptInfo",
+      "ExtensionRouteInfo",
+      "ExtensionStatus",
+      "ExtensionToggleRequest",
+      "ExtensionToolInfo",
+      "ExtensionsResponse",
+      "PluginError",
+      "PluginPayload"
     ]
   },
   "x-hui-routes": [
@@ -15043,6 +15296,30 @@
       "path": "/__hui/directories",
       "response": {
         "$ref": "#/$defs/DirectoriesResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/ext",
+      "response": {
+        "$ref": "#/$defs/ExtensionsResponse"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/ext/:id",
+      "request": {
+        "$ref": "#/$defs/ExtensionToggleRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/ExtensionStatus"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/ext/:id/reload",
+      "response": {
+        "$ref": "#/$defs/ExtensionStatus"
       }
     },
     {

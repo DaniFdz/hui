@@ -33,6 +33,7 @@ import "../components/settings/datadog.ts";
 import "../components/settings/providers.ts";
 import "../components/settings/subagent-routes.ts";
 import "../components/settings/workers.ts";
+import "../components/settings/extensions.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
 import { renderWorktreesPage, type WorktreesPageProps } from "./worktrees.ts";
 import {
@@ -64,6 +65,8 @@ export type SettingsProps = AutomationProps & {
   workspaceError: string;
   observability: ObservabilitySnapshot | undefined;
   observabilityError: string;
+  /** A Work pane exists to show an extension panel in. */
+  canOpenExtensionPanel: boolean;
   onRefreshObservability: () => void;
   onExportDiagnostics: () => void;
   onRetryPi: () => void;
@@ -966,7 +969,7 @@ function renderSecurityPage(props: SettingsProps) {
     ${props.piError || props.healthError ? html`<div class="settings-page__note settings-page__intro" role="alert">${[props.piError, props.healthError].filter(Boolean).join(" ")}<button type="button" class="btn" @click=${props.onRetryPi}>Retry</button></div>` : nothing}`;
 }
 
-const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "notifications" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers">, string> = {
+const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "notifications" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers" | "extensions">, string> = {
   connection: "HUI server, local PI runtime, reconnect behaviour and health.",
   integrations: "Connections to external services such as Jira and GitHub.",
   plugins: "Packages, extensions, permissions and provider adapters.",
@@ -1094,7 +1097,7 @@ export function renderSettingsPage(props: SettingsProps) {
         </div>
       </header>
       <div class="settings-workspace"><div class="settings-workspace__body">
-        <div class="settings-page ${["plugins", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}" data-testid="settings-page">
+        <div class="settings-page ${["plugins", "extensions", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}" data-testid="settings-page">
           ${props.page === "appearance"
             ? renderAppearancePage(props)
             : props.page === "notifications"
@@ -1113,6 +1116,8 @@ export function renderSettingsPage(props: SettingsProps) {
                     ? html`<hui-workers-settings></hui-workers-settings>`
                     : props.page === "plugins"
                       ? renderPluginsPage(props)
+                      : props.page === "extensions"
+                        ? html`<hui-extensions-settings .panelAvailable=${props.canOpenExtensionPanel}></hui-extensions-settings>`
                       : props.page === "memory"
                         ? renderMemoryPage(props)
                         : props.page === "automation"
