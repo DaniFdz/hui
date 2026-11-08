@@ -26,6 +26,8 @@ import { createCallRoutes } from "./routes/calls.ts";
 import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./bots/call-helper.ts";
 import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
+import { readStaffPack } from "./staff/pack.ts";
+import { ensureStaff } from "./staff/service.ts";
 import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
@@ -250,6 +252,21 @@ export const botRoutes = createBotRoutes({
 /** Bots imported from other platforms' templates (`bots/template-import.ts`), and exported as templates reviewed for
  * personal information (`bots/export.ts`), under `/__hui/bots`. */
 const localSkills = localBotSkills();
+/** The staff pack: seeds the Chief of Staff once, then installs the pack's skills and routes into it (staff/,
+ * server/staff/service.ts). Deleting the bot opts out; the record keeps HUI from seeding it again. */
+export const staff = {
+  ensure: async () => ensureStaff({
+    pack: await readStaffPack(),
+    createBot: async (body) => {
+      const view = await bots.create(body);
+      return { id: view.id };
+    },
+    botIds: async () => (await botRegistry.list()).map((bot) => bot.id),
+    skills: localSkills,
+    readSettings: readHuiSettings,
+    writeSettings: writeHuiSettings,
+  }),
+};
 // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
 const newBotOffer = (worker?: string) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR);
 const botSkillFiles = (worker?: string) => worker ? (botWorkers.keepsSkills(worker) ? botWorkers.skills(worker) : undefined) : localSkills;

@@ -15,7 +15,7 @@ import { uptime } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
-import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type Conversation, type ConversationId, type DocumentReader, type EntryId, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type Registry, type ToolRegistration } from "@earendil-works/pi-durable";
+import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type Conversation, type ConversationId, type DocumentReader, type EntryId, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type Registry, type ToolRegistration, type Tx } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
@@ -240,6 +240,12 @@ export type DurableBots = {
   mayCall(state: DurableBotState, action: string): boolean;
   /** The bot's own skill folder on this host; undefined on a host that keeps no bots' homes. */
   skillsDir(state: DurableBotState): string | undefined;
+  /** The own skill folder of the bot `botId`, for a subagent that loads a bot's skills. */
+  skillsDirForBot(botId: string): string | undefined;
+  /** The bot a subagent's conversation loads skills from (`hui.botSkills`); undefined for every other conversation. */
+  skillsBot(reader: DocumentReader, conversationId: ConversationId): Promise<string | undefined>;
+  /** Marks a subagent's conversation as loading `botId`'s skills, in its creating commit. */
+  writeSkills(tx: Tx, conversationId: ConversationId, botId: string): Promise<void>;
   /** The skills of `skills` a bot's chat has: all but the ones the operator turned off. */
   skills<T extends { readonly name: string; readonly filePath: string }>(skills: readonly T[], state: DurableBotState): T[];
   /** A bot's chat's offer: the tools the operator can turn off, described, and the ones its chat goes without. */
@@ -440,10 +446,13 @@ export class DurableHost implements ExtensionHost {
   }
 
   /** A bot's own skill folder (`skills/` in its home on this host, `bots/skills.ts`), which only its chat loads, once it exists
-   * (PI's loader warns about a missing one); none for every other conversation, or on a host that keeps no bots' homes. */
+   * (PI's loader warns about a missing one); a subagent of its chat loads it too (`hui.botSkills`). None for every other
+   * conversation, or on a host that keeps no bots' homes. */
   async skillDirsFor(conversationId: ConversationId): Promise<readonly string[]> {
     const bot = await this.botStateFor(conversationId);
-    const dir = bot ? this.#bots?.skillsDir(bot) : undefined;
+    const bots = this.#bots;
+    const skillsBot = bot || !bots || !this.#harness ? undefined : await bots.skillsBot(this.#harness, conversationId);
+    const dir = bot ? bots?.skillsDir(bot) : skillsBot ? bots?.skillsDirForBot(skillsBot) : undefined;
     return dir && await stat(dir).then((info) => info.isDirectory(), () => false) ? [dir] : [];
   }
 

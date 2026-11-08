@@ -52,6 +52,7 @@ buildNpmPackage {
       ../public
       ../themes
       ../skills
+      ../staff
     ];
   };
 

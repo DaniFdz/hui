@@ -166,9 +166,11 @@ function normalizeSubagentRoutes(value: unknown): Settings["models"]["routes"] {
   for (const item of value) {
     if (!isRecord(item)) continue;
     const name = typeof item["name"] === "string" ? item["name"].trim() : "";
-    const model = normalizeModelRef(item["model"]);
+    const rawModel = typeof item["model"] === "string" ? item["model"].trim() : "";
+    const model = normalizeModelRef(rawModel);
     const thinking = PI_THINKING_LEVELS.find((level) => level === item["thinking"]);
-    if (!routeNameIsValid(name) || !model || routes.has(name)) continue;
+    // A route with no model inherits the caller's model and thinking; a model that is present but malformed drops the route.
+    if (!routeNameIsValid(name) || (rawModel && !model) || routes.has(name)) continue;
     routes.set(name, {
       name,
       description: boundedText(item["description"], "", 200).replace(/\s+/gu, " ").trim(),

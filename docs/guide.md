@@ -309,10 +309,12 @@ saved as a default.
 
 **Subagent routes** sit under the same page. Choose **Add route** to open a
 form for its name, one-line description, model and optional reasoning level.
-The model starts on your primary model when available, and thinking inherits
+The model starts on **Inherit the caller's model**, and thinking inherits
 the parent's level. **Add route** saves the completed form; **Cancel** or Escape
 closes it without adding anything. A failed save keeps the form for retry.
 Saved routes show a brief summary of their description, model and thinking level.
+A route without a model runs its subagent on the caller's model and reasoning
+level, so it follows your primary model as that changes.
 Choose **Edit** to open the same form with the current values. **Save changes**
 applies the edit; Cancel or Escape leaves the saved configuration unchanged.
 **Remove** stays beside Edit. An agent that spawns a subagent can pass the name
@@ -508,6 +510,44 @@ default (Settings' utility model, then the chat's own model).
 
 A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
 and deleting the session all answer with an explanation instead.
+
+### The staff pack and the Chief of Staff
+
+A fresh gateway seeds one **Chief of Staff** bot from HUI's **staff pack**. It
+starts idle: it has a SOUL.md and its skills, and it says nothing until you
+message it. Its home folder holds the pack's skills under `skills/`, and the
+bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
+with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
+`verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
+`figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
+`principles` reference. No other chat loads them.
+
+The same seed adds five **Subagent routes** on Settings → Models: `planner`,
+`explorer`, `worker`, `reviewer` and `verifier`. Each inherits the caller's
+model until you give it one, so they follow your primary model. The chief picks
+one per task; `sessions_spawn` also takes `worktree: true`, which gives a
+writing worker its own Git worktree and branch instead of sharing the chief's.
+
+A task with more than one step or more than one worker goes to one **lead**, not
+to N workers: the lead owns it, spawns its own workers and reports one rollup.
+Its workers' completions land in the lead's transcript, so the chief's chat
+stays a conversation. The lead messages the chief with `sessions_send` only for
+a real decision.
+
+The chief's chat uses OptChat. Its compactor model defaults to Settings' utility
+model; for a chief that lives for months, set a stronger one in the bot's
+Settings → Memory. The ledger in `work/` and MEMORY.md are the durable record;
+the chat is not.
+
+The pack is versioned. On a later start HUI replaces a skill file nobody edited,
+keeps a skill with any edited file whole, and adds only routes whose names are
+missing; it never writes SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md after
+creation. `hui doctor` reports a skill that can take the shipped text and one
+you edited; `hui doctor --fix` installs the untouched updates.
+
+Deleting the Chief of Staff is how you opt out: HUI records the seed in
+`staff.json` and does not create another. To get it back, stop the gateway,
+delete `staff.json` from HUI's configuration directory, and start it again.
 
 ### Soul and the first conversation
 

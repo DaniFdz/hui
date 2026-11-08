@@ -17,6 +17,7 @@ import type { OptChatTuning } from "./durable-optchat.ts";
 import type { DurableSession } from "./durable.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
+import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 
 // HUI's configuration directory is resolved at import time, and PI finds skills in ~/.agents/skills: never read the operator's own.
 const root = await mkdtemp(join(tmpdir(), "hui-optchat-home-"));
@@ -43,6 +44,9 @@ test("Durable entries project to log lines: words, replies, calls and results, n
   assert.deepEqual(projectEntry(entry("pi.user", [{ role: "user", content: [{ type: "text", text: "look" }, { type: "image", data: "x", mimeType: "image/png" }], timestamp: 1 }])),
     [{ kind: "user", text: "look\n[image]" }]);
   assert.deepEqual(projectEntry(entry("pi.user", [{ role: "user", content: "plain", timestamp: 1 }])), [{ kind: "user", text: "plain" }]);
+  // A subagent's report is not the operator's words: the entry id marks it as a report for OptChat's compactor.
+  assert.deepEqual(projectEntry(entry("pi.user", [{ role: "user", content: `${SUBAGENT_COMPLETION_MARKER}\ncount: 1`, timestamp: 1 }])),
+    [{ kind: "user", text: `[7] ${SUBAGENT_COMPLETION_MARKER}\ncount: 1` }]);
   assert.deepEqual(projectEntry(entry("pi.assistant", [assistant([
     { type: "thinking", thinking: "secret plan", thinkingSignature: "sig" },
     { type: "text", text: "Reading it." },

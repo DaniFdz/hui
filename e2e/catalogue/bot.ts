@@ -693,6 +693,16 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "BOT-070",
+    title: "A fresh gateway ships a Chief of Staff and its staff pack",
+    behaviour: "The Bots tab lists “Chief of Staff” without the operator creating one. Its Tools & skills page lists the pack's own skills under “Its own skills”, including chief-mode and plan. Settings → Models → Subagent routes lists planner, explorer, worker, reviewer and verifier, each starting on “Inherit the caller's model”.",
+    spec: ["SPEC.md#bots", "SPEC.md#session-born-subagents"],
+    surfaces: ["route:GET /__hui/bots", "route:PUT /__hui/settings", "setting:models.routes"],
+    journeys: ["bots", "subagent-routes"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;

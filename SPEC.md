@@ -1644,9 +1644,15 @@ ordinary descendants may be active in one tree.
 A spawn picks the child's model in one of three ways: a **route** name from the
 operator's configured routes, a raw `provider/id`, or neither, which inherits the
 caller's model and reasoning level. A route carries a name, a one-line
-description and a model, and may pin a PI reasoning level through `max`; the
-spawn's own `thinking` overrides it. HUI's Ultra delegation mode is not a route
+description and, optionally, a model, and may pin a PI reasoning level through
+`max`; a route without a model runs the child on the caller's model and
+reasoning level, so a seeded default route never goes stale. The spawn's own
+`thinking` overrides it. HUI's Ultra delegation mode is not a route
 reasoning level. The route block in the prompt lists names and descriptions, not model ids.
+A spawn with `worktree: true` gets its own checkout: HUI creates a worktree off the caller's directory (on the worker that runs the caller), with Settings' branch prefix and the child's title, and the child's `cwd` is that worktree. A checkout that cannot be made refuses the spawn before a child exists, and a registry write that fails puts the worktree and its branch back. Parallel workers never share one working tree.
+
+A bot's subagent carries the bot whose skills it loads (`botSkills`), in its `hui.botSkills` conversation document, so the staff pack reaches the workers that need it and no other session sees it. Its own children inherit the same bot. That document grants skills only: the bot's soul, memory and tools stay its chat's.
+
 Routes are shortcuts, not an allowlist: the tool still accepts a raw `model`. Route and model together are refused, because the route already
 names one. An unknown route is refused before any child exists, naming the
 configured routes or pointing at Settings → Models → Subagent routes when there
@@ -2284,9 +2290,9 @@ everything the Bots tab can, through the same routes.
   with its `write_soul` tool, which only bots' chats have (no file tools
   needed). It changes SOUL.md when the operator asks, and says so. Only the
   operator's turns (and HUI's kickoff) can rewrite it: SOUL.md steers every
-  later turn, so a turn that took a message from a routine, a trigger or
+  later turn, so a turn that took a message from a routine, a trigger,
   another bot (the one that started it, or one that joined it while it ran)
-  can't, as it can't rename the bot. The operator can also replace it with
+  or a subagent's completion report can't, as it can't rename the bot. The operator can also replace it with
   `hui bot soul`; the bot's panel doesn't show it (decision below). A bot without a
   model of its own runs on Settings' primary model, like a new session.
 - **Named by talking.** A bot created without a name is *New Bot*; its first
@@ -3456,6 +3462,39 @@ Tools are the boundary, not a sandbox: with `bash` or `read` a bot reaches
 whatever the user's account can, and `message_bot` lets it ask a better-equipped
 bot to act (turning `message_bot` off prevents that). Isolation means running the
 bot on a worker in a container.
+
+### A staff pack seeds one Chief of Staff (2026-11-06)
+
+The owner asked for Lauren Tan's poteto workflow adapted to HUI: the operator
+talks mostly to one coordinator, the coordinator routes work to opinionated
+subagents, and the method lives in skills that load on demand instead of
+filling every conversation. HUI ships it as a **staff pack** (`staff/`) and
+seeds it once:
+
+- **One bot, seeded once, idle.** A fresh gateway creates *Chief of Staff*
+  with the pack's SOUL.md and skills, and no kickoff turn: it costs nothing
+  until it is messaged. HUI records the seed in `staff.json`; deleting the bot
+  is the opt-out and HUI never creates another. Its skills live in its own
+  `skills/` folder, so only its chat and its workers see them.
+- **Hash-based upgrades.** The record holds the hash of every file HUI wrote.
+  A start replaces a skill whose files all still match, keeps an edited skill
+  whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
+  BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
+  `--fix` installs the untouched updates.
+- **Workers carry the pack, nothing else.** A spawn from a bot's chat records
+  `botSkills`, written as the `hui.botSkills` document in the child's creating
+  commit; `skillDirsFor` loads that bot's skill folder for the child and its
+  descendants. The document grants skills only: no soul, memory or bot tools.
+- **Routes and checkouts.** The seed adds `planner`, `explorer`, `worker`,
+  `reviewer` and `verifier`, with no model, so they inherit the chief's.
+  `sessions_spawn({ worktree: true })` creates a worktree off the caller's
+  checkout (on its worker) and makes it the child's cwd; a failed registry
+  write rolls it back.
+- **Global skills stay opt-out.** `automate-me` (shaped for HUI bots),
+  `create-formal-verification-skill`, `maintain-formal-verification-skill` and
+  `maintain-verification-skill` ship as bundled skills beside
+  `create-verification-skill`, listed for every chat and turned off in
+  Settings → Skills. They are not part of the pack.
 
 ### Bots write their own SOUL.md in a first conversation (2026-10-06)
 
