@@ -3,11 +3,14 @@
  * composer, one at a time, each with its options (radios, or checkboxes for
  * multi-select), a free-text row and, when options carry one, a Markdown
  * preview of the focused option beside them. It keeps the operator's picks
- * while they move between questions and sends them all at once.
+ * while they move between questions and sends them all at once. The card folds
+ * to one row, keeping every pick and the progress, so the operator can read the
+ * conversation it covers and open it again where they left it.
  */
 import { html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
 import { HuiElement } from "../lit/hui-element.ts";
+import { icons } from "../lib/icons.ts";
 import { renderMarkdown } from "../lib/markdown/markdown.ts";
 import type { QuestionResponse, RuntimeQuestion } from "../api/sessions.ts";
 import type { QuestionnaireQuestion } from "../api/schema/sessions.ts";
@@ -24,6 +27,11 @@ function draftReply(draft: Draft): { selected: string[]; custom?: string } {
 
 const answered = (draft: Draft) => draft.selected.length > 0 || (draft.customChosen && draft.custom.trim() !== "");
 
+/** How many questions of the card already have an answer. */
+export function answeredCount(drafts: readonly Draft[]): number {
+  return drafts.filter(answered).length;
+}
+
 /** No decorators: the chat view (and so this module) also loads in Node tests. */
 export class QuestionnaireCard extends HuiElement {
   static override properties = {
@@ -33,6 +41,7 @@ export class QuestionnaireCard extends HuiElement {
     step: { state: true },
     drafts: { state: true },
     previewed: { state: true },
+    collapsed: { state: true },
   };
   declare prompt: RuntimeQuestion;
   declare onAnswer: (answer: QuestionResponse) => void;
@@ -42,6 +51,8 @@ export class QuestionnaireCard extends HuiElement {
   declare private drafts: Draft[];
   /** The option whose preview shows, per question. */
   declare private previewed: number[];
+  /** Folded to one row so the conversation behind the card can be read. */
+  declare private collapsed: boolean;
   #promptId = "";
 
   constructor() {
@@ -51,6 +62,7 @@ export class QuestionnaireCard extends HuiElement {
     this.step = 0;
     this.drafts = [];
     this.previewed = [];
+    this.collapsed = false;
   }
 
   private get questions(): readonly QuestionnaireQuestion[] {
@@ -64,6 +76,8 @@ export class QuestionnaireCard extends HuiElement {
     this.step = 0;
     this.drafts = this.questions.map(emptyDraft);
     this.previewed = this.questions.map((question) => Math.max(0, question.options.findIndex((option) => option.preview)));
+    // A new call's questions open in full: only this card's operator folds it.
+    this.collapsed = false;
   }
 
   /** The control the card focuses when it opens or changes question. */
@@ -89,6 +103,16 @@ export class QuestionnaireCard extends HuiElement {
     void this.updateComplete.then(() => this.focusCurrent());
   }
 
+  /** Folds the card to one row, or opens it again where the operator left it. */
+  #fold(folded: boolean): void {
+    if (this.collapsed === folded) return;
+    this.collapsed = folded;
+    void this.updateComplete.then(() => {
+      if (folded) this.querySelector<HTMLElement>(".chat-question-panel__collapsed-button")?.focus();
+      else this.focusCurrent();
+    });
+  }
+
   /** Next question, or Submit on the last one. */
   #advance(): void {
     if (this.step < this.questions.length - 1) this.#go(this.step + 1);
@@ -103,6 +127,14 @@ export class QuestionnaireCard extends HuiElement {
   #keydown(event: KeyboardEvent): void {
     // An input method's Enter and Escape belong to its composition.
     if (event.isComposing) return;
+    // Folded, the bar's own Enter and Space open the card. Escape does too, since
+    // an Escape that reached the page while the questions wait would stop the run.
+    if (this.collapsed) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.#fold(false);
+      return;
+    }
     const target = event.target as HTMLElement;
     const typing = target instanceof HTMLInputElement;
     if (event.key === "Escape") {
@@ -157,13 +189,31 @@ export class QuestionnaireCard extends HuiElement {
     (field ?? row).focus();
   }
 
+  /** The folded card: one row with the progress, what is answered and how to open it again. */
+  #renderFolded(question: QuestionnaireQuestion, titleId: string) {
+    const questions = this.questions;
+    const done = answeredCount(this.drafts);
+    const single = questions.length === 1;
+    return html`<form class="session-question-card chat-question-panel questionnaire-card questionnaire-card--collapsed chat-question-panel--collapsed"
+      data-testid="question-card" aria-labelledby=${titleId} @keydown=${(event: KeyboardEvent) => this.#keydown(event)}>
+      <button type="button" class="chat-question-panel__collapsed-button" aria-expanded="false"
+        aria-label=${single ? `${question.header}. Show the question.` : `Questions, ${done} of ${questions.length} answered. Question ${this.step + 1} of ${questions.length}. Show them.`}
+        @click=${() => this.#fold(false)}>
+        <span id=${titleId} class="questionnaire-card__collapsed-copy"><strong>${single ? question.header : "Questions"}</strong><span class="questionnaire-card__collapsed-note">${single ? question.question : `${done} of ${questions.length} answered`}</span></span>
+        <span class="chat-question-panel__progress" aria-label=${`Question ${this.step + 1} of ${questions.length}`}>${this.step + 1}/${questions.length}</span>
+        <span class="chat-question-panel__chevron">${icons.chevronUp}</span>
+      </button>
+    </form>`;
+  }
+
   protected override render() {
     const questions = this.questions;
     const question = questions[this.step];
     if (!question) return nothing;
+    const titleId = `${this.idPrefix}-title`;
+    if (this.collapsed) return this.#renderFolded(question, titleId);
     const draft = this.drafts[this.step] ?? emptyDraft();
     const multi = question.multiSelect;
-    const titleId = `${this.idPrefix}-title`;
     const last = this.step === questions.length - 1;
     const preview = question.options[this.previewed[this.step] ?? 0]?.preview;
     const focusIndex = Math.max(0, question.options.findIndex((option) => draft.selected.includes(option.label)));
@@ -178,6 +228,8 @@ export class QuestionnaireCard extends HuiElement {
       <header class="chat-question-panel__topline">
         <strong class="chat-question-panel__title">${questions.length > 1 ? "Questions" : question.header}</strong>
         <span class="chat-question-panel__progress" aria-label=${`Question ${this.step + 1} of ${questions.length}`}>${this.step + 1}/${questions.length}</span>
+        <button type="button" class="chat-question-panel__collapse" aria-label="Minimize questions" aria-expanded="true"
+          data-hui-tooltip="Minimize questions" @click=${() => this.#fold(true)}>${icons.chevronUp}</button>
       </header>
       ${questions.length > 1 ? html`<div class="questionnaire-card__tabs" role="tablist" aria-label="Questions">
         ${questions.map((each, index) => html`<button type="button" role="tab" class="questionnaire-card__tab" tabindex=${index === this.step ? "0" : "-1"}
