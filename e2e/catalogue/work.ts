@@ -819,6 +819,26 @@ const cases: UseCase[] = [
     web: "required",
     ios: { excluded: "The iPhone app imports files through its native file importer, which shows the system's own progress and offers no in-app Cancel upload; the gateway's larger cap still applies to it.", decision: "SPEC.md#the-webs-upload-progress-and-cancel-stay-on-the-web-2026-11-03" },
   },
+  {
+    id: "WORK-083",
+    title: "Widen the Files navigator and read a cut-off name",
+    behaviour: "Dragging the boundary at the navigator's right edge widens it up to the room that leaves the editor 240px, and narrows it to 200px; the boundary is a separator named Resize files navigator that also takes the arrow keys, 16px a press and 48px with Shift. The browser keeps the width after a reload, and a name cut short shows its full path on hover.",
+    spec: ["SPEC.md#files", "SPEC.md#a-file-lists-boundary-and-hover-path-stay-on-the-web-2026-11-08"],
+    surfaces: ["work-view:files"],
+    journeys: ["files-view"],
+    web: "required",
+    ios: { excluded: "The iPhone app is always narrow: its Files navigator is a drawer with no boundary, and a touch screen has no hover for the full path.", decision: "SPEC.md#a-file-lists-boundary-and-hover-path-stay-on-the-web-2026-11-08" },
+  },
+  {
+    id: "WORK-084",
+    title: "Widen the changed-file list and read a cut-off path",
+    behaviour: "Dragging the boundary at the changed-file list's right edge widens it up to the room that leaves the diff 320px, and narrows it to 220px; the boundary is a separator named Resize changed files that also takes the arrow keys, 16px a press and 48px with Shift. The browser keeps the width after a reload, and a path cut short shows its full path on hover.",
+    spec: ["SPEC.md#diff", "SPEC.md#a-file-lists-boundary-and-hover-path-stay-on-the-web-2026-11-08"],
+    surfaces: ["work-view:diff"],
+    journeys: ["diff-view"],
+    web: "required",
+    ios: { excluded: "The Diff view's changed-file list has no side-by-side boundary on a narrow iPhone screen, and a touch screen has no hover for the full path; the list and a tap's diff stay.", decision: "SPEC.md#a-file-lists-boundary-and-hover-path-stay-on-the-web-2026-11-08" },
+  },
 ];
 
 export default cases;
