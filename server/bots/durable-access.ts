@@ -164,7 +164,7 @@ export function offeredSkill(skill: Pick<Skill, "name" | "description" | "filePa
   const folder = dirname(skill.baseDir);
   const home = homedir();
   const shown = folder === home || folder.startsWith(home + sep) ? `~${folder.slice(home.length)}` : folder;
-  return { ...ref, description: skill.description, source: bundled ? "HUI defaults" : shown, own: false };
+  return { ...ref, description: skill.description, source: bundled ? "HUI defaults" : shown };
 }
 
 /** Where a tool probably comes from, by its name, for a description without a live session. */
