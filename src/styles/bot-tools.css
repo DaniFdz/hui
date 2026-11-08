@@ -81,4 +81,4 @@
 .bot-tools__editor { margin: 0 0 12px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .bot-tools__skill-text { width: 100%; min-height: 260px; resize: vertical; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; white-space: pre; }
 .bot-tools__editor-actions { display: flex; gap: 8px; margin-top: 8px; }
-.bot-tools__editor textarea.bot-tools__skill-text { min-height: 320px; }
+.bot-tools__editor textarea.bot-tools__skill-text { min-height: 320px; white-space: pre-wrap; overflow-wrap: anywhere; }
