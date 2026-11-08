@@ -4532,7 +4532,7 @@ comes from the per-conversation token. `action` is one of:
 
 | Action | Contract |
 | --- | --- |
-| `status`, `tabs` | Process state and this conversation's tabs; never launch the browser |
+| `status`, `tabs` | Process state and this conversation's tabs; never launch the browser, and `tabs` marks one left blank by the allowlist `(blocked: not in the allowed origins)` |
 | `open` | Launch lazily, open a tab, load `url` and return a snapshot |
 | `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot; with an origin allowlist set, a page outside it is refused with 403 |
 | `focus`, `close` | Select or close one of this conversation's tabs |

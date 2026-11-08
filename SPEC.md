@@ -965,7 +965,10 @@ pages the managed browser may reach: `example.com`, `example.com:8443`,
 `open`, `navigate` or history move onto a page outside the list is refused
 before a tab goes there, with an error naming the list. A link, redirect or
 popup that leaves it is stopped, its tab left on `about:blank`, and the reason
-appears in the tool result that follows and in the live view's action. A local
+appears in the tool result that follows and in the live view's action; a popup
+that committed its document before HUI attached to it is checked where it
+landed, and `tabs` marks it `blocked: not in the allowed origins` until that is
+reported. A local
 file is refused while a list is set, and a private, loopback or link-local
 address needs its exact host: a wildcard never covers one. The list covers
 where a tab's document goes, not the subresources that document loads; and host

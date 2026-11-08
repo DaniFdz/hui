@@ -108,6 +108,11 @@ Verified on 2026-11-08 in the same fixture, at 1440×900 and 390×844.
 - Clearing the list and saving restored "Empty lets agents browse anywhere" and
   the same navigation would have been allowed (proven by the manager test with a
   real headless browser, not by a second fixture run).
+- A popup to another host, and a redirect from an allowed page to one, are
+  stopped, left on `about:blank` and reported once — including a popup that
+  committed before HUI attached, which `tabs` marks
+  `(blocked: not in the allowed origins)`. Proven by `server/browser/manager.test.ts`
+  with a real headless browser, not by a fixture run.
 - Both viewports showed the field above its button without horizontal overflow.
 
 ## Operator handoff

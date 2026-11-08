@@ -716,7 +716,9 @@ OpenCode's Browse, with HUI's own browser and no new dependency or route. Proof:
 `server/browser/origins.test.ts` (pattern, port, scheme, wildcard and private
 address rules), `server/browser/manager.test.ts` (a real headless browser: a
 second host refused with 403, a link from an allowed page stopped and left
-blank, the block reported once), `server/hui-settings.test.ts` and
+blank, the block reported once, and a popup or redirect leaving the list stopped
+— the popup checked where it landed, since it can commit before HUI attaches),
+`server/hui-settings.test.ts` and
 `src/lib/settings/settings.test.ts` (the same fixture for both normalizers),
 `e2e/tests/set/browser-origins.e2e.ts` (the field saves and survives a reload)
 and the origin section of `e2e/browser-tool.browser.md`.
