@@ -72,6 +72,7 @@ import {
 import { registerAgentToolHandler } from "./agent-tools/bridge.ts";
 import { SubagentService } from "./agent-tools/subagents.ts";
 import { presentMediaForSession } from "./agent-tools/presented-media.ts";
+import { generateMediaForSession } from "./agent-tools/media-generation.ts";
 import { deliverDesktopNotification, notifyUser } from "./agent-tools/notifications.ts";
 import { watchSessionNotifications, type NotificationTarget } from "./sessions/session-notifications.ts";
 import { GitHubCli } from "./integrations/github.ts";
@@ -472,6 +473,7 @@ registerAgentToolHandler(async (invocation) => {
     if (!caller) throw new BrowserToolError("Conversation no longer exists.", 404);
     return managedBrowser.tool(caller.id, invocation.params, { cwd: resolveWorkingDirectory(caller.cwd) });
   }
+  if (invocation.action === "gen_image") return generateMediaForSession(invocation.callerSessionId, "image", invocation.params);
   return invocation.action === "present_media"
     ? presentMediaForSession(invocation.callerSessionId, invocation.params)
     : subagents.handle(invocation.callerSessionId, invocation.action, invocation.params, invocation.signal);

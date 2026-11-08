@@ -1125,6 +1125,32 @@ load scripts, styles and fonts from a few public CDNs (cdnjs, jsDelivr, esm.sh,
 unpkg, Google and Bunny fonts), which then see your IP address.
 [docs/api.md](api.md#agent-widgets) has the full contract.
 
+## Generating images
+
+Ask for a picture and the agent calls `gen_image`: it sends your prompt to one
+configured provider and the image appears in the chat, in HUI's own storage, so
+it survives a reload and can be opened full screen or saved.
+
+- **ChatGPT subscription.** If you connected an OpenAI account in **Settings →
+  Models**, image generation runs on that login, through the same images
+  endpoint OpenAI's Codex client uses. No API key is involved. A plan that does
+  not include image generation is refused by OpenAI; the agent reports that
+  instead of retrying.
+- **Gemini API key.** Add `GEMINI_API_KEY` to the environment HUI starts with,
+  or put `{"gemini":{"apiKey":"…"}}` in `~/.config/hui/media.json` (HUI writes
+  that file with 0600 permissions). Requests use the Nano Banana image models
+  and count against that key's free tier or billing.
+- A **Google AI Pro or Ultra subscription is not an API credential**: Google
+  authorizes the Gemini API by key and Cloud project, and the Gemini CLI has no
+  image tool. That is why a Gemini account does not make `gen_image` work on its
+  own, and why HUI does not drive the Gemini web app.
+- `~/.config/hui/media.json` also holds `preferred.image` (`openai-codex` or
+  `gemini`) and a per-provider `models` entry, so a request without a provider
+  uses your choice. A dedicated Settings page for these keys is not built yet;
+  the file and the environment variable are the whole configuration today.
+- Images are capped at one per call, square, landscape or portrait. Video is not
+  supported yet.
+
 ## Datadog links in the chat
 
 Paste a Datadog link in a message, or let the agent write one, and HUI shows it

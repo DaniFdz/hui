@@ -1453,6 +1453,22 @@ tool's prompt guidance states this exact matrix and the
 rule that a local path alone is not an attachment. Remote Markdown images remain
 click-to-open placeholders.
 
+Image generation uses HUI's `gen_image` tool, never a provider's web interface.
+The gateway asks one configured provider for one image from a prompt: the
+ChatGPT/Codex subscription HUI already holds as an OAuth credential, through the
+native Codex images endpoint a subscription authorizes, with no API key; or a
+Gemini AI Studio key kept in `~/.config/hui/media.json` with 0600 permissions.
+That file also holds the operator's preferred provider and model; a request may
+name a provider, and a provider without credentials is never chosen silently. A
+plan that does not include image generation, a rejected credential and a spent
+quota each come back as one sentence the agent relays instead of a generic
+failure. The result is staged in HUI's immutable media store exactly as
+`present_media` stages a file, so the transcript renders it inline and the
+temporary file the provider wrote never reaches the conversation's workspace; a generated image reports no Files-view path. `gen_image` keeps its own
+transcript row like the other presentation tools. A Google AI Pro or Ultra
+subscription does not authorize the Gemini API, so a Google account is not a
+media credential; video generation is not part of this contract yet.
+
 HUI's turn-time presentation guidance is generated from one compact capability
 catalog. It advertises Mermaid, self-contained Vega-Lite charts, KaTeX math,
 GitHub-style callouts, the consent-gated X/Twitter facade and static Slack link
@@ -2777,7 +2793,7 @@ hidden reasoning. Now every assistant message keeps a row of its own, live or
 settled; only what comes between messages (thinking, tool calls, errors) folds.
 A finished turn looks as it did while it ran. The cost the owner accepted:
 short in-between notes ("Checking the logs.") stay visible too. Presentation
-tools (`present_media`, `show_widget`, `ask_user_question`, `message_bot`) keep
+tools (`present_media`, `gen_image`, `show_widget`, `ask_user_question`, `message_bot`) keep
 their own rows as before. Link previews still render only under the newest
 assistant message; the links themselves work in every message.
 

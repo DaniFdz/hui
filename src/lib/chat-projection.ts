@@ -17,7 +17,7 @@ export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compacti
 
 /** Tool calls that present something to the user, or hand a message to another chat, get a row of their own, so
  * they stay visible after the turn's other activity folds into a disclosure. */
-const PRESENTATION_TOOLS = new Set(["present_media", "show_widget", "ask_user_question", "message_bot"]);
+const PRESENTATION_TOOLS = new Set(["present_media", "gen_image", "show_widget", "ask_user_question", "message_bot"]);
 
 /** Who HUI delivered a user-role message from when the operator didn't write it, by the header it starts with: a bot's
  * tag, a session's tag or `sessions_send`, a subagent's task (from its parent), a bot's routine or trigger. */

@@ -141,6 +141,18 @@ test("keeps presented media visible outside collapsed run details", () => {
   ]);
 });
 
+test("keeps a generated image visible outside collapsed run details", () => {
+  const rows = projectChatTranscript([
+    { kind: "message", id: "u", role: "user", text: "draw a cat" },
+    { kind: "tool", id: "read", name: "read", status: "succeeded" },
+    { kind: "tool", id: "generated", name: "gen_image", status: "succeeded", details: { media: [] } },
+    { kind: "tool", id: "check", name: "bash", status: "succeeded" },
+  ]);
+  assert.deepEqual(rows.map((row) => row.kind === "messages" ? row.role : row.kind === "activity" ? row.items.map((item) => item.id).join(",") : row.kind), [
+    "user", "read", "generated", "check",
+  ]);
+});
+
 test("starts a fresh grouped run after every user message, and an earlier turn keeps its mid-turn messages", () => {
   const rows = projectChatTranscript([
     { kind: "message", id: "u1", role: "user", text: "one" },
