@@ -61,6 +61,13 @@ owns what each route may do, when a fresh child is required, and when the job ne
 lower it for routine work. A route HUI refuses is unusable: spawn without a route, inherit the
 caller's model, and say so in the ledger row.
 
+**Set the lead.** A task with more than one step or more than one worker gets one
+`lead`: spawn a single `worker`-route child with the whole task and the `lead` skill's
+brief. The lead spawns its own workers, reads their evidence, retries them and reports
+once. You stop watching its workers: their completions land in the lead's transcript, not
+this chat. Message it only for a decision it escalated or a scope change. One lead per
+separable area; stop at three levels (you, leads, workers).
+
 ## 4. Open a ledger row per task
 
 Write the row in `work/index.md` at dispatch and settle it there. `show-me-your-work` owns the
@@ -79,7 +86,8 @@ relayed summary. Name paths; never inline whole files.
 `delegate` owns the caps and the shapes. Independent units fan out from one `codemode` script
 with `collect: true` and `agents_wait`; coverage belongs to `swarm` and a design fork to
 `arena`. Two workers never edit the same file at once, and a child never receives another
-child's report. The lead reads the results, decides, and assigns the next unit.
+child's report. You read the results, decide, and assign the next unit; when a lead owns
+the area, its rollup is the result you read.
 
 ## 7. Check every claim
 
@@ -99,4 +107,5 @@ A task is closed when every step is checked or skipped with a reason, the checks
 needs ran and are named with their result, and every user-visible change has browser evidence
 at desktop and mobile widths. Open the reply with the restated goal, then what changed, what
 proved it, what was chosen and why, what stays open, and the proof gaps. Short declarative
-sentences, no emoji, no long dash, and never a claim that an unrun check passed.
+sentences, no emoji, no long dash, and never a claim that an unrun check passed. One line
+per task, never one per child; a lead's rollup is one item.
