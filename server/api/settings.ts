@@ -9,6 +9,8 @@ export type VscodeProviderPreference = Static<typeof VscodeProviderPreference>;
 
 export const BrowserSettings = Type.Object({
   enabled: Type.Boolean(), headless: Type.Boolean(), executablePath: Type.String(), mirrorState: Type.Boolean(),
+  /** Pages agents may reach; empty is anywhere. */
+  allowedOrigins: Type.Array(Type.String()),
 }, { $id: "BrowserSettings" });
 export type BrowserSettings = Static<typeof BrowserSettings>;
 

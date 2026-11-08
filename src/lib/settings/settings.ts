@@ -15,7 +15,7 @@ export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreferenc
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 
 export const DEFAULT_BRANCH_PREFIX = "feature/";
-export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
@@ -94,6 +94,19 @@ export function normalizeCalls(value: unknown): Settings["calls"] {
 /** Both switches are opt-out: only an explicit false changes the default. The
  * path is kept as typed (bounded, no control characters); the gateway validates
  * and reports it rather than guessing. */
+/** Trimmed, lowercased, deduplicated: the gateway validates what a pattern means when a page is checked. */
+function originPatterns(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const patterns: string[] = [];
+  for (const entry of value.slice(0, 50)) {
+    if (typeof entry !== "string") continue;
+    const text = entry.trim().toLowerCase();
+    if (!text || text.length > 200 || /\s|[\p{Cc}]/u.test(text) || patterns.includes(text)) continue;
+    patterns.push(text);
+  }
+  return patterns;
+}
+
 export function normalizeBrowserSettings(value: unknown): BrowserSettings {
   const source = isRecord(value) ? value : {};
   const path = typeof source["executablePath"] === "string" ? source["executablePath"].trim() : "";
@@ -102,6 +115,7 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
     headless: source["headless"] !== false,
     executablePath: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
     mirrorState: source["mirrorState"] === true,
+    allowedOrigins: originPatterns(source["allowedOrigins"]),
   };
 }
 

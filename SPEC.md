@@ -958,6 +958,21 @@ out the other, since a missing cookie cannot be told apart from one never set.
 These documents hold live credentials: mirroring is the one thing HUI writes on
 a worker on purpose, and it is off until the operator turns it on.
 
+**An origin allowlist, if the operator sets one.** Settings → Tools → Browser →
+*Allowed origins* (empty by default, so agents may browse anywhere) lists the
+pages the managed browser may reach: `example.com`, `example.com:8443`,
+`https://app.example.com`, or `*.example.com` for subdomains only. An agent's
+`open`, `navigate` or history move onto a page outside the list is refused
+before a tab goes there, with an error naming the list. A link, redirect or
+popup that leaves it is stopped, its tab left on `about:blank`, and the reason
+appears in the tool result that follows and in the live view's action. A local
+file is refused while a list is set, and a private, loopback or link-local
+address needs its exact host: a wildcard never covers one. The list covers
+where a tab's document goes, not the subresources that document loads; and host
+names are not resolved, so a name that turns out to point at a private address
+after the check is outside this model. A pattern that cannot be parsed matches
+nothing, so a typo locks pages out loudly instead of opening them quietly.
+
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
 to a visible window for watching the agent work, set the executable, start or

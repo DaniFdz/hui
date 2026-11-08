@@ -9,6 +9,7 @@ import { CONFIG_DIR } from "./paths.ts";
 import { isToolIconName } from "./tool-icons.ts";
 import { THINKING_LEVELS } from "./sessions/thinking.ts";
 import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "./api/settings.ts";
+import { normalizeOriginPatterns } from "./browser/origins.ts";
 export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "./api/settings.ts";
 
 const GPT_LIVE_VOICES = ["cove", "arbor", "breeze", "ember", "juniper", "maple", "sol", "spruce", "vale"] as const;
@@ -76,7 +77,7 @@ function normalizeThemeMode(value: unknown): ThemeMode {
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 
 export const DEFAULT_BRANCH_PREFIX = "feature/";
-export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
@@ -159,6 +160,8 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
     executablePath: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
     // Opt-in: only an explicit true lends a machine's cookies and logins to another.
     mirrorState: source["mirrorState"] === true,
+    // Empty is anywhere; a set list is the browser's whole reach.
+    allowedOrigins: normalizeOriginPatterns(source["allowedOrigins"]),
   };
 }
 

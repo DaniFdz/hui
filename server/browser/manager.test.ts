@@ -40,7 +40,7 @@ test("launch arguments use the DevTools pipe, a dedicated profile and no debuggi
 });
 
 test("settings gate every call and a missing browser is reported, not guessed", async () => {
-  let settings: BrowserSettings = { enabled: false, headless: true, executablePath: "", mirrorState: false };
+  let settings: BrowserSettings = { enabled: false, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
   const browser = new ManagedBrowser({ profileDir: "/nonexistent/profile", readSettings: async () => settings, probe: noBrowser });
   await assert.rejects(browser.tool("alpha", { action: "status" }, { cwd: "/" }), /turned off/u);
   await assert.rejects(browser.start(), /Turn on the browser tool/u);
@@ -125,7 +125,7 @@ test("a real headless browser serves agent tabs end to end", {
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  let settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  let settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
   const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -233,7 +233,7 @@ test("a click passes through a transparent pseudo overlay but not an opaque one"
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
   const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -267,7 +267,7 @@ test("stopped or idle conversations never leave a headless browser running", {
   timeout: 60_000,
 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-browser-lifetime-"));
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
   const browsers: ManagedBrowser[] = [];
   t.onTestFinished(async () => {
     for (const browser of browsers) await browser.stop();
@@ -313,7 +313,7 @@ test("a browser killed behind the gateway's back is relaunched on the next open"
 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-browser-kill-"));
   const profileDir = join(dir, "profile");
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
   const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -339,7 +339,7 @@ test("an action racing an external kill names the exit instead of a protocol err
 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-browser-kill-action-"));
   const profileDir = join(dir, "profile");
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
   const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -372,7 +372,7 @@ test("another Chromium process owning the profile is reported instead of a conne
   t.onTestFinished(() => { if (squatter.exitCode === null && squatter.signalCode === null) squatter.kill("SIGKILL"); });
   assert.equal(await eventually(async () => (await readdir(profileDir).catch((): string[] => [])).includes("SingletonLock"), Boolean), true, "the squatter holds the profile");
 
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
   const browser = new ManagedBrowser({ profileDir, readSettings: async () => settings });
   t.onTestFinished(async () => {
     // Cleanups run last-registered first, so stop the squatter here too: it writes its profile until it exits.
@@ -407,7 +407,7 @@ test("the live view follows the agent's tab, streams frames only while watched a
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
   const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -529,7 +529,7 @@ test("a handoff hands one tab to the operator and returns a fresh snapshot", {
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
   const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
   t.onTestFinished(async () => {
     await browser.stop();
@@ -577,4 +577,60 @@ test("a handoff hands one tab to the operator and returns a fresh snapshot", {
   assert.equal(timedOut.details["outcome"], "timeout");
   assert.match(timedOut.text, /did not take over tab t1 within 5 seconds/u);
   assert.match((await call({ action: "snapshot" })).text, /heading|button|textbox/u);
+});
+
+test("the origin allowlist refuses other hosts, including one a link in an allowed page reaches", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-origins-"));
+  const allowed = createServer((request, response) => {
+    const path = request.url ?? "/";
+    const body = path === "/offsite"
+      ? `<!doctype html><title>Allowed page</title><h1>Allowed page</h1><a href="${blockedOrigin}/private">Elsewhere</a>`
+      : PAGES[path];
+    response.writeHead(body ? 200 : 404, { "content-type": "text/html" });
+    response.end(body ?? "missing");
+  }).listen(0, "127.0.0.1");
+  const blocked = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end("<!doctype html><title>Elsewhere</title><h1>Elsewhere</h1>");
+  }).listen(0, "127.0.0.1");
+  await Promise.all([once(allowed, "listening"), once(blocked, "listening")]);
+  const allowedAddress = allowed.address();
+  const blockedAddress = blocked.address();
+  assert.ok(allowedAddress && typeof allowedAddress !== "string" && blockedAddress && typeof blockedAddress !== "string");
+  const origin = `http://127.0.0.1:${allowedAddress.port}`;
+  const blockedOrigin = `http://127.0.0.1:${blockedAddress.port}`;
+  const settings: BrowserSettings = {
+    enabled: true, headless: true, executablePath: "", mirrorState: false,
+    allowedOrigins: [`127.0.0.1:${allowedAddress.port}`],
+  };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    allowed.close();
+    blocked.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const refIn = (text: string, pattern: RegExp) => {
+    const ref = pattern.exec(text)?.[1];
+    assert.ok(ref, `missing ${pattern} in:\n${text}`);
+    return ref;
+  };
+
+  // The allowed host opens; another host, port or file is refused before a tab goes there.
+  assert.match((await call({ action: "open", url: `${origin}/form` })).text, /Opened tab t1/u);
+  await assert.rejects(call({ action: "open", url: `${blockedOrigin}/` }), /127\.0\.0\.1:\d+ is not in this browser's allowed origins \(127\.0\.0\.1:\d+\)/u);
+  await assert.rejects(call({ action: "navigate", url: `${blockedOrigin}/private` }), /not in this browser's allowed origins/u);
+  await assert.rejects(call({ action: "navigate", url: `file://${join(dir, "notes.html")}` }), /not in this browser's allowed origins/u);
+  assert.match((await call({ action: "navigate", url: `${origin}/offsite` })).text, /heading "Allowed page"/u);
+
+  // A link inside the allowed page is stopped at the boundary; the result says so once.
+  const elsewhere = refIn((await call({ action: "snapshot" })).text, /link "Elsewhere" \[ref=(e\d+)\]/u);
+  const blockedClick = await call({ action: "act", kind: "click", ref: elsewhere });
+  assert.match(blockedClick.text, /This tab tried to reach http:\/\/127\.0\.0\.1:\d+\/private, which is not in the browser's allowed origins/u);
+  assert.match(blockedClick.text, /URL: about:blank/u);
+  assert.doesNotMatch((await call({ action: "snapshot" })).text, /tried to reach/u, "a block is reported once");
 });
