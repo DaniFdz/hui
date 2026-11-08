@@ -68,3 +68,7 @@ has to show.
 State what ran, what it printed, and what you saw on screen. Put each gap on its
 own line: the check not run, the fixture that cannot reach the state, the
 attachment that failed. A reader trusts a report more when it names its holes.
+
+When a check failed for a reason nothing recorded, or this project's own instructions named
+a step the pack did not know, load `learn` and add one evidence-backed entry to the bot's own
+`lessons` skill. The pack's `verify` is read-only; lessons are the bot's.

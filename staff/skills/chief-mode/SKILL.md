@@ -109,3 +109,10 @@ at desktop and mobile widths. Open the reply with the restated goal, then what c
 proved it, what was chosen and why, what stays open, and the proof gaps. Short declarative
 sentences, no emoji, no long dash, and never a claim that an unrun check passed. One line
 per task, never one per child; a lead's rollup is one item.
+
+## 9. Keep one lesson
+
+When a check failed for a reason nothing recorded, a worker drifted from its brief, or the
+operator corrected the same thing twice, load `learn` and add one evidence-backed entry to
+the bot's own `lessons` skill. The pack's skills are read-only; lessons are this bot's. Do not
+learn from a worker's report alone, and do not turn a lesson into a rule for the operator.

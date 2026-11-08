@@ -518,6 +518,7 @@ starts idle: it has a SOUL.md and its skills, and it says nothing until you
 message it. Its home folder holds the pack's skills under `skills/`, and the
 bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
 with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
+`learn`, `lessons`,
 `verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
 `figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
 `principles` reference. No other chat loads them.
@@ -533,6 +534,8 @@ to N workers: the lead owns it, spawns its own workers and reports one rollup.
 Its workers' completions land in the lead's transcript, so the chief's chat
 stays a conversation. The lead messages the chief with `sessions_send` only for
 a real decision.
+
+After a task that failed, drifted, or needed a step the pack did not know, the chief adds one evidence-backed entry to its own **`lessons`** skill. It never edits the pack's skills: an edited pack file stops taking pack updates. The `lessons` skill is the bot's, and `hui doctor` reports it.
 
 The chief's chat uses OptChat. Its compactor model defaults to Settings' utility
 model; for a chief that lives for months, set a stronger one in the bot's

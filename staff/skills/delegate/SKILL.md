@@ -54,4 +54,6 @@ One owner per PR. The session that opened the PR, or the one handed it, pushes t
 
 A lead's rollup is one report. Read the lead's diff and evidence, not each worker's summary; the workers reported to the lead for a reason.
 
+When a child failed, drifted or taught you something the next kickoff should carry, load `learn` and add one evidence-backed entry to the bot's own `lessons` skill. The pack's `delegate` is read-only; lessons are the bot's.
+
 Record the dispatch and the settle in `work/index.md`, following `show-me-your-work`.
