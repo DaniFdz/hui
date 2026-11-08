@@ -65,7 +65,7 @@ test("the default reasoning keeps a PI level and drops Ultra or an unknown one",
   assert.equal(await level(7), "");
 });
 
-test("the retry budget is a whole number from 0 to 10 and defaults to 3", async () => {
+test("the retry budget is a whole number from 0 to 5 and defaults to 3", async () => {
   const directory = await mkdtemp(join(tmpdir(), "hui-settings-"));
   const path = join(directory, "settings.json");
   const attempts = async (value: unknown) => {
@@ -75,7 +75,7 @@ test("the retry budget is a whole number from 0 to 10 and defaults to 3", async 
   assert.equal(await attempts(0), 0);
   assert.equal(await attempts(5.9), 5);
   assert.equal(await attempts(-2), 0);
-  assert.equal(await attempts(99), 10);
+  assert.equal(await attempts(99), 5);
   assert.equal(await attempts("4"), 4);
   assert.equal(await attempts("many"), 3);
   assert.equal(await attempts(undefined), 3);

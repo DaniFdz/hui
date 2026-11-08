@@ -767,7 +767,7 @@ cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 ```
 
 `retryAttempts` is the number of provider-error retries before the fallback is
-tried, from 0 to 10 (default 3). A retry keeps the same model and account, so the
+tried, from 0 to 5 (default 3). A retry keeps the same model and account, so the
 provider can reuse its cached context; a provider-supplied `Retry-After` or retry
 hint decides the wait, with PI's exponential backoff when it gives none. A
 capacity 429 is not account exhaustion and never cools the account down; the

@@ -203,7 +203,7 @@ function normalizeModels(value: unknown): Settings["models"] {
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
     thinking: savedReasoningLevel(source["thinking"]) ?? "",
-    retryAttempts: Number.isFinite(attempts) ? Math.min(10, Math.max(0, Math.trunc(attempts))) : 3,
+    retryAttempts: Number.isFinite(attempts) ? Math.min(5, Math.max(0, Math.trunc(attempts))) : 3,
     routes: normalizeSubagentRoutes(source["routes"]),
   };
 }
