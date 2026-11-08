@@ -134,6 +134,6 @@ five-minute timeout, instead of typing into the page itself.
 - Previews are not recorded: after a reload the latest one shows the tab's
   current page, and nothing once the tab is gone; earlier browser activity never
   carries one.
-- A handoff nobody answers, a tab that closes under the operator and a browser
-  that stops are proven by `server/browser/manager.test.ts` (a real headless
-  browser and a five-second wait), not by waiting in the Browser check.
+- A handoff nobody answers, a tab that closes under the operator, a Stop and a
+  browser that stops are proven by `server/browser/manager.test.ts` (a real
+  headless browser and a five-second wait), not by waiting in the Browser check.

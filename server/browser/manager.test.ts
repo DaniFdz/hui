@@ -578,3 +578,54 @@ test("a handoff hands one tab to the operator and returns a fresh snapshot", {
   assert.match(timedOut.text, /did not take over tab t1 within 5 seconds/u);
   assert.match((await call({ action: "snapshot" })).text, /heading|button|textbox/u);
 });
+
+test("a handoff ends when its conversation stops or the browser does", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-handoff-end-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+  const waiting = () => eventually(() => Promise.resolve(states.at(-1)), (state) => Boolean(state?.handoff));
+  const openTab = async () => {
+    assert.match((await call({ action: "open", url: `${origin}/form` })).text, /Opened tab t\d+/u);
+  };
+
+  // Stop or removing the conversation settles the wait as closed, and its tab goes with it.
+  await openTab();
+  const stopping = call({ action: "handoff", message: "Sign in.", timeoutMs: 30_000 });
+  await waiting();
+  browser.closeOwner("alpha");
+  const closed = await stopping;
+  assert.equal(closed.details["outcome"], "closed");
+  assert.match(closed.text, /^Tab t1 closed while the operator had it\. Open a new tab to continue\./u);
+  assert.match((await call({ action: "tabs" })).text, /No tabs are open in this conversation/u);
+
+  // The browser stopping under the wait settles it as stopped, and says how to start again.
+  await openTab();
+  const waitingAgain = call({ action: "handoff", message: "Sign in.", timeoutMs: 30_000 });
+  await waiting();
+  await browser.stop();
+  const stopped = await waitingAgain;
+  assert.equal(stopped.details["outcome"], "stopped");
+  assert.match(stopped.text, /^The managed browser stopped while the operator had tab t\d+\. Call open to start it again\./u);
+  assert.equal(browser.running, false);
+});
