@@ -136,6 +136,7 @@ import { loadExtensions } from "./api/extensions.ts";
 import "./components/extension-page.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import "./components/work-pane.ts";
+import "./components/side-chat-view.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
 import { SessionMultiplexer, type PanePresentation } from "./components/session-multiplexer.ts";
@@ -357,6 +358,7 @@ export class HuiApp extends HuiElement {
     activePane: () => this.activePaneApp(),
     focusComposer: () => this.focusActiveComposer(),
     paletteOpen: () => this.commandPaletteOpen,
+    chatShown: () => this.view === "home",
     terminalFont: () => this.control.settings.fontTerminal,
     browserEnabled: () => this.control.settings.browser.enabled,
   });
@@ -439,10 +441,6 @@ export class HuiApp extends HuiElement {
   };
 
   private readonly onGlobalKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && this.composer.sideChat) {
-      this.composer.closeSideChat();
-      return;
-    }
     if (this.embeddedPane) return;
     if (event.key === "Escape") {
       this.handleGlobalEscape(event);
@@ -476,11 +474,6 @@ export class HuiApp extends HuiElement {
   private handleGlobalEscape(event: KeyboardEvent) {
     if (event.defaultPrevented || event.isComposing || this.commandPaletteOpen) return;
     if (hasOpenWebAwesomePopup(event) || document.querySelector("dialog[open]")) return;
-    if (this.composer.sideChat) {
-      event.preventDefault();
-      this.composer.closeSideChat();
-      return;
-    }
     if (this.settingsOpen) {
       event.preventDefault();
       this.closeSettings();
@@ -2704,6 +2697,9 @@ export class HuiApp extends HuiElement {
       session: this.conversation.selected,
       // File references open in the Work pane, which only multiplexed chat panes have (not a bot's chat).
       fileLinks: this.embeddedPane && this.paneCanAccessFiles(),
+      // A chat without a Work pane (`/btw` in a bot's chat, or a chat rendered without the multiplexer) draws its side
+      // chat in the inline rail; everywhere else it is a Work view (`views/work/side-chat.ts`).
+      sideChatRail: !this.embeddedPane || Boolean(this.paneBot),
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       ...(this.embeddedPane && this.panePanelPicker ? { panelPicker: this.panePanelPicker } : {}),
       controlScope: this.embeddedPane ? this.paneId : undefined,

@@ -3953,7 +3953,8 @@ Accepts `{ "question": "which file are we editing?" }` and returns
 `{ "question", "answer", "model" }`. HUI sends at most 12,000 characters of
 visible session context through a separate in-memory utility-model call with
 tools and thinking disabled. Nothing is written to PI's transcript. The browser
-renders the result in an ephemeral side rail; `/side` is an alias for `/btw`.
+renders the result in the conversation's Side chat Work view; `/side` is an alias
+for `/btw`.
 
 ### `GET /__hui/directories?q=<prefix>[&worker=<id>]`
 

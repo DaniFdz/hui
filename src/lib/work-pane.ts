@@ -16,7 +16,8 @@ export type WorkViewRef =
   | { kind: "files"; id: string }
   | { kind: "vscode" }
   | { kind: "diff"; id: string }
-  | { kind: "extension"; id?: string; icon?: string };
+  | { kind: "extension"; id?: string; icon?: string }
+  | { kind: "side-chat" };
 
 export type WorkViewContext = {
   /** The conversation owning the Work pane. */
@@ -72,6 +73,8 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   /** At most one view of this kind per conversation (its key is constant): once open, the view itself is listed
    * instead of its launcher where both would appear side by side (the narrow destination chooser). */
   single?: boolean;
+  /** The view's content lives only for this page: the saved record drops its tab rather than restore an empty one. */
+  ephemeral?: true;
 };
 
 const kinds = new Map<string, WorkViewKind<any>>();
@@ -311,7 +314,7 @@ export function parseWorkViewRef(value: unknown, isKnown: (kind: string) => bool
   if (raw.kind === "files" || raw.kind === "diff") {
     return typeof raw.id === "string" && raw.id.trim() && raw.id.length <= 128 && !CONTROL.test(raw.id) ? { kind: raw.kind, id: raw.id } : undefined;
   }
-  if (raw.kind === "browser" || raw.kind === "vscode") return { kind: raw.kind };
+  if (raw.kind === "browser" || raw.kind === "vscode" || raw.kind === "side-chat") return { kind: raw.kind };
   if (raw.kind === "extension") {
     if (raw.id === undefined) return { kind: "extension" };
     if (typeof raw.id !== "string" || !raw.id.trim() || raw.id.length > 128 || CONTROL.test(raw.id)) return undefined;
@@ -356,8 +359,16 @@ export function parseWorkPaneStore(value: unknown, isKnown?: (kind: string) => b
 export function serializeWorkPaneStore(store: WorkPaneStore): { version: 1; sessions: Record<string, SessionWorkPane> } {
   const sessions: Record<string, SessionWorkPane> = {};
   for (const [id, pane] of Object.entries(store)) {
-    if (!pane.open && !pane.views.length && pane.width === WORK_PANE_DEFAULT_WIDTH) continue;
-    sessions[id] = pane;
+    const views = pane.views.filter((view) => kinds.get(view.kind)?.ephemeral !== true);
+    // An ephemeral view was the only thing keeping the pane open: never restore an empty open pane in its place.
+    const open = pane.open && (views.length > 0 || views.length === pane.views.length);
+    if (!open && !views.length && pane.width === WORK_PANE_DEFAULT_WIDTH) continue;
+    const active = views.find((view) => workViewKey(view) === pane.active);
+    sessions[id] = {
+      open, width: pane.width, views,
+      ...(pane.maximized === true && open ? { maximized: true } : {}),
+      ...(active ? { active: workViewKey(active) } : {}),
+    };
   }
   return { version: 1, sessions };
 }

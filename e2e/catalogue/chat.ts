@@ -500,7 +500,7 @@ const cases: UseCase[] = [
     id: "CHAT-043",
     title: "Ask a side question with /btw or /side",
     behaviour:
-      '/btw <question> (or /side) opens a Side chat rail, "Ephemeral · <model>", that shows "Asking utility model…" and then the answer, noting "This exchange is not added to the main transcript."; nothing enters the conversation, and Close side chat closes it. A bare /btw explains the expected form, attachments are refused and a failure shows inside the rail.',
+      '/btw <question> (or /side) opens the Side chat Work view in the Work pane, "Ephemeral · <model>", which shows "Asking utility model…" and then the answer, noting "This exchange is not added to the main transcript."; nothing enters the conversation. The view is a tab beside the other Work views (it resizes, maximizes and collapses with them), a new question replaces the exchange, and the Work pane launcher lists it too. A bare /btw explains the expected form, attachments are refused and a failure shows inside the view.',
     spec: [
       "SPEC.md#live-chat-projection",
       "docs/api.md#post-__huisessionsidbtw",
