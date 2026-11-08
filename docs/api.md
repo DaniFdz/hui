@@ -1762,9 +1762,11 @@ type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead:
 
 type BotSoul = { soul: string | null }; // GET/PUT /__hui/bots/:id/soul: SOUL.md's text, null while there is none
 
+type BotOwnSkill = { name: string; text: string }; // GET/PUT /__hui/bots/:id/skills/:name: one of its own SKILL.md files
+
 type BotCatalog = {             // GET /__hui/bots/:id/catalog
   tools: BotCatalogTool[];      // what the operator can turn off, in offer order
-  skills: (BotSkillRef & { description: string; source: string /* "HUI defaults" or the directory holding it */; enabled: boolean })[];
+  skills: (BotSkillRef & { description: string; source: string /* "HUI defaults" or the directory holding it */; enabled: boolean; own?: boolean /* in the bot's home folder, so the operator may edit it */ })[];
   alwaysOn: { name: string; description: string }[]; // never offered: the bot's own tools and OptChat's memory
   disabledTools: string[];
   disabledSkills: BotSkillRef[];
@@ -2011,6 +2013,14 @@ Query `id=&n=`.
 ### `PUT /__hui/bots/:id/soul`
 
 200 `BotSoul`. `{ soul }`, nothing else: text of at most 20,000 characters after trimming (line ends become `\n`), written atomically (a temporary file and a rename, mode 0600) in the bot's home folder; `""` removes SOUL.md, which brings the first conversation back at the bot's next turn (no kickoff). Answers what was stored. The bot's `updatedAt` moves, so every screen reads it again. Archived bots are 409
+
+### `GET /__hui/bots/:id/skills/:name`
+
+200 `BotOwnSkill`. One of the bot's own skills: the `SKILL.md` in `skills/<name>/` in its home folder. 404 for a name it does not have. Local bots only; a bot on a worker is 409 (edit its files on that worker's Files view), as on a gateway that keeps no bot homes. Archived bots too
+
+### `PUT /__hui/bots/:id/skills/:name`
+
+200 `BotOwnSkill`. `{ text }`, nothing else: the whole `SKILL.md`, at most 256 KiB after reading, with frontmatter whose `name` equals the folder's name (400 otherwise); the files beside it stay. Written atomically in the bot's home folder. Archived bots and bots on a worker are 409. The body applies from the bot's next read; the prompt's name and description list refreshes with the next request
 
 ### `GET /__hui/bots/:id/files/:file`
 

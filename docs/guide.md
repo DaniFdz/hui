@@ -612,6 +612,8 @@ whether to answer. Its own tools are always on and listed at the bottom: writing
 SOUL.md, changing its name, title or look, asking for access, loading its skills, and
 its memory.
 
+Each skill in the bot's own folder shows **Edit**: the whole `SKILL.md` in a textarea, with **Save skill** and **Cancel**; the files beside it stay. A pack update never overwrites an edited skill, and `hui doctor` reports it. Skills HUI ships or PI provides have no Edit.
+
 ```sh
 hui bot tools ada                      # what it has, grouped, on or off
 hui bot tools ada --deny bash,terminal # turn tools off

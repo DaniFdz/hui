@@ -12,7 +12,7 @@ import type { BotIO } from "../../cli/gateway-client.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
-import { BotCatalog as BotCatalogSchema, BotInput, BotResponse, BotsResponse, BotsStreamFrame } from "../api/bots.ts";
+import { BotCatalog as BotCatalogSchema, BotInput, BotOwnSkill, BotResponse, BotsResponse, BotsStreamFrame } from "../api/bots.ts";
 
 // One isolated gateway: its home, HUI's directory, PI's agent directory and a deterministic provider, all temporary.
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-routes-"));
@@ -851,4 +851,23 @@ test("explicit memories are guarded, revisioned and freshly included without cha
   const results = await Promise.all(saves);
   assert.ok(results.every((reply) => reply.status === 201 || reply.status === 404), JSON.stringify(results.map((reply) => reply.status)));
   await assert.rejects(stat(join(process.env["XDG_CONFIG_HOME"]!, "hui", "bots", bot.id)), { code: "ENOENT" });
+});
+
+test("one of a bot's own skills is read and replaced through the guarded routes", async () => {
+  const created = await call("/__hui/bots", "POST", { name: "Scribe", soul: "# Who I am\nA fixture bot.\n" });
+  const bot = botOf(created);
+  const { localBotSkills } = await import("../bots/skills.ts");
+  const { BOTS_DIR } = await import("../bots/bots.ts");
+  await localBotSkills().write(bot.id, [{ name: "verify", text: "---\nname: verify\ndescription: Verify a change.\n---\n\nOld body.\n" }]);
+  const read = await call(`/__hui/bots/${bot.id}/skills/verify`);
+  assert.equal(read.status, 200, JSON.stringify(read.body));
+  expectSchema(BotOwnSkill, read.body);
+  assert.match(String(read.body["text"]), /Old body/u);
+  const next = "---\nname: verify\ndescription: Verify a change.\n---\n\nRun the project's own check.\n";
+  const saved = await call(`/__hui/bots/${bot.id}/skills/verify`, "PUT", { text: next });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal((await call(`/__hui/bots/${bot.id}/skills/verify`)).body["text"], next);
+  assert.equal(await readFile(join(BOTS_DIR, bot.id, "skills", "verify", "SKILL.md"), "utf8"), next);
+  assert.equal((await call(`/__hui/bots/${bot.id}/skills/verify`, "PUT", { text: "---\nname: other\n---\n" })).status, 400, "the folder's name and the frontmatter name stay together");
+  assert.equal((await call(`/__hui/bots/${bot.id}/skills/none`)).status, 404);
 });

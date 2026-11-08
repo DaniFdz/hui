@@ -8,6 +8,16 @@ description: "Use when claiming a change works, before reporting it, and when a 
 Prove the change on the artifact the user touches. A proxy passing is not the
 change passing, and an unrun check is never a passed one.
 
+## Read the project first
+
+What "verified" means is the project's call, not this skill's. Read its
+`AGENTS.md`, `CONTRIBUTING.md`, `README.md` and any verification skill, feature
+map or test README (for example `.agents/skills/*`). Use the commands and
+artifacts that project names. The HUI checks below are examples: another
+repository may verify with `cargo test`, `pytest`, a simulator, a hardware rig
+or a screen recording. When the project has no verification procedure, say so
+and propose one before claiming the change works.
+
 ## Pick the artifact
 
 Name what the user actually does: run an installed `hui` command, open a page,
