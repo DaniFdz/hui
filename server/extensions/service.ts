@@ -327,7 +327,8 @@ export function createExtensionsService(options: ExtensionsServiceOptions = {}):
       description: read.manifest.description,
       ...(read.manifest.version ? { version: read.manifest.version } : {}),
       ...(read.manifest.engines?.hui ? { engines: read.manifest.engines.hui } : {}),
-      ...(read.manifest.ui ? { panel: read.manifest.ui } : {}),
+      ...(read.manifest.ui ? { panel: { title: read.manifest.ui.title, entry: read.manifest.ui.entry, ...(read.manifest.ui.icon ? { icon: read.manifest.ui.icon } : {}) } } : {}),
+      ...(read.manifest.ui?.page ? { page: read.manifest.ui.page } : {}),
       ...(read.manifest.prompt ? { prompt: read.manifest.prompt.map((section) => ({ id: section.id, title: section.title, text: section.text })) } : {}),
       ...(read.manifest.tools ? {
         tools: read.manifest.tools.map((tool) => ({ name: tool.name, runtimeName: runtimeToolName(id, tool.name), description: tool.description })),

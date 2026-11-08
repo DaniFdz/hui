@@ -48,6 +48,8 @@ test("a panel needs a title and a relative .html entry inside ui/", () => {
   assert.deepEqual(entry.ok ? entry.value.ui : undefined, { title: "Hello panel", entry: "pages/panel.html" });
   const icon = parseManifest({ ...MANIFEST, ui: { title: "Hello panel", icon: "pull-request" } });
   assert.deepEqual(icon.ok ? icon.value.ui : undefined, { title: "Hello panel", entry: "index.html", icon: "pull-request" });
+  const page = parseManifest({ ...MANIFEST, ui: { title: "Hello panel", page: { title: "Contributions", entry: "page.html", icon: "github" } } });
+  assert.deepEqual(page.ok ? page.value.ui?.page : undefined, { title: "Contributions", entry: "page.html", icon: "github" });
 
   const cases: [unknown, RegExp][] = [
     [{ ...MANIFEST, ui: "panel" }, /ui must be an object/],
@@ -58,6 +60,11 @@ test("a panel needs a title and a relative .html entry inside ui/", () => {
     [{ ...MANIFEST, ui: { title: "Panel", entry: "/panel.html" } }, /ui\.entry must (?:be|stay inside)/],
     [{ ...MANIFEST, ui: { title: "Panel", icon: "unicorn" } }, /ui\.icon must be one of/],
     [{ ...MANIFEST, ui: { title: "Panel", icon: 7 } }, /ui\.icon must be one of/],
+    [{ ...MANIFEST, ui: { title: "Panel", page: "page" } }, /ui\.page must be an object/],
+    [{ ...MANIFEST, ui: { title: "Panel", page: { title: "", entry: "page.html" } } }, /ui\.page\.title must be/],
+    [{ ...MANIFEST, ui: { title: "Panel", page: { title: "Page", entry: "../page.html" } } }, /ui\.page\.entry must (?:be|stay inside)/],
+    [{ ...MANIFEST, ui: { title: "Panel", page: { title: "Page", entry: "page.txt" } } }, /ui\.page\.entry must be/],
+    [{ ...MANIFEST, ui: { title: "Panel", page: { title: "Page", entry: "page.html", icon: "unicorn" } } }, /ui\.page\.icon must be one of/],
   ];
   for (const [raw, pattern] of cases) {
     const result = parseManifest(raw);
