@@ -47,23 +47,23 @@ test("the question card folds to one row to show the conversation, and opens aga
   const card = screen.getByTestId("question-card");
   const message = screen.getByLabel("Message");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
-  const minimize = card.getByRole("button", "Minimize questions");
-  const bar = card.getByRole("button", { name: "Questions, 1 of 3 answered", exact: false });
+  const fold = card.getByTestId("question-fold");
+  const bar = card.getByTestId("question-unfold");
   await asked(hui, ask(SLICE, MODELS, VIDEO));
 
   await expect(card.getByText("1/3")).toBeVisible();
-  await expect(minimize).toHaveAttribute("aria-expanded", "true");
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
   // The open card covers a good part of the conversation, which is why it folds.
   expect((await box(card)).height).toBeGreaterThan(300);
   const openTranscript = (await box(transcript)).height;
   await option("API-key tool").tap();
   await expect(option("API-key tool")).toBeChecked();
 
-  await minimize.tap();
+  await fold.tap();
   await expect(bar).toBeVisible();
   await expect(bar).toBeFocused();
   await expect(bar).toHaveAttribute("aria-expanded", "false");
-  await expect(card.getByText("1 of 3 answered")).toBeVisible();
+  await expect(card.getByText("1 answered")).toBeVisible();
   await expect(card.getByText("1/3")).toBeVisible();
   await expect.poll(async () => (await box(card)).height).toBeLessThanOrEqual(60);
   // The conversation takes back the room the card was covering.
@@ -77,13 +77,13 @@ test("the question card folds to one row to show the conversation, and opens aga
 
   // Escape opens the card again instead of declining the questions, where the operator left it.
   await bar.press("Escape");
-  await expect(minimize).toHaveAttribute("aria-expanded", "true");
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
   await expect(card.getByText("1/3")).toBeVisible();
   await expect(option("API-key tool")).toBeChecked();
   await expect(transcript.getByText("You declined to answer.")).toBeHidden();
 
   // So does the bar itself, from the keyboard.
-  await minimize.tap();
+  await fold.tap();
   await expect(bar).toBeVisible();
   await bar.press("Enter");
   await expect(card.getByText("Which slice should I build first?")).toBeVisible();
@@ -93,17 +93,17 @@ test("the question card folds to one row to show the conversation, and opens aga
   await card.getByRole("button", "Next").tap();
   await expect(card.getByText("2/3")).toBeVisible();
   await option("gpt-image-1-mini").tap();
-  await minimize.tap();
-  await expect(card.getByText("2 of 3 answered")).toBeVisible();
+  await fold.tap();
+  await expect(card.getByText("2 answered")).toBeVisible();
   await expect(card.getByText("2/3")).toBeVisible();
-  await card.getByRole("button", { name: "Questions, 2 of 3 answered", exact: false }).tap();
+  await bar.tap();
   await expect(card.getByText("2/3")).toBeVisible();
   await expect(option("gpt-image-1-mini")).toBeChecked();
   await card.getByRole("button", "Next").tap();
   await option("Image only").tap();
-  await minimize.tap();
-  await expect(card.getByText("3 of 3 answered")).toBeVisible();
-  await card.getByRole("button", { name: "Questions, 3 of 3 answered", exact: false }).tap();
+  await fold.tap();
+  await expect(card.getByText("3 answered")).toBeVisible();
+  await bar.tap();
   await card.getByRole("button", "Submit").tap();
 
   await expect(transcript.getByText('tool answered: User has answered your questions: "Which slice should I build first?"="API-key tool". "Which models should the tool offer?"="gpt-image-1-mini". "Should the first slice record video?"="Image only". You can now continue with the user\'s answers in mind.')).toBeVisible();

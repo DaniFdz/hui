@@ -194,12 +194,13 @@ export class QuestionnaireCard extends HuiElement {
     const questions = this.questions;
     const done = answeredCount(this.drafts);
     const single = questions.length === 1;
+    // A lone question shows itself; several show how many are already answered.
+    const note = single ? question.question : done ? `${done} answered` : "";
     return html`<form class="session-question-card chat-question-panel questionnaire-card questionnaire-card--collapsed chat-question-panel--collapsed"
       data-testid="question-card" aria-labelledby=${titleId} @keydown=${(event: KeyboardEvent) => this.#keydown(event)}>
-      <button type="button" class="chat-question-panel__collapsed-button" aria-expanded="false"
-        aria-label=${single ? `${question.header}. Show the question.` : `Questions, ${done} of ${questions.length} answered. Question ${this.step + 1} of ${questions.length}. Show them.`}
+      <button type="button" class="chat-question-panel__collapsed-button" aria-expanded="false" data-testid="question-unfold"
         @click=${() => this.#fold(false)}>
-        <span id=${titleId} class="questionnaire-card__collapsed-copy"><strong>${single ? question.header : "Questions"}</strong><span class="questionnaire-card__collapsed-note">${single ? question.question : `${done} of ${questions.length} answered`}</span></span>
+        <span id=${titleId} class="questionnaire-card__collapsed-copy"><strong>${single ? question.header : "Questions"}</strong>${note ? html`<span class="questionnaire-card__collapsed-note">${note}</span>` : nothing}</span>
         <span class="chat-question-panel__progress" aria-label=${`Question ${this.step + 1} of ${questions.length}`}>${this.step + 1}/${questions.length}</span>
         <span class="chat-question-panel__chevron">${icons.chevronUp}</span>
       </button>
@@ -225,12 +226,12 @@ export class QuestionnaireCard extends HuiElement {
     return html`<form class="session-question-card chat-question-panel questionnaire-card" data-testid="question-card" aria-labelledby=${titleId}
       @submit=${(event: SubmitEvent) => { event.preventDefault(); this.#advance(); }}
       @keydown=${(event: KeyboardEvent) => this.#keydown(event)}>
-      <header class="chat-question-panel__topline">
+      <button type="button" class="chat-question-panel__topline questionnaire-card__fold" aria-expanded="true" data-testid="question-fold"
+        @click=${() => this.#fold(true)}>
         <strong class="chat-question-panel__title">${questions.length > 1 ? "Questions" : question.header}</strong>
         <span class="chat-question-panel__progress" aria-label=${`Question ${this.step + 1} of ${questions.length}`}>${this.step + 1}/${questions.length}</span>
-        <button type="button" class="chat-question-panel__collapse" aria-label="Minimize questions" aria-expanded="true"
-          data-hui-tooltip="Minimize questions" @click=${() => this.#fold(true)}>${icons.chevronUp}</button>
-      </header>
+        <span class="chat-question-panel__chevron">${icons.chevronDown}</span>
+      </button>
       ${questions.length > 1 ? html`<div class="questionnaire-card__tabs" role="tablist" aria-label="Questions">
         ${questions.map((each, index) => html`<button type="button" role="tab" class="questionnaire-card__tab" tabindex=${index === this.step ? "0" : "-1"}
           aria-selected=${String(index === this.step)} @click=${() => this.#go(index)}>

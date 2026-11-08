@@ -400,7 +400,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-063",
     title: "Fold a question card to read the conversation under it",
-    behaviour: "A question card in the dock can cover most of the transcript. Minimize questions in its top line folds it to one row above the composer that keeps its title, how many questions are answered (1 of 3 answered), the progress (2/3) and an up chevron, so the conversation takes back the room the card covered. Every pick and the current question are kept, and the card stays folded while the operator writes in the composer. The row itself, Enter on it or Escape opens the card again where the operator left it, and Escape on the folded row never declines the questions. A new call's card, and a reload, open unfolded.",
+    behaviour: "A question card in the dock can cover most of the transcript. Its top line, which shows the title and the progress, is also its fold control: clicking it, or Enter or Space on it, folds the card to one row above the composer that keeps the title, the progress (2/3), how many questions are already answered once one is (1 answered) and an up chevron, so the conversation takes back the room the card covered. Every pick and the current question are kept, and the card stays folded while the operator writes in the composer. The folded row itself, Enter on it or Escape opens the card again where the operator left it, and Escape on the folded row never declines the questions. A new call's card, and a reload, open unfolded.",
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],

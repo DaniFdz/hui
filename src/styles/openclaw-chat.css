@@ -1052,6 +1052,29 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   }
 }
 
+/* The card's top line is its fold control: a button wearing the panel's own
+   topline row, so the open header and the folded bar read as the same handle. */
+.questionnaire-card__fold {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: var(--cursor-action);
+}
+
+.questionnaire-card__fold:hover {
+  background: var(--panel-hover);
+}
+
+.questionnaire-card__fold:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 /* Folded to one row, the card's bar fills the panel: its corners and focus ring
    stay inside the panel's own, and it reads as the button it is. */
 .questionnaire-card.chat-question-panel--collapsed {

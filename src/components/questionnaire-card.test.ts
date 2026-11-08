@@ -6,21 +6,20 @@ import { answeredCount } from "./questionnaire-card.ts";
 const source = readFileSync(new URL("./questionnaire-card.ts", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../styles/openclaw-chat.css", import.meta.url), "utf8");
 
-test("the card folds to one row with its progress and tally, and opens again where it was", () => {
-  // One fold control in the card's top line, and the folded bar that replaces the card.
-  assert.match(source, /class="chat-question-panel__collapse" aria-label="Minimize questions" aria-expanded="true"/u);
+test("the card's own top line folds it to one row, and the row opens it again", () => {
+  // The open header is a button: its name is the title and the progress the operator already reads.
+  assert.match(source, /class="chat-question-panel__topline questionnaire-card__fold" aria-expanded="true" data-testid="question-fold"/u);
+  assert.doesNotMatch(source, /class="chat-question-panel__collapse"/u);
+  // Folded, the same row keeps where the operator is and how much they answered.
   assert.match(source, /class="session-question-card chat-question-panel questionnaire-card questionnaire-card--collapsed chat-question-panel--collapsed"/u);
-  assert.match(source, /class="chat-question-panel__collapsed-button" aria-expanded="false"/u);
-  // Its name says how much is answered and how to open it, not just the progress twice.
-  assert.match(source, /`Questions, \$\{done\} of \$\{questions\.length\} answered\. Question \$\{this\.step \+ 1\} of \$\{questions\.length\}\. Show them\.`/u);
-  // The folded bar keeps where the operator is and how much they answered.
+  assert.match(source, /class="chat-question-panel__collapsed-button" aria-expanded="false" data-testid="question-unfold"/u);
   assert.match(source, /class="chat-question-panel__progress" aria-label=\$\{`Question \$\{this\.step \+ 1\} of \$\{questions\.length\}`\}>\$\{this\.step \+ 1\}\/\$\{questions\.length\}/u);
-  assert.match(source, /`\$\{done\} of \$\{questions\.length\} answered`/u);
+  assert.match(source, /`\$\{done\} answered`/u);
   // Opening it puts focus back on the question's options, as opening the card does.
   const fold = source.slice(source.indexOf("#fold(folded: boolean)"), source.indexOf("#advance(): void"));
   assert.match(fold, /this\.collapsed = folded;/u);
   assert.match(fold, /if \(folded\) this\.querySelector<HTMLElement>\("\.chat-question-panel__collapsed-button"\)\?\.focus\(\);\s*else this\.focusCurrent\(\);/u);
-  // Picks live in `drafts`, which folding never touches; only a new call's card starts folded-open.
+  // Picks live in `drafts`, which folding never touches; only a new call's card starts over unfolded.
   assert.doesNotMatch(fold, /this\.drafts|this\.step/u);
   assert.match(source, /A new call's questions open in full[\s\S]{0,80}this\.collapsed = false;/u);
 });
@@ -43,7 +42,9 @@ test("a folded card counts the questions that already have an answer", () => {
   ]), 3);
 });
 
-test("the folded bar fills the card, so its corners and focus ring stay inside the panel", () => {
+test("both fold controls are buttons, and the folded bar stays inside the panel's corners", () => {
+  assert.match(styles, /\.questionnaire-card__fold \{[^}]*width: 100%;[^}]*border: 0;[^}]*cursor: var\(--cursor-action\);/su);
+  assert.match(styles, /\.questionnaire-card__fold:focus-visible \{[^}]*outline: 2px solid var\(--ring\);/su);
   assert.match(styles, /\.questionnaire-card\.chat-question-panel--collapsed \{[^}]*grid-template-columns: minmax\(0, 1fr\);[^}]*gap: 0;/su);
   assert.match(styles, /\.questionnaire-card--collapsed \.chat-question-panel__collapsed-button \{\s*border-radius: inherit;/u);
   assert.match(styles, /\.questionnaire-card--collapsed \.chat-question-panel__collapsed-button:focus-visible \{\s*outline-offset: -2px;/u);
