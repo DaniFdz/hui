@@ -252,6 +252,12 @@ const server = createServer(async (request, response) => {
   // routine's run records the rate-limit kind that needs the operator.
   if (!recovering && source.includes("E2E_ERROR_QUOTA")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
     message: "fixture quota exhausted: the fixture's plan has no credits left" } });
+  // E2E_CAPACITY is a provider 429 that asks for a retry, as OpenCode Go does when its upstream cell is full.
+  if (!recovering && source.includes("E2E_CAPACITY") && body.model === "fixture") {
+    response.writeHead(429, { "content-type": "application/json", "retry-after": "0" });
+    response.end(JSON.stringify({ type: "server_error", message: "Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 1 s)" }));
+    return;
+  }
   // E2E_OVERFLOW overflows the context window until PI's summary is in the request, so PI compacts and retries the turn.
   if (!recovering && source.includes("E2E_OVERFLOW") && !flattenedText(body.messages).includes("FIXTURE_SUMMARY") && !flattenedText(body.system).includes("context summarization assistant")) {
     return json(response, 400, { type: "error", error: { type: "invalid_request_error", message: "prompt is too long: 213462 tokens > 200000 maximum" } });
@@ -797,6 +803,11 @@ const server = createServer(async (request, response) => {
       purpose: "Wait for #21532 review signals",
       command: "printf 'watching #21532\\n'; sleep 600",
     }, 1);
+    return finish(response, "tool_use");
+  }
+  // A gateway extension's tool, which only exists when the enabled extension declared it.
+  if (source.includes("E2E_GATEWAY_TOOL")) {
+    toolUse(response, "tool-e2e-gateway", "ext_hello_greet", { name: "Ada" });
     return finish(response, "tool_use");
   }
   // A tool a PI extension registers, which only exists when the runtime loaded it.

@@ -154,6 +154,7 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
   const level = (key: string): string | undefined => LEVELS.has(str(raw[key])) ? str(raw[key]) : undefined;
   const title = text("title", BOT_LIMITS.title);
   const description = text("description", BOT_LIMITS.description);
+  const group = text("group", 200);
   const tagging = storedTagging(raw["tagging"]);
   const chatModel = model("model");
   const thinking = level("thinking");
@@ -168,6 +169,7 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
     id, handle, name,
     ...(title ? { title } : {}),
     ...(description ? { description } : {}),
+    ...(group ? { group } : {}),
     ...(tagging ? { tagging } : {}),
     cwd,
     ...(worker ? { worker } : {}),
@@ -354,11 +356,11 @@ export function findBot(bots: readonly BotRecord[], target: string): BotRecord {
 }
 
 const INPUT_KEYS = new Set([
-  "name", "handle", "title", "description", "tagging", "soul", "user", "memory", "bootstrap", "cwd", "worker", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice",
+  "name", "handle", "title", "description", "group", "tagging", "soul", "user", "memory", "bootstrap", "cwd", "worker", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice",
   "hidden", "disabledTools", "disabledSkills", "split",
 ]);
 const LABELS: Record<string, string> = {
-  name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", soul: "SOUL.md",
+  name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", group: "Group", soul: "SOUL.md",
   cwd: "Working directory", worker: "Worker", model: "Bot model", thinking: "Thinking level", memoryModel: "Utility model", utilityModel: "Utility model", memoryThinking: "Memory thinking level",
 };
 
@@ -553,6 +555,7 @@ export function normalizeBotInput(value: unknown): BotInput & { name: string } {
   if (patch.handle) result.handle = patch.handle;
   if (patch.title) result.title = patch.title;
   if (patch.description) result.description = patch.description;
+  if (patch.group) result.group = patch.group;
   const tagging = storedTagging(patch.tagging);
   if (tagging) result.tagging = tagging;
   if (soul) result.soul = soul;
@@ -586,6 +589,7 @@ export function normalizeBotPatch(value: unknown): BotPatch {
   if ("handle" in input) patch.handle = handleField(input["handle"]);
   if ("title" in input) patch.title = textField(input["title"], "title", BOT_LIMITS.title, { line: true });
   if ("description" in input) patch.description = textField(input["description"], "description", BOT_LIMITS.description);
+  if ("group" in input) patch.group = textField(input["group"], "group", 200, { line: true });
   if ("tagging" in input) {
     if (!isBotTagging(input["tagging"])) throw new BotInputError(`Who can tag the bot must be one of: ${BOT_TAGGING.join(", ")}.`);
     patch.tagging = input["tagging"];

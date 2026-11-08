@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hello page</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 0; padding: 24px; font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+      h1 { margin: 0 0 4px; font-size: 20px; }
+      p { margin: 0 0 16px; opacity: 0.7; }
+      label { display: inline-flex; gap: 8px; align-items: center; margin-right: 8px; }
+      input, button { font: inherit; padding: 5px 9px; }
+      output { display: block; margin-top: 16px; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>Hello page</h1>
+    <p>This page runs in HUI's sandbox. It calls its own route through the parent bridge.</p>
+    <label>Name <input id="name" value="Ada" autocomplete="off"></label>
+    <button id="greet" type="button">Greet</button>
+    <output id="greeting" data-status="">—</output>
+    <script src="panel.js"></script>
+  </body>
+</html>

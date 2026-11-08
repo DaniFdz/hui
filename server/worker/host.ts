@@ -394,6 +394,7 @@ export class WorkerHost {
       ...(typeof launch["model"] === "string" ? { model: launch["model"] } : {}),
       ...(typeof launch["thinking"] === "string" ? { thinking: launch["thinking"] } : {}),
       ...(typeof launch["title"] === "string" ? { title: launch["title"] } : {}),
+      ...(typeof launch["botSkills"] === "string" ? { botSkills: launch["botSkills"] } : {}),
     };
     const runtime: RuntimeSession = tool === "durable" ? await startDurable(options, this.#durable) : await piRuntime.start({
       ...options, agentDir: this.paths.agentDir,

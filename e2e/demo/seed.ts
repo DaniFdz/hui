@@ -55,23 +55,40 @@ for (const [name, files] of Object.entries(repos)) {
 await appendFile(join(workspace, "payments-api", "src/refunds/route.js"), "\nexport const PARTIAL_REFUNDS = true;\n");
 gitIn(join(workspace, "payments-api"))("commit", "-q", "-a", "-m", "Partial refunds endpoint (#148)");
 
-type Seed = { title: string; repo: string; group: string; stage: string; ago: number; ask: string; answer: string; unread?: boolean };
+type Seed = { title: string; repo: string; group: string; stage: string; ago: number; ask: string; answer: string; unread?: boolean; model: "claude-sonnet-4-5" | "gpt-5.1" | "gemini-3-pro" };
 const seeds: Seed[] = [
-  { title: "Apple Pay at checkout", repo: "storefront", group: "Storefront", stage: "implementation", ago: 3, ask: "Add Apple Pay to checkout behind the payments flag", answer: "Apple Pay is wired into the payment sheet; I'm adding the merchant validation endpoint next." },
-  { title: "Flaky checkout e2e test", repo: "storefront", group: "Storefront", stage: "investigation", ago: 12, ask: "Why does checkout.spec fail one run in ten?", answer: "The test clicks Pay before the totals request settles. I'm confirming with a trace.", unread: true },
-  { title: "Search results skeleton", repo: "storefront", group: "Storefront", stage: "testing", ago: 41, ask: "Show a skeleton while search results load", answer: "Done: skeleton rows match the result card height, so nothing jumps. Ready for review." },
-  { title: "Upgrade to Vite 8", repo: "storefront", group: "Storefront", stage: "done", ago: 180, ask: "Upgrade the storefront to Vite 8", answer: "Upgraded; the build is 31% faster and all tests pass." },
-  { title: "Rate limiter on Redis", repo: "payments-api", group: "Payments", stage: "implementation", ago: 7, ask: "Move the rate limiter from memory to Redis", answer: "The sliding window now lives in Redis; I'm load testing it." },
-  { title: "Retry-safe webhooks", repo: "payments-api", group: "Payments", stage: "testing", ago: 55, ask: "Make the Stripe webhook handler idempotent", answer: "Processed event ids are stored for 7 days, so retries are ignored. Tests cover duplicates." },
-  { title: "JPY rounding fix", repo: "payments-api", group: "Payments", stage: "done", ago: 300, ask: "Totals in JPY round to the wrong yen", answer: "Fixed: zero-decimal currencies skip the cents conversion." },
-  { title: "Offline receipts", repo: "mobile-app", group: "Mobile", stage: "investigation", ago: 25, ask: "Can receipts work offline?", answer: "Yes, with a small local queue. I'm sketching the sync rules." },
-  { title: "Dark mode receipts", repo: "mobile-app", group: "Mobile", stage: "implementation", ago: 18, ask: "Receipts are unreadable in dark mode", answer: "Receipt colors now come from the theme tokens; checking contrast on every screen." },
+  { title: "Apple Pay at checkout", repo: "storefront", group: "Storefront", stage: "implementation", ago: 3, ask: "Add Apple Pay to checkout behind the payments flag", answer: "Apple Pay is wired into the payment sheet; I'm adding the merchant validation endpoint next.", model: "claude-sonnet-4-5" },
+  { title: "Flaky checkout e2e test", repo: "storefront", group: "Storefront", stage: "investigation", ago: 12, ask: "Why does checkout.spec fail one run in ten?", answer: "The test clicks Pay before the totals request settles. I'm confirming with a trace.", unread: true, model: "claude-sonnet-4-5" },
+  { title: "Search results skeleton", repo: "storefront", group: "Storefront", stage: "testing", ago: 41, ask: "Show a skeleton while search results load", answer: "Done: skeleton rows match the result card height, so nothing jumps. Ready for review.", model: "gpt-5.1" },
+  { title: "Upgrade to Vite 8", repo: "storefront", group: "Storefront", stage: "done", ago: 180, ask: "Upgrade the storefront to Vite 8", answer: "Upgraded; the build is 31% faster and all tests pass.", model: "claude-sonnet-4-5" },
+  { title: "Rate limiter on Redis", repo: "payments-api", group: "Payments", stage: "implementation", ago: 7, ask: "Move the rate limiter from memory to Redis", answer: "The sliding window now lives in Redis; I'm load testing it.", model: "claude-sonnet-4-5" },
+  { title: "Retry-safe webhooks", repo: "payments-api", group: "Payments", stage: "testing", ago: 55, ask: "Make the Stripe webhook handler idempotent", answer: "Processed event ids are stored for 7 days, so retries are ignored. Tests cover duplicates.", model: "gemini-3-pro" },
+  { title: "JPY rounding fix", repo: "payments-api", group: "Payments", stage: "done", ago: 300, ask: "Totals in JPY round to the wrong yen", answer: "Fixed: zero-decimal currencies skip the cents conversion.", model: "gpt-5.1" },
+  { title: "Offline receipts", repo: "mobile-app", group: "Mobile", stage: "investigation", ago: 25, ask: "Can receipts work offline?", answer: "Yes, with a small local queue. I'm sketching the sync rules.", model: "claude-sonnet-4-5" },
+  { title: "Dark mode receipts", repo: "mobile-app", group: "Mobile", stage: "implementation", ago: 18, ask: "Receipts are unreadable in dark mode", answer: "Receipt colors now come from the theme tokens; checking contrast on every screen.", model: "gpt-5.1" },
   // The Work pane clip's conversation (demo-10).
-  { title: "Order totals as currency", repo: "storefront", group: "Storefront", stage: "investigation", ago: 2, ask: "Order totals show up as raw numbers, like 1234.5. Format them as currency.", answer: "I'll add a small formatter and use it on the orders page. Open a terminal and I'll run the tests there, so you can watch." },
+  { title: "Order totals as currency", repo: "storefront", group: "Storefront", stage: "investigation", ago: 2, ask: "Order totals show up as raw numbers, like 1234.5. Format them as currency.", answer: "I'll add a small formatter and use it on the orders page. Open a terminal and I'll run the tests there, so you can watch.", model: "claude-sonnet-4-5" },
 ];
 
 const text = (value: string) => [{ type: "text", text: value }];
-const usage = { input: 1200, output: 300, cacheRead: 0, cacheWrite: 0, totalTokens: 1500, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+const usage = (model: Seed["model"], ago: number) => {
+  const rates = {
+    "claude-sonnet-4-5": { provider: "anthropic", input: 3e-6, output: 15e-6, cacheRead: 0.3e-6 },
+    "gpt-5.1": { provider: "openai", input: 1.25e-6, output: 10e-6, cacheRead: 0.125e-6 },
+    "gemini-3-pro": { provider: "google", input: 1.25e-6, output: 10e-6, cacheRead: 0.3e-6 },
+  } as const;
+  const rate = rates[model];
+  // A session of this age has read and written a plausible amount, and its cost follows the model's rates.
+  const scale = 1 + (ago % 7);
+  const input = 18_000 * scale, output = 2_400 * scale, cacheRead = 240_000 * scale;
+  return {
+    provider: rate.provider, model,
+    usage: { input, output, cacheRead, cacheWrite: 0, totalTokens: input + output + cacheRead, cost: {
+      input: input * rate.input, output: output * rate.output, cacheRead: cacheRead * rate.cacheRead, cacheWrite: 0,
+      total: input * rate.input + output * rate.output + cacheRead * rate.cacheRead,
+    } },
+  };
+};
 const host = new DurableHost({ dir: join(CONFIG_DIR, "durable"), agentDir, resume: false, lookupCaller: async () => undefined });
 host.configureDurableBots(null);
 const harness = await host.open();
@@ -79,13 +96,15 @@ const sessions: Record<string, unknown>[] = [];
 for (const [index, seed] of seeds.entries()) {
   const cwd = join(workspace, seed.repo);
   const at = now - seed.ago * MINUTE;
+  // What this session's model read and wrote, which the Usage page reports as its spend.
+  const spend = usage(seed.model, seed.ago);
   const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: { cwd, model: { provider: "hui-e2e", modelId: "fixture" }, thinkingLevel: "high" }, init: async (tx, id) => {
     await tx.appendEntry(id, { kind: UserEntry.kind, model: [{ role: "user", content: text(seed.ask), timestamp: at - 4 * MINUTE }] } as never);
-    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [{ role: "assistant", content: text(seed.answer), api: "anthropic-messages", provider: "hui-e2e", model: "fixture", usage, stopReason: "stop", timestamp: at }] } as never);
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [{ role: "assistant", content: text(seed.answer), api: "anthropic-messages", provider: spend.provider, model: spend.model, usage: spend.usage, stopReason: "stop", timestamp: at }] } as never);
   } }, durableContext);
   sessions.push({
     id: `demo-${index + 1}`, title: seed.title, group: seed.group, cwd, tool: "durable", piSessionFile: `durable:${conversation.id}`,
-    model: "hui-e2e/fixture", createdAt: new Date(at - 4 * MINUTE).toISOString(), updatedAt: new Date(at).toISOString(), source: "hui",
+    model: `${spend.provider}/${spend.model}`, createdAt: new Date(at - 4 * MINUTE).toISOString(), updatedAt: new Date(at).toISOString(), source: "hui",
     stage: seed.stage, stageSource: "agent", ...(seed.unread ? { unread: true } : {}),
   });
 }

@@ -9,9 +9,24 @@ import { fileURLToPath } from "node:url";
 export const bundledSkillRoot = fileURLToPath(new URL("../../skills/", import.meta.url));
 
 export const bundledSkills = [{
+  name: "automate-me",
+  path: fileURLToPath(new URL("../../skills/automate-me/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:automate-me",
+  tags: ["bots"],
+}, {
+  name: "build-hui-extension",
+  path: fileURLToPath(new URL("../../skills/build-hui-extension/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:build-hui-extension",
+  tags: ["good practices"],
+}, {
   name: "cost-investigation",
   path: fileURLToPath(new URL("../../skills/cost-investigation/SKILL.md", import.meta.url)),
   preferencePath: "hui:skill:cost-investigation",
+  tags: ["good practices"],
+}, {
+  name: "create-formal-verification-skill",
+  path: fileURLToPath(new URL("../../skills/create-formal-verification-skill/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:create-formal-verification-skill",
   tags: ["good practices"],
 }, {
   name: "create-verification-skill",
@@ -24,6 +39,16 @@ export const bundledSkills = [{
   name: "git-selective-staging",
   path: fileURLToPath(new URL("../../skills/git-selective-staging/SKILL.md", import.meta.url)),
   preferencePath: "hui:skill:git-selective-staging",
+  tags: ["good practices"],
+}, {
+  name: "maintain-formal-verification-skill",
+  path: fileURLToPath(new URL("../../skills/maintain-formal-verification-skill/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:maintain-formal-verification-skill",
+  tags: ["good practices"],
+}, {
+  name: "maintain-verification-skill",
+  path: fileURLToPath(new URL("../../skills/maintain-verification-skill/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:maintain-verification-skill",
   tags: ["good practices"],
 }, {
   name: "visualize",

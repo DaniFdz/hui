@@ -13,6 +13,7 @@ import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots/b
 import { BotService } from "./bots/service.ts";
 import { remoteBots } from "./bots/remote.ts";
 import { createBotRoutes } from "./routes/bots.ts";
+import { createStaffRoutes } from "./routes/staff.ts";
 import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
 import { accountFullName, BotExportService } from "./bots/export.ts";
 import { nameFromUsername } from "./bots/templates/cleanup.ts";
@@ -26,6 +27,8 @@ import { createCallRoutes } from "./routes/calls.ts";
 import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./bots/call-helper.ts";
 import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
+import { readStaffPack } from "./staff/pack.ts";
+import { ensureStaff } from "./staff/service.ts";
 import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
@@ -104,6 +107,8 @@ import { createProviderRoutes } from "./routes/providers.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
 import { createWorktreeRoutes } from "./routes/worktrees.ts";
 import { createSettingsRoutes } from "./routes/settings.ts";
+import { createExtensionRoutes } from "./routes/extensions.ts";
+import { createExtensionsService } from "./extensions/service.ts";
 import { createTerminalRoutes } from "./routes/terminals.ts";
 import { createBrowserRoutes } from "./routes/browser.ts";
 import { createVscodeRoutes } from "./routes/vscode.ts";
@@ -135,6 +140,9 @@ export const terminalRoutes = createTerminalRoutes({ readRegistry, workers });
 export const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 export const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 export const themeRoutes = createThemeRoutes();
+export const extensions = createExtensionsService();
+durableHost().configureGatewayExtensions(extensions);
+export const extensionRoutes = createExtensionRoutes({ extensions });
 export const updateRoutes = createUpdateRoutes();
 export const settingsRoutes = createSettingsRoutes({ writeSettings });
 const usageReports = new UsageReports(readRegistry);
@@ -222,6 +230,7 @@ export const bots = new BotService({
     },
   }),
   files: localBotFiles(),
+  skills: localBotSkills(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
     tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
@@ -237,6 +246,15 @@ export const bots = new BotService({
   },
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
+export const staffRoutes = createStaffRoutes({
+  bots: () => botRegistry.list(),
+  getBot: (id) => bots.get(id),
+  createBot: (body) => bots.create(body),
+  restoreBot: (id) => bots.restore(id),
+  skills: localBotSkills(),
+  readSettings: readHuiSettings,
+  writeSettings: writeHuiSettings,
+});
 export const botRoutes = createBotRoutes({
   service: bots,
   readAttachments: async (sessionId, raw) => {
@@ -250,6 +268,21 @@ export const botRoutes = createBotRoutes({
 /** Bots imported from other platforms' templates (`bots/template-import.ts`), and exported as templates reviewed for
  * personal information (`bots/export.ts`), under `/__hui/bots`. */
 const localSkills = localBotSkills();
+/** The staff pack: seeds the Chief of Staff once, then installs the pack's skills and routes into it (staff/,
+ * server/staff/service.ts). Deleting the bot opts out; the record keeps HUI from seeding it again. */
+export const staff = {
+  ensure: async () => ensureStaff({
+    pack: await readStaffPack(),
+    createBot: async (body) => {
+      const view = await bots.create(body);
+      return { id: view.id };
+    },
+    botIds: async () => (await botRegistry.list()).map((bot) => bot.id),
+    skills: localSkills,
+    readSettings: readHuiSettings,
+    writeSettings: writeHuiSettings,
+  }),
+};
 // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
 const newBotOffer = (worker?: string) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR);
 const botSkillFiles = (worker?: string) => worker ? (botWorkers.keepsSkills(worker) ? botWorkers.skills(worker) : undefined) : localSkills;
@@ -547,6 +580,7 @@ export const triggers = createGatewayTriggers({
 });
 const githubPreviews = new GitHubPreviews(ghGraphQL(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
+extensions.setGatewayContext({ github: { contributions: (year) => githubContributions.read(year) } });
 export const githubRoutes = createGitHubRoutes({ githubCli, githubPreviews, githubContributions });
 
 /* ── Datadog ── orgs, sign-in and previews run through the operator's `pup`; HUI never sees a token.

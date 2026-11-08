@@ -27,7 +27,7 @@ import { ACCENTS } from "../lib/theme/appearance.ts";
 import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
 import { DEFAULT_SIDEBAR_SESSION_OPTIONS } from "../lib/session/sidebar-sessions.ts";
-import { HUI_PAGES, availablePages } from "../lib/pages.ts";
+import { HUI_PAGES } from "../lib/pages.ts";
 
 function renderedText(value: unknown): string {
   if (Array.isArray(value)) return value.map(renderedText).join("");
@@ -115,7 +115,7 @@ test("the primary sidebar lists work destinations above a Settings footer", () =
 
 test("each destination marks itself current, and Settings never does", () => {
   const rendered = markup(renderSidebar({
-    view: "surface", activePage: { id: "usage" }, pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [], draftSessionIds: new Set(),
+    view: "surface", activePage: { id: "usage" }, pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [], draftSessionIds: new Set(),
     collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "", importFailed: false, search: "",
     sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "",
     sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
@@ -127,17 +127,16 @@ test("each destination marks itself current, and Settings never does", () => {
   assert.doesNotMatch(rendered, current("/settings/appearance"));
 });
 
-test("the sidebar lists Dashboard only while Labs → Dashboard is on", () => {
-  const rendered = (dashboard: boolean) => markup(renderSidebar({
-    view: "home", pages: availablePages({ ...DEFAULT_SETTINGS.labs, dashboard }), selectedSessionId: "", splitSessionId: "", groups: [],
+test("the sidebar lists Dashboard with the other destinations", () => {
+  const rendered = markup(renderSidebar({
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "",
     importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "",
     draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined,
     groupReorderPending: false, bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
   } as unknown as Parameters<typeof renderSidebar>[0]));
-  assert.doesNotMatch(rendered(false), /href=\/dashboard\b/u);
-  assert.match(rendered(true), /href=\/dashboard\b[\s\S]*>Dashboard</u);
-  assert.match(rendered(false), /href=\/usage\b/u, "the other destinations stay");
+  assert.match(rendered, /href=\/dashboard\b[\s\S]*>Dashboard</u);
+  assert.match(rendered, /href=\/usage\b/u, "the other destinations stay");
 });
 
 test("Settings stays available while the Bots list is showing", () => {
@@ -146,7 +145,7 @@ test("Settings stays available while the Bots list is showing", () => {
   assert.doesNotMatch(sidebar(1, "", "bots"), /Primary navigation/u, "the Agents navigation stays out of the Bots list");
 });
 
-test("settings navigation contains only the fourteen accepted regions", () => {
+test("settings navigation contains only the fifteen accepted regions", () => {
   assert.deepEqual(
     SETTINGS_PAGES.map((page) => page.id),
     [
@@ -157,6 +156,7 @@ test("settings navigation contains only the fourteen accepted regions", () => {
       "workers",
       "models",
       "plugins",
+      "extensions",
       "skills",
       "tools",
       "memory",
@@ -179,7 +179,7 @@ test("settings search is case-insensitive and also matches group names", () => {
   assert.deepEqual(filterSettingsPages("  MODEL  ").map((page) => page.id), ["models"]);
   assert.deepEqual(
     filterSettingsPages("agents & tools").map((page) => page.id),
-    ["models", "plugins", "skills", "tools", "memory", "automation"],
+    ["models", "plugins", "extensions", "skills", "tools", "memory", "automation"],
   );
   assert.deepEqual(filterSettingsPages("does not exist"), []);
   assert.equal(filterSettingsPages("").length, SETTINGS_PAGES.length);
@@ -378,9 +378,9 @@ test("active search reveals matches without changing the collapsed preference", 
   assert.equal(isSessionGroupCollapsed(collapsed, "Frontend", "   "), true);
 });
 
-test("group menus expose the same four actions as OpenClaw", () => {
+test("group menus expose OpenClaw's four actions and a chief for the project", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
-  for (const label of ["New session defaults", "Rename group", "New group", "Delete group"]) {
+  for (const label of ["New session defaults", "Rename group", "New group", "Create Chief of Staff", "Delete group"]) {
     assert.match(source, new RegExp(label));
   }
   assert.match(source, /aria-label=\$\{`Group options for \$\{group\.label\}`\}/);
@@ -837,7 +837,7 @@ function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents", lo
   const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
   if (open) sessions.push(session(open, "Open", "Work"));
   const data = {
-    view: "home", pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading, error: "",
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: open,
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
@@ -868,7 +868,7 @@ test("a right click on a session row asks for the actions menu its button opens"
   const menus: string[] = [];
   const selected: string[] = [];
   const view = renderSidebar({
-    view: "home", pages: HUI_PAGES, selectedSessionId: "other", splitSessionId: "",
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "other", splitSessionId: "",
     groups: [{ label: "Work", sessions: [session("ctx", "Build", "Work")] }],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "",
@@ -885,6 +885,23 @@ test("a right click on a session row asks for the actions menu its button opens"
   assert.equal(prevented, true, "the browser's own link menu does not open");
   assert.deepEqual(menus, ["ctx"], "the right click opens the row's actions menu");
   assert.deepEqual(selected, [], "a right click never opens the session");
+});
+
+test("an enabled extension page is a primary destination with its own icon", () => {
+  const rendered = markup(renderSidebar({
+    view: "surface", activePage: undefined, activeExtensionPageId: "hello",
+    pages: HUI_PAGES, extensionPages: [{ id: "hello", title: "Hello page", icon: "github" }],
+    onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS,
+    menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "",
+    draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+  } as unknown as Parameters<typeof renderSidebar>[0]));
+  assert.match(rendered, /href=\/ext\/hello\b/u);
+  assert.match(rendered, /aria-current=page/u);
+  assert.match(rendered, />Hello page</u);
+  assert.match(rendered, /viewBox="0 0 16 16"/u, "the named icon is drawn");
 });
 
 test("the sidebar's right edge is a separator the arrow keys move, with none in the drawer", () => {
