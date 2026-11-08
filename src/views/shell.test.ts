@@ -377,9 +377,9 @@ test("active search reveals matches without changing the collapsed preference", 
   assert.equal(isSessionGroupCollapsed(collapsed, "Frontend", "   "), true);
 });
 
-test("group menus expose the same four actions as OpenClaw", () => {
+test("group menus expose OpenClaw's four actions and a chief for the project", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
-  for (const label of ["New session defaults", "Rename group", "New group", "Delete group"]) {
+  for (const label of ["New session defaults", "Rename group", "New group", "Create Chief of Staff", "Delete group"]) {
     assert.match(source, new RegExp(label));
   }
   assert.match(source, /aria-label=\$\{`Group options for \$\{group\.label\}`\}/);

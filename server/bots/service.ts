@@ -443,6 +443,7 @@ export class BotService {
           name: input.name,
           ...(input.title ? { title: input.title } : {}),
           ...(input.description ? { description: input.description } : {}),
+          ...(input.group ? { group: input.group } : {}),
           ...(tagging ? { tagging } : {}),
           cwd,
           ...(worker ? { worker: worker.id } : {}),

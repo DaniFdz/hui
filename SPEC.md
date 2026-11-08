@@ -3496,6 +3496,12 @@ seeds it once:
   `create-verification-skill`, listed for every chat and turned off in
   Settings → Skills. They are not part of the pack.
 
+### A custom group's chief is its own bot (2026-11-08)
+
+The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label and project directory, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its home, sets the bot's `group`, and puts its chat in that directory; the pack's routes are merged by name. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
+
+A group chief's skills are installed at creation. A pack update does not reach it yet: per-bot manifests are the next step, and the operator can edit any of its skills in Tools & skills meanwhile.
+
 ### Bots write their own SOUL.md in a first conversation (2026-10-06)
 
 Reviewing the Bots stack, the owner asked for bots to have a SOUL.md "like

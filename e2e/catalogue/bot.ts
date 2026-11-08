@@ -694,6 +694,16 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
+    id: "BOT-072",
+    title: "Create a Chief of Staff for a custom project group",
+    behaviour: "A custom group's ⋯ menu offers Create Chief of Staff. It creates one bot named Chief of Staff · <group>, working in the group's project folder, with the staff pack's skills. Asking again opens that same chief, and the Bots tab lists it.",
+    spec: ["SPEC.md#bots", "docs/api.md#post-__huistaffchiefs"],
+    surfaces: ["route:POST /__hui/staff/chiefs"],
+    journeys: ["bots"],
+    web: "required",
+    ios: "required",
+  },
+  {
     id: "BOT-071",
     title: "Edit one of a bot's own skills",
     behaviour: "Tools & skills shows Edit beside each skill in the bot's own folder. Editing verify opens its whole SKILL.md in a textarea; Save skill writes it to the bot's home and the next read sees it. A frontmatter name that differs from the folder's is refused. Skills HUI or PI provides have no Edit.",

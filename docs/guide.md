@@ -545,6 +545,8 @@ missing; it never writes SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md after
 creation. `hui doctor` reports a skill that can take the shipped text and one
 you edited; `hui doctor --fix` installs the untouched updates.
 
+A **custom session group** is a project here, so its ⋯ menu offers **Create Chief of Staff**: one bot named *Chief of Staff · <group>* whose chat works in that project's folder, with its own OptChat memory and its own copy of the pack's skills. Asking again opens that same chief. The seeded default chief stays for work that belongs to no group.
+
 Deleting the Chief of Staff is how you opt out: HUI records the seed in
 `staff.json` and does not create another. To get it back, stop the gateway,
 delete `staff.json` from HUI's configuration directory, and start it again.

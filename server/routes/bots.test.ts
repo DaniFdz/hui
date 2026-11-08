@@ -853,6 +853,22 @@ test("explicit memories are guarded, revisioned and freshly included without cha
   await assert.rejects(stat(join(process.env["XDG_CONFIG_HOME"]!, "hui", "bots", bot.id)), { code: "ENOENT" });
 });
 
+test("a group gets one Chief of Staff with the pack's skills", async () => {
+  const made = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E", cwd: workspace });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const bot = botOf(made);
+  assert.equal(bot.group, "Chief E2E");
+  assert.equal(bot.cwd, workspace);
+  assert.match(bot.name, /^Chief of Staff · Chief E2E$/u);
+  const again = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E", cwd: workspace });
+  assert.equal(again.status, 200, JSON.stringify(again.body));
+  assert.equal(botOf(again).id, bot.id, "the group's menu cannot create a second chief");
+  const skill = await call(`/__hui/bots/${bot.id}/skills/verify`);
+  assert.equal(skill.status, 200, JSON.stringify(skill.body));
+  assert.match(String(skill.body["text"]), /Read the project first/u, "the pack's verify is installed in its home");
+  assert.equal((await call("/__hui/staff/chiefs", "POST", { group: " ", cwd: workspace })).status, 400);
+});
+
 test("one of a bot's own skills is read and replaced through the guarded routes", async () => {
   const created = await call("/__hui/bots", "POST", { name: "Scribe", soul: "# Who I am\nA fixture bot.\n" });
   const bot = botOf(created);
