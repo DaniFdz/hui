@@ -37,8 +37,22 @@ and context primitives. The Contributions port is P8 and is not accepted here.
 
 ## Evidence
 
-Paste the exact command, result and exit status for each criterion here when it
-runs. Do not check a box before its evidence exists.
+**P7-A1 (in progress).** The manifest/status/schema half landed in `fb88e373`:
+
+```
+npx vitest run server/extensions/registry.test.ts scripts/api-schema.test.ts
+Result: 2 files, 19 tests passed
+Exit: 0
+
+npm run api:schema
+Result: ExtensionPage and ExtensionStatus.page generated; no diff on a rerun
+Exit: 0
+
+npm run typecheck
+Result: 0
+```
+
+Still open for A1: Settings → Extensions does not show the page metadata yet.
 
 ## Deviations
 
