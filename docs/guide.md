@@ -1187,11 +1187,13 @@ Icon files go in `HUI_CONFIG_DIR/tool-icons/` and are served read-only at `/__hu
 ## Gateway extensions
 
 A gateway extension is a small local module that answers JSON routes under
-`/__hui/ext/`. HUI ships none and enables none: you install one by putting it in
-`HUI_CONFIG_DIR/extensions/<id>/` and turn it on over HTTP. The extension runs
-**inside the gateway process** with the gateway's full access to your machine,
-credentials and data — the same trust as a PI extension and no sandbox. Only add
-code you would run yourself.
+`/__hui/ext/` and may add a sandboxed panel or page, prompt text and agent tools.
+You put one in `HUI_CONFIG_DIR/extensions/<id>/` and enable it over HTTP or in
+Settings. The extension runs **inside the gateway process** with the gateway's
+full access to your machine, credentials and data — the same trust as a PI
+extension and no sandbox for that code. Only add code you would run yourself.
+[What a gateway extension can and cannot do](extensions.md) is the capability
+matrix; the rest of this section is the working guide.
 
 An extension directory holds a manifest and its entry module:
 

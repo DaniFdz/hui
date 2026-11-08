@@ -327,6 +327,7 @@ Please report security issues privately as described in [SECURITY.md](SECURITY.m
 | Connect model providers                   | [Model providers](docs/guide.md#model-providers)                                                |
 | Reach the gateway through a proxy         | [Remote access](docs/guide.md#remote-access-through-a-reverse-proxy)                            |
 | Run bots, their routines and memory       | [Bots](docs/guide.md#bots)                                                                      |
+| Write a gateway extension                 | [What an extension can do](docs/extensions.md)                                                  |
 | Understand the product and its contracts  | [SPEC.md](SPEC.md) · [Browser/server API](docs/api.md)                                          |
 | Contribute or cut a release               | [CONTRIBUTING.md](CONTRIBUTING.md)                                                              |
 

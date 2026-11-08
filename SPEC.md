@@ -2463,15 +2463,18 @@ The contract is [docs/api.md#bots](docs/api.md#bots).
 HUI's first extendability seam beside PI's own packages, extensions and skills: a
 trusted local module can answer JSON routes on the gateway.
 
-- **Installed, not built in.** An extension is a directory
-  `$XDG_CONFIG_HOME/hui/extensions/<id>/` holding `extension.json`
+- **Local and packaged.** An extension is a directory holding `extension.json`
   (`apiVersion: 1`, `name`, `description`, relative `main`) and an ESM entry
-  module exporting `routes`. HUI ships none and enables none.
+  module exporting `routes`. The operator's extensions live in
+  `$XDG_CONFIG_HOME/hui/extensions/<id>/`; HUI ships packaged ones beside
+  `skills/`, and `extensions/defaults.json` lists the page ids enabled until the
+  operator's `extensions.json` exists (the list is empty until P8 ships a page).
+  A config extension with the same id overrides the packaged one.
 - **Path-confined namespace.** The status route is `GET /__hui/ext`; the enable
   switch is `PUT /__hui/ext/:id` with `{ "enabled": boolean }`; an extension's own
   routes live below `/__hui/ext/<id>/` and can never shadow a HUI route. A route
   path is one to four clean segments; a handler receives
-  `{ method, path, query, body, signal, extension }` and answers
+  `{ method, path, query, body, signal, extension, hui }` and answers
   `{ status?, body }`.
 - **Generic payloads on purpose.** An extension route answers `PluginPayload` (a
   JSON object HUI does not type) or `PluginError`; only the two fixed routes join

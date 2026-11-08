@@ -4350,7 +4350,9 @@ Extensions are trusted local code: they run in the gateway process with the
 gateway's access to the machine, its credentials and its data, exactly like a PI
 extension. There is no sandbox, no permission prompt and no timeout. The manifest's
 `apiVersion` must be `1`; any other value refuses to load with a named reason. HUI
-ships no extension and enables none until the operator asks.
+ships packaged extensions beside `skills/`; their page defaults are enabled until
+the operator's `extensions.json` exists, and a config extension with the same id
+overrides one. Extensions the operator installs start disabled.
 
 ### HUI-owned presentation state
 
