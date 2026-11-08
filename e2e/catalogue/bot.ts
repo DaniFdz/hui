@@ -694,6 +694,16 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
+    id: "BOT-071",
+    title: "Edit one of a bot's own skills",
+    behaviour: "Tools & skills shows Edit beside each skill in the bot's own folder. Editing verify opens its whole SKILL.md in a textarea; Save skill writes it to the bot's home and the next read sees it. A frontmatter name that differs from the folder's is refused. Skills HUI or PI provides have no Edit.",
+    spec: ["SPEC.md#bots", "docs/api.md#put-__huibotsidskillsname"],
+    surfaces: ["route:GET /__hui/bots/:id/skills/:name", "route:PUT /__hui/bots/:id/skills/:name"],
+    journeys: ["bots"],
+    web: "required",
+    ios: "required",
+  },
+  {
     id: "BOT-070",
     title: "A fresh gateway ships a Chief of Staff and its staff pack",
     behaviour: "The Bots tab lists “Chief of Staff” without the operator creating one. Its Tools & skills page lists the pack's own skills under “Its own skills”, including chief-mode and plan. Settings → Models → Subagent routes lists planner, explorer, worker, reviewer and verifier, each starting on “Inherit the caller's model”.",

@@ -57,6 +57,8 @@ import { aggregateUsage } from "../observability.ts";
 import type { UsageTotals } from "../api/diagnostics.ts";
 import { resolveWorkingDirectory } from "../git/working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
+import { BOT_SKILL_NAME, type BotSkillFiles } from "./skills.ts";
+import type { BotOwnSkill } from "../api/bots.ts";
 
 /** `message_bot` messages one bot may send per hour: a backstop behind the hop guard. */
 const MESSAGES_PER_HOUR = 30;
@@ -230,6 +232,8 @@ export type BotServiceDeps = {
   conversations: BotConversations;
   memory: BotMemory;
   files: BotFiles;
+  /** A local bot's own skill files (`skills/` in its home); absent on a host that keeps none. */
+  skills?: BotSkillFiles;
   routines: BotRoutines;
   /** Bots on remote workers; absent, a bot can only run here. */
   workers?: BotWorkers;
@@ -599,6 +603,38 @@ export class BotService {
       live: offer.live,
       ...(request ? { request } : {}),
     };
+  }
+
+  /** One of a bot's own skills: the SKILL.md the operator edits in Tools & skills. Local bots only; a worker's
+   * files are edited on that worker. */
+  async ownSkill(target: string, name: string): Promise<BotOwnSkill> {
+    const bot = await this.resolve(target);
+    if (bot.worker) throw new BotConflictError("This bot runs on a worker; edit its skills in that worker's Files view.");
+    const skills = this.#deps.skills;
+    if (!skills) throw new BotConflictError("This gateway cannot read bots' own skills.");
+    if (!BOT_SKILL_NAME.test(name)) throw new BotInputError("That is not a skill name.");
+    const skill = (await skills.read(bot.id)).find((entry) => entry.name === name);
+    if (!skill) throw new BotNotFoundError(`No skill named ${name} in ${bot.name}'s own skills.`);
+    return { name, text: skill.text };
+  }
+
+  /** Replaces one own skill's SKILL.md; the files beside it stay. The folder name and the frontmatter name stay equal, so
+   * the skill keeps loading. */
+  async setOwnSkill(target: string, name: string, text: unknown): Promise<BotOwnSkill> {
+    const bot = await this.resolve(target);
+    if (bot.worker) throw new BotConflictError("This bot runs on a worker; edit its skills in that worker's Files view.");
+    const skills = this.#deps.skills;
+    if (!skills) throw new BotConflictError("This gateway cannot change bots' own skills.");
+    if (!BOT_SKILL_NAME.test(name)) throw new BotInputError("That is not a skill name.");
+    if (typeof text !== "string") throw new BotInputError("The skill text must be text.");
+    if (!text.trim()) throw new BotInputError("The skill text cannot be empty.");
+    if (Buffer.byteLength(text, "utf8") > 256 * 1024) throw new BotInputError("The skill text is larger than 256 KB.");
+    const frontmatter = /^---\n([\s\S]*?)\n---/u.exec(text)?.[1] ?? "";
+    const declared = /^name:\s*(.+)$/mu.exec(frontmatter)?.[1]?.trim().replace(/^["']|["']$/gu, "");
+    if (!declared) throw new BotInputError(`A SKILL.md needs frontmatter with a name, and the name must be ${name}.`);
+    if (declared !== name) throw new BotInputError(`The frontmatter name is ${declared}; keep it ${name}, the folder's name.`);
+    await skills.write(bot.id, [{ name, text }]);
+    return { name, text };
   }
 
   /** The access request the bot's chat is waiting on, if any. */

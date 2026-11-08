@@ -11,7 +11,7 @@ export type BotBootstrapRequest = { "text": string; };
 
 export type BotCatalog = { "tools": Array<BotCatalogTool>; "skills": Array<BotCatalogSkill>; "alwaysOn": Array<{ "name": string; "description": string; }>; "disabledTools": Array<string>; "disabledSkills": Array<BotSkillRef>; "live": boolean; "request"?: BotAccessRequest; };
 
-export type BotCatalogSkill = { "name": string; "path": string; "description": string; "source": string; "enabled": boolean; };
+export type BotCatalogSkill = { "name": string; "path": string; "description": string; "source": string; "enabled": boolean; "own"?: boolean; };
 
 export type BotCatalogTool = { "name": string; "label": string; "description": string; "group": BotToolGroup; "source": string; "powerful": boolean; "enabled": boolean; };
 
@@ -54,6 +54,10 @@ export type BotMemoryZoom = { "text": string; };
 export type BotMessageRequest = { "text"?: string; "attachments"?: Array<unknown>; "wait"?: boolean; "timeoutSeconds"?: number; };
 
 export type BotMessageResult = (BotDelivery) | (BotReply);
+
+export type BotOwnSkill = { "name": string; "text": string; };
+
+export type BotOwnSkillRequest = { "text": string; };
 
 export type BotPatch = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "avatar"?: (BotAvatarPatch) | (null); "voice"?: (BotVoicePatch) | (null); "split"?: true; };
 

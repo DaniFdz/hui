@@ -42,7 +42,7 @@ export function parseBotCatalog(body: unknown): BotCatalog {
   });
   const skills: BotCatalogSkill[] = body["skills"].flatMap((raw) => {
     const ref = parseSkillRef(raw);
-    return ref && isRecord(raw) ? [{ ...ref, description: str(raw["description"]), source: str(raw["source"]), enabled: raw["enabled"] !== false }] : [];
+    return ref && isRecord(raw) ? [{ ...ref, description: str(raw["description"]), source: str(raw["source"]), enabled: raw["enabled"] !== false, own: raw["own"] === true }] : [];
   });
   const request = isRecord(body["request"]) && str(body["request"]["id"]) && str(body["request"]["sessionId"])
     ? { id: str(body["request"]["id"]), sessionId: str(body["request"]["sessionId"]), title: str(body["request"]["title"]), message: str(body["request"]["message"]) } satisfies BotAccessRequest
@@ -148,6 +148,8 @@ export type BotToolsState = {
   saveError: string;
   answering: boolean;
   query: string;
+  /** The own skill being edited, if any: its whole SKILL.md and the save's state. */
+  editing?: { name: string; text: string; saving: boolean; error: string };
 };
 
 export type BotToolsActions = {
@@ -156,4 +158,8 @@ export type BotToolsActions = {
   onSearch: (query: string) => void;
   onAnswer: (answer: BotAccessAnswer) => void;
   onRetry: () => void;
+  onEditSkill: (name: string) => void;
+  onSkillText: (text: string) => void;
+  onSaveSkill: () => void;
+  onCancelSkill: () => void;
 };

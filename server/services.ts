@@ -224,6 +224,7 @@ export const bots = new BotService({
     },
   }),
   files: localBotFiles(),
+  skills: localBotSkills(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
     tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
