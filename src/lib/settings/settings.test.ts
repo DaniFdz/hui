@@ -34,11 +34,11 @@ test("ignores the retired single typeface preference", () => {
 test("normalizes HUI-owned profile and labs", () => {
   const settings = normalizeSettings({
     profileName: "  Alex  ", profileHandle: " @alex ",
-    labs: { denseObservability: true, detailedDebug: "yes", dashboard: true },
+    labs: { denseObservability: true, detailedDebug: "yes" },
   });
   assert.equal(settings.profileName, "Alex");
   assert.equal(settings.profileHandle, "@alex");
-  assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false, dashboard: true });
+  assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false });
 });
 
 test("codemode is on unless explicitly switched off", () => {
@@ -212,6 +212,17 @@ test("calls take Cove unless a known GPT-Live voice is saved", () => {
     assert.deepEqual(normalizeSettings({ calls }).calls, { voice: "cove" }, JSON.stringify(calls));
   }
   assert.deepEqual(normalizeCalls({ voice: "marin" }), { voice: "cove" }, "a public-API voice is not one of the route's");
+});
+
+test("the default reasoning is a PI level, or PI's own default when unset", () => {
+  assert.equal(DEFAULT_SETTINGS.models.thinking, "");
+  assert.equal(normalizeSettings({}).models.thinking, "");
+  assert.equal(normalizeSettings({ models: { thinking: "high" } }).models.thinking, "high");
+  assert.equal(normalizeSettings({ models: { thinking: "max" } }).models.thinking, "max");
+  for (const thinking of ["ultra", "turbo", " high ", 3, null]) {
+    assert.equal(normalizeSettings({ models: { thinking } }).models.thinking, "", JSON.stringify(thinking));
+  }
+  assert.deepEqual(normalizeSettings(normalizeSettings({ models: { thinking: "xhigh" } })).models.thinking, "xhigh", "round-trips");
 });
 
 const fixtures: { input: unknown; expected: ReturnType<typeof normalizeSettings> }[] = JSON.parse(readFileSync(new URL("./settings.fixture.json", import.meta.url), "utf8"));

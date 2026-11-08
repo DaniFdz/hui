@@ -1,10 +1,10 @@
-/** An enabled gateway extension's panel opens sandboxed in the Work pane, from Settings or the + menu, and its route answers (WORK-083). */
+/** An enabled gateway extension's panel opens sandboxed in the Work pane, from Settings or the + menu, and its route answers (WORK-085). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 type Extensions = { extensions: { id: string; state: string }[] };
 
-test("an enabled extension's panel opens sandboxed in the Work pane and calls its own route", { tags: ["WORK-083"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("an enabled extension's panel opens sandboxed in the Work pane and calls its own route", { tags: ["WORK-085"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Extension panel", cwd: repository.path });
 

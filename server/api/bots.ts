@@ -73,6 +73,7 @@ export const BotView = Type.Object({
   name: Type.String(),
   title: Type.Optional(Type.String()),
   description: Type.Optional(Type.String()),
+  group: Type.Optional(Type.String()),
   tagging: Type.Optional(StoredTagging),
   cwd: Type.String(),
   model: Type.Optional(Type.String()),
@@ -102,6 +103,7 @@ const BotInputFields = {
   handle: Type.Optional(Type.String()),
   title: Type.Optional(Type.String()),
   description: Type.Optional(Type.String()),
+  group: Type.Optional(Type.String()),
   tagging: Type.Optional(BotTagging),
   cwd: Type.Optional(Type.String()),
   model: Type.Optional(Type.String()),
@@ -223,6 +225,8 @@ export type BotCatalogTool = Static<typeof BotCatalogTool>;
 
 export const BotCatalogSkill = Type.Object({
   name: Type.String(), path: Type.String(), description: Type.String(), source: Type.String(), enabled: Type.Boolean(),
+  /** True for a skill in the bot's own home folder, which the operator and the bot may edit. */
+  own: Type.Optional(Type.Boolean()),
 }, { $id: "BotCatalogSkill" });
 export type BotCatalogSkill = Static<typeof BotCatalogSkill>;
 
@@ -247,6 +251,13 @@ export type BotsResponse = Static<typeof BotsResponse>;
 
 export const BotResponse = Type.Object({ bot: BotView }, { $id: "BotResponse" });
 export type BotResponse = Static<typeof BotResponse>;
+
+/** One of a bot's own skills: its SKILL.md text. */
+export const BotOwnSkill = Type.Object({ name: Type.String(), text: Type.String() }, { $id: "BotOwnSkill" });
+export type BotOwnSkill = Static<typeof BotOwnSkill>;
+
+export const BotOwnSkillRequest = Type.Object({ text: Type.String() }, { $id: "BotOwnSkillRequest" });
+export type BotOwnSkillRequest = Static<typeof BotOwnSkillRequest>;
 
 export const BotDeleted = Type.Object({ ok: Type.Literal(true), queued: Type.Optional(Type.Literal(true)) }, { $id: "BotDeleted" });
 export type BotDeleted = Static<typeof BotDeleted>;
@@ -304,6 +315,8 @@ export const routeSchemas = [
   { method: "GET", path: "/__hui/bots/:id/memory", response: BotMemoryResponse },
   { method: "GET", path: "/__hui/bots/:id/memory/zoom", response: BotMemoryZoom },
   { method: "GET", path: "/__hui/bots/:id/catalog", response: BotCatalog },
+  { method: "GET", path: "/__hui/bots/:id/skills/:name", response: BotOwnSkill },
+  { method: "PUT", path: "/__hui/bots/:id/skills/:name", request: BotOwnSkillRequest, response: BotOwnSkill },
   { method: "GET", path: "/__hui/bots/:id/usage", response: BotUsageResponse },
   { method: "GET", path: "/__hui/bots/:id/soul", response: BotSoul },
   { method: "PUT", path: "/__hui/bots/:id/soul", request: BotSoulRequest, response: BotSoul },

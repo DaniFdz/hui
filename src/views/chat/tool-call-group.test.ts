@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "vitest";
 import { commandBinary, toolCallLabel, toolCallMeta } from "./tool-call-group.ts";
 
@@ -46,4 +47,12 @@ test("a command names its CLI after wrappers, assignments and its path", () => {
   assert.equal(commandBinary(tool("bash", { command: "npx vitest run" })), "vitest");
   assert.equal(commandBinary(tool("bash", { command: "gh pr list" })), "gh");
   assert.equal(commandBinary(tool("bash", { command: "" })), "");
+});
+
+/** The group's emoji fill their ring at the row's size; they read as three different sizes instead of one stack. */
+test("a group's emoji marks sit inside their ring, smaller than a row's", () => {
+  const css = readFileSync(new URL("../../styles/openclaw-chat.css", import.meta.url), "utf8");
+  const size = (selector: string) => Number(new RegExp(`${selector.replaceAll(".", "\\.")} \\{ font-size: (\\d+)px; \\}`, "u").exec(css)?.[1]);
+  assert.ok(size(".tool-call-group__emoji") < size(".tool-call-row__icon--emoji"), "the group's marks are smaller than a row's");
+  assert.ok(size(".tool-call-group__emoji") <= 11, "and leave the 24px ring clear");
 });

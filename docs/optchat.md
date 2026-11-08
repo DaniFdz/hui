@@ -81,6 +81,7 @@ a projection of them, one line per item, each tagged with its source
 | Durable entry | OptChat log |
 |---|---|
 | `pi.user` | `user`: its text blocks, images as `[image]` (custom inputs as plain text) |
+| `pi.user` starting `[HUI subagent completion event]` | `user` prefixed with the entry's id, which OptChat's compactor reads as a subagent's report rather than the operator's words |
 | `pi.assistant` that stopped (`stop`, `length`, `toolUse`) | `talk` for its text, if any; one `tool` per call: `name {json}` |
 | `pi.tool-result` | `echo`: its text, `error: ` first when it failed, capped at 30,000 characters (head and tail) |
 | anything else | nothing: system, reset, compaction and extension entries; failed, aborted and deferred answers |

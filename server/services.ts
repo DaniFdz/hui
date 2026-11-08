@@ -13,6 +13,7 @@ import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots/b
 import { BotService } from "./bots/service.ts";
 import { remoteBots } from "./bots/remote.ts";
 import { createBotRoutes } from "./routes/bots.ts";
+import { createStaffRoutes } from "./routes/staff.ts";
 import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
 import { accountFullName, BotExportService } from "./bots/export.ts";
 import { nameFromUsername } from "./bots/templates/cleanup.ts";
@@ -26,6 +27,8 @@ import { createCallRoutes } from "./routes/calls.ts";
 import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./bots/call-helper.ts";
 import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
+import { readStaffPack } from "./staff/pack.ts";
+import { ensureStaff } from "./staff/service.ts";
 import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
@@ -164,7 +167,10 @@ export const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosti
 }));
 /** The Durable side of bots' chats here, and their remote workers' half: the bot service's, and what a bot import
  * checks a new bot against. */
-const botConversations = durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readHuiSettings()).models.primary || undefined });
+const botConversations = durableBotConversations(durableHost(), botMemory, {
+  primaryModel: async () => (await readHuiSettings()).models.primary || undefined,
+  defaultThinking: async () => (await readHuiSettings()).models.thinking || undefined,
+});
 const botWorkers = remoteBots(workers, {
   cleanupFile: BOT_CLEANUP_FILE,
   report: (action, summary, error) => recordDiagnosticEvent({
@@ -224,6 +230,7 @@ export const bots = new BotService({
     },
   }),
   files: localBotFiles(),
+  skills: localBotSkills(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
     tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
@@ -239,6 +246,15 @@ export const bots = new BotService({
   },
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
+export const staffRoutes = createStaffRoutes({
+  bots: () => botRegistry.list(),
+  getBot: (id) => bots.get(id),
+  createBot: (body) => bots.create(body),
+  restoreBot: (id) => bots.restore(id),
+  skills: localBotSkills(),
+  readSettings: readHuiSettings,
+  writeSettings: writeHuiSettings,
+});
 export const botRoutes = createBotRoutes({
   service: bots,
   readAttachments: async (sessionId, raw) => {
@@ -252,6 +268,21 @@ export const botRoutes = createBotRoutes({
 /** Bots imported from other platforms' templates (`bots/template-import.ts`), and exported as templates reviewed for
  * personal information (`bots/export.ts`), under `/__hui/bots`. */
 const localSkills = localBotSkills();
+/** The staff pack: seeds the Chief of Staff once, then installs the pack's skills and routes into it (staff/,
+ * server/staff/service.ts). Deleting the bot opts out; the record keeps HUI from seeding it again. */
+export const staff = {
+  ensure: async () => ensureStaff({
+    pack: await readStaffPack(),
+    createBot: async (body) => {
+      const view = await bots.create(body);
+      return { id: view.id };
+    },
+    botIds: async () => (await botRegistry.list()).map((bot) => bot.id),
+    skills: localSkills,
+    readSettings: readHuiSettings,
+    writeSettings: writeHuiSettings,
+  }),
+};
 // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
 const newBotOffer = (worker?: string) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR);
 const botSkillFiles = (worker?: string) => worker ? (botWorkers.keepsSkills(worker) ? botWorkers.skills(worker) : undefined) : localSkills;

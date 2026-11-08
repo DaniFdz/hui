@@ -21,6 +21,8 @@ export class LaunchController {
   worker: string | undefined;
   model = "";
   thinking = "";
+  /** PI's own default level: what New Session shows while Settings' default reasoning is unset. */
+  #piThinking = "medium";
   fast = false;
   directorySuggestions: readonly string[] = [];
   /** The machine `directorySuggestions` came from: "" for this one, else a worker's id. A bot's Settings page shows only
@@ -110,14 +112,20 @@ export class LaunchController {
     });
   }
 
-  seedPreferences(snapshot: PiSnapshot, primary: string): void {
+  seedPreferences(snapshot: PiSnapshot, primary: string, defaultThinking = ""): void {
+    this.#piThinking = snapshot.model.thinking ?? "medium";
     const model = this.model || primary || (
       snapshot.model.defaultProvider && snapshot.model.defaultModel
         ? `${snapshot.model.defaultProvider}/${snapshot.model.defaultModel}`
         : ""
     );
-    const thinking = this.thinking || (snapshot.model.thinking ?? "medium");
+    const thinking = this.thinking || defaultThinking || this.#piThinking;
     if (model !== this.model || thinking !== this.thinking) this.#set({ model, thinking });
+  }
+
+  /** Settings' Default reasoning changed: New Session adopts it at once, as it does a new primary model. */
+  selectDefaultThinking(level: string): void {
+    this.#set({ thinking: level || this.#piThinking });
   }
 
   selectModel(model: string): void {

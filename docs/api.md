@@ -627,11 +627,16 @@ than silently using a different account. No transcript format changes.
 Within an already managed provider, account order and cooldowns are re-read for
 each SDK request. Credentials are pinned per async request across OAuth refresh;
 parallel sessions never change a shared active key. Both `stream` and
-`streamSimple` (including their completion helpers) route accounts. SDK request
-retries are disabled for these calls so rotation is bounded to one attempt per
-ready account. A 429 or explicit quota/usage-limit error before content triggers
-the next account; no replay after content/thinking/tool events, on Stop, auth or
-server/network errors. Exhaustion is an explicit error, not a retry loop.
+`streamSimple` (including their completion helpers) route accounts. Provider-SDK
+retries inside one account are disabled so rotation stays bounded to one attempt
+per ready account. A 429 that reports quota/rate exhaustion, or an explicit
+quota/usage-limit error, before content triggers the next account; a 429 that
+reports the provider's own capacity (an overloaded upstream, not this account's
+allowance) keeps the account ready so the Durable harness can retry the same model
+and cached context up to `models.retryAttempts`, waiting for the provider's retry
+hint; only after that budget is spent does the provider's error surface. No replay
+after content/thinking/tool events, on Stop, auth or server/network errors. Account
+exhaustion is an explicit error, not an unbounded retry loop.
 `Retry-After`/`retry-after-ms`, or a Codex-reported retry time, determine cooldown;
 without them HUI retries the account after 60 seconds. Account quota reads can
 extend cooldown to the reported reset of an exhausted global window, but never
@@ -750,16 +755,31 @@ Disabling a HUI default excludes only that fallback, not a same-name override.
 An empty opt-out list enables the default without writing PI configuration.
 Read-only catalog probes never load bundled skills.
 
-The same settings document includes `models: { primary, fallback, utility }`.
-Each non-empty value is a canonical `provider/id` from PI's filtered catalog.
-Primary is the default for new sessions; fallback is an automatic one-time retry
-when a primary turn fails before text, thinking, or tool activity, after which
-the session switches back to its own model; utility is a
+The same settings document includes `models: { primary, fallback, utility, thinking, retryAttempts }`.
+Each non-empty model value is a canonical `provider/id` from PI's filtered catalog.
+Primary is the default for new sessions; fallback is an automatic retry when a
+primary turn fails before text, thinking, or tool activity and its retry budget
+is spent, after which the session switches back to its own model; utility is a
 cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 
 ```json
-{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
+{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "thinking": "high", "retryAttempts": 3, "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
 ```
+
+`retryAttempts` is the number of provider-error retries before the fallback is
+tried, from 0 to 5 (default 3). A retry keeps the same model and account, so the
+provider can reuse its cached context; a provider-supplied `Retry-After` or retry
+hint decides the wait, with PI's exponential backoff when it gives none. A
+capacity 429 is not account exhaustion and never cools the account down; the
+retry budget is spent first.
+
+`thinking` is the reasoning level new sessions and new bots start on, and the
+level the New Session form is seeded with: one of PI's levels from `off` through
+`max`, or `""` (the default) to follow PI's own `defaultThinkingLevel`. A level
+the chosen model does not offer is fitted to its closest supported one. HUI's
+`ultra` is a session's own delegation mode, never a saved default. A session
+started without a level (a suggestion or backlog item) takes this default; one
+that names a level, as the New Session form always does, keeps that instead.
 
 The same block carries `routes`: the named models a `sessions_spawn` call can pass
 as `route`. An entry is `{ name, description, model, thinking? }`; a name must be
@@ -848,8 +868,8 @@ runs `open -a ~/Applications/HUI.app hui://<kind>/<id>`.
 ### `GET /__hui/host-metrics`
 
 Read-only resource use of the machine the gateway runs on, for the Dashboard
-page (Labs → Dashboard). It answers whether or not the page is on: it reads
-nothing private and starts nothing until it is asked.
+page. It answers whether or not the page is open: it reads nothing private and
+starts nothing until it is asked.
 
 ```ts
 {
@@ -1742,9 +1762,11 @@ type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead:
 
 type BotSoul = { soul: string | null }; // GET/PUT /__hui/bots/:id/soul: SOUL.md's text, null while there is none
 
+type BotOwnSkill = { name: string; text: string }; // GET/PUT /__hui/bots/:id/skills/:name: one of its own SKILL.md files
+
 type BotCatalog = {             // GET /__hui/bots/:id/catalog
   tools: BotCatalogTool[];      // what the operator can turn off, in offer order
-  skills: (BotSkillRef & { description: string; source: string /* "HUI defaults" or the directory holding it */; enabled: boolean })[];
+  skills: (BotSkillRef & { description: string; source: string /* "HUI defaults" or the directory holding it */; enabled: boolean; own?: boolean /* in the bot's home folder, so the operator may edit it */ })[];
   alwaysOn: { name: string; description: string }[]; // never offered: the bot's own tools and OptChat's memory
   disabledTools: string[];
   disabledSkills: BotSkillRef[];
@@ -1976,6 +1998,10 @@ Query `id=&n=`.
 
 200 `{ text }`. OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400)
 
+### `POST /__hui/staff/chiefs`
+
+201 `BotResponse`. `{ group, cwd }`, nothing else: the custom session group's label (1-200 characters) and its project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its home, its `group` set, and its chat in `cwd`; the pack's routes are added to Settings when missing. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, cwd or an unknown field
+
 ### `GET /__hui/bots/:id/catalog`
 
 200 `BotCatalog`. What the operator can turn off in the bot's chat and what is off, read from its `hui.bot` document; a roster copy that differs is repaired. It opens the chat (as a message would), so an extension's tools are listed; an archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). An access request the chat waits on comes along as `request`. Archived bots too
@@ -1991,6 +2017,14 @@ Query `id=&n=`.
 ### `PUT /__hui/bots/:id/soul`
 
 200 `BotSoul`. `{ soul }`, nothing else: text of at most 20,000 characters after trimming (line ends become `\n`), written atomically (a temporary file and a rename, mode 0600) in the bot's home folder; `""` removes SOUL.md, which brings the first conversation back at the bot's next turn (no kickoff). Answers what was stored. The bot's `updatedAt` moves, so every screen reads it again. Archived bots are 409
+
+### `GET /__hui/bots/:id/skills/:name`
+
+200 `BotOwnSkill`. One of the bot's own skills: the `SKILL.md` in `skills/<name>/` in its home folder. 404 for a name it does not have. Local bots only; a bot on a worker is 409 (edit its files on that worker's Files view), as on a gateway that keeps no bot homes. Archived bots too
+
+### `PUT /__hui/bots/:id/skills/:name`
+
+200 `BotOwnSkill`. `{ text }`, nothing else: the whole `SKILL.md`, at most 256 KiB after reading, with frontmatter whose `name` equals the folder's name (400 otherwise); the files beside it stay. Written atomically in the bot's home folder. Archived bots and bots on a worker are 409. The body applies from the bot's next read; the prompt's name and description list refreshes with the next request
 
 ### `GET /__hui/bots/:id/files/:file`
 
@@ -4364,8 +4398,7 @@ OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
 [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
 Profile presentation fields and reversible Labs flags (`labs`:
-`denseObservability`, `detailedDebug` and `dashboard`, each off unless
-explicitly `true`).
+`denseObservability` and `detailedDebug`, each off unless explicitly `true`).
 These values affect HUI only. They never change PI configuration, provider
 identity, runtime permissions or transcripts.
 

@@ -41,6 +41,11 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   header's New session and Search buttons on 2026-10-06; new sessions start from
   a group's +). Settings is the last primary-navigation destination, not a
   header button.
+- The wide layout's sidebar can be widened or narrowed by dragging the boundary
+  at its right edge, between 200px and 460px, and the browser keeps that width
+  for the next visit. The boundary is a separator named *Resize sidebar* that
+  the arrow keys also move, 16px a press and 48px with Shift. Narrow screens
+  show the drawer at its own width, with no boundary.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
   system modes. Theme, accent, interface-font and chat-prose-font preferences
   persist in HUI settings. A custom or imported theme's colors must read where
@@ -808,6 +813,12 @@ provider/model selection using the `model-name` extension's rules. HUI owns thre
 normal sessions, **fallback** retries a primary failure only when no useful output
 or tool activity has occurred, then returns the session to its own model, and **utility** runs cheap, fast, tool-free calls
 for concise (3–6 word, at most 60 character) new-session names in the prompt's language, generated worktree branch names and `/btw`. These settings never rewrite PI files.
+The same page saves the **default reasoning** new sessions and bots start on:
+PI's levels from Off through Maximum, or **Use PI default** (the default), which
+follows PI's own `defaultThinkingLevel` at the runtime. A model that supports
+fewer levels is sent the closest one it has. New Session starts on this level,
+and a session created without one (a suggestion or backlog item) takes it too;
+HUI's Ultra is a session's own delegation mode, never a saved default.
 **Subagent routes** are a fourth, operator-named part of that block: each route
 names a model (and optionally a reasoning level), and a session spawns a subagent
 on one by name instead of a model id. See
@@ -1052,6 +1063,12 @@ non-empty folder only with that confirmation, and never the root. On narrow
 screens the navigator is a drawer and the editor takes the full width with a
 16 px font, so iOS does not zoom.
 
+The navigator is 260px wide by default and never takes the room that leaves the
+editor less than 240px. Its right edge is a separator named **Resize files
+navigator**: dragging it, or pressing the arrow keys (16px a press and 48px with
+Shift), widens or narrows it, and the browser keeps the chosen width for the
+next visit. A name cut short shows its full path on hover or focus.
+
 **File references in the chat.** When the agent names a file in its reply —
 an inline code span or a Markdown link whose text or target is a path such as
 `src/lib/x.ts`, `./a/b.md`, an absolute path or `~/…`, optionally with
@@ -1118,7 +1135,12 @@ On the left a filterable list of changed files shows each one's status (A, M, D,
 R with its old path, C, T, U), its added and removed line counts and the totals;
 on the right the selected file's diff, unified, or **Side by side** when the view
 is at least 900px wide (narrower, the toggle is disabled and says *Side by side
-needs a wider pane*). Lines are coloured with the file's CodeMirror language from
+needs a wider pane*). The list is 280px wide by default and never takes the room
+that leaves the diff less than 320px; its right edge is a separator named
+**Resize changed files** that drags it between 220px and 640px and takes the
+arrow keys, 16px a press and 48px with Shift, and the browser keeps the chosen
+width for the next visit. A path cut short shows its full path on hover or
+focus. Lines are coloured with the file's CodeMirror language from
 the Files editor, hunk by hunk. A rename reads *old → new*; binary files say so;
 a patch over 1,500 lines opens collapsed with **Show diff**; a missing final
 newline and, in files that mix them, CRLF endings are marked. Clicking the file's
@@ -1622,9 +1644,15 @@ ordinary descendants may be active in one tree.
 A spawn picks the child's model in one of three ways: a **route** name from the
 operator's configured routes, a raw `provider/id`, or neither, which inherits the
 caller's model and reasoning level. A route carries a name, a one-line
-description and a model, and may pin a PI reasoning level through `max`; the
-spawn's own `thinking` overrides it. HUI's Ultra delegation mode is not a route
+description and, optionally, a model, and may pin a PI reasoning level through
+`max`; a route without a model runs the child on the caller's model and
+reasoning level, so a seeded default route never goes stale. The spawn's own
+`thinking` overrides it. HUI's Ultra delegation mode is not a route
 reasoning level. The route block in the prompt lists names and descriptions, not model ids.
+A spawn with `worktree: true` gets its own checkout: HUI creates a worktree off the caller's directory (on the worker that runs the caller), with Settings' branch prefix and the child's title, and the child's `cwd` is that worktree. A checkout that cannot be made refuses the spawn before a child exists, and a registry write that fails puts the worktree and its branch back. Parallel workers never share one working tree.
+
+A bot's subagent carries the bot whose skills it loads (`botSkills`), in its `hui.botSkills` conversation document, so the staff pack reaches the workers that need it and no other session sees it. Its own children inherit the same bot. That document grants skills only: the bot's soul, memory and tools stay its chat's.
+
 Routes are shortcuts, not an allowlist: the tool still accepts a raw `model`. Route and model together are refused, because the route already
 names one. An unknown route is refused before any child exists, naming the
 configured routes or pointing at Settings → Models → Subagent routes when there
@@ -2262,9 +2290,9 @@ everything the Bots tab can, through the same routes.
   with its `write_soul` tool, which only bots' chats have (no file tools
   needed). It changes SOUL.md when the operator asks, and says so. Only the
   operator's turns (and HUI's kickoff) can rewrite it: SOUL.md steers every
-  later turn, so a turn that took a message from a routine, a trigger or
+  later turn, so a turn that took a message from a routine, a trigger,
   another bot (the one that started it, or one that joined it while it ran)
-  can't, as it can't rename the bot. The operator can also replace it with
+  or a subagent's completion report can't, as it can't rename the bot. The operator can also replace it with
   `hui bot soul`; the bot's panel doesn't show it (decision below). A bot without a
   model of its own runs on Settings' primary model, like a new session.
 - **Named by talking.** A bot created without a name is *New Bot*; its first
@@ -2640,6 +2668,8 @@ the soul holds preferences.
 
 ### Dashboard page behind Labs → Dashboard, to iterate on it (2026-10-23)
 
+Superseded by [The Dashboard is on for everyone](#the-dashboard-is-on-for-everyone-2026-11-06).
+
 The owner wants one page that shows what every session is doing and how the
 gateway's machine is holding up, to spot bottlenecks, and to iterate on it
 before it is a default. So it sits behind `settings.labs.dashboard`, a
@@ -2761,6 +2791,15 @@ saved in the browser, and resizing the window. Others exist only in the wide
 layout HUI shows from 1100px, such as collapsing the sidebar. The iPhone app
 ships its code, uses the system clipboard, has no tabs, has no older version and
 is always narrow, so these are web-only use cases.
+
+### A file list's boundary and hover path stay on the web (2026-11-08)
+
+The Files navigator and the Diff view's changed-file list sit beside their
+content in HUI's wide layout. Dragging their boundary and seeing a cut-off
+name's full path on hover are browser affordances: the iPhone app is always
+narrow, where the Files navigator is a drawer with no boundary, and a touch
+screen has no hover. The list still scrolls, and a tap opens the file or its
+diff, so only the boundary and the hover path are web use cases.
 
 ### Usage is proven in the browser (2026-11-04)
 
@@ -3545,6 +3584,45 @@ whatever the user's account can, and `message_bot` lets it ask a better-equipped
 bot to act (turning `message_bot` off prevents that). Isolation means running the
 bot on a worker in a container.
 
+### A staff pack seeds one Chief of Staff (2026-11-06)
+
+The owner asked for Lauren Tan's poteto workflow adapted to HUI: the operator
+talks mostly to one coordinator, the coordinator routes work to opinionated
+subagents, and the method lives in skills that load on demand instead of
+filling every conversation. HUI ships it as a **staff pack** (`staff/`) and
+seeds it once:
+
+- **One bot, seeded once, idle.** A fresh gateway creates *Chief of Staff*
+  with the pack's SOUL.md and skills, and no kickoff turn: it costs nothing
+  until it is messaged. HUI records the seed in `staff.json`; deleting the bot
+  is the opt-out and HUI never creates another. Its skills live in its own
+  `skills/` folder, so only its chat and its workers see them.
+- **Hash-based upgrades.** The record holds the hash of every file HUI wrote.
+  A start replaces a skill whose files all still match, keeps an edited skill
+  whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
+  BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
+  `--fix` installs the untouched updates.
+- **Workers carry the pack, nothing else.** A spawn from a bot's chat records
+  `botSkills`, written as the `hui.botSkills` document in the child's creating
+  commit; `skillDirsFor` loads that bot's skill folder for the child and its
+  descendants. The document grants skills only: no soul, memory or bot tools.
+- **Routes and checkouts.** The seed adds `planner`, `explorer`, `worker`,
+  `reviewer` and `verifier`, with no model, so they inherit the chief's.
+  `sessions_spawn({ worktree: true })` creates a worktree off the caller's
+  checkout (on its worker) and makes it the child's cwd; a failed registry
+  write rolls it back.
+- **Global skills stay opt-out.** `automate-me` (shaped for HUI bots),
+  `create-formal-verification-skill`, `maintain-formal-verification-skill` and
+  `maintain-verification-skill` ship as bundled skills beside
+  `create-verification-skill`, listed for every chat and turned off in
+  Settings → Skills. They are not part of the pack.
+
+### A custom group's chief is its own bot (2026-11-08)
+
+The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label and project directory, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its home, sets the bot's `group`, and puts its chat in that directory; the pack's routes are merged by name. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
+
+A group chief's skills are installed at creation. A pack update does not reach it yet: per-bot manifests are the next step, and the operator can edit any of its skills in Tools & skills meanwhile.
+
 ### Bots write their own SOUL.md in a first conversation (2026-10-06)
 
 Reviewing the Bots stack, the owner asked for bots to have a SOUL.md "like
@@ -4271,3 +4349,20 @@ web page: the iOS app has no screen for them. Its outcomes are therefore web use
 cases, and PAGE-044 and PAGE-045 are excluded on iOS rather than left on its
 backlog, as the Usage page is. When the iPhone app gets a Dashboard of its own,
 that screen is its own use case with its own shared test.
+
+### The Dashboard is on for everyone (2026-11-06)
+
+The owner asked for the Dashboard out of Labs once the page had settled, so it
+is one of HUI's pages everywhere.
+
+- **No switch turns it on.** *Dashboard* sits at the top of the sidebar and in
+  the command palette on every install, so the primary navigation reads
+  Dashboard, Contributions, Kanban, Sessions and Usage, and `/dashboard` opens
+  it. The *Dashboard* switch is gone from the Labs page.
+- **An older settings file is read, not rewritten.** `settings.labs.dashboard`
+  is no longer a setting: a file that still holds it loads without it, and the
+  next save leaves it out, as with any key HUI does not know. The stale value
+  can no longer hide the page.
+
+This supersedes the *behind Labs* part of [Dashboard page behind Labs →
+Dashboard, to iterate on it](#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23).
