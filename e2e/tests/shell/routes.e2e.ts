@@ -4,14 +4,14 @@ import { test } from "../../fixtures/hui.ts";
 
 const soul = "# Who I am\nA bot that only answers by address.\n";
 
-test("Home shows the new-session form with no session selected, the four destinations and only Collapse sidebar beside the tabs", { tags: ["SHELL-001"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Home shows the new-session form with no session selected, the five destinations and only Collapse sidebar beside the tabs", { tags: ["SHELL-001"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.createSession({ title: "Not selected" });
   await hui.open("/");
   await expect(screen.getByTestId("new-session-composer")).toBeVisible();
   await expect(screen.getByRole("button", "Start session")).toBeVisible();
   await expect(screen.getByLabel(/^Not selected, status idle/u)).toBeVisible();
   await expect(screen.getByTestId("session-title")).toBeHidden();
-  await expect(screen.getByLabel("Primary navigation")).toHaveText("Contributions Kanban Sessions Usage");
+  await expect(screen.getByLabel("Primary navigation")).toHaveText("Dashboard Contributions Kanban Sessions Usage");
   const header = screen.getByTestId("sidebar-header");
   await expect(header.getByRole("button")).toHaveAccessibleName("Collapse sidebar");
   await expect(header.getByRole("tab", "Agents")).toBeVisible();

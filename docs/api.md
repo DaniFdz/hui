@@ -868,8 +868,8 @@ runs `open -a ~/Applications/HUI.app hui://<kind>/<id>`.
 ### `GET /__hui/host-metrics`
 
 Read-only resource use of the machine the gateway runs on, for the Dashboard
-page (Labs → Dashboard). It answers whether or not the page is on: it reads
-nothing private and starts nothing until it is asked.
+page. It answers whether or not the page is open: it reads nothing private and
+starts nothing until it is asked.
 
 ```ts
 {
@@ -4294,8 +4294,7 @@ OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
 [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
 Profile presentation fields and reversible Labs flags (`labs`:
-`denseObservability`, `detailedDebug` and `dashboard`, each off unless
-explicitly `true`).
+`denseObservability` and `detailedDebug`, each off unless explicitly `true`).
 These values affect HUI only. They never change PI configuration, provider
 identity, runtime permissions or transcripts.
 

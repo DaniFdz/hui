@@ -110,7 +110,7 @@ export const DEFAULT_SETTINGS: Settings = {
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
-  labs: { denseObservability: false, detailedDebug: false, dashboard: false },
+  labs: { denseObservability: false, detailedDebug: false },
 };
 
 export function normalizeSettings(raw: unknown): Settings {
@@ -349,7 +349,6 @@ function normalizeLabs(value: unknown): Settings["labs"] {
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
-    dashboard: source["dashboard"] === true,
   };
 }
 

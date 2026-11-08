@@ -63,8 +63,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -132,8 +131,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -201,8 +199,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -270,8 +267,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -345,8 +341,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -416,8 +411,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -487,8 +481,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -564,8 +557,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": true,
-        "detailedDebug": false,
-        "dashboard": true
+        "detailedDebug": false
       }
     }
   },
@@ -635,8 +627,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -706,8 +697,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -777,8 +767,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -848,8 +837,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -922,8 +910,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": true,
-        "dashboard": false
+        "detailedDebug": true
       }
     }
   },
@@ -998,8 +985,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1069,8 +1055,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1142,8 +1127,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1215,8 +1199,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1286,8 +1269,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1357,8 +1339,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1428,8 +1409,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1501,8 +1481,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1574,8 +1553,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1647,8 +1625,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1720,8 +1697,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1793,8 +1769,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1866,8 +1841,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1939,8 +1913,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2012,8 +1985,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2085,8 +2057,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2158,8 +2129,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2234,8 +2204,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2310,8 +2279,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2384,8 +2352,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2458,8 +2425,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2534,8 +2500,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2607,8 +2572,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2680,8 +2644,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2753,8 +2716,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2826,8 +2788,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2899,8 +2860,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2972,8 +2932,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3045,8 +3004,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3121,8 +3079,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3194,8 +3151,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3268,8 +3224,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3347,8 +3302,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3424,8 +3378,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3498,8 +3451,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3573,8 +3525,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3644,8 +3595,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3715,8 +3665,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3786,8 +3735,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3857,8 +3805,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3928,8 +3875,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3999,8 +3945,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4070,8 +4015,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4141,8 +4085,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4235,8 +4178,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4333,8 +4275,7 @@
       ],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4404,8 +4345,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4475,8 +4415,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4546,8 +4485,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4617,8 +4555,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4688,8 +4625,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4759,8 +4695,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4830,8 +4765,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4901,8 +4835,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4979,8 +4912,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5052,8 +4984,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5125,8 +5056,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5198,8 +5128,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5271,8 +5200,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5344,8 +5272,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5417,8 +5344,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5490,8 +5416,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5563,8 +5488,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5636,8 +5560,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5709,8 +5632,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5782,8 +5704,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5855,8 +5776,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5928,8 +5848,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6003,8 +5922,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6074,8 +5992,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6145,8 +6062,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6216,8 +6132,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6287,8 +6202,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6358,8 +6272,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6429,8 +6342,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6500,8 +6412,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6571,8 +6482,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6642,8 +6552,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6713,8 +6622,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6784,8 +6692,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6855,8 +6762,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6926,8 +6832,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6997,8 +6902,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7068,8 +6972,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7139,8 +7042,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7210,8 +7112,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7281,8 +7182,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7352,8 +7252,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7423,8 +7322,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7494,8 +7392,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7565,8 +7462,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7636,8 +7532,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7712,8 +7607,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7788,8 +7682,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7859,8 +7752,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7995,8 +7887,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   }
