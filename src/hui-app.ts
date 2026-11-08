@@ -45,6 +45,7 @@ import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { parseUpdateCommand, skillCommands } from "./lib/composer/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
 import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
+import { createStaffChief } from "./api/staff.ts";
 import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
 import { BacklogController } from "./controllers/backlog-controller.ts";
 import { LaunchController } from "./controllers/launch-controller.ts";
@@ -118,7 +119,7 @@ import { isPiSurface, renderPiSurface } from "./views/pi-surfaces.ts";
 import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
-import { HUI_PAGES, availablePages, isPageAvailable, type HuiPage } from "./lib/pages.ts";
+import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
 import { activeSessionPane, closeSessionPane, focusSessionPane, isChatPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
@@ -276,7 +277,7 @@ export class HuiApp extends HuiElement {
   private readonly automation = new AutomationController(this);
   private readonly dashboard = new DashboardController(this, () => this.view === "surface" && this.activePage?.id === "dashboard" && !this.settingsOpen, () => this.listedGroups);
   private readonly control = new SettingsController(this, {
-    piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary),
+    piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary, this.control.settings.models.thinking),
     copyFailed: (message) => {
       this.note = message;
       this.noteLevel = "error";
@@ -292,6 +293,8 @@ export class HuiApp extends HuiElement {
   private renderedDraftRevision = 0;
   private renderedFilesConnection = "";
   private groupActionReturnFocus: HTMLElement | undefined;
+  /** One group chief creation at a time; the route is idempotent, but two clicks need one request. */
+  private chiefPending = false;
 
   @state() private settingsOpen = false;
   @state() private settingsPage: SettingsPage = "appearance";
@@ -874,10 +877,6 @@ export class HuiApp extends HuiElement {
   }
 
   private applyNavigation(target: NavigationTarget) {
-    if (target.kind === "page" && !isPageAvailable(target.page, this.control.settings.labs)) {
-      this.navigate({ kind: "home" }, true);
-      return;
-    }
     if (target.kind === "settings") {
       this.settingsPage = target.page;
       this.settingsOpen = true;
@@ -1043,7 +1042,7 @@ export class HuiApp extends HuiElement {
       open: this.commandPaletteOpen,
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
-      pages: availablePages(this.control.settings.labs),
+      pages: HUI_PAGES,
       groups: this.listedGroups,
       bots: this.bots.list,
       onQuery: (query) => {
@@ -2366,7 +2365,7 @@ export class HuiApp extends HuiElement {
 
   private loadLaunchPreferences() {
     if (this.control.pi) {
-      this.launcher.seedPreferences(this.control.pi, this.control.settings.models.primary);
+      this.launcher.seedPreferences(this.control.pi, this.control.settings.models.primary, this.control.settings.models.thinking);
       return;
     }
     this.control.loadPi();
@@ -2453,6 +2452,10 @@ export class HuiApp extends HuiElement {
   };
 
   private openGroupAction = (action: GroupMenuAction, group?: SessionGroup) => {
+    if (action === "chief" && group) {
+      void this.createChiefForGroup(group);
+      return;
+    }
     const next: typeof this.groupAction = action === "new" ? { action } : group ? { action, group } : undefined;
     if (!next) return;
     this.groupMutationError = "";
@@ -2468,6 +2471,29 @@ export class HuiApp extends HuiElement {
       this.groupCheckoutDirectory = "";
       this.launcher.loadWorkers();
       this.requestGroupCheckout(this.groupDefaultCwd, true);
+    }
+  };
+
+  /** The project group's own chief: one bot, its own memory, working in that project. Asking twice opens the one it
+   * already has. */
+  private createChiefForGroup = async (group: SessionGroup): Promise<void> => {
+    if (this.chiefPending) return;
+    const cwd = group.cwd ?? group.sessions[0]?.cwd;
+    if (!cwd) {
+      this.sessions.notify(`Add a session to “${group.label}” first: its chief needs the project folder.`, true);
+      return;
+    }
+    this.chiefPending = true;
+    try {
+      const bot = await createStaffChief({ group: group.label, cwd });
+      this.bots.selectTab("bots");
+      this.ensureBots();
+      void this.bots.refresh();
+      this.openBot(bot.id);
+    } catch (error) {
+      this.sessions.notify(error instanceof Error ? error.message : "The chief could not be created.", true);
+    } finally {
+      this.chiefPending = false;
     }
   };
 
@@ -3005,6 +3031,7 @@ export class HuiApp extends HuiElement {
           canOpenExtensionPanel: Boolean(this.work.layout),
           onChangeModels: (models) => {
             this.launcher.selectModel(models.primary);
+            this.launcher.selectDefaultThinking(models.thinking);
             void this.control.save({ models });
           },
           onClose: this.closeSettings,
@@ -3020,7 +3047,7 @@ export class HuiApp extends HuiElement {
     const props = {
       view: this.view,
       activePage: this.activePage,
-      pages: availablePages(this.control.settings.labs),
+      pages: HUI_PAGES,
       selectedSessionId: this.view === "bot" ? "" : this.conversation.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.work.layout && sessionPanes(this.work.layout).length > 1 ? sessionPanes(this.work.layout).map(({ sessionId }) => sessionId) : []),

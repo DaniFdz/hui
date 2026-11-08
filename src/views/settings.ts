@@ -8,6 +8,8 @@ import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib
 import { ACCENTS, TEXT_SCALE_STOPS, TYPEFACES } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
+import { PI_THINKING_LEVELS, THINKING_LABELS } from "../lib/thinking.ts";
+import { closeEffortSelector, placeEffortPanel, renderEffortSelector } from "./effort-selector.ts";
 import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
 import type { PowerState, PowerStatus } from "../api/schema/power.ts";
 import type { ThemePreview } from "../lib/theme/theme-store.ts";
@@ -676,14 +678,40 @@ function renderModelsPage(props: SettingsProps) {
     renderSettingsPicker(label, props.settings.models[key], modelOptions, (value) => {
       props.onChangeModels({ ...props.settings.models, [key]: value });
     });
+  const reasoningLevel = props.settings.models.thinking;
+  const retryAttempts = props.settings.models.retryAttempts;
+  const reasoningSelector = renderEffortSelector({
+    label: "Default reasoning",
+    level: reasoningLevel,
+    levels: PI_THINKING_LEVELS,
+    disabled: false,
+    unset: { label: "PI default", action: "Use PI default" },
+    ariaValue: reasoningLevel ? THINKING_LABELS[reasoningLevel] : "PI default",
+    dismissable: true,
+    className: "hui-effort--settings",
+    chevron: "down",
+    closeOnSelect: true,
+    onSelect: (level) => props.onChangeModels({ ...props.settings.models, thinking: PI_THINKING_LEVELS.find((candidate) => candidate === level) ?? "" }),
+    onToggle: (event) => {
+      if (event.currentTarget instanceof HTMLDetailsElement) placeEffortPanel(event.currentTarget, "below");
+    },
+    onKeydown: closeEffortSelector,
+    onPanelToggle: (event) => {
+      const menu = event.currentTarget;
+      if (menu instanceof HTMLElement && !menu.matches(":popover-open")) {
+        const details = menu.closest("details");
+        if (details) details.open = false;
+      }
+    },
+  });
   return html`
     <p class="settings-page__intro">
-      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls.
+      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
     </p>
     <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
     ${renderSection(
       "HUI model routing",
-      "Saved by HUI and applied to new sessions.",
+      "Saved by HUI. Model choices apply to new sessions; retries apply to every Durable session.",
       html`
         ${renderRow(
           "Primary model",
@@ -696,14 +724,26 @@ function renderModelsPage(props: SettingsProps) {
           routePicker("Fallback model", "fallback"),
         )}
         ${renderRow(
+          "Provider retries",
+          "How many times a failed model request is retried on the same model before the fallback is tried. Retries keep the same model and cached context, and wait as long as the provider asks (for example, 30 seconds for an OpenCode Go capacity error).",
+          renderSettingsPicker("Provider retries", String(retryAttempts),
+            [0, 1, 2, 3, 4, 5].map((attempts) => ({ value: String(attempts), label: attempts ? String(attempts) : "Off" })),
+            (value) => props.onChangeModels({ ...props.settings.models, retryAttempts: Number(value) })),
+        )}
+        ${renderRow(
           "Utility model",
           `The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries.`,
           routePicker("Utility model", "utility"),
         )}
+        ${renderRow(
+          "Default reasoning",
+          "The effort new sessions and new bots start with. A model that supports fewer levels uses the closest one it has. PI's own default applies while this is unset.",
+          reasoningSelector,
+        )}
       `,
     )}
     <hui-subagent-routes .routes=${props.settings.models.routes} .models=${modelOptions.filter((option) => option.value)}
-      .primary=${props.settings.models.primary} .onSave=${props.onSaveSubagentRoute}
+      .onSave=${props.onSaveSubagentRoute}
       .onRemove=${(name: string) => props.onChangeModels({ ...props.settings.models, routes: props.settings.models.routes.filter((route) => route.name !== name) })}
     ></hui-subagent-routes>
     ${renderCallsSection(props)}

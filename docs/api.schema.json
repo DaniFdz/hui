@@ -1066,6 +1066,9 @@
         },
         "enabled": {
           "type": "boolean"
+        },
+        "own": {
+          "type": "boolean"
         }
       }
     },
@@ -2168,6 +2171,9 @@
         "description": {
           "type": "string"
         },
+        "group": {
+          "type": "string"
+        },
         "tagging": {
           "$ref": "#/$defs/BotTagging"
         },
@@ -2419,6 +2425,32 @@
         }
       }
     },
+    "BotOwnSkill": {
+      "type": "object",
+      "required": [
+        "name",
+        "text"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "BotOwnSkillRequest": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      }
+    },
     "BotPatch": {
       "type": "object",
       "properties": {
@@ -2432,6 +2464,9 @@
           "type": "string"
         },
         "description": {
+          "type": "string"
+        },
+        "group": {
           "type": "string"
         },
         "tagging": {
@@ -3413,6 +3448,9 @@
           "type": "string"
         },
         "description": {
+          "type": "string"
+        },
+        "group": {
           "type": "string"
         },
         "tagging": {
@@ -10568,6 +10606,8 @@
             "primary",
             "fallback",
             "utility",
+            "thinking",
+            "retryAttempts",
             "routes"
           ],
           "properties": {
@@ -10579,6 +10619,49 @@
             },
             "utility": {
               "type": "string"
+            },
+            "thinking": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": ""
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "const": "off"
+                    },
+                    {
+                      "type": "string",
+                      "const": "minimal"
+                    },
+                    {
+                      "type": "string",
+                      "const": "low"
+                    },
+                    {
+                      "type": "string",
+                      "const": "medium"
+                    },
+                    {
+                      "type": "string",
+                      "const": "high"
+                    },
+                    {
+                      "type": "string",
+                      "const": "xhigh"
+                    },
+                    {
+                      "type": "string",
+                      "const": "max"
+                    }
+                  ]
+                }
+              ]
+            },
+            "retryAttempts": {
+              "type": "number"
             },
             "routes": {
               "type": "array",
@@ -10737,17 +10820,13 @@
           "type": "object",
           "required": [
             "denseObservability",
-            "detailedDebug",
-            "dashboard"
+            "detailedDebug"
           ],
           "properties": {
             "denseObservability": {
               "type": "boolean"
             },
             "detailedDebug": {
-              "type": "boolean"
-            },
-            "dashboard": {
               "type": "boolean"
             }
           }
@@ -10781,6 +10860,21 @@
           "type": "string"
         },
         "model": {
+          "type": "string"
+        }
+      }
+    },
+    "StaffChiefInput": {
+      "type": "object",
+      "required": [
+        "group",
+        "cwd"
+      ],
+      "properties": {
+        "group": {
+          "type": "string"
+        },
+        "cwd": {
           "type": "string"
         }
       }
@@ -14126,7 +14220,7 @@
       }
     }
   },
-  "x-hui-api-version": "0.1.5",
+  "x-hui-api-version": "0.1.6",
   "x-hui-areas": {
     "api-schema": [
       "ApiSchemaDocument",
@@ -14433,6 +14527,8 @@
       "BotMemoryZoom",
       "BotMessageRequest",
       "BotMessageResult",
+      "BotOwnSkill",
+      "BotOwnSkillRequest",
       "BotPatch",
       "BotQuestion",
       "BotReply",
@@ -14615,6 +14711,9 @@
       "ThemeImportResponse",
       "ThemeRef",
       "ThemesResponse"
+    ],
+    "staff": [
+      "StaffChiefInput"
     ],
     "extensions": [
       "ExtensionEnginesInfo",
@@ -14955,6 +15054,23 @@
       "path": "/__hui/bots/:id/restore",
       "response": {
         "$ref": "#/$defs/BotResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id/skills/:name",
+      "response": {
+        "$ref": "#/$defs/BotOwnSkill"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/bots/:id/skills/:name",
+      "request": {
+        "$ref": "#/$defs/BotOwnSkillRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BotOwnSkill"
       }
     },
     {
@@ -16015,6 +16131,16 @@
       },
       "response": {
         "$ref": "#/$defs/Settings"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/staff/chiefs",
+      "request": {
+        "$ref": "#/$defs/StaffChiefInput"
+      },
+      "response": {
+        "$ref": "#/$defs/BotResponse"
       }
     },
     {

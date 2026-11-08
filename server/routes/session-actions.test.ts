@@ -276,3 +276,15 @@ test("a session's open, event stream and clear payloads match their published sc
   assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
   expectSchema(SessionClearResponse, cleared.body);
 });
+
+test("a new session without a chosen level starts on Settings' default reasoning, and a chosen one wins", { timeout: 60_000 }, async () => {
+  const put = (models: Record<string, unknown>) => call("/__hui/settings", "PUT", { models });
+  assert.equal((await put({ primary: "hui-e2e/fixture", thinking: "high" })).status, 200);
+  const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Default reasoning" });
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  assert.equal((created.body["session"] as { thinking?: string }).thinking, "high", "what a suggestion or backlog item gets");
+  const chosen = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Chosen reasoning", thinking: "low" });
+  assert.equal(chosen.status, 200, JSON.stringify(chosen.body));
+  assert.equal((chosen.body["session"] as { thinking?: string }).thinking, "low");
+  assert.equal((await put({})).status, 200, "later tests start from the defaults again");
+});

@@ -27,7 +27,7 @@ import { ACCENTS } from "../lib/theme/appearance.ts";
 import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
 import { DEFAULT_SIDEBAR_SESSION_OPTIONS } from "../lib/session/sidebar-sessions.ts";
-import { HUI_PAGES, availablePages } from "../lib/pages.ts";
+import { HUI_PAGES } from "../lib/pages.ts";
 
 function renderedText(value: unknown): string {
   if (Array.isArray(value)) return value.map(renderedText).join("");
@@ -127,17 +127,16 @@ test("each destination marks itself current, and Settings never does", () => {
   assert.doesNotMatch(rendered, current("/settings/appearance"));
 });
 
-test("the sidebar lists Dashboard only while Labs → Dashboard is on", () => {
-  const rendered = (dashboard: boolean) => markup(renderSidebar({
-    view: "home", pages: availablePages({ ...DEFAULT_SETTINGS.labs, dashboard }), selectedSessionId: "", splitSessionId: "", groups: [],
+test("the sidebar lists Dashboard with the other destinations", () => {
+  const rendered = markup(renderSidebar({
+    view: "home", pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "",
     importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "",
     draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined,
     groupReorderPending: false, bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
   } as unknown as Parameters<typeof renderSidebar>[0]));
-  assert.doesNotMatch(rendered(false), /href=\/dashboard\b/u);
-  assert.match(rendered(true), /href=\/dashboard\b[\s\S]*>Dashboard</u);
-  assert.match(rendered(false), /href=\/usage\b/u, "the other destinations stay");
+  assert.match(rendered, /href=\/dashboard\b[\s\S]*>Dashboard</u);
+  assert.match(rendered, /href=\/usage\b/u, "the other destinations stay");
 });
 
 test("Settings stays available while the Bots list is showing", () => {
@@ -379,9 +378,9 @@ test("active search reveals matches without changing the collapsed preference", 
   assert.equal(isSessionGroupCollapsed(collapsed, "Frontend", "   "), true);
 });
 
-test("group menus expose the same four actions as OpenClaw", () => {
+test("group menus expose OpenClaw's four actions and a chief for the project", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
-  for (const label of ["New session defaults", "Rename group", "New group", "Delete group"]) {
+  for (const label of ["New session defaults", "Rename group", "New group", "Create Chief of Staff", "Delete group"]) {
     assert.match(source, new RegExp(label));
   }
   assert.match(source, /aria-label=\$\{`Group options for \$\{group\.label\}`\}/);
@@ -441,7 +440,7 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   const css = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
 
-  assert.match(css, /--shell-nav-expanded-width:\s*258px/);
+  assert.match(css, /--shell-nav-expanded-width:\s*var\(--hui-sidebar-width, 258px\)/);
   assert.match(css, /--shell-topbar-height:\s*58px/);
   assert.match(css, /--shell-chrome-safe-area-left:\s*12px/);
   assert.match(
@@ -886,4 +885,19 @@ test("a right click on a session row asks for the actions menu its button opens"
   assert.equal(prevented, true, "the browser's own link menu does not open");
   assert.deepEqual(menus, ["ctx"], "the right click opens the row's actions menu");
   assert.deepEqual(selected, [], "a right click never opens the session");
+});
+
+test("the sidebar's right edge is a separator the arrow keys move, with none in the drawer", () => {
+  const css = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
+  const handle = sidebar(1).match(/<div\s+class="sidebar-resize-handle"[\s\S]*?>/u)?.[0] ?? "";
+  assert.match(handle, /role="separator"/);
+  assert.match(handle, /aria-orientation="vertical"/);
+  assert.match(handle, /aria-label="Resize sidebar"/);
+  assert.match(handle, /tabindex="0"/);
+  assert.match(handle, /aria-valuemin=200/);
+  assert.match(handle, /aria-valuemax=460/);
+  assert.match(handle, /aria-valuenow=258/);
+  assert.match(css, /\.app-shell \.sidebar-resize-handle \{[^}]*cursor: col-resize/);
+  // The drawer has its own width, so it shows no boundary.
+  assert.match(css, /@media \(max-width: 900px\)[^@]*?\.app-shell \.sidebar-resize-handle \{\s*display: none;/u);
 });

@@ -163,12 +163,12 @@ async function createSession(
   if (requestedModel && !/^[^/\s]+\/\S+$/.test(requestedModel)) {
     throw new Error("Session model must use provider/id format.");
   }
-  const thinking = sessionText(body, "thinking", 16, {
+  const requestedThinking = sessionText(body, "thinking", 16, {
     optional: true,
     allowEmpty: false,
   });
-  if (thinking && !isThinkingLevel(thinking)) {
-    throw new Error(`Unsupported thinking level: ${thinking}`);
+  if (requestedThinking && !isThinkingLevel(requestedThinking)) {
+    throw new Error(`Unsupported thinking level: ${requestedThinking}`);
   }
   if (body["fast"] !== undefined && typeof body["fast"] !== "boolean") {
     throw new Error("Fast mode must be true or false.");
@@ -180,6 +180,9 @@ async function createSession(
   // Sessions started without a choice (suggestions, backlog items) use the
   // primary route rather than whatever PI currently treats as its default.
   const model = requestedModel || settings.models.primary;
+  // The same goes for reasoning: Settings' default, else PI's own default at
+  // the runtime (the launch form always sends the level it shows).
+  const thinking = requestedThinking || settings.models.thinking || undefined;
   const id = randomUUID();
   const now = new Date().toISOString();
   const recordNamed = (named: string): SessionRecord => ({

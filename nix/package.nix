@@ -52,12 +52,13 @@ buildNpmPackage {
       ../public
       ../themes
       ../skills
+      ../staff
     ];
   };
 
   # PI ships its own shrinkwrap; cache URL metadata as well as tarball integrity.
   npmDepsFetcherVersion = 2;
-  npmDepsHash = "sha256-XkK/2boGhrjo1VeYIVEYBtvnAA83Q9VjiqRpLpxXdkc=";
+  npmDepsHash = "sha256-aXePd/vVEK0IhSfeDVUZii3CGcOgw1geqOtSuokgmxY=";
   npmFlags = [ "--ignore-scripts" ];
 
   nativeBuildInputs = [

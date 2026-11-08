@@ -124,7 +124,7 @@ Every question also offers a free-text answer the card adds itself, and the user
       route: Type.Optional(Type.String({
         minLength: 1,
         maxLength: 40,
-        description: "Name of a model route the prompt lists; the route already names the provider and model.",
+        description: "Name of a model route the prompt lists; a route without a model inherits the caller's model and thinking, and one with a model already names the provider and model.",
       })),
       model: Type.Optional(Type.String({ minLength: 3, maxLength: 200, description: "A raw `provider/id` model, only when no route fits." })),
       thinking: Type.Optional(Type.Union([
@@ -133,6 +133,7 @@ Every question also offers a free-text answer the card adds itself, and the user
       ])),
       runTimeoutSeconds: Type.Optional(Type.Number({ minimum: 0, maximum: 3_600 })),
       collect: Type.Optional(Type.Boolean({ description: "Collect the result with agents_wait instead of having it reported back to this conversation. Queues when 32 are already running." })),
+      worktree: Type.Optional(Type.Boolean({ description: "Start the child in a fresh Git worktree off the caller's checkout, so parallel workers never share one working tree. Its cwd is the new worktree; a spawn that cannot make one is refused before a child exists." })),
     }),
     async execute(_toolCallId, params) {
       return output(await invoke("sessions_spawn", params));

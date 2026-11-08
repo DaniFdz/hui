@@ -15,7 +15,7 @@ import { uptime } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
-import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type Conversation, type ConversationId, type DocumentReader, type EntryId, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type Registry, type ToolRegistration } from "@earendil-works/pi-durable";
+import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type Conversation, type ConversationId, type DocumentReader, type EntryId, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type Registry, type ToolRegistration, type Tx } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
@@ -58,9 +58,11 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 // with every other HUI subsystem. Provider requests use Node's fetch, whose
 // 5-minute body timeout matches PI's default HTTP idle timeout.
 
+export type HarnessRetry = { attempts: () => number; hint: () => { at: number; ms: number } | undefined };
+
 /** Harness policy read at every use, so PI settings edits apply to the next turn. `extensions` is the default
  * selection: each session's PI extensions are installed beside it and only that session's conversation adds them. */
-function harnessSettings(settings: SettingsManager, extensions: readonly Extension[]): HarnessSettings {
+export function harnessSettings(settings: SettingsManager, extensions: readonly Extension[], retry: HarnessRetry): HarnessSettings {
   return {
     extensions,
     get stream() {
@@ -73,7 +75,18 @@ function harnessSettings(settings: SettingsManager, extensions: readonly Extensi
       };
     },
     get compaction() { return settings.getCompactionSettings(); },
-    get retry() { return settings.getRetrySettings(); },
+    get retry() {
+      const policy = settings.getRetrySettings();
+      const hint = retry.hint();
+      // A provider's requested wait belongs to the failure that just happened; never
+      // hand it to an unrelated session after the retry has been scheduled.
+      const fresh = hint !== undefined && Date.now() - hint.at <= 5_000 ? hint.ms : undefined;
+      return {
+        ...policy,
+        maxRetries: retry.attempts(),
+        ...(fresh === undefined ? {} : { baseDelayMs: Math.max(policy.baseDelayMs, fresh), maxAgentDelayMs: fresh }),
+      };
+    },
     // Every steer waiting at a boundary is placed with the others: a watcher, a subagent and a bot report at once.
     steeringMode: "all",
     get followUpMode() { return settings.getFollowUpMode(); },
@@ -229,6 +242,12 @@ export type DurableBots = {
   mayCall(state: DurableBotState, action: string): boolean;
   /** The bot's own skill folder on this host; undefined on a host that keeps no bots' homes. */
   skillsDir(state: DurableBotState): string | undefined;
+  /** The own skill folder of the bot `botId`, for a subagent that loads a bot's skills. */
+  skillsDirForBot(botId: string): string | undefined;
+  /** The bot a subagent's conversation loads skills from (`hui.botSkills`); undefined for every other conversation. */
+  skillsBot(reader: DocumentReader, conversationId: ConversationId): Promise<string | undefined>;
+  /** Marks a subagent's conversation as loading `botId`'s skills, in its creating commit. */
+  writeSkills(tx: Tx, conversationId: ConversationId, botId: string): Promise<void>;
   /** The skills of `skills` a bot's chat has: all but the ones the operator turned off. */
   skills<T extends { readonly name: string; readonly filePath: string }>(skills: readonly T[], state: DurableBotState): T[];
   /** A bot's chat's offer: the tools the operator can turn off, described, and the ones its chat goes without. */
@@ -279,6 +298,10 @@ export class DurableHost implements ExtensionHost {
   #chatWaiters = new Set<{ conversationId: ConversationId; resolve(chat: BotChat): void }>();
   #readyChats = new WeakSet<BotChat>();
   #models = new CurrentModels((options) => this.#requestEnv(options), (options) => this.#requestCallbacks(options));
+  /** HUI's retry budget for a failed model turn (`Settings.models.retryAttempts`). */
+  #retryAttempts = 3;
+  /** The last provider-requested retry wait, for the harness retry scheduled right after it. */
+  #retryHint: { at: number; ms: number } | undefined;
   #registry: Registry = createRegistry();
   /** PI's `codemode` tool and its prompt section, selected by default; Settings → Tools → Codemode off removes it.
    * Each script runs in a worker thread of its own, which closing the store stops by aborting the call. */
@@ -335,7 +358,12 @@ export class DurableHost implements ExtensionHost {
     this.dir = options.dir;
     this.agentDir = options.agentDir;
     this.#resume = options.resume !== false;
-    this.settings = options.readSettings ?? readHuiSettings;
+    const readSettings = options.readSettings ?? readHuiSettings;
+    this.settings = async () => {
+      const value = await readSettings();
+      this.#retryAttempts = value.models.retryAttempts;
+      return value;
+    };
     this.gatewayOnlyTools = options.gatewayOnlyTools ?? [];
     this.optchat = new OptChatManager({
       dir: options.dir, models: () => this.models,
@@ -445,10 +473,13 @@ export class DurableHost implements ExtensionHost {
   }
 
   /** A bot's own skill folder (`skills/` in its home on this host, `bots/skills.ts`), which only its chat loads, once it exists
-   * (PI's loader warns about a missing one); none for every other conversation, or on a host that keeps no bots' homes. */
+   * (PI's loader warns about a missing one); a subagent of its chat loads it too (`hui.botSkills`). None for every other
+   * conversation, or on a host that keeps no bots' homes. */
   async skillDirsFor(conversationId: ConversationId): Promise<readonly string[]> {
     const bot = await this.botStateFor(conversationId);
-    const dir = bot ? this.#bots?.skillsDir(bot) : undefined;
+    const bots = this.#bots;
+    const skillsBot = bot || !bots || !this.#harness ? undefined : await bots.skillsBot(this.#harness, conversationId);
+    const dir = bot ? bots?.skillsDir(bot) : skillsBot ? bots?.skillsDirForBot(skillsBot) : undefined;
     return dir && await stat(dir).then((info) => info.isDirectory(), () => false) ? [dir] : [];
   }
 
@@ -579,7 +610,9 @@ export class DurableHost implements ExtensionHost {
     this.#release = acquireStoreLock(join(this.dir, "harness.lock"));
     try {
       const settings = SettingsManager.create(this.agentDir, this.agentDir);
-      this.#models.target = await createSessionModelRuntime(this.agentDir);
+      await this.settings();
+      const onRetryHint = (ms: number) => { this.#retryHint = { at: Date.now(), ms }; };
+      this.#models.target = await createSessionModelRuntime(this.agentDir, undefined, { onRetryHint });
       // OptChat's hooks come before every session's PI extensions: its compaction decline is the first decision, and its
       // request is what their context handlers see. OptChat's tools and bots' tools are installed but not in the default
       // selection: only an OptChat conversation, or a bot's chat, adds them.
@@ -590,7 +623,10 @@ export class DurableHost implements ExtensionHost {
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
         registry: this.#registry,
-        settings: harnessSettings(settings, base),
+        settings: harnessSettings(settings, base, {
+          attempts: () => this.#retryAttempts,
+          hint: () => this.#retryHint,
+        }),
         env: (target) => this.#env(target),
         onReport: (error) => recordDiagnosticEvent({
           area: "runtime", level: "warning", action: "durable_report",
@@ -734,7 +770,9 @@ export class DurableHost implements ExtensionHost {
 
   /** Re-read HUI and PI provider configuration for the next model request. */
   async refreshModels(): Promise<void> {
-    this.#models.target = await createSessionModelRuntime(this.agentDir);
+    this.#models.target = await createSessionModelRuntime(this.agentDir, undefined, {
+      onRetryHint: (ms) => { this.#retryHint = { at: Date.now(), ms }; },
+    });
   }
 
   bindCaller(conversationId: ConversationId, huiSessionId: string | undefined): void {
