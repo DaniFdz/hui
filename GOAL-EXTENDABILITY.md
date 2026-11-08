@@ -554,6 +554,6 @@ not port Contributions, Dashboard or Kanban (P8–P10).
 - [x] **P7-A6** SPEC.md and docs/guide.md describe the page contract, bridge and
       in-process context.
 - [x] **P7-A7** Full suite, typecheck, build, CI and manual 1440×900 / 390×844
-      proof. Evidence: `GOAL-PAGE-EXTENSIONS.md`. CI green at `2e229bb4`.
+      proof. Evidence: `GOAL-PAGE-EXTENSIONS.md`. CI green at `5c77dd36`.
 - [x] **P7-A4** Packaged discovery, default-on until the store exists, config
       override, eject and doctor.

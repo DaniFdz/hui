@@ -6,7 +6,7 @@ and context primitives. The Contributions port is P8 and is not accepted here.
 ## State
 
 **Status:** DONE (P7 primitives) · **Branch:** `danifdz/hui-page-extensions` (stacked on
-`danifdz/hui-extendability`) · **HEAD:** `2e229bb4` · **CI:** green.
+`danifdz/hui-extendability`) · **HEAD:** `5c77dd36` · **CI:** green.
 
 ## P7 acceptance criteria
 
@@ -74,7 +74,14 @@ page enabled by default until the store exists, a config override and eject;
 `server/extensions/process.test.ts` covers `context.hui.github.contributions`
 through the parent; `cli/extensions.test.ts` covers eject;
 `cli/doctor-extensions.test.ts` covers the packaged default, a broken override and
-a stale copy.
+a stale copy. The packaged defaults file is empty until P8 ships Contributions.
+
+```
+npx vitest run server/extensions/service.test.ts server/extensions/process.test.ts \
+  cli/extensions.test.ts cli/doctor-extensions.test.ts cli/main.test.ts server/extensions/registry.test.ts
+Result: 6 files, 50 tests passed
+Exit: 0
+```
 
 **P7-A7.** `npm run typecheck` 0; `npm run build` 0 and `build/extensions`
 holds the packaged defaults; `npm run api:schema` no diff. Focused extension,
@@ -82,7 +89,8 @@ process, CLI and doctor tests: 50 passed. Full suite: 33 failed / 2916 passed, t
 known environment set only. `npm run e2e -- --tag PAGE-047` 1/1 passes. Manual
 proof: `/ext/hello` at 1440×900 and 390×844, screenshots outside the tree
 (`page-desktop.png`, `page-mobile.png`), showing the sidebar entry, the sandboxed
-page and `hello, Ada` from its route. CI is run at this HEAD after the commit.
+page and `hello, Ada` from its route. CI at `5c77dd36`: Test, web 1/4–4/4,
+catalogue, package and lockfile pass.
 
 ## Deviations
 
