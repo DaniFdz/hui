@@ -164,7 +164,9 @@ jobs:
           adb devices -l
           adb -s $serial shell getprop ro.build.version.sdk
           echo "--- a single screencap, timed"
+          adb -s $serial shell svc power stayon true || true
           adb -s $serial shell input keyevent KEYCODE_WAKEUP || true
+          adb -s $serial shell wm dismiss-keyguard || true
           adb -s $serial shell input keyevent KEYCODE_HOME
           sleep 3
           started=$(date +%s%N)
@@ -182,33 +184,47 @@ jobs:
             echo "::error::both screenshots are identical, so screencap is not capturing real frames"
             exit 1
           fi
-          echo "--- the frames carry detail (not a flat surface)"
+          echo "--- the frames are full resolution captures of real content"
           python3 -m pip install --quiet --disable-pip-version-check --break-system-packages pillow \
-            || echo "pillow unavailable; falling back to the hash and the file size above"
+            || echo "pillow unavailable; the header and dimension checks below still run"
+          # The display the frames must match, e.g. 1080x2424.
+          adb -s $serial shell wm size
+          adb -s $serial shell wm density
+          export EXPECTED_SIZE=$(adb -s $serial shell wm size | tr -d '\r' | sed -n 's/^Physical size: //p')
           python3 - "$shots" <<'PY'
-          import pathlib, sys
+          import os, pathlib, sys
           directory = pathlib.Path(sys.argv[1])
-          for path in sorted(directory.glob("*.png")):
+          frames = sorted(directory.glob("*.png"))
+          if not frames:
+              raise SystemExit("no screenshot was captured")
+          expected = os.environ.get("EXPECTED_SIZE", "")
+          for path in frames:
               data = path.read_bytes()
-              print(f"{path.name}: {len(data)} bytes, header {data[:8]!r}")
               if data[:8] != b"\x89PNG\r\n\x1a\n":
                   raise SystemExit(f"{path.name} is not a PNG")
-              if len(data) < 20000:
-                  raise SystemExit(f"{path.name} is too small for a full screen frame")
+              width = int.from_bytes(data[16:20], "big")
+              height = int.from_bytes(data[20:24], "big")
+              print(f"{path.name}: {width}x{height}, {len(data)} bytes")
+              if expected and f"{width}x{height}" != expected:
+                  raise SystemExit(f"{path.name} is {width}x{height}, not the {expected} display")
           try:
               from PIL import Image, ImageStat
           except ImportError:
               print("pillow missing: skipped the colour check")
               raise SystemExit(0)
-          for path in sorted(directory.glob("*.png")):
+          detailed = 0
+          for path in frames:
               image = Image.open(path).convert("RGB")
               stats = ImageStat.Stat(image)
               colors = image.getcolors(maxcolors=1 << 20)
-              print(f"{path.name}: {image.width}x{image.height} "
-                    f"colors={'1000000+' if colors is None else len(colors)} "
-                    f"mean={[round(v) for v in stats.mean]} stddev={[round(v) for v in stats.stddev]}")
-              if max(stats.stddev) < 5:
-                  raise SystemExit(f"{path.name} is a flat frame, not the launcher")
+              spread = max(stats.stddev)
+              print(f"{path.name}: colors={'1000000+' if colors is None else len(colors)} "
+                    f"mean={[round(v) for v in stats.mean]} max_stddev={round(spread, 1)}")
+              if spread >= 5:
+                  detailed += 1
+          print(f"frames with detail: {detailed}/{len(frames)}")
+          if detailed == 0:
+              raise SystemExit("every frame is a flat surface, so screencap captured no content")
           PY
           echo "--- the UI hierarchy, read from the live device"
           adb -s $serial shell uiautomator dump /sdcard/ui.xml > /dev/null
