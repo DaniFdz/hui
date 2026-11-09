@@ -15,7 +15,7 @@
  * without a browser. Every value it emits is a bare color, because the pairing
  * step wraps them in `light-dark()`, which accepts nothing else.
  *
- * For a client that paints colors itself (the iOS app), `themePalettes` gives each
+ * For a client that paints colors itself, `themePalettes` gives each
  * mode's page, text, card and accent as #rrggbb from the same mapping, a user
  * accent moved to read on that mode's page and card as the web moves it.
  *

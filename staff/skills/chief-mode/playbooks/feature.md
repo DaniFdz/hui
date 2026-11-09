@@ -26,8 +26,7 @@ You own the design and the proof. Workers own the diff.
    outside the repository.
    Evidence: the journey, the capture paths, and any console error left unexplained.
 7. Prove the user outcome in the shared suite: add or update `e2e/catalogue/<area>.ts` and a
-   test in `e2e/tests/` in the same change, then run `npm run e2e`. A use case required on both
-   platforms also runs `npm run e2e:ios` after `npm run ios:build`.
+   test in `e2e/tests/` in the same change, then run `npm run e2e`.
    Evidence: the use case ID, the test file, and the run result.
 8. Check the rules the touched code owns: module headers and the directory map
    (`scripts/module-headers.test.mjs`), the dependency rules in `docs/map.md`

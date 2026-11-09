@@ -37,8 +37,7 @@ Run the narrowest check that owns the behaviour first, then the broader ones.
 - The suite: `npm test`.
 - Types: `npm run typecheck`.
 - The bundle: `npm run build`.
-- Shared browser journeys: `npm run e2e`, and `npm run e2e:ios` when the change
-  reaches the iOS app.
+- Shared browser journeys: `npm run e2e`.
 - Package or lifecycle: `npm run test:package`.
 - Persisted state left behind: the `hui doctor` check that `CONTRIBUTING.md`
   requires.

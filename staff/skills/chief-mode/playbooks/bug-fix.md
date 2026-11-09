@@ -30,8 +30,7 @@ runtime evidence; a change that might help is a hypothesis and does not ship.
    different surface is not a pass.
    Evidence: the step 1 command or journey, run after the fix.
 7. Broaden for a user-visible defect. Add or update the entry in `e2e/catalogue/<area>.ts` and
-   a shared test in `e2e/tests/`, then run `npm run e2e`. A use case required on both platforms
-   also runs `npm run e2e:ios` after `npm run ios:build`. Capture the fixed state with the
+   a shared test in `e2e/tests/`, then run `npm run e2e`. Capture the fixed state with the
    browser tool at 1440×900 and 390×844 and inspect both.
    Evidence: the use case ID, the e2e result, and the capture paths.
 8. Run the checks the change needs: `npm run typecheck`, `npm run build`, and `npm test` for
