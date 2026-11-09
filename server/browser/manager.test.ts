@@ -1019,3 +1019,44 @@ test("a steps call runs dependent interactions in one go and reports each one", 
   await assert.rejects(call({ action: "steps", steps: Array.from({ length: 21 }, () => ({ kind: "scroll", deltaY: 10 })) }), /steps must list 1 to 20 steps/u);
   await assert.rejects(call({ action: "steps", steps: [{ kind: "explode" }] }), /Step 1 needs kind/u);
 });
+
+test("a navigation between steps retires the refs the earlier snapshot handed out", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-steps-nav-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const opened = await call({ action: "open", url: `${origin}/form` });
+  const name = /textbox "Name" \[ref=(e\d+)\]/u.exec(opened.text)?.[1];
+  const next = /link "Next page" \[ref=(e\d+)\]/u.exec(opened.text)?.[1];
+  assert.ok(name && next, opened.text);
+
+  // Step one navigates; step two still names a ref from the old document.
+  const failed = await call({
+    action: "steps",
+    steps: [
+      { kind: "click", ref: next },
+      { kind: "type", ref: name, text: "too late" },
+    ],
+  }).then(() => undefined, (error: unknown) => error);
+  assert.ok(failed instanceof BrowserToolError);
+  assert.match(failed.message, /^Step 2 \(type\) failed: Ref e\d+ is not in tab t1's latest snapshot\./u);
+  assert.match(failed.message, /Steps that ran: 1\. click: Clicked e\d+ \(link "Next page"\)\./u);
+  assert.match((await call({ action: "tabs" })).text, /Next/u, "the navigation itself still happened");
+});

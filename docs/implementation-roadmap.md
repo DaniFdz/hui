@@ -750,8 +750,8 @@ the same validated, navigation-watched `act` the tool already exposes, the
 sequence never retargets the call's tab, and the result lists each step while a
 failure names itself and the steps that ran. Proof:
 `server/browser/manager.test.ts` (a real headless browser: type, click and the
-wait that proves the click rendered, a failing step's message, and the 1–20
-bound) and the steps section of `e2e/browser-tool.browser.md`.
+wait that proves the click rendered, a failing step's message, the 1–20 bound,
+and a navigation between steps retiring refs) and the steps section of `e2e/browser-tool.browser.md`.
 
 ### HUI-16 — macOS sleep prevention
 

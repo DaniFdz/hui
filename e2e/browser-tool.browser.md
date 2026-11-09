@@ -103,6 +103,10 @@ Verified on 2026-11-08 in the same fixture at 1440×900.
   (button "Greet")" and "3. wait: Waited …", and the agent's reply quoted that
   log; the greeting the sequence waited for was rendered by the page.
 - One activity row covered the three interactions, and no browser window opened.
+- A step after a navigation that still names an older snapshot's ref fails with
+  "Step 2 (type) failed: Ref e1 is not in tab t1's latest snapshot." and names
+  the step that ran; proven by `server/browser/manager.test.ts`, not by a
+  fixture run.
 
 ## Site secrets
 
