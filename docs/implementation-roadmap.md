@@ -753,6 +753,20 @@ failure names itself and the steps that ran. Proof:
 wait that proves the click rendered, a failing step's message, the 1–20 bound,
 and a navigation between steps retiring refs) and the steps section of `e2e/browser-tool.browser.md`.
 
+Follow-up 2026-11-09: the browser loop learned from agent-browser. Page-sourced
+results (snapshot, text, console, get text/html) travel between
+`HUI_PAGE_CONTENT` markers with a per-result nonce, so an orchestrator can tell
+HUI's words from a page's. `get` reads one property and `is` one state, with a
+password field's value refused, so verification no longer costs a snapshot.
+`snapshot` takes `selector` and `depth`; `act wait` takes `state`. A click on a
+disabled or hidden target fails with the reason, and a ref whose node was
+replaced re-binds to the one laid-out element with the same role and name.
+Proof: `server/browser/snapshot.test.ts` (scoped and depth-limited rendering),
+`server/browser/manager.test.ts` (a real headless browser: fresh nonces per
+result, get/is, refused password value, disabled and hidden clicks, scoped and
+depth-limited snapshots, wait state, and a re-bound or ambiguous ref) and the
+reading section of `e2e/browser-tool.browser.md`.
+
 ### HUI-16 — macOS sleep prevention
 
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on

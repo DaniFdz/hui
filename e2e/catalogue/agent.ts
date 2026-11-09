@@ -518,6 +518,15 @@ const cases: UseCase[] = [
     web: "backlog",
   },
   {
+    id: "AGENT-066",
+    title: "Read and verify a page without another snapshot",
+    behaviour: "An agent reads one property of one element with get (text, html, value, attr, box, title, url, count) and checks one state with is (visible, hidden, enabled, disabled, checked, focused, editable, attached); a password field's value is refused. A snapshot can start at a selector and stop at a depth, act wait can wait for an element state, and a click on a disabled or hidden element fails with the reason. Every result that carries page text is wrapped in HUI_PAGE_CONTENT markers with a per-result nonce, and a ref whose node was replaced re-binds to the one element with its role and name or fails as ambiguous.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
     id: "AGENT-064",
     title: "Run a dependent browser flow in one call",
     behaviour: "An agent runs 1–20 act steps in one browser call on the same tab: type, click, press, hover, select, scroll and wait, each validated as act validates it and using refs from the latest snapshot. The result lists every step in order with what it did, an activity row says it ran a sequence, and a failing step names itself and the steps that already ran. A navigation inside the sequence retires the refs the earlier snapshot handed out.",

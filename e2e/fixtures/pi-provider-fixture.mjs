@@ -616,6 +616,50 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent reads and verifies one property at a time instead of re-snapshotting.
+  if (source.includes("E2E_BROWSER_LOOP") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-loop-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-loop-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-loop-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      open: ["snapshot", { action: "snapshot", selector: "main", depth: 3 }],
+      snapshot: ["title", { action: "get", what: "title" }],
+      title: ["count", { action: "get", what: "count", selector: "button" }],
+      count: ["enabled", { action: "is", state: "enabled", ref: ref(/button "Greet" \[ref=(e\d+)\]/u) }],
+      enabled: ["type", { action: "act", kind: "type", ref: ref(/textbox "Name" \[ref=(e\d+)\]/u), text: "Loop" }],
+      type: ["value", { action: "get", what: "value", ref: ref(/textbox "Name" \[ref=(e\d+)\]/u) }],
+      value: ["click", { action: "act", kind: "click", ref: ref(/button "Greet" \[ref=(e\d+)\]/u) }],
+      click: ["wait", { action: "act", kind: "wait", state: "visible", selector: "#greeting", text: "Hello, Loop!" }],
+      wait: ["text", { action: "get", what: "text", selector: "#greeting" }],
+    }[step];
+    const needsRef = (step) => (step[1].action === "act" && (step[1].kind === "type" || step[1].kind === "click")) || step[1].action === "is";
+    if (next && (!needsRef(next) || next[1].ref)) {
+      toolUse(response, `tool-e2e-loop-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const boundary = /--- HUI_PAGE_CONTENT nonce=[0-9a-f]{16} origin=\S+ ---/u.exec(results)?.[0];
+    const title = /Title: [^\n]+/u.exec(results)?.[0];
+    const count = /\d+ element[s]? match[^\n]*/u.exec(results)?.[0];
+    const enabled = /button "Greet"\) is enabled\./u.exec(results)?.[0];
+    const value = /value of e\d+ \(textbox "Name"\): "[^"]*"/u.exec(results)?.[0];
+    const greeting = /Hello, Loop![^\n]*/u.exec(results)?.[0];
+    const summary = [boundary, title, count, enabled, value, greeting].filter(Boolean);
+    text(response, summary.length >= 6
+      ? `The page was read one property at a time:\n\n${summary.map((line) => `- ${line}`).join("\n")}`
+      : `The reading loop did not complete: step "${step}", reached ${summary.length} of 6 facts.`);
+    return finish(response);
+  }
+
   // The agent opens the page, then hands the tab to the operator when only a person can finish.
   if (source.includes("E2E_BROWSER_HANDOFF") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -647,7 +691,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);
