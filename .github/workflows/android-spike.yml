@@ -1,0 +1,311 @@
+name: Android spike
+# Spike S4 of docs/mobile-app-plan.md (section "Wave 0: spikes", section 7 "CI capacity and cost").
+# Throwaway: it measures what an Android emulator job costs on GitHub's Linux runners and proves the
+# pieces the plan's `android` e2e target stands on (KVM, boot, adb, screencap, a WebView, one or two
+# emulators per 4-core runner). Nothing here ships; the real job is WP4's.
+on:
+  workflow_dispatch:
+  push:
+    branches: [mobile/s4-emulator-ci]
+permissions:
+  contents: read
+concurrency:
+  # A pushed fix supersedes the run in progress.
+  group: android-spike-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Runner facts
+        run: |
+          set -euo pipefail
+          echo "SPIKE_START=$(date +%s)" >> "$GITHUB_ENV"
+          date -u +"started %FT%TZ"
+          echo "runner=${RUNNER_NAME} os=${RUNNER_OS} arch=${RUNNER_ARCH}"
+          echo "--- cores and memory"
+          nproc
+          free -m
+          df -h /
+          echo "--- virtualization"
+          grep -c -E 'vmx|svm' /proc/cpuinfo || echo "no vmx/svm flag in /proc/cpuinfo"
+          echo "--- identity"
+          id
+          echo "--- /dev/kvm before"
+          ls -l /dev/kvm || echo "no /dev/kvm"
+          echo "--- sdk"
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset} ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
+          command -v sdkmanager || echo "no sdkmanager on PATH yet"
+
+      - name: Enable KVM
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || sudo udevadm trigger
+          echo "--- /dev/kvm after"
+          ls -l /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          echo "KVM_OK=yes: /dev/kvm is readable and writable by $(id -un)"
+
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools
+
+      - name: Install emulator and system image
+        run: |
+          set -euo pipefail
+          echo "sdkmanager $(sdkmanager --version)"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "--- x86_64 google_apis system images sdkmanager offers"
+          sdkmanager --list 2>/dev/null \
+            | grep -oE 'system-images;android-[0-9]+;google_apis;x86_64' | sort -u || true
+          started=$(date +%s)
+          # `yes` outlives sdkmanager and dies of SIGPIPE, so pipefail has to stand down for the pipe.
+          set +o pipefail
+          yes | sdkmanager --install \
+            "emulator" "platforms;android-34" "system-images;android-34;google_apis;x86_64"
+          set -o pipefail
+          finished=$(date +%s)
+          echo "sdk_install_seconds=$(( finished - started ))"
+          du -sh "$ANDROID_HOME/emulator" "$ANDROID_HOME/platform-tools" \
+            "$ANDROID_HOME/platforms/android-34" \
+            "$ANDROID_HOME/system-images/android-34/google_apis/x86_64" || true
+          "$ANDROID_HOME/emulator/emulator" -version | head -3 || true
+
+      - name: Create the AVDs
+        run: |
+          set -euo pipefail
+          device=$(avdmanager list device -c | grep -E '^pixel_[0-9]+$' | sort -V | tail -1 || true)
+          echo "device profile: ${device:-fallback pixel}"
+          make_avd() {
+            local name=$1 started finished
+            started=$(date +%s)
+            echo no | avdmanager create avd -n "$name" \
+              -k "system-images;android-34;google_apis;x86_64" \
+              -d "${device:-pixel}" --force
+            finished=$(date +%s)
+            echo "avd_create_seconds=$(( finished - started )) for $name"
+            # Small and headless: no device frame, no camera, a keyboard, 2 GB of RAM.
+            {
+              echo 'hw.keyboard=yes'
+              echo 'hw.ramSize=2048'
+              echo 'vm.heapSize=256'
+              echo 'showDeviceFrame=no'
+              echo 'hw.camera.back=none'
+            } >> "$HOME/.android/avd/$name.avd/config.ini"
+            grep -E '^(hw.device.name|hw.lcd|hw.ramSize|image.sysdir.1|tag.id)=' \
+              "$HOME/.android/avd/$name.avd/config.ini" || true
+          }
+          make_avd hui34
+          make_avd hui34b
+          du -sh "$HOME/.android/avd/hui34.avd"
+          df -h /
+
+      - name: Write the boot helper
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/boot-emulator.sh" <<'SH'
+          #!/usr/bin/env bash
+          # Boot one headless AVD and wait until it can answer adb. Usage: boot-emulator.sh <avd> <port> [emulator flags...]
+          # Prints boot_seconds=<n> on success.
+          set -euo pipefail
+          avd="$1"; port="$2"; shift 2
+          serial="emulator-$port"
+          log="$RUNNER_TEMP/emulator-$port.log"
+          : > "$log"
+          adb start-server >/dev/null 2>&1 || true
+          started=$(date +%s)
+          "$ANDROID_HOME/emulator/emulator" -avd "$avd" -port "$port" \
+            -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-metrics "$@" \
+            >>"$log" 2>&1 &
+          pid=$!
+          echo "$avd on $serial started at $(date -u +%FT%TZ) (pid $pid)"
+          deadline=$(( started + 600 ))
+          until adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -qx 1; do
+            if ! kill -0 "$pid" 2>/dev/null; then echo "emulator exited before boot completed"; tail -60 "$log"; exit 1; fi
+            if (( $(date +%s) > deadline )); then echo "boot timed out after $(( $(date +%s) - started ))s"; tail -60 "$log"; exit 1; fi
+            sleep 2
+          done
+          # boot_completed comes before the boot animation stops and the package manager answers.
+          adb -s "$serial" shell 'until [ "$(getprop init.svc.bootanim)" = "stopped" ]; do sleep 1; done' || true
+          until adb -s "$serial" shell pm path android 2>/dev/null | grep -q path; do
+            if (( $(date +%s) > deadline )); then echo "package manager never answered"; exit 1; fi
+            sleep 1
+          done
+          finished=$(date +%s)
+          echo "boot_seconds=$(( finished - started )) for $avd on $serial (cold=$( [[ "$*" == *no-snapshot-load* ]] && echo yes || echo no ))"
+          echo "android=$(adb -s "$serial" shell getprop ro.build.version.release | tr -d '\r') abi=$(adb -s "$serial" shell getprop ro.product.cpu.abi | tr -d '\r')"
+          SH
+          chmod +x "$RUNNER_TEMP/boot-emulator.sh"
+
+      - name: Boot the first emulator (cold)
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/boot-emulator.sh" hui34 5554 -no-snapshot-load | tee "$RUNNER_TEMP/boot1.txt"
+          free -m
+          ps -eo pid,pcpu,pmem,rss,comm --sort=-pcpu | head -6
+
+      - name: adb, screencap and WebView
+        run: |
+          set -euo pipefail
+          serial=emulator-5554
+          shots="$RUNNER_TEMP/shots"
+          mkdir -p "$shots"
+          echo "--- adb"
+          adb devices -l
+          adb -s $serial shell getprop ro.build.version.sdk
+          echo "--- a single screencap, timed"
+          adb -s $serial shell input keyevent KEYCODE_WAKEUP || true
+          adb -s $serial shell input keyevent KEYCODE_HOME
+          sleep 3
+          started=$(date +%s%N)
+          adb -s $serial exec-out screencap -p > "$shots/1-home.png"
+          finished=$(date +%s%N)
+          echo "screencap_ms=$(( (finished - started) / 1000000 ))"
+          echo "$(( (finished - started) / 1000000 ))" > "$RUNNER_TEMP/screencap-single-ms.txt"
+          # A second frame that must differ from the first: the notification shade.
+          adb -s $serial shell input swipe 540 20 540 1200 300
+          sleep 2
+          adb -s $serial exec-out screencap -p > "$shots/2-shade.png"
+          ls -l "$shots"
+          sha256sum "$shots"/*.png
+          if cmp -s "$shots/1-home.png" "$shots/2-shade.png"; then
+            echo "::error::both screenshots are identical, so screencap is not capturing real frames"
+            exit 1
+          fi
+          echo "--- the frames carry detail (not a flat surface)"
+          python3 -m pip install --quiet --disable-pip-version-check --break-system-packages pillow \
+            || echo "pillow unavailable; falling back to the hash and the file size above"
+          python3 - "$shots" <<'PY'
+          import pathlib, sys
+          directory = pathlib.Path(sys.argv[1])
+          for path in sorted(directory.glob("*.png")):
+              data = path.read_bytes()
+              print(f"{path.name}: {len(data)} bytes, header {data[:8]!r}")
+              if data[:8] != b"\x89PNG\r\n\x1a\n":
+                  raise SystemExit(f"{path.name} is not a PNG")
+              if len(data) < 20000:
+                  raise SystemExit(f"{path.name} is too small for a full screen frame")
+          try:
+              from PIL import Image, ImageStat
+          except ImportError:
+              print("pillow missing: skipped the colour check")
+              raise SystemExit(0)
+          for path in sorted(directory.glob("*.png")):
+              image = Image.open(path).convert("RGB")
+              stats = ImageStat.Stat(image)
+              colors = image.getcolors(maxcolors=1 << 20)
+              print(f"{path.name}: {image.width}x{image.height} "
+                    f"colors={'1000000+' if colors is None else len(colors)} "
+                    f"mean={[round(v) for v in stats.mean]} stddev={[round(v) for v in stats.stddev]}")
+              if max(stats.stddev) < 5:
+                  raise SystemExit(f"{path.name} is a flat frame, not the launcher")
+          PY
+          echo "--- the UI hierarchy, read from the live device"
+          adb -s $serial shell uiautomator dump /sdcard/ui.xml > /dev/null
+          adb -s $serial shell cat /sdcard/ui.xml | head -c 600 || true; echo
+          echo "--- WebView"
+          adb -s $serial shell pm list packages | grep -iE 'webview|chrome' || echo "no webview package listed"
+          adb -s $serial shell dumpsys package com.android.webview | grep -E 'versionName' || true
+          adb -s $serial shell cmd webviewupdate getCurrentWebViewPackage || true
+
+      - name: Boot the same AVD from its snapshot
+        run: |
+          set -euo pipefail
+          echo "--- stopping the cold-booted emulator so it saves its snapshot"
+          adb -s emulator-5554 emu kill || true
+          # The snapshot is written while the process shuts down, so wait for the process itself.
+          for _ in $(seq 1 90); do pgrep -f qemu-system > /dev/null || break; sleep 1; done
+          # A plain `pgrep && echo` would end the step on set -e when the process is gone, which is the good case.
+          if pgrep -f qemu-system > /dev/null; then echo "emulator still running after 90s"; fi
+          du -sh "$HOME/.android/avd/hui34.avd/snapshots" 2>/dev/null || echo "no snapshots directory"
+          tail -5 "$RUNNER_TEMP/emulator-5554.log"
+          echo "--- booting it again, loading the snapshot"
+          "$RUNNER_TEMP/boot-emulator.sh" hui34 5554 | tee "$RUNNER_TEMP/boot2.txt"
+
+      - name: Two emulators on one runner
+        run: |
+          set -euo pipefail
+          run5() {
+            local serial=$1 started finished
+            started=$(date +%s%N)
+            for _ in 1 2 3 4 5; do adb -s "$serial" exec-out screencap -p > /dev/null; done
+            finished=$(date +%s%N)
+            echo $(( (finished - started) / 1000000 ))
+          }
+          echo "--- one booted emulator, five screencaps in a row"
+          single=$(run5 emulator-5554)
+          echo "screencap5_ms_single=$single"
+          echo "--- a second emulator boots while the first one is up"
+          "$RUNNER_TEMP/boot-emulator.sh" hui34b 5556 -no-snapshot-load | tee "$RUNNER_TEMP/boot3.txt"
+          adb devices -l
+          echo "--- both up"
+          free -m
+          uptime
+          ps -eo pid,pcpu,pmem,rss,comm --sort=-pcpu | head -6
+          echo "--- five screencaps on each, in parallel"
+          started=$(date +%s%N)
+          ( run5 emulator-5554 > "$RUNNER_TEMP/parA.txt" ) &
+          a=$!
+          ( run5 emulator-5556 > "$RUNNER_TEMP/parB.txt" ) &
+          b=$!
+          wait $a $b
+          finished=$(date +%s%N)
+          echo "screencap5_ms_5554_in_parallel=$(cat "$RUNNER_TEMP/parA.txt")"
+          echo "screencap5_ms_5556_in_parallel=$(cat "$RUNNER_TEMP/parB.txt")"
+          echo "wall_ms_both_in_parallel=$(( (finished - started) / 1000000 ))"
+          echo "--- the first emulator alone again, for the same work"
+          echo "screencap5_ms_5554_alone_after=$(run5 emulator-5554)"
+          echo "--- teardown"
+          adb -s emulator-5554 emu kill || true
+          adb -s emulator-5556 emu kill || true
+          sleep 5
+          adb devices -l
+
+      - name: Which other system images install
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          echo "--- android-36 google_apis x86_64"
+          sdkmanager --list 2>/dev/null \
+            | grep -oE 'system-images;android-3[5-9][^ |]*x86_64' | sort -u || echo "none offered"
+          started=$(date +%s)
+          set +o pipefail
+          yes | sdkmanager --install "system-images;android-36;google_apis;x86_64"
+          set -o pipefail
+          finished=$(date +%s)
+          echo "sdk_install_seconds_android36=$(( finished - started ))"
+          du -sh "$ANDROID_HOME/system-images/android-36/google_apis/x86_64"
+
+      - name: Cache sizes and totals
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "--- what a cache would hold"
+          du -sh "$ANDROID_HOME" 2>/dev/null || true
+          du -sh "$ANDROID_HOME/system-images" "$ANDROID_HOME/platforms" "$ANDROID_HOME/emulator" "$ANDROID_HOME/platform-tools" 2>/dev/null || true
+          du -sh "$HOME/.android/avd/hui34.avd" "$HOME/.android/avd/hui34.avd/snapshots" 2>/dev/null || true
+          echo "--- measurements"
+          cat "$RUNNER_TEMP"/boot*.txt 2>/dev/null || true
+          echo "screencap_single_ms=$(cat "$RUNNER_TEMP/screencap-single-ms.txt" 2>/dev/null || echo unmeasured)"
+          echo "SPIKE_END=$(date +%s)" >> "$GITHUB_ENV"
+          elapsed=$(( $(date +%s) - ${SPIKE_START} ))
+          echo "measured_seconds_from_after_checkout=$elapsed"
+          echo "measured_minutes_from_after_checkout=$(( elapsed / 60 ))m$(( elapsed % 60 ))s"
+
+      - name: Upload the screenshots and the emulator logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-spike
+          path: |
+            ${{ runner.temp }}/shots/*.png
+            ${{ runner.temp }}/emulator-*.log
+            ${{ runner.temp }}/boot*.txt
+            ${{ runner.temp }}/*.txt
+          if-no-files-found: warn
