@@ -63,8 +63,9 @@ is not a child.
 **Everything else is a session.** A task with more than one step, a change that writes code, a
 long build, test or e2e, or anything that owns a branch or a pull request gets a new session,
 not a child. Write the brief, name the worktree branch and the worker when one is available,
-and create it with `create_session`. Call `worker_stats` first and prefer the least loaded
-connected machine; `local` is this machine. Do not spawn a lead for it. The session owns the work;
+and create it with `create_session`. Call `worker_stats` at the start and state the machine plan. `machines` owns the choice: a session
+gets a connected machine with headroom, independent pieces spread across machines, and no worker
+is filled. `local` is this machine. Do not spawn a lead for it. The session owns the work;
 this chat keeps the ledger row and reads the evidence it reports.
 It is done when the pull request is merged and, where the change applies, deployed and
 validated in production. A merged PR without that is not done. The operator archives the
@@ -84,7 +85,8 @@ lead the chief's default for ordinary work.
 
 Write the row in `work/index.md` at dispatch and settle it there. `show-me-your-work` owns the
 five columns, the statuses, the task page at `work/<task>.md` and the decision log. Add the
-`Route` and `Child` columns where a step needs them; never invent a second ledger.
+`Route` and `Child` columns where a step needs them, and `Machine` when more than one machine is
+in play; never invent a second ledger.
 
 ## 5. Brief every child and every session
 

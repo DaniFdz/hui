@@ -29,6 +29,7 @@ export type MachineStats = {
   disk?: { usedBytes: number; totalBytes: number; percent: number } | null;
   gpuPercent?: number | null;
   gateway?: { cpuPercent: number; rssBytes: number };
+  overloaded?: boolean;
   sessions: { total: number; running: number };
   error?: string;
 };
@@ -37,10 +38,24 @@ export type WorkerStats = {
   current: string;
   machines: MachineStats[];
   recommended?: { id: string; name: string; reason: string };
+  /** The least loaded machine when every machine is above the headroom limits; do not treat it as a green light. */
+  leastLoaded?: { id: string; name: string; reason: string };
   sampledAt: string;
 };
 
+/** Headroom limits from `machines`; a recommendation above any of them is not offered. */
+export const HEADROOM = { cpuPercent: 70, memoryPercent: 80, diskPercent: 85 } as const;
+
 const percent = (used: number, total: number): number => total > 0 ? Math.round(used / total * 1000) / 10 : 0;
+
+function overloaded(machine: MachineStats): boolean | undefined {
+  if (machine.cpuPercent === undefined) return undefined;
+  const runningLimit = machine.cores ? Math.max(1, Math.ceil(machine.cores / 2)) : undefined;
+  return machine.cpuPercent >= HEADROOM.cpuPercent
+    || (machine.memory?.percent ?? 0) >= HEADROOM.memoryPercent
+    || (machine.disk?.percent ?? 0) >= HEADROOM.diskPercent
+    || (runningLimit !== undefined && machine.sessions.running >= runningLimit);
+}
 
 function machine(
   input: { id: string; name: string; state: WorkerState | "local"; hostname?: string; metrics?: HostMetrics; error?: string },
@@ -49,7 +64,7 @@ function machine(
 ): MachineStats {
   const counts = sessions.filter((session) => !session.archived && (session.worker ?? "local") === input.id);
   const metrics = input.metrics;
-  return {
+  const result: MachineStats = {
     id: input.id,
     name: input.name,
     current: input.id === current,
@@ -68,6 +83,8 @@ function machine(
     sessions: { total: counts.length, running: counts.filter((session) => session.status === "running").length },
     ...(input.error ? { error: input.error } : {}),
   };
+  result.overloaded = overloaded(result);
+  return result;
 }
 
 /** Lower is less loaded. A running session costs more than an idle one; a disconnected machine has no score. */
@@ -97,14 +114,23 @@ export function summarizeWorkerStats(input: WorkerStatsInput): WorkerStats {
     .map((entry) => ({ entry, value: score(entry) }))
     .filter((entry): entry is { entry: MachineStats; value: number } => entry.value !== undefined)
     .sort((left, right) => left.value - right.value);
+  const within = ranked.find(({ entry }) => !entry.overloaded);
+  const fallback = ranked[0];
   return {
     current: input.current,
     machines,
-    ...(ranked[0] ? {
+    ...(within ? {
       recommended: {
-        id: ranked[0].entry.id,
-        name: ranked[0].entry.name,
-        reason: "lowest CPU, memory and disk use, weighted by running sessions",
+        id: within.entry.id,
+        name: within.entry.name,
+        reason: "lowest CPU, memory and disk use with running sessions counted, within headroom",
+      },
+    } : {}),
+    ...(!within && fallback ? {
+      leastLoaded: {
+        id: fallback.entry.id,
+        name: fallback.entry.name,
+        reason: "lowest load, but every machine is above the headroom limits",
       },
     } : {}),
     sampledAt: input.local.metrics?.sampledAt ?? new Date().toISOString(),

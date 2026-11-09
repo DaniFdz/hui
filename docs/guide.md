@@ -518,7 +518,7 @@ starts idle: it has a SOUL.md and its skills, and it says nothing until you
 message it. Its home folder holds the pack's skills under `skills/`, and the
 bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
 with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
-`learn`, `lessons`,
+`machines`, `learn`, `lessons`,
 `verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
 `figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
 `principles` reference. No other chat loads them.
@@ -527,9 +527,10 @@ The same seed adds five **Subagent routes** on Settings → Models: `planner`,
 `explorer`, `worker`, `reviewer` and `verifier`. Each inherits the caller's
 model until you give it one, so they follow your primary model. The chief uses a
 route only for a fast child: a read-only probe, one command, one check, one
-reply. A writing task gets a new session with its own worktree and branch. The
-chief calls `worker_stats` first and prefers the least loaded connected machine;
-`local` is the main machine.
+reply. A writing task gets a new session with its own worktree and branch. Before the first delegation the chief calls `worker_stats` and states the
+machine plan: which machines are in play, their load and running sessions, and
+where each piece runs. `machines` says to spread independent sessions, keep
+headroom on every machine and never fill one; `local` is the main machine.
 
 The chief uses a subagent only for **fast iteration**: a read-only probe, one
 command, one small check, one reply. A child never owns a branch or a pull

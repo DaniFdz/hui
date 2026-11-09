@@ -65,3 +65,17 @@ test("a disconnected or erroring worker is never recommended, and a local read e
   assert.equal(noSamples.machines[0]?.error, "metrics unavailable");
   assert.equal(noSamples.machines[1]?.error, "older release");
 });
+
+test("every machine over the headroom limits has no recommendation, only a least-loaded fallback", () => {
+  const stats = summarizeWorkerStats({
+    current: "local",
+    local: { metrics: sample(90), hostname: "gateway" },
+    workers: [{ id: "box", name: "Box", state: "connected", metrics: sample(95) }],
+    sessions: [],
+  });
+  assert.equal(stats.recommended, undefined);
+  assert.equal(stats.leastLoaded?.id, "local");
+  assert.match(stats.leastLoaded?.reason ?? "", /every machine is above the headroom limits/u);
+  assert.equal(stats.machines[0]?.overloaded, true);
+  assert.equal(stats.machines[1]?.overloaded, true);
+});

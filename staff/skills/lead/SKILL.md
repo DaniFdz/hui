@@ -26,6 +26,8 @@ report the parent did not need.
 - **One fresh worker per unit.** Pass a `route` (`worker` for a change, `reviewer` for a
   review, `verifier` for a check, `planner` or `explorer` for read-only work) or inherit
   your model. Never route and model together.
+- **Your machine, not another.** Children run where this session runs. To use another
+  machine, create a session with `create_session`; a child cannot select one.
 - **A worktree per writer.** `worktree: true` gives the child its own checkout and branch.
   Two workers never write one working tree.
 - **The brief names the evidence.** Goal, unit, writable and forbidden paths, forbidden

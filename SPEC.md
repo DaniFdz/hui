@@ -1666,7 +1666,10 @@ HUI supplies regular PI sessions with the OpenClaw-style coordination tools
 `sessions_send` and `subagents` (`list`, `steer`, `kill`). `worker_stats`
 reports this machine and every configured worker with CPU, memory, disk, GPU,
 connection state and running sessions, and names the least loaded connected
-machine; `local` is the gateway's machine. `create_session`
+machine within headroom (CPU 70%, memory 80%, disk 85%, fewer running sessions
+than half its cores); when every machine is over a limit it returns a
+`leastLoaded` fallback instead of a recommendation. `local` is the gateway's
+machine. `create_session`
 creates an ordinary top-level session instead: a group, a title, its first
 prompt and optionally a fresh worktree, a worker, a model and thinking. The
 caller's cwd, group, worker, model and thinking are defaults. It writes no

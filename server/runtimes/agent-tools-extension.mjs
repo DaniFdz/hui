@@ -194,7 +194,9 @@ Every question also offers a free-text answer the card adds itself, and the user
         if (machine.sessions) parts.push(`${machine.sessions.running} running of ${machine.sessions.total}`);
         return parts.join(", ");
       }).join("; ");
-      const pick = result?.recommended ? ` Recommended: ${result.recommended.name} (${result.recommended.reason}).` : "";
+      const pick = result?.recommended
+        ? ` Recommended: ${result.recommended.name} (${result.recommended.reason}).`
+        : result?.leastLoaded ? ` No machine is within headroom; least loaded is ${result.leastLoaded.name}.` : "";
       return { content: [{ type: "text", text: `${summary || "No machines reported."}.${pick}` }], details: result };
     },
   });
