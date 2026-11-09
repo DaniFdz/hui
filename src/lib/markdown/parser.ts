@@ -1,8 +1,8 @@
 /**
  * HUI's Markdown parser: markdown-it with HUI's extensions (details, math, alerts, task lists, rich embeds, Mermaid and
  * chart fences) and its safety rules: raw HTML is escaped, links are limited to safe schemes and remote images are
- * never loaded. The web renders its HTML (`markdown.ts`); the iOS core takes its tokens (`markdownTokens`), so both
- * clients read Markdown the same way.
+ * never loaded. The web renders its HTML (`markdown.ts`); a client that draws Markdown itself takes its tokens
+ * (`markdownTokens`), so every client reads Markdown the same way.
  *
  * With `fileReferences` it also wraps file references (inline code spans and link targets shaped like paths,
  * `../files/references.ts`) in `<hui-file-ref>`, for the agent's own replies. With `linkCards: false` it leaves
