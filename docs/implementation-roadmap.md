@@ -1302,17 +1302,22 @@ migration), `src/lib/shortcut-binding.test.ts`, `src/views/panel-selector.test.t
 `src/lib/session/multiplexer.test.ts` (the old format stays readable) and the
 Browser-tool journey.
 
-### HUI-22 — Native iOS app and one e2e suite for both clients
+### HUI-22 — Native Android app and one e2e suite for both clients
 
-**Status:** planned, not started. The plan is [`native-ios-plan.md`](native-ios-plan.md).
+**Status:** planned, not started. The plan is [`native-android-plan.md`](native-android-plan.md).
+It replaces the native iOS app, dropped on 2026-11-09 (SPEC.md, "Android
+replaces the iOS app as HUI's native client"); the SwiftUI work stays unmerged
+on draft PR #347.
 
-A SwiftUI iPhone app with the web UI's capabilities, on the same `/__hui/`
-contract, distributed through SideStore. Every use case lives in one catalogue
-(`e2e/catalogue/`), and each shared tester-army/e2e test in `e2e/tests/` runs on
-the web UI and on the app. Guards fail a PR that adds a surface no use case
-claims, and from the PR that adds the iOS job a new or changed use case must
-pass on both clients in the same PR. Milestones M0 (spikes) to M11 (calls) are in
-the plan, section 7.
+A Kotlin and Jetpack Compose Android app with the web UI's capabilities, on the
+same `/__hui/` contract, built on Linux with a pinned Nix toolchain and a
+headless KVM emulator, and distributed as a signed APK on GitHub Releases. Every
+use case lives in one catalogue (`e2e/catalogue/`), and each shared
+tester-army/e2e test in `e2e/tests/` runs on the web UI and, from the PR that
+adds the Android target, on the app. Guards fail a PR that adds a surface no use
+case claims, and from that PR a new or changed use case must pass on both
+clients in the same PR. Milestones M0 (spikes) to M11 (notifications) are in the
+plan, section 7.
 
 ### HUI-23 — Subagent model routes
 

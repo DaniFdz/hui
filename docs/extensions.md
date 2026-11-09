@@ -31,7 +31,7 @@ product contract is in [SPEC.md](../SPEC.md#gateway-extensions).
 | Add slash commands, keyboard shortcuts or flags | **No** | The agent layer has PI extensions; gateway extensions do not register UI commands |
 | Put secrets in a panel or page | **No** | Page files are served before the `x-hui` gate and are public |
 | Make network calls from a panel/page | **No** | The frame's CSP has no network; ask a route through the bridge |
-| Run on iPhone | **No** | Extension surfaces are web-only in v1 |
+| Run in a native phone app | **No** | Extension surfaces are web-only in v1 |
 
 ## Routes
 
@@ -60,7 +60,7 @@ product contract is in [SPEC.md](../SPEC.md#gateway-extensions).
   64 KiB request and 256 KiB response.
 - A panel lives in the Work pane; a page is a sidebar destination at
   `/ext/<id>`. Neither can add a header item or another shell region.
-- Extension pages are web-only. The iPhone has no extension surface.
+- Extension pages are web-only. A native phone app has no extension surface.
 
 ## Prompt sections and tools
 

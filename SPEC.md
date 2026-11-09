@@ -2811,6 +2811,29 @@ nothing needs me".
   when every session is running, starting or reconnecting; the page no longer
   says *Every session is idle.*
 
+### Android replaces the iOS app as HUI's native client (2026-11-09)
+
+The owner moves from an iPhone to Android: "I will be moving to android, can we
+drop the changes we did of the ios app", and asked for an app "that implements
+all the features that we have in HUI" so that "whatever change we do we also
+implement it for android".
+
+- **The iOS app is dropped.** Its SwiftUI code never reached `main` (draft
+  PR #347 stays unmerged as an archive), and `main` loses the iOS target, the
+  iOS status of every use case and the iOS fixture steps.
+- **The native client is a Kotlin and Jetpack Compose Android app**, not a
+  WebView shell around the web UI. `docs/native-android-plan.md` is its plan.
+- **Lockstep starts with the Android target.** Until the shared suite has an
+  Android target, use cases carry only a web status. The PR that adds the
+  target gives every use case an Android status, with existing ones in a
+  backlog that only shrinks, and from then on a new or changed use case passes
+  on the web and on Android in the same PR.
+- **The phone-app decisions below carry over.** Where an earlier decision names
+  the iPhone or the iOS app (keyboard and wide-layout mechanics stay on the
+  web, a tap opens a preview, the app follows the phone's text size, the app
+  connects to one gateway, the web's upload progress, a secondary click), it
+  now applies to the Android app until the owner revisits it.
+
 ### Use cases live in one catalogue (2026-10-21)
 
 The owner wants a native iOS app with the web UI's capabilities, and a way to
@@ -2878,7 +2901,7 @@ A Files upload in the web app can take a long time: the body streams to the
 gateway and a video may be a gigabyte. Only the browser knows how much of it it
 has sent, so the navigator draws **Upload progress** and **Cancel upload** while
 a file is in flight. The iPhone app imports files through its native file
-importer (`fileImporter`, `docs/native-ios-plan.md`), which draws the system's
+importer (`fileImporter`), which draws the system's
 own progress and has no in-app Cancel; a second progress bar there would
 reproduce a control the phone already shows. Watching a web upload and stopping
 it is therefore a web-only use case, while the gateway's larger cap applies to
