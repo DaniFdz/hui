@@ -726,6 +726,33 @@ and a back or forward entry the list now refuses),
 `e2e/tests/set/browser-origins.e2e.ts` (the field saves and survives a reload)
 and the origin section of `e2e/browser-tool.browser.md`.
 
+Follow-up 2026-11-08: Settings → Tools → Browser → *Site secrets* stores a value
+under a name and an exact http(s) origin in `browser-secrets.json` (mode 0600,
+outside `settings.json`), lists names and origins only, and removes entries. The
+browser tool gains `secret`: it resolves the element's own frame through
+`DOM.describeNode` and the frame tree, refuses unless that page's origin is the
+secret's, then types the value with `Input.insertText` and returns only that it
+did. The value is never in a view, a route payload, a tool result, an action
+caption or a log. Proof: `server/browser/secrets.test.ts` (private file, views
+without values, junk input, a part-corrupt file),
+`server/browser/manager.test.ts` (a real headless browser: refused on another
+origin without leaking the value, typed and submitted on its own with the value
+absent from text and details, an unknown name listing stored names, and a
+frame's field unreachable on any origin),
+`e2e/tests/set/browser-secrets.e2e.ts` (the settings list saves, hides the
+value, survives a reload and deletes) and the secrets section of
+`e2e/browser-tool.browser.md`.
+
+Follow-up 2026-11-08: the browser tool gains `steps`: 1–20 `act` steps in one
+call on one tab, because dependent interactions (an open menu, a hover, a
+selected row) are transient and one round trip per step loses them. Each step is
+the same validated, navigation-watched `act` the tool already exposes, the
+sequence never retargets the call's tab, and the result lists each step while a
+failure names itself and the steps that ran. Proof:
+`server/browser/manager.test.ts` (a real headless browser: type, click and the
+wait that proves the click rendered, a failing step's message, the 1–20 bound,
+and a navigation between steps retiring refs) and the steps section of `e2e/browser-tool.browser.md`.
+
 ### HUI-16 — macOS sleep prevention
 
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on

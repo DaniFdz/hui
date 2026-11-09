@@ -976,6 +976,31 @@ names are not resolved, so a name that turns out to point at a private address
 after the check is outside this model. A pattern that cannot be parsed matches
 nothing, so a typo locks pages out loudly instead of opening them quietly.
 
+**A sequence in one call.** `steps` runs 1–20 `act` steps in order on one tab:
+type, click, press, hover, select, scroll and wait, each validated exactly as
+`act` validates it, with refs from the latest snapshot. It exists because a
+dependent interaction is transient — an open menu, a hover, a selected row — and
+one round trip per step loses it, while a flow that takes several actions costs
+a model turn each. The result lists each step with what it did, in order; a
+failing step names itself and every step that already ran, and a navigation
+inside the sequence retires the refs, as any page change does.
+
+**Site secrets, if the operator stores them.** Settings → Tools → Browser → *Site
+secrets* keeps values under a name and an exact http(s) origin in
+`browser-secrets.json` (mode 0600, separate from `settings.json`, which is
+mirrored to workers and echoed by the settings API). The list shows names,
+origins and when each was stored — never a value — and Delete removes one. The
+agent's `secret` action names a secret and an element ref; the gateway resolves
+the element's own frame, refuses unless that page's origin is the secret's, and
+types the value with the same CDP input path `act type` uses. Its result and
+`details` say only that it typed, where and on which origin, so the value never
+enters PI's transcript, a log or the live view. Once typed the value is in the
+page, where script on that origin can read it: the origin check keeps it away
+from other origins and frames, and is strongest paired with an origin allowlist.
+A field inside an iframe is not addressable at all — a tab's snapshot covers its
+own document, not a frame's — so a sign-in form embedded from elsewhere always
+needs a handoff.
+
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
 to a visible window for watching the agent work, set the executable, start or

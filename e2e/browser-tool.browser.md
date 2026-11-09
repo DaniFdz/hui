@@ -93,6 +93,41 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Bounded steps
+
+Verified on 2026-11-08 in the same fixture at 1440×900.
+
+- `E2E_BROWSER_STEPS` opened the fixture page and ran one `steps` call of type,
+  click and wait. The tool row settled with "Ran 3 steps in tab t1." and listed
+  "1. type: Typed 12 characters into e1 (textbox "Name")", "2. click: Clicked e2
+  (button "Greet")" and "3. wait: Waited …", and the agent's reply quoted that
+  log; the greeting the sequence waited for was rendered by the page.
+- One activity row covered the three interactions, and no browser window opened.
+- A step after a navigation that still names an older snapshot's ref fails with
+  "Step 2 (type) failed: Ref e1 is not in tab t1's latest snapshot." and names
+  the step that ran; proven by `server/browser/manager.test.ts`, not by a
+  fixture run.
+
+## Site secrets
+
+Verified on 2026-11-08 in the same fixture at 1440×900 and 390×844.
+
+- Settings → Tools → Browser → **Site secrets** showed "None stored." Filling
+  the name `fixture-secret`, the origin of the fixture page
+  (`http://127.0.0.1:<provider port>`, read from the live view) and a value, then
+  **Add secret**, listed `fixture-secret` with its origin, left the value field
+  empty and never rendered the value anywhere. A reload kept it.
+- `E2E_BROWSER_SECRET` opened `/browser-secret-fixture`, took the ref of its
+  Password field, typed the stored secret (Enter pressed) and clicked Sign in:
+  the page reported "signed in with 15 characters". The tool row and the reply
+  named the secret, the field and the origin and never carried the value; the
+  live view showed only the masked field.
+- The stored file was `browser-secrets.json` with mode 0600, and
+  `GET /__hui/browser/secrets` listed only the name, origin and time.
+- **Delete fixture-secret** returned the list to "None stored."
+- Both viewports stacked each stored name above its Delete button and the three
+  fields without sideways overflow.
+
 ## Origin allowlist
 
 Verified on 2026-11-08 in the same fixture, at 1440×900 and 390×844.

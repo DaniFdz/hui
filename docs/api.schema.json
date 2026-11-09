@@ -3669,6 +3669,69 @@
         }
       }
     },
+    "BrowserSecretInput": {
+      "type": "object",
+      "required": [
+        "name",
+        "origin",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "BrowserSecretRemoval": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "BrowserSecrets": {
+      "type": "object",
+      "required": [
+        "secrets"
+      ],
+      "properties": {
+        "secrets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BrowserSecretView"
+          }
+        }
+      }
+    },
+    "BrowserSecretView": {
+      "type": "object",
+      "required": [
+        "name",
+        "origin",
+        "createdAt"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      }
+    },
     "BrowserSettings": {
       "type": "object",
       "required": [
@@ -14698,6 +14761,10 @@
       "BrowserExecutableView",
       "BrowserHandoff",
       "BrowserPreview",
+      "BrowserSecretInput",
+      "BrowserSecretRemoval",
+      "BrowserSecretView",
+      "BrowserSecrets",
       "BrowserState",
       "BrowserStatus",
       "BrowserTabView",
@@ -15420,6 +15487,33 @@
       },
       "events": {
         "$ref": "#/$defs/BrowserViewMessage"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/browser/secrets",
+      "response": {
+        "$ref": "#/$defs/BrowserSecrets"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/browser/secrets",
+      "request": {
+        "$ref": "#/$defs/BrowserSecretInput"
+      },
+      "response": {
+        "$ref": "#/$defs/BrowserSecrets"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/browser/secrets/remove",
+      "request": {
+        "$ref": "#/$defs/BrowserSecretRemoval"
+      },
+      "response": {
+        "$ref": "#/$defs/BrowserSecrets"
       }
     },
     {

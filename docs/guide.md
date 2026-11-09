@@ -1421,6 +1421,19 @@ ask for up to thirty. If the tab closes or the browser stops first, the agent is
 told that instead. Opening the browser view from the header's globe button shows
 the same view: it stays view-only unless a handoff is waiting.
 
+## Storing a password an agent can type
+
+Settings → Tools → Browser → **Site secrets** stores a value under a name and
+an exact origin, such as `github` on `https://github.com`, in a file only you
+can read. The list shows the name and origin — never the value — and **Delete**
+removes one. When an agent reaches that site's sign-in form it can type the
+stored value into the field without being able to see it: the gateway refuses
+unless the field's page is exactly that origin, and the value never appears in
+the chat, a tool result or a log. A close-button prompt or one-time code still
+needs a **handoff**, and once filled the page itself can read the field, so keep
+the origin allowlist narrow. A sign-in form inside an embedded frame cannot be
+targeted at all — that needs a handoff too.
+
 ## Limiting where the agent's browser goes
 
 Settings → Tools → Browser → **Allowed origins** is empty by default: the

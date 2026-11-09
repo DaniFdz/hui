@@ -10,6 +10,14 @@ export type BrowserHandoff = { "tabId": string; "message": string; "since": stri
 
 export type BrowserPreview = { "image": string; };
 
+export type BrowserSecretInput = { "name": string; "origin": string; "value": string; };
+
+export type BrowserSecretRemoval = { "name": string; };
+
+export type BrowserSecretView = { "name": string; "origin": string; "createdAt": string; };
+
+export type BrowserSecrets = { "secrets": Array<BrowserSecretView>; };
+
 export type BrowserState = ("stopped") | ("starting") | ("running") | ("stopping");
 
 export type BrowserStatus = { "enabled": boolean; "headless": boolean; "executablePath": string; "executable": (BrowserExecutableView) | (null); "executableError": string; "state": BrowserState; "mode"?: ("headless") | ("windowed"); "version"?: string; "startedAt"?: string; "profileDir": string; "lastError": string; "tabs": Array<BrowserTabView>; };

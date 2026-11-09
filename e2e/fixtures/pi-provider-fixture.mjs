@@ -146,6 +146,39 @@ const HANDOFF_FIXTURE_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+/** For a stored-secret check: a password field and a submit that reports its length only. */
+const SECRET_FIXTURE_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HUI secret fixture</title>
+  <style>
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1f2328; background: #f6f8fa; }
+    main { max-width: 420px; margin: 48px auto; padding: 24px; border-radius: 12px; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 12%); }
+    h1 { margin: 0 0 16px; font-size: 22px; }
+    label { display: block; margin: 0 0 6px; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #d0d7de; border-radius: 6px; font: inherit; }
+    button { margin-top: 12px; padding: 10px 18px; border: 0; border-radius: 6px; color: #fff; background: #0969da; font: inherit; cursor: pointer; }
+    #out { min-height: 1.5em; margin: 16px 0 0; font-weight: 600; color: #1a7f37; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Sign in</h1>
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="off">
+    <button type="button" id="sign-in">Sign in</button>
+    <p id="out" role="status"></p>
+  </main>
+  <script>
+    document.getElementById("sign-in").addEventListener("click", () => {
+      const length = document.getElementById("password").value.length;
+      document.getElementById("out").textContent = "signed in with " + length + " characters";
+    });
+  </script>
+</body>
+</html>`;
+
 /** A small built-in widget for show_widget checks. */
 const COUNTER_WIDGET = `<div id="counter" class="row">
 <style>#counter{gap:12px}#counter output{min-width:3ch;font:600 22px/1 var(--font-mono);color:var(--text-strong)}</style>
@@ -204,6 +237,10 @@ const server = createServer(async (request, response) => {
   if (request.method === "GET" && url.pathname === "/browser-handoff-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(HANDOFF_FIXTURE_PAGE);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-secret-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(SECRET_FIXTURE_PAGE);
   }
   if (request.method === "GET" && url.pathname === "/control/wait-subagent-parent") {
     subagentParentWaiting = true;
@@ -497,6 +534,88 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent types the operator's stored secret into the sign-in form and reports what the page said.
+  if (source.includes("E2E_BROWSER_SECRET") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-secret-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-secret-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-secret-open") {
+    await browserPace(body);
+    const password = /textbox "Password" \[ref=(e\d+)\]/u.exec(toolResultTexts(body.messages).join("\n"))?.[1];
+    if (!password) {
+      text(response, "The sign-in field was not in the page snapshot.");
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-secret-type", "browser", { action: "secret", name: "fixture-secret", ref: password, submit: true });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-secret-type") {
+    await browserPace(body);
+    const signIn = /button "Sign in" \[ref=(e\d+)\]/u.exec(toolResultTexts(body.messages).join("\n"))?.[1];
+    if (!signIn) {
+      text(response, "The sign-in button was not in the page snapshot.");
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-secret-click", "browser", { action: "act", kind: "click", ref: signIn });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-secret-click") {
+    await browserPace(body);
+    toolUse(response, "tool-e2e-secret-read", "browser", { action: "text", selector: "#out" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-secret-read") {
+    const texts = toolResultTexts(body.messages).join("\n");
+    const typed = /Typed the site secret "fixture-secret"[^\n]*/u.exec(texts)?.[0];
+    const outcome = /signed in with [^\n]*/u.exec(texts)?.[0];
+    text(response, typed && outcome
+      ? `The stored secret was typed: **${typed}**. The page said "${outcome}".`
+      : `The stored secret was not typed cleanly: ${typed ?? "no type confirmation"}; ${outcome ?? "no page result"}.`);
+    return finish(response);
+  }
+
+  // The agent runs a dependent flow as one steps call and reports each step it ran.
+  if (source.includes("E2E_BROWSER_STEPS") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-steps-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-steps-open") {
+    await browserPace(body);
+    const snapshots = toolResultTexts(body.messages).join("\n");
+    const name = /textbox "Name" \[ref=(e\d+)\]/u.exec(snapshots)?.[1];
+    const greet = /button "Greet" \[ref=(e\d+)\]/u.exec(snapshots)?.[1];
+    if (!name || !greet) {
+      text(response, "The form was not in the page snapshot.");
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-steps-run", "browser", {
+      action: "steps",
+      steps: [
+        { kind: "type", ref: name, text: "Step by step" },
+        { kind: "click", ref: greet },
+        { kind: "wait", text: "Hello, Step by step!" },
+      ],
+    });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-steps-run") {
+    const log = /Ran 3 steps in tab t\d+\.[\s\S]*?3\. wait: [^\n]*/u.exec(toolResultTexts(body.messages).join("\n"))?.[0];
+    text(response, log
+      ? `The flow ran in one call:\n\n${log}`
+      : "The steps call did not report three steps.");
+    return finish(response);
+  }
+
   // The agent opens the page, then hands the tab to the operator when only a person can finish.
   if (source.includes("E2E_BROWSER_HANDOFF") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -528,7 +647,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);

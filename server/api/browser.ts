@@ -63,6 +63,19 @@ export const BrowserViewControl = Type.Union([
 ], { $id: "BrowserViewControl" });
 export type BrowserViewControl = Static<typeof BrowserViewControl>;
 
+/** A stored site secret as any route may see it: never its value. */
+export const BrowserSecretView = Type.Object({ name: Type.String(), origin: Type.String(), createdAt: Type.String() }, { $id: "BrowserSecretView" });
+export type BrowserSecretView = Static<typeof BrowserSecretView>;
+
+export const BrowserSecrets = Type.Object({ secrets: Type.Array(BrowserSecretView) }, { $id: "BrowserSecrets" });
+export type BrowserSecrets = Static<typeof BrowserSecrets>;
+
+export const BrowserSecretInput = Type.Object({ name: Type.String(), origin: Type.String(), value: Type.String() }, { $id: "BrowserSecretInput" });
+export type BrowserSecretInput = Static<typeof BrowserSecretInput>;
+
+export const BrowserSecretRemoval = Type.Object({ name: Type.String() }, { $id: "BrowserSecretRemoval" });
+export type BrowserSecretRemoval = Static<typeof BrowserSecretRemoval>;
+
 export const BrowserControl = Type.Object({ action: Type.Union([Type.Literal("start"), Type.Literal("stop")]) }, { $id: "BrowserControl" });
 export type BrowserControl = Static<typeof BrowserControl>;
 
@@ -78,6 +91,9 @@ export type BrowserError = Static<typeof BrowserError>;
 export const routeSchemas = [
   { method: "GET", path: "/__hui/browser", response: BrowserStatus },
   { method: "POST", path: "/__hui/browser", request: BrowserControl, response: BrowserStatus },
+  { method: "GET", path: "/__hui/browser/secrets", response: BrowserSecrets },
+  { method: "POST", path: "/__hui/browser/secrets", request: BrowserSecretInput, response: BrowserSecrets },
+  { method: "POST", path: "/__hui/browser/secrets/remove", request: BrowserSecretRemoval, response: BrowserSecrets },
   { method: "GET", path: "/__hui/browser/tabs/:tab/preview", response: BrowserPreview },
   { method: "POST", path: "/__hui/sessions/:id/browser/connect", response: BrowserViewConnection },
   { method: "WS", path: "/__hui/browser-stream", request: BrowserViewControl, response: BrowserViewMessage, events: BrowserViewMessage },

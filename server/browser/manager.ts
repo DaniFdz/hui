@@ -24,6 +24,7 @@ import { CdpConnection, CdpError, type CdpEvent } from "./cdp.ts";
 import { defaultExecutableProbe, resolveBrowserExecutable, type BrowserExecutable, type ExecutableProbe } from "./executable.ts";
 import { KeyParseError, parseKey, type KeyStroke } from "./keys.ts";
 import { allowsUrl, blockedOriginMessage } from "./origins.ts";
+import type { SiteSecret, SiteSecretView } from "./secrets.ts";
 import { clampSnapshotChars, renderSnapshot, SnapshotRefs, type AxNode, type SnapshotOptions, type SnapshotResult, type SnapshotTarget } from "./snapshot.ts";
 import { EMPTY_BROWSER_STATE, isHttpOrigin, mergeBrowserState, STATE_CAPTURE, STATE_SEED, trimBrowserState, type BrowserState, type StoredCookie, type StoredDatabase, type StoredOrigin } from "./state.ts";
 
@@ -60,13 +61,15 @@ export type BrowserViewHandle = {
 
 export const BROWSER_ACTIONS = [
   "status", "tabs", "open", "navigate", "back", "forward", "reload", "focus", "close",
-  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff",
+  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps",
 ] as const;
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
 export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "scroll", "wait"] as const;
 export type BrowserActKind = (typeof BROWSER_ACT_KINDS)[number];
 
 export const MAX_TABS_PER_CONVERSATION = 8;
+/** One call's sequence: long enough for a real flow, short enough to stay readable to a model. */
+const MAX_STEPS = 20;
 export const MAX_TABS_TOTAL = 32;
 /** A capture reads the whole cookie jar and a tab's storage: at most this often per origin. */
 const CAPTURE_INTERVAL_MS = 5_000;
@@ -173,9 +176,16 @@ export type BrowserStateMirror = {
   write: (state: BrowserState) => void;
 };
 
+/** The operator's stored site secrets, as the manager may use them: a value for one call, and names for an error. */
+export type BrowserSecretStore = {
+  find(name: string): Promise<SiteSecret | undefined>;
+  list(): Promise<SiteSecretView[]>;
+};
+
 export type ManagedBrowserOptions = {
   profileDir: string;
   readSettings: () => Promise<BrowserSettings>;
+  secrets?: BrowserSecretStore;
   mirror?: BrowserStateMirror;
   probe?: ExecutableProbe;
   env?: NodeJS.ProcessEnv;
@@ -294,6 +304,29 @@ function handoffTimeoutFrom(value: unknown): number {
     throw new BrowserToolError(`timeoutMs must be an integer from ${MIN_HANDOFF_MS} to ${MAX_HANDOFF_MS}.`);
   }
   return value;
+}
+
+/** An exact http(s) origin, or "" for a page without one (about:blank, a data URL). */
+function originOf(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.origin : "";
+  } catch {
+    return "";
+  }
+}
+
+/** The URL of one frame in a Page.getFrameTree result, by frame id. */
+function frameUrlIn(tree: unknown, frameId: string): string {
+  if (!isRecord(tree)) return "";
+  const node = isRecord(tree["frameTree"]) ? tree["frameTree"] : tree;
+  const frame = isRecord(node["frame"]) ? node["frame"] : {};
+  if (str(frame["id"]) === frameId) return str(frame["url"]);
+  for (const child of Array.isArray(node["childFrames"]) ? node["childFrames"] : []) {
+    const found = frameUrlIn(child, frameId);
+    if (found) return found;
+  }
+  return "";
 }
 
 function browserEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -492,6 +525,7 @@ export class ManagedBrowser {
   readonly #handoffs = new Map<string, Handoff>();
   /** Settings → Tools → Browser's origin allowlist, refreshed by every call; empty is anywhere. */
   #origins: readonly string[] = [];
+  readonly #secrets: BrowserSecretStore | undefined;
   /** Each conversation's latest agent action, for viewers that join later. */
   readonly #lastActions = new Map<string, BrowserViewAction>();
   readonly #casts = new Map<string, Screencast>();
@@ -508,6 +542,7 @@ export class ManagedBrowser {
     this.#window = options.window ?? { ...DEFAULT_WINDOW };
     this.#idleTabMs = options.idleTabMs ?? IDLE_TAB_MS;
     this.#mirror = options.mirror;
+    this.#secrets = options.secrets;
   }
 
   get running(): boolean {
@@ -785,6 +820,8 @@ export class ManagedBrowser {
       case "console": return this.#console(owner, params);
       case "resize": return this.#resize(owner, params);
       case "handoff": return this.#handoff(owner, params);
+      case "secret": return this.#secret(owner, params);
+      case "steps": return this.#steps(owner, params);
     }
   }
 
@@ -839,6 +876,91 @@ export class ManagedBrowser {
       lines = [`The managed browser stopped while the operator had tab ${tab.id}. Call open to start it again.`];
     }
     return { text: lines.join("\n"), details: { action: "handoff", tab: this.#tabDetails(tab), outcome } };
+  }
+
+  /** Type an operator's stored secret into a field on the origin it belongs to, without ever returning it. */
+  async #secret(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const store = this.#secrets;
+    if (!store) throw new BrowserToolError("Site secrets are not available for this browser.", 409);
+    const name = requiredText(params, "name", 60).toLowerCase();
+    const secret = await store.find(name);
+    if (!secret) {
+      const names = (await store.list()).map((entry) => entry.name);
+      throw new BrowserToolError(
+        names.length
+          ? `No site secret named "${name}". Stored names: ${names.join(", ")}. The operator adds them in HUI Settings → Tools → Browser.`
+          : `No site secret named "${name}". The operator can store one in HUI Settings → Tools → Browser.`,
+        404);
+    }
+    const { target, label } = this.#target(tab, params["ref"]);
+    const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
+    // The field decides where the value goes: its own frame must be the secret's origin.
+    const fieldOrigin = await this.#fieldOrigin(instance, tab, target.backendNodeId);
+    if (fieldOrigin !== secret.origin) {
+      throw new BrowserToolError(
+        `The site secret "${name}" belongs to ${secret.origin}, and ${label} is on ${fieldOrigin || "an unknown origin"}. Refusing to type it there.`,
+        409);
+    }
+    const state = await this.#call(instance, tab, objectId, PREPARE_TYPING, [params["append"] === true]);
+    if (state === "not-editable") throw new BrowserToolError(`${label} is not a text field. Point ref at the login field itself.`, 409);
+    if (state === "read-only") throw new BrowserToolError(`${label} is disabled or read-only.`, 409);
+    await instance.connection.send("Input.insertText", { text: secret.value }, tab.session);
+    if (params["submit"] === true) await this.#key(instance, tab, parseKey("Enter"));
+    this.#emitAction(tab, `Typed the site secret "${name}" into ${label}`);
+    return {
+      text: `Typed the site secret "${name}" into ${label} on ${secret.origin}${params["submit"] === true ? " and pressed Enter" : ""}. Its value was never shown to you and is not in this result.`,
+      details: { action: "secret", tab: this.#tabDetails(tab), name, origin: secret.origin, typed: true, submitted: params["submit"] === true },
+    };
+  }
+
+  /** The origin of the frame an element lives in: a main-frame node is the tab's document, a child frame is its own. */
+  async #fieldOrigin(instance: Instance, tab: Tab, backendNodeId: number): Promise<string> {
+    let frameId = tab.frameId;
+    try {
+      const described = await instance.connection.send("DOM.describeNode", { backendNodeId, depth: 0 }, tab.session);
+      const node = isRecord(described["node"]) ? described["node"] : {};
+      frameId = str(node["frameId"]) || tab.frameId;
+    } catch {
+      // Keep the main frame: the value stays on the tab's own origin, which is the strictest guess.
+    }
+    if (frameId === tab.frameId) return originOf(tab.url);
+    const tree = await instance.connection.send("Page.getFrameTree", {}, tab.session).catch(() => undefined);
+    const found = frameUrlIn(tree, frameId);
+    return originOf(found);
+  }
+
+  /** Dependent interactions in one call: menus, hovers and a form submit are transient, and one round
+   * trip per step loses them. Each step is an `act` with the same rules, on this call's tab. */
+  async #steps(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const steps = params["steps"];
+    if (!Array.isArray(steps) || steps.length === 0 || steps.length > MAX_STEPS) {
+      throw new BrowserToolError(`steps must list 1 to ${MAX_STEPS} steps, each with kind and its parameters.`);
+    }
+    const timeoutMs = params["timeoutMs"];
+    const log: string[] = [];
+    for (const [index, step] of steps.entries()) {
+      const where = `Step ${index + 1}`;
+      if (!isRecord(step)) throw new BrowserToolError(`${where} must be an object with kind and its parameters.`);
+      const kind = str(step["kind"]);
+      if (!(BROWSER_ACT_KINDS as readonly string[]).includes(kind)) {
+        throw new BrowserToolError(`${where} needs kind: ${BROWSER_ACT_KINDS.join(", ")}.${log.length ? ` Steps before it: ${log.join("; ")}.` : ""}`);
+      }
+      try {
+        // One tab for the whole sequence: a step never retargets the call.
+        const result = await this.#act(owner, { ...step, tabId: tab.id, ...(timeoutMs === undefined ? {} : { timeoutMs: step["timeoutMs"] ?? timeoutMs }) });
+        log.push(`${index + 1}. ${kind}: ${result.text.split("\n")[0] ?? kind}`);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "the step failed";
+        throw new BrowserToolError(`${where} (${kind}) failed: ${reason}${log.length ? `\nSteps that ran: ${log.join("; ")}.` : ""}`, error instanceof BrowserToolError ? error.status : 500);
+      }
+    }
+    return {
+      text: [`Ran ${log.length} step${log.length === 1 ? "" : "s"} in tab ${tab.id}.`, this.#header(tab), "", ...log].join("\n"),
+      details: { action: "steps", tab: this.#tabDetails(tab), steps: log.length },
+    };
   }
 
   /** Ends the wait exactly once: the call, the timer and a closing tab all take this path. */
@@ -899,6 +1021,8 @@ export class ManagedBrowser {
       text: typeof params["selector"] === "string" ? `Read the text of ${params["selector"]}` : "Read the page text",
       screenshot: "Took a screenshot",
       console: "Read the console",
+      steps: "Ran a sequence of steps",
+      secret: `Typed the site secret "${clip(str(params["name"]), 60)}"`,
       resize: typeof params["width"] === "number" && typeof params["height"] === "number"
         ? `Resized the viewport to ${params["width"]}×${params["height"]}`
         : "Restored the default viewport",
