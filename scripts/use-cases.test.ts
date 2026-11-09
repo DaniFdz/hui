@@ -137,11 +137,13 @@ test("shared tests use no agent steps, retries, skips, platform reads, app.clear
 
 test("shared tests find controls by roles a native phone app has too, and by test ids the web app sets", () => {
   const portable = new Set(["button", "textbox", "switch", "tab", "listitem"]);
-  // Keyboard-only, browser-only and wide-layout use cases a native phone app won't have; only their tests may find
-  // controls by roles the web alone exposes.
+  // Keyboard-only, browser-only and wide-layout use cases a native phone app won't have (the iOS exclusions whose tests
+  // need a web-only role); only their tests may find controls by roles the web alone exposes. A new web-only use case
+  // whose test needs one joins this list until the Android target gives the catalogue a phone status again
+  // (docs/native-android-plan.md, 5.1).
   const webOnlyCases = new Set(["CHAT-046", "CHAT-083", "PAGE-021", "PAGE-046", "SESS-008", "SESS-040", "SESS-077", "SET-003",
     "SET-036", "SHELL-013", "SHELL-014", "SHELL-018", "SHELL-020", "SHELL-021", "SHELL-022", "WORK-016", "WORK-017", "WORK-018",
-    "WORK-019", "WORK-020", "WORK-022", "WORK-082"]);
+    "WORK-019", "WORK-020", "WORK-022", "WORK-082", "WORK-083", "WORK-084", "WORK-085"]);
   const parts = [...testSources].flatMap(([file, source]) => {
     const inFile = pairs.filter((pair) => pair.file === file && pair.source);
     const pairLines = [...new Set(inFile.map((pair) => pair.source!.line))].sort((a, b) => a - b);

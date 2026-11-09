@@ -1,8 +1,8 @@
 # Plan: a native Android app for HUI, built and tested in lockstep with the web UI
 
 Status: a plan. Nothing in it is built yet. It replaces the iOS plan (`docs/native-ios-plan.md`, removed with the
-iOS scaffolding; read it at commit `e793aecc` for the long form of the parts this plan reuses). It was checked
-against `main` at `e793aecc`, tester-army/e2e `0.21.3` and `@e2e-dev/mobile` `0.12.3`, whose README declares an
+iOS scaffolding; read it at commit `d921912b` for the long form of the parts this plan reuses). It was checked
+against `main` at `d921912b`, tester-army/e2e `0.21.3` and `@e2e-dev/mobile` `0.12.3`, whose README declares an
 Android engine on agent-device. A statement marked "(assumption, A*n*)" is not proven yet: spike A*n* in milestone M0
 settles it before work depends on it. Timings marked "target" are budgets to measure, not measurements.
 
@@ -11,7 +11,7 @@ settles it before work depends on it. Timings marked "target" are budgets to mea
 - **What changes from the iOS plan.** The owner moves from iPhone to Android. The SwiftUI app (draft PR #347, branch
   `dani.fernandez/ios-app-stacked`, kept unmerged as an archive) is dropped, and `main` loses its iOS target, its
   per-use-case iOS status and its iOS fixture steps. What stays is the part that was never iOS-specific: one use-case
-  catalogue (`e2e/catalogue/`), one shared tester-army/e2e suite (`e2e/tests/`, 207 tests today), the guards that
+  catalogue (`e2e/catalogue/`), one shared tester-army/e2e suite (`e2e/tests/`, over 200 tests today), the guards that
   find uncatalogued surfaces, and the owner's native-client decisions in `SPEC.md`, which now apply to the Android app.
 - **A native Kotlin app with Jetpack Compose** (the owner's choice over a WebView shell), in `android/`, built with
   Gradle. Its API types are generated from `docs/api.schema.json`, as the web's are. Content that is web content
@@ -71,8 +71,8 @@ settles it before work depends on it. Timings marked "target" are budgets to mea
 |---|---|
 | The catalogue and its guards (`scripts/use-cases.test.ts`, `scripts/e2e-baseline-check.ts`) | Unchanged in shape; the Android PR adds an `android` status beside `web` |
 | The portability rules for shared tests (portable roles, no platform reads, no `app.clearState()`, no sleeps) | Kept on `main` while web-only, because the Android engine needs the same portability |
-| The iOS exclusions and their reasons (about 60: keyboard chords, hover, wide layout, browser-tab mechanics) | Recovered with `git show e793aecc:e2e/catalogue/<area>.ts` when the `android` field lands, reworded for Android, each still citing its `SPEC.md` decision |
-| The iOS fixture steps (hold, context menu, clipboard, scrollTo, look, sessionList, phoneScreen) | Their Android equivalents in section 4.2; the iOS code at `e793aecc` is the reference |
+| The iOS exclusions and their reasons (about 70: keyboard chords, hover, wide layout, browser-tab mechanics) | Recovered with `git show d921912b:e2e/catalogue/<area>.ts` when the `android` field lands, reworded for Android, each still citing its `SPEC.md` decision |
+| The iOS fixture steps (hold, context menu, clipboard, scrollTo, look, sessionList, phoneScreen) | Their Android equivalents in section 4.2; the iOS code at `d921912b` is the reference |
 | The SwiftUI screens on PR #347 (session list with search and groups, chat, questions and secret requests) | A design reference for the first Android screens: they already solved the narrow-layout questions |
 | `SPEC.md` decisions about the phone app (one gateway, phone text size, tap opens a preview, keyboard and wide-layout mechanics stay on the web) | Apply to the Android app, as the 2026-11-09 decision says |
 
@@ -121,7 +121,7 @@ android/
 
 ### 2.3 Speaking the `/__hui/` contract
 
-The iOS plan's table (section 4.3 at `e793aecc`) holds unchanged with Android's tools:
+The iOS plan's table (section 4.3 at `d921912b`) holds unchanged with Android's tools:
 
 | Concern | Android |
 |---|---|

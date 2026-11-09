@@ -42,8 +42,7 @@ owns the per-PR watcher shape.
 
 Capture fresh images of this branch's HEAD through
 `.agents/skills/hui-visual-verification/SKILL.md`: desktop at 1440x900, mobile at
-390x844, the affected state at each size, and the iOS screens when the app shows
-the change.
+390x844, and the affected state at each size.
 
 Attach the images to the PR description with GitHub, for example
 `gh pr create --body-file body.md --attach shot.png`, and post the same images in
