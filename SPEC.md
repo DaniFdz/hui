@@ -958,6 +958,24 @@ out the other, since a missing cookie cannot be told apart from one never set.
 These documents hold live credentials: mirroring is the one thing HUI writes on
 a worker on purpose, and it is off until the operator turns it on.
 
+**An origin allowlist, if the operator sets one.** Settings → Tools → Browser →
+*Allowed origins* (empty by default, so agents may browse anywhere) lists the
+pages the managed browser may reach: `example.com`, `example.com:8443`,
+`https://app.example.com`, or `*.example.com` for subdomains only. An agent's
+`open`, `navigate` or history move onto a page outside the list is refused
+before a tab goes there, with an error naming the list. A link, redirect or
+popup that leaves it is stopped, its tab left on `about:blank`, and the reason
+appears in the tool result that follows and in the live view's action; a popup
+that committed its document before HUI attached to it is checked where it
+landed, and `tabs` marks it `blocked: not in the allowed origins` until that is
+reported. A local
+file is refused while a list is set, and a private, loopback or link-local
+address needs its exact host: a wildcard never covers one. The list covers
+where a tab's document goes, not the subresources that document loads; and host
+names are not resolved, so a name that turns out to point at a private address
+after the check is outside this model. A pattern that cannot be parsed matches
+nothing, so a typo locks pages out loudly instead of opening them quietly.
+
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
 to a visible window for watching the agent work, set the executable, start or
@@ -992,13 +1010,28 @@ preview, or the globe button in the conversation header, opens the conversation'
 **browser view** in its Work pane (at most one per conversation; also launched
 from the pane's **+** menu, Ctrl+Alt+Shift+B / ⌥⇧⌘B): a larger live view beside the chat
 that follows the agent's tab or watches another of the conversation's tabs until
-Follow agent. Both are
-read-only. Frames come from a CDP screencast that runs only while someone
+Follow agent. Both only watch, except while the agent has handed a tab over (see
+below). Frames come from a CDP screencast that runs only while someone
 watches and only when the page repaints (at most about ten frames a second).
 Headless tabs each get their own window, so conversations never hide each
 other's pages. A browser on a worker is not streamed here: its tabs stay on that
 machine, no preview or browser view shows them, and what the agent sees arrives
 as tool results, a screenshot included (which `present_media` shows in the chat).
+
+**A handoff is the operator's turn.** When only a person can continue — a
+password, 2FA, a passkey, a payment or a bot check — the agent calls `handoff`
+with one sentence saying what to do and waits: ten minutes by default, at most
+thirty. That tab is the operator's until they continue. It stays open, the
+live view shows Your turn with the message and a Continue button, and every
+other agent action on the browser is refused. The browser view forwards the
+operator's pointer, wheel and keys to that one tab over the existing live-view
+socket; nothing else about a view becomes interactive, and input is ignored once
+the wait ends. Continue returns the page as it is then — title, URL and a fresh
+snapshot — so the agent acts on current refs rather than guessing whether the
+human step worked. A wait nobody answers ends with the tab back in the agent's
+control and a result saying the operator may be away; a tab that closes or a
+browser that stops ends it too. The chat's preview card carries the same
+message and opens the browser view where the operator can act.
 
 No new dependency is added: HUI speaks CDP directly. Browser settings are an
 additive `browser` block in `settings.json`; the browser view is a
@@ -1950,6 +1983,19 @@ the same with the chips, rows, *Back*, *Next*, *Submit* and *Cancel*; the
 actions stay in reach when the card scrolls. *Submit* needs at least one
 answer; a question left blank is left out.
 
+The card can cover most of the conversation it is asked about. Its top line,
+which carries the card's title and the progress, is also its fold control:
+clicking it, or Enter or Space on it, folds the card to one row above the
+composer with the same title, the progress (*2/3*), how many questions are
+already answered once one is (*1 answered*) and an up chevron, so the
+transcript takes back the room the card was using. Every pick and the current
+question are kept, and the card stays folded while the operator writes in the
+composer. The folded row, Enter on it or Escape opens the card again where the
+operator left it; Escape on the folded row opens it rather than declining the
+questions. A new call's card, and a reload, open unfolded.
+The fold is the web card's: the iPhone app draws questions in its own card
+(`docs/native-ios-plan.md`).
+
 The agent learns each answer as `"question"="answer"` (several joined by
 commas, a chosen option's preview after it), or that the operator declined:
 *Cancel*, Escape, Stop and a gateway stop all decline. Once answered, the
@@ -2491,7 +2537,128 @@ everything the Bots tab can, through the same routes.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
+## Gateway extensions
+
+HUI's first extendability seam beside PI's own packages, extensions and skills: a
+trusted local module can answer JSON routes on the gateway.
+
+- **Local and packaged.** An extension is a directory holding `extension.json`
+  (`apiVersion: 1`, `name`, `description`, relative `main`) and an ESM entry
+  module exporting `routes`. The operator's extensions live in
+  `$XDG_CONFIG_HOME/hui/extensions/<id>/`; HUI ships packaged ones beside
+  `skills/`, and `extensions/defaults.json` lists the page ids enabled until the
+  operator's `extensions.json` exists (the list is empty until P8 ships a page).
+  A config extension with the same id overrides the packaged one.
+- **Path-confined namespace.** The status route is `GET /__hui/ext`; the enable
+  switch is `PUT /__hui/ext/:id` with `{ "enabled": boolean }`; an extension's own
+  routes live below `/__hui/ext/<id>/` and can never shadow a HUI route. A route
+  path is one to four clean segments; a handler receives
+  `{ method, path, query, body, signal, extension, hui }` and answers
+  `{ status?, body }`.
+- **Generic payloads on purpose.** An extension route answers `PluginPayload` (a
+  JSON object HUI does not type) or `PluginError`; only the two fixed routes join
+  the build-time generated browser types. Extension payloads never enter
+  `docs/api.schema.json`. No headers, files, redirects, SSE or WebSocket; request
+  bodies keep the ordinary 64 KiB JSON limit and an answer is at most 256 KiB.
+- **The ordinary gate and diagnostics.** Every extension route sits behind the
+  `x-hui` header and the diagnostics hook. A handler that throws or answers with
+  something that is not a JSON object produces `500 { "error": "extension
+  failed" }`; a failing extension never affects another route or the gateway.
+- **Enablement is data.** `$XDG_CONFIG_HOME/hui/extensions.json`
+  (`{ "version": 1, "enabled": [] }`) records the choice; enabling imports the
+  module and registers its routes without a restart, disabling withdraws them at
+  once while Node keeps the module cached. A missing directory reads `missing`, a
+  bad manifest or import reads `failed` with its error and one warning diagnostic.
+- **Trusted code, stated plainly.** An extension runs in the gateway process with
+  the gateway's access to the machine, its credentials and its data, exactly like
+  a PI extension: no sandbox, no permission prompt, no timeout. `apiVersion`
+  refuses anything but `1`.
+- **Operator surface.** Settings → Extensions lists every installed extension with
+  its state, its routes and any error; the switch calls the enable route and the
+  row shows the state that came back. `hui extension list|enable|disable` does the
+  same from a terminal against the running gateway. The page is web-only; the
+  iPhone has no extension surface.
+- **Out-of-process mode.** A manifest may set `mode: "process"`: the extension
+  runs in one gateway-supervised child (at most eight), its routes and streams
+  forwarded over a versioned newline protocol, its prompt text read at start and its
+  tools refused. A crash restarts it after 1/2/4 s while routes answer 503; three
+  crashes in five minutes leave it `failed` until a reload. The child runs as the
+  same user with the same file access: crash isolation, not a sandbox. Settings shows
+  the mode and restart count.
+- **Packaged extensions.** HUI ships extensions beside `skills/`; `extensions/defaults.json`
+  lists the packaged page ids a fresh config enables until `extensions.json` exists.
+  A config extension with the same id overrides the packaged one, and `hui extension
+  eject <id>` copies a packaged extension into the config directory for editing.
+  `hui doctor` reports an invalid override, a stale copy and a failed default.
+- **Lifecycle.** A manifest may declare its `version` and the HUI `engines.hui`
+  range; a gateway outside it refuses to load with a named reason. `POST
+  /__hui/ext/:id/reload` re-imports a changed module (routes and panel files at
+  once, prompt text next assembly, tools next new Durable session), and a failed
+  reload withdraws the routes and reports `failed`. `hui extension add <path>
+  [--link]` validates and installs a local module (enabling it now when a gateway
+  runs, else at the next start); `hui extension remove <id> [--delete]` requires it
+  disabled and only deletes with `--delete`; `hui doctor` reports enabled
+  extensions that cannot load, without a `--fix`.
+- **Gateway context.** A route handler receives `context.hui`, a read-only facade
+  for gateway data: `github.contributions` first, with sessions and host metrics
+  following. It returns plain JSON, never a service handle; in-process handlers call
+  the gateway's own services, and a process-mode handler asks the supervising gateway
+  over the host protocol. The facade is additive within `apiVersion: 1`.
+- **Streaming.** A route may declare `stream: true` and return an async iterable of
+  events; HUI writes them as server-sent events with a heartbeat, caps (ten
+  minutes, 5 000 events, 256 KiB each, 5 MiB total), an `error` event on a throw or
+  cap, and the handler's `signal` aborted when the client leaves. The route's
+  metadata says `stream: true`.
+- **Agent contributions.** An extension may declare static `prompt` sections and
+  agent `tools` in its manifest, with each tool's handler exported under the same
+  name by the entry module. Enabled contributions reach every new Durable
+  conversation: its prompt text after the goal, its tool under the namespaced
+  `ext_<id>_<name>` with its snippet and guidelines, its arguments checked against
+  the declared schema, and its failure an `isError` result rather than a failed
+  turn. Sessions on the older PI worker and already-running Durable conversations
+  keep what they started with. Settings → Extensions shows each section and tool.
+- **Sandboxed panels.** An extension may ship `ui/` with an entry page; its files
+  are served before the `x-hui` gate at `/__hui/ext-ui/<id>/` (public, contained,
+  typed and size-capped) and the page renders in a Work pane iframe whose CSP makes
+  it an opaque origin with no network. It cannot call HUI: only a `postMessage`
+  bridge may ask the parent for that extension's own declared routes, with the
+  browser's session, under fixed size, count and time limits. An optional
+  `ui.icon` (`package`, `github` or `pull-request`) is the Work pane tab and rail
+  mark; absent, it is the package. **A page** is the same sandboxed document in a
+  full routed surface: `ui.page` names its title, its entry inside `ui/` and an
+  icon, the sidebar lists it while the extension is loaded, and `/ext/<id>`
+  renders it. Its bridge adds `navigate` for allowlisted HUI conversation paths
+  only; it cannot reach another HUI route. Extension pages are web-only. Settings →
+  Extensions
+  opens a panel in the current conversation's Work pane, and the Work pane's
+  launcher opens the first enabled panel. HUI ships a **build-hui-extension**
+  skill that scaffolds and verifies one; it is on by default and the operator can
+  turn it off in Settings → Skills. Per-extension generated types, SSE routes and
+  an out-of-process host are follow-ups.
+
 ## Decisions
+
+### Gateway extensions are path-confined and payload-silent (2026-11-04)
+
+The owner asked how far HUI could open its harness to people, and chose the
+gateway route seam as the first step. The shape follows from HUI's own contracts:
+the browser's payload types are generated at build time, the `/__hui/` dispatch is
+hand-ordered and pinned by tests, and every route needs a schema and a documented
+heading. So an extension is confined to a namespace HUI names, answers a generic
+JSON envelope instead of adding generated types, and reaches the operator as
+`extensions.json` plus two fixed routes rather than a new UI surface.
+
+- **No privileged placement.** Path confinement replaces ordering negotiation: a
+  plugin cannot claim `/__hui/settings` or race another route, so the dispatch
+  chain and `routes/order.test.ts` stay meaningful.
+- **Scriptable without a build step.** A plugin payload is untyped on purpose;
+  its own schemas stay in the extension and out of `docs/api.schema.json`, so a
+  third-party route can never break the generated browser contract.
+- **Trust before breadth.** Extensions are trusted code in the gateway process,
+  documented as such. The alternative — a sandbox or a child process — would need
+  its own IPC contract, streaming and supervision before it could carry a first
+  route, and was deliberately left to a later decision.
+
 
 ### A bot's prompt is four files, and only two of them travel (2026-10-25)
 
@@ -2633,6 +2800,29 @@ nothing needs me".
   when every session is running, starting or reconnecting; the page no longer
   says *Every session is idle.*
 
+### Android replaces the iOS app as HUI's native client (2026-11-09)
+
+The owner moves from an iPhone to Android: "I will be moving to android, can we
+drop the changes we did of the ios app", and asked for an app "that implements
+all the features that we have in HUI" so that "whatever change we do we also
+implement it for android".
+
+- **The iOS app is dropped.** Its SwiftUI code never reached `main` (draft
+  PR #347 stays unmerged as an archive), and `main` loses the iOS target, the
+  iOS status of every use case and the iOS fixture steps.
+- **The native client is a Kotlin and Jetpack Compose Android app**, not a
+  WebView shell around the web UI. `docs/native-android-plan.md` is its plan.
+- **Lockstep starts with the Android target.** Until the shared suite has an
+  Android target, use cases carry only a web status. The PR that adds the
+  target gives every use case an Android status, with existing ones in a
+  backlog that only shrinks, and from then on a new or changed use case passes
+  on the web and on Android in the same PR.
+- **The phone-app decisions below carry over.** Where an earlier decision names
+  the iPhone or the iOS app (keyboard and wide-layout mechanics stay on the
+  web, a tap opens a preview, the app follows the phone's text size, the app
+  connects to one gateway, the web's upload progress, a secondary click), it
+  now applies to the Android app until the owner revisits it.
+
 ### Use cases live in one catalogue (2026-10-21)
 
 The owner wants a native iOS app with the web UI's capabilities, and a way to
@@ -2700,7 +2890,7 @@ A Files upload in the web app can take a long time: the body streams to the
 gateway and a video may be a gigabyte. Only the browser knows how much of it it
 has sent, so the navigator draws **Upload progress** and **Cancel upload** while
 a file is in flight. The iPhone app imports files through its native file
-importer (`fileImporter`, `docs/native-ios-plan.md`), which draws the system's
+importer (`fileImporter`), which draws the system's
 own progress and has no in-app Cancel; a second progress bar there would
 reproduce a control the phone already shows. Watching a web upload and stopping
 it is therefore a web-only use case, while the gateway's larger cap applies to
@@ -4028,10 +4218,11 @@ currently configured PI source on the server. A skill operation is successful
 only when a fresh PI inventory discovers a new `SKILL.md`; process exit alone
 is not success. HUI never edits PI's settings or skill directories itself.
 
-HUI also ships `create-verification-skill`, a portable generator for project-local
-verification workflows, and `git-selective-staging`, which commits only a
-session's own hunks when a shared or reused checkout already holds other
-uncommitted work, both with the **good practices** tag. Each is available by
+HUI also ships `build-hui-extension`, a v1-aware guide and working reference for
+local gateway extensions; `create-verification-skill`, a portable generator for
+project-local verification workflows; and `git-selective-staging`, which commits
+only a session's own hunks when a shared or reused checkout already holds other
+uncommitted work, all with the **good practices** tag. Each is available by
 default in new SDK and CLI runtimes, not automatically executed. Their read-only
 files live in HUI's installed package; no installation agent, provider call or PI
 configuration write is needed. Skills and Settings → Skills expose the same

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hello</title>
+    <style>
+      :root { --fg: #1f2328; --muted: #656d76; --line: #d8dee4; color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: transparent; color: var(--fg); font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; }
+      main { padding: 14px 16px; max-width: 640px; }
+      h1 { margin: 0 0 2px; font-size: 15px; }
+      p { margin: 0 0 10px; color: var(--muted); }
+      form { display: flex; gap: 8px; }
+      input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; font: inherit; color: inherit; background: transparent; }
+      button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; font: inherit; color: inherit; background: transparent; cursor: pointer; }
+      button:hover { border-color: var(--muted); }
+      output { display: block; margin-top: 12px; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Hello</h1>
+      <p id="status">Loading…</p>
+      <form id="form">
+        <input id="name" name="name" aria-label="Name" placeholder="Ada" autocomplete="off">
+        <button type="submit">Greet</button>
+      </form>
+      <output id="greeting" role="status"></output>
+    </main>
+    <script src="panel.js"></script>
+  </body>
+</html>

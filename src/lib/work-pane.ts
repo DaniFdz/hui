@@ -15,7 +15,8 @@ export type WorkViewRef =
   | { kind: "browser" }
   | { kind: "files"; id: string }
   | { kind: "vscode" }
-  | { kind: "diff"; id: string };
+  | { kind: "diff"; id: string }
+  | { kind: "extension"; id?: string; icon?: string };
 
 export type WorkViewContext = {
   /** The conversation owning the Work pane. */
@@ -44,10 +45,14 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   label: string;
   /** 16px SVG, explicit size. */
   icon: TemplateResult;
+  /** The tab and rail icon when it depends on the ref; defaults to `icon`. */
+  tabIcon?(ref: R): TemplateResult;
   /** e.g. "Mod+Alt+Shift+KeyF" (display + binding); the entry in `WORK_SHORTCUTS`. */
   shortcut?: string;
   /** Visible reason when it cannot launch (for this conversation, when given). */
   unavailable?(sessionId?: string): string | undefined;
+  /** Not listed at all while this answers true (a launcher with nothing to open). */
+  hidden?(): boolean;
   /** When `unavailable` answers, the Settings page that changes it (e.g. "Open Settings → Tools → VS Code"). */
   settingsLink?(sessionId?: string): WorkViewSettingsLink | undefined;
   /** Calls `listener` whenever `unavailable` may answer differently; returns the unsubscribe. */
@@ -84,9 +89,14 @@ export function workViewKinds(): WorkViewKind[] {
   return [...kinds.values()];
 }
 
-/** Launchers worth listing beside a conversation's open views: every kind except a single-view kind already open. */
+/** Kinds the launcher UI may list: registered ones whose launcher has something to open. */
+export function listedWorkViewKinds(): WorkViewKind[] {
+  return workViewKinds().filter((kind) => !kind.hidden?.());
+}
+
+/** Launchers worth listing beside a conversation's open views: every listed kind except a single-view kind already open. */
 export function launchableWorkViewKinds(pane: Pick<SessionWorkPane, "views">): WorkViewKind[] {
-  return workViewKinds().filter((kind) => !kind.single || !pane.views.some((view) => view.kind === kind.kind));
+  return listedWorkViewKinds().filter((kind) => !kind.single || !pane.views.some((view) => view.kind === kind.kind));
 }
 
 /** Used for kinds that are not registered (yet): the same keys the built-in kinds use. */
@@ -94,6 +104,7 @@ export function defaultWorkViewKey(ref: WorkViewRef): string {
   if (ref.kind === "terminal") return `terminal:${ref.terminalId}`;
   if (ref.kind === "files") return `files:${ref.id}`;
   if (ref.kind === "diff") return `diff:${ref.id}`;
+  if (ref.kind === "extension") return `extension:${ref.id ?? "all"}`;
   return ref.kind;
 }
 
@@ -301,6 +312,12 @@ export function parseWorkViewRef(value: unknown, isKnown: (kind: string) => bool
     return typeof raw.id === "string" && raw.id.trim() && raw.id.length <= 128 && !CONTROL.test(raw.id) ? { kind: raw.kind, id: raw.id } : undefined;
   }
   if (raw.kind === "browser" || raw.kind === "vscode") return { kind: raw.kind };
+  if (raw.kind === "extension") {
+    if (raw.id === undefined) return { kind: "extension" };
+    if (typeof raw.id !== "string" || !raw.id.trim() || raw.id.length > 128 || CONTROL.test(raw.id)) return undefined;
+    const icon = typeof raw.icon === "string" && raw.icon.length <= 32 && !CONTROL.test(raw.icon) ? raw.icon : undefined;
+    return { kind: "extension", id: raw.id, ...(icon ? { icon } : {}) };
+  }
   return undefined;
 }
 

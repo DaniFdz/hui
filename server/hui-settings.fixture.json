@@ -25,7 +25,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -93,7 +94,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -161,7 +163,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -229,7 +232,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -303,7 +307,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -373,7 +378,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -443,7 +449,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -519,7 +526,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -589,7 +597,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -659,7 +668,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -729,7 +739,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -799,7 +810,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -872,7 +884,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -947,7 +960,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1017,7 +1031,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1089,7 +1104,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1161,7 +1177,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": false
@@ -1231,7 +1248,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1301,7 +1319,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1371,7 +1390,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1443,7 +1463,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1515,7 +1536,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1587,7 +1609,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1659,7 +1682,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1731,7 +1755,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1803,7 +1828,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1875,7 +1901,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -1947,7 +1974,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2019,7 +2047,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2091,7 +2120,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2166,7 +2196,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2241,7 +2272,8 @@
         "enabled": false,
         "headless": false,
         "executablePath": "/Applications/Brave Browser.app",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2314,7 +2346,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2387,7 +2420,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2462,7 +2496,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2534,7 +2569,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2606,7 +2642,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2678,7 +2715,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2750,7 +2788,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2822,7 +2861,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2894,7 +2934,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -2966,7 +3007,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3041,7 +3083,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3113,7 +3156,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3186,7 +3230,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3264,7 +3309,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3340,7 +3386,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3413,7 +3460,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3487,7 +3535,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3557,7 +3606,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3627,7 +3677,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3697,7 +3748,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3767,7 +3819,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3837,7 +3890,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3907,7 +3961,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -3977,7 +4032,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4047,7 +4103,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4135,7 +4192,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4231,7 +4289,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4307,7 +4366,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4377,7 +4437,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4447,7 +4508,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4517,7 +4579,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4587,7 +4650,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4657,7 +4721,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4727,7 +4792,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4797,7 +4863,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4874,7 +4941,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -4946,7 +5014,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5018,7 +5087,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5090,7 +5160,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5162,7 +5233,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5234,7 +5306,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5306,7 +5379,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5378,7 +5452,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5450,7 +5525,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5522,7 +5598,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5594,7 +5671,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5666,7 +5744,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5738,7 +5817,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5810,7 +5890,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5884,7 +5965,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -5954,7 +6036,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6024,7 +6107,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6094,7 +6178,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6164,7 +6249,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6234,7 +6320,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6304,7 +6391,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6374,7 +6462,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6444,7 +6533,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6514,7 +6604,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6584,7 +6675,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6654,7 +6746,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6724,7 +6817,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6794,7 +6888,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6864,7 +6959,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -6934,7 +7030,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7004,7 +7101,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7074,7 +7172,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7144,7 +7243,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7214,7 +7314,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7284,7 +7385,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7354,7 +7456,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7424,7 +7527,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7494,7 +7598,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7569,7 +7674,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7644,7 +7750,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7714,7 +7821,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7840,7 +7948,8 @@
         "enabled": true,
         "headless": true,
         "executablePath": "",
-        "mirrorState": false
+        "mirrorState": false,
+        "allowedOrigins": []
       },
       "codemode": {
         "enabled": true
@@ -7903,6 +8012,164 @@
             "model": "local/qwen"
           }
         ]
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "browser": {
+        "allowedOrigins": [
+          " Example.com ",
+          "example.com",
+          "",
+          7,
+          "bad host",
+          "*.Docs.Example.com",
+          "127.0.0.1:5199"
+        ]
+      }
+    },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100,
+      "chat": {
+        "messageWidth": "comfortable",
+        "collapseTaskProgress": false,
+        "sendShortcut": "enter",
+        "githubEmbeds": true,
+        "datadogEmbeds": true,
+        "toolMarks": {},
+        "toolIcons": {}
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": "",
+        "mirrorState": false,
+        "allowedOrigins": [
+          "example.com",
+          "*.docs.example.com",
+          "127.0.0.1:5199"
+        ]
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": "",
+        "thinking": "",
+        "retryAttempts": 3,
+        "routes": []
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "browser": {
+        "allowedOrigins": "example.com"
+      }
+    },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100,
+      "chat": {
+        "messageWidth": "comfortable",
+        "collapseTaskProgress": false,
+        "sendShortcut": "enter",
+        "githubEmbeds": true,
+        "datadogEmbeds": true,
+        "toolMarks": {},
+        "toolIcons": {}
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": "",
+        "mirrorState": false,
+        "allowedOrigins": []
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": "",
+        "thinking": "",
+        "retryAttempts": 3,
+        "routes": []
       },
       "calls": {
         "voice": "cove"

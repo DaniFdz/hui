@@ -39,11 +39,19 @@ export type RouteStream = { mimeType: string; size: number; headers: Record<stri
 
 export type JsonResult = { status: number; body: unknown; etag?: string };
 
+/** An event stream a route answers with: the events, and what to do when a throw or a cap ends it. */
+export type RouteEventStream = {
+  events: AsyncIterable<unknown>;
+  heartbeatMs?: number;
+  onError?: (message: string) => void;
+};
+
 export type RouteResult =
   | JsonResult
   | { status: number; html: string }
   | { status: number; file: RouteFile }
-  | { status: number; stream: RouteStream };
+  | { status: number; stream: RouteStream }
+  | { status: number; sse: RouteEventStream };
 
 export function reply<S extends TSchema>(_schema: S, body: Static<S>, status = 200): JsonResult {
   return { status, body };

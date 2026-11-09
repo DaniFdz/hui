@@ -80,6 +80,7 @@ type OriginalSettings = {
 };
 
 type OriginalBrowserSettings = {
+  allowedOrigins: string[];
 
   enabled: boolean;
 

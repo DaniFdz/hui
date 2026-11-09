@@ -69,14 +69,14 @@ test("each model is tried in turn; a spent budget is a timeout, and no model is 
     return `from ${model}`;
   };
   const signal = new AbortController().signal;
-  assert.deepEqual(await complete(["a/down", "a/blank", "a/up"], { system: "s", prompt: "p", signal }, completion), { text: "from a/up", model: "a/up" });
+  assert.deepEqual(await complete(["a/down", "a/blank", "a/up"], { system: "s", prompt: "p", signal, session: "b1" }, completion), { text: "from a/up", model: "a/up" });
   assert.deepEqual(asked, ["a/down", "a/blank", "a/up"]);
-  await assert.rejects(complete(["a/down"], { system: "s", prompt: "p", signal }, completion), (error: unknown) => error instanceof CallHelperError && !error.aborted && /429/u.test(error.message));
-  await assert.rejects(complete([], { system: "s", prompt: "p", signal }, completion), /No utility model/u);
+  await assert.rejects(complete(["a/down"], { system: "s", prompt: "p", signal, session: "b1" }, completion), (error: unknown) => error instanceof CallHelperError && !error.aborted && /429/u.test(error.message));
+  await assert.rejects(complete([], { system: "s", prompt: "p", signal, session: "b1" }, completion), /No utility model/u);
   const slow: CallCompletion = (_model, request) => new Promise((_, reject) => request.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
   const budget = deadline(20);
   try {
-    await assert.rejects(complete(["a/slow", "a/up"], { system: "s", prompt: "p", signal: budget.signal }, slow), (error: unknown) => error instanceof CallHelperError && error.aborted);
+    await assert.rejects(complete(["a/slow", "a/up"], { system: "s", prompt: "p", signal: budget.signal, session: "b1" }, slow), (error: unknown) => error instanceof CallHelperError && error.aborted);
   } finally {
     budget.clear();
   }
@@ -115,11 +115,13 @@ function delegateHarness(completion: CallCompletion, options: { budgetMs?: numbe
 
 test("the helper answers within its budget, never through the bot's chat, and the call's record keeps the answer", async () => {
   const models: string[] = [];
-  const h = delegateHarness(async (model, request) => { models.push(model); assert.match(request.prompt, /teal/u); return "Dani's favourite colour is teal."; });
+  const sessions: string[] = [];
+  const h = delegateHarness(async (model, request) => { models.push(model); sessions.push(request.session); assert.match(request.prompt, /teal/u); return "Dani's favourite colour is teal."; });
   const call = activeCall();
   const result = await h.delegate({ bot: bot(), call, request: "What's Dani's favourite colour?" });
   assert.deepEqual(result, { status: "answered", speak: "Dani's favourite colour is teal." });
   assert.deepEqual(models, ["openai-codex/gpt-6-luna"], "Settings' utility model for a bot without its own");
+  assert.deepEqual(sessions, ["b1"], "the completion goes as the bot's provider session");
   assert.deepEqual(h.handed, [], "nothing reaches the bot's chat");
   assert.deepEqual(call.lines, [{ role: "helper", request: "What's Dani's favourite colour?", text: "Dani's favourite colour is teal.", at: 5_000 }]);
   assert.equal(call.questions, 1);
@@ -192,15 +194,17 @@ test("the record at hang-up: the summary in the bot's language and the whole tra
     { role: "assistant", text: "It's teal.", at: 4_000 },
   ];
   let prompt = "";
+  let session = "";
   const record = await buildCallRecord({
     bot: bot({ voice: { language: "es" } }), call: { id: "call-1", startedAt: 1_000, lines }, endedAt: 181_000,
     settings: { utility: "openai-codex/gpt-6-luna", operator: "Dani" },
-    completion: async (_model, request) => { prompt = `${request.system}\n${request.prompt}`; return "**Discussed**: su color favorito." },
+    completion: async (_model, request) => { prompt = `${request.system}\n${request.prompt}`; session = request.session; return "**Discussed**: su color favorito." },
   });
   assert.deepEqual(record, {
     call: "call-1", bot: "Juno", startedAt: 1_000, endedAt: 181_000, summary: "**Discussed**: su color favorito.",
     lines: [lines[1], lines[0], lines[2]],
   });
+  assert.equal(session, "b1", "the summary goes as the bot's provider session");
   assert.match(prompt, /Write it in Spanish, at most 120 words/u);
   assert.match(prompt, /\*\*Decisions\*\*: only what was confirmed/u);
   assert.match(prompt, /A 3-minute call\. Transcript:/u);

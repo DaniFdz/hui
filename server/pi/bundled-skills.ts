@@ -14,6 +14,11 @@ export const bundledSkills = [{
   preferencePath: "hui:skill:automate-me",
   tags: ["bots"],
 }, {
+  name: "build-hui-extension",
+  path: fileURLToPath(new URL("../../skills/build-hui-extension/SKILL.md", import.meta.url)),
+  preferencePath: "hui:skill:build-hui-extension",
+  tags: ["good practices"],
+}, {
   name: "cost-investigation",
   path: fileURLToPath(new URL("../../skills/cost-investigation/SKILL.md", import.meta.url)),
   preferencePath: "hui:skill:cost-investigation",

@@ -163,6 +163,32 @@ export class HuiBrowserSettings extends LitElement {
     </form>`;
   }
 
+  /** The list is the browser's whole reach: a page outside it is refused, and a link that leaves it is stopped. */
+  #renderOrigins() {
+    const settings = this.settings;
+    const count = settings.allowedOrigins.length;
+    const description = count
+      ? `${count} pattern${count === 1 ? "" : "s"}. A page outside them is refused, a link or redirect that leaves them is stopped and the tab is left blank, and a local file is refused. Subresources a page loads are not filtered.`
+      : "Empty lets agents browse anywhere, which is the default. One pattern per line: example.com, example.com:8443, https://app.example.com, or *.example.com for subdomains only.";
+    return html`<form class="settings-row browser-settings__origins" @submit=${(event: SubmitEvent) => {
+      event.preventDefault();
+      const raw = new FormData(event.currentTarget as HTMLFormElement).get("allowedOrigins");
+      const patterns = String(raw ?? "").split(/[\n,]/u).map((pattern) => pattern.trim()).filter(Boolean);
+      void this.#save({ ...settings, allowedOrigins: patterns });
+    }}>
+      <div class="settings-row__text">
+        <label class="settings-row__title" for="browser-allowed-origins">Allowed origins</label>
+        <span class="settings-row__desc">${description}</span>
+      </div>
+      <div class="settings-row__control">
+        <textarea class="settings-input browser-settings__origins-input" id="browser-allowed-origins" name="allowedOrigins"
+          rows="4" spellcheck="false" autocomplete="off" placeholder="example.com&#10;*.example.com"
+          .value=${settings.allowedOrigins.join("\n")}></textarea>
+        <button type="submit" class="btn">Save origins</button>
+      </div>
+    </form>`;
+  }
+
   #renderProcess(status: BrowserStatus) {
     const running = status.state === "running";
     const pending = status.state === "starting" || status.state === "stopping";
@@ -234,6 +260,7 @@ export class HuiBrowserSettings extends LitElement {
             </div>
             <div class="settings-row__control">${renderSettingsToggle("Run headless", settings.headless, (checked) => void this.#save({ ...settings, headless: checked }))}</div>
           </div>
+          ${this.#renderOrigins()}
           <div class="settings-row">
             <div class="settings-row__text">
               <span class="settings-row__title">Mirror browser state</span>

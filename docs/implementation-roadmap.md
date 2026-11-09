@@ -682,6 +682,50 @@ protocol error, and a launch that loses the profile to another process reports
 that instead of "The browser connection closed." Proof:
 `server/browser/manager.test.ts`.
 
+Follow-up 2026-11-07: the live view is no longer only a view. An agent that
+reaches a step only a person can finish (a password, 2FA, a passkey, a payment, a
+site's bot check) calls the browser tool's `handoff` with one instruction and
+waits for the operator in that tab: the chat's preview card says *Your turn* and
+opens the Work pane's browser view, which shows the message and *I'm done —
+continue*; while it waits the operator's pointer, wheel and keys reach that tab
+over the existing live-view socket, the tab cannot close, and every other agent
+browser action is refused. Continue returns the page as it is then, with a fresh
+snapshot whose refs the agent acts on; a wait nobody answers ends after its
+timeout with the tab back in the agent's control, and a closed tab or a stopped
+browser ends it too. Notation follows OpenCode's Browse, with HUI's own browser
+and no new dependency, route or persisted format. Proof:
+`server/browser/manager.test.ts` (a real headless browser: the operator's click
+and keys reach the page, the agent is refused meanwhile, Continue returns the
+typed page and a working ref, a timeout returns the tab, a Stop or a stopped
+browser settles the wait as closed or stopped, the operator's wheel scrolls the
+page, and input is ignored once nothing waits),
+`server/browser/transport.test.ts` (only well-formed operator frames reach a
+handed-over tab), `src/lib/browser-view.test.ts`,
+`src/controllers/browser-view-controller.test.ts`,
+`src/api/browser.test.ts` and the handoff section of
+`e2e/browser-tool.browser.md`.
+
+Follow-up 2026-11-08: Settings → Tools → Browser gains an opt-in *Allowed
+origins* list, because a mirrored profile holds real logins and nothing used to
+bound where an agent could drive it. Empty keeps today's behaviour; a set list
+refuses an agent's `open`, `navigate` and history move before a tab goes there,
+stops a link, redirect or popup that leaves it and leaves the tab on
+`about:blank` with the reason in the next tool result and the live view's
+action, refuses local files, and needs an exact host for a private or loopback
+address. Patterns are hosts, host:port, scheme hosts and `*.host` subdomain
+wildcards; a typo matches nothing rather than everything. Notation follows
+OpenCode's Browse, with HUI's own browser and no new dependency or route. Proof:
+`server/browser/origins.test.ts` (pattern, port, scheme, wildcard and private
+address rules), `server/browser/manager.test.ts` (a real headless browser: a
+second host refused with 403, a link from an allowed page stopped and left
+blank, the block reported once, a popup or redirect leaving the list stopped —
+the popup checked where it landed, since it can commit before HUI attaches —
+and a back or forward entry the list now refuses),
+`server/hui-settings.test.ts` and
+`src/lib/settings/settings.test.ts` (the same fixture for both normalizers),
+`e2e/tests/set/browser-origins.e2e.ts` (the field saves and survives a reload)
+and the origin section of `e2e/browser-tool.browser.md`.
+
 ### HUI-16 — macOS sleep prevention
 
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on
@@ -1241,17 +1285,22 @@ migration), `src/lib/shortcut-binding.test.ts`, `src/views/panel-selector.test.t
 `src/lib/session/multiplexer.test.ts` (the old format stays readable) and the
 Browser-tool journey.
 
-### HUI-22 — Native iOS app and one e2e suite for both clients
+### HUI-22 — Native Android app and one e2e suite for both clients
 
-**Status:** planned, not started. The plan is [`native-ios-plan.md`](native-ios-plan.md).
+**Status:** planned, not started. The plan is [`native-android-plan.md`](native-android-plan.md).
+It replaces the native iOS app, dropped on 2026-11-09 (SPEC.md, "Android
+replaces the iOS app as HUI's native client"); the SwiftUI work stays unmerged
+on draft PR #347.
 
-A SwiftUI iPhone app with the web UI's capabilities, on the same `/__hui/`
-contract, distributed through SideStore. Every use case lives in one catalogue
-(`e2e/catalogue/`), and each shared tester-army/e2e test in `e2e/tests/` runs on
-the web UI and on the app. Guards fail a PR that adds a surface no use case
-claims, and from the PR that adds the iOS job a new or changed use case must
-pass on both clients in the same PR. Milestones M0 (spikes) to M11 (calls) are in
-the plan, section 7.
+A Kotlin and Jetpack Compose Android app with the web UI's capabilities, on the
+same `/__hui/` contract, built on Linux with a pinned Nix toolchain and a
+headless KVM emulator, and distributed as a signed APK on GitHub Releases. Every
+use case lives in one catalogue (`e2e/catalogue/`), and each shared
+tester-army/e2e test in `e2e/tests/` runs on the web UI and, from the PR that
+adds the Android target, on the app. Guards fail a PR that adds a surface no use
+case claims, and from that PR a new or changed use case must pass on both
+clients in the same PR. Milestones M0 (spikes) to M11 (notifications) are in the
+plan, section 7.
 
 ### HUI-23 — Subagent model routes
 

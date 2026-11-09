@@ -1252,6 +1252,114 @@ Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`):
 
 Icon files go in `HUI_CONFIG_DIR/tool-icons/` and are served read-only at `/__hui/tool-icons/<file>`; the browser only ever draws them in an `<img>`, so an SVG cannot run script. Names are flat file names — no paths — with an `.svg`, `.png`, `.webp`, `.jpg` or `.jpeg` extension, at most 256 KB. Keys are a CLI binary or a tool name, lowercased. Restart the gateway after adding files or editing the maps.
 
+## Gateway extensions
+
+A gateway extension is a small local module that answers JSON routes under
+`/__hui/ext/` and may add a sandboxed panel or page, prompt text and agent tools.
+You put one in `HUI_CONFIG_DIR/extensions/<id>/` and enable it over HTTP or in
+Settings. The extension runs **inside the gateway process** with the gateway's
+full access to your machine, credentials and data — the same trust as a PI
+extension and no sandbox for that code. Only add code you would run yourself.
+[What a gateway extension can and cannot do](extensions.md) is the capability
+matrix; the rest of this section is the working guide.
+
+An extension directory holds a manifest and its entry module:
+
+```
+HUI_CONFIG_DIR/extensions/hello/
+  extension.json
+  index.mjs
+```
+
+```json
+{ "apiVersion": 1, "name": "Hello", "description": "Greets people.", "main": "index.mjs" }
+```
+
+```js
+// index.mjs: one route per method and path below /__hui/ext/hello/
+export const routes = [
+  {
+    method: "GET",
+    path: "hello",
+    description: "Greets a name from the query.",
+    handle: async ({ query }) => ({ body: { greeting: `hello, ${query.get("name") ?? "world"}` } }),
+  },
+];
+```
+
+An id is a lowercase directory name (letters, digits and `-`, at most 32
+characters), `apiVersion` must be `1`, and `main` must stay inside the extension's
+directory. A panel is optional: `"ui": { "title": "Hello panel", "entry": "index.html" }`
+serves the files under the extension's `ui/` directory at `/__hui/ext-ui/<id>/` and
+shows the entry page in a sandboxed Work pane frame that can only call the
+extension's own routes through HUI. Its optional `icon` names the Work pane tab's
+mark — `package` (the default), `github` or `pull-request`; another name is
+refused when the manifest loads. A page is optional too:
+`"ui": { "title": "Hello", "page": { "title": "Hello page", "entry": "page.html" } }`
+adds a sidebar destination at `/ext/<id>` that renders `ui/page.html` in the same
+sandbox; its bridge may also ask HUI to open an allowlisted conversation. A route
+can read read-only gateway data through `context.hui` (`github.contributions`
+first); no service handles or HUI routes are exposed. An extension can also declare static prompt
+sections for Durable conversations and agent tools, whose handlers are exported by
+the entry module under the tool's name, and a route can stream events with
+`stream: true` (see `e2e/fixtures/extensions/hello`). Panel files are public to anyone who can reach
+the gateway, so keep secrets out of them. A route path is one to four clean segments. A handler gets
+`{ method, path, query, body, signal, extension }` and returns
+`{ status?, body }` where `body` is a JSON object (at most 256 KiB); there are no
+response headers, files, redirects or streams, and a request body follows the
+ordinary 64 KiB JSON limit. The same `x-hui` gate as every other route applies.
+
+Installed extensions start out off. **Settings → Extensions** lists each one with
+its state, its routes and any error, and its switch turns it on or off; **Open
+panel** shows an enabled extension's panel in the current conversation's Work pane
+(or add it from the Work pane's + menu). The same
+is available from a terminal (the gateway must be running; replace the port with
+your own):
+
+```sh
+curl -sS http://127.0.0.1:5173/__hui/ext -H 'x-hui: 1'
+curl -sS -X PUT http://127.0.0.1:5173/__hui/ext/hello \
+  -H 'x-hui: 1' -H 'content-type: application/json' -d '{"enabled":true}'
+curl -sS 'http://127.0.0.1:5173/__hui/ext/hello/hello?name=Ada' -H 'x-hui: 1'
+hui extension list
+hui extension enable hello
+hui extension disable hello
+```
+
+A manifest can set `"mode": "process"` to run in a supervised child process (at most
+eight at once): its routes and streams are forwarded, a crash restarts it after 1, 2
+and 4 seconds while routes answer 503, and three crashes in five minutes leave it
+failed until a reload. That is crash isolation, not a sandbox; tools require the
+default in-process mode.
+
+HUI ships some extensions in its package, beside `skills/`; a packaged page
+listed in `extensions/defaults.json` is on until `extensions.json` exists. A config
+copy with the same id overrides it; `hui extension eject <id>` copies the packaged
+source into your config directory without enabling it, so you can edit it and reload.
+
+`hui extension add <path> [--link]` validates a local module and installs it
+(copied, or linked with `--link`), enabling it now when the gateway runs and at the
+next start otherwise; `hui extension remove <id>` needs it disabled, and only
+`--delete` removes its directory. A manifest may carry `version` and `engines.hui`
+bounds; a gateway outside them refuses to load it. **Reload** on Settings →
+Extensions (or `hui extension reload <id>`) re-imports a changed module. `hui
+doctor` reports enabled extensions that cannot load.
+
+The bundled **build-hui-extension** skill walks an agent through this surface,
+copies a working reference extension and verifies it against the gateway; turn it
+off in Settings → Skills if you do not want it offered.
+
+The choice is saved in `HUI_CONFIG_DIR/extensions.json` (`{ "version": 1,
+"enabled": ["hello"] }`) and applies immediately: enabling imports the module,
+disabling withdraws its routes at once (Node keeps the module cached). The same
+call with `"enabled":false` turns it off. A manifest or import failure answers
+200 with `state: "failed"` and an `error`, is listed by the first route above and
+is reported once as a gateway diagnostic; other extensions and the rest of HUI keep
+working. A changed manifest is read again when the extension is toggled off and
+on; changing a module's code takes effect when the gateway restarts. HUI 0.1.5 has
+no Settings page for extensions yet; the HTTP surface in the [API contract](api.md)
+is the operator interface.
+
 ## Codemode: one script, many tool calls
 
 Sessions can use PI's **codemode** tool: instead of calling tools one at a time,
@@ -1291,6 +1399,36 @@ the rest of the work and list the decisions still open for you in its final
 reply. The transcript marks the questions as expired, with their options, so
 you can see what it asked; reply in the chat to decide. The timeout applies to
 questions asked after you change it.
+
+## When the agent asks you to take over the browser
+
+Some browser steps only a person can finish: a password, a two-factor code, a
+passkey, a payment, or a site's bot check. When an agent gets there it hands the
+tab to you instead of guessing. The chat's browser preview card says **Your
+turn** with the agent's one-line instruction, and **Take over** opens the
+conversation's browser view. Once there, the page is yours: click, type, scroll
+and paste as you would in any browser, then press **I'm done — continue**. The
+agent gets the page as it is then, with fresh element refs, and carries on.
+
+While you have the tab the agent waits and cannot act on the browser, the tab
+never closes, and the view says *You have control; the agent waits*. A tab you
+leave in another view, or a handoff you never answer, ends by itself after ten
+minutes (the agent is told you may be away and gets the tab back); a handoff can
+ask for up to thirty. If the tab closes or the browser stops first, the agent is
+told that instead. Opening the browser view from the header's globe button shows
+the same view: it stays view-only unless a handoff is waiting.
+
+## Limiting where the agent's browser goes
+
+Settings → Tools → Browser → **Allowed origins** is empty by default: the
+agent's browser may open any http(s) page. Add one pattern per line to bound
+it — `example.com`, `example.com:8443`, `https://app.example.com`, or
+`*.example.com` for subdomains only (never the bare domain itself). With a list
+set, an agent can only open or navigate to those pages: links, redirects and
+popups that leave the list are stopped and the tab is left blank, the tool
+result says why, and a local file is refused. A loopback or private address
+needs its exact host, and the list follows where a page goes, not what it
+loads, so a page on the list can still fetch its own resources.
 
 ## Giving a conversation a goal
 

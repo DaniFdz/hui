@@ -101,7 +101,7 @@ output.
 Clicking the banner opens its originating conversation, creating a window if
 needed. Delivery alone does not change focus. macOS settings may suppress the
 banner, and queued is not proof the operator read it. Notification calls are
-not replayed after a crash. Browser and iPhone push are outside this version.
+not replayed after a crash. Browser and phone push are outside this version.
 
 `Settings.notifications` also chooses HUI's own notifications, sent through the
 same app on a macOS gateway: `runFinished` (default `false`) and `runFailed`
@@ -4299,6 +4299,96 @@ Missing or invalid fields use their defaults rather than the previous values.
 The gateway applies the settings to its running services. Neither route changes
 PI's configuration.
 
+### `GET /__hui/ext`
+
+Returns `ExtensionsResponse`: every directory under `$XDG_CONFIG_HOME/hui/extensions`
+plus every id the enable store lists, sorted by id. Each `ExtensionStatus` carries
+the extension's `id`, `name`, `description`, `enabled`, its `routes` metadata, `panel`
+(`title` and `entry`) when it ships a sandboxed panel, its declared `prompt` sections
+and agent `tools` (with each tool's declared and `ext_<id>_<name>` runtime name) when
+it declares them, its `version` and `engines`, its `mode` (`in-process` or `process`) and
+`restarts` count, and a `state` of `loaded`, `disabled`, `failed` or `missing`;
+`error` explains a failure. `reloadedAt` marks a successful reload.
+`storeError` appears when `extensions.json` cannot be read; the list then behaves as
+if nothing is enabled. Listing rescans the directory, but it never imports an
+extension: a disabled extension stays `disabled` and its module is never loaded.
+
+### `PUT /__hui/ext/:id`
+
+Accepts `ExtensionToggleRequest` (`{ "enabled": boolean }`), persists the choice to
+`extensions.json` (atomic write, mode 0600) and reconciles the running set before
+answering `ExtensionStatus`. Enabling imports the module and registers its routes
+without a restart; disabling removes them immediately, although Node keeps the
+module cached. The choice is recorded, not a promise it loaded: an extension whose
+manifest or import fails answers 200 with `state: "failed"` and its `error`. An id
+with no directory returns 404, a malformed body 400, any other method 405.
+
+### `POST /__hui/ext/:id/reload`
+
+Re-imports the extension's entry module with a cache-busting URL and returns
+`ExtensionStatus` with `reloadedAt`. Its routes and panel files use the new table at
+once, its prompt text on the next assembly and its tools on the next new Durable
+session. A failed reload answers 200 with `state: "failed"` and the error, and
+withdraws the routes; an unknown id is 404. `reload` is a reserved path for an
+extension's own routes.
+
+### Process-mode extensions
+
+A manifest may set `mode: "process"`; the extension then runs in one child process
+the gateway supervises (at most eight at once). Its routes and streams are forwarded
+over a newline-framed, versioned protocol, its prompt text travels at start, and its
+tools are refused (`tools require in-process mode`). A crash restarts it after 1, 2
+and 4 seconds, answering `503 { "error": "extension process is restarting" }` while
+it is down; three crashes in five minutes leave it `failed` until a reload. This is
+crash isolation, not a security sandbox: the child runs as the same user with the
+same file access.
+
+### Extension panel files
+
+An extension with a `ui` manifest entry ships its panel's files under the gateway
+prefix `/__hui/ext-ui/<id>/<path>`, mapped to the extension's `ui/` directory. They
+are served **before** the `x-hui` gate, like the widget sandbox page, because an
+iframe cannot send that header; they are public to anyone who can reach the gateway
+and must hold no secrets. Only files inside that `ui/` directory are served
+(realpath containment; symlinks that leave it are refused), only these types:
+`html`, `js`, `mjs`, `css`, `json`, `svg`, `png`, `webp`, `jpg`, `jpeg`,
+`woff2`; at most 10 MiB each; `GET` and `HEAD` only. Every response carries
+`no-store`, `nosniff`, cross-origin CORP (the sandboxed frame's opaque origin is
+cross-origin to the gateway), no referrer, a restrictive permissions policy, and a CSP whose `sandbox` makes the document an opaque origin, whose
+sources are limited to that extension's own prefix, and whose `connect-src 'none'`
+blocks every network call: a panel's only channel is its parent bridge. Files are
+served only while the extension is enabled and loaded.
+
+### Extension routes
+
+An installed extension answers under `/__hui/ext/<id>/<path>`, where `<path>` is one
+to four `/`-separated segments it declares. Any of the five JSON methods is allowed.
+The `x-hui` gate applies unchanged: a request without the header is rejected before
+extension code runs, and the same diagnostics hook records the outcome. Each answer
+is a `PluginPayload` (a JSON object HUI does not type) or a `PluginError`
+(`{ "error": string }`); extension payloads are deliberately absent from
+`docs/api.schema.json` because they exist only at runtime. Request bodies are the
+ordinary 64 KiB JSON body; an answer is at most 256 KiB and cannot set headers,
+stream, redirect or return a file. Unknown ids and paths return 404, a wrong method
+405, invalid JSON 400, an oversized request 413, and a handler that throws or
+returns something other than a JSON object 500 `{ "error": "extension failed" }`.
+
+A route declared `stream: true` answers `text/event-stream` instead: its handler
+returns `{ events }`, an async iterable of JSON objects, and each object becomes one
+unnamed `data:` event, with a heartbeat comment while it waits. Caps: ten minutes,
+5 000 events, 256 KiB per event and 5 MiB in total; a throw, an oversized event or a
+cap ends the stream with one `event: error` carrying the reason (and one
+diagnostic), and a client that leaves aborts the handler's `signal`. A streaming
+route's metadata carries `stream: true`.
+
+Extensions are trusted local code: they run in the gateway process with the
+gateway's access to the machine, its credentials and its data, exactly like a PI
+extension. There is no sandbox, no permission prompt and no timeout. The manifest's
+`apiVersion` must be `1`; any other value refuses to load with a named reason. HUI
+ships packaged extensions beside `skills/`; their page defaults are enabled until
+the operator's `extensions.json` exists, and a config extension with the same id
+overrides one. Extensions the operator installs start disabled.
+
 ### HUI-owned presentation state
 
 `PUT /__hui/settings` also persists the validated `#rrggbb` accent override,
@@ -4480,8 +4570,8 @@ conversation's Work pane. No HUI registry or PI transcript format changes.
 
 ### Managed browser API and tool
 
-`settings.json` gains `browser: { enabled, headless, executablePath }`
-(defaults `true`, `true`, `""`). Both switches are opt-out; the path is kept as
+`settings.json` gains `browser: { enabled, headless, executablePath, mirrorState, allowedOrigins }`
+(defaults `true`, `true`, `""`, `false`, `[]`). Both switches are opt-out; the path is kept as
 typed (bounded, no control characters) and validated by the gateway, which
 expands `~/` and a macOS `.app` bundle. An empty path auto-detects Chrome, Brave,
 Edge, then Chromium in the standard install locations and on `PATH`. Saving a
@@ -4523,10 +4613,12 @@ one conversation (unknown conversations return 404). The WebSocket upgrade at
 `/__hui/browser-stream` also checks same-origin and the allowed Host, like
 terminal streams. The server sends JSON text messages:
 
-- `{ type: "state", running, mode?, tabs: [{ id, title, url }], current, watching, following }`
+- `{ type: "state", running, mode?, tabs: [{ id, title, url }], current, watching, following, handoff }`
   on connect and whenever the conversation's tabs, the agent's current tab or
   the process change. `watching` is the tab whose frames follow; `following` is
-  false while the viewer watches a tab other than the agent's.
+  false while the viewer watches a tab other than the agent's. `handoff` is
+  `null`, or `{ tabId, message, since }` while the agent waits for the operator
+  in that tab.
 - `{ type: "action", tabId, text, point?, at }` for each agent browser action.
   `text` summarizes it (for example `Clicked e2 (button "Greet")`) and never
   contains typed text; `point` is the viewport CSS pixel of a click or hover.
@@ -4537,10 +4629,18 @@ Frames are binary messages: a big-endian `u32` header length, a JSON header
 `{ tabId, width, height, seq }` (`width`/`height` are the viewport in CSS
 pixels) and the JPEG bytes. A frame is sent only when the watched page repaints,
 at most about every 100 ms; a slow client skips frames and then receives the
-newest. Switching tabs sends that tab's last frame at once. The only client
-message is `{ action: "select", tabId }`: a tab of the same conversation to
-watch, or `null` (or the agent's current tab) to follow the agent. The stream is
-view-only and never launches the browser.
+newest. Switching tabs sends that tab's last frame at once.
+
+The client sends `BrowserViewControl`; anything else is ignored. `{ action:
+"select", tabId }` watches a tab of the same conversation, or `null` to follow
+the agent. The rest reach the page only while that tab's handoff waits, only for
+the conversation that owns it: `{ action: "pointer", tabId, kind: "move" |
+"down" | "up", x, y, button: "left" | "right" }` and `{ action: "wheel",
+ tabId, x, y, deltaX, deltaY }` (page CSS pixels, from the view's scaled frame),
+`{ action: "key", tabId, key }` (a key name such as `Enter`, `Tab` or `a`, or a
+chord such as `Control+a`) and `{ action: "continue", tabId }`, which ends the
+wait. Every other message leaves the view untouched, and a view that never
+selects a tab can only watch.
 
 The PI tool `browser` uses the authenticated agent bridge in both SDK and CLI
 backends and is registered only while `browser.enabled` is on. Caller identity
@@ -4548,9 +4648,9 @@ comes from the per-conversation token. `action` is one of:
 
 | Action | Contract |
 | --- | --- |
-| `status`, `tabs` | Process state and this conversation's tabs; never launch the browser |
+| `status`, `tabs` | Process state and this conversation's tabs; never launch the browser, and `tabs` marks one left blank by the allowlist `(blocked: not in the allowed origins)` |
 | `open` | Launch lazily, open a tab, load `url` and return a snapshot |
-| `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot |
+| `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot; with an origin allowlist set, a page outside it is refused with 403 |
 | `focus`, `close` | Select or close one of this conversation's tabs |
 | `snapshot` | Accessibility outline; `interactive`, `query` and `maxChars` (500–40 000, default 12 000; 8 000 for page loads) narrow it |
 | `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`) |
@@ -4558,6 +4658,7 @@ comes from the per-conversation token. `action` is one of:
 | `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory) |
 | `console` | The latest 50 of up to 200 recorded console, exception, log and dialog entries; `errorsOnly`, `clear` |
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
+| `handoff` | Give the current (or `tabId`) tab to the operator and wait: `message` (at most 500 characters) and `timeoutMs` (5000–1 800 000, default 600 000) |
 
 Tab handles are `t1`, `t2`…; element refs are `e1`, `e2`… from the latest
 snapshot of that tab. A ref stays bound to its DOM node within one document; a
@@ -4582,6 +4683,31 @@ it. The tool result stores
 model-facing text, a PNG image for `screenshot`, and small `details` (`action`,
 tab id/title/URL and outcome flags) in PI's transcript; no route or registry
 format changes.
+
+An origin allowlist (`browser.allowedOrigins`, empty by default) bounds where a
+tab may go. Patterns are `host`, `host:port`, `http(s)://host[:port]` or
+`*.host` (subdomains only); a bare host accepts either scheme and any port, a
+pattern without a port keeps every port, and patterns are matched lowercase.
+`open`, `navigate` and a back or forward entry outside the list fail with 403
+before a tab moves; a top-level document a link, redirect, script or popup
+lands on outside the list is stopped, the tab is left on `about:blank`, and the
+next result says so once (the browser also reports it as an action to live
+viewers). With a list set, `file:` URLs and any other scheme are refused, and
+a private, loopback or link-local host needs an exact entry: a wildcard never
+matches one. The list does not cover subresources, and names are not resolved
+against DNS rebinding; both are known limits.
+
+A handoff makes the agent wait for the operator in one tab: the call runs in
+`server/browser/manager.ts`, keeps the browser and that tab alive, and refuses
+every other agent action with 409 until it settles. The operator acts through
+the live view, so a view must be open (the chat's preview card says so and opens
+it). It settles as `continued` (the result carries the page as it is now: title,
+URL and a fresh snapshot, at most 8 000 characters, whose refs the agent acts on
+next), `timeout` (the operator may be away; the tab returns to the agent),
+`closed` (the tab went away under them) or `stopped` (the browser did). Input
+from the live view is applied to the handed-over tab only and is ignored once
+the handoff settles. The bridge waits `timeoutMs` plus 30 seconds, and stopping
+the turn settles the handoff with `closed`.
 
 ### Files view API
 

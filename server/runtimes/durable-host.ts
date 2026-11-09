@@ -23,6 +23,8 @@ import { createCodemodeExtension } from "@earendil-works/pi-durable/codemode";
 import { CodemodeSandbox } from "@earendil-works/pi-codemode";
 import { SettingsManager, type ModelRuntime, type ResourceLoader, type Skill } from "@earendil-works/pi-coding-agent";
 import { recordDiagnosticEvent } from "../observability.ts";
+import type { ExtensionsService } from "../extensions/service.ts";
+import { gatewayDurableExtension } from "../extensions/durable.ts";
 import { CONFIG_DIR } from "../paths.ts";
 import { resolvePiAgentDir } from "../pi/paths.ts";
 import { readHuiSettings } from "../hui-settings.ts";
@@ -332,6 +334,11 @@ export class DurableHost implements ExtensionHost {
   #envs = new Map<string, NodeExecutionEnv>();
   /** Durable conversation → HUI session, the only caller identity HUI tools accept. */
   #callers = new Map<ConversationId, string>();
+  /** Gateway extensions' prompt text and tools; unset on a host that runs none. */
+  #gateway?: ExtensionsService;
+  #gatewayProblems = new Set<string>();
+  #gatewayExtension?: Extension;
+  #gatewaySignature = "";
   /** The current open, settled or not; a close takes it. */
   #opening: Promise<Harness> | undefined;
   /** The latest close, until it has released the store. */
@@ -368,9 +375,10 @@ export class DurableHost implements ExtensionHost {
     this.prompt = new DurablePrompt(options.agentDir, this.settings);
     this.prompt.extras = (conversationId) => {
       const extensions = this.#extensionsOf(conversationId);
-      if (!extensions) return undefined;
-      const run = extensions.runPrompt();
-      return { contributions: extensions.contributions(), ...(run ? { run } : {}) };
+      const gateway = this.#gateway?.contributions() ?? {};
+      if (!extensions && Object.keys(gateway).length === 0) return undefined;
+      const run = extensions?.runPrompt();
+      return { contributions: { ...gateway, ...(extensions?.contributions() ?? {}) }, ...(run ? { run } : {}) };
     };
     this.#invokeTool = options.invokeTool ?? invokeAgentTool;
     this.#lookupCaller = options.lookupCaller ?? registryCaller;
@@ -392,6 +400,25 @@ export class DurableHost implements ExtensionHost {
         return sessionId ? goalFor(sessionId).catch(() => undefined) : undefined;
       };
     }
+  }
+
+  /** Wires the gateway extensions an operator enables: their static prompt text, tool contributions and tools. */
+  configureGatewayExtensions(service: ExtensionsService): void {
+    this.#gateway = service;
+    this.prompt.gatewayPrompt = async () => service.promptText();
+  }
+
+  /** The installed Durable extension carrying every enabled gateway extension's tool, rebuilt when the tools change. */
+  gatewayExtension(): Extension | undefined {
+    const source = this.#gateway;
+    if (!source) return undefined;
+    const signature = JSON.stringify(source.agentTools().map((entry) => [entry.extensionId, entry.name, entry.tool.description]));
+    if (signature === this.#gatewaySignature) return this.#gatewayExtension;
+    if (this.#gatewayExtension) this.uninstall(this.#gatewayExtension);
+    this.#gatewayExtension = gatewayDurableExtension(source, { problems: this.#gatewayProblems });
+    this.#gatewaySignature = signature;
+    if (this.#gatewayExtension) this.install(this.#gatewayExtension);
+    return this.#gatewayExtension;
   }
 
   /** Sets the bots this host runs, once, before its store opens: `null` on a host that never runs bot work. */

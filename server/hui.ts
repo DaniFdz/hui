@@ -16,13 +16,14 @@ import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE } from "./routes/bots.ts
 import { BOT_TRIGGERS_ROUTE } from "./routes/bot-triggers.ts";
 import { isHookPath } from "./bots/triggers-listener.ts";
 import { CLIENT_HEADER, responseFailures, routeRequest, sendFile, sendJson, sendStream, type RouteRequest, type RouteResult } from "./http/route.ts";
-import { HEARTBEAT_MS, watchSessionEvents, writeEvent } from "./http/events.ts";
+import { HEARTBEAT_MS, sendEventStream, watchSessionEvents, writeEvent } from "./http/events.ts";
 import { CALLS_ROUTE } from "./routes/calls.ts";
 import type { BotsUpdate } from "./bots-format.ts";
 
 import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode/proxy.ts";
 import { VSCODE_ENTER_PATH } from "./vscode/contract.ts";
 import { attachBrowserTransport } from "./browser/transport.ts";
+import { EXTENSION_ASSET_ROUTE, serveExtensionAsset } from "./extensions/assets.ts";
 import type { EventEmitter } from "node:events";
 import { liveSessions } from "./sessions/live-sessions.ts";
 import { diagnosticPath, recordDiagnosticEvent } from "./observability.ts";
@@ -53,12 +54,14 @@ import {
   datadogRoutes,
   diagnosticsRoutes,
   diffRoutes,
+  extensionRoutes,
   fileRoutes,
   githubRoutes,
   hostMetricsRoutes,
   jiraRoutes,
   localPathRoutes,
   managedBrowser,
+  extensions,
   piRoutes,
   powerRoutes,
   appRoutes,
@@ -107,6 +110,7 @@ function sendHtml(response: ServerResponse, status: number, html: string): void 
 /** A route module's answer, or its 404 when no route of the module matched. */
 function sendRouteResult(response: ServerResponse, path: string, result: RouteResult | undefined): void {
   if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else if ("sse" in result) sendEventStream(response, result.sse.events, result.sse);
   else if ("stream" in result) sendStream(response, result.status, result.stream);
   else if ("file" in result) sendFile(response, result.status, result.file);
   else if ("html" in result) sendHtml(response, result.status, result.html);
@@ -246,6 +250,13 @@ async function handleRequest(
     serveWidgetSandbox(request, response);
     return;
   }
+  // An extension panel's files cannot send x-hui either: the frame is sandboxed and its only channel is the parent
+  // bridge. Served before the gate, like the widget sandbox, and only while the extension is loaded (docs/api.md).
+  const panelAsset = EXTENSION_ASSET_ROUTE.exec(path);
+  if (panelAsset) {
+    await serveExtensionAsset(request, response, panelAsset[1]!, panelAsset[2]!, await extensions.panelRoot(panelAsset[1]!));
+    return;
+  }
   const presentedMedia = path.match(PRESENTED_MEDIA_ROUTE);
   // Native img/audio/video elements cannot set x-hui. Their opaque random id is
   // the read capability, and CORP prevents embedding it from another origin.
@@ -369,6 +380,9 @@ async function handleRequest(
   if (answered(response, path, await settingsRoutes.handle(routed))) return;
 
   if (answered(response, path, await piRoutes.handle(routed))) return;
+
+  // Gateway extensions (`routes/extensions.ts`): a path-confined namespace, so it cannot shadow any HUI route above.
+  if (answered(response, path, await extensionRoutes.handle(routed))) return;
 
   if (path === WORKERS_ROUTE || path.startsWith(`${WORKERS_ROUTE}/`)) {
     const result = await workerRoutes.handle(routed);
