@@ -1,0 +1,125 @@
+name: iOS spike
+# Spike S3 of docs/mobile-app-plan.md: does the Capacitor iOS project generated on Linux build on a macOS runner,
+# and can the simulator install, launch and screenshot it? Throwaway branch only: this workflow is not part of a PR.
+on:
+  workflow_dispatch:
+  push:
+    branches: [mobile/s3-ios-runner]
+permissions:
+  contents: read
+concurrency:
+  # A newer push to the spike branch supersedes a run in progress.
+  group: ios-spike-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  ios-smoke:
+    runs-on: macos-latest
+    # S3 measures this: a hung simulator boot fails here instead of at GitHub's six hours.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
+
+      # Part (c) of the spike: record what the runner already has, so a production job knows whether it must
+      # install anything (an Xcode first launch, a simulator runtime) or can use these.
+      - name: Record the macOS runner's Xcode and simulator toolchain
+        run: |
+          set -x
+          sw_vers
+          uname -m
+          sysctl -n hw.ncpu
+          xcode-select -p
+          xcodebuild -version
+          xcrun simctl list runtimes
+          xcrun simctl list devicetypes | head -20
+          xcrun simctl list devices available | head -40
+
+      # The committed project has no App/App/public (Capacitor's own .gitignore excludes it), so the web assets and
+      # capacitor.config.json come from this step, exactly as they will for every later build.
+      - name: Sync the web assets into the iOS project
+        run: npx cap sync ios
+
+      - name: Build for the iOS Simulator
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          start=$SECONDS
+          set -o pipefail
+          xcodebuild \
+            -project mobile/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath /tmp/iosbuild \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee /tmp/xcodebuild.log
+          echo "::notice title=ios build::$((SECONDS - start)) s wall clock"
+
+      - name: Boot a simulator, install, launch and screenshot the app
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          # Prefer the newest iOS runtime and an iPhone device on it; list what is available either way.
+          xcrun simctl list devices available
+          udid="$(node -e '
+            const { execFileSync } = require("node:child_process");
+            const devices = JSON.parse(execFileSync("xcrun", ["simctl", "list", "devices", "available", "--json"], { encoding: "utf8" })).devices;
+            const key = (runtime) => (runtime.match(/iOS-(\d+)-(\d+)/) ?? []).slice(1).map(Number);
+            const runtimes = Object.keys(devices)
+              .filter((runtime) => runtime.includes("iOS"))
+              .sort((a, b) => {
+                const [a1, a2] = key(a); const [b1, b2] = key(b);
+                return (b1 - a1) || (b2 - a2);
+              });
+            for (const runtime of runtimes) {
+              const device = devices[runtime].find((entry) => entry.name.startsWith("iPhone"));
+              if (device) { process.stderr.write(`using ${device.name} on ${runtime}\n`); console.log(device.udid); break; }
+            }
+          ')"
+          test -n "$udid"
+
+          start=$SECONDS
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          echo "::notice title=simulator boot::$((SECONDS - start)) s wall clock"
+
+          app=/tmp/iosbuild/Build/Products/Debug-iphonesimulator/App.app
+          ls -d "$app"
+          xcrun simctl install "$udid" "$app"
+
+          start=$SECONDS
+          xcrun simctl launch "$udid" dev.hui.app
+          echo "::notice title=launch::$((SECONDS - start)) s wall clock"
+          # Two frames: the splash and the Connect page it hands over to. Nothing here asserts what rendered;
+          # the artifact is the proof, and both frames are uploaded.
+          sleep 3
+          xcrun simctl io "$udid" screenshot artifacts/connect-3s.png
+          sleep 5
+          xcrun simctl io "$udid" screenshot artifacts/connect-8s.png
+          # The app process must still be alive: a crash shows in the screenshot as a springboard.
+          xcrun simctl spawn "$udid" launchctl list | grep -F dev.hui.app || echo "::warning::dev.hui.app is not in launchctl list"
+
+      - name: Collect the build log, the screenshots and the app's own log
+        if: always()
+        run: |
+          mkdir -p artifacts
+          cp /tmp/xcodebuild.log artifacts/xcodebuild.log 2>/dev/null || true
+          cp /tmp/ios-simulator.log artifacts/simulator.log 2>/dev/null || true
+          ls -la artifacts
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: ios-spike
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 14

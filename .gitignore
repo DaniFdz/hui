@@ -5,6 +5,8 @@
 node_modules
 dist/
 build/
+# The phone shell's bundled Connect page is committed: CI packages it as Capacitor's webDir (spike S3).
+!/mobile/connect/dist/
 npm-shrinkwrap.json
 *.tgz
 .next/
