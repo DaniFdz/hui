@@ -2040,8 +2040,13 @@ export class ManagedBrowser {
       const frame = isRecord(node["frame"]) ? node["frame"] : {};
       const frameId = str(frame["id"]);
       if (!frameId || !/^https?:/iu.test(str(frame["url"]))) continue;
-      const childTree = await instance.connection.send("Accessibility.getFullAXTree", { frameId }, tab.session, 5_000).catch(() => undefined);
-      const childNodes = childTree && Array.isArray(childTree["nodes"]) ? childTree["nodes"].filter(isRecord) as unknown as AxNode[] : [];
+      // A frame can still be loading when the main document fires load; give it a moment.
+      let childNodes: AxNode[] = [];
+      for (let attempt = 0; attempt < 3 && childNodes.length === 0; attempt += 1) {
+        if (attempt > 0) await delay(100);
+        const childTree = await instance.connection.send("Accessibility.getFullAXTree", { frameId }, tab.session, 5_000).catch(() => undefined);
+        childNodes = childTree && Array.isArray(childTree["nodes"]) ? childTree["nodes"].filter(isRecord) as unknown as AxNode[] : [];
+      }
       if (!childNodes.length) continue;
       let ownerId: number | undefined;
       try {

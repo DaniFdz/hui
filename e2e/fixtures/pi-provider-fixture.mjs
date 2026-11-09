@@ -242,6 +242,15 @@ const heldUntilRelease = (response) => new Promise((resolve) => {
   signalReplayReady();
 });
 
+let frameOrigin = "";
+const frameServer = createServer((_request, response) => {
+  response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  response.end(FRAME_INNER_PAGE("Cross"));
+});
+frameServer.listen(0, "127.0.0.1", () => {
+  frameOrigin = `http://127.0.0.1:${frameServer.address().port}`;
+});
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (request.method === "GET" && url.pathname === "/health") return json(response, 200, { ok: true });
@@ -255,11 +264,11 @@ const server = createServer(async (request, response) => {
   }
   if (request.method === "GET" && url.pathname === "/browser-frame-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-    return response.end(FRAME_FIXTURE_PAGE(`http://localhost:${port}`));
+    return response.end(FRAME_FIXTURE_PAGE(frameOrigin));
   }
   if (request.method === "GET" && url.pathname === "/browser-frame-inner") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-    return response.end(FRAME_INNER_PAGE(request.headers.host?.startsWith("localhost") ? "Cross" : "Same"));
+    return response.end(FRAME_INNER_PAGE("Same"));
   }
     if (request.method === "GET" && url.pathname === "/browser-secret-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
