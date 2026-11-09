@@ -93,6 +93,29 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Reading and verifying one thing at a time
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_LOOP` opens the fixture, snapshots only `main` to depth 3, then
+reads one property per call.
+
+- The reply quoted the boundary line the tools returned:
+  `--- HUI_PAGE_CONTENT nonce=1b445037d68d95c9 origin=http://127.0.0.1:46169 ---`,
+  followed by `Title: HUI browser fixture`, `1 element matches button.`,
+  `button "Greet") is enabled.`, `value of e1 (textbox "Name"): "Loop"` and
+  `Hello, Loop! Rendered by page JavaScript.` The greeting only exists after the
+  agent clicked Greet, so the reading loop and the action both ran.
+- The scoped snapshot listed the page's own controls without leaving the
+  `main` subtree, and its refs worked for the next calls.
+- At 390×844 the same reply wrapped inside the mobile transcript width without
+  scrolling sideways.
+- `server/browser/manager.test.ts` covers the rest with a real headless browser:
+  a fresh nonce per result (and different between results), `get` for title,
+  url, count, attr and value, `is` for visible, enabled, focused and the missing
+  selector cases, a refused password value, a disabled click, a hidden click, a
+  depth-limited snapshot with its note, `wait state`, and a ref re-bound after
+  its element was replaced or refused as ambiguous.
+
 ## Bounded steps
 
 Verified on 2026-11-08 in the same fixture at 1440×900.
