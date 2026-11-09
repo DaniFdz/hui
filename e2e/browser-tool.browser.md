@@ -93,6 +93,25 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Network capture and HAR
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_NETWORK` starts a capture, reloads a page whose script fetches an
+API with an `Authorization` header and a missing path, lists the requests and
+writes a HAR.
+
+- The reply read "3 requests captured in tab t1. The API request shows
+  token=%5Bredacted%5D, the missing one 404, and Wrote 3 requests to
+  …/net/fixture.har. Credential headers and secret query values are [redacted]".
+- The HAR on disk was JSON 1.2 with three entries: the page (200), the API
+  (200, with `token=%5Bredacted%5D`) and the missing path (404); the string
+  `fixture-secret` appeared nowhere in it, while `[redacted]` did.
+- At 390×844 the same reply wrapped inside the mobile transcript width without
+  sideways scrolling.
+- `server/browser/manager.test.ts` also covers filters (method, type, status
+  family), one request's headers, a missing id, an empty log after `clear`, and
+  a HAR path that is not `.har` being refused.
+
 ## Frames
 
 Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
