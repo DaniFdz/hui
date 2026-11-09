@@ -566,7 +566,7 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "AGENT-063",
+    id: "AGENT-065",
     title: "Answer the agent's browser handoff",
     behaviour: "When only a person can continue, the agent hands its tab over and waits: the chat's preview card says Your turn with the agent's instruction and Take over, the browser view says Your turn with the message and I'm done — continue, and its activity line reads You have control; the agent waits. In that view the operator clicks, types, scrolls and presses keys on the page, the agent cannot act on the browser meanwhile, and the tab stays open. Continue returns the page as it is then, with a fresh snapshot whose refs the agent uses next. A wait nobody answers ends after its timeout, and a closed tab or a stopped browser ends it too.",
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
