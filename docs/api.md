@@ -4678,6 +4678,7 @@ comes from the per-conversation token. `action` is one of:
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
 | `handoff` | Give the current (or `tabId`) tab to the operator and wait: `message` (at most 500 characters) and `timeoutMs` (5000–1 800 000, default 600 000) |
 | `secret` | Type the operator's stored secret `name` into `ref` on the secret's own origin, optionally `submit`; the value never appears in the result |
+| `steps` | 1–20 `act` steps in order on one tab (`kind`, `ref`, and the same fields `act` takes), each with its own `timeoutMs` or the call's; the result lists each step and a failure names the step and what already ran |
 
 Tab handles are `t1`, `t2`…; element refs are `e1`, `e2`… from the latest
 snapshot of that tab. A ref stays bound to its DOM node within one document; a
@@ -4715,6 +4716,12 @@ viewers). With a list set, `file:` URLs and any other scheme are refused, and
 a private, loopback or link-local host needs an exact entry: a wildcard never
 matches one. The list does not cover subresources, and names are not resolved
 against DNS rebinding; both are known limits.
+
+`steps` is a sequence of `act` calls under one result: every step is validated
+and watched the same way, steps stay on the call's tab (`tabId` is ignored
+inside a step), and a navigation between steps retires the refs the earlier
+snapshot handed out. The text lists `1. kind: what it did` per step; a failing
+step throws with the steps that already ran in its message.
 
 A `secret` call types a value the operator stored (see `POST
 /__hui/browser/secrets`) and never returns it: the field's own frame is resolved

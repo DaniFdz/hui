@@ -579,6 +579,43 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent runs a dependent flow as one steps call and reports each step it ran.
+  if (source.includes("E2E_BROWSER_STEPS") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-steps-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-steps-open") {
+    await browserPace(body);
+    const snapshots = toolResultTexts(body.messages).join("\n");
+    const name = /textbox "Name" \[ref=(e\d+)\]/u.exec(snapshots)?.[1];
+    const greet = /button "Greet" \[ref=(e\d+)\]/u.exec(snapshots)?.[1];
+    if (!name || !greet) {
+      text(response, "The form was not in the page snapshot.");
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-steps-run", "browser", {
+      action: "steps",
+      steps: [
+        { kind: "type", ref: name, text: "Step by step" },
+        { kind: "click", ref: greet },
+        { kind: "wait", text: "Hello, Step by step!" },
+      ],
+    });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-steps-run") {
+    const log = /Ran 3 steps in tab t\d+\.[\s\S]*?3\. wait: [^\n]*/u.exec(toolResultTexts(body.messages).join("\n"))?.[0];
+    text(response, log
+      ? `The flow ran in one call:\n\n${log}`
+      : "The steps call did not report three steps.");
+    return finish(response);
+  }
+
   // The agent opens the page, then hands the tab to the operator when only a person can finish.
   if (source.includes("E2E_BROWSER_HANDOFF") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -610,7 +647,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);

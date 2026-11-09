@@ -61,13 +61,15 @@ export type BrowserViewHandle = {
 
 export const BROWSER_ACTIONS = [
   "status", "tabs", "open", "navigate", "back", "forward", "reload", "focus", "close",
-  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret",
+  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps",
 ] as const;
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
 export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "scroll", "wait"] as const;
 export type BrowserActKind = (typeof BROWSER_ACT_KINDS)[number];
 
 export const MAX_TABS_PER_CONVERSATION = 8;
+/** One call's sequence: long enough for a real flow, short enough to stay readable to a model. */
+const MAX_STEPS = 20;
 export const MAX_TABS_TOTAL = 32;
 /** A capture reads the whole cookie jar and a tab's storage: at most this often per origin. */
 const CAPTURE_INTERVAL_MS = 5_000;
@@ -819,6 +821,7 @@ export class ManagedBrowser {
       case "resize": return this.#resize(owner, params);
       case "handoff": return this.#handoff(owner, params);
       case "secret": return this.#secret(owner, params);
+      case "steps": return this.#steps(owner, params);
     }
   }
 
@@ -928,6 +931,38 @@ export class ManagedBrowser {
     return originOf(found);
   }
 
+  /** Dependent interactions in one call: menus, hovers and a form submit are transient, and one round
+   * trip per step loses them. Each step is an `act` with the same rules, on this call's tab. */
+  async #steps(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const steps = params["steps"];
+    if (!Array.isArray(steps) || steps.length === 0 || steps.length > MAX_STEPS) {
+      throw new BrowserToolError(`steps must list 1 to ${MAX_STEPS} steps, each with kind and its parameters.`);
+    }
+    const timeoutMs = params["timeoutMs"];
+    const log: string[] = [];
+    for (const [index, step] of steps.entries()) {
+      const where = `Step ${index + 1}`;
+      if (!isRecord(step)) throw new BrowserToolError(`${where} must be an object with kind and its parameters.`);
+      const kind = str(step["kind"]);
+      if (!(BROWSER_ACT_KINDS as readonly string[]).includes(kind)) {
+        throw new BrowserToolError(`${where} needs kind: ${BROWSER_ACT_KINDS.join(", ")}.${log.length ? ` Steps before it: ${log.join("; ")}.` : ""}`);
+      }
+      try {
+        // One tab for the whole sequence: a step never retargets the call.
+        const result = await this.#act(owner, { ...step, tabId: tab.id, ...(timeoutMs === undefined ? {} : { timeoutMs: step["timeoutMs"] ?? timeoutMs }) });
+        log.push(`${index + 1}. ${kind}: ${result.text.split("\n")[0] ?? kind}`);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "the step failed";
+        throw new BrowserToolError(`${where} (${kind}) failed: ${reason}${log.length ? `\nSteps that ran: ${log.join("; ")}.` : ""}`, error instanceof BrowserToolError ? error.status : 500);
+      }
+    }
+    return {
+      text: [`Ran ${log.length} step${log.length === 1 ? "" : "s"} in tab ${tab.id}.`, this.#header(tab), "", ...log].join("\n"),
+      details: { action: "steps", tab: this.#tabDetails(tab), steps: log.length },
+    };
+  }
+
   /** Ends the wait exactly once: the call, the timer and a closing tab all take this path. */
   #settleHandoff(owner: string, outcome: HandoffOutcome): void {
     const handoff = this.#handoffs.get(owner);
@@ -986,6 +1021,7 @@ export class ManagedBrowser {
       text: typeof params["selector"] === "string" ? `Read the text of ${params["selector"]}` : "Read the page text",
       screenshot: "Took a screenshot",
       console: "Read the console",
+      steps: "Ran a sequence of steps",
       secret: `Typed the site secret "${clip(str(params["name"]), 60)}"`,
       resize: typeof params["width"] === "number" && typeof params["height"] === "number"
         ? `Resized the viewport to ${params["width"]}×${params["height"]}`
