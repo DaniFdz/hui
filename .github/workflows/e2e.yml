@@ -1,6 +1,5 @@
 name: E2E
-# The shared e2e suite: e2e/tests/ against a disposable gateway, on the web in headless Chromium and on iOS in the
-# "HUI iPhone" simulator.
+# The shared e2e suite: e2e/tests/ against a disposable gateway, on the web in headless Chromium.
 on:
   pull_request:
     paths-ignore:

@@ -101,7 +101,7 @@ output.
 Clicking the banner opens its originating conversation, creating a window if
 needed. Delivery alone does not change focus. macOS settings may suppress the
 banner, and queued is not proof the operator read it. Notification calls are
-not replayed after a crash. Browser and iPhone push are outside this version.
+not replayed after a crash. Browser and phone push are outside this version.
 
 `Settings.notifications` also chooses HUI's own notifications, sent through the
 same app on a macOS gateway: `runFinished` (default `false`) and `runFailed`

@@ -2,8 +2,8 @@
  * Guards the use-case catalogue in e2e/catalogue/ and the shared e2e tests in e2e/tests/: every entry is well formed
  * and cites real SPEC text, journeys and surfaces; every surface the code defines is claimed by a use case or set
  * aside with a reason; every journey has a class; every Part 2 section of SPEC.md is cited or exempted; `backlog`
- * appears only where the baseline says so; a required use case has a shared test that runs on its platform; and the
- * shared tests stay deterministic and portable to iOS.
+ * appears only where the baseline says so; a required use case has a shared test that runs on the web; and the
+ * shared tests stay deterministic and portable to a native phone app.
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
@@ -26,7 +26,7 @@ const useCases: (UseCase & { area: string })[] = (await Promise.all(AREAS.map(as
   return cases.map((entry) => ({ ...entry, area }));
 }))).flat();
 const surfaces = new Set([...await browserSurfaces(), ...await gatewaySurfaces()]);
-const baseline = JSON.parse(await read("e2e/catalogue/baseline.json")) as { backlog: { web: string[]; ios: string[] }; unexercisedLabels: string[] };
+const baseline = JSON.parse(await read("e2e/catalogue/baseline.json")) as { backlog: { web: string[] }; unexercisedLabels: string[] };
 const documents = { "SPEC.md": githubAnchors(await read("SPEC.md")), "docs/api.md": githubAnchors(await read("docs/api.md")) };
 const journeyFiles = (await readdir(join(root, "e2e"))).filter((name) => name.endsWith(".browser.md")).map((name) => name.slice(0, -".browser.md".length));
 const byId = new Map(useCases.map((entry) => [entry.id, entry]));
@@ -38,7 +38,6 @@ const sourcesIn = async (directory: string, keep: (name: string) => boolean) => 
 const testSources = await sourcesIn("e2e/tests", (name) => name.endsWith(".ts"));
 const fixtureSource = await read("e2e/fixtures/hui.ts");
 const appSources = [...(await sourcesIn("src", (name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))).values()].join("\n");
-const iosSources = await sourcesIn("ios/HUI", (name) => name.endsWith(".swift")).then((map) => [...map.values()].join("\n"), () => "");
 const withoutCommentsAndStrings = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|(["'`])(?:\\.|(?!\1)[^\\])*\1|\/(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[dgimsuyv]*/gu, (match) => (match.startsWith("/") ? "" : '""'));
 
@@ -46,11 +45,11 @@ const cites = (reference: string) => {
   const [document, anchor] = reference.split("#") as [keyof typeof documents, string | undefined];
   return anchor !== undefined && documents[document]?.has(anchor) === true;
 };
-const statusProblems = (entry: UseCase, platform: "web" | "ios"): string[] => {
-  const status: Status = entry[platform];
-  if (status === "backlog") return baseline.backlog[platform].includes(entry.id) ? [] : [`${entry.id}: ${platform} is backlog but not in baseline.json`];
+const statusProblems = (entry: UseCase): string[] => {
+  const status: Status = entry.web;
+  if (status === "backlog") return baseline.backlog.web.includes(entry.id) ? [] : [`${entry.id}: web is backlog but not in baseline.json`];
   if (status === "required") return [];
-  return status.excluded.trim() && status.decision.startsWith("SPEC.md#") && cites(status.decision) ? [] : [`${entry.id}: ${platform} exclusion needs a reason and an existing SPEC.md anchor`];
+  return status.excluded.trim() && status.decision.startsWith("SPEC.md#") && cites(status.decision) ? [] : [`${entry.id}: web exclusion needs a reason and an existing SPEC.md anchor`];
 };
 
 test("every use case is well formed and cites real SPEC text, journeys and surfaces", () => {
@@ -65,12 +64,10 @@ test("every use case is well formed and cites real SPEC text, journeys and surfa
     for (const reference of entry.spec) if (!cites(reference)) problems.push(`${entry.id}: ${reference} is not a heading of SPEC.md or docs/api.md`);
     for (const surface of entry.surfaces) if (!surfaces.has(surface)) problems.push(`${entry.id}: ${surface} is not a collected surface`);
     for (const journey of entry.journeys ?? []) if (!journeyFiles.includes(journey)) problems.push(`${entry.id}: e2e/${journey}.browser.md does not exist`);
-    problems.push(...statusProblems(entry, "web"), ...statusProblems(entry, "ios"));
+    problems.push(...statusProblems(entry));
   }
-  for (const platform of ["web", "ios"] as const) {
-    for (const id of baseline.backlog[platform]) {
-      if (!useCases.some((entry) => entry.id === id && entry[platform] === "backlog")) problems.push(`baseline.json lists ${id} as ${platform} backlog, but the catalogue doesn't`);
-    }
+  for (const id of baseline.backlog.web) {
+    if (!useCases.some((entry) => entry.id === id && entry.web === "backlog")) problems.push(`baseline.json lists ${id} as web backlog, but the catalogue doesn't`);
   }
   assert.deepEqual(problems, []);
 });
@@ -103,11 +100,11 @@ test("a use case cites every Part 2 section and the Behaviour heading of SPEC.md
   assert.deepEqual({ uncovered, stale }, { uncovered: [], stale: [] });
 });
 
-test("a use case required on a platform has a shared test that runs there", () => {
-  const unproved = useCases.flatMap((entry) => (["web", "ios"] as const)
-    .filter((platform) => entry[platform] === "required")
-    .filter((platform) => !pairs.some((pair) => pair.target === platform && pair.disposition === "run" && pair.tags.includes(entry.id)))
-    .map((platform) => `${entry.id} on ${platform}`));
+test("a use case required on the web has a shared test that runs there", () => {
+  const unproved = useCases
+    .filter((entry) => entry.web === "required")
+    .filter((entry) => !pairs.some((pair) => pair.target === "web" && pair.disposition === "run" && pair.tags.includes(entry.id)))
+    .map((entry) => `${entry.id} on web`);
   assert.deepEqual(unproved, []);
 });
 
@@ -117,7 +114,7 @@ test("every shared test names known use cases, and a skipped one covers only use
     return [
       ...(ids.length === 0 ? [`${pair.file} "${pair.title}" has no use-case ID tag`] : []),
       ...ids.filter((id) => !byId.has(id)).map((id) => `${pair.file} tags ${id}, which is not in the catalogue`),
-      ...(pair.disposition === "skip" ? ids.filter((id) => byId.get(id)?.[pair.target as "web" | "ios"] === "required").map((id) => `${pair.file} skips ${id} on ${pair.target}, where it is required`) : []),
+      ...(pair.disposition === "skip" ? ids.filter((id) => (pair.target === "web" && byId.get(id)?.web === "required")).map((id) => `${pair.file} skips ${id} on ${pair.target}, where it is required`) : []),
     ];
   });
   assert.deepEqual(problems, []);
@@ -129,7 +126,7 @@ test("shared tests use no agent steps, retries, skips, platform reads, app.clear
     [/\bagent\b/u, "an agent step"],
     [/\bretries\b/u, "retries"],
     [/\.skip\(/u, "test.skip("],
-    [/\bapp\.clearState\(/u, "app.clearState(), which leaves the iOS app's preferences behind; use hui.clearState()"],
+    [/\bapp\.clearState\(/u, "app.clearState(); use hui.clearState(), which a native phone app also needs to forget its preferences"],
     [/\b(?:platform|device|browser)\b/u, "a platform, device or browser read, which only e2e/fixtures/hui.ts may do"],
     sleep,
   ];
@@ -138,8 +135,13 @@ test("shared tests use no agent steps, retries, skips, platform reads, app.clear
   assert.deepEqual(problems, []);
 });
 
-test("shared tests find controls by roles iOS has too, and by test ids the web app sets and, when they run on iOS, the app too", () => {
+test("shared tests find controls by roles a native phone app has too, and by test ids the web app sets", () => {
   const portable = new Set(["button", "textbox", "switch", "tab", "listitem"]);
+  // Keyboard-only, browser-only and wide-layout use cases a native phone app won't have; only their tests may find
+  // controls by roles the web alone exposes.
+  const webOnlyCases = new Set(["CHAT-046", "CHAT-083", "PAGE-021", "PAGE-046", "SESS-008", "SESS-040", "SESS-077", "SET-003",
+    "SET-036", "SHELL-013", "SHELL-014", "SHELL-018", "SHELL-020", "SHELL-021", "SHELL-022", "WORK-016", "WORK-017", "WORK-018",
+    "WORK-019", "WORK-020", "WORK-022", "WORK-082"]);
   const parts = [...testSources].flatMap(([file, source]) => {
     const inFile = pairs.filter((pair) => pair.file === file && pair.source);
     const pairLines = [...new Set(inFile.map((pair) => pair.source!.line))].sort((a, b) => a - b);
@@ -154,14 +156,11 @@ test("shared tests find controls by roles iOS has too, and by test ids the web a
   });
   const problems = parts.flatMap(({ file, source, pairs: covered }) => {
     const testIds = [...source.matchAll(/getByTestId\(\s*["'`]([^"'`]+)["'`]/gu)].map(([, id]) => id!);
-    const onIos = covered.some((pair) => pair.target === "ios" && pair.disposition === "run");
-    const webOnly = covered.flatMap((pair) => pair.tags.filter((tag) => ID_TAG.test(tag))).every((id) => typeof byId.get(id)?.ios === "object");
+    const webOnly = covered.flatMap((pair) => pair.tags.filter((tag) => ID_TAG.test(tag))).every((id) => webOnlyCases.has(id));
     return [
       ...[...source.matchAll(/getByRole\(\s*["'`]([a-z]+)["'`]/gu)].map(([, role]) => role!)
-        .filter((role) => !portable.has(role) && !webOnly).map((role) => `${file} finds a ${role}, which iOS doesn't expose`),
+        .filter((role) => !portable.has(role) && !webOnly).map((role) => `${file} finds a ${role}, which a native phone app doesn't expose`),
       ...testIds.filter((id) => !appSources.includes(`data-testid="${id}"`)).map((id) => `${file} finds test id ${id}, which no data-testid in src/ sets`),
-      ...(iosSources ? testIds.filter((id) => onIos && !iosSources.includes(`.accessibilityIdentifier("${id}")`))
-        .map((id) => `${file} runs on iOS and finds test id ${id}, which no .accessibilityIdentifier under ios/HUI sets`) : []),
     ];
   });
   assert.deepEqual(problems, []);
