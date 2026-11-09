@@ -1,0 +1,62 @@
+name: Mobile
+# The phone shell (docs/mobile-app-plan.md): the Connect page, Capacitor's sync into the Android project, the debug
+# APK and its JVM unit tests. It runs on the paths the app is made of, and on every push to a `mobile/**` package
+# branch, so a package gets its CI without a pull request of its own (section 6).
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/mobile.yml"
+  push:
+    branches: [main, "mobile/**"]
+    paths:
+      - "mobile/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  # A newer push to the same branch or pull request supersedes a run in progress.
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # The private jobs that come later (WP4's `android-e2e`, WP5's `ios-smoke`, WP6's `webkit-phone`) are one job each in
+  # this file, so no two packages edit the same lines.
+  android-build:
+    runs-on: ubuntu-latest
+    # The SDK download, the Gradle distribution and the debug build; a hang fails here, not at GitHub's six hours.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      # Capacitor 8 compiles at Java release 21, and the shell's own sources do too.
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      # The runner's preinstalled cmdline-tools are the wrong version, so this downloads its own and accepts the
+      # licences. The platform and build-tools are what AGP 8.13 needs for compileSdk 36.
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+      - run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - run: npm ci --ignore-scripts
+      # Builds the Connect page and runs `cap sync android`, which writes the plugin list the Gradle project reads.
+      - run: npm run mobile:build
+      - name: Build the debug APK and run the JVM unit tests
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon --console=plain :app:assembleDebug :app:testDebugUnitTest
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hui-android-debug
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

@@ -93,6 +93,7 @@ function rule(from, to, specifier, type) {
   const production = !TEST.test(from);
   if (to === undefined) {
     if (under(from, "src") && production && builtin(specifier)) return "R1";
+    if (under(from, "src") && /^@capacitor\//u.test(specifier)) return "R18";
     if (under(from, "server/api") && !/^typebox(?:\/|$)/u.test(specifier)) return "R15";
     return undefined;
   }
