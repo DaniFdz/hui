@@ -147,3 +147,14 @@ test("the nightly script stamps the checked-out commit", (t) => {
   assert(printed.startsWith("1.0.1-nightly."));
   assert(printed.endsWith(`.g${git("rev-parse", "--short=7", "HEAD")}`));
 });
+
+test("a changelog longer than GitHub's release body limit keeps what fits and counts the rest", (t) => {
+  const f = fixture(t);
+  // Enough history to pass GitHub's limit: a changelog line is a subject plus its commit link.
+  for (let index = 0; index < 500; index++) f.commit("1.0.0", `fix: change number ${index} ${"about the same length ".repeat(8)}`);
+  f.commit("1.1.0", "chore: release v1.1.0");
+  const { changelog } = f.plan();
+  assert.ok(changelog.length <= 120_000, `the body is ${changelog.length} characters`);
+  assert.match(changelog, /- …and \d+ more commits, each in the full diff below\./u);
+  assert.match(changelog, /compare\/v1\.0\.0\.\.\./u, "the full diff link survives the trim");
+});
