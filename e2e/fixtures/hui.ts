@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { addWorkerOnThisMachine } from "./worker.ts";
+import { clearAppStorage, onPhone } from "./phone.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
@@ -743,6 +744,15 @@ export const test = base.extend<{ hui: Hui }>({
     const steps = ({ web: webSteps } as Record<string, PlatformSteps | undefined>)[fixtures.platform];
     if (!steps) throw new Error(`hui: the fixture has no steps for the ${fixtures.platform} target`);
     if (fixtures.platform === "web") await browser().addInitScript(trackSockets);
+    // Spike S2: the Android app's WebView is the web page in a different host, so only what a WebView cannot do changes.
+    if (onPhone(fixtures.app.baseUrl)) Object.assign(steps, {
+      // A WebView has one page and one context, so the engine cannot reset it: the app's own storage is cleared in place.
+      clearState: async () => {
+        await fixtures.app.open("/");
+        await browser().evaluate(clearAppStorage);
+        await browser().reload();
+      },
+    });
     await steps.clearState();
 
     await use({
