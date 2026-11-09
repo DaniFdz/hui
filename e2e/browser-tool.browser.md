@@ -93,6 +93,31 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Origin allowlist
+
+Verified on 2026-11-08 in the same fixture, at 1440×900 and 390×844.
+
+- Settings → Tools → Browser → **Allowed origins** was empty and said "Empty lets
+  agents browse anywhere". Saving `127.0.0.1` and reloading showed "1 pattern."
+  with the value kept.
+- `E2E_BROWSER_BLOCKED` opened the fixture page on 127.0.0.1 (allowed) and then
+  asked to navigate to `https://example.com/`; the tool row failed with
+  "example.com is not in this browser's allowed origins (127.0.0.1). The operator
+  can change them in HUI Settings → Tools → Browser.", and the agent's reply
+  quoted that refusal.
+- Clearing the list and saving restored "Empty lets agents browse anywhere" and
+  the same navigation would have been allowed (proven by the manager test with a
+  real headless browser, not by a second fixture run).
+- A narrowing list also refuses a back move into a page it no longer allows,
+  leaving the tab where it was — proven by the same test file, not by a fixture
+  run.
+- A popup to another host, and a redirect from an allowed page to one, are
+  stopped, left on `about:blank` and reported once — including a popup that
+  committed before HUI attached, which `tabs` marks
+  `(blocked: not in the allowed origins)`. Proven by `server/browser/manager.test.ts`
+  with a real headless browser, not by a fixture run.
+- Both viewports showed the field above its button without horizontal overflow.
+
 ## Operator handoff
 
 Verified on 2026-11-08 in the same fixture at 1440×900 and 390×844. The prompt

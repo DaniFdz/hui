@@ -3675,7 +3675,8 @@
         "enabled",
         "headless",
         "executablePath",
-        "mirrorState"
+        "mirrorState",
+        "allowedOrigins"
       ],
       "properties": {
         "enabled": {
@@ -3689,6 +3690,12 @@
         },
         "mirrorState": {
           "type": "boolean"
+        },
+        "allowedOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

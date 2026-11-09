@@ -4569,8 +4569,8 @@ conversation's Work pane. No HUI registry or PI transcript format changes.
 
 ### Managed browser API and tool
 
-`settings.json` gains `browser: { enabled, headless, executablePath }`
-(defaults `true`, `true`, `""`). Both switches are opt-out; the path is kept as
+`settings.json` gains `browser: { enabled, headless, executablePath, mirrorState, allowedOrigins }`
+(defaults `true`, `true`, `""`, `false`, `[]`). Both switches are opt-out; the path is kept as
 typed (bounded, no control characters) and validated by the gateway, which
 expands `~/` and a macOS `.app` bundle. An empty path auto-detects Chrome, Brave,
 Edge, then Chromium in the standard install locations and on `PATH`. Saving a
@@ -4647,9 +4647,9 @@ comes from the per-conversation token. `action` is one of:
 
 | Action | Contract |
 | --- | --- |
-| `status`, `tabs` | Process state and this conversation's tabs; never launch the browser |
+| `status`, `tabs` | Process state and this conversation's tabs; never launch the browser, and `tabs` marks one left blank by the allowlist `(blocked: not in the allowed origins)` |
 | `open` | Launch lazily, open a tab, load `url` and return a snapshot |
-| `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot |
+| `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot; with an origin allowlist set, a page outside it is refused with 403 |
 | `focus`, `close` | Select or close one of this conversation's tabs |
 | `snapshot` | Accessibility outline; `interactive`, `query` and `maxChars` (500–40 000, default 12 000; 8 000 for page loads) narrow it |
 | `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`) |
@@ -4682,6 +4682,19 @@ it. The tool result stores
 model-facing text, a PNG image for `screenshot`, and small `details` (`action`,
 tab id/title/URL and outcome flags) in PI's transcript; no route or registry
 format changes.
+
+An origin allowlist (`browser.allowedOrigins`, empty by default) bounds where a
+tab may go. Patterns are `host`, `host:port`, `http(s)://host[:port]` or
+`*.host` (subdomains only); a bare host accepts either scheme and any port, a
+pattern without a port keeps every port, and patterns are matched lowercase.
+`open`, `navigate` and a back or forward entry outside the list fail with 403
+before a tab moves; a top-level document a link, redirect, script or popup
+lands on outside the list is stopped, the tab is left on `about:blank`, and the
+next result says so once (the browser also reports it as an action to live
+viewers). With a list set, `file:` URLs and any other scheme are refused, and
+a private, loopback or link-local host needs an exact entry: a wildcard never
+matches one. The list does not cover subresources, and names are not resolved
+against DNS rebinding; both are known limits.
 
 A handoff makes the agent wait for the operator in one tab: the call runs in
 `server/browser/manager.ts`, keeps the browser and that tab alive, and refuses

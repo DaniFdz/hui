@@ -23,6 +23,7 @@ import type { BrowserSettings } from "../hui-settings.ts";
 import { CdpConnection, CdpError, type CdpEvent } from "./cdp.ts";
 import { defaultExecutableProbe, resolveBrowserExecutable, type BrowserExecutable, type ExecutableProbe } from "./executable.ts";
 import { KeyParseError, parseKey, type KeyStroke } from "./keys.ts";
+import { allowsUrl, blockedOriginMessage } from "./origins.ts";
 import { clampSnapshotChars, renderSnapshot, SnapshotRefs, type AxNode, type SnapshotOptions, type SnapshotResult, type SnapshotTarget } from "./snapshot.ts";
 import { EMPTY_BROWSER_STATE, isHttpOrigin, mergeBrowserState, STATE_CAPTURE, STATE_SEED, trimBrowserState, type BrowserState, type StoredCookie, type StoredDatabase, type StoredOrigin } from "./state.ts";
 
@@ -120,6 +121,8 @@ type Tab = {
   openedAt: number;
   /** Latest screencast frame, so a new viewer sees the page immediately. */
   frame?: BrowserViewFrame;
+  /** A page that tried to leave the allowed origins, reported once. */
+  blocked?: string;
 };
 
 type Viewer = { owner: string; listener: BrowserViewListener; pinned: string | null; watching: string | null; closed: boolean };
@@ -487,6 +490,8 @@ export class ManagedBrowser {
   readonly #viewers = new Set<Viewer>();
   /** Each conversation's tab waiting for its operator; the agent's call waits with it. */
   readonly #handoffs = new Map<string, Handoff>();
+  /** Settings → Tools → Browser's origin allowlist, refreshed by every call; empty is anywhere. */
+  #origins: readonly string[] = [];
   /** Each conversation's latest agent action, for viewers that join later. */
   readonly #lastActions = new Map<string, BrowserViewAction>();
   readonly #casts = new Map<string, Screencast>();
@@ -685,6 +690,7 @@ export class ManagedBrowser {
     try {
       const settings = await this.#readSettings();
       if (!settings.enabled) throw new BrowserToolError("The browser tool is turned off in HUI Settings → Tools → Browser.", 409);
+      this.#origins = settings.allowedOrigins;
       const name = action as BrowserAction;
       let result: BrowserToolResult;
       try {
@@ -742,6 +748,7 @@ export class ManagedBrowser {
         const tab = this.#tabFor(owner, params["tabId"]);
         const instance = this.#live();
         const url = normalizeBrowserUrl(params["url"]);
+        this.#assertAllowed(url);
         const outcome = await this.#navigate(instance, tab, url, timeoutFrom(params["timeoutMs"]));
         return this.#pageResult(instance, tab, "navigate", `Navigated tab ${tab.id}.`, outcome, params);
       }
@@ -811,9 +818,11 @@ export class ManagedBrowser {
     if (outcome === "continued" && live && !live.connection.closed && current?.owner === owner) {
       await this.#refreshInfo(live, current);
       const snapshot = await this.#snapshot(live, current, { maxChars: PAGE_SNAPSHOT_CHARS });
+      const blocked = this.#blockedLine(current);
       lines = [
         `The operator finished in tab ${current.id}.`,
         this.#header(current),
+        ...(blocked ? [blocked] : []),
         "",
         snapshot.text || "(No accessible content matched.)",
         ...(snapshot.truncated ? [TRUNCATED_NOTE] : []),
@@ -1305,6 +1314,29 @@ export class ManagedBrowser {
 
   // ── Events and tabs ───────────────────────────────────────────────────────
 
+  /** A link, redirect or script inside an allowed page may still land elsewhere: stop it and leave the tab blank. */
+  #blockNavigation(instance: Instance, tab: Tab, url: string): void {
+    tab.blocked = url;
+    tab.refs.reset();
+    void instance.connection.send("Page.stopLoading", {}, tab.session).catch(() => undefined);
+    void instance.connection.send("Page.navigate", { url: "about:blank" }, tab.session).catch(() => undefined);
+    this.#setInfo(tab, "Blocked by allowed origins", "about:blank");
+    this.#emitAction(tab, `Blocked ${clip(url, 200)}: not in this browser's allowed origins`);
+  }
+
+  /** Refuse an agent-requested navigation outright, before a tab goes anywhere. */
+  #assertAllowed(url: string): void {
+    if (!allowsUrl(this.#origins, url)) throw new BrowserToolError(blockedOriginMessage(this.#origins, url), 403);
+  }
+
+  /** One line for the call that follows a blocked page, then it is reported once. */
+  #blockedLine(tab: Tab): string | undefined {
+    const blocked = tab.blocked;
+    if (!blocked) return undefined;
+    tab.blocked = undefined;
+    return `This tab tried to reach ${clip(blocked, 300)}, which is not in the browser's allowed origins; the navigation was stopped and the tab was left on about:blank.`;
+  }
+
   #onEvent(instance: Instance, event: CdpEvent): void {
     const params = event.params;
     if (!event.sessionId) {
@@ -1345,7 +1377,12 @@ export class ManagedBrowser {
       case "Page.frameNavigated": {
         const frame = isRecord(params["frame"]) ? params["frame"] : undefined;
         if (!frame || frame["parentId"]) break;
-        this.#setInfo(tab, tab.title, str(frame["url"]));
+        const landed = str(frame["url"]);
+        if (landed && !allowsUrl(this.#origins, landed)) {
+          this.#blockNavigation(instance, tab, landed);
+          break;
+        }
+        this.#setInfo(tab, tab.title, landed);
         const loaderId = str(frame["loaderId"]);
         if (loaderId && loaderId !== tab.loaderId) {
           tab.loaderId = loaderId;
@@ -1443,6 +1480,9 @@ export class ManagedBrowser {
         tab.url = str(frame["url"]) || tab.url;
         tab.loaderId = str(frame["loaderId"]);
       }
+      // A popup can commit its document before this attach, so its navigation
+      // event is already gone: check where it landed instead of only watching.
+      if (tab.url !== "about:blank" && !allowsUrl(this.#origins, tab.url)) this.#blockNavigation(instance, tab, tab.url);
       if (epoch !== this.#epoch(owner)) throw new BrowserToolError("This conversation's browser tabs were closed.", 409);
     } catch (error) {
       this.#drop(targetId);
@@ -1664,6 +1704,7 @@ export class ManagedBrowser {
       const entries = Array.isArray(history["entries"]) ? history["entries"].filter(isRecord) : [];
       const entry = entries[num(history["currentIndex"]) + (action === "back" ? -1 : 1)];
       if (!entry) throw new BrowserToolError(action === "back" ? "There is no earlier page in this tab's history." : "There is no later page in this tab's history.", 409);
+      this.#assertAllowed(str(entry["url"]));
       trigger = () => connection.send("Page.navigateToHistoryEntry", { entryId: entry["id"] }, tab.session);
     }
     const watch = this.#watch(instance, tab);
@@ -1683,6 +1724,7 @@ export class ManagedBrowser {
 
   async #open(owner: string, params: Record<string, unknown>, settings: BrowserSettings, epoch: number): Promise<BrowserToolResult> {
     const url = normalizeBrowserUrl(params["url"] ?? "about:blank");
+    this.#assertAllowed(url);
     const timeoutMs = timeoutFrom(params["timeoutMs"]);
     if (this.#ownerTabs(owner).length >= MAX_TABS_PER_CONVERSATION) {
       throw new BrowserToolError(`This conversation already has ${MAX_TABS_PER_CONVERSATION} tabs open. Close one first.`, 409);
@@ -1727,6 +1769,8 @@ export class ManagedBrowser {
       maxChars: params["maxChars"] === undefined ? PAGE_SNAPSHOT_CHARS : clampSnapshotChars(params["maxChars"]),
     });
     const lines = [lead, this.#header(tab)];
+    const blocked = this.#blockedLine(tab);
+    if (blocked) lines.push(blocked);
     if (!outcome.loaded) lines.push("The page was still loading when the timeout elapsed; this is its current state.");
     lines.push("", snapshot.text || "(The page has no accessible content yet.)");
     if (snapshot.truncated) lines.push(TRUNCATED_NOTE);
@@ -2036,6 +2080,8 @@ export class ManagedBrowser {
     }
     await this.#refreshInfo(instance, tab);
     const lines = [summary, this.#header(tab)];
+    const blocked = this.#blockedLine(tab);
+    if (blocked) lines.push(blocked);
     if (outcome.navigated && outcome.sameDocument) lines.push("The URL changed within the page; existing refs still apply.");
     else if (outcome.navigated && outcome.loaded) lines.push("The page navigated; refs from the previous page no longer apply. Take a new snapshot.");
     else if (outcome.navigated) lines.push("A navigation started but the page was still loading when the timeout elapsed.");
@@ -2202,7 +2248,7 @@ export class ManagedBrowser {
     const current = this.#current.get(owner);
     return {
       text: tabs.length
-        ? tabs.map((tab) => `${tab.id}${tab.id === current ? " (current)" : ""} · ${clip(tab.title || "Untitled", 120)} — ${clip(tab.url, 300)}`).join("\n")
+        ? tabs.map((tab) => `${tab.id}${tab.id === current ? " (current)" : ""} · ${clip(tab.title || "Untitled", 120)} — ${clip(tab.url, 300)}${tab.blocked ? " (blocked: not in the allowed origins)" : ""}`).join("\n")
         : "No tabs are open in this conversation. Call open with a URL.",
       details: { action: "tabs", tabs: tabs.map((tab) => this.#tabDetails(tab)) },
     };

@@ -474,6 +474,29 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent tries a host the allowlist keeps out, and reports the refusal it gets.
+  if (source.includes("E2E_BROWSER_BLOCKED") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-blocked-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-blocked-open") {
+    await browserPace(body);
+    toolUse(response, "tool-e2e-blocked-navigate", "browser", { action: "navigate", url: "https://example.com/" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-blocked-navigate") {
+    const refusal = /[\w.-]+ is not in this browser's allowed origins[^\n]*/u.exec(toolResultTexts(body.messages).join("\n"))?.[0];
+    text(response, refusal
+      ? `The browser refused the navigation: **${refusal}**`
+      : "The navigation was not refused, so the allowlist did not apply.");
+    return finish(response);
+  }
+
   // The agent opens the page, then hands the tab to the operator when only a person can finish.
   if (source.includes("E2E_BROWSER_HANDOFF") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -505,7 +528,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);

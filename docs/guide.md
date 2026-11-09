@@ -1409,6 +1409,18 @@ ask for up to thirty. If the tab closes or the browser stops first, the agent is
 told that instead. Opening the browser view from the header's globe button shows
 the same view: it stays view-only unless a handoff is waiting.
 
+## Limiting where the agent's browser goes
+
+Settings → Tools → Browser → **Allowed origins** is empty by default: the
+agent's browser may open any http(s) page. Add one pattern per line to bound
+it — `example.com`, `example.com:8443`, `https://app.example.com`, or
+`*.example.com` for subdomains only (never the bare domain itself). With a list
+set, an agent can only open or navigate to those pages: links, redirects and
+popups that leave the list are stopped and the tab is left blank, the tool
+result says why, and a local file is refused. A loopback or private address
+needs its exact host, and the list follows where a page goes, not what it
+loads, so a page on the list can still fetch its own resources.
+
 ## Giving a conversation a goal
 
 A goal is one objective a conversation keeps pursuing, for work that outlasts a
