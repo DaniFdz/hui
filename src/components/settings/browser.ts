@@ -1,11 +1,13 @@
 /**
- * Settings → Tools → Browser. The switches and path save through the shared settings store; the gateway reports the
- * process, its tabs and previews, which this page polls and captures while it is open.
+ * Settings → Tools → Browser. The switches, the path and the origin allowlist save through the shared settings store;
+ * the gateway reports the process, its tabs and previews, which this page polls and captures while it is open. Site
+ * secrets are their own list: names and origins come back from the gateway, values only ever go one way.
  */
 import { LitElement, html, nothing, type PropertyValues } from "lit";
-import type { BrowserStatus, BrowserTabView } from "../../api/schema/browser.ts";
+import { keyed } from "lit/directives/keyed.js";
+import type { BrowserSecretView, BrowserStatus, BrowserTabView } from "../../api/schema/browser.ts";
 import { browserStatusLabel, browserVersionLabel } from "../../lib/browser-status.ts";
-import { controlBrowser, loadBrowserStatus, previewBrowserTab } from "../../api/browser.ts";
+import { controlBrowser, loadBrowserSecrets, loadBrowserStatus, previewBrowserTab, removeBrowserSecret, saveBrowserSecret } from "../../api/browser.ts";
 import { DEFAULT_BROWSER_SETTINGS, type BrowserSettings } from "../../lib/settings/settings.ts";
 import { renderSettingsToggle } from "../../views/settings-toggle.ts";
 import { loadViewAssets } from "../../lib/view-assets.ts";
@@ -28,6 +30,10 @@ export class HuiBrowserSettings extends LitElement {
   #error = "";
   #request = 0;
   #poll?: ReturnType<typeof setTimeout>;
+  #secrets: BrowserSecretView[] | undefined;
+  #secretError = "";
+  /** Remounts the add form after a save so its value field is empty again. */
+  #secretForm = 0;
   /** Preview data URLs keyed by tab id, with the URL they were captured for. */
   readonly #previews = new Map<string, { url: string; image?: string; error?: string }>();
 
@@ -42,6 +48,7 @@ export class HuiBrowserSettings extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     void this.#refresh();
+    void this.#refreshSecrets();
   }
 
   override disconnectedCallback() {
@@ -189,6 +196,83 @@ export class HuiBrowserSettings extends LitElement {
     </form>`;
   }
 
+  async #refreshSecrets() {
+    try {
+      this.#secrets = await loadBrowserSecrets();
+      this.#secretError = "";
+    } catch (error) {
+      this.#secretError = error instanceof Error ? error.message : "The site secrets could not be loaded.";
+    } finally {
+      this.requestUpdate();
+    }
+  }
+
+  async #addSecret(event: SubmitEvent) {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const data = new FormData(form);
+    const name = String(data.get("name") ?? "").trim();
+    const origin = String(data.get("origin") ?? "").trim();
+    const value = String(data.get("value") ?? "");
+    try {
+      this.#secrets = await saveBrowserSecret({ name, origin, value });
+      this.#secretError = "";
+      this.#secretForm += 1;
+    } catch (error) {
+      this.#secretError = error instanceof Error ? error.message : "The secret could not be saved.";
+    } finally {
+      this.requestUpdate();
+    }
+  }
+
+  async #removeSecret(name: string) {
+    try {
+      this.#secrets = await removeBrowserSecret(name);
+      this.#secretError = "";
+    } catch (error) {
+      this.#secretError = error instanceof Error ? error.message : "The secret could not be removed.";
+    } finally {
+      this.requestUpdate();
+    }
+  }
+
+  /** What is stored is a name and an origin; a value is write-only from here. */
+  #renderSecrets() {
+    const secrets = this.#secrets;
+    return html`<h3 class="browser-settings__subheading">Site secrets</h3>
+      <div class="settings-group browser-settings__secrets">
+        ${secrets === undefined
+          ? html`<div class="settings-row"><div class="settings-row__text"><span class="settings-row__desc">Loading…</span></div></div>`
+          : secrets.length === 0
+            ? html`<div class="settings-row"><div class="settings-row__text"><span class="settings-row__desc">None stored. An agent can type one into a login field without ever seeing it, and this machine keeps it in a file only you can read.</span></div></div>`
+            : secrets.map((secret) => html`<div class="settings-row">
+                <div class="settings-row__text">
+                  <span class="settings-row__title">${secret.name}</span>
+                  <span class="settings-row__desc">${secret.origin}${secret.createdAt ? ` · stored ${new Date(secret.createdAt).toLocaleDateString()}` : ""}</span>
+                </div>
+                <div class="settings-row__control"><button type="button" class="btn btn--sm" @click=${() => void this.#removeSecret(secret.name)}>Delete ${secret.name}</button></div>
+              </div>`)}
+        <form class="settings-row browser-settings__secret-form" @submit=${(event: SubmitEvent) => void this.#addSecret(event)}>
+          <div class="settings-row__text">
+            <span class="settings-row__title">Add a site secret</span>
+            <span class="settings-row__desc">The agent types it into a field whose page is exactly this origin, and its value never appears in the chat, a tool result or a log. Page script on that origin can still read the field once it is filled, so keep the origin allowlist narrow.</span>
+            ${this.#secretError ? html`<span class="settings-row__desc browser-settings__problem">${this.#secretError}</span>` : nothing}
+          </div>
+          <div class="settings-row__control browser-settings__secret-fields">
+            ${keyed(this.#secretForm, html`
+              <label class="browser-settings__label" for="browser-secret-name">Secret name</label>
+              <input class="settings-input" id="browser-secret-name" name="name" spellcheck="false" autocomplete="off" placeholder="github">
+              <label class="browser-settings__label" for="browser-secret-origin">Secret origin</label>
+              <input class="settings-input" id="browser-secret-origin" name="origin" spellcheck="false" autocomplete="off" placeholder="https://github.com">
+              <label class="browser-settings__label" for="browser-secret-value">Secret value</label>
+              <input class="settings-input" id="browser-secret-value" name="value" type="password" autocomplete="new-password">
+            `)}
+            <button type="submit" class="btn">Add secret</button>
+          </div>
+        </form>
+      </div>`;
+  }
+
   #renderProcess(status: BrowserStatus) {
     const running = status.state === "running";
     const pending = status.state === "starting" || status.state === "stopping";
@@ -261,6 +345,7 @@ export class HuiBrowserSettings extends LitElement {
             <div class="settings-row__control">${renderSettingsToggle("Run headless", settings.headless, (checked) => void this.#save({ ...settings, headless: checked }))}</div>
           </div>
           ${this.#renderOrigins()}
+          ${this.#renderSecrets()}
           <div class="settings-row">
             <div class="settings-row__text">
               <span class="settings-row__title">Mirror browser state</span>

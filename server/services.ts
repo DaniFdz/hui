@@ -33,11 +33,12 @@ import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
 import { readHuiSettings, writeHuiSettings, type Settings } from "./hui-settings.ts";
-import { AUTOMATION_FILE, BROWSER_PROFILE_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
+import { AUTOMATION_FILE, BROWSER_PROFILE_DIR, BROWSER_SECRETS_FILE, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeService } from "./vscode/vscode.ts";
 import { VscodeInstaller } from "./vscode/install.ts";
 import { verifyVscodeServer } from "./vscode/providers.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
+import { SiteSecrets } from "./browser/secrets.ts";
 import { MacPower } from "./power.ts";
 import { createHostMetrics, sampleInBackground } from "./host-metrics.ts";
 import type { BrowserStatus } from "./api/browser.ts";
@@ -364,9 +365,13 @@ export const watcherRoutes = createWatcherRoutes({ watchers, readRegistry });
 /** One managed browser per gateway; its settings are re-read on every call. With mirroring on it seeds itself from
  * what any worker sent, and hands what it captured to every worker's document. State goes through this machine: a
  * worker's document never reaches another worker. */
+/** Site secrets live beside the profile, never in settings.json: they stay on the machine whose browser types them. */
+export const siteSecrets = new SiteSecrets({ file: BROWSER_SECRETS_FILE });
+
 export const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
   readSettings: async () => (await readHuiSettings()).browser,
+  secrets: siteSecrets,
   mirror: {
     read: async () => (await readHuiSettings()).browser.mirrorState ? browserMirror.everything() : { cookies: [], origins: [] },
     write: (state) => {
@@ -395,7 +400,7 @@ export const vscode = new VscodeService({
     ...(process.env["HUI_OPENVSCODE_SERVER_MIRROR"] ? { downloads: process.env["HUI_OPENVSCODE_SERVER_MIRROR"] } : {}),
   }),
 });
-export const browserRoutes = createBrowserRoutes({ managedBrowser, browserStatus, readRegistry });
+export const browserRoutes = createBrowserRoutes({ managedBrowser, secrets: siteSecrets, browserStatus, readRegistry });
 export const vscodeRoutes = createVscodeRoutes({ vscode, readRegistry });
 /** macOS sleep prevention lives and dies with this gateway process. */
 export const macPower = process.platform === "darwin" ? new MacPower() : undefined;

@@ -93,6 +93,26 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Site secrets
+
+Verified on 2026-11-08 in the same fixture at 1440×900 and 390×844.
+
+- Settings → Tools → Browser → **Site secrets** showed "None stored." Filling
+  the name `fixture-secret`, the origin of the fixture page
+  (`http://127.0.0.1:<provider port>`, read from the live view) and a value, then
+  **Add secret**, listed `fixture-secret` with its origin, left the value field
+  empty and never rendered the value anywhere. A reload kept it.
+- `E2E_BROWSER_SECRET` opened `/browser-secret-fixture`, took the ref of its
+  Password field, typed the stored secret (Enter pressed) and clicked Sign in:
+  the page reported "signed in with 15 characters". The tool row and the reply
+  named the secret, the field and the origin and never carried the value; the
+  live view showed only the masked field.
+- The stored file was `browser-secrets.json` with mode 0600, and
+  `GET /__hui/browser/secrets` listed only the name, origin and time.
+- **Delete fixture-secret** returned the list to "None stored."
+- Both viewports stacked each stored name above its Delete button and the three
+  fields without sideways overflow.
+
 ## Origin allowlist
 
 Verified on 2026-11-08 in the same fixture, at 1440×900 and 390×844.

@@ -4,7 +4,7 @@
  * `/__hui/` routes to reach it.
  */
 import { normalizeBrowserStatus } from "../lib/browser-status.ts";
-import type { BrowserHandoff, BrowserStatus, BrowserViewConnection, BrowserViewTab, BrowserViewMessage } from "./schema/browser.ts";
+import type { BrowserHandoff, BrowserSecretView, BrowserSecrets, BrowserStatus, BrowserViewConnection, BrowserViewTab, BrowserViewMessage } from "./schema/browser.ts";
 import { fetchJson } from "./request.ts";
 
 const BROWSER_URL = "/__hui/browser";
@@ -121,4 +121,38 @@ export async function previewBrowserTab(id: string): Promise<string> {
   });
   if (typeof body.image !== "string" || !body.image.startsWith("data:image/")) throw new Error("The preview was not an image.");
   return body.image;
+}
+
+/** The operator's stored site secrets: names and origins only, never a value. */
+export function secretViews(body: unknown): BrowserSecretView[] {
+  const secrets = isRecord(body) ? body["secrets"] : undefined;
+  return Array.isArray(secrets) ? secrets.filter(isRecord).flatMap((entry) => {
+    const name = text(entry["name"], 60);
+    const origin = text(entry["origin"], 300);
+    if (!name || !origin) return [];
+    return [{ name, origin, createdAt: text(entry["createdAt"], 64) }];
+  }) : [];
+}
+
+export async function loadBrowserSecrets(): Promise<BrowserSecretView[]> {
+  return secretViews(await fetchJson<BrowserSecrets>("/__hui/browser/secrets"));
+}
+
+/** A stored value never comes back: the response is the list of names and origins. */
+export async function saveBrowserSecret(input: { name: string; origin: string; value: string }): Promise<BrowserSecretView[]> {
+  return secretViews(await fetchJson<BrowserSecrets>("/__hui/browser/secrets", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(15_000),
+  }));
+}
+
+export async function removeBrowserSecret(name: string): Promise<BrowserSecretView[]> {
+  return secretViews(await fetchJson<BrowserSecrets>("/__hui/browser/secrets/remove", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+    signal: AbortSignal.timeout(15_000),
+  }));
 }
