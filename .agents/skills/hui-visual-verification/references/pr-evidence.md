@@ -31,8 +31,9 @@ The PR needs the commit, proof scope, assertions and screenshots, not host metad
    GitHub attachments and do not satisfy the PR requirement by themselves.
 
 For example, from the temporary evidence directory **outside the repository**,
-put `![Desktop — scenario, 1440×900](./desktop.png)` and
-`![Mobile — scenario, 390×844](./mobile.png)` under their headings in `body.md`.
+put `![Desktop — scenario, 1440×900](./desktop.png)`,
+`![Mobile — scenario, 390×844](./mobile.png)` and
+`![Phone — Android, 432×960](./android.png)` under their headings in `body.md`.
 Preserve the existing description's other sections when preparing that file, then:
 
 ```sh
@@ -70,6 +71,12 @@ keep it draft, and deliver the files in chat for attachment once access is avail
 
 ### Mobile — <scenario>, 390×844
 <GitHub attachment Markdown>
+
+### Phone — Android, 432×960
+<GitHub attachment Markdown from the emulator (references/android.md)>
+
+### Phone — iOS, from CI
+<The ios-smoke artifact for this HEAD, when mobile/ios/** changed (references/ios.md)>
 
 ## Limits
 - <What this does not prove; any blocked checks or attachment gap>.

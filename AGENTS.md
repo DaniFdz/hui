@@ -61,6 +61,17 @@ details in the owning directory guide.
   app, in addition to focused automated tests. Exercise the UI rather than only
   calling its HTTP endpoints, inspect the resulting screen, and report any proof
   gap explicitly.
+- Phone shell work: `npm run mobile -- doctor` prints the pinned toolchain,
+  emulator and device state; `dev` builds this checkout's Connect page and debug
+  APK, installs it and launches it against a gateway; `test` runs the shell's JVM
+  tests; `screenshot <path>` captures the screen. The loops, ports and the
+  two-worker setup are in `mobile/AGENTS.md`.
+- The suite's `android` target is not in `e2e.config.ts` yet: it lands with the
+  phone e2e package of `docs/mobile-app-plan.md` (WP4). Until then the emulator
+  procedure in
+  [hui-visual-verification](.agents/skills/hui-visual-verification/references/android.md)
+  is the phone check, and the `mobile / android-build` job covers the app's build
+  and the shell's JVM tests.
 - Never weaken assertions, add sleeps, or hide failures to make a check pass.
   Synchronize on observable state and fix defects at their owning boundary.
 
@@ -105,6 +116,12 @@ with `role="tooltip"`), never a native `title`.
 - A user-visible change adds or updates its use case in `e2e/catalogue/` and ships with a shared test in
   `e2e/tests/` that passes on the web (`npm run e2e`), unless the use case is excluded there; catching up baseline
   use cases follows `e2e/AGENTS.md`, which has the catalogue and test rules.
+- A user-visible change passes the phone targets too: `android`, the shared suite in the app's WebView, and
+  `webkit-phone`, the suite in mobile WebKit. Neither target is in `e2e.config.ts` yet; they land with WP4 and WP6 of
+  `docs/mobile-app-plan.md`, and from then on a use case's phone requirement is part of its catalogue entry. A change
+  under `mobile/` carries emulator screenshots captured through the
+  [visual-verification skill](.agents/skills/hui-visual-verification/SKILL.md) and runs the iOS smoke job once WP5
+  adds it.
 - Do not add dependencies, alter persisted formats, or delete PI/HUI user data
   without explicit approval. Tests use temporary directories and isolated processes.
 - A change that leaves existing persisted state behind (a format, location or

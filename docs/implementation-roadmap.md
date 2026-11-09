@@ -1314,9 +1314,13 @@ Browser-tool journey.
 
 ### HUI-22 — Phone apps for Android and iOS from one web UI
 
-**Status:** planned, not started. The plan is [`mobile-app-plan.md`](mobile-app-plan.md)
-(SPEC.md, "The phone apps wrap the web UI"). It replaces the native SwiftUI app
-(draft PR #347, unmerged) and the native Compose app (PR #458, unmerged).
+**Status:** in progress. Wave 0 (the four spikes and what they measured) and WP1 (the
+scaffold: `mobile/`, the Connect page, `npm run mobile`, `mobile/AGENTS.md` and the
+Android debug-build job) are merged on the integration branch
+`danifdz/mobile-shell-plan`. WP2 to WP10 are planned and not started. The plan is
+[`mobile-app-plan.md`](mobile-app-plan.md) (SPEC.md, "The phone apps wrap the web UI").
+It replaces the native SwiftUI app (draft PR #347, unmerged) and the native Compose
+app (PR #458, unmerged).
 
 Capacitor shells for Android and iOS that load the connected gateway's own web
 UI and add only native behaviour: the remembered gateway, the back button,
