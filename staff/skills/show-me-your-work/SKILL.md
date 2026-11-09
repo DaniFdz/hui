@@ -25,7 +25,7 @@ A playbook may add columns it needs, such as `Step`, `Route`, or `Child`; these 
 
 Write the row at dispatch: task, owner, `in flight`, the branch, no PR. At settle, update that row with the outcome, resolved evidence, PR, and final status. Update it when the status changes, not at every step.
 
-Keep `work/` out of commits by default. In a shared checkout, put it outside the repository and name its absolute path in the first reply.
+Keep `work/` out of commits. Git ignores it at the repository root, so a checkout never shows it in `git status`; in a shared checkout you may instead put it outside the repository and name its absolute path in the first reply. A plan or a ledger is never a repository file: what a reviewer needs goes into the reply or the pull request description.
 
 ## The task page
 
@@ -37,7 +37,7 @@ Keep it current enough to resume from. Do not copy the transcript into it.
 
 For unattended or multi-phase work, append `work/decisions.tsv`: `ts`, `phase`, `decision`, `why`, `evidence`, `result`, one row per decision, each cell on one line. Log forks, completed units, pivots, reverts, and blockers. Skip routine actions.
 
-Append-only. A wrong row gets a new row that supersedes it. Never edit or delete one. It stays out of git unless a reviewer needs the trail in the PR and the operator asks for it in the change.
+Append-only. A wrong row gets a new row that supersedes it. Never edit or delete one. It stays out of git: when a reviewer needs the trail, summarize it in the reply or the pull request description rather than committing the file.
 
 ## Rules
 

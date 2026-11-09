@@ -152,5 +152,4 @@ every cancellation race are not certified. No node_modules patch was made.
 The shared checkout's pre-existing work was preserved. No commit, push or public
 deployment was performed. The owned Browser tab, isolated Vite/provider process
 and temporary reference server were stopped after verification; fixture directories
-and evidence were retained. The broader [visual goal](../docs/visual-parity-goal.md)
-remains active.
+and evidence were retained. The broader visual acceptance gate remains open.

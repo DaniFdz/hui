@@ -1,5 +1,5 @@
 /**
- * What a bot's chat may use (HUI-18; SPEC decision of 2026-10-06): every tool
+ * What a bot's chat may use (SPEC decision of 2026-10-06): every tool
  * and skill a session in its directory gets, except the ones the operator
  * turned off for that bot. What is off lives in its conversation's `hui.bot`
  * document, and everything here reads that document where the conversation

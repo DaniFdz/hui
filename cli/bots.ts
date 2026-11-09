@@ -1,5 +1,5 @@
 /**
- * `hui bot`: bots (HUI-18) from a terminal. Everything goes through the running
+ * `hui bot`: bots from a terminal. Everything goes through the running
  * gateway, as in Settings and the Bots tab: the `/__hui/bots` routes, the
  * session API for `chat`, and the Automation routes for routines, which
  * `hui schedule` shares (`schedules.ts`). The CLI never opens the Durable store,

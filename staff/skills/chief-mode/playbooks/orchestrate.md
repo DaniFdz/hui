@@ -8,7 +8,9 @@ driven to a predicate is `autonomous-run`.
 
 1. Write the ledger before the first spawn. `work/index.md` holds one row per task: id,
    owner session key, PR, branch, state, evidence, verdict. `work/<task>.md` holds that
-   task's brief, upstream reports pasted in full, decision log, and evidence. The ledger is
+   task's brief, upstream reports pasted in full, decision log, and evidence. Git ignores
+   `work/`, so the ledger is never committed: a trail a reviewer needs goes into the pull
+   request description or the reply. The ledger is
    the program's state, so a dead worker loses nothing that matters.
 2. Keep three levels maximum: coordinator, sub-coordinators when one area has many
    parallel workers, workers. No fourth level. A sub-coordinator is a `lead` session you

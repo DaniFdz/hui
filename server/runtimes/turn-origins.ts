@@ -10,7 +10,7 @@ import { AGENT_TAG, BOT_IMPORTED_KICKOFF_LINE, botKickoffName } from "../bots-fo
 import type { CallRecord } from "../calls-format.ts";
 
 /**
- * The record of one GPT-Live call with the bot (HUI-18): its summary and its whole transcript (`CallRecord`), written
+ * The record of one GPT-Live call with the bot: its summary and its whole transcript (`CallRecord`), written
  * once at hang-up as a passive entry, so no model turn runs for it. It carries no model messages: the chat shows it
  * as one card, OptChat logs it (its transcript and summary, marked `[call]`), and Durable places it at a running
  * turn's next boundary.

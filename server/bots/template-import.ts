@@ -1,5 +1,5 @@
 /**
- * Importing bots from other platforms' templates and HUI's own (HUI-18; docs/api.md#importing-and-exporting-bots).
+ * Importing bots from other platforms' templates and HUI's own (docs/api.md#importing-and-exporting-bots).
  *
  * An import reads its source (`bot-templates/`) into a `BotTemplate`, then plans it against this gateway: the handle it
  * gets, SOUL.md (its persona only), MEMORY.md (what the source bot knew: reference data, never exported), the model it

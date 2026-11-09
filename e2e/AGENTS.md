@@ -41,10 +41,9 @@ run by `../e2e.config.ts` against a disposable gateway that the visual-verificat
 `npm run e2e` after `npx e2e-web install chromium`; a failure leaves `trace.md`, a screenshot and the screen dump in
 `.e2e/results/`.
 
-The suite has one target, `web`, today. The tests stay portable so that a native phone app
-(`../docs/native-android-plan.md`) can run them as a second target: every gesture or reading that would differ per
-platform is a `hui.*` step from the fixture's per-target table, and the rules below keep the tests themselves free of
-web-only reads.
+The suite has one target, `web`, today. The tests stay portable so that a native phone app can run them as a second
+target: every gesture or reading that would differ per platform is a `hui.*` step from the fixture's per-target table,
+and the rules below keep the tests themselves free of web-only reads.
 
 A phone shows one screen at a time, so a test calls `hui.sessionList()` before it checks session rows while a chat
 or the Sessions page is open: on the web's wide layout the sidebar is always there and it does nothing, and on the

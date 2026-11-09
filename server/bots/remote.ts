@@ -1,5 +1,5 @@
 /**
- * Bots on remote workers (HUI-18), the gateway's half. A bot whose record names
+ * Bots on remote workers, the gateway's half. A bot whose record names
  * a worker keeps its conversation and OptChat memory in that worker's Durable
  * store, where its chat runs as a remote session, and its home folder with
  * SOUL.md in the worker's HUI data directory; these ports reach them through
