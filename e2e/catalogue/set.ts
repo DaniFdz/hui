@@ -434,7 +434,6 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:tools", "route:GET /__hui/browser/secrets", "route:POST /__hui/browser/secrets", "route:POST /__hui/browser/secrets/remove", "tool:browser"],
     journeys: ["browser-tool"],
     web: "required",
-    ios: { excluded: "The iPhone app has no browser settings or managed browser.", decision: "SPEC.md#managed-browser" },
   },
   {
     id: "SET-090",
