@@ -3,6 +3,25 @@ name: Android spike
 # Throwaway: it measures what an Android emulator job costs on GitHub's Linux runners and proves the
 # pieces the plan's `android` e2e target stands on (KVM, boot, adb, screencap, a WebView, one or two
 # emulators per 4-core runner). Nothing here ships; the real job is WP4's.
+#
+# Measured on ubuntu-latest (4 vCPU, 15.9 GB, 145 GB disk) on 2026-11-09, green run 42707061309, 4m40s:
+#
+#   KVM                  /dev/kvm is crw-rw---- root:kvm before; the udev rule makes it 0666 and the
+#                        runner user reads and writes it. vmx is in /proc/cpuinfo.
+#   setup-android        7s (the runner's preinstalled cmdline-tools is the wrong version, so it
+#                        downloads its own)
+#   sdkmanager install   35s for emulator + platforms;android-34 + system-images;android-34;google_apis;x86_64
+#                        (the image is 4.2 GB on disk). android-36;google_apis;x86_64 installs too, 32s, 4.3 GB.
+#                        android-21 through android-36 google_apis x86_64 are all offered.
+#   avdmanager           1-2s per AVD (it prints a cosmetic "Could not load devices from .../devices.xml"
+#                        error for the system image and still creates the AVD from the pixel_10 profile)
+#   cold boot            39s to sys.boot_completed, 37.6s by the emulator's own log (29s, 39s, 39s over three runs)
+#   snapshot boot        6s from the snapshot the previous boot saved: 1.2 GB of snapshots, AVD 2.7 GB after boot
+#   adb + screencap      1.0-3.7s per frame; 1080x2424 PNG, 1.38 MB, 28,759 colours, and two different frames
+#   WebView              com.google.android.webview is installed (com.android.chrome too on this image)
+#   two emulators        both fit: 7.8 GB of 15.9 GB, but load 4.90 on 4 cores with ~190% CPU each. The second
+#                        cold boot takes 58s instead of 39s and screencap throughput drops ~30%. One per job.
+#   whole job            4m40s with every phase above; a single-emulator, SDK-cached job is about 2m30s
 on:
   workflow_dispatch:
   push:
