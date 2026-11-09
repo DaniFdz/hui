@@ -693,3 +693,60 @@ test("a stored site secret is typed only on its own origin and never comes back 
   // An unknown name lists the stored names, which are not secret.
   await assert.rejects(call({ action: "secret", name: "nope", ref: password }), /No site secret named "nope"\. Stored names: fixture/u);
 });
+
+test("a secret cannot reach a field inside a frame, on any origin", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-secret-frame-"));
+  const LOGIN = `<!doctype html><title>Embedded sign in</title>
+    <label for="password">Password</label><input id="password" type="password">`;
+  const login = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(LOGIN);
+  }).listen(0, "127.0.0.1");
+  await once(login, "listening");
+  const loginAddress = login.address();
+  assert.ok(loginAddress && typeof loginAddress !== "string");
+  const loginOrigin = `http://127.0.0.1:${loginAddress.port}`;
+  let embedded = loginOrigin;
+  const host = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Host page</title><h1>Host page</h1>
+      <iframe src="${embedded}/login" title="Sign in" width="400" height="200"></iframe>`);
+  }).listen(0, "127.0.0.1");
+  await once(host, "listening");
+  const hostAddress = host.address();
+  assert.ok(hostAddress && typeof hostAddress !== "string");
+  const hostOrigin = `http://127.0.0.1:${hostAddress.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const stored = new Map<string, { name: string; origin: string; value: string; createdAt: string }>();
+  const secrets = {
+    find: async (name: string) => stored.get(name),
+    list: async () => [...stored.values()].map(({ name, origin, createdAt }) => ({ name, origin, createdAt })),
+  };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, secrets });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    host.close();
+    login.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  stored.set("fixture", { name: "fixture", origin: hostOrigin, value: "frame-secret", createdAt: "2026-11-08T00:00:00.000Z" });
+
+  // Neither another origin's frame nor the host's own frame puts its fields in the snapshot:
+  // refs only ever name nodes of the tab's own document, so no secret can reach a frame's field.
+  for (const [label, source] of [["another origin", loginOrigin], ["its own origin", ""]] as const) {
+    if (source) embedded = source;
+    const opened = await call({ action: "open", url: `${hostOrigin}/frame` });
+    assert.match(opened.text, /Iframe "Sign in"/u, label);
+    assert.doesNotMatch(opened.text, /textbox "Password"/u, label);
+    // A secret only accepts a ref this tab's own snapshot handed out.
+    const refused = await call({ action: "secret", name: "fixture", ref: "e99" }).then(() => undefined, (error: unknown) => error);
+    assert.ok(refused instanceof BrowserToolError);
+    assert.match(refused.message, /Ref e99 is not in tab t\d+'s latest snapshot/u, label);
+    assert.equal(refused.message.includes("frame-secret"), false, label);
+    await call({ action: "close" });
+  }
+});

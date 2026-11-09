@@ -4605,7 +4605,8 @@ A `secret` call types a value the operator stored (see `POST
 /__hui/browser/secrets`) and never returns it: the field's own frame is resolved
 from `DOM.describeNode` and `Page.getFrameTree`, the call is refused with 409
 unless that page's origin equals the secret's, and an unknown name returns 404
-with the stored names. Success reports the name, the field and the origin in
+with the stored names. Refs only name nodes of the tab's own document: a field
+inside an iframe (same or another origin) has none, so it cannot be typed into. Success reports the name, the field and the origin in
 text and in `details` (`name`, `origin`, `typed`, `submitted`), nothing more; the
 live view's action line names the secret, never the value.
 

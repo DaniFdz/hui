@@ -985,6 +985,9 @@ types the value with the same CDP input path `act type` uses. Its result and
 enters PI's transcript, a log or the live view. Once typed the value is in the
 page, where script on that origin can read it: the origin check keeps it away
 from other origins and frames, and is strongest paired with an origin allowlist.
+A field inside an iframe is not addressable at all — a tab's snapshot covers its
+own document, not a frame's — so a sign-in form embedded from elsewhere always
+needs a handoff.
 
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch

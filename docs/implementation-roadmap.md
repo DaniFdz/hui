@@ -732,7 +732,8 @@ caption or a log. Proof: `server/browser/secrets.test.ts` (private file, views
 without values, junk input, a part-corrupt file),
 `server/browser/manager.test.ts` (a real headless browser: refused on another
 origin without leaking the value, typed and submitted on its own with the value
-absent from text and details, an unknown name listing stored names),
+absent from text and details, an unknown name listing stored names, and a
+frame's field unreachable on any origin),
 `e2e/tests/set/browser-secrets.e2e.ts` (the settings list saves, hides the
 value, survives a reload and deletes) and the secrets section of
 `e2e/browser-tool.browser.md`.
