@@ -6,6 +6,13 @@
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<!-- Spike S3 only: the probe loads a runtime URL served on the runner's loopback, which App Transport Security
+	     blocks unless local networking is allowed. WP5 decides which cleartext exceptions the real shell keeps. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>CFBundleDisplayName</key>
         <string>HUI</string>
 	<key>CFBundleExecutable</key>

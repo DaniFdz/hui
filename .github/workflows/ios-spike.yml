@@ -107,12 +107,47 @@ jobs:
           xcrun simctl io "$udid" screenshot artifacts/connect-8s.png
           # The app process must still be alive: a crash shows in the screenshot as a springboard.
           xcrun simctl spawn "$udid" launchctl list | grep -F dev.hui.app || echo "::warning::dev.hui.app is not in launchctl list"
+          echo "udid=$udid" >> "$GITHUB_ENV"
+
+      # The seam a production shell uses: CAPBridgeViewController.instanceDescriptor() decides the URL the bridge
+      # loads. This relaunches the same build with -HUIGatewayURL, a page on the runner's loopback, and asserts the
+      # screenshot: green means the URL was loaded and Capacitor's bridge is injected on that origin, red means the
+      # page loaded without the bridge.
+      - name: Prove a URL chosen at launch, with the bridge on it
+        run: |
+          set -euo pipefail
+          node mobile/ios/s3-probe/server.mjs > /tmp/probe-server.log 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          # The server logs a line per request, so this waits on the server being up instead of on a sleep.
+          for _ in $(seq 1 30); do grep -q "probe page on" /tmp/probe-server.log 2>/dev/null && break; sleep 1; done
+          cat /tmp/probe-server.log
+
+          udid="$udid"
+          gateway="http://127.0.0.1:4173/"
+          xcrun simctl terminate "$udid" dev.hui.app || true
+          xcrun simctl launch --console "$udid" dev.hui.app -HUIGatewayURL "$gateway" > /tmp/probe-console.log 2>&1 &
+          console=$!
+          trap 'kill "$console" "$server" 2>/dev/null || true' EXIT
+          # The probe prints the descriptor it built, so this waits for the app to have started.
+          for _ in $(seq 1 60); do grep -q "HUIPROBE descriptor.serverURL after=" /tmp/probe-console.log 2>/dev/null && break; sleep 1; done
+          grep -F "HUIPROBE" /tmp/probe-console.log || echo "::warning::the app's stdout did not reach the console log"
+
+          pass=""
+          for _ in $(seq 1 8); do
+            xcrun simctl io "$udid" screenshot artifacts/runtime-url.png
+            if node mobile/ios/s3-probe/check-screenshot.mjs artifacts/runtime-url.png green 0; then pass=1; break; fi
+          done
+          cat /tmp/probe-server.log
+          test -n "$pass"
 
       - name: Collect the build log, the screenshots and the app's own log
         if: always()
         run: |
           mkdir -p artifacts
           cp /tmp/xcodebuild.log artifacts/xcodebuild.log 2>/dev/null || true
+          cp /tmp/probe-console.log artifacts/probe-console.log 2>/dev/null || true
+          cp /tmp/probe-server.log artifacts/probe-server.log 2>/dev/null || true
           cp /tmp/ios-simulator.log artifacts/simulator.log 2>/dev/null || true
           ls -la artifacts
 

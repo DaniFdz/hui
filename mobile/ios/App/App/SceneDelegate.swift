@@ -8,7 +8,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = CAPBridgeViewController()
+        // Spike S3: the probe subclass only overrides instanceDescriptor() to measure the runtime-URL seam. WP5 puts
+        // the real shell here (CAPBridgeViewController is what cap generates).
+        window?.rootViewController = S3ProbeViewController()
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
