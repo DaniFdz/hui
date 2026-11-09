@@ -1,4 +1,4 @@
-/** A session moves to another custom group by dragging its row onto the group (web only: agent-device cannot hold a touch long enough to start an iOS drag) or through Move to group, keeps its group across a reload, and a failed move shows its error (SESS-030). */
+/** A session moves to another custom group by dragging its row onto the group or through Move to group, keeps its group across a reload, and a failed move shows its error (SESS-030). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 

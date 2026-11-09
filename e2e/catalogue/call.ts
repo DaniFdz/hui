@@ -14,7 +14,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/calls"],
     journeys: ["bot-setup"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-002",
@@ -23,7 +22,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", CALLS, "docs/api.md#post-__huibotsidcalls"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-003",
@@ -32,7 +30,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", CALLS],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-004",
@@ -41,7 +38,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", CALLS],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-005",
@@ -50,7 +46,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-have-animated-faces-2026-10-06", API],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-006",
@@ -59,7 +54,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", CALLS],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-007",
@@ -68,7 +62,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots"],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-008",
@@ -77,7 +70,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", CALLS, "docs/api.md#delete-__huibotsidcallscallid"],
     surfaces: ["route:DELETE /__hui/bots/:id/calls/:callId"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-009",
@@ -86,7 +78,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots"],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-010",
@@ -95,7 +86,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots"],
     surfaces: [],
     web: "backlog",
-    ios: { excluded: "Escape is a keyboard-only affordance; Minimize the call is its visible control (CALL-009).", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CALL-011",
@@ -104,7 +94,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots"],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-012",
@@ -113,7 +102,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#post-__huibotsidcalls"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-013",
@@ -122,7 +110,6 @@ const cases: UseCase[] = [
     spec: [CALLS, "docs/api.md#post-__huibotsidcalls"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-014",
@@ -131,7 +118,6 @@ const cases: UseCase[] = [
     spec: [CALLS, API, "docs/api.md#post-__huibotsidcallscallidheartbeat"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/heartbeat"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-015",
@@ -140,7 +126,6 @@ const cases: UseCase[] = [
     spec: [CALLS, API],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-016",
@@ -149,7 +134,6 @@ const cases: UseCase[] = [
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscalliddelegations"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/delegations"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-017",
@@ -158,7 +142,6 @@ const cases: UseCase[] = [
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscalliddelegations", "docs/api.md#post-__huibotsidcallscallidtaskstask"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/delegations", "route:POST /__hui/bots/:id/calls/:callId/tasks/:task"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-018",
@@ -167,7 +150,6 @@ const cases: UseCase[] = [
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscalliddelegations"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/delegations"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-019",
@@ -176,7 +158,6 @@ const cases: UseCase[] = [
     spec: [CALLS, API, "docs/api.md#post-__huibotsidcallscallidlines"],
     surfaces: ["row:call", "route:POST /__hui/bots/:id/calls/:callId/lines", "item:call"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-020",
@@ -185,7 +166,6 @@ const cases: UseCase[] = [
     spec: [CALLS, API],
     surfaces: ["row:call"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-021",
@@ -194,7 +174,6 @@ const cases: UseCase[] = [
     spec: [API],
     surfaces: ["row:call"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-022",
@@ -203,7 +182,6 @@ const cases: UseCase[] = [
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscallidheartbeat", "docs/api.md#delete-__huibotsidcallscallid"],
     surfaces: ["route:DELETE /__hui/bots/:id/calls/:callId", "route:POST /__hui/bots/:id/calls/:callId/heartbeat"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-023",
@@ -212,7 +190,6 @@ const cases: UseCase[] = [
     spec: [CALLS, API],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-026",
@@ -222,7 +199,6 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bots", "bot-setup"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-027",
@@ -232,7 +208,6 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "CALL-028",
@@ -242,7 +217,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "backlog",
-    ios: "backlog",
   },
 ];
 
