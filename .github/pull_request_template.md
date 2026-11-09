@@ -14,6 +14,7 @@ Follow .agents/skills/hui-visual-verification/SKILL.md for UI work. -->
 - [ ] `npm run build`
 - [ ] `npm run test:package` (package or lifecycle changes)
 - [ ] `npm run e2e`
+- [ ] `npm run android -- test` and the Android procedure (changes under `android/`)
 - [ ] Browser-tool E2E (user-visible changes)
 
 - Verified commit:
@@ -44,6 +45,11 @@ still require the desktop/mobile smoke. -->
 ### Mobile — 390×844
 
 <!-- Attach the affected rendered state; include landscape when relevant. -->
+
+### Android
+
+<!-- Changes under android/: the affected screens from the emulator, light and dark
+(.agents/skills/hui-visual-verification/references/android.md). -->
 
 ## Proof gaps
 

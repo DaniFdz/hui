@@ -13,6 +13,7 @@ browser (src/)  ──/__hui/ JSON + WebSocket──▶  gateway (server/)  ─�
                                                  │                    PI SDK worker (legacy sessions)
 cli/  starts, stops and updates the gateway ─────┘                    remote workers (server/worker/)
 desktop/  wraps the same UI in Electron
+android/  the native Android app, another client of the same /__hui/ routes
 ```
 
 The browser never touches the filesystem or child processes; everything goes
@@ -126,6 +127,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Path | Owns |
 |---|---|
 | `cli/` | The `hui` command: gateway lifecycle (`gateway*.ts`, `state.ts`), installed releases and updates (`releases.ts`, `update*.ts`, `installation.ts`), `hui doctor` (`doctor*.ts`), the `/__hui/` client of `hui bot` and `hui schedule` (`gateway-client.ts`); `doctor-bots.ts` splits an old single-file soul and names `hui bot split`; `commands.ts` is the command and flag table `main.ts` validates against and `completion.ts` offers to bash and zsh, whose programs live in `cli/completions/` and are installed by `completion-install.mjs` |
+| `android/` | The native Kotlin/Compose app (`android/AGENTS.md`; plan in `docs/native-android-plan.md`): `android/app/src/main/kotlin/dev/hui/android/` (the activity, and `AppViewModel.kt`: screens, gateway, live list and open chat), `android/app/src/main/kotlin/dev/hui/android/gateway/` (`GatewayClient.kt`: the `/__hui/` client with `x-hui`, SSE framing in `Sse.kt`, payloads in `Payloads.kt`), `android/app/src/main/kotlin/dev/hui/android/core/` (pure logic: chat rows from snapshots and events, Markdown), `android/app/src/main/kotlin/dev/hui/android/ui/` (Compose screens and HUI's theme); `scripts/android.mjs` runs its local loop (`npm run android`) |
 | `desktop/` | Electron wrapper, native notification click handling and the save dialog for downloads (`main.cjs`, `policy.cjs`), macOS app registration, reinstalling it after an update and its notification capability marker (`install.mjs`) |
 | `bin/` | Entry points: `hui.mjs` (installed CLI), `hui-dev.mjs` (`npm run dev`) |
 | `scripts/` | Build, release and nightly versioning |

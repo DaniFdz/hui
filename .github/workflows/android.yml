@@ -1,0 +1,38 @@
+name: Android
+# The Android app's JVM unit tests and debug build (android/AGENTS.md), on the runner's own Android SDK and JDK 17.
+# The shared e2e suite gains an Android target in a later milestone (docs/native-android-plan.md, 7.4).
+on:
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+permissions:
+  contents: read
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Unit tests and debug APK
+        working-directory: android
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          ./gradlew --console=plain --no-configuration-cache :app:testDebugUnitTest :app:assembleDebug
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: android-debug
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -89,6 +89,12 @@ are copied outside the checkout before upload; the library writes there because
 
 **Done:** fresh, visually inspected images and behavior assertions agree.
 
+### Android app
+
+A change under `android/` gets the same proof on the emulator: follow
+[the Android procedure](references/android.md), which builds this checkout's APK,
+drives it with `agent-device` and captures each affected state in light and dark.
+
 ## 5. Deliver the PR evidence
 
 Follow [the evidence handoff](references/pr-evidence.md). Run relevant tests and

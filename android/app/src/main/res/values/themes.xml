@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The window theme under Compose: no action bar, edge to edge; Compose draws HUI's own colours. -->
+<resources>
+    <style name="Theme.HUI" parent="android:Theme.Material.NoActionBar" />
+</resources>

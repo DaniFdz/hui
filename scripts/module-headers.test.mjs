@@ -10,10 +10,10 @@ import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const ROOTS = ["bin", "cli", "desktop", "scripts", "server", "src"];
+const ROOTS = ["bin", "cli", "desktop", "scripts", "server", "src", "android/app/src/main/kotlin"];
 /** A hash-pinned port of OpenClaw source (see its README): edited only by re-porting, never by hand. */
 const PINNED = "src/components/openclaw/";
-const SOURCE = /\.(?:ts|mjs|cjs|js)$/u;
+const SOURCE = /\.(?:ts|mjs|cjs|js|kt)$/u;
 const SKIPPED = /\.(?:test|d)\.(?:ts|mjs|cjs|js)$/u;
 
 async function sources(directory) {
