@@ -93,6 +93,26 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Frames
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_FRAME` opens a page with a same-origin frame and a frame on another
+port of the same host, then snapshots and clicks one button in each.
+
+- The first snapshot listed both frames with their content beneath the Iframe
+  node: "Same button" and "Cross button" each carried a ref, and the click
+  results were "Clicked e2 (button "Same button")" and "Clicked e3 (button
+  "Cross button")".
+- The page rendered "Same clicked" inside the first frame and "Cross clicked"
+  inside the second, so both clicks landed on the frame's own control, not on
+  the frame element.
+- The reply read "Both frames were in the snapshot, and a click inside each one
+  landed: **Same clicked** and **Cross clicked**.", the same at 390×844.
+- A frame the browser isolates in its own process is not inlined: the snapshot
+  lists only its Iframe node. `server/browser/manager.test.ts` also proves a
+  stored secret checked against the frame's origin (refused on the host's,
+  typed on the frame's).
+
 ## Reading and verifying one thing at a time
 
 Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
