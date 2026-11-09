@@ -211,6 +211,11 @@ const server = createServer(async (request, response) => {
   if (requiredKey && request.headers["x-api-key"] !== requiredKey) {
     return json(response, 401, { type: "error", error: { type: "authentication_error", message: "fixture provider: wrong API key" } });
   }
+  // Opt-in OpenCode routing check: OpenCode rejects a request without its session header.
+  const opencodeSession = request.headers["x-opencode-session"];
+  if (process.env.HUI_E2E_PROVIDER_OPENCODE === "1" && opencodeSession === undefined) {
+    return json(response, 400, { type: "MissingSessionID", message: "Request is missing x-opencode-session and cannot be routed efficiently." });
+  }
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
@@ -219,7 +224,7 @@ const server = createServer(async (request, response) => {
   const clientSessionId = request.headers["x-client-session-id"];
   // And one with an x-e2e-token header logs that, e.g. to prove a remote worker got it.
   const header = request.headers["x-e2e-token"];
-  await appendFile(logFile, `${JSON.stringify({ ...body, ...(clientSessionId === undefined ? {} : { clientSessionId }), ...(header === undefined ? {} : { header }) })}\n`, "utf8");
+  await appendFile(logFile, `${JSON.stringify({ ...body, ...(clientSessionId === undefined ? {} : { clientSessionId }), ...(header === undefined ? {} : { header }), ...(opencodeSession === undefined ? {} : { opencodeSession }) })}\n`, "utf8");
   const source = flattenedText(withoutView(body.messages?.at(-1)));
   const latestToolResult = toolResultFrom(body.messages?.at(-1));
   const naming = source.includes("Generate a concise session title") || source.includes("Name this coding-agent session");
