@@ -1,8 +1,8 @@
-/** A site secret saves by name and origin, is never shown again, and can be deleted (SET-089). */
+/** A site secret saves by name and origin, is never shown again, and can be deleted (SET-091). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("a site secret is stored by name and origin and never shown again", { tags: ["SET-089"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a site secret is stored by name and origin and never shown again", { tags: ["SET-091"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/settings/tools");
   await expect(screen.getByText("None stored.", { exact: false })).toBeVisible();
 

@@ -8095,6 +8095,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -8104,8 +8105,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -8168,6 +8168,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -8177,8 +8178,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   }
