@@ -1312,22 +1312,20 @@ migration), `src/lib/shortcut-binding.test.ts`, `src/views/panel-selector.test.t
 `src/lib/session/multiplexer.test.ts` (the old format stays readable) and the
 Browser-tool journey.
 
-### HUI-22 — Native Android app and one e2e suite for both clients
+### HUI-22 — Phone apps for Android and iOS from one web UI
 
-**Status:** planned, not started. The plan is [`native-android-plan.md`](native-android-plan.md).
-It replaces the native iOS app, dropped on 2026-11-09 (SPEC.md, "Android
-replaces the iOS app as HUI's native client"); the SwiftUI work stays unmerged
-on draft PR #347.
+**Status:** planned, not started. The plan is [`mobile-app-plan.md`](mobile-app-plan.md)
+(SPEC.md, "The phone apps wrap the web UI"). It replaces the native SwiftUI app
+(draft PR #347, unmerged) and the native Compose app (PR #458, unmerged).
 
-A Kotlin and Jetpack Compose Android app with the web UI's capabilities, on the
-same `/__hui/` contract, built on Linux with a pinned Nix toolchain and a
-headless KVM emulator, and distributed as a signed APK on GitHub Releases. Every
-use case lives in one catalogue (`e2e/catalogue/`), and each shared
-tester-army/e2e test in `e2e/tests/` runs on the web UI and, from the PR that
-adds the Android target, on the app. Guards fail a PR that adds a surface no use
-case claims, and from that PR a new or changed use case must pass on both
-clients in the same PR. Milestones M0 (spikes) to M11 (notifications) are in the
-plan, section 7.
+Capacitor shells for Android and iOS that load the connected gateway's own web
+UI and add only native behaviour: the remembered gateway, the back button,
+external links, downloads, notifications, sharing and permissions. The shared
+tester-army/e2e suite runs inside the Android app's WebView on a Linux emulator
+and in mobile WebKit, in every PR's CI; the iOS shell is built and smoke-tested
+on a macOS runner. The catalogue gains a phone status whose backlog only
+shrinks. Work packages, the parallel waves and the orchestration are in the
+plan, sections 4 and 6.
 
 ### HUI-23 — Subagent model routes
 

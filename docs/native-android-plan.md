@@ -1,5 +1,10 @@
 # Plan: a native Android app for HUI, built and tested in lockstep with the web UI
 
+> [!IMPORTANT]
+> Superseded on 2026-11-09 by [`mobile-app-plan.md`](mobile-app-plan.md): the phone apps are Capacitor shells around
+> the web UI (SPEC.md, "The phone apps wrap the web UI"). This plan is kept for its reasoning and its measurements of
+> the Linux toolchain and emulator loop (section 13 on PR #458), which the new plan reuses.
+
 Status: a plan. Nothing in it is built yet. It replaces the iOS plan (`docs/native-ios-plan.md`, removed with the
 iOS scaffolding; read it at commit `d921912b` for the long form of the parts this plan reuses). It was checked
 against `main` at `d921912b`, tester-army/e2e `0.21.3` and `@e2e-dev/mobile` `0.12.3`, whose README declares an

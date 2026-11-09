@@ -2820,6 +2820,24 @@ nothing needs me".
   when every session is running, starting or reconnecting; the page no longer
   says *Every session is idle.*
 
+### The phone apps wrap the web UI (2026-11-09)
+
+The owner replaced the fully native Android app with one cross-platform shell: "what if we use a framework that
+works in ios and android even if its not native? Would that allow us to build only one?", then "lets try the
+capacitor solution". A native app for each phone would have meant building every feature three times, and the iOS
+one cannot be built or tested without a Mac.
+
+- **One UI.** The Android and iOS apps are Capacitor shells that load the connected gateway's own web UI, as the
+  Electron app does. They bundle only a Connect page. The native side adds what a browser can't: the remembered
+  gateway, the back button, other origins in the system browser, downloads, the status bar, notifications, sharing
+  and permissions. `docs/mobile-app-plan.md` is the plan.
+- **Lockstep through the web.** A use case required on the web is required on the phone unless excluded with a
+  reason. The suite proves it inside the Android app's WebView and in mobile WebKit, on Linux, in every PR's CI.
+  The iOS shell is built and smoke-tested on a macOS runner, so nobody needs a Mac to work on HUI.
+- **What carries over.** The decision below still records why iOS was dropped as a separate native client. Its
+  phone-app decisions (keyboard and wide-layout mechanics stay on the web, a tap opens a preview, one gateway at a
+  time) apply to the phone apps. Kotlin/Compose as the Android client does not.
+
 ### Android replaces the iOS app as HUI's native client (2026-11-09)
 
 The owner moves from an iPhone to Android: "I will be moving to android, can we

@@ -14,9 +14,10 @@ surface coverage. Product direction remains in `SPEC.md`; onboarding stays in
 - `implementation-roadmap.md` tracks iterative work and dependencies. Mark work done
   only after its implementation and required tests, including Browser-tool E2E proof
   for user-visible behavior.
-- `native-android-plan.md` is the plan for the native Android app and its target in the
-  shared e2e suite. It records intentions; as parts ship, move what they verify into
-  `SPEC.md`, `api.md` and the owning guides.
+- `mobile-app-plan.md` is the plan for the Android and iOS apps, Capacitor shells around
+  the web UI, and their targets in the shared e2e suite. It records intentions; as parts
+  ship, move what they verify into `SPEC.md`, `api.md` and the owning guides.
+  `native-android-plan.md` is the superseded native plan, kept for its measurements.
 - `control-ui-coverage.md` records measured parity with the referenced OpenClaw version.
   Distinguish cloned structure from implemented PI-backed functionality.
 - Document current verified behavior, not intentions as facts. Include commands and
