@@ -53,6 +53,9 @@ Pi Durable owns conversations, runs, queues and crash recovery.
   `cli/main.ts`, `cli/gateway-run.ts`, `server/runtimes/pi-sdk-worker.ts`,
   `server/worker/main.ts` and `index.html`. An installed CLI checks their built
   files before switching to a new release.
+- R18. `src/` never imports `@capacitor/*`: the browser reaches the phone shell
+  only through the adapter in `src/lib/native-shell.ts`, which reads the bridge
+  Capacitor injects (see `mobile/AGENTS.md`).
 
 ## A message, start to finish
 
@@ -131,6 +134,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | `scripts/` | Build, release and nightly versioning |
 | `e2e/` | Browser-tool E2E procedures (`*.browser.md`), the launcher (`visual-verification.mjs`) and the package test; `e2e/catalogue/` (every user outcome HUI supports, one file per area, with the collectors of code surfaces that `scripts/use-cases.test.ts` checks it against), `e2e/tests/` (the shared e2e suite that `e2e.config.ts` runs, with its fixture in `e2e/fixtures/hui.ts`), `e2e/fixtures/` (fake providers, CLIs and services, seeds and PI extensions the launcher and tests start), `e2e/probes/` (in-page probes and oracles a procedure loads into the running app) |
 | `nix/` | Flake package, NixOS module and smoke checks |
+| `mobile/` | The Android and iOS shell around the gateway's web UI: `capacitor.config.ts` at the repository root (app id, `webDir`, platform paths, the https scheme), `mobile/connect/` (the bundled "Connect to HUI" page built by `vite.config.ts` into the git-ignored `dist/`; `mobile/connect/src/`: `gateway.ts` holds its wording and pure checks, `native.ts` the `CapacitorHttp` probe and the `HuiGateway` plugin calls, `main.ts` the DOM wiring), `mobile/android/` (the Gradle project, whose `MainActivity` builds the bridge on the gateway address it resolves), `mobile/ios/` (WP5); contracts, launch extras and the local loops in `mobile/AGENTS.md`, the emulator loop in `scripts/mobile.mjs` |
 | `skills/` | Skills shipped with HUI |
 | `themes/`, `public/` | Theme palettes and static assets |
 

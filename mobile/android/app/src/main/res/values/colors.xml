@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Connect page's palette (mobile/connect/src/style.css), so the launch window and the "Connecting to HUI…"
+         view match the page they lead to instead of flashing white. -->
+    <color name="connecting_background">#101014</color>
+    <color name="connecting_text">#ECECF1</color>
+</resources>

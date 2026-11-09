@@ -15,8 +15,9 @@
         <item name="android:background">@null</item>
     </style>
 
-
-    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+    <!-- The window shown while the activity starts: the Connect page's own color, not a splash image, so a reload onto
+         a remembered gateway reads as a deliberate "Connecting to HUI…" instead of a white flash. -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/connecting_background</item>
     </style>
 </resources>

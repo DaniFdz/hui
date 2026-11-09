@@ -7,7 +7,7 @@
   --border: #2e2e38;
   --accent: #6f7bff;
   --danger: #ff6b6b;
-  --ok: #4ade80;
+  --notice: #f5c86b;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -44,6 +44,11 @@ p {
   margin: 0;
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+form {
+  display: grid;
+  gap: 8px;
 }
 
 label {
@@ -91,6 +96,17 @@ button:disabled {
   color: var(--danger);
 }
 
-#status[data-kind="ok"] {
-  color: var(--ok);
+#status[data-kind="notice"] {
+  color: var(--notice);
+}
+
+#change-gateway {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+#change-gateway[hidden] {
+  display: none;
 }

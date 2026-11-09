@@ -1,8 +1,10 @@
 /**
- * The Android app's local loop (`npm run android -- <command>`): the pinned toolchain from `nix develop .#android`,
- * the headless `HUI_Pixel` emulator, Gradle builds and unit tests, installing and launching the debug app against a
- * gateway (reached through `adb reverse`), and screenshots for PR evidence.
- * Commands: doctor, avd, emulator, stop, build, test, dev [--gateway <url>] [--fresh] [--no-gateway], screenshot <path>.
+ * The phone app's local loop (`npm run mobile -- <command>`): the pinned toolchain from `nix develop .#android`, the
+ * headless `HUI_Pixel` emulator, the Connect page and Capacitor sync, Gradle builds and unit tests, installing and
+ * launching the debug app against a gateway (reached through `adb reverse`), and screenshots for PR evidence.
+ * Commands: doctor, avd, emulator, stop, connect, build, test, dev [--gateway <url>] [--fresh] [--no-gateway],
+ * screenshot [path]. `npm run mobile:build` is `connect` on its own. Contracts and the per-change loops live in
+ * mobile/AGENTS.md; two workers can run at once with HUI_ANDROID_AVD, ANDROID_SERIAL and E2E_PHONE_PORT.
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
@@ -17,19 +19,21 @@ const [command = "help", ...args] = process.argv.slice(2);
 if (!process.env.ANDROID_HOME && command !== "help") {
   const nix = ["nix", "/run/current-system/sw/bin/nix", "/nix/var/nix/profiles/default/bin/nix"].find((candidate) =>
     spawnSync(candidate, ["--version"], { stdio: "ignore" }).status === 0);
-  if (!nix) fail("Neither ANDROID_HOME nor nix is available: install Nix, or an SDK as android/AGENTS.md says.");
+  if (!nix) fail("Neither ANDROID_HOME nor nix is available: install Nix, or an SDK as mobile/AGENTS.md says.");
   const run = spawnSync(nix, ["develop", `${root}#android`, "--command", "node", fileURLToPath(import.meta.url), command, ...args], { stdio: "inherit" });
   process.exit(run.status ?? 1);
 }
 
 const SDK = process.env.ANDROID_HOME;
 const AVD = process.env.HUI_ANDROID_AVD ?? "HUI_Pixel";
+const SERIAL = process.env.ANDROID_SERIAL ?? "emulator-5554";
+// The gateway port the emulator reaches through `adb reverse`; two workers on one machine take different ports.
+const PHONE_PORT = Number(process.env.E2E_PHONE_PORT ?? 47400);
 const IMAGE = "system-images;android-36;google_apis;x86_64";
 const PACKAGE = "dev.hui.app.debug";
 const ACTIVITY = "dev.hui.app.MainActivity";
 const NATIVE = join(root, "mobile/android");
 const APK = join(NATIVE, "app/build/outputs/apk/debug/app-debug.apk");
-const SERIAL = process.env.ANDROID_SERIAL ?? "emulator-5554";
 const tool = (path) => join(SDK, path);
 // Every adb call has a deadline: a device that went offline makes adb wait for it forever.
 const adb = (...rest) => execFileSync(tool("platform-tools/adb"), ["-s", SERIAL, ...rest], { encoding: "utf8", timeout: 120_000 }).trim();
@@ -53,6 +57,10 @@ function booted() {
   }
 }
 
+function readdirFirst(directory) {
+  return execFileSync("ls", [directory], { encoding: "utf8" }).split("\n").filter(Boolean)[0] ?? "latest";
+}
+
 function createAvd() {
   const avdmanager = tool("cmdline-tools/latest/bin/avdmanager");
   const fallback = join(SDK, "cmdline-tools", readdirFirst(join(SDK, "cmdline-tools")), "bin/avdmanager");
@@ -64,16 +72,12 @@ function createAvd() {
   console.log(`Created ${AVD} from ${IMAGE}.`);
 }
 
-function readdirFirst(directory) {
-  return execFileSync("ls", [directory], { encoding: "utf8" }).split("\n").filter(Boolean)[0] ?? "latest";
-}
-
 async function startEmulator() {
   if (booted()) return console.log(`${SERIAL} is already booted.`);
   const config = join(homedir(), ".android/avd", `${AVD}.avd`, "config.ini");
   // An AVD made from an image this SDK no longer has would never boot; make it again from the pinned one.
   if (!existsSync(config) || !readFileSync(config, "utf8").includes(`image.sysdir.1=${IMAGE.replaceAll(";", "/")}/`)) createAvd();
-  const logs = join(homedir(), ".cache/hui-android");
+  const logs = join(homedir(), ".cache/hui-mobile");
   mkdirSync(logs, { recursive: true });
   const log = join(logs, `${AVD}.log`);
   const child = spawn(tool("emulator/emulator"), ["-avd", AVD, "-port", SERIAL.split("-")[1], "-no-window", "-no-audio", "-no-boot-anim", "-gpu", "swiftshader_indirect"], {
@@ -90,6 +94,12 @@ async function startEmulator() {
   // Animations off, so a screenshot or a test step never catches a transition.
   for (const scale of ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]) adb("shell", "settings", "put", "global", scale, "0");
   console.log(`${AVD} booted in ${Math.round((Date.now() - started) / 1000)} s (log: ${log}).`);
+}
+
+/** The Connect page, then Capacitor's copy of it and of the native plugin list into the Android project. */
+function connect() {
+  run(process.execPath, [join(root, "node_modules/vite/bin/vite.js"), "build", "--config", join(root, "mobile/connect/vite.config.ts")], { cwd: root });
+  run("npx", ["--no-install", "cap", "sync", "android"], { cwd: root });
 }
 
 function option(name) {
@@ -118,15 +128,14 @@ const commands = {
     if (booted()) adb("emu", "kill");
     console.log(`${SERIAL} stopped.`);
   },
-  build: () => {
-    // The Connect page is the only bundled web content, then Gradle builds the WebView app around it.
-    run("node", [join(root, "mobile/connect/build.mjs")]);
-    run("npx", ["cap", "copy", "android"], { cwd: root });
+  connect,
+  build() {
+    connect();
     gradle(":app:assembleDebug");
   },
   test: () => gradle(":app:testDebugUnitTest"),
   async dev() {
-    const gateway = option("gateway") ?? "http://127.0.0.1:47400";
+    const gateway = option("gateway") ?? `http://127.0.0.1:${PHONE_PORT}`;
     await startEmulator();
     commands.build();
     adb("install", "-r", APK);
@@ -140,14 +149,14 @@ const commands = {
     console.log(`Launched ${PACKAGE}${extra.length ? ` against ${gateway}` : ""}.`);
   },
   screenshot() {
-    const path = resolve(args[0] ?? join(tmpdir(), `hui-android-${Date.now()}.png`));
+    const path = resolve(args[0] ?? join(tmpdir(), `hui-mobile-${Date.now()}.png`));
     mkdirSync(dirname(path), { recursive: true });
     const png = execFileSync(tool("platform-tools/adb"), ["-s", SERIAL, "exec-out", "screencap", "-p"], { maxBuffer: 64 * 1024 * 1024 });
     writeFileSync(path, png);
     console.log(path);
   },
   help() {
-    console.log("npm run android -- doctor | avd | emulator | stop | build | test | dev [--gateway <url>] [--fresh] [--no-gateway] | screenshot [path]");
+    console.log("npm run mobile -- doctor | avd | emulator | stop | connect | build | test | dev [--gateway <url>] [--fresh] [--no-gateway] | screenshot [path]");
   },
 };
 

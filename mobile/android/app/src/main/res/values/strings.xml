@@ -4,4 +4,6 @@
     <string name="title_activity_main">HUI</string>
     <string name="package_name">dev.hui.app</string>
     <string name="custom_url_scheme">dev.hui.app</string>
+    <!-- Shown over the WebView while a gateway loads; the Connect page uses the same wording. -->
+    <string name="connecting">Connecting to HUI…</string>
 </resources>
