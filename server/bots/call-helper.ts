@@ -269,10 +269,11 @@ export const callCompletion: CallCompletion = async (ref, { system, prompt, sign
   if (!model) throw new Error(`Unknown model: ${ref}`);
   const sent = least ? withUpstreamThinkingMap(model, (provider, id) => host.models.getModel(provider, id)) : model;
   const level = least ? lowestThinkingLevel(sent) : clampThinkingLevel(model, "low");
+  // A provider that routes by session (OpenCode's x-opencode-session) rejects a completion without one.
   const reply = await host.models.completeSimple(sent, {
     systemPrompt: system,
     messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
-  }, { signal, ...(level === "off" ? {} : { reasoning: level }) });
+  }, { signal, sessionId: randomUUID(), ...(level === "off" ? {} : { reasoning: level }) });
   if (reply.stopReason === "error" || reply.stopReason === "aborted") throw new Error(reply.errorMessage || `The model stopped: ${reply.stopReason}`);
   return reply.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
 };

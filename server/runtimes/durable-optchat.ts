@@ -21,7 +21,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import {
-  AgentDoc, AssistantEntry, CompactionTask, defineDoc, defineExtension, defineTool, GenerationTask, hook, LiveDoc, section, ToolResultEntry, UserEntry,
+  AgentDoc, AssistantEntry, CompactionTask, defineDoc, defineExtension, defineTool, GenerationTask, hook, LiveDoc, ProviderDoc, section, ToolResultEntry, UserEntry,
   type CommitPublication, type Conversation, type ConversationId, type Cursor, type EntryId, type EntryRecord, type Extension, type Harness,
   type HookApi, type SubmissionId, type ToolExecutionResult, type Tx,
 } from "@earendil-works/pi-durable";
@@ -762,10 +762,13 @@ export class OptChatManager {
     const utility = own ? undefined : modelRef(await this.#utilityModel?.().catch(() => undefined));
     const refs = own ? [own] : [utility, conversationModel].filter((ref): ref is { provider: string; modelId: string } => Boolean(ref));
     if (!refs.length) throw new Error("The conversation has no model for OptChat's compactor.");
+    // The conversation's provider session, as Durable's own requests and compactions send it: a provider that routes
+    // by session (OpenCode's x-opencode-session) rejects a call without one, and the turn would wait on it forever.
+    const sessionId = (await harness.snapshot(ProviderDoc, conversationId, context))?.sessionId ?? `hui-optchat-${conversationId}`;
     let failure: unknown;
     for (const ref of refs) {
       try {
-        return await this.#summarizeWith(ref, state, request, signal, contextMark);
+        return await this.#summarizeWith(ref, state, request, signal, contextMark, sessionId);
       } catch (error) {
         if (signal.aborted) throw error;
         failure = error;
@@ -774,7 +777,7 @@ export class OptChatManager {
     throw failure;
   }
 
-  async #summarizeWith(ref: { provider: string; modelId: string }, state: OptChatState | undefined, request: SummaryRequest, signal: AbortSignal, contextMark: ContextMark): Promise<SummaryReply> {
+  async #summarizeWith(ref: { provider: string; modelId: string }, state: OptChatState | undefined, request: SummaryRequest, signal: AbortSignal, contextMark: ContextMark, sessionId: string): Promise<SummaryReply> {
     const models = this.#models();
     const model = models.getModel(ref.provider, ref.modelId);
     if (!model) throw new Error(`Unknown model for OptChat's compactor: ${ref.provider}/${ref.modelId}`);
@@ -794,6 +797,7 @@ export class OptChatManager {
         : { role: "assistant", content: [{ type: "text", text: message.content }], api: model.api, provider: model.provider, model: model.id, usage: NO_USAGE, stopReason: "stop", timestamp: 0 }),
     }, {
       signal: call.signal,
+      sessionId,
       ...(thinking === "off" ? {} : { reasoning: thinking }),
       // Compactions share the compaction view's start: cache it in blocks, like a turn's view.
       ...(block === undefined ? {} : { onPayload: (payload: unknown, target: unknown) => this.#markContext(payload, target, block, contextMark) }),

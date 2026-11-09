@@ -159,7 +159,9 @@ test("the compactor thinks at most at the level asked: a model without it gets t
 
 // ── Pi Durable integration ───────────────────────────────────────────────────
 
-async function fixture(t: TestContext, options: { contextWindow?: number; settings?: Record<string, unknown>; optchat?: OptChatTuning } = {}) {
+/** `provider` names the fixture's provider in models.json; `opencode` makes it reject requests without OpenCode's session header. */
+async function fixture(t: TestContext, options: { contextWindow?: number; settings?: Record<string, unknown>; optchat?: OptChatTuning; provider?: string; opencode?: boolean } = {}) {
+  const provider = options.provider ?? "hui-e2e";
   const dir = await mkdtemp(join(tmpdir(), "hui-optchat-test-"));
   const agentDir = join(dir, "agent");
   const cwd = join(dir, "workspace");
@@ -167,26 +169,26 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
   await mkdir(agentDir); await mkdir(cwd);
   await writeFile(join(cwd, "fixture.txt"), "Durable fixture content\n");
   const log = join(dir, "requests.jsonl");
-  const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/fixtures/pi-provider-fixture.mjs", import.meta.url))], {
+  const server = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/fixtures/pi-provider-fixture.mjs", import.meta.url))], {
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log },
+    env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log, ...(options.opencode ? { HUI_E2E_PROVIDER_OPENCODE: "1" } : {}) },
   });
   const hosts: DurableHost[] = [];
   t.onTestFinished(async () => {
     for (const host of hosts) await host.close().catch(() => {});
-    const exit = once(provider, "exit"); provider.kill(); await exit;
+    const exit = once(server, "exit"); server.kill(); await exit;
     await rm(dir, { recursive: true, force: true });
   });
-  const [ready] = await once(provider.stdout!, "data");
+  const [ready] = await once(server.stdout!, "data");
   const baseUrl = String(ready).match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0];
   assert(baseUrl, String(ready));
-  await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
+  await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { [provider]: {
     baseUrl, api: "anthropic-messages", apiKey: "fixture-key", models: [{
       id: "fixture", name: "fixture", reasoning: true, input: ["text", "image"], contextWindow: options.contextWindow ?? 32000, maxTokens: 4096,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     }],
   } } }));
-  await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high", ...options.settings }));
+  await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: provider, defaultModel: "fixture", defaultThinkingLevel: "high", ...options.settings }));
   const host = (tuning = options.optchat) => {
     const created = new DurableHost({
       dir: store, agentDir, invokeTool: async () => ({ ok: true }), lookupCaller: async () => undefined,
@@ -197,7 +199,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
     return created;
   };
   const control = (path: string, method = "GET") => fetch(`${baseUrl}${path}`, { method });
-  return { dir, cwd, agentDir, store, log, host, control };
+  return { dir, cwd, agentDir, store, log, host, control, provider };
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
@@ -205,7 +207,7 @@ type Fixture = Awaited<ReturnType<typeof fixture>>;
 async function botSession(f: Fixture, host: DurableHost, huiSessionId: string) {
   const conversation = await (await host.open()).createConversation({
     ownership: { kind: "ownerless" },
-    agent: { cwd: f.cwd, model: { provider: "hui-e2e", modelId: "fixture" } },
+    agent: { cwd: f.cwd, model: { provider: f.provider, modelId: "fixture" } },
     init: (tx, id) => enableOptChat(tx, id, { name: "Grok" }),
   }, durableContext);
   const session = await startDurable({ cwd: f.cwd, sessionFile: durableReference(conversation.id), huiSessionId }, host);
@@ -338,6 +340,21 @@ test("an OptChat turn starts fresh from the view: system messages, then the view
   assert.match(String(later.at(-1)!.text), /\nuser: OPT_THREE kept/u);
   const status = await statusWhere(host, id, (current) => current.messages === 6);
   assert.equal(status.usage.calls, 2);
+});
+
+test("the compactor sends the conversation's provider session, so OpenCode routes it instead of the turn waiting forever", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { provider: "opencode-go", opencode: true });
+  const host = f.host();
+  const { session, id } = await botSession(f, host, "bot-opencode");
+  await turns(session, [`OPT_ROUTED${" kept".repeat(150)}`, "OPT_ROUTED_NEXT waits on the first summary"]);
+  const status = await statusWhere(host, id, (current) => current.messages === 4 && current.pending === 0);
+  assert.equal(status.failing, undefined);
+  const requests = (await providerRequests(f.log)) as (ProviderRequest & { opencodeSession?: string })[];
+  const compactor = requests.filter(compacting);
+  const [turn] = await turnRequests(f.log, "OPT_ROUTED_NEXT");
+  const routed = (turn as (ProviderRequest & { opencodeSession?: string }) | undefined)?.opencodeSession;
+  assert(compactor.length > 0 && routed, JSON.stringify(requests.map((request) => request.opencodeSession)));
+  assert.deepEqual([...new Set(compactor.map((request) => request.opencodeSession))], [routed], "the summaries go as the conversation's own session");
 });
 
 test("the compactor's size loop runs through the provider and keeps the shortest line", { timeout: 45_000 }, async (t) => {
