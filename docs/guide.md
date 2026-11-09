@@ -527,7 +527,9 @@ The same seed adds five **Subagent routes** on Settings → Models: `planner`,
 `explorer`, `worker`, `reviewer` and `verifier`. Each inherits the caller's
 model until you give it one, so they follow your primary model. The chief uses a
 route only for a fast child: a read-only probe, one command, one check, one
-reply. A writing task gets a new session with its own worktree and branch.
+reply. A writing task gets a new session with its own worktree and branch. The
+chief calls `worker_stats` first and prefers the least loaded connected machine;
+`local` is the main machine.
 
 The chief uses a subagent only for **fast iteration**: a read-only probe, one
 command, one small check, one reply. A child never owns a branch or a pull

@@ -86,6 +86,7 @@ import { TaskSuggestionInputError, TaskSuggestionStore } from "./agent-tools/tas
 import { WatcherInputError, WatcherService } from "./agent-tools/watchers.ts";
 import { SecretFiles, SecretRequests } from "./agent-tools/secret-requests.ts";
 import { Questionnaires } from "./agent-tools/questionnaires.ts";
+import { summarizeWorkerStats } from "./agent-tools/worker-stats.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";
 import { createSessionListHub } from "./sessions/list.ts";
@@ -496,6 +497,37 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
   };
 }
 
+/** `worker_stats`: this gateway's machine and every configured worker, for choosing where a session should run. */
+async function workerStatsFromAgent(callerSessionId: string) {
+  const caller = (await readRegistry()).find(({ id }) => id === callerSessionId);
+  if (!caller) throw new Error("Conversation no longer exists.");
+  let localMetrics;
+  let localError;
+  try {
+    localMetrics = await hostMetrics();
+  } catch (error) {
+    localError = error instanceof Error ? error.message : "Could not read this machine's metrics.";
+  }
+  const views = await workers.list();
+  let metrics: Awaited<ReturnType<typeof workers.metrics>> = [];
+  let metricsError: string | undefined;
+  try {
+    metrics = await workers.metrics();
+  } catch (error) {
+    metricsError = error instanceof Error ? error.message : "Could not read the workers' metrics.";
+  }
+  const records = await readRegistry();
+  return summarizeWorkerStats({
+    current: caller.worker ?? "local",
+    local: { ...(localMetrics ? { metrics: localMetrics } : {}), ...(localError ? { error: localError } : {}), hostname: hostname() },
+    workers: views.map((view) => {
+      const measured = metrics.find(({ id }) => id === view.id);
+      return measured ?? { id: view.id, name: view.name, state: view.state, ...(metricsError ? { error: metricsError } : {}) };
+    }),
+    sessions: records.map((record) => ({ ...(record.worker ? { worker: record.worker } : {}), status: liveSessions.status(record.id), ...(record.archived ? { archived: true } : {}) })),
+  });
+}
+
 registerAgentToolHandler(async (invocation) => {
   // Behind the check where a bot's chat runs: HUI's own refusal of a tool the operator turned off in that chat.
   await bots.checkToolAllowed(invocation.callerSessionId, invocation.action);
@@ -512,6 +544,9 @@ registerAgentToolHandler(async (invocation) => {
   }
   if (invocation.action === "create_session") {
     return createSessionFromAgent(invocation.callerSessionId, invocation.params);
+  }
+  if (invocation.action === "worker_stats") {
+    return workerStatsFromAgent(invocation.callerSessionId);
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);

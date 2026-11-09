@@ -1663,7 +1663,10 @@ bundled `visualize` skill.
 
 HUI supplies regular PI sessions with the OpenClaw-style coordination tools
 `create_session`, `sessions_spawn`, `sessions_list`, `sessions_history`,
-`sessions_send` and `subagents` (`list`, `steer`, `kill`). `create_session`
+`sessions_send` and `subagents` (`list`, `steer`, `kill`). `worker_stats`
+reports this machine and every configured worker with CPU, memory, disk, GPU,
+connection state and running sessions, and names the least loaded connected
+machine; `local` is the gateway's machine. `create_session`
 creates an ordinary top-level session instead: a group, a title, its first
 prompt and optionally a fresh worktree, a worker, a model and thinking. The
 caller's cwd, group, worker, model and thinking are defaults. It writes no

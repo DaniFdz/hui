@@ -173,6 +173,33 @@ Every question also offers a free-text answer the card adds itself, and the user
   });
 
   pi.registerTool({
+    name: "worker_stats",
+    label: "Worker stats",
+    description: "Show this machine and every configured worker with CPU, memory, disk, GPU, connection state and running sessions, plus the least loaded connected choice. Use it before create_session to choose where the work runs.",
+    promptSnippet: "See this machine and every worker's load before choosing where to run",
+    promptGuidelines: [
+      "Call worker_stats before create_session when more than one machine is available. Prefer a connected machine with low CPU, memory and disk use and few running sessions.",
+      "The local machine is id local; a worker's id or name is what create_session accepts as worker.",
+      "A disconnected or erroring worker has no metrics; do not send it work until it connects. The recommended entry uses the samples from this call.",
+    ],
+    parameters: Type.Object({}),
+    async execute() {
+      const result = await invoke("worker_stats", {});
+      const machines = Array.isArray(result?.machines) ? result.machines : [];
+      const summary = machines.map((machine) => {
+        const parts = [machine.name + (machine.current ? " (current)" : ""), machine.state];
+        if (typeof machine.cpuPercent === "number") parts.push(`CPU ${machine.cpuPercent}%`);
+        if (machine.memory?.percent !== undefined) parts.push(`memory ${machine.memory.percent}%`);
+        if (machine.disk?.percent !== undefined) parts.push(`disk ${machine.disk.percent}%`);
+        if (machine.sessions) parts.push(`${machine.sessions.running} running of ${machine.sessions.total}`);
+        return parts.join(", ");
+      }).join("; ");
+      const pick = result?.recommended ? ` Recommended: ${result.recommended.name} (${result.recommended.reason}).` : "";
+      return { content: [{ type: "text", text: `${summary || "No machines reported."}.${pick}` }], details: result };
+    },
+  });
+
+  pi.registerTool({
     name: "agents_wait",
     label: "Wait for subagents",
     description: "Wait until the listed subagents of this session have finished and return their results; at the timeout, or as soon as a new message arrives for this session, return those finished so far and the pending ones.",

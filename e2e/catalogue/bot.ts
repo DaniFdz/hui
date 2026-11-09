@@ -658,6 +658,15 @@ const cases: UseCase[] = [
     journeys: ["bots"],
     web: "required",
   },
+  {
+    id: "BOT-074",
+    title: "See every machine's load before choosing where to run",
+    behaviour: "An agent calls worker_stats and gets this machine and every configured worker with CPU, memory, disk, GPU, connection state, running sessions and the least loaded connected choice. A disconnected or erroring worker has no metrics and is never recommended.",
+    spec: ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"],
+    surfaces: ["tool:worker_stats"],
+    journeys: ["bots"],
+    web: "required",
+  },
 ];
 
 export default cases;
