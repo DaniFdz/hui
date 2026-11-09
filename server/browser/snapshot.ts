@@ -26,7 +26,13 @@ export type AxNode = {
   backendDOMNodeId?: number;
 };
 
-export type SnapshotTarget = { backendNodeId: number; role: string; name: string };
+export type SnapshotTarget = {
+  backendNodeId: number;
+  role: string;
+  name: string;
+  /** The child frame the element lives in, when a snapshot inlined one. */
+  frameId?: string;
+};
 
 export class SnapshotRefs {
   #next = 0;
@@ -75,6 +81,8 @@ export type SnapshotOptions = {
   pageUrl?: string;
   /** Render only this accessibility node's subtree, for a snapshot scoped to a selector. */
   rootId?: string;
+  /** Which inlined frame each accessibility node belongs to, so its ref carries the frame. */
+  frameIds?: ReadonlyMap<string, string>;
   /** Stop after this many levels, marking where deeper content was left out. */
   maxDepth?: number;
 };
@@ -171,12 +179,13 @@ function build(
   parentRole: string,
   depth: number,
   seen: Set<string>,
+  frameIds: ReadonlyMap<string, string> | undefined,
 ): View[] {
   const node = nodes.get(id);
   if (!node || seen.has(id) || depth > 400) return [];
   seen.add(id);
   const role = typeof node.role?.value === "string" ? node.role.value : "";
-  const children = (): View[] => (node.childIds ?? []).flatMap((child) => build(child, nodes, refs, pageUrl, role, depth + 1, seen));
+  const children = (): View[] => (node.childIds ?? []).flatMap((child) => build(child, nodes, refs, pageUrl, role, depth + 1, seen, frameIds));
   if (node.ignored) return children();
   if (SKIPPED_ROLES.has(role)) return [];
   if (role === "StaticText") {
@@ -191,8 +200,9 @@ function build(
   const actionable = INTERACTIVE_ROLES.has(role)
     || (properties.get("focusable") === true && !NON_ACTIONABLE_FOCUSABLE.has(role))
     || (editable !== undefined && editable !== "" && role !== "RootWebArea");
+  const frameId = frameIds?.get(node.nodeId);
   const ref = actionable && typeof node.backendDOMNodeId === "number"
-    ? refs.refFor({ backendNodeId: node.backendDOMNodeId, role, name })
+    ? refs.refFor({ backendNodeId: node.backendDOMNodeId, role, name, ...(frameId ? { frameId } : {}) })
     : undefined;
   const nested = TEXT_INPUT_ROLES.has(role) ? [] : children();
   if (!ref && (FLATTENED_ROLES.has(role) || (role === "group" && !name))) return nested;
@@ -270,7 +280,7 @@ export function renderSnapshot(axNodes: readonly AxNode[], refs: SnapshotRefs, o
     ? scoped ? [scoped] : []
     : axNodes.filter((node) => !node.parentId || !nodes.has(node.parentId));
   const seen = new Set<string>();
-  const views = finalize(roots.flatMap((root) => build(root.nodeId, nodes, refs, options.pageUrl, "", 0, seen)));
+  const views = finalize(roots.flatMap((root) => build(root.nodeId, nodes, refs, options.pageUrl, "", 0, seen, options.frameIds)));
   let lines: string[] = [];
   const depthState = { depthLimited: false };
   print(views, 0, options.interactive === true, lines, options.maxDepth, depthState);

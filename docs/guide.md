@@ -1431,8 +1431,9 @@ stored value into the field without being able to see it: the gateway refuses
 unless the field's page is exactly that origin, and the value never appears in
 the chat, a tool result or a log. A close-button prompt or one-time code still
 needs a **handoff**, and once filled the page itself can read the field, so keep
-the origin allowlist narrow. A sign-in form inside an embedded frame cannot be
-targeted at all — that needs a handoff too.
+the origin allowlist narrow. A sign-in form inside an embedded frame works when the browser renders that frame
+in the same process; a frame it isolates cannot be reached, and that needs a
+handoff.
 
 ## Limiting where the agent's browser goes
 

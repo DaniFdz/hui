@@ -767,6 +767,18 @@ result, get/is, refused password value, disabled and hidden clicks, scoped and
 depth-limited snapshots, wait state, and a re-bound or ambiguous ref) and the
 reading section of `e2e/browser-tool.browser.md`.
 
+Follow-up 2026-11-09: a snapshot reads one level of child frames by frame id
+(`Accessibility.getFullAXTree({ frameId })`) and hangs each tree under its
+Iframe node, prefixing the child's node ids so they cannot collide with the
+page's. A ref from inside a frame carries that frame, so a click lands on the
+frame's own control, `get`/`is` read it, and the secret origin check uses the
+frame's origin rather than the tab's; a frame the browser isolates in its own
+process is not inlined and is documented as needing a handoff. Proof:
+`server/browser/manager.test.ts` (a real headless browser: a same-origin and a
+cross-process-but-local frame both inlined, a click inside each, and a secret
+refused on the host origin and typed on the frame's) and the frame section of
+`e2e/browser-tool.browser.md`.
+
 ### HUI-16 — macOS sleep prevention
 
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on

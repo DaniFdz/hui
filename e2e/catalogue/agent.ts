@@ -518,6 +518,15 @@ const cases: UseCase[] = [
     web: "backlog",
   },
   {
+    id: "AGENT-067",
+    title: "Work with a form inside a frame",
+    behaviour: "A snapshot inlines one level of child frames under their Iframe node, so a form inside a same-process frame is visible and its refs work: act clicks and types inside the frame, get and is read its elements, and a stored secret is checked against the frame's own origin and typed in place. A frame the browser runs out of process is not inlined, so its fields need a handoff.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
     id: "AGENT-066",
     title: "Read and verify a page without another snapshot",
     behaviour: "An agent reads one property of one element with get (text, html, value, attr, box, title, url, count) and checks one state with is (visible, hidden, enabled, disabled, checked, focused, editable, attached); a password field's value is refused. A snapshot can start at a selector and stop at a depth, act wait can wait for an element state, and a click on a disabled or hidden element fails with the reason. Every result that carries page text is wrapped in HUI_PAGE_CONTENT markers with a per-result nonce, and a ref whose node was replaced re-binds to the one element with its role and name or fails as ambiguous.",
