@@ -125,20 +125,24 @@ jobs:
             >>"$log" 2>&1 &
           pid=$!
           echo "$avd on $serial started at $(date -u +%FT%TZ) (pid $pid)"
-          deadline=$(( started + 600 ))
+          deadline=$(( started + 300 ))
           until adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -qx 1; do
             if ! kill -0 "$pid" 2>/dev/null; then echo "emulator exited before boot completed"; tail -60 "$log"; exit 1; fi
             if (( $(date +%s) > deadline )); then echo "boot timed out after $(( $(date +%s) - started ))s"; tail -60 "$log"; exit 1; fi
             sleep 2
           done
-          # boot_completed comes before the boot animation stops and the package manager answers.
-          adb -s "$serial" shell 'until [ "$(getprop init.svc.bootanim)" = "stopped" ]; do sleep 1; done' || true
-          until adb -s "$serial" shell pm path android 2>/dev/null | grep -q path; do
-            if (( $(date +%s) > deadline )); then echo "package manager never answered"; exit 1; fi
+          booted=$(date +%s)
+          echo "sys_boot_completed_seconds=$(( booted - started )) for $avd on $serial"
+          echo "init.svc.bootanim=$(adb -s "$serial" shell getprop init.svc.bootanim | tr -d '\r') (empty with -no-boot-anim, so it is never 'stopped')"
+          # boot_completed comes before the package manager answers, which is what an install or an
+          # `am start` needs. Do not wait on init.svc.bootanim: -no-boot-anim never sets it.
+          until adb -s "$serial" shell pm path android 2>/dev/null | grep -q package:; do
+            if (( $(date +%s) > deadline )); then echo "package manager never answered"; tail -40 "$log"; exit 1; fi
             sleep 1
           done
           finished=$(date +%s)
-          echo "boot_seconds=$(( finished - started )) for $avd on $serial (cold=$( [[ "$*" == *no-snapshot-load* ]] && echo yes || echo no ))"
+          echo "boot_seconds=$(( finished - started )) for $avd on $serial (ready for install and am start)"
+          grep -o 'Boot completed in .*' "$log" | tail -1 || true
           echo "android=$(adb -s "$serial" shell getprop ro.build.version.release | tr -d '\r') abi=$(adb -s "$serial" shell getprop ro.product.cpu.abi | tr -d '\r')"
           SH
           chmod +x "$RUNNER_TEMP/boot-emulator.sh"
@@ -148,7 +152,7 @@ jobs:
           set -euo pipefail
           "$RUNNER_TEMP/boot-emulator.sh" hui34 5554 -no-snapshot-load | tee "$RUNNER_TEMP/boot1.txt"
           free -m
-          ps -eo pid,pcpu,pmem,rss,comm --sort=-pcpu | head -6
+          ps -eo pid,pcpu,pmem,rss,comm --sort=-pcpu | head -6 || true
 
       - name: adb, screencap and WebView
         run: |
@@ -247,7 +251,7 @@ jobs:
           echo "--- both up"
           free -m
           uptime
-          ps -eo pid,pcpu,pmem,rss,comm --sort=-pcpu | head -6
+          ps -eo pid,pcpu,pmem,rss,comm --sort=-pcpu | head -6 || true
           echo "--- five screencaps on each, in parallel"
           started=$(date +%s%N)
           ( run5 emulator-5554 > "$RUNNER_TEMP/parA.txt" ) &
