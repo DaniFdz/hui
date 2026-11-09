@@ -9,7 +9,8 @@
     <main>
       <h1>Connect to HUI</h1>
       <p>The address of the gateway you want this app to show.</p>
-      <form id="connect-form">
+      <!-- novalidate: the page answers a bare host with its own message, not the browser's "Please enter a URL." -->
+      <form id="connect-form" novalidate>
         <label for="gateway">Gateway URL</label>
         <input
           id="gateway"

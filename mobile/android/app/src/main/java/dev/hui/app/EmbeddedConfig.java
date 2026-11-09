@@ -20,9 +20,9 @@ import org.json.JSONObject;
  * Capacitor's defaults and silently drops the generated file's `allowNavigation`, `loggingBehavior`, `errorPath` and
  * plugin settings, so the file is loaded and amended instead.
  *
- * <p>The one thing the file cannot say is the build type: Capacitor derives WebView debugging, and the default logging
- * behaviour, from the running app's debuggable flag, and the asset constructor has no context to ask. Those two values
- * are therefore filled in here from that flag.
+ * <p>The one thing the file cannot say is the build type: Capacitor derives WebView debugging from the running app's
+ * debuggable flag, and the asset constructor has no context to ask, so that value is filled in here from the flag.
+ * Logging stays off unless the config asks for it.
  */
 final class EmbeddedConfig {
 

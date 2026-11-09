@@ -15,8 +15,10 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const [command = "help", ...args] = process.argv.slice(2);
 
-// Every command runs inside the pinned SDK shell; outside it, run this script again there.
-if (!process.env.ANDROID_HOME && command !== "help") {
+// Every command that needs the SDK runs inside the pinned shell; outside it, run this script again there. Building the
+// Connect page alone needs only Vite and the Capacitor CLI, so it works without the Android toolchain.
+const needsAndroid = !["help", "connect"].includes(command);
+if (needsAndroid && !process.env.ANDROID_HOME) {
   const nix = ["nix", "/run/current-system/sw/bin/nix", "/nix/var/nix/profiles/default/bin/nix"].find((candidate) =>
     spawnSync(candidate, ["--version"], { stdio: "ignore" }).status === 0);
   if (!nix) fail("Neither ANDROID_HOME nor nix is available: install Nix, or an SDK as mobile/AGENTS.md says.");
@@ -80,7 +82,8 @@ async function startEmulator() {
   const logs = join(homedir(), ".cache/hui-mobile");
   mkdirSync(logs, { recursive: true });
   const log = join(logs, `${AVD}.log`);
-  const child = spawn(tool("emulator/emulator"), ["-avd", AVD, "-port", SERIAL.split("-")[1], "-no-window", "-no-audio", "-no-boot-anim", "-gpu", "swiftshader_indirect"], {
+  const port = /^emulator-(\d+)$/u.exec(SERIAL)?.[1] ?? "5554";
+  const child = spawn(tool("emulator/emulator"), ["-avd", AVD, "-port", port, "-no-window", "-no-audio", "-no-boot-anim", "-gpu", "swiftshader_indirect"], {
     detached: true,
     stdio: ["ignore", openSync(log, "a"), openSync(log, "a")],
   });

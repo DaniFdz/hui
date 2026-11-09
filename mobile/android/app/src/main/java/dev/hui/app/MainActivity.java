@@ -1,5 +1,6 @@
 package dev.hui.app;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.ViewGroup;
 import android.webkit.WebResourceError;
@@ -27,6 +28,9 @@ public class MainActivity extends BridgeActivity {
     private TextView connecting;
     private boolean fellBack;
 
+    /** A launch that arrives while the app runs (singleTask) must honour a different gateway, not ignore it. */
+    private static final long CONNECT_DEADLINE_MS = 15_000;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(HuiGatewayPlugin.class);
@@ -34,6 +38,14 @@ public class MainActivity extends BridgeActivity {
         if (gateway != null) config = EmbeddedConfig.withGateway(this, gateway);
         super.onCreate(savedInstanceState);
         if (gateway != null) attachGatewayLoad();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String next = Gateway.resolve(this);
+        if (next == null ? gateway != null : !next.equals(gateway)) recreate();
     }
 
     /** Cover the loading WebView, and turn a main-frame failure into the Connect page. */
@@ -46,6 +58,11 @@ public class MainActivity extends BridgeActivity {
         connecting.setBackgroundColor(getColor(R.color.connecting_background));
         addContentView(connecting, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+        // A gateway that accepts the connection and never answers would otherwise cover the WebView until Chromium
+        // gives up; bound it, so a stalled load lands on the Connect page like a refused one.
+        connecting.postDelayed(() -> {
+            if (connecting != null) fallBack();
+        }, CONNECT_DEADLINE_MS);
         bridge.addWebViewListener(new WebViewListener() {
             @Override
             public void onPageCommitVisible(WebView webView, String url) {

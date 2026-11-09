@@ -14,8 +14,9 @@ export const CHANGE_GATEWAY = "Change gateway";
 export const NOT_AN_ADDRESS = "Enter an http:// or https:// address.";
 
 /**
- * The gateway address a typed value names, without trailing slashes, or `null` when it isn't an http(s) URL. Only an
- * origin and a path survive: a query, a fragment and credentials are dropped, because the app loads the gateway's UI.
+ * The gateway address a typed value names, without trailing slashes, or `null` when it isn't an http(s) URL. A query, a
+ * fragment or credentials are refused rather than dropped, exactly as the app's own check refuses them
+ * (`GatewayAddress.java`), so a page cannot point the bridge somewhere the app would not.
  */
 export function normalizeGateway(raw: string): string | null {
   const value = raw.trim();
@@ -23,6 +24,7 @@ export function normalizeGateway(raw: string): string | null {
   try {
     const parsed = new URL(value);
     if (parsed.username !== "" || parsed.password !== "") return null;
+    if (parsed.search !== "" || parsed.hash !== "") return null;
     return `${parsed.origin}${parsed.pathname.replace(/\/+$/u, "")}`;
   } catch {
     return null;

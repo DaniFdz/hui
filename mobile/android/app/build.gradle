@@ -2,6 +2,10 @@ apply plugin: 'com.android.application'
 
 android {
     namespace = "dev.hui.app"
+    // Gateway.java honours the launch extra in debug builds only, which reads BuildConfig.DEBUG.
+    buildFeatures {
+        buildConfig = true
+    }
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "dev.hui.app"
@@ -32,6 +36,11 @@ repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
     }
+}
+
+// The shared gateway-address cases (mobile/gateway-addresses.txt), which the Connect page's test reads too.
+tasks.withType(Test).configureEach {
+    systemProperty "hui.gatewayFixture", rootProject.file("../gateway-addresses.txt").absolutePath
 }
 
 dependencies {

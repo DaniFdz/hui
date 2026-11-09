@@ -70,7 +70,8 @@ forgetGateway()            // clears the remembered gateway: HuiGateway.forget()
 
 | Contract | Value |
 |---|---|
-| Android launch extra | `am start -n dev.hui.app.debug/dev.hui.app.MainActivity --es huiGatewayUrl <url>` (the app remembers it) |
+| Android launch extra | `am start -n dev.hui.app.debug/dev.hui.app.MainActivity --es huiGatewayUrl <url>` (the app remembers it; honoured in debug builds only) |
+| Fallback marker | `huiGatewayFailed` marks the address that did not answer, so the restart shows the Connect page instead of an empty WebView. The app sets it itself; another app's intent only counts while it names the remembered gateway. |
 | iOS launch argument | `-HUIGatewayURL <url>` |
 | Deep link | `hui://open?path=<path>` on both (WP2/WP5) |
 | App ids | `dev.hui.app` (release, iOS), `dev.hui.app.debug` (Android debug, `applicationIdSuffix`) |
@@ -136,6 +137,12 @@ Seed a session with `POST /__hui/sessions` (`x-hui: 1`) and drive the screen wit
 `capacitor.config.ts` already names `mobile/ios`. On iOS the runtime server URL comes from `instanceDescriptor()` in a
 `CAPBridgeViewController` subclass, the launch argument is `-HUIGatewayURL`, and WKWebView only allows service workers
 with App-Bound Domains, so offline caching may be absent there.
+
+## Where the loop runs
+
+The flake adds `devShells.android` for `x86_64-linux` only: that is the machine the emulator loop was built and measured
+on. On macOS the Android shell is absent, so `npm run mobile -- …` there fails inside `nix develop .#android`; use the
+iOS half (WP5) or a plain SDK instead. `npm run mobile:build` (the Connect page) needs no Android toolchain at all.
 
 ## Rules
 
