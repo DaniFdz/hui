@@ -434,7 +434,6 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:tools", "setting:browser.allowedOrigins"],
     journeys: ["browser-tool"],
     web: "required",
-    ios: { excluded: "The iPhone app has no managed browser or browser settings.", decision: "SPEC.md#managed-browser" },
   },
   {
     id: "SET-087",
