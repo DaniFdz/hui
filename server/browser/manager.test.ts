@@ -83,6 +83,9 @@ const PAGES: Record<string, string> = {
     </script>`,
   "/next": "<!doctype html><title>Next</title><h1>Second page</h1><script>console.error('boom from next')</script>",
   "/popup": "<!doctype html><title>Popup</title><h1>Popup page</h1>",
+  "/scroll": `<!doctype html><title>Tall page</title>
+    <h1>Tall page</h1><div style="height:4000px"></div><p id="y">0</p>
+    <script>addEventListener('scroll', () => { document.getElementById('y').textContent = String(Math.round(scrollY)); });</script>`,
   "/handoff": `<!doctype html><title>Handoff page</title>
     <style>body{margin:0} #go{position:absolute;left:0;top:0;width:200px;height:60px}</style>
     <button id="go" onclick="document.getElementById('out').textContent = 'clicked'">Go</button>
@@ -628,4 +631,53 @@ test("a handoff ends when its conversation stops or the browser does", {
   assert.equal(stopped.details["outcome"], "stopped");
   assert.match(stopped.text, /^The managed browser stopped while the operator had tab t\d+\. Call open to start it again\./u);
   assert.equal(browser.running, false);
+});
+
+test("the operator's wheel scrolls the handed-over tab, and input waits for no handoff otherwise", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-handoff-wheel-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const scrollY = async () => {
+    const text = (await call({ action: "text", selector: "#y" })).text;
+    return Number(/(\d+)$/u.exec(text.trim())?.[1] ?? NaN);
+  };
+
+  assert.match((await call({ action: "open", url: `${origin}/scroll` })).text, /Opened tab t1/u);
+  assert.equal(await scrollY(), 0);
+
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+  const handling = call({ action: "handoff", message: "Scroll down, then continue.", timeoutMs: 30_000 });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => Boolean(state?.handoff));
+  browser.operator("alpha", { action: "wheel", tabId: "t1", x: 200, y: 200, deltaX: 0, deltaY: 600 });
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+  await handling;
+  const scrolled = await eventually(() => scrollY(), (value) => value > 0, 3_000);
+  assert.ok(scrolled > 0, `the operator's wheel reached the page (scrollY ${scrolled})`);
+
+  // Nothing waits now, so further operator input is ignored rather than scrolling the page.
+  const settled = await scrollY();
+  browser.operator("alpha", { action: "wheel", tabId: "t1", x: 200, y: 200, deltaX: 0, deltaY: 600 });
+  browser.operator("alpha", { action: "key", tabId: "t1", key: "End" });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(await scrollY(), settled);
 });

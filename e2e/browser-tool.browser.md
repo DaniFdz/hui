@@ -121,7 +121,9 @@ five-minute timeout, instead of typing into the page itself.
   page could still be clicked and typed into (a second session typed "Mob" and
   Greet rendered "Hello, Mob! Typed by the operator."), Continue settled it the
   same way, and nothing scrolled sideways.
-- The page reported no console errors.
+- The operator's wheel scrolls the page (proven by `server/browser/manager.test.ts`
+  with a real headless browser, along with input being ignored once nothing
+  waits), and the page reported no console errors.
 
 ## Limits
 
