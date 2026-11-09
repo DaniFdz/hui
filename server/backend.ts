@@ -22,10 +22,12 @@ import {
   questionnaires,
   secretFiles,
   secretRequests,
+  staff,
   subagents,
   triggers,
   vscode,
   watchers,
+  extensions,
 } from "./services.ts";
 
 durableHost().storeFailed = async () => reattachAfterStoreFailure(await readRegistry());
@@ -62,6 +64,8 @@ export async function startBackend(): Promise<void> {
   // gateway appends it to gateway.log and a development server prints it.
   mirrorDiagnosticLogs((line) => process.stderr.write(line));
   await ensureConfigDir();
+  // Gateway extensions (docs/api.md, "Extension routes"): the enabled ones import once, before any browser asks.
+  await extensions.reconcile();
   void macPower?.start((await readHuiSettings()).power.keepAwake);
   await automation.start();
   // Session views name bots' chats from this list; a broken bots.json is reported by the bot routes.
@@ -111,6 +115,20 @@ export async function startBackend(): Promise<void> {
     detail: error instanceof Error ? error.message : String(error),
   }));
   recoverInterruptedSessions(await readRegistry());
+  // The staff pack's one bot and its skills: seeded once, then kept current except for what the operator edited.
+  await staff.ensure().then((outcome) => {
+    if (!outcome.seeded && !outcome.written.length && !outcome.kept.length && !outcome.routesAdded.length) return;
+    recordDiagnosticEvent({
+      area: "session", level: "info", action: "staff_pack_installed",
+      summary: outcome.seeded
+        ? `Seeded the Chief of Staff bot; ${outcome.written.length} skills installed and ${outcome.routesAdded.length} routes added`
+        : `Staff pack checked; ${outcome.written.length} skills written, ${outcome.kept.length} kept, ${outcome.routesAdded.length} routes added`,
+    });
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "staff_pack_failed",
+    summary: "The staff pack could not be installed; HUI tries again at its next start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   // Auto-star the HUI repo when GitHub is connected.
   void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
 }
@@ -173,6 +191,8 @@ export async function stopBackend(): Promise<void> {
     questionnaires.dispose();
     secretFiles.dispose();
     stopAgentToolBridge();
+    // Each process-mode extension host is stopped and waited for before the gateway exits.
+    await extensions.stop();
     // Closed first: remote sessions then keep running on their hosts instead of
     // receiving a kill from the disposal below.
     workers.disconnectAll();

@@ -1,5 +1,5 @@
 /**
- * The Dashboard page (Labs → Dashboard): a summary of the sessions in flight by status with a count of the finished
+ * The Dashboard page: a summary of the sessions in flight by status with a count of the finished
  * ones, their Kanban stages, the sessions waiting for the operator in priority order with the longest wait first, the
  * ones still in flight grouped by status with their subagents (three rows per list until its Show all button opens
  * it), and the activity monitor: one chart with a line per selected machine over the last 5, 15 or 30 minutes, a

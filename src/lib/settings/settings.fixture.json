@@ -54,6 +54,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -63,8 +64,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -123,6 +123,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -132,8 +133,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -192,6 +192,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -201,8 +202,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -261,6 +261,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -270,8 +271,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -336,6 +336,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -345,8 +346,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -407,6 +407,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -416,8 +417,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -478,6 +478,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -487,8 +488,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -555,6 +555,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -564,8 +565,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": true,
-        "detailedDebug": false,
-        "dashboard": true
+        "detailedDebug": false
       }
     }
   },
@@ -626,6 +626,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -635,8 +636,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -697,6 +697,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -706,8 +707,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -768,6 +768,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -777,8 +778,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -839,6 +839,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -848,8 +849,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -913,6 +913,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -922,8 +923,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": true,
-        "dashboard": false
+        "detailedDebug": true
       }
     }
   },
@@ -989,6 +989,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -998,8 +999,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1060,6 +1060,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1069,8 +1070,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1133,6 +1133,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1142,8 +1143,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1206,6 +1206,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1215,8 +1216,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1277,6 +1277,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1286,8 +1287,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1348,6 +1348,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1357,8 +1358,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1419,6 +1419,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1428,8 +1429,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1492,6 +1492,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1501,8 +1502,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1565,6 +1565,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1574,8 +1575,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1638,6 +1638,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1647,8 +1648,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1711,6 +1711,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1720,8 +1721,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1784,6 +1784,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1793,8 +1794,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1857,6 +1857,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1866,8 +1867,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -1930,6 +1930,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -1939,8 +1940,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2003,6 +2003,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2012,8 +2013,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2076,6 +2076,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2085,8 +2086,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2149,6 +2149,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2158,8 +2159,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2225,6 +2225,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2234,8 +2235,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2301,6 +2301,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2310,8 +2311,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2375,6 +2375,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2384,8 +2385,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2449,6 +2449,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2458,8 +2459,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2525,6 +2525,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2534,8 +2535,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2598,6 +2598,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2607,8 +2608,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2671,6 +2671,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2680,8 +2681,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2744,6 +2744,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2753,8 +2754,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2817,6 +2817,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2826,8 +2827,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2890,6 +2890,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2899,8 +2900,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -2963,6 +2963,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -2972,8 +2973,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3036,6 +3036,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3045,8 +3046,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3112,6 +3112,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3121,8 +3122,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3185,6 +3185,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3194,8 +3195,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3259,6 +3259,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3268,8 +3269,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3338,6 +3338,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3347,8 +3348,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3415,6 +3415,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3424,8 +3425,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3489,6 +3489,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3498,8 +3499,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3564,6 +3564,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3573,8 +3574,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3635,6 +3635,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3644,8 +3645,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3706,6 +3706,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3715,8 +3716,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3777,6 +3777,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3786,8 +3787,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3848,6 +3848,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3857,8 +3858,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3919,6 +3919,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3928,8 +3929,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -3990,6 +3990,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -3999,8 +4000,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4061,6 +4061,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4070,8 +4071,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4132,6 +4132,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4141,8 +4142,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4221,6 +4221,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4235,8 +4236,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4318,6 +4318,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4333,8 +4334,7 @@
       ],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4395,6 +4395,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4404,8 +4405,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4466,6 +4466,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4475,8 +4476,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4537,6 +4537,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4546,8 +4547,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4608,6 +4608,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4617,8 +4618,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4679,6 +4679,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4688,8 +4689,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4750,6 +4750,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4759,8 +4760,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4821,6 +4821,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4830,8 +4831,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4892,6 +4892,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4901,8 +4902,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -4970,6 +4970,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -4979,8 +4980,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5043,6 +5043,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5052,8 +5053,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5116,6 +5116,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5125,8 +5126,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5189,6 +5189,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5198,8 +5199,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5262,6 +5262,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5271,8 +5272,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5335,6 +5335,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5344,8 +5345,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5408,6 +5408,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5417,8 +5418,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5481,6 +5481,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5490,8 +5491,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5554,6 +5554,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5563,8 +5564,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5627,6 +5627,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5636,8 +5637,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5700,6 +5700,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5709,8 +5710,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5773,6 +5773,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5782,8 +5783,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5846,6 +5846,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5855,8 +5856,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5919,6 +5919,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -5928,8 +5929,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -5994,6 +5994,7 @@
         "fallback": "anthropic/model",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6003,8 +6004,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6065,6 +6065,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6074,8 +6075,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6136,6 +6136,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6145,8 +6146,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6207,6 +6207,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6216,8 +6217,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6278,6 +6278,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6287,8 +6288,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6349,6 +6349,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6358,8 +6359,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6420,6 +6420,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6429,8 +6430,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6491,6 +6491,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6500,8 +6501,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6562,6 +6562,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6571,8 +6572,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6633,6 +6633,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6642,8 +6643,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6704,6 +6704,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6713,8 +6714,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6775,6 +6775,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6784,8 +6785,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6846,6 +6846,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6855,8 +6856,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6917,6 +6917,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6926,8 +6927,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -6988,6 +6988,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -6997,8 +6998,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7059,6 +7059,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7068,8 +7069,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7130,6 +7130,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7139,8 +7140,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7201,6 +7201,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7210,8 +7211,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7272,6 +7272,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7281,8 +7282,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7343,6 +7343,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7352,8 +7353,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7414,6 +7414,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7423,8 +7424,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7485,6 +7485,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7494,8 +7495,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7556,6 +7556,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7565,8 +7566,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7627,6 +7627,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7636,8 +7637,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7703,6 +7703,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7712,8 +7713,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7779,6 +7779,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7788,8 +7789,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7850,6 +7850,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": []
       },
       "calls": {
@@ -7859,8 +7860,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },
@@ -7888,6 +7888,20 @@
             "name": "no model",
             "description": "Cannot be spawned by name.",
             "model": "openai/gpt-5.6-luna"
+          },
+          {
+            "name": "inherit",
+            "description": "Runs on its caller's model."
+          },
+          {
+            "name": "empty-model",
+            "description": "Inherits too.",
+            "model": "   "
+          },
+          {
+            "name": "bad model",
+            "description": "Dropped.",
+            "model": "not-a-model"
           },
           {
             "name": "broken",
@@ -7963,6 +7977,7 @@
         "fallback": "",
         "utility": "",
         "thinking": "",
+        "retryAttempts": 3,
         "routes": [
           {
             "name": "fast",
@@ -7975,6 +7990,16 @@
             "description": "",
             "model": "anthropic/claude-opus-5-5",
             "thinking": "max"
+          },
+          {
+            "name": "inherit",
+            "description": "Runs on its caller's model.",
+            "model": ""
+          },
+          {
+            "name": "empty-model",
+            "description": "Inherits too.",
+            "model": ""
           },
           {
             "name": "local",
@@ -7995,8 +8020,7 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "dashboard": false
+        "detailedDebug": false
       }
     }
   },

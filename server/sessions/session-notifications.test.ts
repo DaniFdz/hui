@@ -49,7 +49,7 @@ test("a finished or failed run the operator started notifies silently, as each s
   assert.deepEqual(on.sent, [{ chat: "bot-1", title: "Pager", subtitle: "Finished", priority: "low" }], "failed runs are opt-out");
 });
 
-test("runs the operator didn't start, subagents and chats still waiting on subagents don't notify that they finished", async () => {
+test("runs the operator didn't start, a subagent's report among them, never notify, and a chat waiting on subagents doesn't finish", async () => {
   const state = notifier({ settings: { runFinished: true }, chats: { child: { subagent: true } } });
   for (const prompt of ["[routine: Daily digest] summarize", "[trigger: PR merged · #7] check it", "[from @grace] done", "[from agent: Fix CI] here",
     "[Inter-session message from Fix CI (s1)]\nhello"]) {
@@ -61,8 +61,11 @@ test("runs the operator didn't start, subagents and chats still waiting on subag
   state.end({ id: "parent", failed: false, prompt: "[HUI subagent completion event]\nchild 1 done" });
   state.end({ id: "parent", failed: true, prompt: "[HUI subagent completion event]\nchild 1 done" });
   state.end({ id: "last", failed: false, prompt: "[HUI subagent completion event]\nall done" });
-  await waitFor("the two notifications that count", () => state.sent.length === 2);
-  assert.deepEqual(state.sent.map(({ chat, subtitle }) => `${chat}: ${subtitle}`), ["parent: Run failed", "last: Finished"]);
+  // A run the operator did start, so the wait synchronizes on the one notification that counts: had any automated run
+  // notified, it would be here too.
+  state.end({ id: "human", failed: false, prompt: "run the tests" });
+  await waitFor("the operator's own finished run", () => state.sent.length === 1);
+  assert.deepEqual(state.sent.map(({ chat, subtitle }) => `${chat}: ${subtitle}`), ["human: Finished"]);
 });
 
 test("a conversation that starts waiting notifies with its first question, once per wait", async () => {

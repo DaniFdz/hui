@@ -34,11 +34,11 @@ test("ignores the retired single typeface preference", () => {
 test("normalizes HUI-owned profile and labs", () => {
   const settings = normalizeSettings({
     profileName: "  Alex  ", profileHandle: " @alex ",
-    labs: { denseObservability: true, detailedDebug: "yes", dashboard: true },
+    labs: { denseObservability: true, detailedDebug: "yes" },
   });
   assert.equal(settings.profileName, "Alex");
   assert.equal(settings.profileHandle, "@alex");
-  assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false, dashboard: true });
+  assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false });
 });
 
 test("codemode is on unless explicitly switched off", () => {

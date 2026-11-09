@@ -138,7 +138,7 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       const skills = chat ? await chat.availableSkills() : (await host.prompt.loader(cwd, own)).getSkills().skills;
       return {
         tools: chat ? [...chat.botOffer()] : await builtinBotOffer(host),
-        skills: skills.map((skill) => own.some((dir) => skill.filePath.startsWith(`${dir}/`)) ? { ...offeredSkill(skill), source: BOT_OWN_SKILLS_SOURCE } : offeredSkill(skill)),
+        skills: skills.map((skill) => own.some((dir) => skill.filePath.startsWith(`${dir}/`)) ? { ...offeredSkill(skill), source: BOT_OWN_SKILLS_SOURCE, own: true } : offeredSkill(skill)),
         alwaysOn: [...BOT_ALWAYS_ON],
         live: Boolean(chat),
       };

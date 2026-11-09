@@ -25,6 +25,7 @@ test("missing HUI settings use defaults", async () => {
     fallback: "",
     utility: "",
     thinking: "",
+    retryAttempts: 3,
     routes: [],
   });
 });
@@ -44,8 +45,23 @@ test("normalizes HUI-owned model routes", async () => {
     fallback: "anthropic/claude-haiku-4-5",
     utility: "",
     thinking: "",
+    retryAttempts: 3,
     routes: [],
   });
+});
+
+test("a route without a model inherits the caller's model; a malformed one is dropped", () => {
+  const settings = normalizeSettings({ models: { routes: [
+    { name: "inherit", description: "Runs on its caller's model." },
+    { name: "blank", model: "   " },
+    { name: "broken", model: "claude-opus-5-5" },
+    { name: "pinned", model: "openai/gpt-5.6-luna", thinking: "high" },
+  ] } });
+  assert.deepEqual(settings.models.routes, [
+    { name: "inherit", description: "Runs on its caller's model.", model: "" },
+    { name: "blank", description: "", model: "" },
+    { name: "pinned", description: "", model: "openai/gpt-5.6-luna", thinking: "high" },
+  ]);
 });
 
 test("the default reasoning keeps a PI level and drops Ultra or an unknown one", async () => {
@@ -61,6 +77,22 @@ test("the default reasoning keeps a PI level and drops Ultra or an unknown one",
   assert.equal(await level("ultra"), "", "Ultra is the session's own choice, not a default");
   assert.equal(await level("turbo"), "");
   assert.equal(await level(7), "");
+});
+
+test("the retry budget is a whole number from 0 to 5 and defaults to 3", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "hui-settings-"));
+  const path = join(directory, "settings.json");
+  const attempts = async (value: unknown) => {
+    await writeFile(path, JSON.stringify({ models: { retryAttempts: value } }));
+    return (await readHuiSettingsAt(path)).models.retryAttempts;
+  };
+  assert.equal(await attempts(0), 0);
+  assert.equal(await attempts(5.9), 5);
+  assert.equal(await attempts(-2), 0);
+  assert.equal(await attempts(99), 5);
+  assert.equal(await attempts("4"), 4);
+  assert.equal(await attempts("many"), 3);
+  assert.equal(await attempts(undefined), 3);
 });
 
 const fixtures: { input: unknown; expected: ReturnType<typeof normalizeSettings> }[] = JSON.parse(readFileSync(new URL("./hui-settings.fixture.json", import.meta.url), "utf8"));

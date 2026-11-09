@@ -1,8 +1,11 @@
 /** The skills HUI ships: each file exists with the name and description PI lists, and the cost method is complete. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { test } from "vitest";
 
+import { parseManifest } from "../extensions/registry.ts";
 import { bundledSkillEnabled, bundledSkills } from "./bundled-skills.ts";
 
 const frontmatter = (path: string) => {
@@ -44,4 +47,17 @@ test("a shipped skill is on unless its stable key or its file is in disabledSkil
   assert.equal(bundledSkillEnabled(skill.name, [{ path: skill.preferencePath }]), false, "the stable key turns it off");
   assert.equal(bundledSkillEnabled(skill.name, [{ path: skill.path }]), false, "so does the file path an older settings file holds");
   assert.equal(bundledSkillEnabled("missing-skill", []), false);
+});
+
+test("the extension skill's reference is a manifest and route HUI accepts", async () => {
+  const skill = bundledSkills.find((entry) => entry.name === "build-hui-extension");
+  assert.ok(skill, "HUI ships the extension skill");
+  const directory = join(dirname(skill.path), "references", "hello");
+  const parsed = parseManifest(JSON.parse(readFileSync(join(directory, "extension.json"), "utf8")));
+  assert.equal(parsed.ok, true);
+  const module = await import(pathToFileURL(join(directory, "index.mjs")).href);
+  assert.deepEqual(
+    await module.routes[0].handle({ query: new URLSearchParams("name=Ada") }),
+    { body: { greeting: "hello, Ada" } },
+  );
 });

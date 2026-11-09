@@ -6,6 +6,7 @@ import { PiError } from "../api/pi.ts";
 import { ToolsError } from "../api/tools.ts";
 import { ProviderError } from "../api/providers.ts";
 import { SettingsError } from "../api/settings.ts";
+import { ExtensionsResponse, PluginError } from "../api/extensions.ts";
 import { SessionError } from "../api/sessions.ts";
 import { AutomationError, AutomationSnapshot } from "../api/automation.ts";
 import { UpdateError, UpdateSnapshot } from "../api/updates.ts";
@@ -56,6 +57,7 @@ type Case = [request: string, status: number, keys: string[] | null, recorded: b
 const CASES: Case[] = [
   ["GET /__hui/widget-sandbox", 200, null, false, anonymous],
   ["GET /__hui/media/0/missing.png", 404, ["error"], false, anonymous],
+  ["GET /__hui/ext-ui/hello/index.html", 404, ["error"], false, anonymous],
   ["GET /__hui/sessions/missing/attachments/1/1", 404, ["error"], false, sameOrigin],
   ["GET /__hui/bots/missing/memory/html", 404, ["error"], false, sameOrigin],
   ["POST /__hui/vscode/enter", 405, null, false, anonymous],
@@ -78,6 +80,10 @@ const CASES: Case[] = [
   ["POST /__hui/browser", 400, ["error"], true, { body: JSON.stringify({ action: "jump" }) }],
   ["POST /__hui/browser/tabs/t1/preview", 405, ["error"], true],
   ["DELETE /__hui/settings", 405, ["error"], true],
+  ["GET /__hui/ext", 200, ["extensions"], false],
+  ["PUT /__hui/ext/hello", 404, ["error"], true, { body: JSON.stringify({ enabled: true }) }],
+  ["GET /__hui/ext/hello/hello", 404, ["error"], true],
+  ["POST /__hui/ext/hello/reload", 404, ["error"], true],
   ["GET /__hui/pi/packages/install", 405, ["error"], true],
   ["POST /__hui/tools", 405, ["error"], true],
   [`GET /__hui/pi/resources/skill/${"0".repeat(24)}`, 404, ["error"], true],
@@ -173,6 +179,7 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
     if (path === "/__hui/tools" || /\/sessions\/[^/]+\/tools$/u.test(path)) expectSchema(ToolsError, body);
     if (path.startsWith("/__hui/providers")) expectSchema(ProviderError, body);
     if (path === "/__hui/settings") expectSchema(SettingsError, body);
+    if (path === "/__hui/ext" || path.startsWith("/__hui/ext/")) expectSchema(PluginError, body);
     if (path.startsWith("/__hui/automation")) expectSchema(AutomationError, body);
     if (path.startsWith("/__hui/update")) expectSchema(UpdateError, body);
     if (path.startsWith("/__hui/workers")) expectSchema(WorkerError, body);
@@ -189,6 +196,7 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
     if (path.startsWith("/__hui/local-paths")) expectSchema(LocalPathsResponse, body);
     if (path.startsWith("/__hui/git-checkout")) expectSchema(GitCheckoutResponse, body);
     if (path === "/__hui/themes") expectSchema(ThemesResponse, body);
+    if (path === "/__hui/ext") expectSchema(ExtensionsResponse, body);
     if (path.startsWith("/__hui/themes/file/")) expectSchema(ThemeFile, body);
     if (path === "/__hui/worktrees") expectSchema(WorktreeInventory, body);
     if (path === "/__hui/workspaces") expectSchema(WorkspaceInspection, body);

@@ -89,7 +89,7 @@ export function reportedOffer(value: unknown): BotOffer | undefined {
   });
   const skills = value["skills"].flatMap((skill): BotOffer["skills"] => {
     if (!isRecord(skill) || typeof skill["name"] !== "string" || !skill["name"] || typeof skill["path"] !== "string" || !skill["path"]) return [];
-    return [{ name: skill["name"], path: skill["path"], description: shortText(skill["description"], 2_000), source: shortText(skill["source"], 4_096) }];
+    return [{ name: skill["name"], path: skill["path"], description: shortText(skill["description"], 2_000), source: shortText(skill["source"], 4_096), ...(skill["own"] === true ? { own: true as const } : {}) }];
   });
   const alwaysOn = value["alwaysOn"].flatMap((tool): BotOffer["alwaysOn"] =>
     isRecord(tool) && typeof tool["name"] === "string" && tool["name"] ? [{ name: tool["name"].slice(0, 200), description: shortText(tool["description"], 2_000) }] : []);

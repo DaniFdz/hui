@@ -696,7 +696,9 @@ browser ends it too. Notation follows OpenCode's Browse, with HUI's own browser
 and no new dependency, route or persisted format. Proof:
 `server/browser/manager.test.ts` (a real headless browser: the operator's click
 and keys reach the page, the agent is refused meanwhile, Continue returns the
-typed page and a working ref, and a timeout returns the tab),
+typed page and a working ref, a timeout returns the tab, a Stop or a stopped
+browser settles the wait as closed or stopped, the operator's wheel scrolls the
+page, and input is ignored once nothing waits),
 `server/browser/transport.test.ts` (only well-formed operator frames reach a
 handed-over tab), `src/lib/browser-view.test.ts`,
 `src/controllers/browser-view-controller.test.ts`,
