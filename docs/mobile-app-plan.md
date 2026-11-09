@@ -133,6 +133,32 @@ proof runs.
 
 S1 and S2 share the emulator, so S2 starts from S1's APK. S3 and S4 are independent of both.
 
+**Results (2026-11-09, all four green).** Measured on this machine, CI and the owner's toolchain:
+
+- **S1, green.** `CapConfig.Builder.setServerUrl` set in an override of `BridgeActivity.load()` scopes Capacitor's
+  document-start script — the bridge and every plugin — to the gateway's origin, and a plugin call from the gateway's
+  page answers. REST with `x-hui`, the session WebSocket (streamed deltas, heartbeats) and, on the production build,
+  the service worker (offline shell after the gateway stopped) all work in the WebView, and the soft keyboard resizes
+  the page so the composer stays above it. Two caveats shaped WP1: a live bridge's server URL cannot change, so the
+  Connect page hands its address to a small local plugin that saves it and recreates the activity (~1 s); and the
+  gateway refuses the preflight of a cross-origin `fetch`, so the probe uses Capacitor's built-in `CapacitorHttp` on a
+  device and falls back to `fetch` in a browser (no gateway change). The devShell needs build-tools 35.0.0 **and**
+  36.0.0 and **JDK 21**.
+- **S2, green with shims.** `connect.cdpEndpoint` alone cannot attach: Playwright's `connectOverCDP` sends
+  `Browser.setDownloadBehavior`, which a WebView refuses, and the persistent path expects a
+  `defaultBrowserContextId` a WebView does not report. With `connect: { cdpEndpoint, reconnectEndpoint }` plus two
+  shims in `e2e/fixtures/phone.ts`, real shared tests pass on the `android` target (CHAT-066 and SESS-018). The engine
+  cannot create pages or contexts, so each test relaunches the app (~2–3 s), `pm clear` only before a page exists, and
+  `platforms: ["web"]` does not filter the phone target out — WP4 must mark phone-only tests through the fixture.
+  A phone-sized viewport must be declared on the target or the page is laid out at 1280×720.
+- **S3, green.** `npx cap add ios` works on Linux (Swift Package Manager, no CocoaPods), and a `macos-latest` runner
+  builds, installs, launches and screenshots the app with no Mac: 6m15s a job, Xcode 26.6 preinstalled, iOS 26.x
+  runtimes only, simulator boot 92–120 s. A launch argument read through `UserDefaults` and applied by overriding
+  `instanceDescriptor()` gives the shell its runtime URL, and the bridge is injected on that origin on iOS too.
+- **S4, green.** KVM works on `ubuntu-latest`; cold boot 39 s, 6 s from a cached AVD snapshot; a single-emulator job
+  is about 2.5 min. Two emulators per runner contend (boot +49%), so one emulator per shard, 4 shards. Wait on
+  `sys.boot_completed` and `pm path android`, never on `init.svc.bootanim`, and cache the AVD (2.7 GB), not the SDK.
+
 ### WP1: scaffold (serial, one worker, about 1 day)
 
 - Installs every dependency of section 8 in one commit.
