@@ -476,7 +476,7 @@ const cases: UseCase[] = [
     ios: "required",
   },
   {
-    id: "SET-088",
+    id: "SET-090",
     title: "Limit the managed browser to named origins",
     behaviour: "Settings → Tools → Browser's “Allowed origins” takes one pattern per line (example.com, example.com:8443, https://app.example.com, or *.example.com for subdomains only) and saves them with the rest of the browser settings; empty, which is the default, lets agents browse anywhere. With a list set, the agent's browser opens and navigates only to those pages, a link, redirect or popup that leaves them is stopped and its tab left on about:blank with the reason in the tool result, and a local file is refused; a private or loopback address needs its exact host, never a wildcard.",
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],

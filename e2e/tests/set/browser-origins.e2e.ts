@@ -1,8 +1,8 @@
-/** The browser's origin allowlist saves from Settings → Tools and survives a reload (SET-088). */
+/** The browser's origin allowlist saves from Settings → Tools and survives a reload (SET-090). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("the browser's allowed origins save and persist", { tags: ["SET-088"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the browser's allowed origins save and persist", { tags: ["SET-090"], platforms: ["web"] }, async ({ screen, hui }) => {
   const origins = screen.getByLabel("Allowed origins");
 
   await hui.open("/settings/tools");
