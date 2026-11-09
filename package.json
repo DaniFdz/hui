@@ -32,7 +32,6 @@
     "test": "vitest run",
     "test:package": "npm run build && node --test e2e/package.test.ts",
     "e2e": "E2E_TELEMETRY_DISABLED=1 e2e run --target web",
-    "e2e:ios": "E2E_TELEMETRY_DISABLED=1 e2e run --target ios",
     "e2e:sdk": "node e2e/sdk-backend.mjs",
     "e2e:package": "node e2e/package-browser.mjs",
     "eval:jira-draft": "node evals/jira-draft/run.ts",

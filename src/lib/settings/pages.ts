@@ -1,4 +1,4 @@
-/** The Settings pages in their list order, with the group each sits under, the search that keeps the pages whose name or group matches, and the words Settings shows (page introductions, the empty search, Color mode and Text size names); shared by the web's Settings shell and the iOS app. */
+/** The Settings pages in their list order, with the group each sits under, the search that keeps the pages whose name or group matches, and the words Settings shows (page introductions, the empty search, Color mode and Text size names), read by the web's Settings shell. */
 import type { TextScaleStop } from "../theme/appearance.ts";
 import type { ThemeMode } from "../theme/theme.ts";
 
