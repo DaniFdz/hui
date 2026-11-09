@@ -16,7 +16,9 @@ const CHIP_TEXT = { live: "Live", connecting: "Connecting…", closed: "Closed" 
  * What the agent's browser shows, in the chat under its latest browser
  * activity. It streams while the agent's turn runs and the card is on screen,
  * then keeps the last frame; an idle card takes one fresh frame when it first
- * appears. View-only: selecting it opens the conversation's browser view in the Work pane.
+ * appears. Selecting it opens the conversation's browser view in the Work pane.
+ * When the agent hands the tab over, the card says so and opens that view,
+ * where the operator can answer it.
  *
  * No decorators: the chat view (and so this module) also loads in Node tests.
  */
@@ -118,6 +120,12 @@ export class BrowserPreview extends HuiElement {
       ${expand && frame
         ? html`<button type="button" class="hui-browser-preview__screen" aria-label=${`Open ${display.title} in the browser view`} @click=${expand}>${screen}</button>`
         : html`<div class="hui-browser-preview__screen">${screen}</div>`}
+      ${this.browser.view?.handoff
+        ? html`<div class="hui-browser-preview__handoff">
+            <span class="hui-browser-preview__handoff-text"><strong>Your turn.</strong> ${this.browser.view.handoff.message}</span>
+            ${expand ? html`<button type="button" class="btn btn--sm" @click=${expand}>Take over</button>` : nothing}
+          </div>`
+        : nothing}
       ${action ? html`<div class="hui-browser-preview__footer">
           <span class="hui-browser-preview__action" title=${action.text}>${action.text}</span>
           <time datetime=${action.at}>${relativeTime(action.at, Math.max(this.now, Date.parse(action.at) || 0))}</time>

@@ -148,3 +148,34 @@ button.hui-browser-preview__screen:focus-visible { outline: 2px solid var(--ring
 @media (prefers-reduced-motion: reduce) {
   .hui-browser-preview__dot { animation: none; }
 }
+
+/* ── The agent handed the tab over ──────────────────────────────────────────
+ * The pane is the operator's browser for that tab until they continue. */
+.hui-browser-handoff {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--background));
+}
+.hui-browser-handoff__text { min-width: 0; margin: 0; color: var(--text, var(--foreground)); font-size: 12px; line-height: 1.45; }
+.hui-browser-handoff__text strong { color: var(--accent-text, var(--accent)); }
+.hui-browser-handoff__done { flex: none; }
+.hui-browser-frame--driving { cursor: default; outline: none; box-shadow: 0 0 0 2px var(--accent), 0 4px 16px rgb(0 0 0 / 10%); }
+.hui-browser-frame--driving:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.hui-browser-frame--driving img { cursor: default; }
+.hui-browser-preview__handoff {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--chat-attachment-border, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-size: 12px;
+  line-height: 1.45;
+  line-height: 1.45;
+}
+.hui-browser-preview__handoff-text { flex: 1; min-width: 0; }
+.hui-browser-preview__handoff .btn { flex: none; }

@@ -509,6 +509,15 @@ const cases: UseCase[] = [
     web: "backlog",
   },
   {
+    id: "AGENT-065",
+    title: "Answer the agent's browser handoff",
+    behaviour: "When only a person can continue, the agent hands its tab over and waits: the chat's preview card says Your turn with the agent's instruction and Take over, the browser view says Your turn with the message and I'm done — continue, and its activity line reads You have control; the agent waits. In that view the operator clicks, types, scrolls and presses keys on the page, the agent cannot act on the browser meanwhile, and the tab stays open. Continue returns the page as it is then, with a fresh snapshot whose refs the agent uses next. A wait nobody answers ends after its timeout, and a closed tab or a stopped browser ends it too.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser", "route:WS /__hui/browser-stream", "work-view:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
     id: "AGENT-058",
     title: "Stop a turn that is browsing",
     behaviour: "Stop during browsing ends the turn with This operation was aborted, the preview turns Closed with its last frame, and the conversation's tabs close; with no tabs left the browser stops. Tabs left unused for 10 minutes close the same way.",

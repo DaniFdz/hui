@@ -4,7 +4,7 @@
  * `/__hui/` routes to reach it.
  */
 import { normalizeBrowserStatus } from "../lib/browser-status.ts";
-import type { BrowserStatus, BrowserViewConnection, BrowserViewTab, BrowserViewMessage } from "./schema/browser.ts";
+import type { BrowserHandoff, BrowserStatus, BrowserViewConnection, BrowserViewTab, BrowserViewMessage } from "./schema/browser.ts";
 import { fetchJson } from "./request.ts";
 
 const BROWSER_URL = "/__hui/browser";
@@ -31,6 +31,15 @@ function tabRef(value: unknown): string | null {
   return typeof value === "string" && TAB_ID.test(value) ? value : null;
 }
 
+/** The tab waiting for the operator, or null. A message is required: a banner with nothing to do is worse than none. */
+function handoff(value: unknown): BrowserHandoff | null {
+  if (!isRecord(value)) return null;
+  const tabId = tabRef(value["tabId"]);
+  const message = text(value["message"], 500).trim();
+  if (!tabId || !message) return null;
+  return { tabId, message, since: text(value["since"], 64) };
+}
+
 
 export function parseBrowserViewMessage(raw: unknown): BrowserViewMessage | undefined {
   if (!isRecord(raw)) return undefined;
@@ -44,6 +53,7 @@ export function parseBrowserViewMessage(raw: unknown): BrowserViewMessage | unde
       current: tabRef(raw["current"]),
       watching: tabRef(raw["watching"]),
       following: raw["following"] !== false,
+      handoff: handoff(raw["handoff"]),
     };
   }
   if (raw["type"] === "action" && typeof raw["tabId"] === "string" && TAB_ID.test(raw["tabId"]) && typeof raw["text"] === "string") {

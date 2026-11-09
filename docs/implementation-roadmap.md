@@ -682,6 +682,29 @@ protocol error, and a launch that loses the profile to another process reports
 that instead of "The browser connection closed." Proof:
 `server/browser/manager.test.ts`.
 
+Follow-up 2026-11-07: the live view is no longer only a view. An agent that
+reaches a step only a person can finish (a password, 2FA, a passkey, a payment, a
+site's bot check) calls the browser tool's `handoff` with one instruction and
+waits for the operator in that tab: the chat's preview card says *Your turn* and
+opens the Work pane's browser view, which shows the message and *I'm done —
+continue*; while it waits the operator's pointer, wheel and keys reach that tab
+over the existing live-view socket, the tab cannot close, and every other agent
+browser action is refused. Continue returns the page as it is then, with a fresh
+snapshot whose refs the agent acts on; a wait nobody answers ends after its
+timeout with the tab back in the agent's control, and a closed tab or a stopped
+browser ends it too. Notation follows OpenCode's Browse, with HUI's own browser
+and no new dependency, route or persisted format. Proof:
+`server/browser/manager.test.ts` (a real headless browser: the operator's click
+and keys reach the page, the agent is refused meanwhile, Continue returns the
+typed page and a working ref, a timeout returns the tab, a Stop or a stopped
+browser settles the wait as closed or stopped, the operator's wheel scrolls the
+page, and input is ignored once nothing waits),
+`server/browser/transport.test.ts` (only well-formed operator frames reach a
+handed-over tab), `src/lib/browser-view.test.ts`,
+`src/controllers/browser-view-controller.test.ts`,
+`src/api/browser.test.ts` and the handoff section of
+`e2e/browser-tool.browser.md`.
+
 ### HUI-16 — macOS sleep prevention
 
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on
