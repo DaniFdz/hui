@@ -703,3 +703,44 @@ test("a popup or redirect that leaves the allowed origins is stopped and reporte
   assert.match(redirected.text, /This tab tried to reach http:\/\/127\.0\.0\.1:\d+\/private, which is not in the browser's allowed origins/u);
   assert.match(redirected.text, /URL: about:blank/u);
 });
+
+test("going back into a page the allowlist now refuses is refused", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-origins-history-"));
+  const page = (title: string) => `<!doctype html><title>${title}</title><h1>${title}</h1>`;
+  const first = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(page("First host"));
+  }).listen(0, "127.0.0.1");
+  const second = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(page("Second host"));
+  }).listen(0, "127.0.0.1");
+  await Promise.all([once(first, "listening"), once(second, "listening")]);
+  const firstAddress = first.address();
+  const secondAddress = second.address();
+  assert.ok(firstAddress && typeof firstAddress !== "string" && secondAddress && typeof secondAddress !== "string");
+  const allowed = `http://127.0.0.1:${firstAddress.port}`;
+  const other = `http://127.0.0.1:${secondAddress.port}`;
+  // Both hosts start allowed, then the operator narrows the list to the first.
+  let settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [`127.0.0.1:${firstAddress.port}`, `127.0.0.1:${secondAddress.port}`] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    first.close();
+    second.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  assert.match((await call({ action: "open", url: `${allowed}/` })).text, /Opened tab t1/u);
+  assert.match((await call({ action: "navigate", url: `${other}/` })).text, /heading "Second host"/u);
+  settings = { ...settings, allowedOrigins: [`127.0.0.1:${secondAddress.port}`] };
+  // Back now points at the first host, which the list no longer allows.
+  await assert.rejects(call({ action: "back" }), /127\.0\.0\.1:\d+ is not in this browser's allowed origins \(127\.0\.0\.1:\d+\)/u);
+  assert.match((await call({ action: "tabs" })).text, /Second host/u, "the refused move leaves the tab where it was");
+  // The page the list still allows goes on working after the refusal.
+  assert.match((await call({ action: "navigate", url: `${other}/` })).text, /heading "Second host"/u);
+});
