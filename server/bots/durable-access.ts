@@ -61,7 +61,7 @@ const SKILL_READERS: readonly string[] = ["read", "bash"];
  * request in the chat's Secret card or refuses it.
  */
 export const POWERFUL_TOOLS: ReadonlySet<string> = new Set([
-  "write", "edit", "bash", "terminal", "watcher", "browser", "sessions_spawn", "sessions_send", "subagents",
+  "write", "edit", "bash", "terminal", "watcher", "browser", "sessions_spawn", "create_session", "sessions_send", "subagents",
 ]);
 
 /** What the catalog shows as always on: a bot's own tools and OptChat's memory tools, which every bot's chat has. */

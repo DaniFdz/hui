@@ -446,6 +446,51 @@ if (process.platform === "darwin") {
 }
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
+
+/** `create_session`: an ordinary top-level session, not a child. The caller's model, thinking, group,
+ * worker and directory are defaults; a worker session creates its own worktree on that worker. */
+async function createSessionFromAgent(callerSessionId: string, params: Record<string, unknown>) {
+  const caller = (await readRegistry()).find(({ id }) => id === callerSessionId);
+  if (!caller) throw new Error("Conversation no longer exists.");
+  const prompt = typeof params["prompt"] === "string" ? params["prompt"].trim() : "";
+  if (!prompt) throw new Error("A new session needs its brief: pass it as prompt.");
+  if (prompt.length > 20_000) throw new Error("A session prompt must be at most 20000 characters.");
+  const text = (key: string): string | undefined => {
+    const value = params[key];
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  };
+  const worktree = params["worktree"] === true;
+  const requestedWorker = text("worker");
+  const worker = requestedWorker
+    ? (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker
+    : caller.worker;
+  const model = text("model") ?? caller.model;
+  const thinking = text("thinking") ?? caller.thinking;
+  const record = await createSession({
+    cwd: text("cwd") ?? caller.cwd,
+    group: text("group") ?? caller.group ?? "",
+    initialPrompt: prompt.slice(0, 4_000),
+    ...(text("title") ? { title: text("title") } : {}),
+    ...(worker ? { worker } : {}),
+    ...(worktree ? { worktree: true } : {}),
+    ...(worktree && text("branchName") ? { branchName: text("branchName") } : {}),
+    ...(text("baseRef") ? { baseRef: text("baseRef") } : {}),
+    ...(model ? { model } : {}),
+    ...(thinking ? { thinking } : {}),
+  } as Record<string, unknown>);
+  // The session is registered and starts its runtime; the brief is its first prompt, not its title.
+  await waitForSessionReady(record.id, 120_000);
+  await liveSessions.prompt(record.id, prompt);
+  return {
+    id: record.id,
+    title: record.title,
+    group: record.group,
+    cwd: record.cwd,
+    ...(record.worker ? { worker: record.worker } : {}),
+    ...(worktree ? { worktree: true } : {}),
+  };
+}
+
 registerAgentToolHandler(async (invocation) => {
   // Behind the check where a bot's chat runs: HUI's own refusal of a tool the operator turned off in that chat.
   await bots.checkToolAllowed(invocation.callerSessionId, invocation.action);
@@ -459,6 +504,9 @@ registerAgentToolHandler(async (invocation) => {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
     return taskSuggestions.tool(caller.id, invocation.action, invocation.params, caller.cwd, caller.worker);
+  }
+  if (invocation.action === "create_session") {
+    return createSessionFromAgent(invocation.callerSessionId, invocation.params);
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);

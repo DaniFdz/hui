@@ -723,6 +723,16 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "BOT-073",
+    title: "Create an ordinary session from an agent",
+    behaviour: "An agent calls create_session with a brief, a group and optionally a worker, a worktree, a model and thinking. A top-level session appears in that group with the brief as its first prompt; it is not a child, so sessions_list and sessions_history do not show it to the caller.",
+    spec: ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"],
+    surfaces: ["tool:create_session"],
+    journeys: ["bots"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;
