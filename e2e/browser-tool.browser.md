@@ -93,6 +93,30 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Snapshot diffs
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_SNAPSHOT_DIFF` reads a page as a baseline, clicks "Add item" (which
+changes one line and reveals a hidden button), reads only what changed, clicks
+the ref the diff carried, and diffs again.
+
+- The first diff read "Page changed since the previous snapshot: 3 lines added,
+  2 removed." and listed only the changed and surrounding lines, plus the
+  `[focused]` state the click added: `- - paragraph: 2 items`,
+  `+ - paragraph: 3 items`, `+ - button "Add item" [ref=e1] [focused]`,
+  `+ - button "Confirm" [ref=e2]`; the unchanged heading line appeared once as
+  context and the page's other lines were asserted absent.
+- The `Confirm` ref taken from a `+` line clicked, so the loop continues from a
+  diff rather than a full snapshot; the next diff showed
+  `+ - paragraph: confirmed`.
+- The reply read "The diff after Add item showed only the added lines (3 items,
+  Confirm), the ref it carried clicked, and the next diff showed confirmed."
+- At 390×844 the expanded tool output wrapped without sideways scrolling.
+- `server/browser/manager.test.ts` also covers a first diff in a tab being the
+  baseline, a diff with nothing changed, refusing `query`/`selector` alongside
+  `diff`, and a reload resetting the baseline; `server/browser/diff.test.ts`
+  covers context, counts, the 400-line cap and a wholesale change.
+
 ## Network capture and HAR
 
 Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
