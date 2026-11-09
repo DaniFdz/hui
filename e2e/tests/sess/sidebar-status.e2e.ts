@@ -1,4 +1,4 @@
-/** Every sidebar row reads its session's live status without being opened, on the web and on iOS (SESS-017). */
+/** Every sidebar row reads its session's live status without being opened (SESS-017). */
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
