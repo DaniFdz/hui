@@ -16,7 +16,7 @@ test("a bot's export carries SOUL.md and its BOOTSTRAP.md, never USER.md or MEMO
   await screen.getByRole("tab", "Bots").tap();
   await screen.getByText("Quill").hover();
   await screen.getByRole("button", "Actions for Quill").tap();
-  await screen.getByText("Export…").tap();
+  await screen.getByText("Export…", { exact: true, visible: true }).first().tap();
   const files = screen.getByText("Files as they will be saved");
   await expect(files).toBeVisible();
   await files.tap();
@@ -38,7 +38,8 @@ test("an import's memories become MEMORY.md, which its preview shows as never ex
 
   await hui.open("/");
   await screen.getByRole("tab", "Bots").tap();
-  await screen.getByRole("button", "Import bot…").tap();
+  await screen.getByRole("button", "New bot").tap();
+  await screen.getByText("Import bot…", { exact: true, visible: true }).first().tap();
   await screen.getByLabel("Paste").tap();
   await screen.getByRole("textbox", "Template").fill(card);
   await screen.getByRole("button", "Preview").tap();

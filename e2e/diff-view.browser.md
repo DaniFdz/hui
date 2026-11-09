@@ -23,14 +23,16 @@ Keep screenshots outside Git and put them in the PR description.
 4. Press Ctrl+Alt+Shift+D; maximize the pane (Ctrl+Alt+Shift+M). Choose **Side
    by side**, then the renamed file. Open the comparison menu and choose each
    comparison in turn; with **Against the previous branch**, untick **Include
-   uncommitted** and open the branch picker.
+   uncommitted** and open the branch picker. Drag the changed-file list's right
+   edge (**Resize changed files**), hover a long path, and move it with the
+   arrow keys.
 5. Click a file's name in the diff header.
 6. With **Uncommitted changes** shown and the chat beside the pane, create a file
    in the fixture and send a message; wait for the turn to end.
 7. At 390×844 choose the Diff view in the panel selector, tap a file, then
    **Back to changed files**.
 
-## Observed (2026-10-10)
+## Observed (2026-10-10; file-list boundary checked 2026-11-08)
 
 - The view opened on **Uncommitted changes** with 4 files: `README.md` M,
   `docs/old-notes.md` D, `docs/style-guide.md` R *from docs/guidelines.md*, `src/divide.ts` A;
@@ -46,6 +48,10 @@ Keep screenshots outside Git and put them in the PR description.
   merge base, not the later `changelog.md`. Last commit: `src/version.ts` only.
 - Clicking `src/version.ts` opened a Files tab on it at line 1.
 - After the turn ended the list gained the new file without pressing Refresh.
+- Maximized, the **Resize changed files** separator widened the list from 280px
+  to 640px and narrowed it to 220px; the arrow keys moved it 16px a press and
+  48px with Shift, and a reload kept the width. A long path cut short showed its
+  whole path on hover. The same result held in the dark theme.
 - At 390×844 the list filled the screen; a tap showed the diff with the path
   over *from* the old one, and Back returned to the list; no horizontal overflow;
   no page errors. Dark theme checked at 1440×900.

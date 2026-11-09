@@ -1052,6 +1052,71 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   }
 }
 
+/* The card's top line is its fold control: a button wearing the panel's own
+   topline row, so the open header and the folded bar read as the same handle. */
+.questionnaire-card__fold {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: var(--cursor-action);
+}
+
+.questionnaire-card__fold:hover {
+  background: var(--panel-hover);
+}
+
+.questionnaire-card__fold:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Folded to one row, the card's bar fills the panel: its corners and focus ring
+   stay inside the panel's own, and it reads as the button it is. */
+.questionnaire-card.chat-question-panel--collapsed {
+  /* One child: the panel's second column and gap would leave a strip beside it. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.questionnaire-card--collapsed .chat-question-panel__collapsed-button {
+  border-radius: inherit;
+}
+
+.questionnaire-card--collapsed .chat-question-panel__collapsed-button:hover {
+  background: var(--panel-hover);
+}
+
+.questionnaire-card--collapsed .chat-question-panel__collapsed-button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* What a folded card keeps: its title and, beside it, the tally of answered
+   questions, or the question itself when the call asked only one. Chosen
+   answers never show here, only how many there are. */
+.questionnaire-card__collapsed-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.questionnaire-card__collapsed-copy > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.questionnaire-card__collapsed-note {
+  flex: 0 1 auto;
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .chat-question-summary--expired { border-left-color: color-mix(in srgb, var(--warn) 70%, var(--border)); }
 .chat-question-summary__options { display: block; }
 
@@ -1726,16 +1791,16 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   display: grid;
   place-items: center;
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-  font-size: 14px;
   line-height: 1;
   font-variant-emoji: emoji;
 }
 
-.tool-call-group__emoji { font-size: 13px; }
-
 /* Emoji read best a touch larger than the stroke marks at the same box. */
 .tool-call-row__icon--emoji { font-size: 15px; }
-.tool-call-group__emoji { font-size: 14px; }
+
+/* Inside a group's 24px ring an emoji's ink covers all but the ring itself at 14px, so three marks read as three
+   different sizes. Its ink is about 1.28em, which leaves the ring clear at 10px. */
+.tool-call-group__emoji { font-size: 10px; }
 
 /* HUI sends a run's queued steers now, so the queue carries one row above them: a blocking tool call can hold a steer
    for minutes, and stopping the turn is the only way past it. */

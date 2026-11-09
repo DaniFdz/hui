@@ -128,6 +128,14 @@ Verified on 2026-11-08 in the same fixture, at 1440×900 and 390×844.
 - Clearing the list and saving restored "Empty lets agents browse anywhere" and
   the same navigation would have been allowed (proven by the manager test with a
   real headless browser, not by a second fixture run).
+- A narrowing list also refuses a back move into a page it no longer allows,
+  leaving the tab where it was — proven by the same test file, not by a fixture
+  run.
+- A popup to another host, and a redirect from an allowed page to one, are
+  stopped, left on `about:blank` and reported once — including a popup that
+  committed before HUI attached, which `tabs` marks
+  `(blocked: not in the allowed origins)`. Proven by `server/browser/manager.test.ts`
+  with a real headless browser, not by a fixture run.
 - Both viewports showed the field above its button without horizontal overflow.
 
 ## Operator handoff
@@ -158,7 +166,9 @@ five-minute timeout, instead of typing into the page itself.
   page could still be clicked and typed into (a second session typed "Mob" and
   Greet rendered "Hello, Mob! Typed by the operator."), Continue settled it the
   same way, and nothing scrolled sideways.
-- The page reported no console errors.
+- The operator's wheel scrolls the page (proven by `server/browser/manager.test.ts`
+  with a real headless browser, along with input being ignored once nothing
+  waits), and the page reported no console errors.
 
 ## Limits
 
@@ -171,6 +181,6 @@ five-minute timeout, instead of typing into the page itself.
 - Previews are not recorded: after a reload the latest one shows the tab's
   current page, and nothing once the tab is gone; earlier browser activity never
   carries one.
-- A handoff nobody answers, a tab that closes under the operator and a browser
-  that stops are proven by `server/browser/manager.test.ts` (a real headless
-  browser and a five-second wait), not by waiting in the Browser check.
+- A handoff nobody answers, a tab that closes under the operator, a Stop and a
+  browser that stops are proven by `server/browser/manager.test.ts` (a real
+  headless browser and a five-second wait), not by waiting in the Browser check.

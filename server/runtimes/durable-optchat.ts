@@ -31,6 +31,7 @@ import { OptChatMemory, OPTCHAT_DEFAULTS, type OptChatStatus } from "../optchat/
 import { masterPrompt, viewDoc } from "../optchat/prompts.ts";
 import { LineFile, readLines, syncDirectory, type Kind } from "../optchat/store.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
+import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { callRecordLines, parseCallRecord } from "../calls-format.ts";
 import { offIsSent } from "./thinking-level.ts";
 import { CallEntry } from "./turn-origins.ts";
@@ -187,8 +188,7 @@ const contentText = (content: string | readonly { type: string; text?: string }[
  * summary as talk, both marked `[call]`). Thoughts are never logged, nor answers Durable keeps out of the context
  * (error, aborted, deferred), nor system, reset and compaction entries.
  */
-export function projectEntry(entry: EntryRecord): ProjectedLine[] {
-  // A call with the bot: its transcript (both sides, the helper's answers, the hand-offs), then its summary.
+export function projectEntry(entry: EntryRecord): ProjectedLine[] {  // A call with the bot: its transcript (both sides, the helper's answers, the hand-offs), then its summary.
   if (CallEntry.is(entry)) {
     const record = parseCallRecord(entry.data);
     if (!record?.lines.length) return [];
@@ -197,7 +197,12 @@ export function projectEntry(entry: EntryRecord): ProjectedLine[] {
   }
   const message = entry.model?.[0];
   if (!message) return [];
-  if (UserEntry.is(entry) && message.role === "user") return [{ kind: "user", text: contentText(message.content) }];
+  if (UserEntry.is(entry) && message.role === "user") {
+    const text = contentText(message.content);
+    // A child's report is not the operator's words. OptChat's compactor tags a `user` line that starts with an id as a
+    // subagent report (it never writes such a prefix), so the entry's own id makes the report self-describing.
+    return [{ kind: "user", text: text.startsWith(SUBAGENT_COMPLETION_MARKER) ? `[${entry.id}] ${text}` : text }];
+  }
   if (AssistantEntry.is(entry) && message.role === "assistant") {
     if (message.stopReason !== "stop" && message.stopReason !== "length" && message.stopReason !== "toolUse") return [];
     const talk = message.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n");

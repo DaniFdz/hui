@@ -1568,6 +1568,9 @@ export class ManagedBrowser {
         tab.url = str(frame["url"]) || tab.url;
         tab.loaderId = str(frame["loaderId"]);
       }
+      // A popup can commit its document before this attach, so its navigation
+      // event is already gone: check where it landed instead of only watching.
+      if (tab.url !== "about:blank" && !allowsUrl(this.#origins, tab.url)) this.#blockNavigation(instance, tab, tab.url);
       if (epoch !== this.#epoch(owner)) throw new BrowserToolError("This conversation's browser tabs were closed.", 409);
     } catch (error) {
       this.#drop(targetId);
@@ -2333,7 +2336,7 @@ export class ManagedBrowser {
     const current = this.#current.get(owner);
     return {
       text: tabs.length
-        ? tabs.map((tab) => `${tab.id}${tab.id === current ? " (current)" : ""} · ${clip(tab.title || "Untitled", 120)} — ${clip(tab.url, 300)}`).join("\n")
+        ? tabs.map((tab) => `${tab.id}${tab.id === current ? " (current)" : ""} · ${clip(tab.title || "Untitled", 120)} — ${clip(tab.url, 300)}${tab.blocked ? " (blocked: not in the allowed origins)" : ""}`).join("\n")
         : "No tabs are open in this conversation. Call open with a URL.",
       details: { action: "tabs", tabs: tabs.map((tab) => this.#tabDetails(tab)) },
     };

@@ -15,6 +15,8 @@ import { kanbanIcon } from "./kanban.ts";
 import { isSessionStage } from "../lib/kanban.ts";
 export { filterSessionGroups } from "../lib/session/sidebar-sessions.ts";
 import type { HuiPage } from "../lib/pages.ts";
+import type { ExtensionPageLink } from "../lib/extensions/pages.ts";
+import { extensionPanelIcon } from "../lib/extensions/panel-icons.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { writeSessionDrag } from "../lib/session/pane-layout.ts";
 import { applySidebarWidth, sidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from "../lib/sidebar-width.ts";
@@ -110,7 +112,7 @@ export function unbindDrawerMedia(drawer: HTMLElement) {
 }
 
 export type NavId = "home" | "surface" | "kanban" | "bot";
-export type GroupMenuAction = "defaults" | "rename" | "new" | "delete";
+export type GroupMenuAction = "defaults" | "rename" | "new" | "delete" | "chief";
 export type SessionCopyAction = "link" | "markdown" | "id" | "jira";
 export type SessionOpenAction = "tab" | "window" | "editor" | "jira";
 export type GroupDropTarget = { group: string; position: "before" | "after" };
@@ -143,6 +145,10 @@ export type ShellProps = {
   view: NavId;
   activePage?: HuiPage;
   pages: readonly HuiPage[];
+  /** Sidebar entries from enabled extension pages, after the built-in destinations. */
+  extensionPages: readonly ExtensionPageLink[];
+  activeExtensionPageId: string;
+  onOpenExtensionPage: (id: string) => void;
   selectedSessionId: string;
   splitSessionId: string;
   openSessionIds?: ReadonlySet<string>;
@@ -685,7 +691,7 @@ function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: 
                   (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]')?.focus();
                   return;
                 }
-                if (action !== "defaults" && action !== "rename" && action !== "new" && action !== "delete") return;
+                if (action !== "defaults" && action !== "rename" && action !== "new" && action !== "delete" && action !== "chief") return;
                 (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]')?.focus();
                 props.onCloseGroupMenu();
                 props.onGroupAction(action, group);
@@ -696,6 +702,7 @@ function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: 
                 ["defaults", "New session defaults", icons.settings],
                 ["rename", "Rename group", icons.edit],
                 ["new", "New group", icons.folder],
+                ["chief", "Create Chief of Staff", icons.zap],
               ] as const).map(([action, label, icon]) => html`
                 <wa-dropdown-item value=${action} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icon}</span><span class="session-menu__text">${label}</span></wa-dropdown-item>
               `)}
@@ -886,6 +893,21 @@ export function renderSidebar(props: ShellProps) {
                   <span class="nav-item__text">${item.label}</span>
                 </a>${item.id === "contributions" ? kanbanNavItem(props) : nothing}` : nothing;
             })}
+            ${props.extensionPages.map((page) => html`<a
+              href=${navigationPath({ kind: "extension-page", id: page.id })}
+              class="nav-item sidebar-nav__item ${props.activeExtensionPageId === page.id ? "nav-item--active" : ""}"
+              data-testid="nav-extension-page"
+              aria-current=${props.activeExtensionPageId === page.id ? "page" : "false"}
+              @click=${(event: MouseEvent) => {
+                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                closeContainingDrawer(event, false, true);
+                props.onOpenExtensionPage(page.id);
+              }}
+            >
+              <span class="nav-item__icon" aria-hidden="true">${extensionPanelIcon(page.icon)}</span>
+              <span class="nav-item__text">${page.title}</span>
+            </a>`)}
           </nav>`}
 
           <div class=${botsTab ? "sidebar-sessions sidebar-sessions--bots" : "sidebar-sessions"}>

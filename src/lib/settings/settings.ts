@@ -45,11 +45,11 @@ export const DEFAULT_SETTINGS: Settings = {
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
-  models: { primary: "", fallback: "", utility: "", thinking: "", routes: [] },
+  models: { primary: "", fallback: "", utility: "", thinking: "", retryAttempts: 3, routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
-  labs: { denseObservability: false, detailedDebug: false, dashboard: false },
+  labs: { denseObservability: false, detailedDebug: false },
 };
 
 export function normalizeSettings(raw: unknown): Settings {
@@ -158,12 +158,14 @@ function normalizeModelRef(value: unknown): string {
 
 function normalizeModels(value: unknown): Settings["models"] {
   const source = isRecord(value) ? value : {};
+  const attempts = Number(source["retryAttempts"]);
   return {
     primary: normalizeModelRef(source["primary"]),
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
     // Empty follows PI's own defaultThinkingLevel.
     thinking: PI_THINKING_LEVELS.find((level) => level === source["thinking"]) ?? "",
+    retryAttempts: Number.isFinite(attempts) ? Math.min(5, Math.max(0, Math.trunc(attempts))) : 3,
     routes: normalizeSubagentRoutes(source["routes"]),
   };
 }
@@ -178,9 +180,11 @@ function normalizeSubagentRoutes(value: unknown): Settings["models"]["routes"] {
   for (const item of value) {
     if (!isRecord(item)) continue;
     const name = typeof item["name"] === "string" ? item["name"].trim() : "";
-    const model = normalizeModelRef(item["model"]);
+    const rawModel = typeof item["model"] === "string" ? item["model"].trim() : "";
+    const model = normalizeModelRef(rawModel);
     const thinking = PI_THINKING_LEVELS.find((level) => level === item["thinking"]);
-    if (!routeNameIsValid(name) || !model || routes.has(name)) continue;
+    // A route with no model inherits the caller's model and thinking; a model that is present but malformed drops the route.
+    if (!routeNameIsValid(name) || (rawModel && !model) || routes.has(name)) continue;
     routes.set(name, {
       name,
       description: boundedText(item["description"], "", 200).replace(/\s+/gu, " ").trim(),
@@ -306,7 +310,6 @@ function normalizeLabs(value: unknown): Settings["labs"] {
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
-    dashboard: source["dashboard"] === true,
   };
 }
 

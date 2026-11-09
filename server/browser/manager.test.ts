@@ -83,6 +83,9 @@ const PAGES: Record<string, string> = {
     </script>`,
   "/next": "<!doctype html><title>Next</title><h1>Second page</h1><script>console.error('boom from next')</script>",
   "/popup": "<!doctype html><title>Popup</title><h1>Popup page</h1>",
+  "/scroll": `<!doctype html><title>Tall page</title>
+    <h1>Tall page</h1><div style="height:4000px"></div><p id="y">0</p>
+    <script>addEventListener('scroll', () => { document.getElementById('y').textContent = String(Math.round(scrollY)); });</script>`,
   "/secret": `<!doctype html><title>Sign in</title>
     <h1>Sign in</h1>
     <form onsubmit="event.preventDefault(); document.getElementById('out').textContent = 'password=' + document.getElementById('pw').value">
@@ -642,6 +645,218 @@ test("the origin allowlist refuses other hosts, including one a link in an allow
   assert.doesNotMatch((await call({ action: "snapshot" })).text, /tried to reach/u, "a block is reported once");
 });
 
+test("a popup or redirect that leaves the allowed origins is stopped and reported", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-origins-leave-"));
+  const blocked = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end("<!doctype html><title>Elsewhere</title><h1>Elsewhere</h1>");
+  }).listen(0, "127.0.0.1");
+  await once(blocked, "listening");
+  const blockedAddress = blocked.address();
+  assert.ok(blockedAddress && typeof blockedAddress !== "string");
+  const blockedOrigin = `http://127.0.0.1:${blockedAddress.port}`;
+  const allowed = createServer((request, response) => {
+    const path = request.url ?? "/";
+    if (path === "/redirect") {
+      response.writeHead(302, { location: `${blockedOrigin}/private` });
+      response.end();
+      return;
+    }
+    const body = path === "/leave"
+      ? `<!doctype html><title>Allowed page</title><h1>Allowed page</h1>
+        <button id="popup" onclick="window.open('${blockedOrigin}/private')">Open elsewhere</button>
+        <a href="/redirect">Redirect elsewhere</a>`
+      : undefined;
+    response.writeHead(body ? 200 : 404, { "content-type": "text/html" });
+    response.end(body ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(allowed, "listening");
+  const allowedAddress = allowed.address();
+  assert.ok(allowedAddress && typeof allowedAddress !== "string");
+  const origin = `http://127.0.0.1:${allowedAddress.port}`;
+  const settings: BrowserSettings = {
+    enabled: true, headless: true, executablePath: "", mirrorState: false,
+    allowedOrigins: [`127.0.0.1:${allowedAddress.port}`],
+  };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    allowed.close();
+    blocked.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const refIn = (text: string, pattern: RegExp) => {
+    const ref = pattern.exec(text)?.[1];
+    assert.ok(ref, `missing ${pattern} in:\n${text}`);
+    return ref;
+  };
+
+  const opened = await call({ action: "open", url: `${origin}/leave` });
+  const popupButton = refIn(opened.text, /button "Open elsewhere" \[ref=(e\d+)\]/u);
+
+  // A popup opened at another host is attached, then stopped and left blank.
+  await call({ action: "act", kind: "click", ref: popupButton });
+  const tabs = await eventually(() => call({ action: "tabs" }), (result) => /t2/u.test(result.text));
+  assert.match(tabs.text, /t2 · .* — about:blank \(blocked: not in the allowed origins\)/u);
+  const popup = /t2/u.exec(tabs.text)?.[0] ?? "t2";
+  const popupResult = await call({ action: "navigate", url: `${origin}/leave`, tabId: popup });
+  assert.match(popupResult.text, /This tab tried to reach http:\/\/127\.0\.0\.1:\d+\/private, which is not in the browser's allowed origins/u);
+  assert.doesNotMatch((await call({ action: "navigate", url: `${origin}/leave`, tabId: popup })).text, /tried to reach/u, "a block is reported once");
+
+  // A redirect from an allowed page to another host is stopped in the same way.
+  await call({ action: "focus", tabId: "t1" });
+  const redirect = refIn((await call({ action: "snapshot" })).text, /link "Redirect elsewhere" \[ref=(e\d+)\]/u);
+  const redirected = await call({ action: "act", kind: "click", ref: redirect });
+  assert.match(redirected.text, /This tab tried to reach http:\/\/127\.0\.0\.1:\d+\/private, which is not in the browser's allowed origins/u);
+  // The blanking is its own navigation: wait for the tab to report the empty document.
+  const cleared = await eventually(() => call({ action: "tabs" }), (result) => /t1 .* — about:blank$/mu.test(result.text));
+  assert.match(cleared.text, /t1 .* — about:blank$/mu);
+});
+
+test("going back into a page the allowlist now refuses is refused", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-origins-history-"));
+  const page = (title: string) => `<!doctype html><title>${title}</title><h1>${title}</h1>`;
+  const first = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(page("First host"));
+  }).listen(0, "127.0.0.1");
+  const second = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(page("Second host"));
+  }).listen(0, "127.0.0.1");
+  await Promise.all([once(first, "listening"), once(second, "listening")]);
+  const firstAddress = first.address();
+  const secondAddress = second.address();
+  assert.ok(firstAddress && typeof firstAddress !== "string" && secondAddress && typeof secondAddress !== "string");
+  const allowed = `http://127.0.0.1:${firstAddress.port}`;
+  const other = `http://127.0.0.1:${secondAddress.port}`;
+  // Both hosts start allowed, then the operator narrows the list to the first.
+  let settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [`127.0.0.1:${firstAddress.port}`, `127.0.0.1:${secondAddress.port}`] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    first.close();
+    second.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  assert.match((await call({ action: "open", url: `${allowed}/` })).text, /Opened tab t1/u);
+  assert.match((await call({ action: "navigate", url: `${other}/` })).text, /heading "Second host"/u);
+  settings = { ...settings, allowedOrigins: [`127.0.0.1:${secondAddress.port}`] };
+  // Back now points at the first host, which the list no longer allows.
+  await assert.rejects(call({ action: "back" }), /127\.0\.0\.1:\d+ is not in this browser's allowed origins \(127\.0\.0\.1:\d+\)/u);
+  assert.match((await call({ action: "tabs" })).text, /Second host/u, "the refused move leaves the tab where it was");
+  // The page the list still allows goes on working after the refusal.
+  assert.match((await call({ action: "navigate", url: `${other}/` })).text, /heading "Second host"/u);
+});
+
+test("a handoff ends when its conversation stops or the browser does", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-handoff-end-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+  const waiting = () => eventually(() => Promise.resolve(states.at(-1)), (state) => Boolean(state?.handoff));
+  const openTab = async () => {
+    assert.match((await call({ action: "open", url: `${origin}/form` })).text, /Opened tab t\d+/u);
+  };
+
+  // Stop or removing the conversation settles the wait as closed, and its tab goes with it.
+  await openTab();
+  const stopping = call({ action: "handoff", message: "Sign in.", timeoutMs: 30_000 });
+  await waiting();
+  browser.closeOwner("alpha");
+  const closed = await stopping;
+  assert.equal(closed.details["outcome"], "closed");
+  assert.match(closed.text, /^Tab t1 closed while the operator had it\. Open a new tab to continue\./u);
+  assert.match((await call({ action: "tabs" })).text, /No tabs are open in this conversation/u);
+
+  // The browser stopping under the wait settles it as stopped, and says how to start again.
+  await openTab();
+  const waitingAgain = call({ action: "handoff", message: "Sign in.", timeoutMs: 30_000 });
+  await waiting();
+  await browser.stop();
+  const stopped = await waitingAgain;
+  assert.equal(stopped.details["outcome"], "stopped");
+  assert.match(stopped.text, /^The managed browser stopped while the operator had tab t\d+\. Call open to start it again\./u);
+  assert.equal(browser.running, false);
+});
+
+test("the operator's wheel scrolls the handed-over tab, and input waits for no handoff otherwise", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-handoff-wheel-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const scrollY = async () => {
+    const text = (await call({ action: "text", selector: "#y" })).text;
+    return Number(/(\d+)$/u.exec(text.trim())?.[1] ?? NaN);
+  };
+
+  assert.match((await call({ action: "open", url: `${origin}/scroll` })).text, /Opened tab t1/u);
+  assert.equal(await scrollY(), 0);
+
+  const states: BrowserViewState[] = [];
+  const view = browser.watch("alpha", { state: (state) => states.push(state), frame: () => {}, action: () => {} });
+  t.onTestFinished(() => view.close());
+  const handling = call({ action: "handoff", message: "Scroll down, then continue.", timeoutMs: 30_000 });
+  await eventually(() => Promise.resolve(states.at(-1)), (state) => Boolean(state?.handoff));
+  browser.operator("alpha", { action: "wheel", tabId: "t1", x: 200, y: 200, deltaX: 0, deltaY: 600 });
+  browser.operator("alpha", { action: "continue", tabId: "t1" });
+  await handling;
+  const scrolled = await eventually(() => scrollY(), (value) => value > 0, 3_000);
+  assert.ok(scrolled > 0, `the operator's wheel reached the page (scrollY ${scrolled})`);
+
+  // Nothing waits now, so further operator input is ignored rather than scrolling the page.
+  const settled = await scrollY();
+  browser.operator("alpha", { action: "wheel", tabId: "t1", x: 200, y: 200, deltaX: 0, deltaY: 600 });
+  browser.operator("alpha", { action: "key", tabId: "t1", key: "End" });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(await scrollY(), settled);
+});
 
 test("a stored site secret is typed only on its own origin and never comes back in the result", {
   skip: !detected.executable,
