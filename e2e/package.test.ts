@@ -218,10 +218,10 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   assert.match(JSON.stringify(history), /Installed SDK content/u);
   assert.equal((await api(`sessions/${session.id}/tools`)).backend, "sdk");
   const bundledSkills = (await api("pi")).skills.filter((skill: { origin?: string }) => skill.origin === "hui");
-  assert.deepEqual(bundledSkills.map((skill: { name: string }) => skill.name), ["automate-me", "cost-investigation", "create-formal-verification-skill", "create-verification-skill", "git-selective-staging", "maintain-formal-verification-skill", "maintain-verification-skill", "visualize"]);
+  assert.deepEqual(bundledSkills.map((skill: { name: string }) => skill.name), ["automate-me", "build-hui-extension", "cost-investigation", "create-formal-verification-skill", "create-verification-skill", "git-selective-staging", "maintain-formal-verification-skill", "maintain-verification-skill", "visualize"]);
   const commands = (await api(`sessions/${session.id}/commands`)).commands as { name: string }[];
   const tags: Record<string, string[]> = {
-    "automate-me": ["bots"], "cost-investigation": ["good practices"], "create-formal-verification-skill": ["good practices"],
+    "automate-me": ["bots"], "build-hui-extension": ["good practices"], "cost-investigation": ["good practices"], "create-formal-verification-skill": ["good practices"],
     "create-verification-skill": ["good practices"], "git-selective-staging": ["good practices"],
     "maintain-formal-verification-skill": ["good practices"], "maintain-verification-skill": ["good practices"], visualize: ["presentation"],
   };
