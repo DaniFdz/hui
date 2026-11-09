@@ -26,6 +26,7 @@
     "dev": "node bin/hui-dev.mjs gateway",
     "desktop": "npm run build && node bin/hui.mjs desktop",
     "build": "node scripts/build.mjs",
+    "android": "node scripts/android.mjs",
     "api:schema": "node scripts/api-schema.ts",
     "prepack": "npm run build",
     "preview": "vite preview",
@@ -40,6 +41,8 @@
   },
   "dependencies": {
     "@awesome.me/webawesome": "3.14.0",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.6.0",
     "@codemirror/autocomplete": "6.20.4",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-css": "6.3.1",
@@ -79,6 +82,8 @@
     "ws": "8.21.0"
   },
   "devDependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/cli": "8.6.0",
     "@e2e-dev/mobile": "0.12.3",
     "@e2e-dev/web": "0.15.3",
     "@types/markdown-it": "14.2.0",
