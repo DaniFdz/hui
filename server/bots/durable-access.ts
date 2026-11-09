@@ -74,6 +74,7 @@ export const BOT_ALWAYS_ON: readonly { name: string; description: string }[] = [
   { name: LOAD_SKILL_TOOL, description: "Load its skills when it has neither read nor bash" },
   { name: "zoom", description: "Open older lines of its memory" },
   { name: "date", description: "Tell when a line of its memory was said" },
+  { name: "search_chat", description: "Search its whole memory for what was said about something" },
 ];
 
 /** What a bot's own tools add to HUI's active-tool section; the `bot_access` section explains the rest. */

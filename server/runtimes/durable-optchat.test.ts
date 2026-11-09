@@ -273,7 +273,7 @@ const breakpoints = (request: ProviderRequest) => [...request.system ?? [], ...r
 /** Each block's text and whether it carries a cache mark. */
 const marks = (pieces: readonly Block[]) => pieces.map((piece) => [piece.text, piece.cache_control !== undefined]);
 
-test("a conversation without OptChat sends Durable's requests unchanged and is never offered zoom or date", { timeout: 45_000 }, async (t) => {
+test("a conversation without OptChat sends Durable's requests unchanged and is never offered zoom, date or search_chat", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   const host = f.host();
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, host);
@@ -284,6 +284,7 @@ test("a conversation without OptChat sends Durable's requests unchanged and is n
   assert.deepEqual(second.messages.map((message) => message.role), ["user", "assistant", "user"], "the history goes as it is");
   assert.equal(blocks(second.messages[0]!)[0]!.text, "PLAIN_ONE first");
   assert.doesNotMatch(JSON.stringify(requests), /<chat>|You keep no memory between turns/u);
+  assert(!toolNames(second).includes("search_chat"), "no search over a chat without a memory");
   const offered = [...[...host.codingTools, ...host.huiTools, ...modelCallable(host.codemode)].map((tool) => tool.name).filter((name) => name !== "notify_user"), "message_bot"];
   assert.deepEqual([toolNames(first), toolNames(second)], [offered, offered], "the coding and HUI tools but the notification tool Settings leaves off, codemode and message_bot, as before OptChat");
   assert.deepEqual((await session.inspect()).tools.map((tool) => tool.name), offered);
@@ -313,7 +314,7 @@ test("an OptChat turn starts fresh from the view: system messages, then the view
   assert.doesNotMatch(JSON.stringify(second), /kept kept/u);
   assert.match(JSON.stringify(second.system), /You are Grok, an AI agent that works for one user in a single chat/u);
   assert.match(JSON.stringify(second.system), /zoom\(id, 1\) gives message id in full/u);
-  assert(toolNames(second).includes("zoom") && toolNames(second).includes("date"), JSON.stringify(toolNames(second)));
+  assert(toolNames(second).includes("zoom") && toolNames(second).includes("date") && toolNames(second).includes("search_chat"), JSON.stringify(toolNames(second)));
   // The view goes in blocks, its last whole one marked (the first turn's view was empty: nothing more to find).
   assert.deepEqual(marks(pieces), [["<chat>\n0+1|user: FIXTURE_MEMORY OPT_ONE", false], ["\n1+1|talk: Fixture response.", true], ["\n</chat>", false]]);
   assert.equal(rest[0]!.cache_control !== undefined, true, "pi-ai's own breakpoint at the request end");
@@ -417,6 +418,30 @@ test("zoom and date answer from the memory in the spec's formats", { timeout: 45
   assert.equal(await host.optchat.zoom(id, 0, 1), "0+0|user: OPT_ZOOM_SOURCE first line\nsecond line");
   const page = await host.optchat.html(id);
   assert(page?.includes("OPT_ZOOM_SOURCE first line"), "the browse page holds the log");
+});
+
+test("search_chat answers from the log: hits newest first as id+1 lines, no hit, and the limits it applied", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const { session, id } = await botSession(f, host, "bot-search");
+  await turns(session, ["OPT_SEARCH_TARGET first, the deploy window", "E2E_SEARCH please"]);
+  const output = (callId: string): string => {
+    const tool = session.transcript().find((item) => item.kind === "tool" && item.id === callId);
+    assert(tool?.kind === "tool" && tool.failed === false && tool.output !== undefined, JSON.stringify(tool));
+    return tool.output;
+  };
+  const [header, ...lines] = output("tool-e2e-search-hits").split("\n");
+  assert.match(String(header), /^\d+ lines? mentions? "OPT_SEARCH_TARGET", newest first:$/u, String(header));
+  assert(lines.length > 0 && lines.every((line) => /^\d+\+1\|(?:user|talk|tool|echo): /u.test(line)), JSON.stringify(lines));
+  const ids = lines.map((line) => Number(/^(\d+)\+1\|/u.exec(line)![1]));
+  assert.deepEqual(ids, [...ids].sort((a, b) => b - a), "newest first");
+  assert(lines.some((line) => line.startsWith("0+1|user: OPT_SEARCH_TARGET first")), "the message that said it is a hit");
+  assert.equal(output("tool-e2e-search-none"), `No line mentions "nothing here mentions this phrase" in the chat.`);
+  assert.equal(output("tool-e2e-search-empty"), "No word to search for.");
+  const limited = output("tool-e2e-search-limited").split("\n");
+  assert.deepEqual(limited.slice(1), [`0+1|user: OPT_SEARCH_TARGET first, the deploy window`], "the only match is the oldest message: a limit of one skipped nothing, so it says nothing");
+  assert.equal(limited[0], `1 line mentions "OPT_SEARCH_TARGET", newest first:`);
+  assert.match(String(await host.optchat.search(id, "nothing here mentions this phrase")), /^1 line mentions "nothing here mentions this phrase", newest first:\n\d+\+1\|echo: No line mentions "nothing here mentions this phrase" in the chat\.$/u, "the host answers from the same log, where the earlier answer is itself a line");
 });
 
 test("OptChat declines Durable's compactions; other conversations still compact", { timeout: 60_000 }, async (t) => {

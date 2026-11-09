@@ -76,6 +76,22 @@ test("zoom and date answer in the spec's formats, and refuse lines that do not e
   assert.equal(pending.zoom(0, 2), `0+1|${PLACEHOLDER}\n1+1|${PLACEHOLDER}`, "lines not summarized yet say so");
 });
 
+test("search answers from the log, newest first, and never changes it", { timeout: 10_000 }, async (t) => {
+  const memory = await open(t, await directory(t), { summarize: never });
+  await memory.append("user", "the deploy window is Tuesdays");
+  await memory.append("talk", "Noted.");
+  await memory.append("echo", "deploys: Tuesdays\nfridays: frozen");
+  assert.equal(memory.search("tuesdays"), [
+    `2 lines mention "tuesdays", newest first:`,
+    `2+1|echo: deploys: Tuesdays fridays: frozen`,
+    `0+1|user: the deploy window is Tuesdays`,
+  ].join("\n"));
+  assert.equal(memory.search("Tuesdays", 1), [`1 line mentions "Tuesdays", newest first:`, `2+1|echo: deploys: Tuesdays fridays: frozen`, `[at most 1 shown]`].join("\n"));
+  assert.equal(memory.search("nothing"), `No line mentions "nothing" in the chat.`);
+  assert.equal(memory.search("  "), "No word to search for.");
+  assert.equal(memory.status().messages, 3, "a search reads the log and appends nothing to it");
+});
+
 /** Message `i` of a synthetic chat: every third one too long to be its own line. */
 const chatText = (i: number) => i % 3 === 0 ? `message ${i} ${"long ".repeat(12)}` : `a short message, number ${i}`;
 const chatKind = (i: number) => i % 2 ? "talk" as const : "user" as const;

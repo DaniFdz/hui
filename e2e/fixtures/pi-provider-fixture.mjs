@@ -1322,6 +1322,14 @@ const server = createServer(async (request, response) => {
     toolUse(response, "tool-e2e-date", "date", { id: 0 }, 3);
     return finish(response, "tool_use");
   }
+  // OptChat's search: a hit, no hit, nothing to search for, and a limit it reports.
+  if (source.includes("E2E_SEARCH")) {
+    toolUse(response, "tool-e2e-search-hits", "search_chat", { query: "OPT_SEARCH_TARGET" }, 0);
+    toolUse(response, "tool-e2e-search-none", "search_chat", { query: "nothing here mentions this phrase" }, 1);
+    toolUse(response, "tool-e2e-search-empty", "search_chat", { query: "   " }, 2);
+    toolUse(response, "tool-e2e-search-limited", "search_chat", { query: "OPT_SEARCH_TARGET", limit: 1 }, 3);
+    return finish(response, "tool_use");
+  }
   if (latestToolResult?.id?.startsWith("tool-e2e-watcher-")) {
     text(response, "Watchers are running; HUI shows them in this conversation.");
     return finish(response);

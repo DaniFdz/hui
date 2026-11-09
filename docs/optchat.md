@@ -7,6 +7,9 @@ the log into a binary tree of one-line summaries; and every turn starts fresh
 from a bounded **view** of the whole chat (recent messages one line each, older
 ones many per line) followed by the new message. The agent opens a line with
 `zoom(id, n)`, down to the original message, and asks `date(id)` for its time.
+HUI also gives it `search_chat(query)`, which reads the whole log for the
+messages that mention a word: the recipe's view can only be opened where it
+already names a line, so this is the one navigation tool the recipe lacks.
 
 HUI was built from the recipe's first revision (`f51fe5c`, 2026-10-04), whose
 section numbers the "spec section" references here and in the code use. How the
@@ -124,6 +127,11 @@ VIEW_DOC for the document's name: no date and no state, so it is byte-identical
 across calls. It renders after HUI's own sections. `zoom(id, n)` and `date(id)`
 use the spec's descriptions, answer in its formats (`id+0|kind: text` for a whole
 message, two `id+n|text` lines otherwise, `No line id+n.`) and are replay-safe.
+VIEW_DOC ends with the paragraph HUI adds for `search_chat(query)`: the messages
+mentioning the query, newest first, each the line `id+1` that `zoom(id, 1)`
+opens whole (`server/optchat/search.ts`). It reads the newest 50,000 messages or
+8 MB of them, whichever comes first, answers at most 20 lines (100 when asked)
+with 200 bytes of each, and says in a line which limits applied.
 
 **Durable compaction is declined.** The memory is the history: OptChat's
 `beforeCompact` answers `{ decline: true }` for enabled conversations, ahead of
@@ -267,6 +275,7 @@ otherwise (or while this process does not own the store):
 const status = await host.optchat.status(id); // messages, built, pending, viewBytes, viewLines, waiting, failing, usage
 const view = await host.optchat.view(id); // the current view, rendered
 await host.optchat.zoom(id, 0, 8); await host.optchat.date(id, 0);
+const hits = await host.optchat.search(id, "deploy window"); // id+1 lines, newest first
 const page = await host.optchat.html(id); // view, every message and each tree level, escaped
 const stop = host.optchat.subscribe(id, (status) => render(status)); // e.g. "Summarizing memory…" while waiting
 ```
@@ -279,13 +288,19 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
 ## Deviations from the spec, and why
 
 - **OptChat's tools are an extension of their own.** `hui-optchat-tools` (zoom,
-  date) is selected only by enabled conversations, in their stored agent, and
-  `DurableSession.applyTools()` keeps it selected; the global `hui-optchat`
-  extension (section and hooks) is in every conversation's default selection. A
-  tools filter removing them from every other conversation would hide a PI
-  extension's own `zoom` or `date` tool everywhere, would rewrite every existing
-  conversation's stored agent, and would still offer them to a conversation whose
-  run resumes before its session reopens.
+  date, search_chat) is selected only by enabled conversations, in their stored
+  agent, and `DurableSession.applyTools()` keeps it selected; the global
+  `hui-optchat` extension (section and hooks) is in every conversation's default
+  selection. A tools filter removing them from every other conversation would
+  hide a PI extension's own `zoom` or `date` tool everywhere, would rewrite every
+  existing conversation's stored agent, and would still offer them to a
+  conversation whose run resumes before its session reopens.
+- **`search_chat` is HUI's own.** The recipe's agent can reach an old message only
+  by zooming a line its view still names. HUI's reads the log the memory already
+  holds for the messages that mention a word, newest first, and names each as the
+  view's line `id+1`, so the answer costs one line per hit instead of a summary's
+  place in the view. Its own call is skipped, or every search would answer with
+  the line that asked. It never appends, edits or summarizes.
 - **The view is frozen per run and stored.** The spec renders the view once per
   turn in its own process. Durable reruns a request after a retry, a crash or a
   restart, so the view is stored before the request is sent.

@@ -2235,7 +2235,7 @@ everything on by default: a bot restricted by hand gains newly installed tools.
 - **A bot's own tools** are always on and never offered: `write_soul`,
   `set_profile`, `request_access` (offered while anything is off) and
   `load_skill` (offered while it has a skill and neither `read` nor `bash`), plus
-  OptChat's `zoom` and `date`. Turning one off is a 400.
+  OptChat's `zoom`, `date` and `search_chat`. Turning one off is a 400.
 - **Skills.** The prompt lists only the skills that are on: PI's own `skills`
   section while the chat has `read` or `bash`, otherwise one of HUI's that loads
   them with `load_skill`. `/skill:name` commands expand and list only those
