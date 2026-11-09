@@ -90,14 +90,14 @@ packages run in parallel without editing each other's files.
 | Web UI (most work) | `npm run dev` in a desktop browser at the phone size, or the Browser tool's phone emulation; `npm run e2e -- <file>` | seconds |
 | The same change on a real phone layout | `npm run mobile -- android` once, then reload: the app loads the dev gateway, so later UI edits need only a reload | about 10 s the first time, then a reload (target) |
 | Shell code (`mobile/android`) | `npm run mobile -- android`: incremental Gradle, install, launch | under 20 s (target; the Compose MVP measured about 5 s on this machine) |
-| The shared suite on Android | Push to a draft PR: CI runs `android` sharded on Linux emulators | about 10 to 20 min (spike S4) |
+| The shared suite on Android | Push the package branch: CI runs `android` sharded on Linux emulators | about 10 to 20 min (spike S4) |
 | iPhone rendering | CI `webkit-phone` on Linux; locally `npm run e2e:webkit-phone -- <file>` when needed | minutes |
 | iOS shell | CI `ios-smoke` on a macOS runner, with screenshots as artifacts; the owner's MacBook only for iOS-only bugs | about 10 to 15 min (spike S3) |
 
-The rule for agents: run locally only the narrowest check of what you changed, push to the package's draft PR, and
-let a watcher wait for CI. Read the failure from the job's artifacts (`trace.md`, screenshots) instead of
-reproducing the whole matrix locally. `workflow_dispatch` on each mobile workflow runs it for a branch without
-a PR.
+The rule for agents: run locally only the narrowest check of what you changed, push the package branch, and wait for
+its CI run (`gh run watch`). Read the failure from the job's artifacts (`trace.md`, screenshots) instead of
+reproducing the whole matrix locally. WP1 adds `push: branches: ["mobile/**"]` to the test, E2E and mobile
+workflows, so a package branch gets the full CI on every push without a pull request of its own (section 6).
 
 ## 4. Work packages
 
@@ -143,10 +143,12 @@ S1 and S2 share the emulator, so S2 starts from S1's APK. S3 and S4 are independ
   S1, the `huiGatewayUrl` extra and `allowNavigation` for the gateway host.
 - Replaces the Compose app from PR #458. It keeps that PR's flake shell (`devShells.android`, the FHS-wrapped
   agent-device), emulator scripts and screenshot procedure, renamed under `scripts/mobile.mjs` and
-  `npm run mobile`. #458 closes in favour of this PR.
-- Adds the `mobile / android-build` CI job (Gradle debug build) and `mobile/AGENTS.md` with section 2's contracts.
+  `npm run mobile`. #458 closes in favour of the integration PR.
+- Adds the `mobile / android-build` CI job (Gradle debug build), `push: branches: ["mobile/**"]` triggers on the test,
+  E2E and mobile workflows (so package branches get CI without pull requests), and `mobile/AGENTS.md` with section
+  2's contracts.
 - Owns: `capacitor.config.ts`, `mobile/**`, `scripts/mobile.mjs`, `package.json`, `package-lock.json`, `flake.nix`,
-  `.github/workflows/mobile.yml` (build job), `docs/map.md` rows, the boundary rule "`src/` never imports
+  `.github/workflows/mobile.yml` (build job), the push triggers in `test.yml` and `e2e.yml`, `docs/map.md` rows, the boundary rule "`src/` never imports
   `@capacitor/*`" in `scripts/boundaries.test.mjs`.
 - Done when: the emulator shows Connect to HUI, refuses a non-HUI address, then shows the fixture gateway's session
   list and a chat streaming `E2E_RICH`; `npm test` and `npm run typecheck` pass; the CI build job is green.
@@ -250,39 +252,58 @@ WP4, and WP8 and WP10 beside WP7. About 6 to 8 working days if CI capacity keeps
 
 ## 6. Orchestration
 
+### One pull request
+
+The whole plan ships as one pull request: #460, whose branch `danifdz/mobile-shell-plan` is the integration branch.
+It stays a draft until the last wave is verified. Then its title becomes `feat: add the Android and iOS apps around
+the web UI`, and the owner reviews and merges it.
+
+- Each package works on its own branch, `mobile/<wpn>-<slug>`, cut from the integration branch's current head, in
+  its own worktree. It opens no pull request: pushing it runs CI through the `push: mobile/**` triggers WP1 adds.
+- When a package's evidence holds and its reviewer passes it, the orchestrator merges the branch into the
+  integration branch with `git merge --no-ff`, one merge commit per package so the history reads by package. It
+  runs the narrow checks that cover the merged paths and pushes. The integration PR's CI proves the merged whole.
+- A later wave's branches are cut after the earlier wave is merged. A branch whose base moved merges the
+  integration branch in before it is merged back. The orchestrator never force-pushes the integration branch.
+- The PR description is the public half of the ledger. The orchestrator updates it after each merge: packages
+  merged, backlog counts, screenshots (attached with `gh pr edit --body-file … --attach …`) and open proof gaps.
+
 ### Roles
 
 - **Orchestrator** (the goal's own session): runs wave 0 and WP1 or hands them to one worker, freezes the contracts,
-  spawns each wave, reviews every result against its acceptance evidence, merges in dependency order, and keeps a
-  ledger (package, branch, PR, state, blocker) in the goal's conversation.
+  spawns each wave, reviews every result against its acceptance evidence, merges package branches into the
+  integration branch in dependency order, and keeps a ledger (package, branch, CI run, state, blocker) in the
+  goal's conversation.
 - **Workers:** `sessions_spawn` with `model: "opencode-go/deepseek-v4.1-flash"`, `thinking: "high"`,
   `worktree: true`, `runTimeoutSeconds: 3600`, `collect: true` for a wave launched from one codemode script. One
-  package per worker, one branch and one draft PR per package.
-- **Reviewers:** the `reviewer` route on a different model family from DeepSeek, one per PR before merge.
+  package per worker and one branch per package; no pull request per package.
+- **Reviewers:** the `reviewer` route on a different model family from DeepSeek, one per package branch, reviewing
+  `git diff <integration>...mobile/<wpn>-<slug>` before it is merged in.
 - **Verifier:** the `verifier` route before each wave's last merge, on the real artifact: the CI screenshots and an
-  emulator run of the merged `main`.
+  emulator run of the integration branch's head.
 
 ### Kickoff template (one per package)
 
 ```
 Package <WPn: title> of docs/mobile-app-plan.md. Read AGENTS.md, mobile/AGENTS.md (after WP1) and the package's
-section. Branch mobile/<wpn>-<slug> from origin/main in your worktree.
+section. In your worktree, branch mobile/<wpn>-<slug> from origin/danifdz/mobile-shell-plan (the integration branch).
 You own: <paths>. Do not edit anything else; if you must, stop and report what and why.
 You may rely on: <contracts, merged packages>.
-Iterate with the narrowest local check (<command>), then push and open a draft PR titled "<type>: <title>"
-following the PR template; wait for its CI with gh pr checks --watch and read failures from the job artifacts
-instead of re-running the matrix locally.
-Done when: <acceptance evidence>. Report: PR URL, checks and their results, screenshots' URLs, anything unproven.
-Never weaken a test, add a sleep, or touch package.json/package-lock.json.
+Iterate with the narrowest local check (<command>). Commit with Conventional Commit messages, push the branch (no
+pull request) and wait for its CI with gh run watch; read failures from the job artifacts instead of re-running
+the matrix locally.
+Done when: <acceptance evidence>. Report: branch and head commit, CI run URLs and their results, screenshot paths,
+anything unproven. Never weaken a test, add a sleep, merge into the integration branch, or touch
+package.json/package-lock.json.
 ```
 
 ### Rules that keep parallel work from colliding
 
 - Ownership is by path (section 2). A file with two owners is split first, as `e2e.config.ts` is between WP4 and
-  WP6 (WP6 rebases on WP4).
+  WP6 (WP6 merges the integration branch in once WP4 is merged).
 - Dependencies are installed once (WP1). No worker runs `npm install <pkg>`.
 - Shared hotspots get serialized merges: `e2e/fixtures/hui.ts`, `e2e/catalogue/*`, `docs/map.md`, `SPEC.md`,
-  `baseline.json`. WP7 workers rebase before merging, and the orchestrator merges them one at a time.
+  `baseline.json`. WP7 branches merge the integration branch in before they are merged back, one at a time.
 - Emulators: each worker that needs one uses its own AVD name and ports (`HUI_ANDROID_AVD=HUI_Pixel_<wp>`,
   `ANDROID_SERIAL=emulator-55<nn>`, `E2E_PHONE_PORT=474<nn>`). This machine fits about three emulators at once (16
   cores, 28 GB), so more than three Android-bound workers wait for CI instead.
