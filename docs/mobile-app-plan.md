@@ -58,10 +58,12 @@ flowchart LR
   HUI gateway." otherwise, the strings of SPEC.md "The iOS app connects to one gateway"). Then it asks the native side
   to remember the address and load it. A `huiGatewayUrl` launch extra (Android) or launch argument (iOS) skips it, for
   tests and `npm run mobile`.
-- **Loading the gateway.** The shell points Capacitor's server URL at the gateway at runtime: on Android,
-  `CapConfig.Builder.setServerUrl` before the bridge starts; on iOS, `instanceDescriptor()` in a
-  `CAPBridgeViewController` subclass. The bridge and plugins then work on that origin (spike S1). `allowNavigation`
-  covers only the gateway's host; any other link opens in the system browser through `@capacitor/browser`.
+- **Loading the gateway.** The shell points Capacitor's server URL at the gateway at runtime, before the bridge
+  exists: on Android, `EmbeddedConfig` loads the generated `capacitor.config.json` from the assets and sets
+  `server.url` on the `CapConfig` that `BridgeActivity.load()` builds (spike S1); on iOS, `instanceDescriptor()` in
+  a `CAPBridgeViewController` subclass. The bridge and plugins then work on that origin. A link to another origin
+  leaves for the system browser through Capacitor's own launch intent, so no `allowNavigation` entry is needed and a
+  page cannot navigate the shell off the gateway.
 - **The UI is the gateway's.** Updating the gateway updates the phone's UI; the shell changes rarely. A shell older
   than the gateway expects shows the web's own update notice. `docs/api.md` gains a "Phone apps" note: same routes,
   same `x-hui` gate, same-origin WebSockets.
@@ -78,9 +80,9 @@ packages run in parallel without editing each other's files.
 | Directory ownership | `mobile/android/**` (WP2), `mobile/ios/**` (WP5), `mobile/connect/**` (WP1, then WP2), `src/lib/native-shell.ts` and its callers (WP3), `e2e.config.ts`, `e2e/fixtures/hui.ts` and `e2e/fixtures/phone.ts` (WP4, then WP6), `.github/workflows/mobile*.yml` (WP4 adds `android`, WP5 adds `ios`, WP6 adds `webkit-phone`; one job each, so no shared lines), catalogue files (WP4, then the WP7 area owners) |
 | Dependencies | Every npm and Gradle dependency the plan needs is installed in WP1 in one commit with `package-lock.json`. No later package touches `package.json` or the lockfile without the orchestrator |
 | Adapter API | `src/lib/native-shell.ts` exports `nativeShell(): NativeShell \| null` with `platform: "android" \| "ios"`, `openExternal(url)`, `notify({ id, title, body, path })`, `share({ title, text, url })`, `setStatusBar({ dark: boolean })`, `onResume(callback)`, `onBack(callback): () => void`, `forgetGateway()`. It is `null` in a browser, so every caller keeps its web behaviour |
-| Launch | Android: `am start -n dev.hui.app.debug/.MainActivity --es huiGatewayUrl <url>`. iOS: `-HUIGatewayURL <url>`. Deep link `hui://open?path=<path>` on both |
+| Launch | Android: `am start -n dev.hui.app.debug/dev.hui.app.MainActivity --es huiGatewayUrl <url>` (honoured in debug builds only, so another app cannot redirect a released shell). iOS: `-HUIGatewayURL <url>`. Deep link `hui://open?path=<path>` on both |
 | E2E target names | `web`, `android`, `webkit-phone`, `ios-smoke` |
-| Scripts | `npm run mobile -- doctor \| emulator \| android [--gateway <url>] [--fresh] \| screenshot <path>`, `npm run mobile:build` (Connect page + `cap sync`) |
+| Scripts | `npm run mobile -- doctor \| emulator \| stop \| build \| test \| dev [--gateway <url>] [--fresh] [--no-gateway] \| screenshot <path> \| connect`, `npm run mobile:build` (the Connect page alone, no Android toolchain needed) |
 | Ports | `E2E_PHONE_PORT` (default 47400) for the gateway the emulator reaches through `adb reverse`; `E2E_CDP_PORT` (default 9333) for the forwarded WebView DevTools socket |
 
 ## 3. How iteration stays fast
@@ -88,8 +90,8 @@ packages run in parallel without editing each other's files.
 | Change | Where you check it | Time |
 |---|---|---|
 | Web UI (most work) | `npm run dev` in a desktop browser at the phone size, or the Browser tool's phone emulation; `npm run e2e -- <file>` | seconds |
-| The same change on a real phone layout | `npm run mobile -- android` once, then reload: the app loads the dev gateway, so later UI edits need only a reload | about 10 s the first time, then a reload (target) |
-| Shell code (`mobile/android`) | `npm run mobile -- android`: incremental Gradle, install, launch | under 20 s (target; the Compose MVP measured about 5 s on this machine) |
+| The same change on a real phone layout | `npm run mobile -- dev` once, then reload: the app loads the dev gateway, so later UI edits need only a reload | about 10 s the first time, then a reload (measured: 5 s warm on this machine) |
+| Shell code (`mobile/android`) | `npm run mobile -- dev`: incremental Gradle, install, launch | under 20 s (measured: about 5 s warm) |
 | The shared suite on Android | Push the package branch: CI runs `android` sharded on Linux emulators | about 10 to 20 min (spike S4) |
 | iPhone rendering | CI `webkit-phone` on Linux; locally `npm run e2e:webkit-phone -- <file>` when needed | minutes |
 | iOS shell | CI `ios-smoke` on a macOS runner, with screenshots as artifacts; the owner's MacBook only for iOS-only bugs | about 10 to 15 min (spike S3) |
