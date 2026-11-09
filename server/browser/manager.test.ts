@@ -1304,3 +1304,83 @@ test("network captures a tab's requests and writes a HAR with credentials redact
   assert.match((await call({ action: "network", operation: "requests" })).text, /No request matches/u);
   await assert.rejects(call({ action: "network", operation: "har", path: "notes.txt" }), /path must end in \.har/u);
 });
+
+test("a snapshot diff reports only what an action changed, with usable refs", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-diff-"));
+  const server = createServer((request, response) => {
+    if ((request.url ?? "").split("?")[0] !== "/diff") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Diff page</title><h1>Diff page</h1>
+      <p id="status">2 items</p>
+      <button id="add">Add item</button>
+      <button id="confirm" hidden>Confirm</button>
+      <script>
+        document.getElementById("add").onclick = () => {
+          document.getElementById("status").textContent = "3 items";
+          document.getElementById("confirm").hidden = false;
+        };
+        document.getElementById("confirm").onclick = () => {
+          document.getElementById("status").textContent = "confirmed";
+        };
+      </script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  // A tab with no snapshot yet has no baseline to compare against.
+  const opened = await call({ action: "open", url: `${origin}/diff` });
+  assert.match(opened.text, /Diff page/u);
+  const first = await call({ action: "snapshot", diff: true });
+  assert.match(first.text, /No previous snapshot in this tab, so this one is the baseline\./u);
+  assert.match(first.text, /- button "Add item" \[ref=e\d+\]/u);
+
+  const unchanged = await call({ action: "snapshot", diff: true });
+  assert.match(unchanged.text, /Nothing changed in the page since the previous snapshot\./u);
+  assert.match(unchanged.text, /\(No lines changed\.\)/u);
+
+  // An action changes one line and reveals a button; only those are reported.
+  const addRef = /button "Add item" \[ref=(e\d+)\]/u.exec(opened.text)?.[1];
+  assert.ok(addRef);
+  await call({ action: "act", ref: addRef, kind: "click" });
+  const changed = await call({ action: "snapshot", diff: true });
+  assert.match(changed.text, /Page changed since the previous snapshot: 3 lines added, 2 removed\./u);
+  assert.match(changed.text, /- - paragraph: 2 items/u);
+  assert.match(changed.text, /\+ - paragraph: 3 items/u);
+  assert.doesNotMatch(changed.text, /\+ - heading "Diff page"/u);
+  const confirmRef = /\+ - button "Confirm" \[ref=(e\d+)\]/u.exec(changed.text)?.[1];
+  assert.ok(confirmRef, changed.text);
+
+  // The ref a diff line carries acts, so the loop can continue from a diff.
+  await call({ action: "act", ref: confirmRef, kind: "click" });
+  const confirmed = await call({ action: "snapshot", diff: true });
+  assert.match(confirmed.text, /\+ - paragraph: confirmed/u);
+  assert.match(confirmed.text, /- - paragraph: 3 items/u);
+
+  // Filtered snapshots are not comparable with a whole one.
+  await assert.rejects(
+    call({ action: "snapshot", diff: true, query: "button" }),
+    /snapshot diff compares whole snapshots; drop query, selector, interactive and depth\./u,
+  );
+
+  // A new document makes the previous lines a poor comparison; say so.
+  await call({ action: "reload" });
+  const navigated = await call({ action: "snapshot", diff: true });
+  assert.match(navigated.text, /The page navigated since the previous snapshot, so this one is the new baseline\./u);
+  assert.match(navigated.text, /- heading "Diff page" \[level=1\]/u);
+});

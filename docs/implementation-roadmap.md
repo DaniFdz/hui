@@ -791,6 +791,18 @@ page's fetch requests captured with statuses and a redacted token, filters,
 one request's headers, a written HAR with no secret in it) and the network
 section of `e2e/browser-tool.browser.md`.
 
+Follow-up 2026-11-09: `snapshot` gains `diff: true`, which compares the tab's
+whole accessibility outline with the last one read in the same document and
+returns only the changed lines, `+`/`-` prefixed with two lines of context, so an
+agent that just acted reads a handful of lines instead of the page. Unchanged
+lines keep their refs, so an action can be taken straight from a diff; a first
+diff, a navigation, or more than 600 changed middle lines reports that and
+returns the whole snapshot. `server/browser/diff.ts` holds the bounded line
+matcher and cap; `server/browser/diff.test.ts` covers context, counting, the cap
+and a wholesale change, and `server/browser/manager.test.ts` proves it against a
+real page (an action's one changed line and a revealed button, a ref from the
+diff clicking, and a navigation resetting the baseline).
+
 ### HUI-16 — macOS sleep prevention
 
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on

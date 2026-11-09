@@ -87,7 +87,16 @@ export type SnapshotOptions = {
   maxDepth?: number;
 };
 
-export type SnapshotResult = { text: string; lines: number; truncated: boolean; matched?: number; depthLimited?: boolean };
+export type SnapshotResult = {
+  /** What the caller prints: clamped to `maxChars`, and truncated when it was longer. */
+  text: string;
+  lines: number;
+  truncated: boolean;
+  matched?: number;
+  depthLimited?: boolean;
+  /** Every rendered line, before clamping, so a later snapshot can be diffed against it. */
+  allLines: string[];
+};
 
 export const SNAPSHOT_DEFAULT_CHARS = 12_000;
 export const SNAPSHOT_MAX_CHARS = 40_000;
@@ -306,7 +315,7 @@ export function renderSnapshot(axNodes: readonly AxNode[], refs: SnapshotRefs, o
     count += 1;
   }
   return {
-    text: text.trimEnd(), lines: count, truncated,
+    text: text.trimEnd(), lines: count, truncated, allLines: lines,
     ...(matched !== undefined ? { matched } : {}),
     ...(depthState.depthLimited ? { depthLimited: true } : {}),
   };

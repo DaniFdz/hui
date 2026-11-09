@@ -1063,6 +1063,15 @@ reporting success, and a ref whose node was replaced keeps working when exactly
 one laid-out element still has its role and name — otherwise it fails as stale
 or ambiguous rather than acting on the wrong element.
 
+**A snapshot can say what changed.** `snapshot` with `diff: true` compares the
+tab's current whole snapshot with the last one it took in the same document and
+returns only the changed lines, marked `+` and `-` with two lines of context,
+plus a count (`Page changed since the previous snapshot: 2 lines added, 1
+removed.`). A line that did not change keeps its ref, so the conversation can
+act straight from a diff; a first diff in a tab, a new document, or a change
+too large to match reports that and returns the whole snapshot instead. The
+diff is capped at 400 lines, and a page's own `- ` line prefix is separated
+from the marker by a space so the two never blur.
 **Requests can be watched and kept.** With `network` a conversation can capture
 the tab's requests (`start`, then `requests`, `request`, `clear`, `stop`) and
 write a HAR for a person (`har` with a path, beside the session's files). The

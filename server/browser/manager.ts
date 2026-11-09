@@ -34,6 +34,7 @@ import { buildHar, describeEntry, NetworkLog } from "./network.ts";
 import { allowsUrl, blockedOriginMessage } from "./origins.ts";
 import type { SiteSecret, SiteSecretView } from "./secrets.ts";
 import { clampSnapshotChars, renderSnapshot, SnapshotRefs, type AxNode, type SnapshotOptions, type SnapshotResult, type SnapshotTarget } from "./snapshot.ts";
+import { describeDiff, diffSnapshots } from "./diff.ts";
 import { EMPTY_BROWSER_STATE, isHttpOrigin, mergeBrowserState, STATE_CAPTURE, STATE_SEED, trimBrowserState, type BrowserState, type StoredCookie, type StoredDatabase, type StoredOrigin } from "./state.ts";
 
 export class BrowserToolError extends Error {
@@ -139,6 +140,8 @@ type Tab = {
   blocked?: string;
   /** Requests captured for this tab, once a conversation asks for them. */
   network?: NetworkLog;
+  /** The whole snapshot last read in this document, the baseline for a diff. */
+  lastSnapshot?: { loaderId: string; lines: string[] };
 };
 
 type Viewer = { owner: string; listener: BrowserViewListener; pinned: string | null; watching: string | null; closed: boolean };
@@ -900,6 +903,11 @@ export class ManagedBrowser {
         const instance = this.#live();
         const query = optionalText(params, "query", 200);
         const selector = optionalText(params, "selector", 1_000);
+        const diffRequested = params["diff"] === true;
+        // A diff compares like with like, so both sides are whole snapshots.
+        if (diffRequested && (query || selector || params["interactive"] === true || depthFrom(params["depth"]) !== undefined)) {
+          throw new BrowserToolError("snapshot diff compares whole snapshots; drop query, selector, interactive and depth.", 400);
+        }
         const rootId = selector ? await this.#snapshotRoot(instance, tab, selector) : undefined;
         const snapshot = await this.#snapshot(instance, tab, {
           interactive: params["interactive"] === true,
@@ -913,12 +921,49 @@ export class ManagedBrowser {
         const lines = [this.#header(tab)];
         if (selector) lines.push(`Scoped to ${selector}.`);
         if (snapshot.matched !== undefined) lines.push(`${snapshot.matched} matching line${snapshot.matched === 1 ? "" : "s"} for "${query}".`);
-        lines.push("", pageBoundary(nonce, origin, snapshot.text || "(No accessible content matched.)"));
-        if (snapshot.truncated) lines.push(TRUNCATED_NOTE);
+        const previous = tab.lastSnapshot;
+        let body = snapshot.text || "(No accessible content matched.)";
+        let change: { added: number; removed: number } | undefined;
+        let bodyTruncated = snapshot.truncated;
+        if (diffRequested) {
+          if (!previous) {
+            lines.push("No previous snapshot in this tab, so this one is the baseline.");
+          } else if (previous.loaderId !== tab.loaderId) {
+            lines.push("The page navigated since the previous snapshot, so this one is the new baseline.");
+          } else {
+            const delta = diffSnapshots(previous.lines, snapshot.allLines);
+            lines.push(describeDiff(delta));
+            change = { added: delta.added, removed: delta.removed };
+            if (delta.coarse) {
+              bodyTruncated ||= snapshot.truncated;
+            } else {
+              const kept: string[] = [];
+              let length = 0;
+              for (const line of delta.lines) {
+                if (length + line.length + 1 > clampSnapshotChars(params["maxChars"])) { bodyTruncated = true; break; }
+                kept.push(line);
+                length += line.length + 1;
+              }
+              body = kept.length ? kept.join("\n") : "(No lines changed.)";
+              if (delta.omitted) lines.push(`${delta.omitted} more changed line${delta.omitted === 1 ? "" : "s"} were left out; read the page with snapshot after an action that changes less.`);
+            }
+          }
+        }
+        // Only a whole unfiltered snapshot can be a baseline.
+        if (!query && !selector && params["interactive"] !== true && depthFrom(params["depth"]) === undefined) {
+          tab.lastSnapshot = { loaderId: tab.loaderId, lines: snapshot.allLines };
+        }
+        lines.push("", pageBoundary(nonce, origin, body));
+        if (bodyTruncated) lines.push(TRUNCATED_NOTE);
         if (snapshot.depthLimited) lines.push(DEPTH_NOTE);
         return {
           text: lines.join("\n"),
-          details: { action, tab: this.#tabDetails(tab), lines: snapshot.lines, truncated: snapshot.truncated, ...(snapshot.depthLimited ? { depthLimited: true } : {}), boundary: { nonce, origin } },
+          details: {
+            action, tab: this.#tabDetails(tab), lines: snapshot.lines, truncated: bodyTruncated,
+            ...(snapshot.depthLimited ? { depthLimited: true } : {}),
+            ...(diffRequested ? { diff: { baseline: !previous || previous.loaderId !== tab.loaderId, ...(change ?? { added: 0, removed: 0 }) } } : {}),
+            boundary: { nonce, origin },
+          },
         };
       }
       case "act": return this.#act(owner, params);
@@ -2061,7 +2106,7 @@ export class ManagedBrowser {
       if (loaderId === tab.loaderId) break;
       tab.refs.reset();
     }
-    return result ?? { text: "", lines: 0, truncated: false };
+    return result ?? { text: "", lines: 0, truncated: false, allLines: [] };
   }
 
   /** One level of child frames is read by frame id and hung under its Iframe node, so a form

@@ -4672,7 +4672,7 @@ comes from the per-conversation token. `action` is one of:
 | `open` | Launch lazily, open a tab, load `url` and return a snapshot |
 | `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot; with an origin allowlist set, a page outside it is refused with 403 |
 | `focus`, `close` | Select or close one of this conversation's tabs |
-| `snapshot` | Accessibility outline; `interactive`, `query`, `maxChars` (500–40 000, default 12 000; 8 000 for page loads), `selector` to start at one element and `depth` (1–40) to stop after some levels; one level of child frames is inlined under its Iframe node |
+| `snapshot` | Accessibility outline; `interactive`, `query`, `maxChars` (500–40 000, default 12 000; 8 000 for page loads), `selector` to start at one element and `depth` (1–40) to stop after some levels; one level of child frames is inlined under its Iframe node; `diff: true` returns only what changed since the tab's previous whole snapshot |
 | `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`, `state` with a selector) |
 | `text` | Visible text of `selector`, else the first article, main or body (default 12 000, at most 40 000 characters) |
 | `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory) |
@@ -4705,6 +4705,14 @@ status, type, bytes and timing; bodies are never captured. Credential headers
 `password`, `secret`, …) are `[redacted]` in `network requests`,
 `network request` and the HAR. The HAR is JSON 1.2 with one page and its
 entries, written wherever `path` names (relative to the session directory).
+`snapshot` with `diff: true` compares the tab's current whole snapshot with the
+last whole snapshot it took in the same document: changed lines are prefixed
+`+`/`-` with two context lines, unchanged lines keep their refs, and the result
+starts with a count. Without a baseline, after a navigation, or when more than
+600 lines changed in the middle, it says so and returns the whole snapshot; 400
+diff lines are printed at most. A diff cannot be combined with `query`,
+`selector`, `interactive` or `depth`, because then the two sides would differ in
+what they cover.
 Every result that carries page-sourced text (a snapshot, `text`, console
 entries, `get text|html`) wraps it in
 `--- HUI_PAGE_CONTENT nonce=<16 hex> origin=<origin> ---` …

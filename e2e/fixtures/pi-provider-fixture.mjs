@@ -262,6 +262,23 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(HANDOFF_FIXTURE_PAGE);
   }
+  if (request.method === "GET" && url.pathname === "/browser-diff-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI diff fixture</title>
+      <h1>HUI diff fixture</h1>
+      <p id="count">2 items</p>
+      <button id="add">Add item</button>
+      <button id="confirm" hidden>Confirm</button>
+      <script>
+        document.getElementById("add").onclick = () => {
+          document.getElementById("count").textContent = "3 items";
+          document.getElementById("confirm").hidden = false;
+        };
+        document.getElementById("confirm").onclick = () => {
+          document.getElementById("count").textContent = "confirmed";
+        };
+      </script>`);
+  }
   if (request.method === "GET" && url.pathname === "/browser-network-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(`<!doctype html><title>HUI network fixture</title>
@@ -668,6 +685,44 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent reads only what an action changed, then acts on a ref from the diff.
+  if (source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-diff-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-diff-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-diff-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-diff-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      open: ["baseline", { action: "snapshot" }],
+      baseline: ["add", { action: "act", kind: "click", ref: ref(/button "Add item" \[ref=(e\d+)\]/u) }],
+      add: ["diff", { action: "snapshot", diff: true }],
+      diff: ["confirm", { action: "act", kind: "click", ref: ref(/\+ - button "Confirm" \[ref=(e\d+)\]/u) }],
+      confirm: ["confirmed", { action: "snapshot", diff: true }],
+    }[step];
+    const needsRef = (step) => step[1].action === "act" && step[1].kind === "click";
+    if (next && (!needsRef(next) || next[1].ref)) {
+      toolUse(response, `tool-e2e-diff-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const revealed = /Page changed since the previous snapshot: \d+ lines added, \d+ removed\./u.test(results)
+      && /\+ - paragraph: 3 items/u.test(results)
+      && /\+ - button "Confirm" \[ref=e\d+\]/u.test(results)
+      && !/\+ - heading "HUI diff fixture"/u.test(results);
+    const confirmed = /\+ - paragraph: confirmed/u.test(results);
+    text(response, revealed && confirmed
+      ? "The diff after Add item showed only the added lines (3 items, Confirm), the ref it carried clicked, and the next diff showed **confirmed**."
+      : `The snapshot diff check did not complete: revealed=${revealed}, confirmed=${confirmed}.`);
+    return finish(response);
+  }
+
   // The agent captures the page's requests and writes a HAR whose values are redacted.
   if (source.includes("E2E_BROWSER_NETWORK") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -813,7 +868,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);
