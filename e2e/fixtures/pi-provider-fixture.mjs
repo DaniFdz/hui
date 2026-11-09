@@ -262,6 +262,26 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(HANDOFF_FIXTURE_PAGE);
   }
+  if (request.method === "GET" && url.pathname === "/browser-network-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI network fixture</title>
+      <h1>HUI network fixture</h1>
+      <p id="out">loading</p>
+      <script>
+        Promise.all([
+          fetch("/browser-network-api?token=fixture-secret", { headers: { authorization: "Bearer fixture-secret" } }),
+          fetch("/browser-network-missing"),
+        ]).then(() => { document.getElementById("out").textContent = "fetched"; });
+      </script>`);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-network-api") {
+    response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    return response.end(JSON.stringify({ ok: true }));
+  }
+  if (request.method === "GET" && url.pathname === "/browser-network-missing") {
+    response.writeHead(404, { "content-type": "text/plain" });
+    return response.end("missing");
+  }
   if (request.method === "GET" && url.pathname === "/browser-frame-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(FRAME_FIXTURE_PAGE(frameOrigin));
@@ -648,6 +668,40 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent captures the page's requests and writes a HAR whose values are redacted.
+  if (source.includes("E2E_BROWSER_NETWORK") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-network-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-network-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-network-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-network-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const next = {
+      open: ["start", { action: "network", operation: "start" }],
+      start: ["reload", { action: "reload" }],
+      reload: ["requests", { action: "network", operation: "requests" }],
+      requests: ["har", { action: "network", operation: "har", path: "net/fixture.har" }],
+    }[step];
+    if (next) {
+      toolUse(response, `tool-e2e-network-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const captured = /\d+ requests captured in tab t\d+/u.exec(results)?.[0];
+    const api = /n\d+ · GET 200 OK · Fetch[^\n]*\n\s+http:\/\/127\.0\.0\.1:\d+\/browser-network-api\?token=%5Bredacted%5D/u.test(results);
+    const missing = /GET 404 Not Found[^\n]*\n\s+http:\/\/127\.0\.0\.1:\d+\/browser-network-missing/u.test(results);
+    const har = /Wrote \d+ requests to [^\n]+\.har[^\n]*redacted/u.exec(results)?.[0];
+    text(response, api && missing && har
+      ? `${captured}. The API request shows token=%5Bredacted%5D, the missing one 404, and ${har}`
+      : `The network check did not complete: captured=${captured ?? "none"}, api=${api}, missing=${missing}, har=${Boolean(har)}.`);
+    return finish(response);
+  }
+
   // Both frames are inlined in the snapshot; a click inside each lands on its own button.
   if (source.includes("E2E_BROWSER_FRAME") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -759,7 +813,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);

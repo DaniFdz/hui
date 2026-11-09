@@ -779,6 +779,18 @@ cross-process-but-local frame both inlined, a click inside each, and a secret
 refused on the host origin and typed on the frame's) and the frame section of
 `e2e/browser-tool.browser.md`.
 
+Follow-up 2026-11-09: the browser tool gains `network`: `start`/`stop` a capture
+on a tab, `requests` with URL, resource-type, method and status filters,
+`request` for one `n3`-style id with its headers, `clear`, and `har` writing a
+JSON 1.2 document beside the session's files. The log keeps at most 200
+requests with method, URL, status, type, bytes and timing and no bodies;
+credential headers and secret-named query values are `[redacted]` in both the
+list and the HAR. Proof: `server/browser/network.test.ts` (redaction, bounds,
+HAR shape) and `server/browser/manager.test.ts` (a real headless browser: a
+page's fetch requests captured with statuses and a redacted token, filters,
+one request's headers, a written HAR with no secret in it) and the network
+section of `e2e/browser-tool.browser.md`.
+
 ### HUI-16 — macOS sleep prevention
 
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on

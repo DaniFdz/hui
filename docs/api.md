@@ -4680,6 +4680,7 @@ comes from the per-conversation token. `action` is one of:
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
 | `get` | One property of one element (`ref` or `selector`): `text`, `html`, `value`, `attr` with `attribute`, `box`, or page-level `title`, `url` and `count` with `selector`; a password field's value is refused with 409 |
 | `is` | One state of one element (`ref` or `selector`): `visible`, `hidden`, `enabled`, `disabled`, `checked`, `focused`, `editable`, `attached` |
+| `network` | Capture the tab's requests: `operation` `start`/`stop`/`clear`, `requests` with `filter`, `type`, `method` and `status` (`2xx`, `400-499` or an exact code), `request` with `id` such as `n3`, and `har` with `path` (must end in `.har`) |
 | `handoff` | Give the current (or `tabId`) tab to the operator and wait: `message` (at most 500 characters) and `timeoutMs` (5000–1 800 000, default 600 000) |
 | `secret` | Type the operator's stored secret `name` into `ref` on the secret's own origin, optionally `submit`; the value never appears in the result |
 | `steps` | 1–20 `act` steps in order on one tab (`kind`, `ref`, and the same fields `act` takes), each with its own `timeoutMs` or the call's; the result lists each step and a failure names the step and what already ran |
@@ -4697,6 +4698,13 @@ frame the browser isolates in another process is not inlined. A click on a
 disabled or hidden target fails with the reason, and one covered by another
 element fails naming the cover.
 
+A network log holds at most 200 requests (the oldest dropped) with method, URL,
+status, type, bytes and timing; bodies are never captured. Credential headers
+(`authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`,
+`x-auth-token`) and query values named like a secret (`token`, `code`, `key`,
+`password`, `secret`, …) are `[redacted]` in `network requests`,
+`network request` and the HAR. The HAR is JSON 1.2 with one page and its
+entries, written wherever `path` names (relative to the session directory).
 Every result that carries page-sourced text (a snapshot, `text`, console
 entries, `get text|html`) wraps it in
 `--- HUI_PAGE_CONTENT nonce=<16 hex> origin=<origin> ---` …

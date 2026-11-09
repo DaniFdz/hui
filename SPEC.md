@@ -1063,6 +1063,13 @@ reporting success, and a ref whose node was replaced keeps working when exactly
 one laid-out element still has its role and name — otherwise it fails as stale
 or ambiguous rather than acting on the wrong element.
 
+**Requests can be watched and kept.** With `network` a conversation can capture
+the tab's requests (`start`, then `requests`, `request`, `clear`, `stop`) and
+write a HAR for a person (`har` with a path, beside the session's files). The
+log keeps method, URL, status, type, size and timing for at most 200 requests,
+and credential headers (`authorization`, `cookie`, `set-cookie`, and the like) and
+secret query values are `[redacted]` in the log and the HAR, because that
+artifact outlives the session. Bodies are not captured.
 **Frames are part of the page.** A snapshot reads one level of child frames by
 frame id and hangs each under its Iframe node, so a form inside a frame is
 visible and its refs work for `act`, `get`, `is`, screenshots and the secret
