@@ -125,13 +125,9 @@ jobs:
 
           udid="$udid"
           gateway="http://127.0.0.1:4173/"
+          # The launch argument the shell reads; a production shell reuses the same name (plan contract, section 2).
           xcrun simctl terminate "$udid" dev.hui.app || true
-          xcrun simctl launch --console "$udid" dev.hui.app -HUIGatewayURL "$gateway" > /tmp/probe-console.log 2>&1 &
-          console=$!
-          trap 'kill "$console" "$server" 2>/dev/null || true' EXIT
-          # The probe prints the descriptor it built, so this waits for the app to have started.
-          for _ in $(seq 1 60); do grep -q "HUIPROBE descriptor.serverURL after=" /tmp/probe-console.log 2>/dev/null && break; sleep 1; done
-          grep -F "HUIPROBE" /tmp/probe-console.log || echo "::warning::the app's stdout did not reach the console log"
+          xcrun simctl launch "$udid" dev.hui.app -HUIGatewayURL "$gateway"
 
           pass=""
           for _ in $(seq 1 8); do
@@ -139,6 +135,11 @@ jobs:
             if node mobile/ios/s3-probe/check-screenshot.mjs artifacts/runtime-url.png green 0; then pass=1; break; fi
           done
           cat /tmp/probe-server.log
+          # What the app decided: the descriptor it built, and the launch argument it read.
+          container="$(xcrun simctl get_app_container "$udid" dev.hui.app data)"
+          test -f "$container/Library/Caches/s3-probe.txt"
+          cp "$container/Library/Caches/s3-probe.txt" artifacts/probe-descriptor.txt
+          cat artifacts/probe-descriptor.txt
           test -n "$pass"
 
       - name: Collect the build log, the screenshots and the app's own log
@@ -146,7 +147,6 @@ jobs:
         run: |
           mkdir -p artifacts
           cp /tmp/xcodebuild.log artifacts/xcodebuild.log 2>/dev/null || true
-          cp /tmp/probe-console.log artifacts/probe-console.log 2>/dev/null || true
           cp /tmp/probe-server.log artifacts/probe-server.log 2>/dev/null || true
           cp /tmp/ios-simulator.log artifacts/simulator.log 2>/dev/null || true
           ls -la artifacts

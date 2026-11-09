@@ -12,14 +12,26 @@ class S3ProbeViewController: CAPBridgeViewController {
         let descriptor = super.instanceDescriptor()
         let arguments = ProcessInfo.processInfo.arguments
         let fromDefaults = UserDefaults.standard.string(forKey: "HUIGatewayURL")
-        print("HUIPROBE arguments=\(arguments)")
-        print("HUIPROBE userDefaults.HUIGatewayURL=\(fromDefaults ?? "<none>")")
-        print("HUIPROBE descriptor.serverURL before=\(descriptor.serverURL ?? "<nil>")")
+        var lines = [
+            "arguments=\(arguments)",
+            "userDefaults.HUIGatewayURL=\(fromDefaults ?? "<none>")",
+            "descriptor.serverURL before=\(descriptor.serverURL ?? "<nil>")",
+        ]
         if let gateway = fromDefaults, !gateway.isEmpty {
             descriptor.serverURL = gateway
             descriptor.allowedNavigationHostnames = ["*"]
         }
-        print("HUIPROBE descriptor.serverURL after=\(descriptor.serverURL ?? "<nil>")")
+        lines.append("descriptor.serverURL after=\(descriptor.serverURL ?? "<nil>")")
+        lines.append("descriptor.allowedNavigationHostnames=\(descriptor.allowedNavigationHostnames)")
+        // simctl's --console did not deliver the app's stdout on this runner, so the evidence is a file in the app's
+        // container that the workflow reads with `xcrun simctl get_app_container`.
+        record(lines.joined(separator: "\n"))
         return descriptor
+    }
+
+    private func record(_ text: String) {
+        print("HUIPROBE \(text)")
+        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+        try? "\(text)\n".write(to: caches.appendingPathComponent("s3-probe.txt"), atomically: true, encoding: .utf8)
     }
 }
