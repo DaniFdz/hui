@@ -1,6 +1,6 @@
 ---
 name: chief-mode
-description: "Use when leading a HUI task from request to evidence: restate the goal, pick one playbook, route each step to a subagent, and report what proved it."
+description: "Use when leading a HUI task from request to evidence: restate the goal, pick one playbook, use a child only for fast iteration, and hand the rest to its own session."
 ---
 
 # Chief mode
@@ -53,41 +53,58 @@ Copy the playbook's numbered steps verbatim into `work/<task>.md` before adding 
 task-specific step. A step left undone stays with `skip: <reason>`, and the playbook is
 re-read at each phase boundary; drift from it is what this pack exists to stop.
 
-## 3. Choose a route per task
+## 3. Choose what runs where
 
-Pass one of `planner`, `explorer`, `worker`, `reviewer` or `verifier` as `route`. `delegate`
-owns what each route may do, when a fresh child is required, and when the job needs `swarm` or
-`arena` instead. Read it before the first spawn. Raise `thinking` for the hardest work and
-lower it for routine work. A route HUI refuses is unusable: spawn without a route, inherit the
-caller's model, and say so in the ledger row.
+**Fast iteration is a child.** A read-only probe, one command, a small independent check, a
+comparison. Spawn it with `sessions_spawn`, one level and one reply. A child never owns a
+branch or a pull request. Before you spawn, name the one reply it returns; if you cannot, it
+is not a child.
 
-**Set the lead.** A task with more than one step or more than one worker gets one
-`lead`: spawn a single `worker`-route child with the whole task and the `lead` skill's
-brief. The lead spawns its own workers, reads their evidence, retries them and reports
-once. You stop watching its workers: their completions land in the lead's transcript, not
-this chat. Message it only for a decision it escalated or a scope change. One lead per
-separable area; stop at three levels (you, leads, workers).
+**Everything else is a session.** A task with more than one step, a change that writes code, a
+long build, test or e2e, or anything that owns a branch or a pull request gets a new session,
+not a child. Write the brief, name the worktree branch and the worker when one is available,
+and create it with `create_session`. Call `worker_stats` at the start and state the machine plan. `machines` owns the choice: a session
+gets a connected machine with headroom, independent pieces spread across machines, and no worker
+is filled. `local` is this machine. Do not spawn a lead for it. The session owns the work;
+this chat keeps the ledger row and reads the evidence it reports.
+It is done when the pull request is merged and, where the change applies, deployed and
+validated in production. A merged PR without that is not done. The operator archives the
+session then; never archive it for them, and settle the ledger row on the evidence the
+session reports.
+
+Read `delegate` before the first child. A route HUI refuses is unusable: spawn without a
+route, inherit the caller's model, and say so in the ledger row. Raise `thinking` for the
+hardest work and lower it for routine work.
+
+**The lead is opt-in.** Inside a session started for a task, or when the operator asks for
+one, `lead` owns it end to end, spawns its own fast workers, reads their evidence, retries
+them and reports one rollup. It messages this chat only for a real decision. Never make a
+lead the chief's default for ordinary work.
 
 ## 4. Open a ledger row per task
 
 Write the row in `work/index.md` at dispatch and settle it there. `show-me-your-work` owns the
 five columns, the statuses, the task page at `work/<task>.md` and the decision log. Add the
-`Route` and `Child` columns where a step needs them; never invent a second ledger.
+`Route` and `Child` columns where a step needs them, and `Machine` when more than one machine is
+in play; never invent a second ledger.
 
-## 5. Brief every child
+## 5. Brief every child and every session
 
-`delegate` owns the brief. Every spawn carries its five fields in its order: goal, scope,
-evidence, write paths, forbidden actions. Add the restated goal and the verdict words. One
-fresh child per task; a fix round, retry or follow-up gets a consolidated brief, never a
-relayed summary. Name paths; never inline whole files.
+`delegate` owns the brief. Every child and every session brief carries its five fields in
+their order: goal, scope, evidence, write paths, forbidden actions. Add the restated goal and
+the verdict words. One fresh child per fast task; a fix round, retry or follow-up gets a
+consolidated brief, never a relayed summary. Name paths; never inline whole files. For a
+session, write the brief in `work/<task>.md` and create it with `create_session`, passing the
+cwd, group, title, prompt, worker, worktree and branch.
 
-## 6. Fan out only across disjoint work
+## 6. Fan out only across disjoint fast checks
 
-`delegate` owns the caps and the shapes. Independent units fan out from one `codemode` script
-with `collect: true` and `agents_wait`; coverage belongs to `swarm` and a design fork to
-`arena`. Two workers never edit the same file at once, and a child never receives another
-child's report. You read the results, decide, and assign the next unit; when a lead owns
-the area, its rollup is the result you read.
+`delegate` owns the caps and the shapes. Independent fast checks fan out from one `codemode`
+script with `collect: true` and `agents_wait`; coverage belongs to `swarm` and a design
+fork to `arena`. A unit that writes code, owns a branch or takes more than a reply is a
+session. Two children never edit the same file at once, and a child never receives another
+child's report. You read the results and decide; when a lead owns the area, its rollup is
+the result you read.
 
 ## 7. Check every claim
 
@@ -104,8 +121,9 @@ ledger.
 ## 8. Close and reply
 
 A task is closed when every step is checked or skipped with a reason, the checks the change
-needs ran and are named with their result, and every user-visible change has browser evidence
-at desktop and mobile widths. Open the reply with the restated goal, then what changed, what
+needs ran and are named with their result, every user-visible change has browser evidence at
+desktop and mobile widths, and its pull request is merged and, where the change applies,
+deployed and validated in production. The operator archives the session once that is true. Open the reply with the restated goal, then what changed, what
 proved it, what was chosen and why, what stays open, and the proof gaps. Short declarative
 sentences, no emoji, no long dash, and never a claim that an unrun check passed. One line
 per task, never one per child; a lead's rollup is one item.

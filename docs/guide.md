@@ -518,24 +518,36 @@ starts idle: it has a SOUL.md and its skills, and it says nothing until you
 message it. Its home folder holds the pack's skills under `skills/`, and the
 bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
 with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
-`learn`, `lessons`,
+`machines`, `learn`, `lessons`,
 `verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
 `figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
 `principles` reference. No other chat loads them.
 
 The same seed adds five **Subagent routes** on Settings → Models: `planner`,
 `explorer`, `worker`, `reviewer` and `verifier`. Each inherits the caller's
-model until you give it one, so they follow your primary model. The chief picks
-one per task; `sessions_spawn` also takes `worktree: true`, which gives a
-writing worker its own Git worktree and branch instead of sharing the chief's.
+model until you give it one, so they follow your primary model. The chief uses a
+route only for a fast child: a read-only probe, one command, one check, one
+reply. A writing task gets a new session with its own worktree and branch. Before the first delegation the chief calls `worker_stats` and states the
+machine plan: which machines are in play, their load and running sessions, and
+where each piece runs. `machines` says to spread independent sessions, keep
+headroom on every machine and never fill one; `local` is the main machine.
 
-A task with more than one step or more than one worker goes to one **lead**, not
-to N workers: the lead owns it, spawns its own workers and reports one rollup.
-Its workers' completions land in the lead's transcript, so the chief's chat
-stays a conversation. The lead messages the chief with `sessions_send` only for
-a real decision.
+The chief uses a subagent only for **fast iteration**: a read-only probe, one
+command, one small check, one reply. A child never owns a branch or a pull
+request.
+
+Everything else is a **new session**. The chief writes the brief, names the
+worktree branch and a worker when one is available, and creates it with
+`create_session`; you can open it in the sidebar. The session owns the work; the chief keeps the ledger row and reads the
+evidence it reports, not its transcript. It is done when its pull request is
+merged and, where the change applies, deployed and validated in production.
+You archive the session then; the chief settles the ledger row and never
+archives it for you. A **lead** is opt-in inside such a session, or when you
+ask for one, not the chief's default.
 
 After a task that failed, drifted, or needed a step the pack did not know, the chief adds one evidence-backed entry to its own **`lessons`** skill. It never edits the pack's skills: an edited pack file stops taking pack updates. The `lessons` skill is the bot's, and `hui doctor` reports it.
+
+A chief that spawns a child for every task has the wrong model for the role: give it a strong model and high thinking. Routes without a model inherit whatever the chief uses, so set route models explicitly if fast children should be cheaper.
 
 The chief's chat uses OptChat. Its compactor model defaults to Settings' utility
 model; for a chief that lives for months, set a stronger one in the bot's
