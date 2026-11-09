@@ -138,9 +138,9 @@ one long run cannot be compacted either: that run fails (Durable section 8.3).
 node, at most 8 per memory and 8 across the gateway, through the gateway's models
 with the document's model, else HUI's utility model, else the conversation's own,
 which also takes over a call the utility model fails. Each call carries the
-conversation's provider session (Durable's `pi.provider` document), as its turns
-do, since a provider that routes by session, such as OpenCode, rejects a call
-without one. It thinks at medium unless
+memory's own provider session (`hui-optchat-<conversation>`), apart from its
+turns' session, since a provider that routes by session, such as OpenCode,
+rejects a call without one. It thinks at medium unless
 the document says otherwise, or at the nearest level below that the model has: a
 summary is quick work a turn may be waiting on, so a model without medium gets
 low, not high. Its context is the compaction view's lines before

@@ -21,7 +21,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import {
-  AgentDoc, AssistantEntry, CompactionTask, defineDoc, defineExtension, defineTool, GenerationTask, hook, LiveDoc, ProviderDoc, section, ToolResultEntry, UserEntry,
+  AgentDoc, AssistantEntry, CompactionTask, defineDoc, defineExtension, defineTool, GenerationTask, hook, LiveDoc, section, ToolResultEntry, UserEntry,
   type CommitPublication, type Conversation, type ConversationId, type Cursor, type EntryId, type EntryRecord, type Extension, type Harness,
   type HookApi, type SubmissionId, type ToolExecutionResult, type Tx,
 } from "@earendil-works/pi-durable";
@@ -35,6 +35,9 @@ import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.t
 import { callRecordLines, parseCallRecord } from "../calls-format.ts";
 import { offIsSent } from "./thinking-level.ts";
 import { CallEntry } from "./turn-origins.ts";
+
+/** The provider session every compactor call of a conversation's memory goes as: stable, one per memory, never its turns'. */
+export const optChatSessionId = (conversationId: ConversationId): string => `hui-optchat-${conversationId}`;
 
 /** A conversation's OptChat choice. `name` is the agent's display name in the prompts; `model` ("provider/id") and
  * `thinking` pick the compactor's model, by default HUI's utility model, at medium thinking or the nearest level below it. */
@@ -762,9 +765,9 @@ export class OptChatManager {
     const utility = own ? undefined : modelRef(await this.#utilityModel?.().catch(() => undefined));
     const refs = own ? [own] : [utility, conversationModel].filter((ref): ref is { provider: string; modelId: string } => Boolean(ref));
     if (!refs.length) throw new Error("The conversation has no model for OptChat's compactor.");
-    // The conversation's provider session, as Durable's own requests and compactions send it: a provider that routes
-    // by session (OpenCode's x-opencode-session) rejects a call without one, and the turn would wait on it forever.
-    const sessionId = (await harness.snapshot(ProviderDoc, conversationId, context))?.sessionId ?? `hui-optchat-${conversationId}`;
+    // The memory's own provider session, apart from its turns': a provider that routes by session (OpenCode's
+    // x-opencode-session) rejects a call without one, and the turn would wait on it forever.
+    const sessionId = optChatSessionId(conversationId);
     let failure: unknown;
     for (const ref of refs) {
       try {

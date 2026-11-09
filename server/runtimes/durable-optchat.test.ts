@@ -28,7 +28,7 @@ const { DurableHost, durableContext, modelCallable } = await import("./durable-h
 const { createDurableBots } = await import("../bots/durable-access.ts");
 const { durableReference, startDurable } = await import("./durable.ts");
 const {
-  configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry, thinkingAtMost,
+  configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, optChatSessionId, projectEntry, thinkingAtMost,
 } = await import("./durable-optchat.ts");
 const { readObservability } = await import("../observability.ts");
 const { durableBotConversations } = await import("../bots/conversations.ts");
@@ -342,7 +342,7 @@ test("an OptChat turn starts fresh from the view: system messages, then the view
   assert.equal(status.usage.calls, 2);
 });
 
-test("the compactor sends the conversation's provider session, so OpenCode routes it instead of the turn waiting forever", { timeout: 45_000 }, async (t) => {
+test("the compactor sends its memory's own provider session, so OpenCode routes it instead of the turn waiting forever", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t, { provider: "opencode-go", opencode: true });
   const host = f.host();
   const { session, id } = await botSession(f, host, "bot-opencode");
@@ -354,7 +354,8 @@ test("the compactor sends the conversation's provider session, so OpenCode route
   const [turn] = await turnRequests(f.log, "OPT_ROUTED_NEXT");
   const routed = (turn as (ProviderRequest & { opencodeSession?: string }) | undefined)?.opencodeSession;
   assert(compactor.length > 0 && routed, JSON.stringify(requests.map((request) => request.opencodeSession)));
-  assert.deepEqual([...new Set(compactor.map((request) => request.opencodeSession))], [routed], "the summaries go as the conversation's own session");
+  assert.deepEqual([...new Set(compactor.map((request) => request.opencodeSession))], [optChatSessionId(id)], "every summary goes as the memory's one session");
+  assert.notEqual(routed, optChatSessionId(id), "apart from the turns' session");
 });
 
 test("the compactor's size loop runs through the provider and keeps the shortest line", { timeout: 45_000 }, async (t) => {
