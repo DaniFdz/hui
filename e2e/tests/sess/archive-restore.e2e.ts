@@ -136,6 +136,7 @@ test("Sessions, Archived restores a tree that stays restored, and a message to a
   await expect(screen.getByLabel(row("Archived plan"))).toBeVisible();
   await tree();
   await hui.reload();
+  await hui.sessionList();
   await expect(screen.getByLabel(row("Archived plan"))).toBeVisible();
   await tree();
 
