@@ -148,24 +148,44 @@ jobs:
           fi
           ls "$ANDROID_AVD_HOME"
           adb start-server
-          "$ANDROID_HOME/emulator/emulator" -avd "$avd" -port 5554 -no-window -no-audio -no-boot-anim \
-            -gpu swiftshader_indirect -no-metrics > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          booted() {
-            adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -qx 1
+          # Every adb call has a deadline: a device that went "offline" makes an unbounded `adb shell` wait forever, which
+          # is how a shard once spent its whole 45-minute budget in this loop without a single diagnostic.
+          adb_sh() { timeout 20 adb -s "$ANDROID_SERIAL" shell "$@" 2>/dev/null | tr -d '\r'; }
+          start_emulator() {
+            "$ANDROID_HOME/emulator/emulator" -avd "$avd" -port 5554 -no-window -no-audio -no-boot-anim \
+              -gpu swiftshader_indirect -no-metrics > "$RUNNER_TEMP/emulator.log" 2>&1 &
+            emulator_pid=$!
           }
-          for _ in $(seq 1 300); do booted && break; sleep 2; done
-          if ! booted; then tail -60 "$RUNNER_TEMP/emulator.log"; echo "::error::the emulator never finished booting"; exit 1; fi
+          alive() { kill -0 "$emulator_pid" 2>/dev/null; }
           # boot_completed comes before the package manager answers, which an install and `am start` need. Never wait on
           # init.svc.bootanim: -no-boot-anim never sets it.
-          answered() {
-            adb -s "$ANDROID_SERIAL" shell pm path android 2>/dev/null | grep -q package:
+          ready() { [ "$(adb_sh getprop sys.boot_completed)" = 1 ] && adb_sh pm path android | grep -q package:; }
+          # Five minutes per attempt; the loop also ends early when the emulator process itself is gone.
+          try_boot() {
+            local deadline=$((SECONDS + 300))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              alive || return 1
+              ready && return 0
+              sleep 3
+            done
+            return 1
           }
-          for _ in $(seq 1 180); do answered && break; sleep 1; done
-          if ! answered; then tail -60 "$RUNNER_TEMP/emulator.log"; echo "::error::the package manager never answered"; exit 1; fi
+          start_emulator
+          if ! try_boot; then
+            tail -80 "$RUNNER_TEMP/emulator.log"
+            echo "::warning::the first boot attempt failed; restarting the emulator once"
+            kill "$emulator_pid" 2>/dev/null || true
+            sleep 5
+            adb kill-server
+            adb start-server
+            start_emulator
+            try_boot || { tail -80 "$RUNNER_TEMP/emulator.log"; echo "::error::the emulator did not boot after two attempts"; exit 1; }
+          fi
           for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
-            adb -s "$ANDROID_SERIAL" shell settings put global "$scale" 0
+            adb -s "$ANDROID_SERIAL" shell settings put global "$scale" 0 || true
           done
           adb devices -l
+          echo "booted in $((SECONDS)) s of this step"
       - name: Run the shared suite in the app's WebView
         env:
           ANDROID_SERIAL: emulator-5554
@@ -182,6 +202,7 @@ jobs:
           path: |
             .e2e/
             /tmp/hui-visual-*/artifacts/
+            ${{ runner.temp }}/emulator.log
           include-hidden-files: true
           if-no-files-found: warn
       - name: Save the AVD snapshot for the next run
