@@ -18,6 +18,8 @@ test("Search sessions filters by title, directory and group, opens collapsed gro
   await hui.createSession({ title: "Upstairs draft", cwd: dirname(hui.workspace) });
 
   await hui.open("/");
+  // The rows, the Search field and the group headers live in the sidebar, which a phone keeps in its drawer.
+  await hui.sessionList();
   await expect(row("Upstairs draft")).toBeVisible();
   await search.fill("miami");
   await expect(row("Miami appearance")).toBeVisible();
@@ -48,6 +50,9 @@ test("Search sessions filters by title, directory and group, opens collapsed gro
   await expect(screen.getByText("No matching sessions.")).toBeVisible();
 
   await search.fill("");
+  // The top bar's Search is behind the drawer the rows above were read from, so the drawer closes before it is tapped;
+  // tapping it opens the drawer again with the field focused.
+  await screen.getByRole("button", { name: "Close navigation", expanded: true }).tap();
   await hui.phoneScreen();
   await screen.getByRole("button", "Search sessions").tap();
   await expect(search).toBeVisible();
@@ -69,6 +74,8 @@ test("Sort by orders rows by Created, Last updated, Name or Stage with pinned fi
   await hui.prompt(bravo, "Bump Bravo");
 
   await hui.open("/");
+  // The rows and Filter & sort live in the sidebar, which a phone keeps in its drawer.
+  await hui.sessionList();
   await expect(screen.getByLabel(/^Bravo sort, status idle, tool durable, stage testing/u)).toBeVisible();
   const before = await registry();
   await expect.poll(order).toEqual(["Charlie sort", "Bravo sort", "Echo sort", "Delta sort", "Alpha sort"]);
@@ -82,6 +89,7 @@ test("Sort by orders rows by Created, Last updated, Name or Stage with pinned fi
   await expect.poll(order).toEqual(["Charlie sort", "Alpha sort", "Bravo sort", "Delta sort", "Echo sort"]);
 
   await hui.reload();
+  await hui.sessionList();
   await expect(screen.getByLabel(/^Bravo sort, status idle, tool durable, stage testing/u)).toBeVisible();
   await expect.poll(order).toEqual(["Charlie sort", "Alpha sort", "Bravo sort", "Delta sort", "Echo sort"]);
   expect(await registry()).toEqual(before);
@@ -98,6 +106,8 @@ test("Group by Project splits rows by directory with only New session, None list
   await hui.createSession({ title: "Third row", group: "Atlas" });
 
   await hui.open("/");
+  // The rows, the group headers and Filter & sort live in the sidebar, which a phone keeps in its drawer.
+  await hui.sessionList();
   await expect(heading("ATLAS")).toBeVisible();
   await expect(screen.getByRole("button", "Group options for Atlas")).toHaveCount(1);
   await expect.poll(order).toEqual(["Third row", "First row", "Second row"]);
@@ -115,6 +125,7 @@ test("Group by Project splits rows by directory with only New session, None list
   await expect(screen.getByLabel("Project directory")).toHaveValue(parent);
   await expect(screen.getByLabel("Choose session group")).toContainText("OTHER");
   await hui.reload();
+  await hui.sessionList();
   await expect(heading(there)).toBeVisible();
   await expect.poll(order).toEqual(["Second row", "Third row", "First row"]);
 
@@ -138,6 +149,8 @@ test("Status shows only sessions in that live status, announces when none match 
   await hui.api("POST", "/__hui/session-groups", { name: "Empty shelf" });
 
   await hui.open("/");
+  // The rows, the group headers and Filter & sort live in the sidebar, which a phone keeps in its drawer.
+  await hui.sessionList();
   await expect(empty).toBeVisible();
   await hui.prompt(busy, "E2E_REPLAY");
   await hui.provider.held();
