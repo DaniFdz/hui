@@ -273,22 +273,22 @@ WP4, and WP8 and WP10 beside WP7. About 6 to 8 working days if CI capacity keeps
 ## 4.5 Phone backlog, as measured
 
 Every use case starts on the phone backlog; an area graduates a test file at a time, on evidence from a run inside the
-Android app's WebView, and the backlog only shrinks. Measured on 2026-11-10:
+Android app's WebView, and the backlog only shrinks. Measured on 2026-11-10, after the first catch-up slices:
 
 | Area | Required | Backlog | Excluded |
 |---|---|---|---|
-| SHELL | 27 | 7 | 8 |
+| SHELL | 24 | 10 | 8 |
 | SESS | 5 | 61 | 10 |
-| CHAT | 1 | 75 | 8 |
+| CHAT | 0 | 76 | 8 |
 | RICH | 0 | 46 | 5 |
 | AGENT | 0 | 58 | 4 |
-| WORK | 5 | 59 | 20 |
+| WORK | 1 | 63 | 20 |
 | BOARD | 0 | 48 | 3 |
-| SET | 4 | 82 | 4 |
+| SET | 3 | 83 | 4 |
 | PAGE | 0 | 24 | 1 |
 | BOT | 0 | 68 | 6 |
 | CALL | 0 | 25 | 1 |
-| **All** | **42** | **553** | **70** |
+| **All** | **33** | **562** | **70** |
 
 What the catch-up learned, which the areas still to do can reuse:
 
