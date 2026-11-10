@@ -795,7 +795,7 @@ The settings document also holds `questions: { timeoutMinutes }`, the question t
 [Structured questions](#structured-questions), `0` (Off) unless 5, 10, 15, 30
 or 60 is saved.
 
-It also includes `calls: { voice }` (Settings → Models → Calls, HUI-18): the GPT-Live
+It also includes `calls: { voice }` (Settings → Models → Calls): the GPT-Live
 voice of a bot without one of its own ([GPT-Live calls](#gpt-live-calls)).
 Anything else normalizes to the default, `{ "voice": "cove" }`. A file saved while
 HUI also had VoiceStudio may hold `calls.engine` and `voice.sendNotesImmediately`:
@@ -1245,7 +1245,7 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `create_session` | `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker; the caller's directory, group, worker, model and thinking are defaults. The brief is the session's first prompt; it is not a child, so `sessions_list` and `sessions_history` do not show it |
+| `create_session` | `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker (its id, its name, or `local` for this machine); the caller's directory, group, worker, model and thinking are defaults. The brief is the session's first prompt; it is not a child, so `sessions_list` and `sessions_history` do not show it |
 | `worker_stats` | `{}`: this machine and every configured worker with CPU, memory, disk, GPU, connection state and running session counts, plus the least loaded connected machine within headroom (CPU under 70%, memory under 80%, disk under 85%, fewer running sessions than half its cores). A disconnected or erroring worker has no metrics and is not recommended; when every machine is over a limit the reply carries `leastLoaded` instead; `local` is the gateway's machine |
 | `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/route or model/thinking, a bounded run timeout and `collect`; a `route` resolves to its model and pinned reasoning level from HUI settings before the child exists, and a route that is unknown, sent together with `model`, or whose model is missing from the caller's available models is rejected before any child is created, naming the route to fix or the configured route names; a raw `model` missing from that catalog names close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
 | `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished, at the timeout (default 600, 1-3600 s), or as soon as a message is steered to the caller (once per change of its steering queue in a tool round), with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId], interrupted?: string }`; `interrupted` says a steered message ended the wait while tasks were pending. An abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
@@ -1704,7 +1704,7 @@ other runtime requests to them return 409 with a message saying why.
 
 ## Bots
 
-A bot (HUI-18) is a named, persistent agent with one forever chat. The chat is
+A bot is a named, persistent agent with one forever chat. The chat is
 an ordinary local Durable session (`tool: "durable"`, `group: ""`, title = the
 bot's name) registered through `createSession`, New Session's path; its record
 carries `bot`. The bot routes below never duplicate the session API: the chat's
@@ -5892,7 +5892,7 @@ last line pup printed (ANSI removed, ≤ 300 characters). HUI stops a sign-in af
 
 ### GPT-Live calls
 
-A call with a bot (HUI-18) is a full-duplex WebRTC session between the browser and GPT-Live
+A call with a bot is a full-duplex WebRTC session between the browser and GPT-Live
 (`gpt-live-1-codex`), over the ChatGPT login HUI keeps for the `openai-codex`
 provider. Calls are with bots only. This is the route ChatGPT's own voice mode uses, not a public API: it may
 change. The gateway sets each call up and keeps the credential; the browser

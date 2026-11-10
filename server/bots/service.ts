@@ -1,5 +1,5 @@
 /**
- * Bots (HUI-18): create, edit, archive, delete and talk to them.
+ * Bots: create, edit, archive, delete and talk to them.
  *
  * A bot's chat is an ordinary Durable session registered through New
  * Session's code path, and its record carries `bot`; the bot registry
@@ -141,7 +141,7 @@ type BotPorts = {
 };
 
 /**
- * Remote workers' half of the bots that run on them (HUI-18): each worker's own Durable store holds their conversations
+ * Remote workers' half of the bots that run on them: each worker's own Durable store holds their conversations
  * and memories, and its HUI data directory their home folders with SOUL.md, reached through its host (`remote.ts`),
  * only over a live connection; nothing here connects one.
  */

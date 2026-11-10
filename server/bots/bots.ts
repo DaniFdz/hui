@@ -1,5 +1,5 @@
 /**
- * HUI's bot registry (HUI-18).
+ * HUI's bot registry.
  *
  * A bot is a named, persistent agent whose one chat is an ordinary Durable
  * session (its record carries `bot`). Only HUI writes this file; the chat's

@@ -102,7 +102,9 @@ async function createSession(
   if (body["worker"] !== undefined && (typeof body["worker"] !== "string" || !body["worker"].trim())) {
     throw new Error("Worker must be a worker id.");
   }
-  const worker = typeof body["worker"] === "string" ? body["worker"].trim() : undefined;
+  // `worker_stats` calls this machine `local`, which is no entry in workers.json: a session there records no worker.
+  const asked = typeof body["worker"] === "string" ? body["worker"].trim() : undefined;
+  const worker = asked === "local" ? undefined : asked;
   let cwd: string;
   if (worker) {
     // The remote checks the directory when the session starts, so creating

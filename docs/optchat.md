@@ -27,7 +27,7 @@ HUI implements it in two parts:
   per Durable conversation that enables it, kept current from the conversation's
   entries, and a fresh-turn request for each of its generations.
 
-Bots use it (roadmap HUI-18): a bot's chat enables it in the commit that
+Bots use it: a bot's chat enables it in the commit that
 creates its conversation, and `hui bot history`, `hui bot memory --zoom`/
 `--html` and the `/__hui/bots/:id/memory` routes ([api.md](api.md#bots)) read it
 through `DurableHost.optchat`. It is the chat's **history**: a bot's curated

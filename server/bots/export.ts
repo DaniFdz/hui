@@ -1,5 +1,5 @@
 /**
- * Exporting a bot as a template someone else imports (HUI-18; SPEC.md, "Bot exports are templates, reviewed for
+ * Exporting a bot as a template someone else imports (SPEC.md, "Bot exports are templates, reviewed for
  * personal information"; the contract is docs/api.md#importing-and-exporting-bots).
  *
  * `review` reads what of the bot would travel (its profile, SOUL.md, its own skills' folders, routines, triggers and
