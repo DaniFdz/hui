@@ -402,6 +402,28 @@ user-facing half; this is what the build assumes.
   it and the source repeats it exactly, but whether SideStore compares such a version and offers the update is not
   proven; the stable channel's numeric version is the one to rely on until someone tries a nightly on a device.
 
+## Proving a phone change in CI
+
+The local emulator loop above is for one-off checks, on a machine that can spare the cores: **one emulator at a time**,
+and stop it with `ANDROID_SERIAL=emulator-55xx npm run mobile -- stop` when you are done. The regular proof of a phone
+change runs on GitHub's runners instead of yours:
+
+```sh
+gh workflow run mobile.yml --repo DaniFdz/hui --ref <your-branch> -f scope=all   # or scope=required
+gh run list --repo DaniFdz/hui --branch <your-branch> --workflow Mobile --limit 1
+gh run watch <run-id> --repo DaniFdz/hui
+gh run download <run-id> --repo DaniFdz/hui -n e2e-android-0 -D /tmp/phone-run
+```
+
+- `scope=required` (the default, and what a push or a pull request runs) runs only the use cases the catalogue says the
+  phone proves; the job is green when those pass.
+- `scope=all` runs the whole suite in the app's WebView and uploads every shard's `.e2e/` whether it passed or not. Read
+  a backlog area's real failures from `/tmp/phone-run/.../.e2e/results/<test>/trace.md` and its screen dump, fix them,
+  push, and dispatch again. That is the loop a phone catch-up uses: no emulator on your machine, and the same runner the
+  project's CI uses.
+- The `Mobile` workflow's `android-e2e` job needs the debug APK, which the same workflow's `android-build` job builds
+  in the same run.
+
 ## Rules
 
 - One package, one branch, one worktree; no pull request per package (the orchestrator merges).

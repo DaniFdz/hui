@@ -18,7 +18,15 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/mobile.yml"
+  # A phone-catch-up branch has no emulator of its own: it dispatches this workflow on itself with scope=all and reads
+  # the failures (and their traces) from the run's artifacts. See mobile/AGENTS.md, "Proving a phone change in CI".
   workflow_dispatch:
+    inputs:
+      scope:
+        description: "Which use cases the android target runs"
+        type: choice
+        options: [required, all]
+        default: required
 permissions:
   contents: read
 concurrency:
@@ -202,16 +210,19 @@ jobs:
           E2E_TELEMETRY_DISABLED: "1"
         run: |
           set -euo pipefail
-          # While the phone backlog is open the catalogue names no required id, so the shard runs the whole suite: its
-          # failures ARE the backlog a WP7 area works from. Once ids are required, only those run here.
+          # `required` runs only the use cases the catalogue says the phone proves, plus nothing else: the job is green
+          # when those pass. `all` (a dispatch from a catch-up branch) runs everything, which is how a worker reads a
+          # backlog area's real failures from the artifacts without an emulator on their own machine.
+          scope="${{ inputs.scope || 'required' }}"
           tags=$(node e2e/catalogue/phone.ts)
-          if [ -n "$tags" ]; then
-            npx e2e run --target android --shard "${{ matrix.shard }}" --tag "$tags"
-          else
+          if [ "$scope" = "all" ] || [ -z "$tags" ]; then
             npx e2e run --target android --shard "${{ matrix.shard }}"
+          else
+            npx e2e run --target android --shard "${{ matrix.shard }}" --tag "$tags"
           fi
       # The suite's traces and screenshots and the launcher's gateway logs, which is where a phone failure is read.
-      - if: ${{ failure() }}
+      # Uploaded whether the run passed or not: a catch-up dispatch is read from here.
+      - if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-android-${{ strategy.job-index }}
