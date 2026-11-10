@@ -50,7 +50,12 @@ test("the utility model names a new session from its first prompt and answers /b
     await screen.getByPlaceholder("What should this session work on?").fill("Plan the release notes");
     await screen.getByRole("button", "Start session").tap();
     await expect(transcript.getByText("Fixture response.")).toBeVisible();
-    await expect(screen.getByTestId("session-title", { visible: true })).toHaveText(title);
+    // A phone replaces the conversation's title with its panel picker, so the row that names the session is the check
+    // both widths can make.
+    await hui.sessionList();
+    await expect(screen.getByTestId("session-row").filter({ hasText: title })).toBeVisible();
+    // The drawer makes the page behind it inert, so the conversation is opened again for the steps that follow.
+    await hui.open(new URL(await hui.url()).pathname);
   };
   await start("", "Plan the release notes");
   await start("hui-e2e/anthropic/claude-opus-5-5", "Improve session naming");

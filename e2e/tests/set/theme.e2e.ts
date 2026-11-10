@@ -12,6 +12,8 @@ test("a theme card recolours the app at once in dark and light mode, stays chose
 
   await hui.deviceAppearance("dark");
   await hui.open("/");
+  // The primary navigation is the sidebar, which a phone keeps in its drawer: a closed drawer has no box to read.
+  await hui.sessionList();
   const clawHome = await hui.look(home);
   await hui.open("/settings/appearance");
   for (const name of ["Catppuccin", "Claw", "Dracula", "HUI", "Miami", "Rose (OpenClaw)"]) await expect(screen.getByRole("button", name)).toBeVisible();
@@ -32,6 +34,7 @@ test("a theme card recolours the app at once in dark and light mode, stays chose
   expect((await hui.look(title)).background).toEqual(MIAMI_DARK);
   await hui.settingsPages();
   await screen.getByRole("button", "Exit Settings").tap();
+  await hui.sessionList();
   expect((await hui.look(home)).background).not.toEqual(clawHome.background);
   await hui.open("/settings/appearance");
   await expect(card("Miami")).toBeVisible();

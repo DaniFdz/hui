@@ -103,32 +103,53 @@ test("Text size scales every text size in the interface together (Settings, the 
   const transcript = screen.getByTestId("transcript");
   const session = await hui.createSession({ title: "Scaled" });
   await hui.prompt(session, "E2E_MARKDOWN_PARITY");
-  const settingsText = () => [screen.getByText("Message width", { exact: true }), screen.getByText("Controls the maximum width of the conversation and composer."), screen.getByLabel("Settings pages").getByText("Gateway")];
-  const sessionText = () => [transcript.getByText("Final paragraph."), transcript.getByText("inline code"), screen.getByLabel("Message"), screen.getByTestId("session-row").getByText("Scaled", { exact: true })];
+  // A phone keeps the page list and the session rows in drawers, so each part is read in the arrangement that shows it:
+  // the drawer's own items while it is open, then the conversation and composer behind it.
+  const settingsText = () => [screen.getByText("Message width", { exact: true }), screen.getByText("Controls the maximum width of the conversation and composer.")];
+  const settingsList = () => [screen.getByLabel("Settings pages").getByText("Gateway")];
+  const sessionText = () => [transcript.getByText("Final paragraph."), transcript.getByText("inline code"), screen.getByLabel("Message")];
+  const sessionList = () => [screen.getByTestId("session-row").getByText("Scaled", { exact: true })];
   const measure = async (targets: Locator[]) => Promise.all(targets.map(async (target) => Math.round((await hui.look(target)).size * 100) / 100));
   const scaled = (sizes: number[], factor: number) => sizes.map((size) => Math.round(size * factor * 100) / 100);
+  const inSettingsDrawer = async () => {
+    await hui.settingsPages();
+    const sizes = await measure(settingsList());
+    // The open drawer covers the page, so the Settings page is opened again for the steps that follow.
+    await hui.open("/settings/appearance");
+    return sizes;
+  };
+  const inSessionDrawer = async () => {
+    await hui.sessionList();
+    return measure(sessionList());
+  };
 
   await hui.open(`/sessions/${session.id}`);
   await expect(transcript.getByText("Final paragraph.")).toBeVisible();
-  const sessionPage = await measure(sessionText());
+  const chatText = await measure(sessionText());
+  const chatList = await inSessionDrawer();
   await hui.open("/settings/appearance");
   for (const name of ["Small 90%", "Large 110%", "XL 125%", "XXL 140%"]) await expect(sizes.getByRole("button", { name, pressed: false })).toBeVisible();
   await expect(sizes.getByRole("button", { name: "Default 100%", pressed: true })).toBeVisible();
   const settings = await measure(settingsText());
+  const pageList = await inSettingsDrawer();
 
   await sizes.getByRole("button", "XL 125%").tap();
   await expect(sizes.getByRole("button", { name: "XL 125%", pressed: true })).toBeVisible();
   await expect.poll(() => measure(settingsText())).toEqual(scaled(settings, 1.25));
+  expect(await inSettingsDrawer()).toEqual(scaled(pageList, 1.25));
   await hui.open(`/sessions/${session.id}`);
   await expect(transcript.getByText("Final paragraph.")).toBeVisible();
-  expect(await measure(sessionText())).toEqual(scaled(sessionPage, 1.25));
+  expect(await measure(sessionText())).toEqual(scaled(chatText, 1.25));
+  await expect.poll(inSessionDrawer).toEqual(scaled(chatList, 1.25));
 
   await hui.reload();
   await expect(transcript.getByText("Final paragraph.")).toBeVisible();
-  expect(await measure(sessionText())).toEqual(scaled(sessionPage, 1.25));
+  expect(await measure(sessionText())).toEqual(scaled(chatText, 1.25));
+  await expect.poll(inSessionDrawer).toEqual(scaled(chatList, 1.25));
   await hui.open("/settings/appearance");
   await expect(sizes.getByRole("button", { name: "XL 125%", pressed: true })).toBeVisible();
 
   await sizes.getByRole("button", "Small 90%").tap();
   await expect.poll(() => measure(settingsText())).toEqual(scaled(settings, 0.9));
+  expect(await inSettingsDrawer()).toEqual(scaled(pageList, 0.9));
 });
