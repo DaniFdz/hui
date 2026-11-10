@@ -11,11 +11,11 @@ const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stri
  * in. A document that reloaded would report a new `timeOrigin`; one that kept its state reports the same count.
  */
 const THEMED = `<div id="themed">
-<button type="button" class="primary" id="add">Add one</button><output id="count" data-testid="count" aria-live="polite">0</output>
-<output id="mode" data-testid="mode"></output>
-<output id="swatch" data-testid="swatch" style="background:var(--surface)"></output>
-<output id="page" data-testid="page"></output>
-<output id="origin" data-testid="origin"></output>
+<button type="button" class="primary" id="add">Add one</button><output id="count" aria-label="Probe count" aria-live="polite">0</output>
+<output id="mode" aria-label="Probe mode"></output>
+<output id="swatch" aria-label="Probe background" style="background:var(--surface)"></output>
+<output id="page" aria-label="Probe behind"></output>
+<output id="origin" aria-label="Probe origin"></output>
 </div>
 <script>
 const report = () => {
@@ -42,9 +42,9 @@ const rgb = (value: string): number[] => {
   return channels.slice(1, 4).map(Number);
 };
 
-const read = async (hui: Hui, field: string) => {
+const read = async (hui: Hui, label: string) => {
   const inside = await widget(hui);
-  return (await inside.getByTestId(field).textContent()) ?? "";
+  return (await inside.getByLabel(label).textContent()) ?? "";
 };
 
 test("A light-to-dark switch re-themes the widget in place with HUI's colors on a transparent background, without reloading it or losing its state", { tags: ["RICH-053"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -58,8 +58,8 @@ test("A light-to-dark switch re-themes the widget in place with HUI's colors on 
   const inside = await widget(hui);
   await inside.getByRole("button", "Add one").tap();
   await inside.getByRole("button", "Add one").tap();
-  await expect(inside.getByTestId("count")).toHaveText("2");
-  const light = { mode: await read(hui, "mode"), swatch: await read(hui, "swatch"), page: await read(hui, "page"), origin: await read(hui, "origin") };
+  await expect(inside.getByLabel("Probe count")).toHaveText("2");
+  const light = { mode: await read(hui, "Probe mode"), swatch: await read(hui, "Probe background"), page: await read(hui, "Probe behind"), origin: await read(hui, "Probe origin") };
   expect(light.mode).toBe("light");
   // The widget paints HUI's background token, and nothing of its own behind it.
   expect(rgb(light.swatch).every((channel) => channel > 200)).toBe(true);
@@ -68,22 +68,22 @@ test("A light-to-dark switch re-themes the widget in place with HUI's colors on 
   // The device turns dark, which is the switch a reader makes in Settings → Appearance.
   await hui.deviceAppearance("dark");
   await expect.poll(() => hui.appearance()).toBe("dark");
-  await expect(inside.getByTestId("mode")).toHaveText("dark");
-  const dark = { swatch: await read(hui, "swatch"), page: await read(hui, "page") };
+  await expect(inside.getByLabel("Probe mode")).toHaveText("dark");
+  const dark = { swatch: await read(hui, "Probe background"), page: await read(hui, "Probe behind") };
   expect(rgb(dark.swatch).every((channel) => channel < 80)).toBe(true);
   expect(dark.swatch).not.toBe(light.swatch);
   // Same document, same state: the widget was re-themed in place, not reloaded.
-  expect(await read(hui, "origin")).toBe(light.origin);
+  expect(await read(hui, "Probe origin")).toBe(light.origin);
   expect(dark.page).toBe("rgba(0, 0, 0, 0)");
-  await expect(inside.getByTestId("count")).toHaveText("2");
+  await expect(inside.getByLabel("Probe count")).toHaveText("2");
   await inside.getByRole("button", "Add one").tap();
-  await expect(inside.getByTestId("count")).toHaveText("3");
+  await expect(inside.getByLabel("Probe count")).toHaveText("3");
 
   // And back again, still in the same document.
   await hui.deviceAppearance("light");
   await expect.poll(() => hui.appearance()).toBe("light");
-  await expect(inside.getByTestId("mode")).toHaveText("light");
-  expect(await read(hui, "swatch")).toBe(light.swatch);
-  expect(await read(hui, "origin")).toBe(light.origin);
-  await expect(inside.getByTestId("count")).toHaveText("3");
+  await expect(inside.getByLabel("Probe mode")).toHaveText("light");
+  expect(await read(hui, "Probe background")).toBe(light.swatch);
+  expect(await read(hui, "Probe origin")).toBe(light.origin);
+  await expect(inside.getByLabel("Probe count")).toHaveText("3");
 });
