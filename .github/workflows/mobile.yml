@@ -60,3 +60,89 @@ jobs:
           name: hui-android-debug
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+  # The iOS half has no local loop on Linux: this job is the whole proof. Spike S3 measured the runner (macos-26-arm64,
+  # Xcode 26.6, iOS 26.x runtimes only), the build (44-64 s), the simulator boot (92-120 s) and a 6m15s job. It runs on
+  # the shell's own paths, not on every PR, because macOS minutes cost about ten times Linux ones.
+  ios-smoke:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
+      - run: npm run mobile:build
+      - run: npx cap sync ios
+      # Boot while the build runs: the boot is longer than the build, so it must not queue behind it.
+      - name: Boot a simulator in the background
+        run: |
+          set -euo pipefail
+          device=$(xcrun simctl list devices available | grep -E "iPhone [0-9]+" | head -1 | sed -E 's/^ +//; s/ \(.*//')
+          runtime=$(xcrun simctl list runtimes | grep -E "iOS [0-9]+" | tail -1 | sed -E 's/.*iOS ([0-9]+)\..*/iOS \1/')
+          udid=$(xcrun simctl list devices available | grep -F "$device (" | head -1 | grep -oE '[0-9A-F-]{36}')
+          echo "device=$device udid=$udid runtime=$runtime"
+          echo "HUI_IOS_UDID=$udid" >> "$GITHUB_ENV"
+          (xcrun simctl boot "$udid" || true) 
+          (xcrun simctl bootstatus "$udid" -b > "$RUNNER_TEMP/boot.log" 2>&1 &)
+      - name: Build for the simulator
+        run: |
+          set -euo pipefail
+          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/iosbuild" CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/xcodebuild.log" | tail -20
+      - name: Launch it against a fixture gateway and capture the screens
+        run: |
+          set -euo pipefail
+          node e2e/visual-verification.mjs launch --branch "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" --port 47500 \
+            --receipt-dir "$RUNNER_TEMP/receipt" --fast-fixture > "$RUNNER_TEMP/gateway.log" 2>&1 &
+          for _ in $(seq 1 90); do [ -f "$RUNNER_TEMP/receipt/receipt-47500.json" ] && break; sleep 2; done
+          node -e '
+            const receipt = require(process.env.RUNNER_TEMP + "/receipt/receipt-47500.json");
+            const { execFileSync } = require("node:child_process");
+            const api = async (method, path, body) => {
+              const answer = await fetch(receipt.url + path, { method, headers: { "x-hui": "1", "content-type": "application/json" }, body: body && JSON.stringify(body) });
+              if (!answer.ok) throw new Error(method + " " + path + " answered " + answer.status);
+              return answer.json();
+            };
+            for (const title of ["Fix the flaky upload test", "Plan the Android app"]) {
+              execFileSync("node", ["-e", "0"], { stdio: "ignore" });
+              await api("POST", "/__hui/sessions", { cwd: receipt.workspace, title, group: "Work" });
+            }
+          '
+          xcrun simctl bootstatus "$HUI_IOS_UDID" -b
+          app=$(find "$RUNNER_TEMP/iosbuild/Build/Products" -name "App.app" -maxdepth 3 | head -1)
+          echo "app=$app"
+          xcrun simctl install "$HUI_IOS_UDID" "$app"
+          mkdir -p "$RUNNER_TEMP/shots"
+          # Connect to HUI first: a launch with no gateway argument and no remembered one.
+          xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app
+          # Poll for a page instead of sleeping: S3 saw the splash at 3 s and the page by 8 s.
+          for i in $(seq 1 12); do
+            sleep 2
+            xcrun simctl io "$HUI_IOS_UDID" screenshot "$RUNNER_TEMP/shots/connect-$i.png" >/dev/null 2>&1 || true
+          done
+          xcrun simctl terminate "$HUI_IOS_UDID" dev.hui.app || true
+          xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app -HUIGatewayURL http://127.0.0.1:47500
+          for i in $(seq 1 12); do
+            sleep 2
+            xcrun simctl io "$HUI_IOS_UDID" screenshot "$RUNNER_TEMP/shots/gateway-$i.png" >/dev/null 2>&1 || true
+          done
+          ls -la "$RUNNER_TEMP/shots"
+          # The session list must be on screen: the last frame has to differ from the first (a blank or stuck splash does not).
+          if cmp -s "$RUNNER_TEMP/shots/gateway-1.png" "$RUNNER_TEMP/shots/gateway-12.png"; then
+            echo "::error::the app never left its first frame after the gateway launch"; exit 1
+          fi
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-smoke
+          path: |
+            ${{ runner.temp }}/shots/
+            ${{ runner.temp }}/xcodebuild.log
+            ${{ runner.temp }}/gateway.log
+            ${{ runner.temp }}/boot.log
+          if-no-files-found: warn
