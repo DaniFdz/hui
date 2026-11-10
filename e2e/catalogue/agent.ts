@@ -518,6 +518,15 @@ const cases: UseCase[] = [
     web: "backlog",
   },
   {
+    id: "AGENT-073",
+    title: "Screenshot a page with its refs numbered",
+    behaviour: "An agent captures a screenshot with annotate: true and each element the latest snapshot bound to a ref is boxed and numbered (3 is e3), limited to what the viewport or full page shows and 40 labels. The overlay is removed before the call returns, so the page and its refs are unchanged, and the result says how many numbers it drew.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
     id: "AGENT-072",
     title: "List a page's cookies and storage without their values",
     behaviour: "An agent asks what a page keeps: storage what cookies lists the cookies for the tab's URL with their flags, SameSite, expiry, size and path, and what local or session lists storage keys with value sizes. Values are never read, a filter narrows by name, and an empty result is explained.",

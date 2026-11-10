@@ -93,6 +93,32 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Annotated screenshots
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_ANNOTATE` opens a page with two buttons and a link, captures it with
+`screenshot { annotate: true, path: "shots/annotated.png" }`, checks that the
+overlay is gone, and then clicks a ref from the snapshot it was numbered from.
+
+- The call read "Screenshot of the viewport (1280×800) … Annotated with 3
+  numbers: a number marks the ref with the same digits (3 is e3). Saved to …"
+- The saved PNG shows numbered red boxes over `Save draft` (1), `Send` (2) and
+  `Open details` (3), which are refs `e1`, `e2` and `e3` of the snapshot `open`
+  returned: the picture and the refs the agent acts on line up.
+- Afterwards `get count` of `[data-hui-annotations]` returned 0 and `get text` of
+  the page's note read `unchanged`, so the page was left as it was; clicking `e1`
+  then changed the note to `clicked`, proving the refs still act.
+- The reply read "The annotated picture drew 3 numbers, its overlay was gone
+  afterwards, and the refs still acted."
+- The first attempt failed for two real reasons, both fixed here: a duplicated
+  `what` property in the tool schema (added for `storage`) had narrowed `get`'s
+  `what` to storage's values, so every `get` failed in the app even though the
+  manager's own tests pass; `server/runtimes/browser-tool-extension.test.ts` now
+  validates a call for every action against the tool schema.
+- `server/browser/manager.test.ts` covers the plain and annotated pictures
+  differing, the overlay removed, the refs still acting, the saved PNG, and a
+  single-element capture refusing `annotate`.
+
 ## What a page keeps
 
 Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt

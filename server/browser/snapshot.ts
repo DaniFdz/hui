@@ -69,6 +69,11 @@ export class SnapshotRefs {
   get size(): number {
     return this.#targets.size;
   }
+
+  /** Every ref this document holds, in the order they were numbered. */
+  entries(): Array<{ ref: string; target: SnapshotTarget }> {
+    return [...this.#targets.entries()].map(([ref, target]) => ({ ref, target }));
+  }
 }
 
 export type SnapshotOptions = {

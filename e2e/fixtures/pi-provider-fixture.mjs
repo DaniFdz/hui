@@ -262,6 +262,20 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(HANDOFF_FIXTURE_PAGE);
   }
+  if (request.method === "GET" && url.pathname === "/browser-annotate-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI annotate fixture</title>
+      <h1>HUI annotate fixture</h1>
+      <p id="note">unchanged</p>
+      <button id="save">Save draft</button>
+      <button id="send">Send</button>
+      <a href="#details">Open details</a>
+      <script>
+        document.getElementById("save").addEventListener("click", () => {
+          document.getElementById("note").textContent = "clicked";
+        });
+      </script>`);
+  }
   if (request.method === "GET" && url.pathname === "/browser-storage-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(`<!doctype html><title>HUI storage fixture</title>
@@ -723,6 +737,41 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent captures a picture whose numbers are the refs it can act on.
+  if (source.includes("E2E_BROWSER_ANNOTATE") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-annotate-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-annotate-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-annotate-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-annotate-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      open: ["shot", { action: "screenshot", annotate: true, path: "shots/annotated.png" }],
+      shot: ["count", { action: "get", what: "count", selector: "[data-hui-annotations]" }],
+      count: ["click", { action: "act", kind: "click", ref: ref(/button "Save draft" \[ref=(e\d+)\]/u) }],
+      click: ["note", { action: "get", what: "text", selector: "#note" }],
+    }[step];
+    if (next && (next[1].action !== "act" || next[1].ref)) {
+      toolUse(response, `tool-e2e-annotate-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const numbers = Number(/Annotated with (\d+) numbers?/u.exec(results)?.[1]);
+    const saved = /Saved to [^\n]*shots\/annotated\.png/u.test(results);
+    const cleaned = /0 elements match \[data-hui-annotations\]/u.test(results);
+    const stillActs = /note of .*: "clicked"/u.test(results) || /clicked/u.test(results);
+    text(response, numbers >= 3 && saved && cleaned && stillActs
+      ? `The annotated picture drew ${numbers} numbers, its overlay was gone afterwards, and the refs still acted.`
+      : `The annotate check did not complete: numbers=${numbers}, saved=${saved}, cleaned=${cleaned}, acts=${stillActs}.`);
+    return finish(response);
+  }
+
   // The agent lists a page's cookies and storage without their values.
   if (source.includes("E2E_BROWSER_STORAGE") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -1004,7 +1053,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("E2E_BROWSER_SKILL") && !source.includes("E2E_BROWSER_STORAGE") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("E2E_BROWSER_SKILL") && !source.includes("E2E_BROWSER_STORAGE") && !source.includes("E2E_BROWSER_ANNOTATE") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);
