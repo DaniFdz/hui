@@ -13,6 +13,9 @@ test("New group in the toolbar or a group's menu creates a group above OTHER eve
   const newGroup = screen.getByRole("button", "New group");
   const name = screen.getByLabel("Group name");
   const search = screen.getByPlaceholder("Search sessions");
+  // The control a group's dialog came from holds focus again: the toolbar's New group on the wide layout, and the
+  // drawer's opener on a phone, which closed before the dialog opened (the test below is that case).
+  const dialogOpener = screen.getByRole("button", /^(New group|Open navigation)$/u, { visible: true });
   const rows = () => screen.getByLabel(/^(Alpha older|Zulu newer), status/u).allTextContents();
   const choose = async (choice: string) => {
     await screen.getByRole("button", "Filter & sort").tap();
@@ -22,6 +25,8 @@ test("New group in the toolbar or a group's menu creates a group above OTHER eve
   await hui.createSession({ title: "Zulu newer" });
 
   await hui.open("/");
+  // The rows, the filters and the toolbar live in the sidebar, which a phone keeps in its drawer.
+  await hui.sessionList();
   await expect.poll(rows).toEqual(["Zulu newer", "Alpha older"]);
   await choose("Name");
   await expect.poll(rows).toEqual(["Alpha older", "Zulu newer"]);
@@ -34,9 +39,11 @@ test("New group in the toolbar or a group's menu creates a group above OTHER eve
   await expect(name).toBeFocused();
   await name.fill("Research Lab");
   await screen.getByRole("button", "Create group").tap();
+  await expect(dialogOpener).toBeFocused();
+  // Creating a group closes the drawer it came from on a phone, so the group and the rows are read again from there.
+  await hui.sessionList();
   await expect(screen.getByRole("button", "RESEARCH LAB")).toBeVisible();
   await expect.poll(() => screen.getByRole("button", /^(RESEARCH LAB|OTHER)$/u).allTextContents()).toEqual(["RESEARCH LAB", "OTHER"]);
-  await expect(newGroup).toBeFocused();
   await expect(search).toHaveValue("");
   await expect.poll(rows).toEqual(["Alpha older", "Zulu newer"]);
 
@@ -44,6 +51,7 @@ test("New group in the toolbar or a group's menu creates a group above OTHER eve
   await expect(name).toBeFocused();
   await name.fill("Field Notes");
   await screen.getByRole("button", "Create group").tap();
+  await hui.sessionList();
   await expect(screen.getByRole("button", "FIELD NOTES")).toBeVisible();
 
   await newGroup.tap();
@@ -82,11 +90,15 @@ test("a renamed group keeps its casing and its rows, collapses across a reload, 
   await hui.createSession({ title: "Outside session" });
 
   await hui.open("/");
+  // The rows and the group headers live in the sidebar, which a phone keeps in its drawer.
+  await hui.sessionList();
   await expect(alpha).toBeVisible();
   await groupMenu(screen, hui, "Sprint 03", "Rename group");
   await expect(name).toHaveValue("Sprint 03");
   await name.fill("Archive 03");
   await screen.getByRole("button", "Save").tap();
+  // The dialog closed the drawer it came from on a phone, so the renamed header is read again from a reopened list.
+  await hui.sessionList();
   await expect(screen.getByRole("button", "ARCHIVE 03")).toBeVisible();
   await expect(screen.getByRole("button", "SPRINT 03")).toBeHidden();
 
@@ -96,6 +108,7 @@ test("a renamed group keeps its casing and its rows, collapses across a reload, 
   await expect(alpha).toBeHidden();
   await expect(beta).toBeHidden();
   await hui.reload();
+  await hui.sessionList();
   await expect(outside).toBeVisible();
   await expect(alpha).toBeHidden();
   await archive.tap();
@@ -111,6 +124,7 @@ test("a renamed group keeps its casing and its rows, collapses across a reload, 
   await expect(screen.getByText("The group is removed. Its sessions move back to OTHER.")).toBeVisible();
   await screen.getByRole("button", "Delete").tap();
   await expect(screen.getByText("The group is removed. Its sessions move back to OTHER.")).toBeHidden();
+  await hui.sessionList();
   await expect(archive).toBeHidden();
   const other = screen.getByRole("button", "OTHER");
   await expect(outside).toBeVisible();
@@ -129,6 +143,8 @@ test("dragging headers or Move group up and down reorders custom groups across a
   await hui.createSession({ title: "Other row" });
 
   await hui.open("/");
+  // The group headers live in the sidebar, which a phone keeps in its drawer.
+  await hui.sessionList();
   await expect.poll(order).toEqual(["FIRST LANE", "SECOND LANE", "THIRD LANE", "OTHER"]);
   await header("FIRST LANE").dragTo(screen.getByTestId("session-row").filter({ hasText: "Third lane row" }));
   await expect(screen.getByText("Moved FIRST LANE.")).toBeVisible();
@@ -153,6 +169,7 @@ test("dragging headers or Move group up and down reorders custom groups across a
   await expect.poll(order).toEqual(["THIRD LANE", "FIRST LANE", "SECOND LANE", "OTHER"]);
 
   await hui.reload();
+  await hui.sessionList();
   await expect(header("THIRD LANE")).toBeVisible();
   await expect.poll(order).toEqual(["THIRD LANE", "FIRST LANE", "SECOND LANE", "OTHER"]);
 });
