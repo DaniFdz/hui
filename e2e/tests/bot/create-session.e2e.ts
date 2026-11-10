@@ -10,6 +10,7 @@ test("a Chief of Staff creates an ordinary session in a group, not a child", { t
   const chief = (await hui.api<{ bots: Array<{ name: string; sessionId: string }> }>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
   const source = { id: chief.sessionId };
   const repo = await hui.repository();
+  try {
   const group = "Created by an agent";
   await hui.prompt(source, call("create_session", {
     prompt: "Report that an agent created you.",
@@ -31,6 +32,11 @@ test("a Chief of Staff creates an ordinary session in a group, not a child", { t
   expect(created?.cwd).not.toBe(repo.path);
   await hui.open("/");
   await expect(screen.getByLabel(/^Created by an agent, status/)).toBeVisible();
+  await expect.poll(async () => (await hui.api<{ groups: Array<{ sessions: ListedSession[] }> }>("GET", "/__hui/sessions"))
+    .groups.flatMap((entry) => entry.sessions).find((session) => session.id === chief.sessionId)?.status, { timeout: 30_000 }).toBe("idle");
+  } finally {
+    await hui.api("PATCH", `/__hui/sessions/${chief.sessionId}`, { unread: false });
+  }
 });
 
 test("a normal agent cannot create an ordinary session", { tags: ["BOT-073"], platforms: ["web"] }, async ({ hui }) => {
