@@ -8,7 +8,7 @@ import { test, type Hui } from "../../fixtures/hui.ts";
 const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
 
 /** The counter keeps its count inside the sandbox, so a live document counts up and a new one starts again at zero. */
-const COUNTER = `<div id="counter"><button type="button" class="primary" id="add">Add one</button><output id="count" data-testid="count" aria-live="polite">0</output></div>
+const COUNTER = `<div id="counter"><button type="button" class="primary" id="add">Add one</button><output id="count" aria-label="Probe count" aria-live="polite">0</output></div>
 <script>
 let count = 0;
 document.getElementById("add").addEventListener("click", () => {
@@ -31,7 +31,7 @@ const widget = async (hui: Hui, index = 0) => (await hui.frame(`iframe.hui-widge
 const counts = async (hui: Hui, index = 0) => {
   const inside = await widget(hui, index);
   await inside.getByRole("button", "Add one").tap();
-  await expect(inside.getByTestId("count")).toHaveText("1");
+  await expect(inside.getByLabel("Probe count")).toHaveText("1");
 };
 
 test("A widget comes back, still interactive, after a reload, Back and Forward between sessions and a gateway restart, and one that leaves its frame or cannot start says why and retries", { tags: ["RICH-060"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -61,13 +61,17 @@ test("A widget comes back, still interactive, after a reload, Back and Forward b
   await expect(card.getByText("Interactive widget · sandboxed")).toBeVisible();
   await counts(hui);
 
-  // A gateway restart: the app reconnects, the session settles and the widget is live again.
+  // A gateway restart: a turn written before it comes back from the restarted gateway as a working widget.
+  const written = await hui.createSession({ title: "Written before the restart" });
+  await hui.prompt(written, call("show_widget", { title: "Restarted counter", widget_code: COUNTER }));
   await hui.restartGateway();
-  await expect(screen.getByRole("status", "Session status: Idle")).toBeVisible();
-  await expect(card.getByText("Interactive widget · sandboxed")).toBeVisible();
+  await hui.open(`/sessions/${written.id}`);
+  await expect(screen.getByLabel("Widget: Restarted counter").getByText("Interactive widget · sandboxed")).toBeVisible();
   await counts(hui);
 
   // A widget that navigates its own frame stops with the reason, and Retry loads it again.
+  await hui.open(`/sessions/${session.id}`);
+  await expect(card.getByText("Interactive widget · sandboxed")).toBeVisible();
   await hui.prompt(session, call("show_widget", { title: "Leaver", widget_code: LEAVES }));
   const leaver = screen.getByLabel("Widget: Leaver");
   await expect(leaver.getByText("Interactive widget · sandboxed")).toBeVisible();
