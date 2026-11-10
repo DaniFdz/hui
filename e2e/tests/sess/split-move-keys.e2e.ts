@@ -11,6 +11,7 @@ test("the arrow keys on a focused Move panel handle move the pane a column acros
 
   await hui.open(`/sessions/${first.id}`);
   await screen.getByRole("button", "Open split view").tap();
+  await hui.sessionList();
   await (await hui.sessionMenu("Neighbour pane")).getByText("Open in split pane", { visible: true }).tap();
   await expect(panes).toHaveCount(3);
   await expect(panes.nth(2).getByTestId("session-title")).toHaveText("Neighbour pane");

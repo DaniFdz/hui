@@ -3,6 +3,7 @@ import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
 const groupMenu = async (screen: Screen, hui: Hui, label: string, item: string) => {
+  await hui.sessionList();
   await hui.peek(screen.getByRole("button", label.toLocaleUpperCase()));
   await screen.getByRole("button", `Group options for ${label}`).tap();
   await screen.getByText(item, { visible: true }).tap();

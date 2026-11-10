@@ -10,6 +10,7 @@ test("Remove from HUI deletes only the tree's registry rows, leaving the PI tran
   // A bot's chat is a session record the Bots tab owns: the seeded Chief of Staff is not part of this tree.
   const listed = async () => (await hui.api<Listed>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions).filter((session) => !session.bot);
   const remove = async (title: string) => {
+    await hui.sessionList();
     await hui.sessionMenu(title);
     await screen.getByText("Delete…", { visible: true }).tap();
     await expect(screen.getByText(`Remove ${title} from HUI?`)).toBeVisible();

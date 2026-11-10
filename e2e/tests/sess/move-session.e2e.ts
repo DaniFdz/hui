@@ -24,6 +24,7 @@ test("Move to group moves the session, and it stays there after a reload", { tag
 
   await hui.open(`/sessions/${moved.id}`);
   await expect(meta("INBOX")).toBeVisible();
+  await hui.sessionList();
   const menu = await hui.sessionMenu("Move me");
   await screen.getByText("Move to group", { visible: true }).tap();
   await menu.getByText("SHIPPING", { exact: true, visible: true }).tap();
@@ -39,6 +40,7 @@ test("a failed move shows its error and leaves the session where it was", { tags
   await hui.createSession({ title: "Elsewhere anchor", group: "Elsewhere" });
   await hui.open(`/sessions/${session.id}`);
   const move = await hui.intercept("PATCH", new RegExp(`/__hui/sessions/${session.id}$`, "u"));
+  await hui.sessionList();
   const menu = await hui.sessionMenu("Stuck session");
   await screen.getByText("Move to group", { visible: true }).tap();
   await menu.getByText("ELSEWHERE", { exact: true, visible: true }).tap();

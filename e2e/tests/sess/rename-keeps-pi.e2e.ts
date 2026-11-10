@@ -11,6 +11,7 @@ test("renaming a session leaves PI's own session file alone", { tags: ["SESS-066
   const before = await hui.stored("PI session marker");
   expect(before.length).toBeGreaterThan(0);
 
+  await hui.sessionList();
   await hui.sessionMenu("Rename keeps PI");
   await screen.getByText("Rename…", { visible: true }).tap();
   await expect(name).toHaveValue("Rename keeps PI");

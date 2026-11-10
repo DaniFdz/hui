@@ -11,6 +11,7 @@ test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI remov
   await hui.createSession({ title: "Keep me" });
   await hui.open(`/sessions/${parent.id}`);
 
+  await hui.sessionList();
   await hui.sessionMenu("Retire me");
   await screen.getByText("Delete…", { visible: true }).tap();
   await expect(question).toBeVisible();
@@ -23,6 +24,7 @@ test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI remov
   await expect(screen.getByLabel(row(child.title))).toBeVisible();
 
   await hui.open(`/sessions/${parent.id}`);
+  await hui.sessionList();
   await hui.sessionMenu("Retire me");
   await screen.getByText("Delete…", { visible: true }).tap();
   await screen.getByRole("button", "Remove from HUI").tap();
@@ -60,6 +62,7 @@ test("a background session that settles stays unread until it is opened, and the
   await screen.getByText("Mark as unread", { visible: true }).tap();
   await expect(screen.getByText("Marked as unread.")).toBeVisible();
   await expect(unread).toBeVisible();
+  await hui.sessionList();
   await hui.sessionMenu("Background work");
   await screen.getByText("Mark as read", { visible: true }).tap();
   await expect(screen.getByText("Marked as read.")).toBeVisible();
