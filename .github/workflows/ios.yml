@@ -64,7 +64,8 @@ jobs:
       - name: Launch it against a fixture gateway and capture the screens
         run: |
           set -euo pipefail
-          node e2e/visual-verification.mjs launch --branch "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" --port 47500 \
+          # A CI checkout is detached, so the launcher is told HEAD: it records the exact commit instead of a branch name.
+          node e2e/visual-verification.mjs launch --branch HEAD --port 47500 \
             --receipt-dir "$RUNNER_TEMP/receipt" --fast-fixture > "$RUNNER_TEMP/gateway.log" 2>&1 &
           for _ in $(seq 1 90); do [ -f "$RUNNER_TEMP/receipt/receipt-47500.json" ] && break; sleep 2; done
           receipt="$RUNNER_TEMP/receipt/receipt-47500.json"
