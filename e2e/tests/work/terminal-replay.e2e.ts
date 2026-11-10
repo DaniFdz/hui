@@ -3,7 +3,6 @@
  * cut, and a connection that cannot come back reads Disconnected with Reconnect terminal (WORK-030). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { openWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
