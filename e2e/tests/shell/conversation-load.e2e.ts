@@ -1,6 +1,11 @@
 /** Opening a saved conversation: a lost gateway response shows the connection failure instead of an empty chat, and Try again loads its saved messages once responses arrive (SHELL-024); a slow link over a long conversation shows the loading state with its bar and then the whole transcript, never an empty chat or a toast (SHELL-023). */
-import { expect } from "e2e";
-import { test } from "../../fixtures/hui.ts";
+import { expect, type Screen } from "e2e";
+import { test, type Hui } from "../../fixtures/hui.ts";
+
+/** The open conversation's name: the chat header's title on the wide layout, and on a phone the panel chooser that takes
+ * that title's place in the header (SHELL-047). */
+const names = (hui: Hui, screen: Screen, title: string) =>
+  expect.poll(() => hui.textOf(screen.getByTestId("chat-header"))).toContain(title);
 
 test("a connection lost while opening a conversation shows its reason and Try again restores the saved conversation", { tags: ["SHELL-024"] }, async ({ screen, hui }) => {
   const session = await hui.createSession({ title: "Recover this conversation" });
@@ -32,7 +37,7 @@ test("a connection lost while opening a conversation shows its reason and Try ag
   await expect(transcript.getByText("Fixture response.", { exact: true })).toBeVisible();
   await expect(transcript.getByText("Saved before the connection failed", { exact: true })).toHaveCount(1);
   await expect(transcript.getByText("Fixture response.", { exact: true })).toHaveCount(1);
-  await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Recover this conversation");
+  await names(hui, screen, "Recover this conversation");
   await expect(failed).toBeHidden();
   await expect(loading).toBeHidden();
   await expect(retry).toBeHidden();
