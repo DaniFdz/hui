@@ -283,3 +283,10 @@ test("a shared file carries its text where HUI shows one, else where it lives", 
   assert.deepEqual(fileShare({ name: "shot.png", path: "docs/shot.png" }), { title: "shot.png", text: "docs/shot.png" }, "a picture shares where it lives");
   assert.deepEqual(fileShare({ name: "empty.txt", path: "empty.txt", text: "" }), { title: "empty.txt", text: "empty.txt" });
 });
+
+test("a share carries words up to a sheet's limit and says where it stopped", () => {
+  const long = "a".repeat(64_001);
+  assert.equal(messageShare({ text: long }, "https://hui.test/").text, `${"a".repeat(64_000)}\n…`, "an Intent extra is not a file transfer");
+  assert.equal(fileShare({ name: "big.log", path: "big.log", text: long }).text, `${"a".repeat(64_000)}\n…`);
+  assert.equal(fileShare({ name: "small.md", path: "small.md", text: "a".repeat(64_000) }).text, "a".repeat(64_000), "a share at the limit is not clipped");
+});

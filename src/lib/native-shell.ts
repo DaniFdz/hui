@@ -31,6 +31,15 @@ export type NativeShare = { title?: string; text?: string; url?: string };
 /** The session a shared thing belongs to, as the transcript and the Files view know it. */
 export type ShareTarget = { id: string; title?: string };
 
+/** How much text a sheet is handed. Android puts it in an `Intent` extra, and a transaction over 1 MiB fails outright,
+ * so what a share carries is words up to this many characters (256 KiB at worst, in UTF-8) and the rest is an
+ * ellipsis: a sheet is a note to another app, not a file transfer. */
+const MAX_SHARE_TEXT = 64_000;
+
+function shareText(text: string): string {
+  return text.length > MAX_SHARE_TEXT ? `${text.slice(0, MAX_SHARE_TEXT)}\n…` : text;
+}
+
 /** HUI's own address for one session on the gateway this page was loaded from, or nothing when the base is not a URL:
  * sharing a link is only worth it when the link opens the conversation. */
 function sessionAddress(base: string, id: string | undefined): string | undefined {
@@ -48,14 +57,14 @@ function sessionAddress(base: string, id: string | undefined): string | undefine
 export function messageShare(input: { text: string; session?: ShareTarget }, base: string): NativeShare {
   const title = input.session?.title?.trim();
   const url = sessionAddress(base, input.session?.id);
-  return { ...(title ? { title } : {}), text: input.text, ...(url ? { url } : {}) };
+  return { ...(title ? { title } : {}), text: shareText(input.text), ...(url ? { url } : {}) };
 }
 
 /** What the phone's Share sheet gets for the file a Files view has open: its name, and the file's own text where HUI
  * can show it that way, else its path — the one thing a sheet can carry for a picture or a PDF. The gateway serves a
  * file only with HUI's own headers, so its address is no use to the app the operator picks. */
 export function fileShare(input: { name: string; path: string; text?: string }): NativeShare {
-  return { title: input.name, text: input.text ? input.text : input.path };
+  return { title: input.name, text: input.text ? shareText(input.text) : input.path };
 }
 
 export type NativeShell = {
