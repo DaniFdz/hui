@@ -70,7 +70,7 @@ test("a provider or account whose credential is gone reads Sign in to reconnect 
     await expect(workRow.getByText("Sign in to reconnect", { exact: true })).toBeVisible();
     await expect(workRow.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
     await expect(workRow.getByRole("button", { name: /^Reconnect$/u })).toHaveCount(0);
-    await expect(workRow.getByText("Subscription and limits", { exact: true })).toHaveCount(0);
+    await expect(workRow.getByRole("button", { name: "Refresh limits" })).toHaveCount(0);
     await expect(card.getByText("Sign in to reconnect", { exact: true })).toHaveCount(1);
 
     // Signing that account in again reuses it: same id, same place in the priority list, same saved name.
@@ -84,7 +84,7 @@ test("a provider or account whose credential is gone reads Sign in to reconnect 
     ]);
     await expect(card.getByRole("article", { name: "Work" })).toBeVisible();
     await expect(card.getByText("Sign in to reconnect", { exact: true })).toHaveCount(0);
-    await expect(card.getByRole("article", { name: "Work" }).getByText("Subscription and limits", { exact: true })).toBeVisible();
+    await expect(card.getByRole("article", { name: "Work" }).getByRole("button", { name: "Refresh limits" })).toBeVisible();
 
     // Every credential gone: the card itself reads signed out with only Sign in, no accounts, limits or model list.
     for (const account of await accounts(hui)) await rm(credential(hui, account.id));
@@ -95,7 +95,7 @@ test("a provider or account whose credential is gone reads Sign in to reconnect 
     await expect(signedOut.getByRole("button", { name: "Add account" })).toHaveCount(0);
     await expect(signedOut.getByRole("button", { name: `Remove ${CARD}` })).toHaveCount(0);
     await expect(signedOut.getByRole("article")).toHaveCount(0);
-    await expect(signedOut.getByText("Subscription and limits", { exact: true })).toHaveCount(0);
+    await expect(signedOut.getByRole("button", { name: "Refresh limits" })).toHaveCount(0);
     await expect(signedOut.getByText("Choose models", { exact: true })).toHaveCount(0);
     expect((await connection(hui)).accounts.map(({ name, authenticated }) => ({ name, authenticated }))).toEqual([
       { name: "Personal", authenticated: false },
