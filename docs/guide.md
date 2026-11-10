@@ -161,6 +161,66 @@ also available on ordinary Linux and Windows, but native execution is not proved
 on this NixOS host. **macOS signature, Spotlight, Dock and native-window behavior
 still need on-device verification**; see [desktop proof](../e2e/desktop-package.browser.md).
 
+## Install the phone app
+
+HUI has an Android app and an iPhone/iPad app. Both are the same shell around the
+web UI of **your** gateway: they bundle only the "Connect to HUI" page, ask for
+the gateway's address, and then load that gateway's own UI. There is no store
+account and no copy of the UI in the app, so updating the gateway updates what the
+phone shows. The app needs a gateway it can reach: `https://` through
+`tailscale serve` is the supported setup, and plain `http://` works only for
+`127.0.0.1` and `10.0.2.2` (the emulator's host).
+
+Every release publishes the phone app beside the CLI archive: the APK, the IPA,
+a SideStore source file and a `.sha256` for each, from the same commit as
+`hui-<version>.tgz`. The rolling `nightly` prerelease carries the same files.
+
+### Android
+
+Download `hui-<version>.apk` from the release's assets and open it; Android asks
+once to allow installs from the app you downloaded it with. To check the
+download, compare it with its checksum (`sha256sum -c hui-<version>.apk.sha256`
+in the folder that holds both). The APK is signed with HUI's release key, so a
+newer release installs over the old app, and an APK signed by anyone else is
+refused.
+
+[Obtainium](https://github.com/ImranR98/Obtainium) installs the updates for you:
+
+- **Stable:** add `https://github.com/DaniFdz/hui` as an app and let it track the
+  repository's releases.
+- **Nightly:** the same app with **Include prereleases** on, so it installs the
+  rolling `nightly` prerelease instead.
+
+Obtainium keeps the signature it installed with and refuses an APK signed by a
+different key, which is what makes taking updates automatically safe.
+
+### iOS
+
+Apple lets an app signed with a free Apple ID run for seven days, so HUI
+publishes its IPA **unsigned** and [SideStore](https://sidestore.io) signs it with
+your own account. A paid Apple Developer account is not needed; TestFlight
+distribution is not set up.
+
+1. Set up SideStore on the device. Its own guide covers the pairing file and the
+   Apple ID sign-in.
+2. Add one HUI source under **Sources**:
+   - **Stable:** `https://github.com/DaniFdz/hui/releases/latest/download/hui-sidestore.json`
+   - **Nightly:** `https://github.com/DaniFdz/hui/releases/download/nightly/hui-sidestore.json`
+3. Install HUI from that source, open it and enter the gateway's address.
+
+The source names the IPA's own version, so a new release shows up as an update.
+The stable source is the channel to use: the nightly one follows the rolling
+prerelease, whose version carries its build stamp
+(`0.2.0-nightly.202611091200.g1a2b3c4`), so treat it as a preview.
+
+The seven days are Apple's limit for a free Apple ID, not HUI's. SideStore
+re-signs HUI for another seven days whenever it refreshes it, and a refresh needs
+the device to be online; you can also start one in SideStore yourself at any
+time. If no refresh happens before the certificate expires, HUI stops launching
+until SideStore signs it again: open SideStore, refresh HUI, and it starts
+normally. Nothing is lost when it lapses, because sessions, bots and settings
+live on the gateway, not on the phone.
+
 ## Desktop notifications (macOS)
 
 The HUI app can show macOS notifications that open their chat when you click

@@ -356,6 +356,52 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   works online); no share sheet, microphone or resume hooks yet (WP10); and `ios-smoke` proves the Connect page and the
   gateway's UI load, not a tapped journey.
 
+## Distribution (WP8)
+
+A release publishes the phone app beside the CLI archive. `.github/workflows/release.yml` and `.github/workflows/nightly.yml`
+build both artifacts from the commit they validated, after their existing checks, and attach them to the same GitHub
+Release (or the rolling `nightly` prerelease) with a `.sha256` each. `docs/guide.md` ("Install the phone app") is the
+user-facing half; this is what the build assumes.
+
+- **A release APK is signed with the owner's keystore and with nothing else** (`mobile/android/app/build.gradle`, owner
+  decision O4). Four repository secrets hold it: `HUI_ANDROID_KEYSTORE_BASE64` (the keystore file, base64-encoded),
+  `HUI_ANDROID_KEYSTORE_PASSWORD`, `HUI_ANDROID_KEY_ALIAS` and `HUI_ANDROID_KEY_PASSWORD`. The workflow decodes the file
+  into `$RUNNER_TEMP` and passes its path as `-PhuiReleaseStoreFile`; the other three reach Gradle as
+  `ORG_GRADLE_PROJECT_huiRelease*`, so no secret is ever on a command line or in a log. `checkReleaseSigning` runs before
+  `preReleaseBuild` and fails with the names of the missing values, so a release is never silently unsigned or
+  debug-signed — and `assembleDebug` plus the JVM tests keep working without any of them.
+- **The version is the workflow's.** `versionName`/`MARKETING_VERSION` is the version that release publishes
+  (`package.json` for a stable release, the stamped nightly version for a nightly) and `versionCode`/`CFBundleVersion`
+  is the **commit time in minutes** (`-PhuiVersionName`, `-PhuiVersionCode`, `CURRENT_PROJECT_VERSION`). Minutes, not
+  the nightly stamp: Android's `versionCode` is a signed 32-bit int and the 14-digit stamp does not fit. Each job checks
+  the artifact carries what it was given — `aapt2 dump badging` for the APK, the archive's `Info.plist` for the IPA —
+  before uploading it.
+- **The IPA is unsigned.** The macOS job archives with `-destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO`
+  and zips `Payload/App.app` into `hui-<version>.ipa`; SideStore signs it with the user's own Apple ID (owner decision
+  O1). Nothing produces a TestFlight build.
+- **The assets.** `hui-<version>.apk`, `hui-<version>.ipa`, `hui-sidestore.json` and one `.sha256` per file, beside
+  `hui-<version>.tgz`. Obtainium installs the APK; SideStore subscribes to
+  `releases/latest/download/hui-sidestore.json` (stable) or `releases/download/nightly/hui-sidestore.json` (nightly).
+- **The SideStore source** is `scripts/sidestore-source.mjs` (pinned by `scripts/sidestore-source.test.mjs` and the
+  fixture in `scripts/fixtures/sidestore/`). It writes AltStore's source format, which SideStore reads as its fork: one
+  app, `dev.hui.app`, one version entry carrying `downloadURL`, `size`, `minOSVersion` (`15.0`, the project's
+  deployment target), `date` and the release's changelog. The plan named those fields but no format; this is the one
+  SideStore's own published source uses. A change to the format must move the fixture with it.
+- **Making the keystore** (the owner does this once, on a machine they trust; the file never enters the repository):
+  `keytool -genkeypair -keystore hui-release.keystore -alias hui -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=HUI"`,
+  then `base64 < hui-release.keystore` into `HUI_ANDROID_KEYSTORE_BASE64`. **Keep the keystore**: an APK signed with a
+  new key cannot install over an older one, so losing it means every user has to uninstall HUI first.
+- **What is proven, and what is not.** The Gradle half is proven locally: `assembleDebug` builds, `assembleRelease`
+  fails with the message that names the missing properties, and with a throwaway keystore it produces an APK that
+  `apksigner verify` accepts and `aapt2` reports with the version and versionCode it was given. The iOS archive,
+  `PlistBuddy` check, `Payload` zip and the SideStore step are reasoned from `ios.yml`'s simulator build and **not
+  run**: they need the macOS runner, and `workflow_dispatch` cannot start `release.yml` from a branch. Nothing here has
+  installed either artifact on a phone.
+- **One open question for the nightly IPA.** Its `CFBundleShortVersionString` is the nightly version, which carries a
+  prerelease suffix Apple's own format does not allow (`0.2.0-nightly.202611091200.g1a2b3c4`). The archive builds with
+  it and the source repeats it exactly, but whether SideStore compares such a version and offers the update is not
+  proven; the stable channel's numeric version is the one to rely on until someone tries a nightly on a device.
+
 ## Rules
 
 - One package, one branch, one worktree; no pull request per package (the orchestrator merges).
