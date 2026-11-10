@@ -518,6 +518,15 @@ const cases: UseCase[] = [
     web: "backlog",
   },
   {
+    id: "AGENT-072",
+    title: "List a page's cookies and storage without their values",
+    behaviour: "An agent asks what a page keeps: storage what cookies lists the cookies for the tab's URL with their flags, SameSite, expiry, size and path, and what local or session lists storage keys with value sizes. Values are never read, a filter narrows by name, and an empty result is explained.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
     id: "AGENT-071",
     title: "Measure what a page costs",
     behaviour: "An agent asks the browser what a page costs: performance metrics reads the renderer's heap, DOM node, document, frame, listener, layout, style-recalculation and script-time counters, and performance timings reads the document's first byte, DOMContentLoaded, load, transfer size, paint marks, subresource count and weight, and slowest resources. Numbers arrive with units and a page still loading says so.",

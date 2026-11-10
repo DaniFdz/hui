@@ -93,6 +93,28 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## What a page keeps
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_STORAGE` opens a page that sets two cookies and two storage keys
+with secret-looking values, then reads the cookies and the storage.
+
+- The cookies read "2 cookies for 127.0.0.1:37909, values hidden:" with `sid ·
+  session · 24 B` and `theme · session · 10 B`.
+- The storage read "1 localStorage key on http://127.0.0.1:37909 (20 B), values
+  hidden: draft · 20 B".
+- Neither `cookie-secret-fixture` nor `draft-secret-fixture` nor
+  `tab-secret-fixture` appeared anywhere in the results — the fixture asserts
+  that, so a future change that prints a value fails the journey.
+- Both results end with "Values are never read: a cookie or storage value is
+  usually a session token."
+- The reply read "The page holds 2 cookies (sid, theme) and one localStorage key
+  (draft), and none of their values reached the transcript."
+- At 390×844 both expanded outputs wrapped without sideways scrolling.
+- `server/browser/manager.test.ts` also covers sessionStorage, a name filter, an
+  empty filter result and an unknown `what`; `server/browser/storage.test.ts`
+  covers expiry text, sizes, empty states and filtering.
+
 ## The shipped browser skill
 
 Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt

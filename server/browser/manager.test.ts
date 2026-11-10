@@ -1526,3 +1526,63 @@ test("performance reports the renderer's counters and the document's own timings
   assert.match(again.text, /nodes (\d+)/u);
   assert.ok(Number(/nodes (\d+)/u.exec(again.text)?.[1]) >= nodes);
 });
+
+test("storage lists cookie and storage names, flags and sizes but never values", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-storage-"));
+  const server = createServer((request, response) => {
+    if ((request.url ?? "").split("?")[0] !== "/store") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Storage page</title><h1>Storage page</h1>
+      <script>
+        document.cookie = "sid=cookie-secret-value; path=/";
+        document.cookie = "theme=light; path=/";
+        localStorage.setItem("draft", "draft-secret-value");
+        localStorage.setItem("seen", "1");
+        sessionStorage.setItem("tab-token", "tab-secret-value");
+      </script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await call({ action: "open", url: `http://127.0.0.1:${address.port}/store` });
+
+  const cookies = await call({ action: "storage", what: "cookies" });
+  assert.match(cookies.text, /2 cookies for 127\.0\.0\.1:\d+, values hidden:/u);
+  assert.match(cookies.text, /^ {2}sid · session · \d+ B$/mu);
+  assert.match(cookies.text, /^ {2}theme · session · \d+ B$/mu);
+  assert.match(cookies.text, /Values are never read:/u);
+  assert.doesNotMatch(cookies.text, /cookie-secret-value|light/u);
+
+  const local = await call({ action: "storage", what: "local" });
+  assert.match(local.text, /2 localStorage keys on http:\/\/127\.0\.0\.1:\d+ \(\d+ B\), values hidden:/u);
+  assert.match(local.text, /^ {2}draft · \d+ B$/mu);
+  assert.match(local.text, /^ {2}seen · \d+ B$/mu);
+  assert.doesNotMatch(local.text, /draft-secret-value/u);
+
+  const session = await call({ action: "storage", what: "session" });
+  assert.match(session.text, /1 sessionStorage key on http:\/\/127\.0\.0\.1:\d+ \(\d+ B\), values hidden:/u);
+  assert.match(session.text, /^ {2}tab-token · \d+ B$/mu);
+  assert.doesNotMatch(session.text, /tab-secret-value/u);
+
+  // Filters narrow by name; an empty result is explained, not mistaken for an error.
+  assert.match((await call({ action: "storage", what: "cookies", filter: "THE" })).text, /^ {2}theme/mu);
+  assert.doesNotMatch((await call({ action: "storage", what: "cookies", filter: "THE" })).text, /sid/u);
+  assert.match((await call({ action: "storage", what: "local", filter: "draft" })).text, /Filtered to "draft" from 2\./u);
+  assert.match((await call({ action: "storage", what: "local", filter: "nothing" })).text, /localStorage is empty on/u);
+  await assert.rejects(call({ action: "storage", what: "indexed" }), /storage needs what: cookies, local or session\./u);
+});

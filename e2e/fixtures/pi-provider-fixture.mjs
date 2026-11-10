@@ -262,6 +262,18 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(HANDOFF_FIXTURE_PAGE);
   }
+  if (request.method === "GET" && url.pathname === "/browser-storage-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI storage fixture</title>
+      <h1>HUI storage fixture</h1>
+      <p>The page keeps a cookie and some storage it never shows.</p>
+      <script>
+        document.cookie = "sid=cookie-secret-fixture; path=/";
+        document.cookie = "theme=light; path=/";
+        localStorage.setItem("draft", "draft-secret-fixture");
+        sessionStorage.setItem("tab-token", "tab-secret-fixture");
+      </script>`);
+  }
   if (request.method === "GET" && url.pathname === "/browser-perf-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(`<!doctype html><title>HUI performance fixture</title>
@@ -711,6 +723,38 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent lists a page's cookies and storage without their values.
+  if (source.includes("E2E_BROWSER_STORAGE") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-storage-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-storage-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-storage-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-storage-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const next = {
+      open: ["cookies", { action: "storage", what: "cookies" }],
+      cookies: ["local", { action: "storage", what: "local" }],
+    }[step];
+    if (next) {
+      toolUse(response, `tool-e2e-storage-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const cookies = /2 cookies for [^\n]+, values hidden:/u.test(results);
+    const local = /1 localStorage key on [^\n]+, values hidden:/u.test(results);
+    const names = /^ {2}sid ·/mu.test(results) && /^ {2}theme ·/mu.test(results) && /^ {2}draft ·/mu.test(results);
+    const hidden = !/cookie-secret-fixture|draft-secret-fixture|tab-secret-fixture/u.test(results);
+    text(response, cookies && local && names && hidden
+      ? "The page holds 2 cookies (sid, theme) and one localStorage key (draft), and none of their values reached the transcript."
+      : `The storage check did not complete: cookies=${cookies}, local=${local}, names=${names}, hidden=${hidden}.`);
+    return finish(response);
+  }
+
   // The agent measures what a page costs instead of guessing.
   if (source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -960,7 +1004,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("E2E_BROWSER_SKILL") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("E2E_BROWSER_SKILL") && !source.includes("E2E_BROWSER_STORAGE") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);

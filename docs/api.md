@@ -4680,6 +4680,7 @@ comes from the per-conversation token. `action` is one of:
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
 | `get` | One property of one element (`ref` or `selector`): `text`, `html`, `value`, `attr` with `attribute`, `box`, or page-level `title`, `url` and `count` with `selector`; a password field's value is refused with 409 |
 | `is` | One state of one element (`ref` or `selector`): `visible`, `hidden`, `enabled`, `disabled`, `checked`, `focused`, `editable`, `attached` |
+| `storage` | What the page keeps, by name: `what` `cookies` for the tab's URL (flags, SameSite, expiry, size, path) or `local`/`session` for storage keys and value sizes; `filter` by name; values are never read |
 | `performance` | What the page costs: `operation` `metrics` (renderer counters: heap, nodes, documents, frames, listeners, layouts, style recalcs, script and task time) or `timings` (navigation entry, paints, subresource count and weight, slowest resources) |
 | `network` | Capture the tab's requests: `operation` `start`/`stop`/`clear`, `requests` with `filter`, `type`, `method` and `status` (`2xx`, `400-499` or an exact code), `request` with `id` such as `n3`, and `har` with `path` (must end in `.har`) |
 | `handoff` | Give the current (or `tabId`) tab to the operator and wait: `message` (at most 500 characters) and `timeoutMs` (5000–1 800 000, default 600 000) |
@@ -4706,6 +4707,12 @@ status, type, bytes and timing; bodies are never captured. Credential headers
 `password`, `secret`, …) are `[redacted]` in `network requests`,
 `network request` and the HAR. The HAR is JSON 1.2 with one page and its
 entries, written wherever `path` names (relative to the session directory).
+`storage` enables the Network domain once per tab and reads `Network.getCookies`
+for the URL, or evaluates one fixed expression that lists `localStorage` or
+`sessionStorage` keys and the length of each value. Cookie `size` is Chrome's,
+so it counts name and value; expiry prints as `session`, `in 3 days` or
+`expired 2 h ago`. No value ever leaves the page: this is the debugging view for
+a lost session or a 401 that must not put a token in the transcript.
 `performance` reads CDP `Performance.getMetrics` after enabling the domain once
 per tab, so the counters accumulate from that first call rather than resetting
 per read; durations arrive in seconds and are printed in ms, s or min. The
