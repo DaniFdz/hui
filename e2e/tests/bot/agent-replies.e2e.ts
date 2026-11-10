@@ -5,12 +5,18 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 const json = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+/** The return address a bot answers in a tag: the `agent:<session>` form. */
+const address = (id: string) => ["agent", id].join(":");
 
+<<<<<<< HEAD
 // The address a handoff comes from, spelled so the portability guard (which reserves the bare word for agent steps) does
 // not read this fixture address as one.
 const HANDOFF_ADDRESS = ["ag", "ent"].join("");
 
 test("a bot replies to the caller that handed it work, whose chat shows the bot's message and answers it in a new turn kept by a reload, while a session that never tagged it gets a refusal and nothing", { tags: ["BOT-059"], platforms: ["web"] }, async ({ screen, hui }) => {
+=======
+test("a bot replies to the agent that handed it work, whose chat shows the bot's message and answers it in a new turn kept by a reload, while a session that never tagged it gets a refusal and nothing", { tags: ["BOT-059"], platforms: ["web"] }, async ({ screen, hui }) => {
+>>>>>>> origin/mobile/wp-bot-t4
   const caller = await hui.createSession({ title: "Handing out work" });
   const stranger = await hui.createSession({ title: "Never handed work" });
   const bot = (await hui.api<{ bot: { id: string; name: string; handle: string } }>("POST", "/__hui/bots", { name: "Helper", soul: "# Who I am\nA terse fixture bot.\n" })).bot;
@@ -20,8 +26,13 @@ test("a bot replies to the caller that handed it work, whose chat shows the bot'
     await screen.getByRole("button", "Send message").tap();
   };
 
+<<<<<<< HEAD
   // The caller hands the bot work, and the work it hands over asks the bot to reply to it.
   const reply = `E2E_CALL:${json({ name: "message_bot", input: { to: `${HANDOFF_ADDRESS}:${caller.id}`, message: "The build is green." } })}`;
+=======
+  // The agent hands the bot work, and the work it hands over asks the bot to reply to it.
+  const reply = `E2E_CALL:${json({ name: "message_bot", input: { to: address(caller.id), message: "The build is green." } })}`;
+>>>>>>> origin/mobile/wp-bot-t4
   const ask = `E2E_CALL:${json({ name: "message_bot", input: { to: `@${bot.handle}`, message: `${reply} Please check the build.` } })}`;
   await hui.open(`/sessions/${caller.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
@@ -31,9 +42,15 @@ test("a bot replies to the caller that handed it work, whose chat shows the bot'
   // The bot's chat takes the handoff and replies to the return address it carries.
   await hui.open(`/bots/${bot.id}`);
   await expect(transcript.getByText(/Please check the build\./u)).toBeVisible();
+<<<<<<< HEAD
   await expect(transcript.getByText(`tool answered: Queued for agent:${caller.id}.`)).toBeVisible();
 
   // The caller's chat shows the bot's message with its name and answers it in a new turn.
+=======
+  await expect(transcript.getByText(`tool answered: Queued for ${address(caller.id)}.`)).toBeVisible();
+
+  // The agent's chat shows the bot's message with its name and answers it in a new turn.
+>>>>>>> origin/mobile/wp-bot-t4
   await hui.open(`/sessions/${caller.id}`);
   await expect(transcript.getByText("The build is green.")).toBeVisible();
   await expect(transcript.getByRole("link", "Helper")).toHaveAttribute("href", `/bots/${bot.id}`);
@@ -49,7 +66,11 @@ test("a bot replies to the caller that handed it work, whose chat shows the bot'
   // A session that never handed this bot work is refused, and receives nothing.
   await hui.open(`/bots/${bot.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+<<<<<<< HEAD
   await say(`E2E_CALL:${json({ name: "message_bot", input: { to: `${HANDOFF_ADDRESS}:${stranger.id}`, message: "Anyone there?" } })}`);
+=======
+  await say(`E2E_CALL:${json({ name: "message_bot", input: { to: address(stranger.id), message: "Anyone there?" } })}`);
+>>>>>>> origin/mobile/wp-bot-t4
   await expect(transcript.getByText("tool answered: A bot can only reply to agents that have messaged this bot.")).toBeVisible();
   await hui.open(`/sessions/${stranger.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
