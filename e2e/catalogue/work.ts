@@ -20,7 +20,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "WORK-003",
@@ -30,7 +30,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "WORK-004",
@@ -70,7 +70,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "WORK-008",
@@ -140,7 +140,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "WORK-015",

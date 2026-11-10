@@ -212,7 +212,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-022",
@@ -223,7 +223,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-023",
