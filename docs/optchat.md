@@ -161,7 +161,8 @@ replaces could end up copied into summaries, as revision `3c190e0` observed. A
 call that has not answered after 2 minutes fails like any other. A failed node
 is retried every 10 seconds; only its first failure is reported
 (`optchat_memory` diagnostic) and shown in the memory's status. Its usage
-(tokens, cache, cost) is counted in the status since the memory opened.
+(tokens, cache, cost) is counted in the status in total: the calls it made since
+the memory was created, kept across restarts ([Storage](#storage)).
 
 ## The view
 
@@ -251,6 +252,7 @@ Each memory lives in `<HUI_DURABLE_DIR>/optchat/<conversation id>/` (by default
 | `main/YYYY-MM-DD.jsonl` | the log, one message per line: `{i, kind, text, size, date, src}` |
 | `tree/YYYY-MM-DD.jsonl` | the summaries, one node per line: `{l, i, text, size}` |
 | `runs.jsonl` | the frozen view of each run: `{run, entry, t0, parts}` |
+| `usage.json` | the compactor's totals: `{version: 1, usage: {calls, input, output, cacheRead, cacheWrite, cost}}` |
 | `view.json` | the chat view and the compaction view: `{version: 1, chat: {parts, batch}, compaction: {parts, batch}}`, parts as `[level, index]`, `batch` true while a batch is under way |
 
 A line goes to the file of the local day it is written on; ids are global. Each
@@ -316,8 +318,12 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
   The bots' own base prompt is for a later change.
 - **The lock is the store's.** The spec holds a Unix socket per chat directory;
   here the gateway's Durable store lock covers every memory.
-- **Usage is per process.** The compactor's spend is in the status since the
-  memory opened; it is not persisted, nor added to Durable's `pi.usage`.
+- **Usage is kept per memory, not per process.** The compactor's spend is in
+  the status in total, in `usage.json` beside the log and the tree, so a restart
+  keeps counting where it left off and a bot's memory cost can be compared with
+  what the memory is worth. A memory older than that file starts at zero: the
+  spend before it is not reconstructed, and nothing reads it back into Durable's
+  `pi.usage`.
 - **Subagents and computer use (spec section 9) are not implemented.** MASTER
   keeps its paragraph about them, verbatim.
 - **Turns and compactions keep their own system prompts.** Revision `3c190e0`
