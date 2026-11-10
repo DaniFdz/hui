@@ -105,7 +105,8 @@ import { deleteCall, postCallDelegation, postCallHeartbeat, postCallLines, postC
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { workerAction } from "./api/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
-import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
+import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, closeNavigationDrawerOnBack, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
+import { nativeShell } from "./lib/native-shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
 import { renderSettingsPage, SETTINGS_PAGES, type SettingsPage } from "./views/settings.ts";
 import { clampSuggestionIndex, taskSuggestionPrompt } from "./lib/task-suggestions.ts";
@@ -407,6 +408,8 @@ export class HuiApp extends HuiElement {
     setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
   });
   private mobileNavMedia: MediaQueryList | undefined;
+  /** The phone shell's back button, while this app is the one answering it. */
+  private stopNativeBack: (() => void) | undefined;
   /** The destination chooser a phone renders in the active pane's header instead of a row of its own. */
   private narrowPicker: TemplateResult | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
@@ -475,42 +478,90 @@ export class HuiApp extends HuiElement {
    */
   private handleGlobalEscape(event: KeyboardEvent) {
     if (event.defaultPrevented || event.isComposing || this.commandPaletteOpen) return;
-    if (hasOpenWebAwesomePopup(event) || document.querySelector("dialog[open]")) return;
-    if (this.composer.sideChat) {
+    // A Web Awesome popup closes on Escape from its own document listener; leave that press to it.
+    if (hasOpenWebAwesomePopup(event)) return;
+    if (this.closeTopOverlay()) {
       event.preventDefault();
-      this.composer.closeSideChat();
       return;
     }
-    if (this.settingsOpen) {
-      event.preventDefault();
-      this.closeSettings();
+    // Escape's own job, and the one thing the phone's back button leaves alone: stopping the turn of the pane that
+    // shows it. Only an app with no pane of its own has a turn of its own to stop.
+    const pane = this.paneApp();
+    if (pane) {
+      pane.handleGlobalEscape(event);
       return;
     }
-    if (!this.embeddedPane && this.view === "bot") {
-      if (this.mobileNavLayout && this.bots.sheetOpen) {
-        event.preventDefault();
-        this.closeBotPanel();
-        return;
-      }
-      // An expanded panel hides the chat: Escape brings the chat back and never stops a turn the operator cannot see.
-      if (this.botPanelShownExpanded()) {
-        event.preventDefault();
-        this.expandBotPanel(false);
-        return;
-      }
-      this.botPaneApp()?.handleGlobalEscape(event);
-      return;
-    }
-    if (!this.embeddedPane && this.view === "home" && this.conversation.selected) {
-      // A maximized Work pane hides the chat: Escape never stops a turn the operator cannot see.
-      if (this.work.maximized()) return;
-      this.activePaneApp()?.handleGlobalEscape(event);
-      return;
-    }
-    if (this.view === "home" && this.conversation.selected && this.conversation.streaming && !this.conversation.stopping) {
+    if (this.embeddedPane && this.view === "home" && this.conversation.selected && this.conversation.streaming && !this.conversation.stopping) {
       event.preventDefault();
       this.composer.abort();
     }
+  }
+
+  /**
+   * Closes the topmost thing the page has open and answers whether it took the press. Escape and the phone's back
+   * button share this one order, so the phone can never close something other than what the key would: the topmost
+   * dialog (the command palette and every modal are one), the side chat, Settings, the bot sheet and an expanded bot
+   * panel, the navigation drawer, the Work pane, and a pane's own app one level down.
+   */
+  private closeTopOverlay(): boolean {
+    // The last open dialog is the topmost one: a dialog opened from a dialog stacks above it.
+    const dialog = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]")].at(-1);
+    if (dialog) {
+      // A dialog closes on Escape through `cancel`; a back press is the same intent, and one that prevents it keeps
+      // its own closing in flight.
+      if (dialog.dispatchEvent(new Event("cancel", { cancelable: true }))) dialog.close();
+      return true;
+    }
+    if (this.composer.sideChat) {
+      this.composer.closeSideChat();
+      return true;
+    }
+    if (this.settingsOpen) {
+      this.closeSettings();
+      return true;
+    }
+    if (!this.embeddedPane && this.view === "bot") {
+      if (this.mobileNavLayout && this.bots.sheetOpen) {
+        this.closeBotPanel();
+        return true;
+      }
+      // An expanded panel hides the chat: closing it brings the chat back.
+      if (this.botPanelShownExpanded()) {
+        this.expandBotPanel(false);
+        return true;
+      }
+    }
+    if (closeNavigationDrawerOnBack(this.renderRoot)) return true;
+    if (this.workPaneShown()) {
+      // A shown Work pane hides the chat: back to the conversation, never stopping its turn.
+      this.work.leave();
+      return true;
+    }
+    // A pane's own app holds the same overlays one level down; its streaming turn is not one of them.
+    return this.paneApp()?.closeTopOverlay?.() ?? false;
+  }
+
+  /** Whether a Work pane hides the chat, so showing the conversation again is what a press means first. */
+  private workPaneShown(): boolean {
+    if (this.embeddedPane || this.view !== "home" || !this.conversation.selected) return false;
+    return this.work.narrow ? this.work.narrowShown : this.work.maximized();
+  }
+
+  /** The app embedded in the visible pane, whose overlays and turn belong to the same press: the bot workspace's pane,
+   * or the active chat pane's. An embedded app has no pane of its own. */
+  private paneApp(): HuiApp | undefined {
+    if (this.embeddedPane) return undefined;
+    if (this.view === "bot") return this.botPaneApp();
+    if (this.view === "home" && this.conversation.selected) return this.activePaneApp();
+    return undefined;
+  }
+
+  /**
+   * The phone's back button: the same overlays Escape closes, in the same order, and nothing more. Answering `false`
+   * leaves the press to the shell, which goes back in the page's history and, at the root, leaves the app.
+   */
+  private handleSystemBack(): boolean {
+    return this.closeTopOverlay();
   }
 
   private readonly onPageHide = () => {
@@ -530,6 +581,9 @@ export class HuiApp extends HuiElement {
       this.mobileNavMedia.addEventListener("change", this.onMobileNavChange);
       window.addEventListener("popstate", this.onPopState);
       document.addEventListener("keydown", this.onGlobalKeyDown);
+      // A phone has no Escape key: the shell's back press closes the same overlays in the same order, and never stops a
+      // running turn.
+      this.stopNativeBack = nativeShell()?.onBack(() => this.handleSystemBack());
       this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
       this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
       this.addEventListener("hui-files-connection", this.onFilesConnection);
@@ -564,6 +618,8 @@ export class HuiApp extends HuiElement {
     this.removeEventListener("hui-extensions-changed", this.onExtensionsChanged);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
+    this.stopNativeBack?.();
+    this.stopNativeBack = undefined;
     this.work.stop();
     if (!this.embeddedPane) this.voice.dispose();
     this.followResize?.disconnect();
