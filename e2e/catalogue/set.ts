@@ -632,7 +632,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/tools", "route:GET /__hui/sessions/:id/tools", "settings-page:tools"],
     journeys: ["sdk-backend"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-060",
@@ -652,7 +652,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/pi/resources/:kind/:id", "page:skills", "page:plugins"],
     journeys: ["resource-reader"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-062",
@@ -756,7 +756,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiworkspaces", "SPEC.md#behaviour"],
     surfaces: ["settings-page:memory", "route:GET /__hui/workspaces", "page:memory-import"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-073",
@@ -765,7 +765,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth"],
     surfaces: ["settings-page:security", "route:GET /__hui/health", "route:GET /__hui/pi"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-074",
@@ -774,7 +774,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiobservability"],
     surfaces: ["settings-page:diagnostics", "route:GET /__hui/observability"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-075",
@@ -792,7 +792,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#notification-settings"],
     surfaces: ["settings-page:notifications", "setting:notifications.runFinished", "setting:notifications.runFailed", "setting:notifications.needsInput"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-077",
