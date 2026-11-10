@@ -131,7 +131,8 @@ export type SubagentRecord = {
   /** Absent on legacy tasks; pending until observed in the parent transcript. */
   completionDelivery?: "pending" | "delivered";
   /** Spawned with `collect: true`: the parent collects the result with `agents_wait`. A collected child waiting for
-   * a free slot is saved as `starting`; its queue is in memory, so a restart interrupts it like any active task. */
+   * a free slot is saved as `starting`; its queue is rebuilt at startup, in spawn order, for a runtime that continues
+   * its runs. */
   collect?: true;
 };
 

@@ -70,6 +70,11 @@ class CoordinatedSession implements RuntimeSession {
     return this.#streaming;
   }
 
+  /** The run its runtime resumed after a restart: going, with no prompt of this gateway's own. */
+  resume(): void {
+    this.#streaming = true;
+  }
+
   async prompt(value: string): Promise<void> {
     this.prompts.push(value);
     this.history.push({ kind: "message", role: "user", text: value });
@@ -152,6 +157,10 @@ function harness(
   options: {
     manualSessionId?: string; manual?: (id: string) => boolean; ids?: string[];
     routes?: Settings["models"]["routes"];
+    /** The adapter resumes every interrupted run itself, as Durable does. */
+    resuming?: boolean;
+    /** Sessions whose runtime boots mid-run, the way a resumed run is found. */
+    resumed?: string[];
   } = {},
 ) {
   let records = [...initial];
@@ -160,12 +169,14 @@ function harness(
   const starts: StartOptions[] = [];
   const runtime: AgentRuntime = {
     id: "pi",
+    ...(options.resuming ? { resumesInterruptedRuns: true } : {}),
     start: async (startOptions) => {
       starts.push(startOptions);
       const id = startOptions.huiSessionId ?? `unknown-${starts.length}`;
       const history = histories.get(id) ?? [];
       histories.set(id, history);
       const session = new CoordinatedSession(id, id !== options.manualSessionId && !options.manual?.(id), history);
+      if (options.resumed?.includes(id)) session.resume();
       sessions.set(id, session);
       return session;
     },
@@ -629,6 +640,85 @@ test("startup marks abandoned active tasks interrupted", async () => {
 
   state.service.dispose();
   state.manager.disposeAll();
+});
+
+test("startup carries a running child on when its runtime resumes the run itself, and its result reaches the parent", async (t) => {
+  const parent = record("parent", { title: "Parent" });
+  const child = record("child", {
+    parentId: parent.id,
+    runStartedAt: timestamp,
+    subagent: {
+      taskId: "task-1",
+      task: "Long work",
+      status: "running",
+      startedAt: timestamp,
+      updatedAt: timestamp,
+    },
+  });
+  const state = harness([parent, child], { resuming: true, resumed: [child.id] });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+
+  await state.service.initialize();
+
+  assert.equal(state.records().find((item) => item.id === child.id)?.subagent?.status, "running", "a resumed run keeps its child active");
+  assert.equal(state.manager.snapshot(parent.id).subagents[0]?.status, "running");
+  await waitForStatus(state.manager, child.id, "running");
+  state.sessions.get(child.id)!.finish("Resumed answer");
+  await waitForTask(state.manager, parent.id, "completed");
+  await state.sessions.get(parent.id)!.waitForPrompt((prompt) => prompt.startsWith("[HUI subagent completion event]"));
+
+  const finished = state.records().find((item) => item.id === child.id)?.subagent;
+  assert.equal(finished?.status, "completed");
+  assert.equal(finished?.summary, "Resumed answer");
+  assert.equal(finished?.error, undefined);
+  assert.match(state.sessions.get(parent.id)!.prompts.at(-1) ?? "", /Resumed answer/u);
+});
+
+test("startup records a child whose run ended while the gateway was away", async (t) => {
+  const parent = record("parent");
+  const child = record("child", {
+    parentId: parent.id,
+    runStartedAt: timestamp,
+    subagent: { taskId: "task-1", task: "Long work", status: "running", startedAt: timestamp, updatedAt: timestamp },
+  });
+  const state = harness([parent, child], { resuming: true });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+
+  await state.service.initialize();
+
+  await waitForTask(state.manager, parent.id, "completed");
+  assert.equal(state.records().find((item) => item.id === child.id)?.subagent?.status, "completed");
+});
+
+test("startup starts a collected child whose task never reached its runtime", async (t) => {
+  const parent = record("parent");
+  const child = record("child", {
+    parentId: parent.id,
+    subagent: {
+      taskId: "task-1",
+      task: "Queued work",
+      status: "starting",
+      collect: true,
+      startedAt: timestamp,
+      updatedAt: timestamp,
+    },
+  });
+  const state = harness([parent, child], { resuming: true, manual: () => true });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+
+  await state.service.initialize();
+
+  await waitForStatus(state.manager, child.id, "running");
+  const runtime = state.sessions.get(child.id)!;
+  await runtime.waitForPrompt(() => true);
+  assert.deepEqual(runtime.prompts, ["[Subagent Task]\nQueued work"]);
+  await waitForTask(state.manager, parent.id, "running");
 });
 
 test("completions are batched until every active sibling finishes", async () => {

@@ -1279,8 +1279,13 @@ then prompts an idle parent or attempts steering on a running/waiting parent.
 If steering fails or is unsupported, HUI queues the result as a follow-up;
 if the parent settled during that attempt, HUI prompts it directly instead.
 Successful steering does not also enqueue a follow-up or abort the parent.
-Active tasks left by a gateway restart become `interrupted`; HUI never reconstructs a false
-live process from persisted metadata. Once a terminal result has been delivered,
+A gateway restart leaves an active task running when its runtime continues the run
+itself: a Pi Durable child keeps its status, HUI waits for the resumed run to end
+and reports its answer as any other, without the run timeout its spawn passed. Any
+other active task becomes `interrupted`, a PI SDK worker's included, because its
+process is gone with the gateway; HUI never reconstructs a false live process from
+persisted metadata. A queued collected
+child starts again in spawn order. Once a terminal result has been delivered,
 HUI closes the child's runtime process without deleting its registry row or PI
 transcript. Cleanup waits for an active browser reader to leave; later navigation
 reopens the same durable session normally.

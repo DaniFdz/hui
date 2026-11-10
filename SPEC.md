@@ -1831,7 +1831,8 @@ spawn collected children. Nothing is lost: a result no wait returned is delivere
 as an ordinary completion event once the parent is no longer busy, and a returned
 result is never delivered again. The operator's Stop on the parent also cancels
 its queued and running collected children, and those cancellations are not
-reported back. A restart interrupts queued ones like any active task.
+reported back. A restart keeps queued ones with the runtimes that resume their
+runs, in spawn order, and interrupts the rest like any active task.
 
 Visibility is the current session tree, not the whole registry: parent, child
 and sibling sessions can exchange bounded messages and history, while unrelated
@@ -1864,8 +1865,11 @@ only when the task ID appears in the parent transcript. Per-parent single-flight
 delivery and transcript IDs suppress ordinary retries and the crash-before-ack
 window; this is at-least-once recovery, not exactly-once processing or proof that
 the parent completed its work. Legacy terminal tasks without a delivery marker
-are not replayed. A gateway restart marks unfinished
-subagents interrupted instead of pretending they are still running. After a
+are not replayed. A subagent on Pi Durable keeps its running status across a gateway
+restart, because Durable resumes the run itself: HUI waits for that run to end and
+reports its answer as any other result, without the run timeout the spawn once
+passed. Any other unfinished subagent, one on PI's SDK worker included, is marked
+interrupted instead of pretending it is still running. After a
 task reaches a terminal state and its result has been delivered, HUI closes the
 child's live runtime (after its current browser reader leaves, if any) while
 retaining its session row and PI transcript; opening that session later resumes
