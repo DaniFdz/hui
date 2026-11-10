@@ -1,5 +1,5 @@
 /**
- * A bot's triggers in the Bots tab (HUI-18): the list on its panel's overview and its Triggers page. This module narrows
+ * A bot's triggers in the Bots tab: the list on its panel's overview and its Triggers page. This module narrows
  * what the trigger routes answer, formats a trigger's filter and cooldown, turns the add form into a request body and holds what the section shows; the
  * section's state, its polling and its requests live in `controllers/bot-triggers-controller.ts` and
  * `api/bot-triggers.ts`. The view is `src/views/bot-triggers.ts`.

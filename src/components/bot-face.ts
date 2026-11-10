@@ -1,5 +1,5 @@
 /**
- * `<hui-bot-face>`: a bot's animated face (HUI-18), after OpenAI's Dots: a
+ * `<hui-bot-face>`: a bot's animated face, after OpenAI's Dots: a
  * plush shape in the bot's color with two dot eyes, no mouth and maybe ears on
  * top, whose eyes and body show what the bot is doing. Decorative: it is
  * aria-hidden, and the bot's name and status stay in text beside it.

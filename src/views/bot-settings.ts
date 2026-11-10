@@ -1,5 +1,5 @@
 /**
- * A bot's Settings page in its panel (HUI-18), after Grok Bot's "Bot settings":
+ * A bot's Settings page in its panel, after Grok Bot's "Bot settings":
  * who the bot is, how agents and bots tag it, the models it runs on, how it
  * sounds on calls and where it works, as compact rows in the style of HUI's
  * Settings pages, and the one-line summaries the panel's overview shows of them.

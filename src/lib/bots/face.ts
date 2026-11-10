@@ -1,5 +1,5 @@
 /**
- * Bots' animated faces (HUI-18), the pure half: what a face shows for a bot's
+ * Bots' animated faces, the pure half: what a face shows for a bot's
  * roster entry, its open chat and its call, and the geometry and colors of
  * the face itself, ported from the prototype the owner approved on
  * 2026-10-06 (OpenAI Dots: a plush shape, two dot eyes, no mouth), and the

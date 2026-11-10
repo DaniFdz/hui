@@ -2067,8 +2067,6 @@ question are kept, and the card stays folded while the operator writes in the
 composer. The folded row, Enter on it or Escape opens the card again where the
 operator left it; Escape on the folded row opens it rather than declining the
 questions. A new call's card, and a reload, open unfolded.
-The fold is the web card's: the iPhone app draws questions in its own card
-(`docs/native-ios-plan.md`).
 
 The agent learns each answer as `"question"="answer"` (several joined by
 commas, a chosen option's preview after it), or that the operator declined:
@@ -2394,7 +2392,7 @@ leaves worker records unchanged.
 
 A **bot** is a named, persistent agent: a role, a persona it writes itself
 (SOUL.md), its own model, a working directory and **one chat that never ends**,
-whose memory is OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
+whose memory is OptChat. Sessions keep everything they have (worktrees, rewind,
 `/compact`); bots are for assistants the operator returns to every day. The
 sidebar splits into **Agents | Bots**, and the `hui bot` CLI can do
 everything the Bots tab can, through the same routes.
@@ -2885,7 +2883,7 @@ implement it for android".
   PR #347 stays unmerged as an archive), and `main` loses the iOS target, the
   iOS status of every use case and the iOS fixture steps.
 - **The native client is a Kotlin and Jetpack Compose Android app**, not a
-  WebView shell around the web UI. `docs/native-android-plan.md` is its plan.
+  WebView shell around the web UI.
 - **Lockstep starts with the Android target.** Until the shared suite has an
   Android target, use cases carry only a web status. The PR that adds the
   target gives every use case an Android status, with existing ones in a
@@ -4325,8 +4323,9 @@ The browser addresses only opaque inventory ids. The server revalidates each id
 against current PI settings, never executes the resource, never accepts a path,
 and limits returned text to 256 KiB.
 
-The ordered implementation tasks and accepted capability matrix are in
-`docs/implementation-roadmap.md`.
+The accepted capability matrix is the use-case catalogue in `e2e/catalogue/`,
+where `backlog` means the capability exists and its shared test does not yet
+pass.
 
 ## Desktop distribution
 

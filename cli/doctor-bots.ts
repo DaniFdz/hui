@@ -1,5 +1,5 @@
 /**
- * `hui doctor`: bots from before the prompt split (HUI-18). A bot's persona used to be one SOUL.md, with what it knew
+ * `hui doctor`: bots from before the prompt split. A bot's persona used to be one SOUL.md, with what it knew
  * under "What you already know"; it now has SOUL.md (who it is), USER.md (what it knows about the operator), MEMORY.md
  * (what it chose to keep) and an optional BOOTSTRAP.md.
  *
