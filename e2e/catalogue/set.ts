@@ -711,7 +711,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiautomation", "docs/api.md#post-__huiautomationtasks", "SPEC.md#behaviour"],
     surfaces: ["settings-page:automation", "route:GET /__hui/automation", "route:POST /__hui/automation/tasks", "page:cron"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SET-068",

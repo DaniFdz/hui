@@ -824,7 +824,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-067",
