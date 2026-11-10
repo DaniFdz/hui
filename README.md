@@ -8,6 +8,7 @@
 <p align="center">
   <a href="https://github.com/DaniFdz/hui/releases/latest"><img src="https://img.shields.io/github/v/release/DaniFdz/hui?style=flat-square&label=release" alt="Latest release"></a>
   <a href="https://github.com/DaniFdz/hui/actions/workflows/nix.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaniFdz/hui/nix.yml?branch=main&style=flat-square&label=ci" alt="CI status"></a>
+  <a href="https://github.com/DaniFdz/hui/actions/workflows/nightly.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaniFdz/hui/nightly.yml?branch=main&style=flat-square&label=nightly" alt="Nightly build status"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A524-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js 24 or newer"></a>
   <a href="https://pi.dev"><img src="https://img.shields.io/badge/runtime-PI-8b5cf6?style=flat-square" alt="Runtime: PI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License: MIT"></a>
@@ -259,8 +260,11 @@ hui update --force            # replace a busy or unresponsive gateway
 ```
 
 `--nightly` installs the build CI publishes for each `main` commit, from the
-rolling `nightly` prerelease. Run it again to follow `main`; a plain
-`hui update` brings you back to stable once a newer stable release ships.
+rolling `nightly` prerelease. The badge above and the
+[Nightly workflow](https://github.com/DaniFdz/hui/actions/workflows/nightly.yml)
+show whether the current `main` commit passed its checks and published. Run it
+again to follow `main`; a plain `hui update` brings you back to stable once a
+newer stable release ships.
 
 From the chat, `/update` opens the update flow in a dedicated **HUI update**
 session under **OTHER**. The command stays in the composer and is never sent to
