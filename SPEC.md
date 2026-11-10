@@ -1688,7 +1688,10 @@ bundled `visualize` skill.
 
 HUI supplies regular PI sessions with the OpenClaw-style coordination tools
 `create_session`, `sessions_spawn`, `sessions_list`, `sessions_history`,
-`sessions_send` and `subagents` (`list`, `steer`, `kill`). `worker_stats`
+`sessions_send` and `subagents` (`list`, `steer`, `kill`). `watch_session`
+records sessions a session watches, in its group; a watched session becomes
+visible to `sessions_list`, `sessions_history` and `sessions_send`, so a
+heartbeat can read its status and continue it. `worker_stats`
 reports this machine and every configured worker with CPU, memory, disk, GPU,
 connection state and running sessions, and names the least loaded connected
 machine within headroom (CPU 70%, memory 80%, disk 85%, fewer running sessions

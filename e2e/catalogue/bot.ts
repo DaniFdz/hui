@@ -667,6 +667,15 @@ const cases: UseCase[] = [
     journeys: ["bots"],
     web: "required",
   },
+  {
+    id: "BOT-075",
+    title: "Watch a session and continue it when it stops",
+    behaviour: "A session watches another session in its group; the watched session becomes visible to sessions_list, sessions_history and sessions_send, so a heartbeat can read its state and send it a continuation. A session in another group, an archived session and a bot's chat cannot be watched.",
+    spec: ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"],
+    surfaces: ["tool:watch_session"],
+    journeys: ["bots"],
+    web: "required",
+  },
 ];
 
 export default cases;

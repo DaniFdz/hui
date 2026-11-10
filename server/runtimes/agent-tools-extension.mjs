@@ -158,6 +158,7 @@ Every question also offers a free-text answer the card adds itself, and the user
       group: Type.Optional(Type.String({ maxLength: 200, description: "Sidebar group. Defaults to the caller's." })),
       worker: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "Worker id or name. Defaults to the caller's worker, or this machine." })),
       worktree: Type.Optional(Type.Boolean({ description: "Create a fresh Git worktree and branch for the session." })),
+      watch: Type.Optional(Type.Boolean({ description: "Watch the new session so you can list, read and continue it; true unless false." })),
       branchName: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "Worktree branch; HUI generates one when omitted." })),
       baseRef: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "Base branch or commit." })),
       model: Type.Optional(Type.String({ minLength: 3, maxLength: 200, description: "A `provider/id` model. Defaults to the caller's." })),
@@ -167,6 +168,30 @@ Every question also offers a free-text answer the card adds itself, and the user
       const result = await invoke("create_session", params);
       return {
         content: [{ type: "text", text: `Created session ${JSON.stringify(result?.title ?? "Untitled")} (${result?.id}). It is a separate chat${result?.worktree ? " in a new Git worktree" : ""}; its work continues there.` }],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "watch_session",
+    label: "Watch session",
+    description: "Watch other sessions in your group: list them with their status and watchers, add one, or remove it. A watched session becomes visible to sessions_list, sessions_history and sessions_send, so a heartbeat can read it and continue it when it stops.",
+    promptSnippet: "Watch another session and continue it when it stops",
+    promptGuidelines: [
+      "Use watch_session add for a session you want a heartbeat to supervise; create_session watches the sessions it starts unless watch is false.",
+      "The watched session must be in your group, not archived and not a bot's chat. A bot's chat is reached with message_bot instead.",
+      "A running session or one with a running watcher is not stopped: leave it. A dead or failed watcher, or an idle session with an open task and no watcher, is the case to continue.",
+    ],
+    parameters: Type.Object({
+      action: Type.Union(["list", "add", "remove"].map((action) => Type.Literal(action))),
+      session: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "add and remove: the session id. list needs none." })),
+    }),
+    async execute(_toolCallId, params) {
+      const result = await invoke("watch_session", params);
+      const sessions = Array.isArray(result?.sessions) ? result.sessions : [];
+      return {
+        content: [{ type: "text", text: `Watching ${sessions.length} session${sessions.length === 1 ? "" : "s"}: ${sessions.map((entry) => `${entry.title} (${entry.status})`).join(", ") || "none"}.` }],
         details: result,
       };
     },
