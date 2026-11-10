@@ -1100,6 +1100,28 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The shipped browser skill is in a session's prompt and readable from its folder.
+  if (source.includes("E2E_BROWSER_SKILL") && !source.includes("Name this coding-agent session")) {
+    const prompt = flattenedText(body.system);
+    const description = /reading a site that needs JavaScript or a login/u.test(prompt);
+    const path = /<location>([^<]*\/skills\/browser\/SKILL\.md)<\/location>/u.exec(prompt)?.[1];
+    if (!description || !path) {
+      text(response, `The browser skill is not in this session's prompt: described=${description}, path=${path ?? "none"}.`);
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-skill", "bash", { command: `sed -n '1,3p' '${path}' && grep -c '^## The loop that works' '${path}'` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-skill") {
+    const result = String(latestToolResult.result ?? "");
+    const named = /name: browser/u.test(result);
+    const loop = /^1$/mu.test(result.trim().split("\n").at(-1) ?? "");
+    text(response, named && loop
+      ? "The browser skill is listed in this session's prompt, and its file opens with **name: browser** and the loop section."
+      : `The browser skill file did not read as expected: ${result.slice(0, 200)}`);
+    return finish(response);
+  }
+
   if (source.includes("[HUI subagent completion event]") && source.includes("E2E_STEERING_CHILD")) {
     text(response, "Parent incorporated the child result through steering.");
     return finish(response);
