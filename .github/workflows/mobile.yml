@@ -27,6 +27,10 @@ on:
         type: choice
         options: [required, all]
         default: required
+      files:
+        description: "Optional test files or folders to run instead of the whole area selection (for example e2e/tests/rich)"
+        type: string
+        default: ""
 permissions:
   contents: read
 concurrency:
@@ -218,10 +222,16 @@ jobs:
           # when those pass. `all` (a dispatch from a catch-up branch) runs everything, which is how a worker reads a
           # backlog area's real failures from the artifacts without an emulator on their own machine.
           scope="${{ inputs.scope || 'required' }}"
+          files="${{ inputs.files }}"
           tags=$(node e2e/catalogue/phone.ts 2>/dev/null || true)
           count=$(printf '%s' "$tags" | tr ',' '\n' | grep -c . || true)
-          echo "scope=$scope required-ids=$count"
-          if [ "$scope" = "all" ]; then
+          echo "scope=$scope required-ids=$count files=${files:-<selection>}"
+          # A catch-up dispatches one area's files to get a short run: sharding still splits the files across the four
+          # jobs, so a single area is minutes, not half an hour.
+          if [ -n "$files" ]; then
+            # shellcheck disable=SC2086
+            npx e2e run --target android --shard "${{ matrix.shard }}" $files
+          elif [ "$scope" = "all" ]; then
             npx e2e run --target android --shard "${{ matrix.shard }}"
           elif [ "$count" -eq 0 ]; then
             # Running everything here would hide a broken catalogue behind a red job: say so instead.

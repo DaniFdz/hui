@@ -417,6 +417,8 @@ gh run download <run-id> --repo DaniFdz/hui -n e2e-android-0 -D /tmp/phone-run
 
 - `scope=required` (the default, and what a push or a pull request runs) runs only the use cases the catalogue says the
   phone proves; the job is green when those pass.
+- `files=<path>` runs just those files (or a folder) in the app's WebView, sharded across the four jobs. That is the loop
+  to use while fixing one area: an area is minutes, the whole suite is half an hour.
 - `scope=all` runs the whole suite in the app's WebView and uploads every shard's `.e2e/` whether it passed or not. Read
   a backlog area's real failures from `/tmp/phone-run/.../.e2e/results/<test>/trace.md` and its screen dump, fix them,
   push, and dispatch again. That is the loop a phone catch-up uses: no emulator on your machine, and the same runner the
