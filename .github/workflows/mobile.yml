@@ -118,9 +118,10 @@ jobs:
         id: avd
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
-          # 2.7 GB booted, 1.2 GB of it the snapshot; a hit turns the 39 s cold boot into 6 s.
-          path: ~/.android/avd/HUI_Pixel_e2e.avd
-          key: avd-android-36-google-apis-x86_64-HUI_Pixel_e2e-v1
+          # 2.7 GB booted, 1.2 GB of it the snapshot; a hit turns the 39 s cold boot into 6 s. Both files are cached: the
+          # emulator finds an AVD through <name>.ini, and an .avd directory without it is invisible.
+          path: ~/.android/avd
+          key: avd-android-36-google-apis-x86_64-HUI_Pixel_e2e-v2
       - run: npm ci --ignore-scripts
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -137,11 +138,12 @@ jobs:
           avd=HUI_Pixel_e2e
           mkdir -p "$ANDROID_AVD_HOME"
           echo "ANDROID_HOME=$ANDROID_HOME ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
-          if [ ! -f "$ANDROID_AVD_HOME/$avd.avd/config.ini" ]; then
+          # Without -p, avdmanager writes both <name>.ini and <name>.avd under ANDROID_AVD_HOME, which is what the emulator
+          # looks for; naming the directory itself (-p) writes no .ini and the emulator reports "Unknown AVD name".
+          if [ ! -f "$ANDROID_AVD_HOME/$avd.ini" ]; then
             device=$(avdmanager list device -c 2>/dev/null | grep -E '^pixel_[0-9]+$' | sort -V | tail -1 || true)
             echo "device profile: ${device:-pixel}"
-            echo no | avdmanager create avd -n "$avd" -k "system-images;android-36;google_apis;x86_64" -d "${device:-pixel}" \
-              -p "$ANDROID_AVD_HOME/$avd.avd" --force
+            echo no | avdmanager create avd -n "$avd" -k "system-images;android-36;google_apis;x86_64" -d "${device:-pixel}" --force
             # A hardware keyboard so typed text never waits on the soft one, and no device frame or camera.
             {
               echo 'hw.keyboard=yes'
@@ -151,6 +153,7 @@ jobs:
             } >> "$ANDROID_AVD_HOME/$avd.avd/config.ini"
           fi
           ls "$ANDROID_AVD_HOME"
+          test -f "$ANDROID_AVD_HOME/$avd.ini" || { echo "::error::the AVD was not created"; exit 1; }
           adb start-server
           # Every adb call has a deadline: a device that went "offline" makes an unbounded `adb shell` wait forever, which
           # is how a shard once spent its whole 45-minute budget in this loop without a single diagnostic.
