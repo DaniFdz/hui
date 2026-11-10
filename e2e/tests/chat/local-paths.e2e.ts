@@ -3,7 +3,7 @@
 import { writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { expect, type Locator, type Screen } from "e2e";
-import { test} from "../../fixtures/hui.ts";
+import { test } from "../../fixtures/hui.ts";
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
