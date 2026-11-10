@@ -2,7 +2,9 @@
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against (restartable against the same
  * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
  * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, cleanup
- * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
+ * of the backlog tasks a test created, searches of the gateway's state and secret directories, the fixture's own worlds
+ * (`world.ts`: another disposable gateway seeded for one test) and steps (a download the app saved itself, a subagent's
+ * conversation opened from its parent's card, a tool call held while it runs), and every step whose
  * gesture or reading would differ per platform, kept in one table per target that the web fills: opening, reloading
  * and clearing the app, taps, holds, drags held mid-way, context menus, a message's actions (a hover reveals its
  * footer), switches (a Web Awesome switch draws its track over its input, so the web taps the point), attachments,
@@ -11,11 +13,7 @@
  * layout, the shell's drawer media, the navigation drawer), the Settings page list (the drawer on a phone), the app's
  * chrome outside Settings (the primary navigation), the chosen button of a group (aria-pressed), the app's and the
  * device's colour scheme, the session menu, status glyphs, how a piece of the screen looks, the window's size, Back and
- * Forward, sideways overflow, whether a tap reaches a control and the command palette's chord; and the steps that are
- * the fixture's own rather than a platform's: a download the app saves itself (the browser's download event on the web,
- * and on the phone the file the shell wrote into `Downloads`), a subagent's conversation opened from the card its
- * parent's chat draws, a tool call held while it runs so its row and the working indicator can be read in flight, and a
- * fixture world started for one test (`world.ts`). The web page never
+ * Forward, sideways overflow, whether a tap reaches a control and the command palette's chord. The web page never
  * opens Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway
  * does. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
  * themselves.
