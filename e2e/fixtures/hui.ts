@@ -9,8 +9,9 @@
  * sideways scrolling, downloads, the clipboard, the Work pane's launcher (the + menu writes each shortcut on its entry
  * and opens the pane beside the chat), a Files row's delete, the phone screen's size, the session list (on the drawer
  * layout, the shell's drawer media, the navigation drawer), the Settings page list (the drawer on a phone), the app's
- * chrome outside Settings (the primary navigation), the chosen button of a group (aria-pressed), the app's and the
- * device's colour scheme, the session menu, status glyphs, how a piece of the screen looks, the window's size, Back and
+ * chrome outside Settings (the primary navigation), the chosen button of a group (aria-pressed), the page's own
+ * document title, the app's and the device's colour scheme, the session menu, status glyphs, how a piece of the screen
+ * looks, the window's size, Back and
  * Forward, sideways overflow, whether a tap reaches a control and the command palette's chord. The web page never
  * opens Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway
  * does. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
@@ -63,6 +64,8 @@ export type Hui = {
   reload(): Promise<void>;
   clearState(): Promise<void>;
   url(): Promise<string>;
+  /** The page's own document title, which names the open session and HUI. */
+  documentTitle(): Promise<string>;
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
   wideScreen(width?: number): Promise<void>;
   paletteChord(): Promise<void>;
@@ -144,7 +147,7 @@ export type Hui = {
 };
 
 /** The steps whose gesture or reading differs per platform; each target fills its own table of them. */
-type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository">;
+type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "documentTitle">;
 
 /** A tap at the middle of where a target is at the moment of the press. */
 const tapAt = async (target: Locator) => {
@@ -836,6 +839,7 @@ export const test = base.extend<{ hui: Hui }>({
       configDir: receipt.huiConfig,
       gateway: receipt.url,
       api,
+      documentTitle: () => browser().evaluate(() => document.title),
       createSession: async (input) =>
         (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
       prompt,
