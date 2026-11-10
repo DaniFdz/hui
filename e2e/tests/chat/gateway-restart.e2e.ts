@@ -1,4 +1,4 @@
-/** A run cut off by a gateway restart carries on by itself, and a chat left running gets an accent unread dot when it settles that outlives a restart (CHAT-018, CHAT-017). */
+/** A run cut off by a gateway restart carries on by itself, and a chat left running gets an accent unread dot when it settles that outlives a restart (CHAT-018, CHAT-017). A phone shows one screen at a time, so every read or tap of a sidebar row opens the drawer with `hui.sessionList()` first. */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -47,22 +47,28 @@ test("a chat left running keeps running, and the accent unread dot it gets on se
   await screen.getByLabel("Message").fill("E2E_REPLAY");
   await screen.getByRole("button", "Send message").tap();
   await hui.provider.held();
+  await hui.sessionList();
   await screen.getByLabel("Somewhere else, status idle, tool durable, stage investigation").tap();
+  await hui.sessionList();
   await expect(row("running")).toBeVisible();
   await screen.getByRole("button", "New session in OTHER").tap();
   await expect(screen.getByRole("button", "Start session")).toBeVisible();
+  await hui.sessionList();
   await expect(row("running")).toBeVisible();
 
   await hui.provider.release();
+  await hui.sessionList();
   await expect(unread).toBeVisible();
   expect(await hui.accentDot("Left running")).toBe(true);
   await hui.restartGateway();
   await hui.reload();
+  await hui.sessionList();
   await expect(unread).toBeVisible();
   expect(await hui.accentDot("Left running")).toBe(true);
 
   await unread.tap();
   await expect(screen.getByTestId("transcript", { visible: true }).getByText("Replay prefix — replay suffix")).toBeVisible();
+  await hui.sessionList();
   await expect(row("idle")).toBeVisible();
   expect(await hui.accentDot("Left running")).toBe(false);
 });

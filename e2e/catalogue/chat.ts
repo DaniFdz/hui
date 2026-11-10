@@ -195,7 +195,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "position-rail"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-016",
@@ -212,7 +212,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["interrupted-recovery", "message-metadata"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-017",
@@ -536,7 +536,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["command:reload", "route:POST /__hui/sessions/:id/reload"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-043",
@@ -628,7 +628,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["slash-commands", "command-references", "durable-extensions"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-050",
