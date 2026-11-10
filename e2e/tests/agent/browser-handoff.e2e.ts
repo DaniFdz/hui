@@ -1,6 +1,6 @@
-/** The managed browser driven by an agent in steps calls and handoffs, and what Stop leaves behind: a sequence of
- * dependent steps in one call, the tab a person takes over, and a browsing turn cancelled mid-run (AGENT-064,
- * AGENT-065, AGENT-058). */
+/** The managed browser driven by an agent in steps calls and handoffs: a sequence of dependent steps in one call, with
+ * the failures that name themselves, and the tab a person takes over until Continue, its timeout or the browser
+ * stopping underneath it (AGENT-064, AGENT-065). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
