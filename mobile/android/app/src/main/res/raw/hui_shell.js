@@ -35,28 +35,33 @@
 
   /**
    * The blobs behind the object URLs the page made. The web UI revokes its object URL as soon as it has clicked the
-   * anchor, so fetching the URL afterwards would fail; the blob itself is still here.
+   * anchor, so fetching the URL afterwards would fail; the blob itself is still here. Only a short window is kept: the
+   * page also makes object URLs for images it never downloads, and holding those would grow with the conversation.
    */
   const blobs = new Map();
+  const KEEP_MS = 60_000;
+  const KEEP_MAX = 16;
   const createObjectURL = URL.createObjectURL.bind(URL);
   URL.createObjectURL = (blob) => {
     const url = createObjectURL(blob);
-    blobs.set(url, blob);
+    const now = Date.now();
+    for (const [key, entry] of blobs) if (now - entry.at > KEEP_MS || blobs.size >= KEEP_MAX) blobs.delete(key);
+    blobs.set(url, { blob, at: now });
     return url;
   };
 
   /** Save one URL the page owns (`blob:`/`data:`) as `name`. */
   const save = async (url, name) => {
-    let blob = blobs.get(url);
+    const remembered = blobs.get(url);
+    blobs.delete(url);
+    let blob = remembered && remembered.blob;
     if (!blob) {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       blob = await response.blob();
     }
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    const result = await call("saveDownload", { name: name || "", type: blob.type || "application/octet-stream", data: toBase64(bytes) });
-    blobs.delete(url);
-    return result;
+    return call("saveDownload", { name: name || "", type: blob.type || "application/octet-stream", data: toBase64(bytes) });
   };
 
   window.__huiShell = { save: (url, name) => save(url, name).catch(failed) };
