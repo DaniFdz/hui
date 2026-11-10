@@ -27,6 +27,7 @@ test("the boot screen shows HUI's name and loading bar on the background the sys
   expect(Date.now() - started).toBeGreaterThanOrEqual(6_000);
   await expect(reload).toBeVisible();
   await code.deliver();
+  await hui.sessionList();
   await expect(hui.appChrome()).toBeVisible();
   await expect(bar).toHaveCount(0);
   await expect(slow).toHaveCount(0);
@@ -42,6 +43,7 @@ test("the boot screen shows HUI's name and loading bar on the background the sys
   await expect(bar).toBeVisible();
   expect((await hui.look(name)).background).toEqual([250, 249, 247]);
   await code.deliver();
+  await hui.sessionList();
   await expect(hui.appChrome()).toBeVisible();
   await expect(bar).toHaveCount(0);
 });
@@ -90,6 +92,7 @@ test("code that never downloads swaps the loading bar for the connection message
   await expect(reload).toBeVisible();
 
   await reload.tap();
+  await hui.sessionList();
   await expect(hui.appChrome()).toBeVisible();
   await expect(failure).toHaveCount(0);
 });

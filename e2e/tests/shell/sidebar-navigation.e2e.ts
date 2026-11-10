@@ -13,6 +13,7 @@ const DESTINATIONS = [
 
 test("the sidebar lists its work destinations above a Settings footer", { tags: ["SHELL-001", "smoke"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/");
+  await hui.sessionList();
   const navigation = screen.getByTestId("primary-navigation");
 
   await expect(navigation).toBeVisible();
@@ -35,7 +36,9 @@ test("the sidebar lists its work destinations above a Settings footer", { tags: 
   const settingsBox = await settings.boundingBox();
   assert(settingsBox);
   expect(settingsBox.y).toBeGreaterThan(previous);
-  await expect(screen.getByLabel("Collapse sidebar")).toBeVisible();
+  // The header's one control is the desktop toggle; a phone's drawer hides it (SHELL-015) and closes from buttons of
+  // its own (SHELL-011), so it is read by its label, which a hidden control still answers.
+  await expect(screen.getByTestId("sidebar-header").getByLabel("Collapse sidebar")).toHaveCount(1);
 
   // The Bots list shows no destinations, and keeps Settings.
   await screen.getByRole("tab", "Bots").tap();
@@ -51,12 +54,14 @@ test("a destination opens its page and keeps it across a reload", { tags: ["SHEL
   await hui.open("/");
 
   for (const [label, page] of DESTINATIONS) {
+    await hui.sessionList();
     await screen.getByTestId("primary-navigation").getByText(label).tap();
     await expect(screen.getByText(page, { exact: false }).first()).toBeVisible();
     await hui.reload();
     await expect(screen.getByText(page, { exact: false }).first()).toBeVisible();
   }
 
+  await hui.sessionList();
   await screen.getByTestId("nav-settings").tap();
   await expect(screen.getByText("HUI and PI preferences for this workspace.").first()).toBeVisible();
   await hui.reload();
