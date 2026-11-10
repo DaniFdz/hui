@@ -42,12 +42,14 @@ test("archiving a session closes its split pane and leaves the open conversation
   await hui.createSession({ title: "Split parent" });
   const other = await hui.createSession({ title: "Main conversation" });
   await hui.open(`/sessions/${other.id}`);
+  await hui.sessionList();
   await hui.sessionMenu("Split parent");
   await screen.getByText("Open in split pane", { visible: true }).tap();
   await expect(screen.getByLabel(/^Split parent, status idle, .*, open in split pane$/u)).toBeVisible();
   await expect(screen.getByTestId("session-title", { visible: true })).toHaveCount(2);
   await screen.getByTestId("session-title", { visible: true }).filter({ hasText: "Main conversation" }).tap();
   await expect.poll(() => hui.url()).toMatch(new RegExp(`/sessions/${other.id}$`, "u"));
+  await hui.sessionList();
   await hui.sessionMenu("Split parent");
   await screen.getByText("Archive session", { visible: true }).tap();
   await expect(screen.getByText("Archived “Split parent”.")).toBeVisible();
@@ -61,6 +63,7 @@ test("the archive toast expires untouched, and a failed restore keeps its error 
   const restore = screen.getByRole("button", "Restore");
   const session = await hui.createSession({ title: "Fragile restore" });
   await hui.open("/");
+  await hui.sessionList();
   await hui.sessionMenu("Fragile restore");
   await screen.getByText("Archive session", { visible: true }).tap();
   await expect(screen.getByText("Archived “Fragile restore”.")).toBeVisible();
@@ -74,6 +77,7 @@ test("the archive toast expires untouched, and a failed restore keeps its error 
   await expect(screen.getByText("Session restored.")).toBeVisible();
   await expect(screen.getByLabel(row("Fragile restore"))).toBeVisible();
 
+  await hui.sessionList();
   await hui.sessionMenu("Fragile restore");
   await screen.getByText("Archive session", { visible: true }).tap();
   await expect(screen.getByText("Archived “Fragile restore”.")).toBeVisible();
@@ -86,6 +90,7 @@ test("on a phone screen the archive toast keeps Restore and its dismiss button i
   const restore = screen.getByRole("button", "Restore");
   const dismiss = screen.getByRole("button", "Dismiss archive notification");
   const archive = async () => {
+    await hui.sessionList();
     await hui.sessionMenu("Pocket session");
     await screen.getByText("Archive session", { visible: true }).tap();
     await expect(toast).toBeVisible();

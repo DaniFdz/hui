@@ -11,6 +11,7 @@ test("New session in a group selects it and its directory, and the Group picker 
   const chooser = screen.getByLabel("Choose session group");
 
   await hui.open("/");
+  await hui.sessionList();
   await hui.peek(screen.getByText("ALPHA", { exact: true, visible: true }));
   await screen.getByRole("button", "New session in ALPHA").tap();
   await expect(chooser).toContainText("ALPHA");
@@ -51,6 +52,7 @@ test("a group's Git defaults are saved, survive a reload and a cancel, start ses
   const choosePath = (path: string) => choose(path, "Choose where sessions created from this group start.");
   const launchFrom = (path: string) => choose(path, "Pick where this session works, then say what to do.");
   const openDefaults = async () => {
+    await hui.sessionList();
     await hui.peek(screen.getByText("DEFAULTS", { exact: true, visible: true }));
     await screen.getByRole("button", "Group options for Defaults").tap();
     await screen.getByText("New session defaults", { visible: true }).tap();
@@ -58,6 +60,7 @@ test("a group's Git defaults are saved, survive a reload and a cancel, start ses
     await screen.getByText("Choose where sessions created from this group start.").tap();
   };
   const startFromGroup = async (prompt: string) => {
+    await hui.sessionList();
     await hui.peek(screen.getByText("DEFAULTS", { exact: true, visible: true }));
     await screen.getByRole("button", "New session in DEFAULTS").tap();
     await expect(directory).toHaveValue(repository.path);

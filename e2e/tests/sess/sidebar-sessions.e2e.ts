@@ -53,30 +53,36 @@ test("rows show running, waiting and failed sessions and a parent's watcher or s
   try {
     await hui.open("/");
     await expect(row("Runs a turn", "idle")).toBeVisible();
+    await hui.sessionList();
     expect(await hui.glyph("Runs a turn")).toEqual({ label: "", animated: false });
 
     await hui.prompt(runs, "E2E_REPLAY");
     await hui.provider.held();
     await expect(row("Runs a turn", "running")).toBeVisible();
+    await hui.sessionList();
     expect(await hui.glyph("Runs a turn")).toEqual({ label: "", animated: true });
     await hui.provider.release();
     await expect(row("Runs a turn", "idle")).toBeVisible();
 
     await hui.prompt(asks, "E2E_ASK_USER:sidebar");
     await expect(row("Asks a question", "waiting")).toBeVisible();
+    await hui.sessionList();
     expect(await hui.glyph("Asks a question")).toEqual({ label: "Waiting for your answer", animated: false });
 
     await hui.createSession({ title: "Fails to start", model: "missing/model" });
     await expect(row("Fails to start", "error")).toBeVisible();
+    await hui.sessionList();
     expect(await hui.glyph("Fails to start")).toEqual({ label: "Session failed", animated: false });
 
     await hui.prompt(watches, "E2E_WATCHER");
     await expect(screen.getByLabel(/^Keeps a watcher, status idle, watcher or subagent running, tool durable, stage investigation/u)).toBeVisible();
+    await hui.sessionList();
     expect(await hui.glyph("Keeps a watcher")).toEqual({ label: "Watcher or subagent running", animated: true });
 
     await hui.prompt(delegates, heldHelper);
     await hui.provider.held();
     await expect(screen.getByLabel(/^Delegates work, status idle, watcher or subagent running, tool durable, stage investigation/u)).toBeVisible();
+    await hui.sessionList();
     expect(await hui.glyph("Delegates work")).toEqual({ label: "Watcher or subagent running", animated: true });
     await hui.provider.release();
     await expect(row("Delegates work", "idle")).toBeVisible();
@@ -100,6 +106,7 @@ test("the list shows placeholder rows and a failed first load, retries once the 
   const row = screen.getByTestId("session-row").filter({ hasText: "Kept through a failed refresh" });
   await expect(screen.getByLabel("Kept through a failed refresh, status idle, tool durable, stage investigation")).toBeVisible();
   const refresh = await hui.intercept("GET", /\/__hui\/sessions$/u);
+  await hui.sessionList();
   await hui.peek(row);
   await row.getByRole("button", "Pin session").tap();
   await refresh.reject(503, "Could not reach the session registry.");

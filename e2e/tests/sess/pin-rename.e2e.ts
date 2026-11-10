@@ -7,6 +7,7 @@ test("the row's Pin session button pins a session and its Unpin session button u
   await hui.createSession({ title: "Zulu pin" });
 
   await hui.open("/");
+  await hui.sessionList();
   await hui.peek(zuluRow);
   await zuluRow.getByRole("button", "Pin session").tap();
   await expect(screen.getByLabel("Zulu pin, status idle, tool durable, stage investigation, pinned")).toBeVisible();
@@ -26,8 +27,10 @@ test("the session menu's Pin session keeps a row first in every sort with a Pinn
   await hui.createSession({ title: "Mike menu" });
 
   await hui.open("/");
+  await hui.sessionList();
   await sortBy("Name");
   await expect.poll(order).toEqual(["Alpha menu", "Mike menu", "Zulu menu"]);
+  await hui.sessionList();
   await hui.sessionMenu("Zulu menu");
   await screen.getByText("Pin session", { visible: true }).tap();
   await expect(screen.getByLabel("Zulu menu, status idle, tool durable, stage investigation, pinned")).toBeVisible();
@@ -43,8 +46,10 @@ test("the session menu's Pin session keeps a row first in every sort with a Pinn
   await hui.reload();
   await expect(screen.getByText("Pinned", { exact: true, visible: true })).toBeVisible();
   await hui.open("/");
+  await hui.sessionList();
   await expect(screen.getByLabel("Zulu menu, status idle, tool durable, stage investigation, pinned")).toBeVisible();
   await sortBy("Created");
+  await hui.sessionList();
   await hui.sessionMenu("Zulu menu");
   await screen.getByText("Unpin session", { visible: true }).tap();
   await expect(screen.getByLabel("Zulu menu, status idle, tool durable, stage investigation")).toBeVisible();
@@ -56,6 +61,7 @@ test("Rename… opens the session's title as a Session name field that saves on 
   const heading = screen.getByTestId("session-title", { visible: true });
   const row = (title: string) => screen.getByLabel(`${title}, status idle, tool durable, stage investigation`);
   const rename = async (title: string) => {
+    await hui.sessionList();
     await hui.sessionMenu(title);
     await screen.getByText("Rename…", { visible: true }).tap();
     await expect(name).toHaveValue(title);
@@ -93,6 +99,7 @@ test("the Session name field saves on Enter and cancels on Escape or an empty na
   const heading = screen.getByTestId("session-title", { visible: true });
   const row = (title: string) => screen.getByLabel(`${title}, status idle, tool durable, stage investigation`);
   const rename = async (title: string) => {
+    await hui.sessionList();
     await hui.sessionMenu(title);
     await screen.getByText("Rename…", { visible: true }).tap();
     await expect(name).toHaveValue(title);

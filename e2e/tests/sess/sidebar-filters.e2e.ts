@@ -109,6 +109,7 @@ test("Group by Project splits rows by directory with only New session, None list
   await expect(screen.getByRole("button", "Group options for Atlas")).toHaveCount(0);
   await expect.poll(order).toEqual(["Second row", "Third row", "First row"]);
   await screen.getByTestId("session-row").filter({ hasText: "First row" }).dragTo(heading(there));
+  await hui.sessionList();
   await hui.peek(heading(there));
   await screen.getByRole("button", `New session in ${there}`).tap();
   await expect(screen.getByLabel("Project directory")).toHaveValue(parent);
