@@ -16,6 +16,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-002",
@@ -25,6 +26,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-003",
@@ -34,6 +36,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-004",
@@ -43,6 +46,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-005",
@@ -52,6 +56,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: { excluded: "Number keys, arrows, Enter chords and Escape are keyboard-only; the visible rows, Next, Back, Submit and Cancel cover them.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "AGENT-006",
@@ -61,6 +66,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-007",
@@ -70,6 +76,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["ask-user-question", "secret-requests"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-008",
@@ -79,6 +86,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["ask-user-question", "secret-requests"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-009",
@@ -88,6 +96,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-010",
@@ -97,6 +106,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-011",
@@ -106,6 +116,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-013",
@@ -115,6 +126,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "setting:questions.timeoutMinutes"],
     journeys: ["ask-user-question"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-014",
@@ -124,6 +136,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-015",
@@ -133,6 +146,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-016",
@@ -142,6 +156,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-017",
@@ -151,6 +166,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-018",
@@ -160,6 +176,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
     web: "required",
+    phone: { excluded: "Escape is a keyboard-only affordance; on a phone the card is closed only with Cancel, which AGENT-017 covers.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "AGENT-019",
@@ -169,6 +186,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-020",
@@ -178,6 +196,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-021",
@@ -187,6 +206,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["ask-user-question", "secret-requests", "task-suggestions"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-022",
@@ -196,6 +216,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_spawn"],
     journeys: ["subagents"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-023",
@@ -205,6 +226,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["subagents", "swarm"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-024",
@@ -214,6 +236,7 @@ const cases: UseCase[] = [
     surfaces: ["row:subagentEvent"],
     journeys: ["subagents", "subagent-steering", "chat-senders"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-025",
@@ -223,6 +246,7 @@ const cases: UseCase[] = [
     surfaces: ["row:subagentEvent"],
     journeys: ["subagent-steering", "subagent-delivery"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-026",
@@ -232,6 +256,7 @@ const cases: UseCase[] = [
     surfaces: ["row:subagentEvent"],
     journeys: ["subagent-delivery"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-027",
@@ -240,6 +265,7 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-028",
@@ -249,6 +275,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_list", "tool:sessions_history", "tool:sessions_send", "tool:subagents"],
     journeys: ["subagents"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-030",
@@ -258,6 +285,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["subagent-tree-collapse"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-031",
@@ -267,6 +295,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_spawn", "tool:agents_wait"],
     journeys: ["swarm", "subagents"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-032",
@@ -276,6 +305,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_spawn", "tool:agents_wait"],
     journeys: ["swarm"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-033",
@@ -285,6 +315,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort", "tool:agents_wait"],
     journeys: ["swarm"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-034",
@@ -294,6 +325,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:agents_wait"],
     journeys: ["swarm"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-035",
@@ -302,6 +334,7 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: ["row:subagentEvent", "tool:sessions_spawn"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-036",
@@ -311,6 +344,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-037",
@@ -320,6 +354,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher", "route:GET /__hui/sessions/:id/watchers/:wid/log"],
     journeys: ["watchers"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-038",
@@ -329,6 +364,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/stop"],
     journeys: ["watchers"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-039",
@@ -338,6 +374,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/restart"],
     journeys: ["watchers"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-040",
@@ -347,6 +384,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id/watchers/:wid"],
     journeys: ["watchers"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-062",
@@ -356,6 +394,7 @@ const cases: UseCase[] = [
     surfaces: ["row:watcherEvent"],
     journeys: ["watchers"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-063",
@@ -365,6 +404,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-041",
@@ -374,6 +414,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-042",
@@ -383,6 +424,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-043",
@@ -391,6 +433,7 @@ const cases: UseCase[] = [
     spec: WATCHERS,
     surfaces: ["tool:watcher"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-044",
@@ -400,6 +443,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["watchers"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-045",
@@ -409,6 +453,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:suggest_task"],
     journeys: ["task-suggestions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-046",
@@ -418,6 +463,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:suggest_task"],
     journeys: ["task-suggestions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-047",
@@ -427,6 +473,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-048",
@@ -436,6 +483,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-049",
@@ -445,6 +493,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-050",
@@ -454,6 +503,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id/suggestions/:sid", "tool:dismiss_task"],
     journeys: ["task-suggestions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-051",
@@ -463,6 +513,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/backlog"],
     journeys: ["task-suggestions", "kanban"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-052",
@@ -472,6 +523,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/jira", "route:POST /__hui/sessions/:id/jira/draft"],
     journeys: ["task-suggestions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-053",
@@ -480,6 +532,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#task-progress"],
     surfaces: ["setting:chat.collapseTaskProgress", "setting:models.utility"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-054",
@@ -489,6 +542,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:browser"],
     journeys: ["browser-tool"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-055",
@@ -498,6 +552,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:browser", "route:POST /__hui/sessions/:id/browser/connect", "route:WS /__hui/browser-stream"],
     journeys: ["browser-tool"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-056",
@@ -507,6 +562,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/browser/connect"],
     journeys: ["browser-tool"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-065",
@@ -516,6 +572,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:browser", "route:WS /__hui/browser-stream", "work-view:browser"],
     journeys: ["browser-tool"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-064",
@@ -525,6 +582,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:browser"],
     journeys: ["browser-tool"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-058",
@@ -534,6 +592,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["browser-tool"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "AGENT-059",
@@ -542,6 +601,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#clickable-desktop-notifications", "docs/api.md#desktop-notifications"],
     surfaces: ["tool:notify_user"],
     web: { excluded: "Native macOS Notification Center and Electron windows are outside the web runner; desktop tests cover routing and e2e/desktop-package.browser.md records the native macOS proof.", decision: "SPEC.md#clickable-desktop-notifications" },
+    phone: { excluded: "Native macOS Notification Center is outside the WebView's reach; the phone app's own local notification is its own use case.", decision: "SPEC.md#clickable-desktop-notifications" },
   },
   {
     id: "AGENT-061",
@@ -550,6 +610,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#notification-settings"],
     surfaces: [],
     web: { excluded: "Native macOS Notification Center is outside the web runner; e2e/desktop-package.browser.md records the native proof.", decision: "SPEC.md#notification-settings" },
+    phone: { excluded: "Native macOS Notification Center is outside the WebView's reach; the phone app's own local notification is its own use case.", decision: "SPEC.md#notification-settings" },
   },
   {
     id: "AGENT-060",
@@ -558,6 +619,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#clickable-desktop-notifications", "docs/api.md#desktop-notifications"],
     surfaces: ["tool:notify_user"],
     web: "required",
+    phone: "backlog",
   },
 ];
 

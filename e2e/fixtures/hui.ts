@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { addWorkerOnThisMachine } from "./worker.ts";
+import { clearAppStorage, onPhone } from "./phone.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
@@ -740,8 +741,21 @@ export const test = base.extend<{ hui: Hui }>({
     };
 
     // Each target's steps: the web fills its table, and a platform the suite gains adds its own beside it.
-    const steps = ({ web: webSteps } as Record<string, PlatformSteps | undefined>)[fixtures.platform];
-    if (!steps) throw new Error(`hui: the fixture has no steps for the ${fixtures.platform} target`);
+    const web = ({ web: webSteps } as Record<string, PlatformSteps | undefined>)[fixtures.platform];
+    if (!web) throw new Error(`hui: the fixture has no steps for the ${fixtures.platform} target`);
+    // The Android app's WebView is HUI's web page in another host, so its table is the web's except for what a WebView
+    // cannot do: it has one page and one context, which the engine cannot replace between attempts, so the app's own
+    // storage is cleared in place (and the page reloaded) where the web asks the engine for a clean context.
+    const steps: PlatformSteps = onPhone(fixtures.app.baseUrl)
+      ? {
+          ...web,
+          clearState: async () => {
+            await fixtures.app.open("/");
+            await browser().evaluate(clearAppStorage);
+            await browser().reload();
+          },
+        }
+      : web;
     if (fixtures.platform === "web") await browser().addInitScript(trackSockets);
     await steps.clearState();
 

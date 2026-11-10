@@ -10,6 +10,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:settings"],
     journeys: ["gateway-settings", "shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-002",
@@ -19,6 +20,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-003",
@@ -28,6 +30,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24", "webawesome-controls"],
     web: "required",
+    phone: { excluded: "Escape is a keyboard chord; the visible “Exit Settings” and “Clear settings search” buttons do the same on a phone.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SET-004",
@@ -36,6 +39,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huisettings", "docs/api.md#put-__huisettings"],
     surfaces: ["route:GET /__hui/settings", "route:PUT /__hui/settings"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-005",
@@ -44,6 +48,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huithemes", "docs/api.md#get-__huithemesfilekey"],
     surfaces: ["settings-page:appearance", "setting:theme", "route:GET /__hui/themes", "route:GET /__hui/themes/file/:key", "route:PUT /__hui/settings"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-006",
@@ -52,6 +57,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:themeMode"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-007",
@@ -60,6 +66,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:accent"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-083",
@@ -68,6 +75,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state", "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21"],
     surfaces: ["setting:accent"],
     web: "required",
+    phone: { excluded: "A focus ring shows only for a control reached with Tab, a keyboard path; the accent on buttons and highlights (SET-007) is what a phone shows.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SET-084",
@@ -77,6 +85,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:fontTerminal"],
     journeys: ["terminal-font"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-085",
@@ -85,6 +94,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["settings-page:appearance"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-008",
@@ -93,6 +103,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huithemesimport"],
     surfaces: ["route:POST /__hui/themes/import"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-009",
@@ -101,6 +112,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:fontUi", "setting:fontChat"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-010",
@@ -110,6 +122,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:fontTerminal"],
     journeys: ["terminal-font"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-011",
@@ -118,6 +131,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:textScale"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-012",
@@ -126,6 +140,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:chat.messageWidth"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-013",
@@ -134,6 +149,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-owned-presentation-state", "docs/api.md#task-progress"],
     surfaces: ["setting:chat.collapseTaskProgress"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-014",
@@ -142,6 +158,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:chat.sendShortcut"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-015",
@@ -151,6 +168,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:chat.githubEmbeds", "settings-page:appearance"],
     journeys: ["github-embeds"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-016",
@@ -160,6 +178,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:chat.datadogEmbeds", "settings-page:appearance"],
     journeys: ["datadog-embeds"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-017",
@@ -169,6 +188,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:connection", "route:GET /__hui/health", "page:connection", "route:GET /__hui/pi"],
     journeys: ["gateway-settings"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-018",
@@ -178,6 +198,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/health"],
     journeys: ["gateway-settings"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-019",
@@ -187,6 +208,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:power.keepAwake", "route:GET /__hui/power", "route:PUT /__hui/settings"],
     journeys: ["power-settings"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-020",
@@ -196,6 +218,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PUT /__hui/power", "route:GET /__hui/power"],
     journeys: ["power-settings"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-021",
@@ -205,6 +228,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PUT /__hui/power", "route:GET /__hui/power"],
     journeys: ["power-settings"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-022",
@@ -214,6 +238,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:integrations", "route:GET /__hui/jira", "route:PUT /__hui/jira"],
     journeys: ["jira-integration"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-023",
@@ -223,6 +248,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/jira", "route:GET /__hui/jira/projects", "settings-page:integrations"],
     journeys: ["jira-integration"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-024",
@@ -232,6 +258,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/jira", "settings-page:integrations", "route:PUT /__hui/jira"],
     journeys: ["jira-integration"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-025",
@@ -241,6 +268,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/github", "route:POST /__hui/github/login", "route:DELETE /__hui/github/login", "settings-page:integrations"],
     journeys: ["github-integration"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-026",
@@ -250,6 +278,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/datadog", "route:POST /__hui/datadog/orgs", "route:POST /__hui/datadog/login", "route:DELETE /__hui/datadog/login", "settings-page:integrations"],
     journeys: ["datadog-embeds"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-027",
@@ -259,6 +288,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/datadog/orgs", "route:GET /__hui/datadog", "route:POST /__hui/datadog/login", "settings-page:integrations", "route:POST /__hui/datadog/orgs", "route:DELETE /__hui/datadog/login"],
     journeys: ["datadog-embeds"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-028",
@@ -267,6 +297,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkers", "docs/api.md#post-__huiworkersidconnect", "docs/api.md#get-__huiworkers"],
     surfaces: ["settings-page:workers", "route:GET /__hui/workers", "route:POST /__hui/workers", "route:POST /__hui/workers/:id/connect"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-029",
@@ -275,6 +306,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkersidconnect", "docs/api.md#post-__huiworkersiddisconnect", "docs/api.md#post-__huiworkersidsync"],
     surfaces: ["route:POST /__hui/workers/:id/connect", "route:POST /__hui/workers/:id/disconnect", "route:POST /__hui/workers/:id/sync", "route:GET /__hui/workers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-030",
@@ -283,6 +315,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#patch-__huiworkersid"],
     surfaces: ["route:PATCH /__hui/workers/:id"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-031",
@@ -291,6 +324,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#delete-__huiworkersid"],
     surfaces: ["route:DELETE /__hui/workers/:id"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-032",
@@ -299,6 +333,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#git-workspace-sessions", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["settings-page:worktrees", "setting:branchPrefix"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-033",
@@ -308,6 +343,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:models", "route:GET /__hui/providers", "route:POST /__hui/providers/:provider/login", "route:POST /__hui/providers/login/:id", "route:PUT /__hui/providers/:provider"],
     journeys: ["providers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-086",
@@ -317,6 +353,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login", "route:DELETE /__hui/providers/login/:id"],
     journeys: ["providers"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-034",
@@ -326,6 +363,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login", "route:POST /__hui/providers/login/:id", "route:GET /__hui/providers"],
     journeys: ["providers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-035",
@@ -335,6 +373,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/providers/login/:id"],
     journeys: ["providers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-036",
@@ -344,6 +383,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["providers"],
     web: "required",
+    phone: { excluded: "Escape is a keyboard chord; the dialog's close button and “Cancel sign-in” do the same on a phone.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SET-037",
@@ -353,6 +393,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PUT /__hui/providers/:provider"],
     journeys: ["providers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-038",
@@ -362,6 +403,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/providers/:provider"],
     journeys: ["providers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-039",
@@ -371,6 +413,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login"],
     journeys: ["providers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-040",
@@ -380,6 +423,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login", "route:GET /__hui/providers"],
     journeys: ["providers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-041",
@@ -389,6 +433,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PUT /__hui/providers/:provider/accounts"],
     journeys: ["providers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-042",
@@ -398,6 +443,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["providers"],
     web: "backlog",
+    phone: { excluded: "Arrow, Home and End keys are a keyboard affordance; dragging the grip does the same on a phone.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SET-043",
@@ -407,6 +453,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/providers/:provider/accounts/:account"],
     journeys: ["providers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-044",
@@ -416,6 +463,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/providers/:provider/accounts/:account/quota"],
     journeys: ["providers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-045",
@@ -425,6 +473,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.primary", "setting:models.fallback", "setting:models.utility", "setting:models.thinking", "setting:models.retryAttempts", "route:PUT /__hui/settings"],
     journeys: ["model-routing"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-091",
@@ -434,6 +483,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:tools", "route:GET /__hui/browser/secrets", "route:POST /__hui/browser/secrets", "route:POST /__hui/browser/secrets/remove", "tool:browser"],
     journeys: ["browser-tool"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-090",
@@ -443,6 +493,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:tools", "setting:browser.allowedOrigins"],
     journeys: ["browser-tool"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-087",
@@ -452,6 +503,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["model-routing"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-046",
@@ -461,6 +513,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.primary", "setting:models.fallback"],
     journeys: ["model-routing"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-047",
@@ -470,6 +523,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.utility", "command:btw", "route:POST /__hui/sessions/:id/btw"],
     journeys: ["model-routing"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-048",
@@ -479,6 +533,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/sessions/:id/models"],
     journeys: ["configured-models"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-050",
@@ -488,6 +543,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi"],
     journeys: ["configured-models"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-051",
@@ -497,6 +553,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:calls.voice", "route:GET /__hui/calls", "settings-page:models", "route:PUT /__hui/settings"],
     journeys: ["bot-setup"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-052",
@@ -506,6 +563,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:tools", "setting:browser.enabled"],
     journeys: ["browser-tool"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-053",
@@ -515,6 +573,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:browser.headless", "setting:browser.executablePath", "route:GET /__hui/browser"],
     journeys: ["browser-tool"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-054",
@@ -524,6 +583,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/browser", "route:POST /__hui/browser", "route:GET /__hui/browser/tabs/:tab/preview"],
     journeys: ["browser-tool"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-055",
@@ -532,6 +592,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["setting:codemode.enabled"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-056",
@@ -541,6 +602,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:questions.timeoutMinutes"],
     journeys: ["ask-user-question"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-057",
@@ -550,6 +612,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:vscode.provider", "setting:vscode.executable", "route:GET /__hui/vscode-server"],
     journeys: ["vscode-view", "work-pane"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-058",
@@ -559,6 +622,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:vscode.licenseAcceptedAt", "route:POST /__hui/vscode-server", "route:GET /__hui/vscode-server"],
     journeys: ["vscode-view"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-059",
@@ -568,6 +632,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/tools", "route:GET /__hui/sessions/:id/tools", "settings-page:tools"],
     journeys: ["sdk-backend"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-060",
@@ -577,6 +642,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:skills", "setting:disabledSkills", "route:PUT /__hui/settings", "route:GET /__hui/sessions/:id/commands", "page:skills"],
     journeys: ["skill-disable"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-061",
@@ -586,6 +652,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/pi/resources/:kind/:id", "page:skills", "page:plugins"],
     journeys: ["resource-reader"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-062",
@@ -595,6 +662,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/pi/skills/install", "page:skills", "settings-page:skills"],
     journeys: ["pi-control-surfaces"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-063",
@@ -604,6 +672,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:plugins", "setting:disabledPlugins", "route:PUT /__hui/settings", "route:GET /__hui/sessions/:id/commands", "page:plugins"],
     journeys: ["plugin-disable-sdk"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-064",
@@ -613,6 +682,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/pi/resources/:kind/:id", "page:plugins", "page:plugin", "page:skills"],
     journeys: ["plugin-disable-sdk", "resource-reader"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-065",
@@ -622,6 +692,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/pi/packages/install", "page:plugins", "settings-page:plugins", "route:POST /__hui/pi/packages/remove"],
     journeys: ["pi-control-surfaces"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-066",
@@ -631,6 +702,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/pi/packages/remove", "page:plugins", "settings-page:plugins", "route:POST /__hui/pi/packages/install"],
     journeys: ["pi-control-surfaces"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SET-067",
@@ -639,6 +711,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiautomation", "docs/api.md#post-__huiautomationtasks", "SPEC.md#behaviour"],
     surfaces: ["settings-page:automation", "route:GET /__hui/automation", "route:POST /__hui/automation/tasks", "page:cron"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-068",
@@ -647,6 +720,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-069",
@@ -655,6 +729,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-070",
@@ -663,6 +738,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huiautomationtasksidrun", "docs/api.md#post-__huiautomationrunsidcancel", "SPEC.md#behaviour"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run", "route:POST /__hui/automation/runs/:id/cancel", "page:cron", "route:GET /__hui/automation"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-071",
@@ -671,6 +747,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#delete-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:DELETE /__hui/automation/tasks/:id", "page:cron"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-072",
@@ -679,6 +756,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiworkspaces", "SPEC.md#behaviour"],
     surfaces: ["settings-page:memory", "route:GET /__hui/workspaces", "page:memory-import"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-073",
@@ -687,6 +765,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth"],
     surfaces: ["settings-page:security", "route:GET /__hui/health", "route:GET /__hui/pi"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-074",
@@ -695,6 +774,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiobservability"],
     surfaces: ["settings-page:diagnostics", "route:GET /__hui/observability"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-075",
@@ -703,6 +783,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huidiagnosticsexport", "SPEC.md#behaviour"],
     surfaces: ["route:GET /__hui/diagnostics/export", "page:logs", "page:debug"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-076",
@@ -711,6 +792,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#notification-settings"],
     surfaces: ["settings-page:notifications", "setting:notifications.runFinished", "setting:notifications.runFailed", "setting:notifications.needsInput"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-077",
@@ -719,6 +801,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#clickable-desktop-notifications"],
     surfaces: ["setting:notifications.tool"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-078",
@@ -728,6 +811,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.routes", "route:PUT /__hui/settings"],
     journeys: ["subagent-routes"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-079",
@@ -737,6 +821,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_spawn"],
     journeys: ["subagent-routes"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-080",
@@ -746,6 +831,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi"],
     journeys: ["configured-models"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-081",
@@ -755,6 +841,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:models", "route:GET /__hui/providers"],
     journeys: ["providers"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-082",
@@ -764,6 +851,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:browser.mirrorState", "settings-page:tools"],
     journeys: ["browser-tool"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-088",
@@ -772,6 +860,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#gateway-extensions"],
     surfaces: ["settings-page:extensions", "route:GET /__hui/ext", "route:PUT /__hui/ext/:id", "route:POST /__hui/ext/:id/reload"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "SET-089",
@@ -780,6 +869,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#gateway-extensions"],
     surfaces: ["settings-page:extensions"],
     web: "required",
+    phone: "backlog",
   },
 ];
 

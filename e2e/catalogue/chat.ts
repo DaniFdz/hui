@@ -18,6 +18,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "message-metadata"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-002",
@@ -28,6 +29,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:chat.sendShortcut"],
     journeys: ["slash-commands"],
     web: "required",
+    phone: { excluded: "A keyboard-only affordance; Send message, and Enqueue in the held Send button's menu (CHAT-001, CHAT-005, CHAT-006) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CHAT-003",
@@ -37,6 +39,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-004",
@@ -50,6 +53,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["chat-composer"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-005",
@@ -63,6 +67,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/steer"],
     journeys: ["chat-composer"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-006",
@@ -76,6 +81,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/follow-up"],
     journeys: ["chat-composer"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-007",
@@ -88,6 +94,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-008",
@@ -100,6 +107,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-009",
@@ -109,6 +117,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
+    phone: { excluded: "A keyboard-only affordance; dragging the handle and the Save and Cancel buttons (CHAT-007, CHAT-008) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CHAT-010",
@@ -121,6 +130,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-011",
@@ -131,6 +141,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["message-metadata", "slash-commands"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-012",
@@ -141,6 +152,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["chat-composer"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-013",
@@ -155,6 +167,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-014",
@@ -165,6 +178,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-composer"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-015",
@@ -181,6 +195,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "position-rail"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-016",
@@ -197,6 +212,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["interrupted-recovery", "message-metadata"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-017",
@@ -210,6 +226,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/events"],
     journeys: ["interrupted-recovery"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-018",
@@ -223,6 +240,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["interrupted-recovery"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-019",
@@ -233,6 +251,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/continue"],
     journeys: ["interrupted-recovery"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-020",
@@ -243,6 +262,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/continue", "item:error"],
     journeys: ["chat-composer"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-021",
@@ -253,6 +273,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["continue-error-toast"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-022",
@@ -263,6 +284,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/resume"],
     journeys: ["rewind-continue", "continue-error-toast"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-023",
@@ -282,6 +304,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "message-metadata"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-024",
@@ -291,6 +314,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#every-assistant-message-stays-in-sight-2026-10-19"],
     surfaces: ["row:messages", "row:activity"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-025",
@@ -301,6 +325,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:read", "item:tool"],
     journeys: ["chat-composer", "durable-extensions", "sdk-backend"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-026",
@@ -310,6 +335,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:bash", "tool:powershell", "item:tool"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-027",
@@ -319,6 +345,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:codemode", "item:tool"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-028",
@@ -329,6 +356,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:grep", "tool:find", "tool:ls", "item:tool"],
     journeys: ["durable-extensions"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-029",
@@ -339,6 +367,7 @@ const cases: UseCase[] = [
     surfaces: ["item:tool"],
     journeys: ["chat-composer"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-030",
@@ -349,6 +378,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-composer", "message-metadata", "clipboard-fallback"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-031",
@@ -359,6 +389,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["message-metadata"],
     web: "backlog",
+    phone: { excluded: "A keyboard-only affordance; the message's context menu and footer buttons (CHAT-030, CHAT-032) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CHAT-032",
@@ -369,6 +400,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["message-metadata"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-033",
@@ -379,6 +411,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["message-metadata"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-034",
@@ -389,6 +422,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/rewind"],
     journeys: ["rewind-continue", "compaction-rewind"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-035",
@@ -401,6 +435,7 @@ const cases: UseCase[] = [
       "route:GET /__hui/git-checkout",
     ],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-036",
@@ -420,6 +455,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["compaction-rewind"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-037",
@@ -437,6 +473,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["compaction-rewind"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-038",
@@ -451,6 +488,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["compaction-rewind"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-039",
@@ -461,6 +499,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/compact"],
     journeys: ["compaction-rewind"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-040",
@@ -471,6 +510,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/rewind", "row:compaction"],
     journeys: ["compaction-rewind"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-041",
@@ -483,6 +523,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["command:clear", "route:POST /__hui/sessions/:id/clear"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-042",
@@ -495,6 +536,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["command:reload", "route:POST /__hui/sessions/:id/reload"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-043",
@@ -511,6 +553,7 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/btw",
     ],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-044",
@@ -521,6 +564,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions"],
     journeys: ["slash-commands", "command-references"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-045",
@@ -534,6 +578,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:id/commands"],
     journeys: ["slash-commands", "command-references", "durable-extensions"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-046",
@@ -544,6 +589,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["slash-commands", "command-references"],
     web: "required",
+    phone: { excluded: "A keyboard-only affordance; tapping a menu entry (CHAT-045) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CHAT-047",
@@ -554,6 +600,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:id/commands"],
     journeys: ["slash-commands"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-048",
@@ -567,6 +614,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["slash-commands", "command-references", "sdk-backend"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-049",
@@ -580,6 +628,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["slash-commands", "command-references", "durable-extensions"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-050",
@@ -593,6 +642,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/local-paths"],
     journeys: ["command-references", "local-path-autocomplete"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-051",
@@ -611,6 +661,7 @@ const cases: UseCase[] = [
       "sdk-backend",
     ],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-052",
@@ -621,6 +672,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-composer"],
     web: "backlog",
+    phone: { excluded: "A keyboard-only affordance; tapping a choice, Submit and Skip (CHAT-051) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CHAT-053",
@@ -638,6 +690,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "configured-models"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-054",
@@ -648,6 +701,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/thinking"],
     journeys: ["chat-composer"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-055",
@@ -657,6 +711,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessionsidfast"],
     surfaces: ["route:POST /__hui/sessions/:id/fast"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-056",
@@ -667,6 +722,7 @@ const cases: UseCase[] = [
     surfaces: ["row:messages"],
     journeys: ["chat-senders"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-057",
@@ -677,6 +733,7 @@ const cases: UseCase[] = [
     surfaces: ["row:messages"],
     journeys: ["chat-senders"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-058",
@@ -687,6 +744,7 @@ const cases: UseCase[] = [
     surfaces: ["row:activity", "tool:message_bot"],
     journeys: ["chat-senders"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-060",
@@ -697,6 +755,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["position-rail"],
     web: "backlog",
+    phone: { excluded: "\"The desktop transcript has OpenClaw's left conversation-position rail\"; \"The rail is hidden when the transcript is too narrow/short or lacks the original left gutter, including mobile layouts.\"", decision: "SPEC.md#behaviour" },
   },
   {
     id: "CHAT-061",
@@ -707,6 +766,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["position-rail"],
     web: "backlog",
+    phone: { excluded: "\"The desktop transcript has OpenClaw's left conversation-position rail\"; \"The rail is hidden when the transcript is too narrow/short or lacks the original left gutter, including mobile layouts.\"", decision: "SPEC.md#behaviour" },
   },
   {
     id: "CHAT-062",
@@ -717,6 +777,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["position-rail"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-063",
@@ -727,6 +788,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["durable-extensions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-064",
@@ -737,6 +799,7 @@ const cases: UseCase[] = [
     surfaces: ["row:compaction"],
     journeys: ["durable-extensions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-065",
@@ -747,6 +810,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["sdk-backend", "rewind-continue", "compaction-rewind"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-066",
@@ -760,6 +824,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["chat-composer"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-067",
@@ -770,6 +835,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:read", "item:tool"],
     journeys: ["chat-composer"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-068",
@@ -779,6 +845,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:read"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-069",
@@ -789,6 +856,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-composer"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-070",
@@ -799,6 +867,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["rewind-continue"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-071",
@@ -811,6 +880,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-080",
@@ -820,6 +890,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-081",
@@ -829,6 +900,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-082",
@@ -838,6 +910,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-075",
@@ -847,6 +920,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-076",
@@ -856,6 +930,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-077",
@@ -865,6 +940,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-078",
@@ -877,6 +953,7 @@ const cases: UseCase[] = [
     ],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-079",
@@ -886,6 +963,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-072",
@@ -896,6 +974,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["position-rail", "remote-loading"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-073",
@@ -909,6 +988,7 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/goal",
     ],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-074",
@@ -922,6 +1002,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/connect"],
     journeys: ["interrupted-recovery"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-083",
@@ -931,6 +1012,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huiappopen"],
     surfaces: [],
     web: "required",
+    phone: { excluded: "The hand-off opens HUI's macOS desktop app; the phone app has no desktop app to hand off to.", decision: "SPEC.md#desktop-distribution" },
   },
   {
     id: "CHAT-084",
@@ -939,6 +1021,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-085",
@@ -948,6 +1031,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/steer-now"],
     journeys: ["chat-composer"],
     web: "required",
+    phone: "backlog",
   },
 ];
 
