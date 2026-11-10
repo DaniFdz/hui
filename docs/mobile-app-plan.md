@@ -286,9 +286,9 @@ Android app's WebView, and the backlog only shrinks. Measured on 2026-11-10, aft
 | BOARD | 0 | 48 | 3 |
 | SET | 3 | 83 | 4 |
 | PAGE | 0 | 24 | 1 |
-| BOT | 0 | 68 | 6 |
+| BOT | 19 | 49 | 6 |
 | CALL | 0 | 25 | 1 |
-| **All** | **95** | **500** | **70** |
+| **All** | **114** | **481** | **70** |
 
 What the catch-up learned, which the areas still to do can reuse:
 
