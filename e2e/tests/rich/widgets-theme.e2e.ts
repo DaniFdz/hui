@@ -58,7 +58,7 @@ test("A light-to-dark switch re-themes the widget in place with HUI's colors on 
   const inside = await widget(hui);
   await inside.getByRole("button", "Add one").tap();
   await inside.getByRole("button", "Add one").tap();
-  await expect(inside.getByTestId("count")).toHaveText("2");
+  await expect(inside.locator("#count")).toHaveText("2");
   const light = { mode: await read(hui, "mode"), swatch: await read(hui, "swatch"), page: await read(hui, "page"), origin: await read(hui, "origin") };
   expect(light.mode).toBe("light");
   // The widget paints HUI's background token, and nothing of its own behind it.
@@ -68,22 +68,22 @@ test("A light-to-dark switch re-themes the widget in place with HUI's colors on 
   // The device turns dark, which is the switch a reader makes in Settings → Appearance.
   await hui.deviceAppearance("dark");
   await expect.poll(() => hui.appearance()).toBe("dark");
-  await expect(inside.getByTestId("mode")).toHaveText("dark");
+  await expect(inside.locator("#mode")).toHaveText("dark");
   const dark = { swatch: await read(hui, "swatch"), page: await read(hui, "page") };
   expect(rgb(dark.swatch).every((channel) => channel < 80)).toBe(true);
   expect(dark.swatch).not.toBe(light.swatch);
   // Same document, same state: the widget was re-themed in place, not reloaded.
   expect(await read(hui, "origin")).toBe(light.origin);
   expect(dark.page).toBe("rgba(0, 0, 0, 0)");
-  await expect(inside.getByTestId("count")).toHaveText("2");
+  await expect(inside.locator("#count")).toHaveText("2");
   await inside.getByRole("button", "Add one").tap();
-  await expect(inside.getByTestId("count")).toHaveText("3");
+  await expect(inside.locator("#count")).toHaveText("3");
 
   // And back again, still in the same document.
   await hui.deviceAppearance("light");
   await expect.poll(() => hui.appearance()).toBe("light");
-  await expect(inside.getByTestId("mode")).toHaveText("light");
+  await expect(inside.locator("#mode")).toHaveText("light");
   expect(await read(hui, "swatch")).toBe(light.swatch);
   expect(await read(hui, "origin")).toBe(light.origin);
-  await expect(inside.getByTestId("count")).toHaveText("3");
+  await expect(inside.locator("#count")).toHaveText("3");
 });
