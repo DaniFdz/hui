@@ -71,17 +71,20 @@ test("each signed-in account shows its plan, usage status, a meter per reported 
   await expect(apiKey.getByText("This provider does not expose a supported subscription quota API.", { exact: true })).toBeVisible();
   await expect(apiKey.getByRole("progressbar")).toHaveCount(0);
 
-  // Refresh limits reads that account again only: its checked time moves, the other account's does not.
-  const checkedAt = async (within: Locator) => hui.textOf(within.getByText(/^Checked /u));
-  const before = await checkedAt(personal);
-  const other = await checkedAt(backup);
-  const refreshed = await hui.intercept("GET", /\/__hui\/providers\/openai-codex\/accounts\/default\/quota$/u);
+  // Refresh limits reads that account again only: the page takes the fresh answer for this account, and the other
+  // account is not read at all: it never reads Checking… and keeps the figures it had.
+  const reread = await hui.intercept("GET", /\/__hui\/providers\/openai-codex\/accounts\/default\/quota$/u);
   await personal.getByRole("button", { name: "Refresh limits" }).tap();
+  await reread.arrived();
   await expect(personal.getByRole("button", { name: "Checking…" })).toBeVisible();
-  await refreshed.deliver();
-  await expect.poll(() => checkedAt(personal)).not.toBe(before);
-  expect(await checkedAt(backup)).toBe(other);
-  await expect(personal.getByRole("progressbar", { name: "5 hours: 34% used" })).toBeVisible();
+  await reread.answer(JSON.stringify({ status: "available", checkedAt: Date.now(), plan: "team", access: "available",
+    windows: [{ label: "Weekly", usedPercent: 11, scope: "account", resetAt: Date.now() + 86_400_000 }] }));
+  await expect(personal.getByText("team", { exact: true })).toBeVisible();
+  await expect(personal.getByRole("progressbar", { name: "Weekly: 11% used" })).toBeVisible();
+  await expect(personal.getByRole("progressbar")).toHaveCount(1);
+  await expect(backup.getByRole("button", { name: "Checking…" })).toHaveCount(0);
+  await expect(backup.getByRole("progressbar", { name: "5 hours: 100% used" })).toBeVisible();
+  await expect(backup.getByText("Limit reached", { exact: true })).toBeVisible();
 
   // A read that fails says so rather than drawing zero usage.
   const failing = await hui.intercept("GET", /\/__hui\/providers\/openai-codex\/accounts\/default\/quota$/u);
