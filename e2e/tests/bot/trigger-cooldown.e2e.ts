@@ -17,7 +17,7 @@ test("events within a trigger's cooldown wait on its card and arrive as one Coal
   await hui.open(`/bots/${bot.id}`);
   const transcript = screen.getByTestId("transcript");
   await panelOverview(screen, "Burner");
-  await screen.getByRole("button", /^Reviews /u).tap();
+  await screen.getByRole("button", /^Reviews (?:No report|Last fired|Never fired|Listener reported)/u).tap();
 
   // One report of three events: the first goes at once, the two the cooldown holds wait on the card.
   expect(await hui.api<{ status: string }>("POST", hook.path, { events: [event("a"), event("b"), event("c")] })).toEqual({ status: "fired" });

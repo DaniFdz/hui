@@ -34,7 +34,7 @@ test("a report that passes a trigger's filter wakes the bot as the trigger with 
 
   // Its card says when it last fired, and its run reads Fired with the event's summary.
   await panelOverview(screen, "Waker");
-  await screen.getByRole("button", /^Reviews /u).tap();
+  await screen.getByRole("button", /^Reviews (?:No report|Last fired|Never fired|Listener reported)/u).tap();
   await expect(screen.getByText(/^Last fired just now · cooldown none · steers with summaries and links$/u)).toBeVisible({ timeout: 15_000 });
   await expect(screen.getByText("Latest trigger runs")).toBeVisible();
   await expect(screen.getByText("Fired", { exact: true })).toBeVisible();

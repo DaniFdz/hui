@@ -17,7 +17,7 @@ test("a trigger's switch turns it off so its listener's reports wake nobody and 
   await hui.open(`/bots/${bot.id}`);
   const transcript = screen.getByTestId("transcript");
   await panelOverview(screen, "Switchy");
-  await screen.getByRole("button", /^Reviews /u).tap();
+  await screen.getByRole("button", /^Reviews (?:No report|Last fired|Never fired|Listener reported)/u).tap();
   const off = screen.getByRole("switch", "Enable Reviews");
   await expect(off).toBeChecked();
 
@@ -46,7 +46,7 @@ test("a trigger's switch turns it off so its listener's reports wake nobody and 
   await expect(transcript.getByText("review on").first()).toBeVisible();
 
   // Delete takes it off its page, the overview and the bot's triggers.
-  await screen.getByRole("button", /^Reviews /u).tap();
+  await screen.getByRole("button", /^Reviews (?:No report|Last fired|Never fired|Listener reported)/u).tap();
   await screen.getByRole("button", "Delete Reviews").tap();
   await expect(screen.getByText(/^No triggers yet\. A trigger wakes Switchy when a listener you run reports something/u)).toBeVisible();
   await expect.poll(async () => await listed()).toEqual([]);

@@ -13,7 +13,7 @@ test("Test puts a sample event in the bot's chat as the trigger's and says it wa
 
   await hui.open(`/bots/${bot.id}`);
   await panelOverview(screen, "Sampler");
-  await screen.getByRole("button", /^Reviews /u).tap();
+  await screen.getByRole("button", /^Reviews (?:No report|Last fired|Never fired|Listener reported)/u).tap();
   await screen.getByRole("button", "Test Reviews").tap();
 
   await expect(screen.getByText("Sent a test event to Sampler's chat.")).toBeVisible();
