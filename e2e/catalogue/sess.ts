@@ -40,7 +40,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["session-launch"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-005",
@@ -59,7 +59,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:new-session", "nav:session"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-008",
@@ -296,7 +296,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-registry", "session-menu-shortcuts"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-032",
@@ -306,7 +306,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-registry", "session-menu-shortcuts"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-033",
@@ -643,7 +643,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-registry"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-067",

@@ -18,6 +18,7 @@ test("rows read running, waiting and failed sessions and a parent's watcher or s
 
   try {
     await hui.open("/");
+    await hui.sessionList();
     await expect(row("Runs a turn", "idle")).toBeVisible();
 
     await hui.prompt(runs, "E2E_REPLAY");

@@ -1,6 +1,7 @@
 /** The Sessions page lists every session with its runtime, status and update, opens on All (then Active, Archived), filters by text, status and grouping, opens a session and copies a row's path, and shows its empty, loading and error states (SESS-058). */
 import { basename } from "node:path";
 import { expect } from "e2e";
+import { expectChatTitle } from "./chat-header.ts";
 import { test } from "../../fixtures/hui.ts";
 
 type Listed = { groups: { label: string; sessions: { id: string; title: string; status: string }[] }[] };
@@ -16,7 +17,9 @@ test("the Sessions page lists every session with its runtime, status and update,
   await expect(zulu).toBeVisible();
   await expect(zulu.getByText("durable", { exact: true })).toBeVisible();
   await expect(zulu.getByText("idle", { exact: true })).toBeVisible();
-  await expect(zulu.getByText("just now", { exact: true })).toBeVisible();
+  // The Updated cell reads a relative time from the page's clock against the gateway's: a phone and its gateway keep
+  // separate clocks, so a session updated a moment ago is "now" there and "just now" on the web.
+  await expect(zulu.getByText(/^(now|just now)$/u)).toBeVisible();
   const bravo = listed("Bravo archived");
   await expect(bravo.getByText("archived", { exact: true })).toBeVisible();
   await expect(screen.getByRole("button", { name: "All", pressed: true })).toBeVisible();
@@ -33,7 +36,7 @@ test("the Sessions page lists every session with its runtime, status and update,
 
   await screen.getByRole("button", "Open Zulu listed").tap();
   await expect.poll(() => hui.url()).toContain("/sessions/");
-  await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Zulu listed");
+  await expectChatTitle(screen, "Zulu listed");
 });
 
 test("Search session registry filters by title, directory, runtime and group, and Filters narrows by status and groups rows by group or project until Reset filters", { tags: ["SESS-058"], platforms: ["web"] }, async ({ screen, hui }) => {

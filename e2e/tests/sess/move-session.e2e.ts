@@ -9,6 +9,7 @@ test("dragging a row onto a group moves the session, and it stays there after a 
 
   await hui.open(`/sessions/${dragged.id}`);
   await expect(meta("INBOX")).toBeVisible();
+  await hui.sessionList();
   await screen.getByTestId("session-row").filter({ hasText: "Drag me" }).dragTo(screen.getByText("RESEARCH", { exact: true, visible: true }));
   await expect(screen.getByText("Moved Drag me to RESEARCH.")).toBeVisible();
   await expect(meta("RESEARCH")).toBeVisible();

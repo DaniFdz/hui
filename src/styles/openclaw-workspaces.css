@@ -107,6 +107,17 @@
 
 .sessions-table { min-width: 910px; }
 
+/* The key column sticks so a long list keeps every title in view while the eight columns scroll under it. On a phone it
+   holds a title, a path and its copy button, so the sticky cell is wider than the screen and covers the Actions column
+   that scrolls beneath it: a row's Restore and Open could not be tapped at all (SESS-036, SESS-058). Below a phone's
+   width the column stays in the table's own scroll instead. */
+@media (max-width: 560px) {
+  .sessions-table .data-table-key-col {
+    position: static;
+    min-width: 0;
+  }
+}
+
 .sessions-table .session-runtime-col {
   min-width: 84px;
 }
@@ -216,7 +227,9 @@
    gateway-only numeric fields; the trigger geometry stays reference-owned. */
 .sessions-filter-popover__panel { gap: var(--space-3); }
 .sessions-filter-popover__field { display: grid; gap: var(--space-1); }
-.sessions-filter-popover__segment { display: flex; flex-wrap: nowrap; width: 100%; }
+/* Seven live statuses never fit one row of the panel's 280px, and the row that could not wrap widened the panel's grid
+   column instead: the pills ran off the panel and pushed Reset filters outside it, where a phone cannot reach it. */
+.sessions-filter-popover__segment { display: flex; flex-wrap: wrap; width: 100%; }
 .sessions-filter-popover__segment > .settings-segmented__btn { flex: 1 1 auto; justify-content: center; padding: 0 6px; }
 .sessions-filter-popover__reset { justify-self: end; }
 

@@ -20,6 +20,10 @@ test("a worktree session on a worker is made there, from that machine's branches
   await screen.getByLabel("Choose where the session runs").tap();
   await screen.getByText("remote-box").tap();
   await screen.getByLabel("Project directory").fill(repo);
+  // The suggestion list is anchored under the field and covers what is below it on a phone, so it is dismissed where
+  // the picker offers it before the next control can be reached.
+  await screen.getByLabel("Project directory").press("Escape");
+  await expect(screen.getByLabel("Project directory")).toHaveAttribute("aria-expanded", "false");
   const checkout = screen.getByRole("button", /^Checkout: /u);
   await expect(checkout).toHaveText("main");
   await checkout.tap();
