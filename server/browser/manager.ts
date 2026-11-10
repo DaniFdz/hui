@@ -31,6 +31,7 @@ import { CdpConnection, CdpError, type CdpEvent } from "./cdp.ts";
 import { defaultExecutableProbe, resolveBrowserExecutable, type BrowserExecutable, type ExecutableProbe } from "./executable.ts";
 import { KeyParseError, parseKey, type KeyStroke } from "./keys.ts";
 import { buildHar, describeEntry, NetworkLog } from "./network.ts";
+import { describeMetrics, describeTimings, formatBytes, navigationFromEntry, type MetricMap, type PaintTiming } from "./performance.ts";
 import { allowsUrl, blockedOriginMessage } from "./origins.ts";
 import type { SiteSecret, SiteSecretView } from "./secrets.ts";
 import { clampSnapshotChars, renderSnapshot, SnapshotRefs, type AxNode, type SnapshotOptions, type SnapshotResult, type SnapshotTarget } from "./snapshot.ts";
@@ -70,7 +71,7 @@ export type BrowserViewHandle = {
 
 export const BROWSER_ACTIONS = [
   "status", "tabs", "open", "navigate", "back", "forward", "reload", "focus", "close",
-  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps", "get", "is", "network",
+  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps", "get", "is", "network", "performance",
 ] as const;
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
 export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "upload", "scroll", "wait"] as const;
@@ -142,6 +143,8 @@ type Tab = {
   network?: NetworkLog;
   /** The whole snapshot last read in this document, the baseline for a diff. */
   lastSnapshot?: { loaderId: string; lines: string[] };
+  /** `Performance.enable` was sent on this tab, so its counters accumulate. */
+  metricsEnabled?: boolean;
 };
 
 type Viewer = { owner: string; listener: BrowserViewListener; pinned: string | null; watching: string | null; closed: boolean };
@@ -561,6 +564,26 @@ const CONTAINS_HIT = String.raw`function (other, x, y) {
   return { contains: false, cover: element.tagName.toLowerCase() + (element.id ? "#" + element.id : "") + classes.map((name) => "." + name).join("") };
 }`;
 
+/** The document's own navigation, paint and resource entries, in milliseconds. */
+const TIMING_SCRIPT = String.raw`(() => {
+  const navigation = performance.getEntriesByType("navigation")[0];
+  const paints = performance.getEntriesByType("paint").map((entry) => ({ name: entry.name, start: entry.startTime }));
+  const resources = performance.getEntriesByType("resource");
+  const slow = resources
+    .filter((entry) => entry.duration >= 500)
+    .sort((left, right) => right.duration - left.duration)
+    .slice(0, 5)
+    .map((entry) => ({ name: (entry.name.split("/").pop() || entry.name).slice(0, 60), start: entry.duration }));
+  return {
+    navigation: navigation ? JSON.parse(JSON.stringify(navigation.toJSON())) : null,
+    paints,
+    resources: {
+      count: resources.length,
+      transferSize: resources.reduce((sum, entry) => sum + (entry.transferSize || 0), 0),
+    },
+    slow,
+  };
+})()`;
 const UPLOAD_TARGET = String.raw`function () {
   const element = this instanceof HTMLLabelElement && this.control ? this.control : this;
   if (!(element instanceof HTMLInputElement) || element.type !== "file") return null;
@@ -995,6 +1018,7 @@ export class ManagedBrowser {
       case "get": return this.#get(owner, params);
       case "is": return this.#is(owner, params);
       case "network": return this.#network(owner, params, context.cwd);
+      case "performance": return this.#performance(owner, params);
       case "resize": return this.#resize(owner, params);
       case "handoff": return this.#handoff(owner, params);
       case "secret": return this.#secret(owner, params);
@@ -2731,6 +2755,63 @@ export class ManagedBrowser {
     const result = await this.#call(instance, tab, objectId, ELEMENT_IS, [state]);
     const value = isRecord(result) && result["value"] === true;
     return { text: `${label} is ${value ? "" : "not "}${state}.`, details: { action: "is", state, value, tab: this.#tabDetails(tab) } };
+  }
+
+  /** What the page costs: the renderer's counters, or the document's own timings. */
+  async #performance(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const operation = params["operation"] ?? "metrics";
+    if (operation !== "metrics" && operation !== "timings") {
+      throw new BrowserToolError("performance needs operation: metrics or timings.");
+    }
+    const lines = [this.#header(tab)];
+    if (operation === "metrics") {
+      // Counters accumulate from the moment the domain is enabled, so it is enabled once per tab.
+      if (!tab.metricsEnabled) {
+        await instance.connection.send("Performance.enable", {}, tab.session);
+        tab.metricsEnabled = true;
+      }
+      const reported = await instance.connection.send("Performance.getMetrics", {}, tab.session);
+      const metrics: Record<string, number> = {};
+      for (const entry of Array.isArray(reported["metrics"]) ? reported["metrics"] : []) {
+        if (!isRecord(entry) || typeof entry["name"] !== "string" || typeof entry["value"] !== "number") continue;
+        metrics[entry["name"]] = entry["value"];
+      }
+      lines.push("", ...describeMetrics(metrics as MetricMap), "Counters accumulate from this tab's first performance call.");
+      return {
+        text: lines.join("\n"),
+        details: { action: "performance", operation, tab: this.#tabDetails(tab), nodes: Math.round(metrics["Nodes"] ?? 0), heapBytes: Math.round(metrics["JSHeapUsedSize"] ?? 0) },
+      };
+    }
+    const result = await instance.connection.send("Runtime.evaluate", { expression: TIMING_SCRIPT, returnByValue: true, awaitPromise: true }, tab.session, 5_000);
+    if (isRecord(result["exceptionDetails"])) throw new BrowserToolError("The page refused a timing read; try again after it finishes loading.");
+    const value = isRecord(result["result"]) && isRecord(result["result"]["value"]) ? result["result"]["value"] : {};
+    const navigation = isRecord(value["navigation"]) ? value["navigation"] : undefined;
+    const paints: PaintTiming[] = (Array.isArray(value["paints"]) ? value["paints"] : []).flatMap((entry) => {
+      if (!isRecord(entry)) return [];
+      const name = str(entry["name"]);
+      const start = num(entry["start"]);
+      return name && Number.isFinite(start) ? [{ name, start }] : [];
+    });
+    const resources = isRecord(value["resources"]) ? value["resources"] : undefined;
+    lines.push("", ...describeTimings(navigationFromEntry(navigation), paints));
+    if (resources) {
+      const count = num(resources["count"]);
+      const transferred = num(resources["transferSize"]);
+      if (count > 0) lines.push(`Resources: ${count} request${count === 1 ? "" : "s"}, ${formatBytes(transferred)} transferred.`);
+    }
+    if (Array.isArray(value["slow"])) {
+      const slow = value["slow"].flatMap((entry) => (isRecord(entry) ? [`${str(entry["name"])} ${num(entry["start"]).toFixed(0)} ms`] : []));
+      if (slow.length) lines.push(`Slowest marks: ${slow.join(", ")}.`);
+    }
+    return {
+      text: lines.join("\n"),
+      details: {
+        action: "performance", operation, tab: this.#tabDetails(tab),
+        ...(navigation && typeof navigation["loadEventEnd"] === "number" ? { load: Math.round(navigation["loadEventEnd"]) } : {}),
+      },
+    };
   }
 
   /** Capture the tab's requests for one conversation, read them, and write a redacted HAR. */
