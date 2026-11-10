@@ -84,7 +84,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-owned-presentation-state", "SPEC.md#shared-terminals"],
     surfaces: ["setting:fontTerminal"],
     journeys: ["terminal-font"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -237,7 +237,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huijira", "docs/api.md#put-__huijira", "docs/api.md#jira-work-items"],
     surfaces: ["settings-page:integrations", "route:GET /__hui/jira", "route:PUT /__hui/jira"],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -247,7 +247,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huijira", "docs/api.md#get-__huijiraprojects"],
     surfaces: ["route:PATCH /__hui/jira", "route:GET /__hui/jira/projects", "settings-page:integrations"],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -257,7 +257,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#delete-__huijira", "docs/api.md#put-__huijira"],
     surfaces: ["route:DELETE /__hui/jira", "settings-page:integrations", "route:PUT /__hui/jira"],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -277,7 +277,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#datadog-orgs", "docs/api.md#post-__huidatadogorgs", "docs/api.md#post-__huidatadoglogin", "docs/api.md#delete-__huidatadoglogin", "docs/api.md#get-__huidatadog"],
     surfaces: ["route:GET /__hui/datadog", "route:POST /__hui/datadog/orgs", "route:POST /__hui/datadog/login", "route:DELETE /__hui/datadog/login", "settings-page:integrations"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -296,7 +296,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Workers takes a name, a connect command and optional extra paths; “Add worker” shows “Worker added. HUI is setting it up now.” and the worker reads Connecting with its current setup step. Once set up it reads Connected with its host, platform, Node version and home, plus a Configuration line summarising the files synced; a command that fails reads “Not connected” with the error.",
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkers", "docs/api.md#post-__huiworkersidconnect", "docs/api.md#get-__huiworkers"],
     surfaces: ["settings-page:workers", "route:GET /__hui/workers", "route:POST /__hui/workers", "route:POST /__hui/workers/:id/connect"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -305,7 +305,7 @@ const cases: UseCase[] = [
     behaviour: "A disconnected or failed worker offers Connect, which goes through Connecting to Connected; a connected one offers Disconnect, which returns it to Disconnected while its sessions keep running there, and “Sync now”, which shows “Sync started.” and then an updated Configuration summary.",
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkersidconnect", "docs/api.md#post-__huiworkersiddisconnect", "docs/api.md#post-__huiworkersidsync"],
     surfaces: ["route:POST /__hui/workers/:id/connect", "route:POST /__hui/workers/:id/disconnect", "route:POST /__hui/workers/:id/sync", "route:GET /__hui/workers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -314,7 +314,7 @@ const cases: UseCase[] = [
     behaviour: "“Edit” fills the form as “Edit <name>”; “Save worker” shows “Worker saved. Connect again to use the new command.” and the worker keeps its sessions, while Cancel leaves it unchanged.",
     spec: ["SPEC.md#remote-workers", "docs/api.md#patch-__huiworkersid"],
     surfaces: ["route:PATCH /__hui/workers/:id"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -342,7 +342,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#get-__huiproviders", "docs/api.md#post-__huiprovidersproviderlogin", "docs/api.md#post-__huiprovidersloginid", "docs/api.md#put-__huiprovidersprovider"],
     surfaces: ["settings-page:models", "route:GET /__hui/providers", "route:POST /__hui/providers/:provider/login", "route:POST /__hui/providers/login/:id", "route:PUT /__hui/providers/:provider"],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -372,7 +372,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#delete-__huiprovidersloginid"],
     surfaces: ["route:DELETE /__hui/providers/login/:id"],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -392,7 +392,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#put-__huiprovidersprovider", "docs/api.md#model-catalog-selection"],
     surfaces: ["route:PUT /__hui/providers/:provider"],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -402,7 +402,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#delete-__huiprovidersprovider"],
     surfaces: ["route:DELETE /__hui/providers/:provider"],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -412,7 +412,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#post-__huiprovidersproviderlogin"],
     surfaces: ["route:POST /__hui/providers/:provider/login"],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -422,7 +422,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#post-__huiprovidersproviderlogin"],
     surfaces: ["route:POST /__hui/providers/:provider/login", "route:GET /__hui/providers"],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -432,7 +432,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#put-__huiprovidersprovideraccounts"],
     surfaces: ["route:PUT /__hui/providers/:provider/accounts"],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -442,7 +442,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#put-__huiprovidersprovideraccounts"],
     surfaces: [],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     phone: { excluded: "Arrow, Home and End keys are a keyboard affordance; dragging the grip does the same on a phone.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
@@ -452,7 +452,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#delete-__huiprovidersprovideraccountsaccount"],
     surfaces: ["route:DELETE /__hui/providers/:provider/accounts/:account"],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -462,7 +462,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-managed-model-providers", "docs/api.md#get-__huiprovidersprovideraccountsaccountquota"],
     surfaces: ["route:GET /__hui/providers/:provider/accounts/:account/quota"],
     journeys: ["providers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -671,7 +671,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#pi-package-and-skill-mutations", "docs/api.md#pi-package-and-skill-mutations", "docs/api.md#put-__huisettings"],
     surfaces: ["settings-page:plugins", "setting:disabledPlugins", "route:PUT /__hui/settings", "route:GET /__hui/sessions/:id/commands", "page:plugins"],
     journeys: ["plugin-disable-sdk"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -681,7 +681,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#pi-package-and-skill-mutations", "docs/api.md#get-__huipiresourceskindid", "docs/api.md#get-__huipi", "SPEC.md#behaviour"],
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/pi/resources/:kind/:id", "page:plugins", "page:plugin", "page:skills"],
     journeys: ["plugin-disable-sdk", "resource-reader"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -701,7 +701,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#pi-package-and-skill-mutations", "docs/api.md#post-__huipipackagesremove"],
     surfaces: ["route:POST /__hui/pi/packages/remove", "page:plugins", "settings-page:plugins", "route:POST /__hui/pi/packages/install"],
     journeys: ["pi-control-surfaces"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

@@ -12,7 +12,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["markdown-formatting"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -22,7 +22,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["markdown-formatting"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -120,7 +120,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["rich-embeds"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -150,7 +150,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["rich-embeds"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -249,7 +249,7 @@ const cases: UseCase[] = [
     behaviour: "An image attached to a message shows as a bounded thumbnail named for the file that opens in the media viewer; after a reload it loads from the gateway, and when its bytes cannot load the thumbnail turns into the file's card.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: ["route:GET /__hui/sessions/:id/attachments/:message/:image"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -289,7 +289,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#github-link-previews", "docs/api.md#get-__huigithubpreviews"],
     surfaces: ["route:GET /__hui/github/previews"],
     journeys: ["github-embeds"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -299,7 +299,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#github-link-previews", "docs/api.md#get-__huigithubpreviews"],
     surfaces: ["route:GET /__hui/github/previews"],
     journeys: ["github-embeds"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -329,7 +329,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huigithubpreviews"],
     surfaces: ["route:GET /__hui/github/previews"],
     journeys: ["github-embeds"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -409,7 +409,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#pi-package-and-skill-mutations", "docs/api.md#get-__huipiresourceskindid"],
     surfaces: ["route:GET /__hui/pi/resources/:kind/:id"],
     journeys: ["resource-reader"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -429,7 +429,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "docs/api.md#frame-protocol"],
     surfaces: ["tool:show_widget", "route:GET /__hui/widget-sandbox"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -439,7 +439,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "docs/api.md#frame-protocol"],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -449,7 +449,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "docs/api.md#frame-protocol"],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -459,7 +459,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", KEYBOARD_ONLY],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
     phone: { excluded: "Escape needs a hardware keyboard; Exit full screen does the same (RICH-054).", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
@@ -469,7 +469,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets-run-in-an-opaque-origin-sandbox", "docs/api.md#gethead-__huiwidget-sandbox"],
     surfaces: ["tool:show_widget", "route:GET /__hui/widget-sandbox"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -489,7 +489,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "docs/api.md#frame-protocol"],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -499,7 +499,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "docs/api.md#agent-widgets"],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -509,7 +509,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "SPEC.md#agent-widgets-run-in-an-opaque-origin-sandbox", "docs/api.md#agent-widgets"],
     surfaces: ["tool:show_widget", "route:GET /__hui/widget-sandbox"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
 ];

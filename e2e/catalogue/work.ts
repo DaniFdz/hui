@@ -300,7 +300,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals", "docs/api.md#shared-terminal-api-and-tool"],
     surfaces: ["route:POST /__hui/sessions/:owner/terminals/:id/connect"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -310,7 +310,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: [],
     journeys: ["shared-terminal"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -432,7 +432,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:PUT /__hui/sessions/:id/files/file"],
     journeys: ["files-view", "work-pane"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -442,7 +442,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:PUT /__hui/sessions/:id/files/file", "route:GET /__hui/sessions/:id/files/file"],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -462,7 +462,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: ["route:GET /__hui/sessions/:id/files/list", "route:GET /__hui/sessions/:id/files/file"],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -482,7 +482,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/files/raw"],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -552,7 +552,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view", "work-pane"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -573,7 +573,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:POST /__hui/sessions/:id/files/resolve"],
     journeys: ["chat-file-links"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -593,7 +593,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["chat-file-links"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -603,7 +603,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["chat-file-links"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -634,7 +634,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/diff/changes"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -644,7 +644,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/diff", "route:GET /__hui/sessions/:id/diff/changes"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -664,7 +664,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/diff/file"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -694,7 +694,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: ["route:GET /__hui/sessions/:id/diff/changes"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -704,7 +704,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -714,7 +714,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

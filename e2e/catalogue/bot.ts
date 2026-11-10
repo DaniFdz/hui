@@ -9,7 +9,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-always-on-2026-10-20", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05", "docs/api.md#bots-are-always-on"],
     surfaces: ["route:GET /__hui/bots", "route:GET /__hui/bots/events"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -29,7 +29,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#get-__huibots", "docs/api.md#get-__huibotsevents"],
     surfaces: ["route:GET /__hui/bots", "route:GET /__hui/bots/events"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -69,7 +69,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#agents-and-bots-tag-bots-by-handle-2026-10-16", "SPEC.md#schedules-are-a-cli-and-bots-schedule-their-own-routines-2026-10-07"],
     surfaces: ["tool:set_profile", "tool:write_soul"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -109,7 +109,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#chats-show-who-sent-each-message-2026-10-16", "docs/api.md#a-forever-chat"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -139,7 +139,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#delete-__huibotsid", "docs/api.md#routines"],
     surfaces: ["route:DELETE /__hui/bots/:id"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -149,7 +149,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#post-__huibotsidrestore"],
     surfaces: ["route:POST /__hui/bots/:id/restore", "nav:bot"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -159,7 +159,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-write-their-own-soulmd-in-a-first-conversation-2026-10-06", "SPEC.md#bots-run-on-remote-workers-2026-10-06", "docs/api.md#delete-__huibotsid"],
     surfaces: ["route:DELETE /__hui/bots/:id"],
     journeys: ["bots", "bots-workers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -189,7 +189,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: ["route:GET /__hui/automation", "route:GET /__hui/bots/:id/triggers"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -289,7 +289,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup", "bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -299,7 +299,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id", "route:GET /__hui/directories"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -319,7 +319,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#a-bot-has-every-tool-and-skill-until-the-operator-turns-some-off-2026-10-06", "docs/api.md#tools-and-skills", "docs/api.md#get-__huibotsidcatalog"],
     surfaces: ["route:GET /__hui/bots/:id/catalog", "route:PATCH /__hui/bots/:id", "tool:write_soul", "tool:set_profile", "tool:request_access", "tool:load_skill", "tool:zoom", "tool:date"],
     journeys: ["bots", "bot-schedules"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -329,7 +329,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#a-bot-has-every-tool-and-skill-until-the-operator-turns-some-off-2026-10-06", "docs/api.md#tools-and-skills"],
     surfaces: ["tool:request_access", "route:POST /__hui/sessions/:id/question", "route:GET /__hui/bots/:id/catalog"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -338,7 +338,7 @@ const cases: UseCase[] = [
     behaviour: "With read and bash both off, the bot still loads a skill it needs: its chat shows the load_skill call and an answer that follows the skill. A skill that is off is not offered.",
     spec: ["SPEC.md#a-bot-has-every-tool-and-skill-until-the-operator-turns-some-off-2026-10-06", "docs/api.md#tools-and-skills"],
     surfaces: ["tool:load_skill"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -348,7 +348,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#bots"],
     surfaces: ["tool:zoom", "tool:date"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -548,7 +548,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#triggers"],
     surfaces: ["route:POST /__hui/bots/:id/triggers", "route:POST /__hui/hooks/<token>"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -558,7 +558,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#agents-and-bots-tag-bots-by-handle-2026-10-16", "docs/api.md#tagging-bots", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-tagging"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -568,7 +568,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#agents-and-bots-tag-bots-by-handle-2026-10-16", "SPEC.md#chats-show-who-sent-each-message-2026-10-16", "docs/api.md#tagging-in-the-composer", "docs/api.md#tagging-bots"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt", "tool:message_bot"],
     journeys: ["bot-tagging"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -578,7 +578,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agents-and-bots-tag-bots-by-handle-2026-10-16", "docs/api.md#tagging-bots"],
     surfaces: [],
     journeys: ["bot-tagging"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -588,7 +588,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots-can-notify-the-agent-that-handed-them-work-2026-10-16", "SPEC.md#chats-show-who-sent-each-message-2026-10-16", "docs/api.md#replying-to-a-calling-agent"],
     surfaces: [],
     journeys: ["bot-agent-replies"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -608,7 +608,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#post-__huibotsidexportreview", "docs/api.md#exporting-a-bot-as-a-template"],
     surfaces: ["route:POST /__hui/bots/:id/export/review", "route:POST /__hui/bots/:id/export"],
     journeys: ["bot-templates"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -618,7 +618,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#exporting-a-bot-as-a-template"],
     surfaces: ["route:POST /__hui/bots/:id/export"],
     journeys: ["bot-templates"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -638,7 +638,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-run-on-remote-workers-2026-10-06", "docs/api.md#bots-on-a-worker", "docs/api.md#post-__huibots"],
     surfaces: ["route:POST /__hui/bots", "route:GET /__hui/workers", "route:GET /__hui/directories"],
     journeys: ["bots-workers", "bot-setup"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -658,7 +658,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots-run-on-remote-workers-2026-10-06", "docs/api.md#bots-on-a-worker"],
     surfaces: ["route:POST /__hui/bots", "route:GET /__hui/bots"],
     journeys: ["bots-workers", "bot-setup"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

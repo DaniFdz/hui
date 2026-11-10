@@ -15,7 +15,6 @@ test("with read and bash off a bot loads a skill it needs from its chat, and a s
   const send = screen.getByRole("button", "Send message");
   const idle = screen.getByLabel("Session status: Idle");
   await hui.open(`/bots/${bot.id}`);
-  const panel = await panelOverview(screen, "Learner");
   await screen.getByText("Tools & skills", { exact: true }).tap();
 
   // A bot with neither file tool can still load one of its skills.

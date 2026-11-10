@@ -1,7 +1,7 @@
 /** In a turn a trigger started, the bot's attempt to rename itself, rewrite its SOUL.md or add a routine is refused in
  * its tool calls, and its name, title and persona stay as they were (BOT-007). */
 import { expect } from "e2e";
-import { test, type Hui } from "../../fixtures/hui.ts";
+import { test } from "../../fixtures/hui.ts";
 
 const CALL = `E2E_CALL:${Buffer.from(JSON.stringify([
   { name: "set_profile", input: { name: "Hijacked", title: "Owned by an event" } },

@@ -29,7 +29,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -79,7 +79,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#session-stages"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -109,7 +109,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -159,7 +159,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#kanban-backlog", "docs/api.md#get-__huibacklog"],
     surfaces: ["route:GET /__hui/backlog"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -169,7 +169,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#kanban-backlog", "docs/api.md#get-__huibacklog"],
     surfaces: ["route:GET /__hui/backlog"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -189,7 +189,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -199,7 +199,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#delete-__huibacklogitemsid"],
     surfaces: ["route:DELETE /__hui/backlog/items/:id"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -209,7 +209,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#post-__huibacklogitemsidjiradraft", "docs/api.md#post-__huibacklogitemsidjira"],
     surfaces: ["route:POST /__hui/backlog/items/:id/jira/draft", "route:POST /__hui/backlog/items/:id/jira", "route:GET /__hui/jira/projects"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -219,7 +219,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#post-__huibacklogitemsidjiralink"],
     surfaces: ["route:POST /__hui/backlog/items/:id/jira/link", "route:GET /__hui/jira/issues"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -229,7 +229,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#post-__huibacklogitemsidstart"],
     surfaces: ["route:POST /__hui/backlog/items/:id/start", "route:GET /__hui/git-checkout", "route:GET /__hui/directories"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -249,7 +249,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#post-__huibacklogitemsidstart"],
     surfaces: ["route:GET /__hui/git-checkout", "route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -259,7 +259,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "SPEC.md#worktrees", "docs/api.md#post-__huibacklogitemsidbranch-name", "docs/api.md#post-__huibacklogitemsidstart"],
     surfaces: ["route:POST /__hui/backlog/items/:id/branch-name", "route:POST /__hui/backlog/items/:id/start", "setting:branchPrefix"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -299,7 +299,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#kanban", "docs/api.md#post-__huisessionsidjiradraft", "docs/api.md#post-__huisessionsidjira"],
     surfaces: ["route:POST /__hui/sessions/:id/jira/draft", "route:POST /__hui/sessions/:id/jira", "route:GET /__hui/jira/projects", "route:GET /__hui/jira"],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -309,7 +309,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#kanban", "docs/api.md#get-__huijiraissues", "docs/api.md#post-__huisessionsidjiralink"],
     surfaces: ["route:GET /__hui/jira/issues", "route:POST /__hui/sessions/:id/jira/link"],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -319,7 +319,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#kanban"],
     surfaces: [],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -329,7 +329,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#github-contributions", "docs/api.md#get-__huigithubcontributions"],
     surfaces: ["page:contributions", "route:GET /__hui/github/contributions"],
     journeys: ["contributions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -339,7 +339,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["contributions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -349,7 +349,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huigithubcontributions"],
     surfaces: ["route:GET /__hui/github/contributions"],
     journeys: ["contributions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -379,7 +379,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huigithubcontributions"],
     surfaces: ["route:GET /__hui/github/contributions"],
     journeys: ["contributions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -389,7 +389,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#github-contributions"],
     surfaces: ["route:GET /__hui/github/contributions", "settings-page:integrations"],
     journeys: ["contributions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -459,7 +459,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#session-activity"],
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -469,7 +469,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisession-activity"],
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -509,7 +509,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#session-activity"],
     surfaces: [],
     journeys: ["session-calendar"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
 ];

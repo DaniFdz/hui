@@ -254,7 +254,7 @@ const cases: UseCase[] = [
       "A request the browser could not get to the gateway, or an uncaught error in the page, appears in Logs as a `ui` entry such as *UI request could not reach the gateway*, with repeats merged into one entry with a count. Failures from while the gateway was unreachable appear once it is back, unless the page was reloaded meanwhile.",
     spec: ["docs/api.md#post-__huidiagnosticsui-errors"],
     surfaces: ["route:POST /__hui/diagnostics/ui-errors"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -308,7 +308,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES, "docs/api.md#get-__huiupdatecheck"],
     surfaces: ["route:GET /__hui/update/check"],
     journeys: ["update-notice"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -399,7 +399,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES, "docs/api.md#post-__huiupdatecheck"],
     surfaces: ["route:POST /__hui/update/check"],
     journeys: ["update", "update-notice"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -421,7 +421,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES, "docs/api.md#post-__huiupdate"],
     surfaces: ["route:POST /__hui/update", "route:GET /__hui/update"],
     journeys: ["update", "update-notice"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -443,7 +443,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES],
     surfaces: ["route:POST /__hui/update/check"],
     journeys: ["update", "update-notice"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

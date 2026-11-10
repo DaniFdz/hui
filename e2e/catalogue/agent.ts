@@ -215,7 +215,7 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: ["tool:sessions_spawn"],
     journeys: ["subagents"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -225,7 +225,7 @@ const cases: UseCase[] = [
     spec: [...SUBAGENTS, "SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
     surfaces: [],
     journeys: ["subagents", "swarm"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -235,7 +235,7 @@ const cases: UseCase[] = [
     spec: [...SUBAGENTS, "docs/api.md#subagent-completion-events"],
     surfaces: ["row:subagentEvent"],
     journeys: ["subagents", "subagent-steering", "chat-senders"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -264,7 +264,7 @@ const cases: UseCase[] = [
     behaviour: "A child still running when the gateway restarts is no longer shown as running: its parent's card marks it failed with The HUI gateway restarted before this subagent finished., and its result is delivered to the parent like any finished child's.",
     spec: SUBAGENTS,
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -274,7 +274,7 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: ["tool:sessions_list", "tool:sessions_history", "tool:sessions_send", "tool:subagents"],
     journeys: ["subagents"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -294,7 +294,7 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: ["tool:sessions_spawn", "tool:agents_wait"],
     journeys: ["swarm", "subagents"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -314,7 +314,7 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: ["route:POST /__hui/sessions/:id/abort", "tool:agents_wait"],
     journeys: ["swarm"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -324,7 +324,7 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: ["tool:agents_wait"],
     journeys: ["swarm"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -333,7 +333,7 @@ const cases: UseCase[] = [
     behaviour: "A collected helper whose result no wait returned is delivered to the parent as an ordinary completion card once the parent is no longer busy, and a result a wait already returned never arrives a second time.",
     spec: SUBAGENTS,
     surfaces: ["row:subagentEvent", "tool:sessions_spawn"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -413,7 +413,7 @@ const cases: UseCase[] = [
     spec: WATCHERS,
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -423,7 +423,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#watchers-survive-their-shell-and-can-keep-running-2026-10-19", "docs/api.md#background-watchers"],
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -452,7 +452,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#suggested-tasks"],
     surfaces: ["tool:suggest_task"],
     journeys: ["task-suggestions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -462,7 +462,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#suggested-tasks"],
     surfaces: ["tool:suggest_task"],
     journeys: ["task-suggestions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -472,7 +472,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#suggested-tasks", "docs/api.md#post-__huisessionsidsuggestionssidstart"],
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -482,7 +482,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessionsidsuggestionssidstart", "SPEC.md#worktrees"],
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -492,7 +492,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessionsidsuggestionssidstart"],
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -502,7 +502,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#suggested-tasks", "docs/api.md#delete-__huisessionsidsuggestionssid"],
     surfaces: ["route:DELETE /__hui/sessions/:id/suggestions/:sid", "tool:dismiss_task"],
     journeys: ["task-suggestions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -512,7 +512,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#suggested-tasks", "docs/api.md#post-__huisessionsidsuggestionssidbacklog", "docs/api.md#kanban-backlog", "SPEC.md#kanban"],
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/backlog"],
     journeys: ["task-suggestions", "kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -522,7 +522,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#suggested-tasks"],
     surfaces: ["route:POST /__hui/sessions/:id/jira", "route:POST /__hui/sessions/:id/jira/draft"],
     journeys: ["task-suggestions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -541,7 +541,7 @@ const cases: UseCase[] = [
     spec: BROWSER,
     surfaces: ["tool:browser"],
     journeys: ["browser-tool"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -551,7 +551,7 @@ const cases: UseCase[] = [
     spec: BROWSER,
     surfaces: ["tool:browser", "route:POST /__hui/sessions/:id/browser/connect", "route:WS /__hui/browser-stream"],
     journeys: ["browser-tool"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -561,7 +561,7 @@ const cases: UseCase[] = [
     spec: BROWSER,
     surfaces: ["route:POST /__hui/sessions/:id/browser/connect"],
     journeys: ["browser-tool"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -571,7 +571,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["tool:browser", "route:WS /__hui/browser-stream", "work-view:browser"],
     journeys: ["browser-tool"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -581,7 +581,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["tool:browser"],
     journeys: ["browser-tool"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

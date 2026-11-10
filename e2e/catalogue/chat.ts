@@ -272,7 +272,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     journeys: ["continue-error-toast"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -434,7 +434,7 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/fork",
       "route:GET /__hui/git-checkout",
     ],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -472,7 +472,7 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/compact",
     ],
     journeys: ["compaction-rewind"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -563,7 +563,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: ["route:POST /__hui/sessions"],
     journeys: ["slash-commands", "command-references"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -613,7 +613,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["slash-commands", "command-references", "sdk-backend"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -641,7 +641,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:GET /__hui/local-paths"],
     journeys: ["command-references", "local-path-autocomplete"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -660,7 +660,7 @@ const cases: UseCase[] = [
       "durable-extensions",
       "sdk-backend",
     ],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -689,7 +689,7 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/model",
     ],
     journeys: ["chat-composer", "configured-models"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -700,7 +700,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessionsidthinking"],
     surfaces: ["route:POST /__hui/sessions/:id/thinking"],
     journeys: ["chat-composer"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -710,7 +710,7 @@ const cases: UseCase[] = [
       'For a model with a fast mode, the thinking picker adds a Speed choice of Standard or Fast. Fast marks the picker with a lightning badge and reads "Thinking: <level>, fast", and the choice stays with the session.',
     spec: ["docs/api.md#post-__huisessionsidfast"],
     surfaces: ["route:POST /__hui/sessions/:id/fast"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -721,7 +721,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
     surfaces: ["row:messages"],
     journeys: ["chat-senders"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -732,7 +732,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
     surfaces: ["row:messages"],
     journeys: ["chat-senders"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -743,7 +743,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
     surfaces: ["row:activity", "tool:message_bot"],
     journeys: ["chat-senders"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -776,7 +776,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["position-rail"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -787,7 +787,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: [],
     journeys: ["durable-extensions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -798,7 +798,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: ["row:compaction"],
     journeys: ["durable-extensions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -834,7 +834,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:read", "item:tool"],
     journeys: ["chat-composer"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -909,7 +909,7 @@ const cases: UseCase[] = [
       "At 390 px wide, while a run is busy with a Steer and a Follow up row queued and the draft empty, the Queued messages tray above the composer, the Message field, the composer's controls and Stop all stay on screen, and nothing overflows sideways.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -962,7 +962,7 @@ const cases: UseCase[] = [
       "On a 390 px wide screen, messages that arrive while a turn runs and the turn's folded activity fit the width, with no sideways scrolling, and expanding the activity keeps them readable.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

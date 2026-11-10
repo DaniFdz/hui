@@ -13,7 +13,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", GPT_LIVE_ONLY, "docs/api.md#get-__huicalls"],
     surfaces: ["route:GET /__hui/calls"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -40,7 +40,7 @@ const cases: UseCase[] = [
     behaviour: "When the microphone is refused the call view shows *Call failed* and the alert *Microphone access was denied. Allow it for this site in the browser's settings, then try again.*; a missing or busy microphone gets its own message (*No microphone was found…*, *The microphone is busy or unavailable…*), as does a page that cannot have one (plain HTTP away from this machine, or HUI's desktop app). **Back to the chat** closes the view and nothing is left in the chat.",
     spec: ["SPEC.md#bots", CALLS],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -103,7 +103,7 @@ const cases: UseCase[] = [
     behaviour: "Leaving the bot's chat for another session, another bot or Settings keeps the call running in a bar above that page's content, never over it. Its `Return to the call with <bot>` goes back to the bot's chat with the call view open.",
     spec: ["SPEC.md#bots"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -112,7 +112,7 @@ const cases: UseCase[] = [
     behaviour: "During a call with one bot, Call on another bot shows the error toast *Hang up the call with <bot> first.* and the first call goes on. When the gateway already holds two calls (from other tabs or devices), a new call fails with *2 calls are already running. Hang up before starting another.*",
     spec: ["SPEC.md#bots", "docs/api.md#post-__huibotsidcalls"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -221,7 +221,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", CALLS, API],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bots", "bot-setup"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -231,7 +231,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", API],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -241,7 +241,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
 ];

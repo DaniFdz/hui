@@ -29,7 +29,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huidirectoriesqprefixworkerid"],
     surfaces: ["page:new-session", "route:GET /__hui/directories"],
     journeys: ["session-launch", "checkout-selector"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -117,7 +117,7 @@ const cases: UseCase[] = [
     behaviour: "When workers exist, \"Choose where the session runs\" offers Local and each remote worker with its state. Choosing a worker hides the Checkout picker and suggests that worker's folders; the directory must be absolute or start with ~/. The session is created without waiting for a connection and its header names the worker.",
     spec: ["SPEC.md#remote-workers", "docs/api.md#get-__huiworkers"],
     surfaces: ["route:GET /__hui/workers", "route:GET /__hui/directories", "route:POST /__hui/sessions"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -632,7 +632,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#get-__huiworkers"],
     surfaces: ["route:GET /__hui/workers"],
     journeys: ["session-lifecycle"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
