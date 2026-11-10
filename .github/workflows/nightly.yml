@@ -149,8 +149,188 @@ jobs:
       - run: npm install -g npm@11
       - run: npm ci --ignore-scripts
       - run: npm run test:package
+  # The phone app's nightly APK, from the same commit as the nightly archive and versioned with the version
+  # `package-linux` stamped. It is signed with the owner's release keystore like the stable APK (owner decision O4), so
+  # a nightly that could not be signed fails here instead of publishing an unsigned or debug-signed build.
+  android:
+    if: github.event.repository.private == false && github.ref == 'refs/heads/main'
+    needs: [checks, package-linux]
+    runs-on: ubuntu-latest
+    # The SDK download, the Gradle distribution and the release build; a hang fails here, not at GitHub's six hours.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      # Capacitor 8 compiles at Java release 21, and the shell's own sources do too.
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+      - run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - run: npm ci --ignore-scripts
+      # Builds the Connect page and runs `cap sync android`, which writes the plugin list the Gradle project reads.
+      - run: npm run mobile:build
+      - name: Read the version this nightly publishes
+        id: version
+        env:
+          NIGHTLY_VERSION: ${{ needs.package-linux.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$NIGHTLY_VERSION"
+          echo "version=$NIGHTLY_VERSION" >> "$GITHUB_OUTPUT"
+          # Android's versionCode is a signed 32-bit int and the 14-digit nightly stamp does not fit it, so it is the
+          # commit time in minutes: it grows with every nightly and stays well inside the limit.
+          echo "code=$(( $(git log -1 --format=%ct) / 60 ))" >> "$GITHUB_OUTPUT"
+      - name: Decode the release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.HUI_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::HUI_ANDROID_KEYSTORE_BASE64 is not set, and a nightly APK is signed with the owner's release keystore (docs/mobile-app-plan.md, owner decision O4). See mobile/AGENTS.md, Distribution, for the four secrets and how to make them."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hui-release.keystore"
+          test -s "$RUNNER_TEMP/hui-release.keystore"
+      - name: Build and sign the nightly APK
+        working-directory: mobile/android
+        env:
+          # The three passwords never reach a command line: Gradle reads them as project properties from the
+          # environment, so they cannot be echoed by a build log either.
+          ORG_GRADLE_PROJECT_huiReleaseStorePassword: ${{ secrets.HUI_ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_huiReleaseKeyAlias: ${{ secrets.HUI_ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_huiReleaseKeyPassword: ${{ secrets.HUI_ANDROID_KEY_PASSWORD }}
+          VERSION: ${{ steps.version.outputs.version }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --console=plain :app:assembleRelease \
+            -PhuiVersionName="$VERSION" -PhuiVersionCode="$CODE" \
+            -PhuiReleaseStoreFile="$RUNNER_TEMP/hui-release.keystore"
+      - name: Name, verify and checksum the APK
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          set -euo pipefail
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          apk="hui-$VERSION.apk"
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk "$apk"
+          # apksigner fails on an unsigned APK, and the badging proves the version and versionCode the nightly was given
+          # are the ones inside it.
+          "$tools/apksigner" verify --print-certs "$apk"
+          "$tools/aapt2" dump badging "$apk" > "$RUNNER_TEMP/badging.txt"
+          head -1 "$RUNNER_TEMP/badging.txt"
+          grep -F "versionCode='$CODE'" "$RUNNER_TEMP/badging.txt"
+          grep -F "versionName='$VERSION'" "$RUNNER_TEMP/badging.txt"
+          sha256sum "$apk" > "$apk.sha256"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-apk
+          path: |
+            hui-*.apk
+            hui-*.apk.sha256
+          if-no-files-found: error
+  # The unsigned IPA for the same commit and the SideStore source that points at it; nothing on Linux can archive for a
+  # device. CODE_SIGNING_ALLOWED=NO leaves the signature to SideStore, which signs it with the user's own Apple ID.
+  ios:
+    if: github.event.repository.private == false && github.ref == 'refs/heads/main'
+    needs: [checks, package-linux]
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
+      - run: npm run mobile:build
+      - run: npx cap sync ios
+      - name: Read the version this nightly publishes
+        id: version
+        env:
+          NIGHTLY_VERSION: ${{ needs.package-linux.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$NIGHTLY_VERSION"
+          echo "version=$NIGHTLY_VERSION" >> "$GITHUB_OUTPUT"
+          # CFBundleVersion and Android's versionCode carry the same number: the commit time in minutes.
+          echo "code=$(( $(git log -1 --format=%ct) / 60 ))" >> "$GITHUB_OUTPUT"
+      # The notes `publish` writes for the nightly release, worded the same here because the SideStore source shows them
+      # as what is new in this version.
+      - name: Write the nightly notes
+        env:
+          NIGHTLY_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          printf 'Built from [%s](https://github.com/%s/commit/%s) on main. Install it with %s; it is not a stable release.\n' \
+            "${NIGHTLY_SHA:0:7}" "$GITHUB_REPOSITORY" "$NIGHTLY_SHA" "\`hui update --nightly\`" > notes.md
+      - name: Archive the app for a device, unsigned
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          set -euo pipefail
+          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/hui.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$CODE" \
+            archive | tee "$RUNNER_TEMP/xcodebuild-archive.log" | tail -20
+      - name: Package the unsigned IPA and check its version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/hui.xcarchive/Products/Applications/App.app"
+          test -d "$app"
+          short=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Info.plist")
+          build=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app/Info.plist")
+          echo "archive: $short ($build); the build was given $VERSION ($CODE)"
+          # SideStore repeats both in its source and refuses an IPA whose Info.plist disagrees, so a placeholder that
+          # never got overridden fails here instead of on a user's phone.
+          [ "$short" = "$VERSION" ]
+          [ "$build" = "$CODE" ]
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$app" "$RUNNER_TEMP/Payload/App.app"
+          (cd "$RUNNER_TEMP" && zip -qry "hui-$VERSION.ipa" Payload)
+          mv "$RUNNER_TEMP/hui-$VERSION.ipa" .
+          unzip -l "hui-$VERSION.ipa" > "$RUNNER_TEMP/ipa-listing.txt"
+          head -5 "$RUNNER_TEMP/ipa-listing.txt"
+          # macOS has no sha256sum; shasum writes the same "<hash>  <file>" line it would.
+          shasum -a 256 "hui-$VERSION.ipa" > "hui-$VERSION.ipa.sha256"
+      - name: Write the SideStore source
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          set -euo pipefail
+          node scripts/sidestore-source.mjs \
+            --repository "$GITHUB_REPOSITORY" --tag nightly \
+            --version "$VERSION" --build "$CODE" \
+            --ipa "hui-$VERSION.ipa" --notes notes.md \
+            --out hui-sidestore.json --beta
+          shasum -a 256 hui-sidestore.json > hui-sidestore.json.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-ipa
+          path: |
+            hui-*.ipa
+            hui-*.ipa.sha256
+            hui-sidestore.json
+            hui-sidestore.json.sha256
+          if-no-files-found: error
   publish:
-    needs: [checks, e2e, smoke, package-linux, package-macos]
+    needs: [checks, e2e, smoke, package-linux, package-macos, android, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -158,6 +338,12 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nightly-package
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-apk
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-ipa
       - name: Replace the nightly prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -171,5 +357,8 @@ jobs:
           printf 'Built from [%s](https://github.com/%s/commit/%s) on main. Install it with %s; it is not a stable release.\n' \
             "${NIGHTLY_SHA:0:7}" "$GH_REPO" "$NIGHTLY_SHA" "\`hui update --nightly\`" > notes.md
           gh release create nightly "hui-$NIGHTLY_VERSION.tgz" "hui-$NIGHTLY_VERSION.tgz.sha256" \
+            "hui-$NIGHTLY_VERSION.apk" "hui-$NIGHTLY_VERSION.apk.sha256" \
+            "hui-$NIGHTLY_VERSION.ipa" "hui-$NIGHTLY_VERSION.ipa.sha256" \
+            hui-sidestore.json hui-sidestore.json.sha256 \
             --prerelease --latest=false --target "$NIGHTLY_SHA" \
             --title "Nightly $NIGHTLY_VERSION" --notes-file notes.md
