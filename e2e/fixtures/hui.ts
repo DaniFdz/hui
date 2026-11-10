@@ -50,6 +50,13 @@ export type Hui = {
   prompt(session: { id: string }, text: string): Promise<void>;
   provider: { url: string; held(): Promise<void>; release(): Promise<void> };
   network(mode: "online" | "offline" | "silent"): Promise<void>;
+  /**
+   * Saves (or clears) the ChatGPT login GPT-Live calls need, as Settings → Models would: a synthetic subscription
+   * credential in the fixture's own provider store, never the operator's, so no request leaves the machine. HUI reads
+   * it when the page next loads, and the fixture puts the store back when the test ends. A call cannot be offered
+   * without one, so the CALL area's tests start here.
+   */
+  chatGptLogin(signedIn: boolean): Promise<void>;
   /** True once this browser has installed the open build's offline files and can serve its shell without the gateway. */
   offlineFilesReady(): Promise<boolean>;
   restartGateway(): Promise<void>;
@@ -330,6 +337,9 @@ export const test = base.extend<{ hui: Hui }>({
     const workerHomes: string[] = [];
     const settings = await api<unknown>("GET", "/__hui/settings");
     const directories: string[] = [];
+    // The ChatGPT logins a test saves are put back, so no later file starts with an account it never asked for.
+    const authFile = join(receipt.huiConfig, "providers", "auth.json");
+    const authBefore = await readFile(authFile, "utf8").catch(() => undefined);
 
     const webSteps: PlatformSteps = {
       open: (path) => fixtures.app.open(path),
@@ -415,6 +425,17 @@ export const test = base.extend<{ hui: Hui }>({
       zone: () => browser().evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
       providerRequests: async () => (await readFile(join(dirname(receipt.workspace), "artifacts/provider.jsonl"), "utf8").catch(() => "")).split("\n").filter((line) => line.trim()).length,
       network,
+      chatGptLogin: async (signedIn) => {
+        const stored = await readFile(authFile, "utf8").then((raw) => JSON.parse(raw) as Record<string, unknown>, () => ({}));
+        // The email lives in the token's own claim, as a real one does: the account a call uses is read from there.
+        const claims = Buffer.from(JSON.stringify({ "https://api.openai.com/profile": { email: "call-fixture@example.com" } })).toString("base64url");
+        const kept = Object.entries(stored).filter(([provider]) => provider !== "openai-codex");
+        const next = signedIn
+          ? { ...Object.fromEntries(kept), "openai-codex": { type: "oauth", access: `eyJhbGciOiJub25lIn0.${claims}.fixture`, refresh: "fixture-refresh", expires: Date.now() + 86_400_000 } }
+          : Object.fromEntries(kept);
+        await mkdir(dirname(authFile), { recursive: true });
+        await writeFile(authFile, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+      },
       offlineFilesReady: () => browser().evaluate(async () => {
         if (!("serviceWorker" in navigator)) return false;
         const registration = await navigator.serviceWorker.getRegistration();
@@ -909,6 +930,8 @@ export const test = base.extend<{ hui: Hui }>({
       if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
     }
     await api("PUT", "/__hui/settings", settings);
+    if (authBefore === undefined) await rm(authFile, { force: true });
+    else await writeFile(authFile, authBefore, { mode: 0o600 });
     for (const path of directories) await rm(path, { recursive: true, force: true });
   },
 });
