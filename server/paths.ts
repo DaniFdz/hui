@@ -3,9 +3,20 @@
  * without changing `XDG_CONFIG_HOME` for the agent's own shells. */
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const CONFIG_DIR = process.env["HUI_CONFIG_DIR"]
   || (process.env["XDG_CONFIG_HOME"] ? join(process.env["XDG_CONFIG_HOME"], "hui") : join(homedir(), ".config", "hui"));
+
+/** Trusted local modules that add JSON routes to the gateway (docs/api.md, "Extension routes"). HUI owns this
+ * directory and the enable list beside it; nothing writes there but the operator and the toggle route. */
+export const EXTENSIONS_DIR = join(CONFIG_DIR, "extensions");
+export const EXTENSIONS_FILE = join(CONFIG_DIR, "extensions.json");
+
+/** Extensions HUI ships inside its package, beside `skills/`; a config extension with the same id wins. */
+export const EXTENSIONS_BUNDLED_DIR = fileURLToPath(new URL("../../extensions/", import.meta.url));
+/** The packaged ids a fresh config has on until `extensions.json` exists. */
+export const EXTENSIONS_DEFAULTS_FILE = join(EXTENSIONS_BUNDLED_DIR, "defaults.json");
 
 export const USER_THEME_DIR = join(CONFIG_DIR, "themes");
 
@@ -30,6 +41,10 @@ export const WORKTREES_DIR = join(CONFIG_DIR, "worktrees");
 /** The managed browser's own Chromium user-data directory. Agents' cookies and
  * logins persist here; it is never the operator's personal browser profile. */
 export const BROWSER_PROFILE_DIR = join(CONFIG_DIR, "browser", "profile");
+
+/** The operator's site secrets (mode 0600): values an agent may type into a
+ * login form without ever seeing them. Never part of the synced settings file. */
+export const BROWSER_SECRETS_FILE = join(CONFIG_DIR, "browser-secrets.json");
 
 /** The VS Code view's openvscode-server: its server data, user data and
  * extensions, the connection-token file of the running server and its pid. */

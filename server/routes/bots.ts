@@ -1,5 +1,5 @@
 /**
- * `/__hui/bots` routes (HUI-18); see docs/api.md#bots. `:id` is a bot's id or
+ * `/__hui/bots` routes; see docs/api.md#bots. `:id` is a bot's id or
  * handle. The chat itself (transcript, live stream, prompt, steer, follow-up,
  * questions) is the session API on `bot.sessionId`; these routes do not
  * duplicate it.
@@ -24,6 +24,8 @@
  *   PUT    /__hui/bots/:id/soul              { soul } replaces SOUL.md atomically; "" removes it (the first conversation again)
  *   GET    /__hui/bots/:id/files/:file       { file, text }: SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md (null while absent)
  *   PUT    /__hui/bots/:id/files/bootstrap   { text } replaces the operator's onboarding body; "" removes it
+ *   GET    /__hui/bots/:id/skills/:name      { name, text }: one of its own skills' SKILL.md (local bots)
+ *   PUT    /__hui/bots/:id/skills/:name      { text } replaces that SKILL.md, keeping the folder's name
  *
  * `GET /__hui/bots/events` streams the list and is served by `hui.ts`.
  */
@@ -34,7 +36,7 @@ import { BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineErro
 import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import {
-  BotCatalog, BotDeleted, BotFactsResponse, BotFileText, BotMemoryResponse, BotMemoryZoom, BotMessageResult, BotResponse, BotSoul, BotsResponse, BotUsageResponse,
+  BotCatalog, BotDeleted, BotFactsResponse, BotFileText, BotMemoryResponse, BotMemoryZoom, BotMessageResult, BotOwnSkill, BotResponse, BotSoul, BotsResponse, BotUsageResponse,
   routeSchemas as botRouteSchemas, type BotFileName,
 } from "../api/bots.ts";
 import { SessionBusyError } from "../sessions/live-sessions.ts";
@@ -48,6 +50,8 @@ export const BOTS_EVENTS_ROUTE = "/__hui/bots/events";
 export const BOT_MEMORY_PAGE = /^\/__hui\/bots\/[A-Za-z0-9_-]{1,100}\/memory\/html$/u;
 const FACTS_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/facts(?:\/([A-Za-z0-9_-]{1,100}))?$/u;
 const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html|soul|catalog|usage|files)(?:\/(soul|user|memory|bootstrap))?)?)?$/u;
+/** One of a bot's own skills: the SKILL.md the operator edits in Tools & skills. */
+const SKILL_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/skills\/([a-z0-9][a-z0-9-]{0,62})$/u;
 /** SOUL.md reaches 20,000 characters, up to four bytes each, and JSON may escape them. */
 const BOT_BODY_BYTES = 256 * 1024;
 /** Messages may carry attachments, like prompts. */
@@ -120,6 +124,22 @@ export function createBotRoutes(deps: Deps) {
   async function handle(request: RouteRequest): Promise<RouteResult | undefined> {
     const match = ROUTE.exec(request.path);
     const factMatch = FACTS_ROUTE.exec(request.path);
+    const skillMatch = SKILL_ROUTE.exec(request.path);
+    if (skillMatch) {
+      const [, botId, name] = skillMatch;
+      try {
+        if (request.method === "GET") return reply(BotOwnSkill, await service.ownSkill(botId!, name!));
+        if (request.method !== "PUT") return { status: 405, body: { error: "method not allowed" } };
+        const body = await json(request, BOT_BODY_BYTES);
+        if (typeof body !== "object" || body === null || Array.isArray(body)) throw new BotInputError("The skill must be an object: { text }.");
+        const unknown = Object.keys(body).filter((key) => key !== "text");
+        if (unknown.length) throw new BotInputError(`Unknown skill field: ${unknown.join(", ")}.`);
+        if (!("text" in body)) throw new BotInputError("text is required: the whole SKILL.md.");
+        return reply(BotOwnSkill, await service.setOwnSkill(botId!, name!, (body as { text: unknown }).text));
+      } catch (error) {
+        return { status: botErrorStatus(error), body: { error: error instanceof Error ? error.message : "The skill request failed." } };
+      }
+    }
     if (factMatch) {
       const [, botId, factId] = factMatch;
       try {

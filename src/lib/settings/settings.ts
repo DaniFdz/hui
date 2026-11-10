@@ -15,7 +15,7 @@ export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreferenc
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 
 export const DEFAULT_BRANCH_PREFIX = "feature/";
-export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
@@ -45,11 +45,11 @@ export const DEFAULT_SETTINGS: Settings = {
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
-  models: { primary: "", fallback: "", utility: "", thinking: "", routes: [] },
+  models: { primary: "", fallback: "", utility: "", thinking: "", retryAttempts: 3, routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
-  labs: { denseObservability: false, detailedDebug: false, dashboard: false },
+  labs: { denseObservability: false, detailedDebug: false },
 };
 
 export function normalizeSettings(raw: unknown): Settings {
@@ -94,6 +94,19 @@ export function normalizeCalls(value: unknown): Settings["calls"] {
 /** Both switches are opt-out: only an explicit false changes the default. The
  * path is kept as typed (bounded, no control characters); the gateway validates
  * and reports it rather than guessing. */
+/** Trimmed, lowercased, deduplicated: the gateway validates what a pattern means when a page is checked. */
+function originPatterns(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const patterns: string[] = [];
+  for (const entry of value.slice(0, 50)) {
+    if (typeof entry !== "string") continue;
+    const text = entry.trim().toLowerCase();
+    if (!text || text.length > 200 || /\s|[\p{Cc}]/u.test(text) || patterns.includes(text)) continue;
+    patterns.push(text);
+  }
+  return patterns;
+}
+
 export function normalizeBrowserSettings(value: unknown): BrowserSettings {
   const source = isRecord(value) ? value : {};
   const path = typeof source["executablePath"] === "string" ? source["executablePath"].trim() : "";
@@ -102,6 +115,7 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
     headless: source["headless"] !== false,
     executablePath: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
     mirrorState: source["mirrorState"] === true,
+    allowedOrigins: originPatterns(source["allowedOrigins"]),
   };
 }
 
@@ -144,12 +158,14 @@ function normalizeModelRef(value: unknown): string {
 
 function normalizeModels(value: unknown): Settings["models"] {
   const source = isRecord(value) ? value : {};
+  const attempts = Number(source["retryAttempts"]);
   return {
     primary: normalizeModelRef(source["primary"]),
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
     // Empty follows PI's own defaultThinkingLevel.
     thinking: PI_THINKING_LEVELS.find((level) => level === source["thinking"]) ?? "",
+    retryAttempts: Number.isFinite(attempts) ? Math.min(5, Math.max(0, Math.trunc(attempts))) : 3,
     routes: normalizeSubagentRoutes(source["routes"]),
   };
 }
@@ -164,9 +180,11 @@ function normalizeSubagentRoutes(value: unknown): Settings["models"]["routes"] {
   for (const item of value) {
     if (!isRecord(item)) continue;
     const name = typeof item["name"] === "string" ? item["name"].trim() : "";
-    const model = normalizeModelRef(item["model"]);
+    const rawModel = typeof item["model"] === "string" ? item["model"].trim() : "";
+    const model = normalizeModelRef(rawModel);
     const thinking = PI_THINKING_LEVELS.find((level) => level === item["thinking"]);
-    if (!routeNameIsValid(name) || !model || routes.has(name)) continue;
+    // A route with no model inherits the caller's model and thinking; a model that is present but malformed drops the route.
+    if (!routeNameIsValid(name) || (rawModel && !model) || routes.has(name)) continue;
     routes.set(name, {
       name,
       description: boundedText(item["description"], "", 200).replace(/\s+/gu, " ").trim(),
@@ -292,7 +310,6 @@ function normalizeLabs(value: unknown): Settings["labs"] {
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
-    dashboard: source["dashboard"] === true,
   };
 }
 

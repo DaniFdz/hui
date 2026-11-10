@@ -31,9 +31,13 @@ import { OptChatMemory, OPTCHAT_DEFAULTS, type OptChatStatus } from "../optchat/
 import { masterPrompt, viewDoc } from "../optchat/prompts.ts";
 import { LineFile, readLines, syncDirectory, type Kind } from "../optchat/store.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
+import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { callRecordLines, parseCallRecord } from "../calls-format.ts";
 import { offIsSent } from "./thinking-level.ts";
 import { CallEntry } from "./turn-origins.ts";
+
+/** The provider session every compactor call of a conversation's memory goes as: stable, one per memory, never its turns'. */
+export const optChatSessionId = (conversationId: ConversationId): string => `hui-optchat-${conversationId}`;
 
 /** A conversation's OptChat choice. `name` is the agent's display name in the prompts; `model` ("provider/id") and
  * `thinking` pick the compactor's model, by default HUI's utility model, at medium thinking or the nearest level below it. */
@@ -48,7 +52,7 @@ export const OptChatDoc = defineDoc<OptChatState>({
 
 /** The global extension (hooks and the prompt section), in every conversation's default selection. */
 export const OPTCHAT_EXTENSION = "hui-optchat";
-/** zoom and date, selected only by enabled conversations: other conversations are never offered them. */
+/** zoom, date and search_chat, selected only by enabled conversations: other conversations are never offered them. */
 export const OPTCHAT_TOOLS_EXTENSION = "hui-optchat-tools";
 
 /** A change to the document: a given field replaces the stored one, `null` clears it, `undefined` keeps it. */
@@ -83,6 +87,7 @@ const THINKING = new Set<string>(THINKING_LEVELS);
 const CALL_TIMEOUT_MS = 120_000;
 const ZOOM = "Open the line id+n of the view into the two lines of n/2 under it; n = 1 gives the message whole.";
 const DATE = "The date and time of message id.";
+const SEARCH = "Search the whole chat, not just the view: the lines of the messages that mention query, newest first, each named id+1 so zoom(id, 1) opens it whole.";
 const NO_USAGE: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -187,8 +192,7 @@ const contentText = (content: string | readonly { type: string; text?: string }[
  * summary as talk, both marked `[call]`). Thoughts are never logged, nor answers Durable keeps out of the context
  * (error, aborted, deferred), nor system, reset and compaction entries.
  */
-export function projectEntry(entry: EntryRecord): ProjectedLine[] {
-  // A call with the bot: its transcript (both sides, the helper's answers, the hand-offs), then its summary.
+export function projectEntry(entry: EntryRecord): ProjectedLine[] {  // A call with the bot: its transcript (both sides, the helper's answers, the hand-offs), then its summary.
   if (CallEntry.is(entry)) {
     const record = parseCallRecord(entry.data);
     if (!record?.lines.length) return [];
@@ -197,7 +201,12 @@ export function projectEntry(entry: EntryRecord): ProjectedLine[] {
   }
   const message = entry.model?.[0];
   if (!message) return [];
-  if (UserEntry.is(entry) && message.role === "user") return [{ kind: "user", text: contentText(message.content) }];
+  if (UserEntry.is(entry) && message.role === "user") {
+    const text = contentText(message.content);
+    // A child's report is not the operator's words. OptChat's compactor tags a `user` line that starts with an id as a
+    // subagent report (it never writes such a prefix), so the entry's own id makes the report self-describing.
+    return [{ kind: "user", text: text.startsWith(SUBAGENT_COMPLETION_MARKER) ? `[${entry.id}] ${text}` : text }];
+  }
   if (AssistantEntry.is(entry) && message.role === "assistant") {
     if (message.stopReason !== "stop" && message.stopReason !== "length" && message.stopReason !== "toolUse") return [];
     const talk = message.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n");
@@ -443,6 +452,11 @@ export class OptChatManager {
           name: "date", description: DATE, parameters: Type.Object({ id: Type.Integer() }), replay: "safe",
           execute: async ({ id }, api) => this.#answer(api.conversationId, (memory) => memory.date(id)),
         }),
+        defineTool({
+          name: "search_chat", description: SEARCH,
+          parameters: Type.Object({ query: Type.String(), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })) }), replay: "safe",
+          execute: async ({ query, limit }, api) => this.#answer(api.conversationId, (memory) => memory.search(query, limit)),
+        }),
       ],
     });
   }
@@ -464,7 +478,7 @@ export class OptChatManager {
     return (await this.#harness?.snapshot(OptChatDoc, conversationId, context))?.enabled === true;
   }
 
-  /** The extension carrying zoom and date when the conversation has OptChat; its session selects it. */
+  /** The extension carrying zoom, date and search_chat when the conversation has OptChat; its session selects it. */
   async toolsFor(conversationId: ConversationId): Promise<Extension | undefined> {
     return await this.enabled(conversationId) ? this.toolsExtension : undefined;
   }
@@ -484,6 +498,10 @@ export class OptChatManager {
 
   async date(conversationId: ConversationId, id: number): Promise<string | undefined> {
     return (await this.#current(conversationId))?.memory.date(id);
+  }
+
+  async search(conversationId: ConversationId, query: string, limit?: number): Promise<string | undefined> {
+    return (await this.#current(conversationId))?.memory.search(query, limit);
   }
 
   /** The browse page: view, every message and each tree level. */
@@ -757,10 +775,13 @@ export class OptChatManager {
     const utility = own ? undefined : modelRef(await this.#utilityModel?.().catch(() => undefined));
     const refs = own ? [own] : [utility, conversationModel].filter((ref): ref is { provider: string; modelId: string } => Boolean(ref));
     if (!refs.length) throw new Error("The conversation has no model for OptChat's compactor.");
+    // The memory's own provider session, apart from its turns': a provider that routes by session (OpenCode's
+    // x-opencode-session) rejects a call without one, and the turn would wait on it forever.
+    const sessionId = optChatSessionId(conversationId);
     let failure: unknown;
     for (const ref of refs) {
       try {
-        return await this.#summarizeWith(ref, state, request, signal, contextMark);
+        return await this.#summarizeWith(ref, state, request, signal, contextMark, sessionId);
       } catch (error) {
         if (signal.aborted) throw error;
         failure = error;
@@ -769,7 +790,7 @@ export class OptChatManager {
     throw failure;
   }
 
-  async #summarizeWith(ref: { provider: string; modelId: string }, state: OptChatState | undefined, request: SummaryRequest, signal: AbortSignal, contextMark: ContextMark): Promise<SummaryReply> {
+  async #summarizeWith(ref: { provider: string; modelId: string }, state: OptChatState | undefined, request: SummaryRequest, signal: AbortSignal, contextMark: ContextMark, sessionId: string): Promise<SummaryReply> {
     const models = this.#models();
     const model = models.getModel(ref.provider, ref.modelId);
     if (!model) throw new Error(`Unknown model for OptChat's compactor: ${ref.provider}/${ref.modelId}`);
@@ -789,6 +810,7 @@ export class OptChatManager {
         : { role: "assistant", content: [{ type: "text", text: message.content }], api: model.api, provider: model.provider, model: model.id, usage: NO_USAGE, stopReason: "stop", timestamp: 0 }),
     }, {
       signal: call.signal,
+      sessionId,
       ...(thinking === "off" ? {} : { reasoning: thinking }),
       // Compactions share the compaction view's start: cache it in blocks, like a turn's view.
       ...(block === undefined ? {} : { onPayload: (payload: unknown, target: unknown) => this.#markContext(payload, target, block, contextMark) }),

@@ -1,5 +1,5 @@
 /**
- * `/__hui/bots/:id/triggers` routes (HUI-18); see docs/api.md#triggers. `:id` is a bot's id or handle, `:trigger` a
+ * `/__hui/bots/:id/triggers` routes; see docs/api.md#triggers. `:id` is a bot's id or handle, `:trigger` a
  * trigger's id or name (URL-encoded).
  *
  *   GET    /__hui/bots/:id/triggers                  BotTriggersList: the bot's triggers, their latest runs, the cap

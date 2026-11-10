@@ -21,6 +21,21 @@ const compare = (a, b) => {
 };
 const escape = (text) => text.replace(/[\\`*_{}\[\]<>]/gu, "\\$&");
 
+/** GitHub refuses a release body over 125,000 characters, which a long-running project's changelog passes: keep the
+ * entries that fit and say how many the full diff holds, so publication never fails on the note itself. */
+const RELEASE_BODY_LIMIT = 120_000;
+export function fitChangelog(lines, budget) {
+  const kept = [];
+  let used = 0;
+  for (const line of lines) {
+    if (kept.length && used + line.length + 1 > budget - 80) break;
+    kept.push(line);
+    used += line.length + 1;
+  }
+  const omitted = lines.length - kept.length;
+  return `${[...kept, ...(omitted ? [`- …and ${omitted} more commits, each in the full diff below.`] : [])].join("\n")}\n`;
+}
+
 export function planRelease({ cwd = process.cwd(), base, tag, repository }) {
   const version = readJson(cwd, "HEAD", "package.json").version;
   const hasBase = commitExists(cwd, base);
@@ -55,7 +70,8 @@ export function planRelease({ cwd = process.cwd(), base, tag, repository }) {
     return `- ${escape(subject.join("\t"))} ([${sha.slice(0, 7)}](${url}/commit/${sha}))`;
   }) : ["- No non-merge commits since the previous release."];
   const comparison = previousTag ? `\n[Full diff since ${previousTag}](${url}/compare/${previousTag}...${git(cwd, "rev-parse", "HEAD")})\n` : "\nInitial release: all commits are included.\n";
-  return { changed: true, tag: releaseTag, changelog: `# ${releaseTag}\n\n${lines.join("\n")}\n${comparison}` };
+  const heading = `# ${releaseTag}\n\n`;
+  return { changed: true, tag: releaseTag, changelog: `${heading}${fitChangelog(lines, RELEASE_BODY_LIMIT - heading.length - comparison.length)}${comparison}` };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

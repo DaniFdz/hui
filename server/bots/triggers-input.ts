@@ -1,5 +1,5 @@
 /**
- * Triggers' input and stored shape (HUI-18): what `POST`/`PATCH /__hui/bots/:id/triggers` and `bot-triggers.json` may
+ * Triggers' input and stored shape: what `POST`/`PATCH /__hui/bots/:id/triggers` and `bot-triggers.json` may
  * hold, checked at the gateway's boundary. Input that does not validate is refused with what to fix (400); a stored
  * record that does not validate (one of a source HUI no longer has among them, which `hui doctor` reports) is kept
  * aside in the file, untouched, and not used.

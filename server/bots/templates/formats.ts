@@ -1,5 +1,5 @@
 /**
- * Bot templates (HUI-18): bots brought over from other platforms, and HUI's own templates (whose export side, `bot.json`
+ * Bot templates: bots brought over from other platforms, and HUI's own templates (whose export side, `bot.json`
  * and its review, is `server/bots/export-format.ts`). Every importer reads its source (a file, a folder, a link or pasted text) into one
  * `BotTemplate`; the gateway then shows what creating it would do (`BotImportPreview`) before anything exists, and
  * creates it only when asked. The gateway and `hui bot import` use it; the payloads are in `server/api/bot-templates.ts`. See

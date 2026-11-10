@@ -1,0 +1,10 @@
+{
+  "name": "staff",
+  "version": 7,
+  "title": "Chief of Staff",
+  "bot": {
+    "name": "Chief of Staff",
+    "title": "Chief of Staff",
+    "description": "Coordinates HUI work: plans it, hands it to the right subagents, checks their evidence, and keeps a ledger of what is in flight."
+  }
+}

@@ -1,6 +1,6 @@
 /**
  * The bot's quick helper during a GPT-Live call, and the record of the call at
- * hang-up (HUI-18), after OpenDots (CopilotKit/OpenDots, MIT): the voice model
+ * hang-up, after OpenDots (CopilotKit/OpenDots, MIT): the voice model
  * has one tool, which asks the bot. Here that tool is answered by the bot's
  * utility model at low thinking, from the bot's soul (its SOUL.md), its memory
  * and the call so far; what needs tools or real work is handed to the bot's own
@@ -25,7 +25,9 @@ import { durableHost } from "../runtimes/durable-host.ts";
 
 /** One model completion: the reply's text. Throws when the model fails or the signal aborts. `least` reasons as little as
  * the model allows, for a quick retry (a gateway's DeepSeek answers in 6 s instead of almost two minutes at "low"). */
-export type CallCompletion = (model: string, request: { system: string; prompt: string; signal: AbortSignal; least?: boolean }) => Promise<string>;
+/** `session` is the provider session the request goes as: the bot's id, so a provider that routes by session (OpenCode's
+ * x-opencode-session) accepts it and keeps one bot's completions together. */
+export type CallCompletion = (model: string, request: { system: string; prompt: string; signal: AbortSignal; session: string; least?: boolean }) => Promise<string>;
 
 const MODEL_REF = /^[^/\s]+\/\S+$/u;
 
@@ -109,7 +111,7 @@ export function deadline(ms: number): { signal: AbortSignal; clear: () => void }
 }
 
 /** Tries each model in turn until one answers, within the signal's time. */
-export async function complete(models: readonly string[], request: { system: string; prompt: string; signal: AbortSignal }, completion: CallCompletion): Promise<{ text: string; model: string }> {
+export async function complete(models: readonly string[], request: { system: string; prompt: string; signal: AbortSignal; session: string }, completion: CallCompletion): Promise<{ text: string; model: string }> {
   if (!models.length) throw new CallHelperError("No utility model is configured for this bot.", false);
   let last: unknown;
   for (const model of models) {
@@ -202,7 +204,7 @@ export function createCallDelegate(deps: CallDelegateDeps) {
     const { system, prompt } = helperPrompt({ bot, operator: settings.operator, ...(soul ? { soul } : {}), ...(view ? { view } : {}), ...(facts ? { facts } : {}), lines: call.lines, request });
     const budget = deadline(deps.budgetMs ?? CALL_LIMITS.helperSeconds * 1000);
     try {
-      const { text } = await complete(utilityCandidates(bot, settings.utility), { system, prompt, signal: signal ? AbortSignal.any([signal, budget.signal]) : budget.signal }, deps.completion);
+      const { text } = await complete(utilityCandidates(bot, settings.utility), { system, prompt, session: bot.id, signal: signal ? AbortSignal.any([signal, budget.signal]) : budget.signal }, deps.completion);
       const reply = parseHelperReply(text);
       if (reply.kind === "handoff") return handOff(bot, call, reply.task);
       call.lines.push({ role: "helper", request, text: reply.text, at: now() });
@@ -226,7 +228,7 @@ export function createCallDelegate(deps: CallDelegateDeps) {
  * fails), with the whole transcript. Undefined for a call where nothing was said.
  */
 export async function buildCallRecord(input: {
-  bot: Pick<BotRecord, "name" | "voice" | "memoryModel" | "model">;
+  bot: Pick<BotRecord, "id" | "name" | "voice" | "memoryModel" | "model">;
   call: Pick<ActiveCall, "id" | "startedAt" | "lines">;
   endedAt: number;
   settings: { utility: string; operator: string };
@@ -243,7 +245,7 @@ export async function buildCallRecord(input: {
   const budget = deadline(input.budgetMs ?? 90_000);
   try {
     const { system, prompt } = summaryPrompt({ bot: input.bot, operator: input.settings.operator, record });
-    const { text } = await complete(utilityCandidates(input.bot, input.settings.utility), { system, prompt, signal: budget.signal }, input.completion);
+    const { text } = await complete(utilityCandidates(input.bot, input.settings.utility), { system, prompt, session: input.bot.id, signal: budget.signal }, input.completion);
     record.summary = boundText(text, 2_000);
   } catch (error) {
     record.summaryUnavailable = true;
@@ -257,7 +259,7 @@ export async function buildCallRecord(input: {
 /** One completion through the gateway's models (HUI's provider accounts included), at low thinking, or with `least` at the
  * least the model allows (a gateway model without levels of its own takes its upstream's): the call's helper and its
  * record use the bot's utility model, the export reviewer's retry `least`. */
-export const callCompletion: CallCompletion = async (ref, { system, prompt, signal, least }) => {
+export const callCompletion: CallCompletion = async (ref, { system, prompt, signal, session, least }) => {
   const host = durableHost();
   await host.open();
   const slash = ref.indexOf("/");
@@ -272,7 +274,7 @@ export const callCompletion: CallCompletion = async (ref, { system, prompt, sign
   const reply = await host.models.completeSimple(sent, {
     systemPrompt: system,
     messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
-  }, { signal, ...(level === "off" ? {} : { reasoning: level }) });
+  }, { signal, sessionId: session, ...(level === "off" ? {} : { reasoning: level }) });
   if (reply.stopReason === "error" || reply.stopReason === "aborted") throw new Error(reply.errorMessage || `The model stopped: ${reply.stopReason}`);
   return reply.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
 };

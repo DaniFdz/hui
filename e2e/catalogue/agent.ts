@@ -6,7 +6,6 @@ const SECRETS = ["SPEC.md#secret-requests", "docs/api.md#secret-requests"];
 const SUBAGENTS = ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"];
 const WATCHERS = ["SPEC.md#background-watchers", "docs/api.md#background-watchers"];
 const BROWSER = ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"];
-const KEYBOARD = "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21";
 
 const cases: UseCase[] = [
   {
@@ -17,7 +16,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-002",
@@ -27,7 +25,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-003",
@@ -37,7 +34,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-004",
@@ -47,7 +43,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-005",
@@ -57,7 +52,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: { excluded: "Number keys, arrows, Enter chords and Escape are keyboard-only; the visible rows, Next, Back, Submit and Cancel cover them.", decision: KEYBOARD },
   },
   {
     id: "AGENT-006",
@@ -67,7 +61,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-007",
@@ -77,7 +70,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["ask-user-question", "secret-requests"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-008",
@@ -87,7 +79,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["ask-user-question", "secret-requests"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-009",
@@ -97,7 +88,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-010",
@@ -107,7 +97,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-011",
@@ -117,7 +106,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-013",
@@ -127,7 +115,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "setting:questions.timeoutMinutes"],
     journeys: ["ask-user-question"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-014",
@@ -137,7 +124,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-015",
@@ -147,7 +133,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-016",
@@ -157,7 +142,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-017",
@@ -167,7 +151,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
     web: "required",
-    ios: "required",
   },
   {
     id: "AGENT-018",
@@ -177,7 +160,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
     web: "required",
-    ios: { excluded: "Escape is a keyboard-only affordance; on iOS the card is closed only with Cancel, which AGENT-017 covers.", decision: KEYBOARD },
   },
   {
     id: "AGENT-019",
@@ -187,7 +169,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-020",
@@ -197,7 +178,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-021",
@@ -207,7 +187,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["ask-user-question", "secret-requests", "task-suggestions"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-022",
@@ -217,7 +196,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_spawn"],
     journeys: ["subagents"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-023",
@@ -227,7 +205,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["subagents", "swarm"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-024",
@@ -237,7 +214,6 @@ const cases: UseCase[] = [
     surfaces: ["row:subagentEvent"],
     journeys: ["subagents", "subagent-steering", "chat-senders"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-025",
@@ -247,7 +223,6 @@ const cases: UseCase[] = [
     surfaces: ["row:subagentEvent"],
     journeys: ["subagent-steering", "subagent-delivery"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-026",
@@ -257,7 +232,6 @@ const cases: UseCase[] = [
     surfaces: ["row:subagentEvent"],
     journeys: ["subagent-delivery"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-027",
@@ -266,7 +240,6 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-028",
@@ -276,7 +249,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_list", "tool:sessions_history", "tool:sessions_send", "tool:subagents"],
     journeys: ["subagents"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-030",
@@ -286,7 +258,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["subagent-tree-collapse"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-031",
@@ -296,7 +267,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_spawn", "tool:agents_wait"],
     journeys: ["swarm", "subagents"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-032",
@@ -306,7 +276,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_spawn", "tool:agents_wait"],
     journeys: ["swarm"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-033",
@@ -316,7 +285,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort", "tool:agents_wait"],
     journeys: ["swarm"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-034",
@@ -326,7 +294,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:agents_wait"],
     journeys: ["swarm"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-035",
@@ -335,7 +302,6 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: ["row:subagentEvent", "tool:sessions_spawn"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-036",
@@ -345,7 +311,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-037",
@@ -355,7 +320,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher", "route:GET /__hui/sessions/:id/watchers/:wid/log"],
     journeys: ["watchers"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-038",
@@ -365,7 +329,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/stop"],
     journeys: ["watchers"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-039",
@@ -375,7 +338,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/restart"],
     journeys: ["watchers"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-040",
@@ -385,7 +347,6 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id/watchers/:wid"],
     journeys: ["watchers"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-062",
@@ -395,7 +356,15 @@ const cases: UseCase[] = [
     surfaces: ["row:watcherEvent"],
     journeys: ["watchers"],
     web: "required",
-    ios: "backlog",
+  },
+  {
+    id: "AGENT-063",
+    title: "Fold a question card to read the conversation under it",
+    behaviour: "A question card in the dock can cover most of the transcript. Its top line, which shows the title and the progress, is also its fold control: clicking it, or Enter or Space on it, folds the card to one row above the composer that keeps the title, the progress (2/3), how many questions are already answered once one is (1 answered) and an up chevron, so the conversation takes back the room the card covered. Every pick and the current question are kept, and the card stays folded while the operator writes in the composer. The folded row itself, Enter on it or Escape opens the card again where the operator left it, and Escape on the folded row never declines the questions. A new call's card, and a reload, open unfolded.",
+    spec: QUESTIONS,
+    surfaces: ["tool:ask_user_question"],
+    journeys: ["ask-user-question"],
+    web: "required",
   },
   {
     id: "AGENT-041",
@@ -405,7 +374,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-042",
@@ -415,7 +383,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-043",
@@ -424,7 +391,6 @@ const cases: UseCase[] = [
     spec: WATCHERS,
     surfaces: ["tool:watcher"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-044",
@@ -434,7 +400,6 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["watchers"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-045",
@@ -444,7 +409,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:suggest_task"],
     journeys: ["task-suggestions"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-046",
@@ -454,7 +418,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:suggest_task"],
     journeys: ["task-suggestions"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-047",
@@ -464,7 +427,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-048",
@@ -474,7 +436,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-049",
@@ -484,7 +445,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-050",
@@ -494,7 +454,6 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id/suggestions/:sid", "tool:dismiss_task"],
     journeys: ["task-suggestions"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-051",
@@ -504,7 +463,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/backlog"],
     journeys: ["task-suggestions", "kanban"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-052",
@@ -514,7 +472,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/jira", "route:POST /__hui/sessions/:id/jira/draft"],
     journeys: ["task-suggestions"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-053",
@@ -523,7 +480,6 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#task-progress"],
     surfaces: ["setting:chat.collapseTaskProgress", "setting:models.utility"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "AGENT-054",
@@ -533,7 +489,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:browser"],
     journeys: ["browser-tool"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-055",
@@ -543,7 +498,6 @@ const cases: UseCase[] = [
     surfaces: ["tool:browser", "route:POST /__hui/sessions/:id/browser/connect", "route:WS /__hui/browser-stream"],
     journeys: ["browser-tool"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-056",
@@ -553,7 +507,96 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/browser/connect"],
     journeys: ["browser-tool"],
     web: "backlog",
-    ios: "backlog",
+  },
+  {
+    id: "AGENT-065",
+    title: "Answer the agent's browser handoff",
+    behaviour: "When only a person can continue, the agent hands its tab over and waits: the chat's preview card says Your turn with the agent's instruction and Take over, the browser view says Your turn with the message and I'm done — continue, and its activity line reads You have control; the agent waits. In that view the operator clicks, types, scrolls and presses keys on the page, the agent cannot act on the browser meanwhile, and the tab stays open. Continue returns the page as it is then, with a fresh snapshot whose refs the agent uses next. A wait nobody answers ends after its timeout, and a closed tab or a stopped browser ends it too.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser", "route:WS /__hui/browser-stream", "work-view:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
+    id: "AGENT-073",
+    title: "Screenshot a page with its refs numbered",
+    behaviour: "An agent captures a screenshot with annotate: true and each element the latest snapshot bound to a ref is boxed and numbered (3 is e3), limited to what the viewport or full page shows and 40 labels. The overlay is removed before the call returns, so the page and its refs are unchanged, and the result says how many numbers it drew.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
+    id: "AGENT-072",
+    title: "List a page's cookies and storage without their values",
+    behaviour: "An agent asks what a page keeps: storage what cookies lists the cookies for the tab's URL with their flags, SameSite, expiry, size and path, and what local or session lists storage keys with value sizes. Values are never read, a filter narrows by name, and an empty result is explained.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
+    id: "AGENT-071",
+    title: "Measure what a page costs",
+    behaviour: "An agent asks the browser what a page costs: performance metrics reads the renderer's heap, DOM node, document, frame, listener, layout, style-recalculation and script-time counters, and performance timings reads the document's first byte, DOMContentLoaded, load, transfer size, paint marks, subresource count and weight, and slowest resources. Numbers arrive with units and a page still loading says so.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
+    id: "AGENT-070",
+    title: "Upload a local file into a page's form",
+    behaviour: "An agent puts local files into a page's file input with act kind upload, addressed by the input's ref, its label or a selector when the page hides it. The page's own change handler runs and the agent reads the site's confirmation; a missing path, a directory, a non-input, a disabled input and too many files for a single-file input are refused with the reason.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
+    id: "AGENT-069",
+    title: "Read only what an action changed",
+    behaviour: "After acting, an agent takes a snapshot with diff: true and receives only the lines that changed, prefixed + or -, with two lines of context and a count. Unchanged lines keep their refs, so the agent acts straight from a diff; a first diff in a tab, a navigation, or a change too large to match says so and returns the whole snapshot.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
+    id: "AGENT-068",
+    title: "Watch a page's requests and keep a redacted HAR",
+    behaviour: "An agent starts a network capture on a tab, reads the requests it made (method, URL, status, type, bytes and time) with filters by URL, resource type, method and status, inspects one by id with its headers, and writes a HAR beside the session's files. The log keeps at most 200 requests and no bodies; credential headers and secret-named query values are [redacted] in the list, the detail and the HAR.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
+    id: "AGENT-067",
+    title: "Work with a form inside a frame",
+    behaviour: "A snapshot inlines one level of child frames under their Iframe node, so a form inside a same-process frame is visible and its refs work: act clicks and types inside the frame, get and is read its elements, and a stored secret is checked against the frame's own origin and typed in place. A frame the browser runs out of process is not inlined, so its fields need a handoff.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
+    id: "AGENT-066",
+    title: "Read and verify a page without another snapshot",
+    behaviour: "An agent reads one property of one element with get (text, html, value, attr, box, title, url, count) and checks one state with is (visible, hidden, enabled, disabled, checked, focused, editable, attached); a password field's value is refused. A snapshot can start at a selector and stop at a depth, act wait can wait for an element state, and a click on a disabled or hidden element fails with the reason. Every result that carries page text is wrapped in HUI_PAGE_CONTENT markers with a per-result nonce, and a ref whose node was replaced re-binds to the one element with its role and name or fails as ambiguous.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
+    id: "AGENT-064",
+    title: "Run a dependent browser flow in one call",
+    behaviour: "An agent runs 1–20 act steps in one browser call on the same tab: type, click, press, hover, select, scroll and wait, each validated as act validates it and using refs from the latest snapshot. The result lists every step in order with what it did, an activity row says it ran a sequence, and a failing step names itself and the steps that already ran. A navigation inside the sequence retires the refs the earlier snapshot handed out.",
+    spec: ["docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
   },
   {
     id: "AGENT-058",
@@ -563,7 +606,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["browser-tool"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "AGENT-059",
@@ -572,7 +614,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#clickable-desktop-notifications", "docs/api.md#desktop-notifications"],
     surfaces: ["tool:notify_user"],
     web: { excluded: "Native macOS Notification Center and Electron windows are outside the web runner; desktop tests cover routing and e2e/desktop-package.browser.md records the native macOS proof.", decision: "SPEC.md#clickable-desktop-notifications" },
-    ios: { excluded: "This version posts notifications on the macOS gateway, not the iPhone.", decision: "SPEC.md#clickable-desktop-notifications" },
   },
   {
     id: "AGENT-061",
@@ -581,7 +622,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#notification-settings"],
     surfaces: [],
     web: { excluded: "Native macOS Notification Center is outside the web runner; e2e/desktop-package.browser.md records the native proof.", decision: "SPEC.md#notification-settings" },
-    ios: { excluded: "This version notifies on the macOS gateway, not the iPhone.", decision: "SPEC.md#notification-settings" },
   },
   {
     id: "AGENT-060",
@@ -590,7 +630,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#clickable-desktop-notifications", "docs/api.md#desktop-notifications"],
     surfaces: ["tool:notify_user"],
     web: "required",
-    ios: "backlog",
   },
 ];
 

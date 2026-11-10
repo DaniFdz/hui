@@ -1,5 +1,5 @@
 /**
- * Exporting a bot as a template someone else imports (HUI-18; SPEC.md, "Bot exports are templates, reviewed for
+ * Exporting a bot as a template someone else imports (SPEC.md, "Bot exports are templates, reviewed for
  * personal information"; the contract is docs/api.md#importing-and-exporting-bots).
  *
  * `review` reads what of the bot would travel (its profile, SOUL.md, its own skills' folders, routines, triggers and
@@ -101,7 +101,7 @@ export class BotExportService {
     const identity = await this.#deps.identity(bot.worker?.id);
     const { parts, cleanup, copies, meta, leftOut } = this.#parts(input, identity);
     const others = (await this.#deps.bots.list({ archived: "all" })).filter((each) => each.id !== bot.id).map((each) => each.handle);
-    const { model, found, needs, warning: unread } = await this.#reviewParts(parts, copies, identity, others);
+    const { model, found, needs, warning: unread } = await this.#reviewParts(parts, copies, identity, others, bot.id);
     // Without a name for the operator the cleanup can't take it out: only the reviewer looks for it.
     const warning = [identity.operator || identity.names?.length ? "" : "Your name isn't set in Settings → Profile, so HUI couldn't take it out for you: look for it in every file below.", unread ?? ""].filter(Boolean).join(" ");
 
@@ -326,7 +326,7 @@ export class BotExportService {
 
   /** The utility model reads the parts in pieces, each twice, several at once, one quicker retry each, within the review's
    * time; a part it can't read whole is unread. What it found comes back in the parts' order, however the requests end. */
-  async #reviewParts(parts: BotExportPart[], copies: Map<string, { key: string; text: string }[]>, identity: CleanupIdentity, others: readonly string[]): Promise<{
+  async #reviewParts(parts: BotExportPart[], copies: Map<string, { key: string; text: string }[]>, identity: CleanupIdentity, others: readonly string[], session: string): Promise<{
     model?: string; warning?: string; found: (ReviewedChange & { part: string })[]; needs: string[];
   }> {
     const model = await this.#deps.utilityModel().catch(() => undefined);
@@ -347,7 +347,7 @@ export class BotExportService {
       const { index, chunk, at } = reads[r]!;
       const part = parts[index]!;
       const answer = this.#now() >= deadline ? "The review ran out of time before this part."
-        : await this.#ask(model, system, reviewPrompt(chunk), (copies.get(part.id) ?? []).map((field) => field.text), identity, deadline);
+        : await this.#ask(model, system, reviewPrompt(chunk), (copies.get(part.id) ?? []).map((field) => field.text), identity, deadline, session);
       if (typeof answer === "string") {
         failed.set(at, [...failed.get(at) ?? [], answer]);
         return;
@@ -366,18 +366,18 @@ export class BotExportService {
       if (unread.has(index)) part.unread = unread.get(index)!;
     }
     const missed = parts.filter((part) => !part.read).length;
-    const needs = await this.#mergeNeeds(model, results.flatMap((result) => result.needs), identity, deadline);
+    const needs = await this.#mergeNeeds(model, results.flatMap((result) => result.needs), identity, deadline, session);
     return { model, found: results.flatMap((result) => result.changes), needs, ...(missed ? { warning: `The utility model didn't read ${missed} of ${parts.length} parts (each says why): read them yourself before you share it.` } : {}) };
   }
 
   /** What each piece's reader said the bot needs, merged by one quick request when the list runs long (pieces repeat the
    * same need in other words); as it was when that request fails. */
-  async #mergeNeeds(model: string, needs: readonly string[], identity: CleanupIdentity, deadline: number): Promise<string[]> {
+  async #mergeNeeds(model: string, needs: readonly string[], identity: CleanupIdentity, deadline: number, session: string): Promise<string[]> {
     const unique = [...new Map(needs.map((need) => [need.toLowerCase(), need])).values()];
     const left = Math.ceil(deadline - this.#now());
     if (unique.length <= MERGE_NEEDS_OVER || left <= 0) return unique;
     try {
-      return parseNeeds(await this.#deps.completion(model, { system: NEEDS_MERGE_PROMPT, prompt: unique.join("\n"), signal: AbortSignal.timeout(Math.min(CALL_MS, left)), least: true }), identity) ?? unique;
+      return parseNeeds(await this.#deps.completion(model, { system: NEEDS_MERGE_PROMPT, prompt: unique.join("\n"), session, signal: AbortSignal.timeout(Math.min(CALL_MS, left)), least: true }), identity) ?? unique;
     } catch {
       return unique;
     }
@@ -385,14 +385,14 @@ export class BotExportService {
 
   /** One part (or a chunk of it) to the reviewer: its checked answer, or why there is none. No request or retry outlives
    * the review's end. */
-  async #ask(model: string, system: string, prompt: string, fields: readonly string[], identity: CleanupIdentity, deadline: number): Promise<ReviewAnswer | string> {
+  async #ask(model: string, system: string, prompt: string, fields: readonly string[], identity: CleanupIdentity, deadline: number, session: string): Promise<ReviewAnswer | string> {
     let failure = "The utility model's answer couldn't be read.";
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const left = Math.ceil(deadline - this.#now());
       if (left <= 0) break;
       try {
         // The retry reasons as little as the model allows: a slow model still reads the part, if less carefully.
-        const answer = parseReviewAnswer(await this.#deps.completion(model, { system, prompt, signal: AbortSignal.timeout(Math.min(CALL_MS, left)), least: attempt > 0 }), fields, identity);
+        const answer = parseReviewAnswer(await this.#deps.completion(model, { system, prompt, session, signal: AbortSignal.timeout(Math.min(CALL_MS, left)), least: attempt > 0 }), fields, identity);
         if (answer) return answer;
       } catch (error) {
         failure = `The utility model failed: ${error instanceof Error ? oneLine(error.message, 200) : "no answer"}.`;

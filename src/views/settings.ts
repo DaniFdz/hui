@@ -33,6 +33,7 @@ import "../components/settings/datadog.ts";
 import "../components/settings/providers.ts";
 import "../components/settings/subagent-routes.ts";
 import "../components/settings/workers.ts";
+import "../components/settings/extensions.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
 import { renderWorktreesPage, type WorktreesPageProps } from "./worktrees.ts";
 import {
@@ -64,6 +65,8 @@ export type SettingsProps = AutomationProps & {
   workspaceError: string;
   observability: ObservabilitySnapshot | undefined;
   observabilityError: string;
+  /** A Work pane exists to show an extension panel in. */
+  canOpenExtensionPanel: boolean;
   onRefreshObservability: () => void;
   onExportDiagnostics: () => void;
   onRetryPi: () => void;
@@ -656,7 +659,7 @@ function renderToolsPage(props: SettingsProps) {
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }
 
-/** Settings → Models → Calls: GPT-Live through the ChatGPT login above (HUI-18). */
+/** Settings → Models → Calls: GPT-Live through the ChatGPT login above. */
 function renderCallsSection(props: SettingsProps) {
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
@@ -676,6 +679,7 @@ function renderModelsPage(props: SettingsProps) {
       props.onChangeModels({ ...props.settings.models, [key]: value });
     });
   const reasoningLevel = props.settings.models.thinking;
+  const retryAttempts = props.settings.models.retryAttempts;
   const reasoningSelector = renderEffortSelector({
     label: "Default reasoning",
     level: reasoningLevel,
@@ -707,7 +711,7 @@ function renderModelsPage(props: SettingsProps) {
     <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
     ${renderSection(
       "HUI model routing",
-      "Saved by HUI and applied to new sessions.",
+      "Saved by HUI. Model choices apply to new sessions; retries apply to every Durable session.",
       html`
         ${renderRow(
           "Primary model",
@@ -718,6 +722,13 @@ function renderModelsPage(props: SettingsProps) {
           "Fallback model",
           "Tried when the primary fails before producing useful output. Example: Anthropic Sonnet when OpenAI is unavailable.",
           routePicker("Fallback model", "fallback"),
+        )}
+        ${renderRow(
+          "Provider retries",
+          "How many times a failed model request is retried on the same model before the fallback is tried. Retries keep the same model and cached context, and wait as long as the provider asks.",
+          renderSettingsPicker("Provider retries", String(retryAttempts),
+            [0, 1, 2, 3, 4, 5].map((attempts) => ({ value: String(attempts), label: attempts ? String(attempts) : "Off" })),
+            (value) => props.onChangeModels({ ...props.settings.models, retryAttempts: Number(value) })),
         )}
         ${renderRow(
           "Utility model",
@@ -732,7 +743,7 @@ function renderModelsPage(props: SettingsProps) {
       `,
     )}
     <hui-subagent-routes .routes=${props.settings.models.routes} .models=${modelOptions.filter((option) => option.value)}
-      .primary=${props.settings.models.primary} .onSave=${props.onSaveSubagentRoute}
+      .onSave=${props.onSaveSubagentRoute}
       .onRemove=${(name: string) => props.onChangeModels({ ...props.settings.models, routes: props.settings.models.routes.filter((route) => route.name !== name) })}
     ></hui-subagent-routes>
     ${renderCallsSection(props)}
@@ -958,7 +969,7 @@ function renderSecurityPage(props: SettingsProps) {
     ${props.piError || props.healthError ? html`<div class="settings-page__note settings-page__intro" role="alert">${[props.piError, props.healthError].filter(Boolean).join(" ")}<button type="button" class="btn" @click=${props.onRetryPi}>Retry</button></div>` : nothing}`;
 }
 
-const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "notifications" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers">, string> = {
+const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "notifications" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers" | "extensions">, string> = {
   connection: "HUI server, local PI runtime, reconnect behaviour and health.",
   integrations: "Connections to external services such as Jira and GitHub.",
   plugins: "Packages, extensions, permissions and provider adapters.",
@@ -1086,7 +1097,7 @@ export function renderSettingsPage(props: SettingsProps) {
         </div>
       </header>
       <div class="settings-workspace"><div class="settings-workspace__body">
-        <div class="settings-page ${["plugins", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}" data-testid="settings-page">
+        <div class="settings-page ${["plugins", "extensions", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}" data-testid="settings-page">
           ${props.page === "appearance"
             ? renderAppearancePage(props)
             : props.page === "notifications"
@@ -1105,6 +1116,8 @@ export function renderSettingsPage(props: SettingsProps) {
                     ? html`<hui-workers-settings></hui-workers-settings>`
                     : props.page === "plugins"
                       ? renderPluginsPage(props)
+                      : props.page === "extensions"
+                        ? html`<hui-extensions-settings .panelAvailable=${props.canOpenExtensionPanel}></hui-extensions-settings>`
                       : props.page === "memory"
                         ? renderMemoryPage(props)
                         : props.page === "automation"

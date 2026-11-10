@@ -1,5 +1,5 @@
 /**
- * What a bot's chat may use (HUI-18; SPEC decision of 2026-10-06): every tool
+ * What a bot's chat may use (SPEC decision of 2026-10-06): every tool
  * and skill a session in its directory gets, except the ones the operator
  * turned off for that bot. What is off lives in its conversation's `hui.bot`
  * document, and everything here reads that document where the conversation
@@ -33,7 +33,7 @@ import { botTurnOrigin } from "../runtimes/turn-origins.ts";
 import { botSkillsDir } from "./skills.ts";
 import { bundledSkills } from "../pi/bundled-skills.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
-import { BOT_TOOL_CONTRIBUTIONS, BotDoc, conversationBotState, huiBotsExtensions, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, UPDATE_MEMORY_TOOL, UPDATE_USER_TOOL, WRITE_SOUL_TOOL, type BotHomeHost, type BotState } from "./durable.ts";
+import { BOT_TOOL_CONTRIBUTIONS, BotDoc, conversationBotSkills, conversationBotState, huiBotsExtensions, writeBotSkills, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, UPDATE_MEMORY_TOOL, UPDATE_USER_TOOL, WRITE_SOUL_TOOL, type BotHomeHost, type BotState } from "./durable.ts";
 import { BOT_ROUTINES_CONTRIBUTION, botRoutinesTool, ROUTINES_TOOL } from "./durable-routines.ts";
 import { durableContext, modelCallable, type DurableBots, type DurableHost } from "../runtimes/durable-host.ts";
 import { TRIGGERS_TOOL, TRIGGERS_TOOL_INFO } from "./durable-triggers.ts";
@@ -61,7 +61,7 @@ const SKILL_READERS: readonly string[] = ["read", "bash"];
  * request in the chat's Secret card or refuses it.
  */
 export const POWERFUL_TOOLS: ReadonlySet<string> = new Set([
-  "write", "edit", "bash", "terminal", "watcher", "browser", "sessions_spawn", "sessions_send", "subagents",
+  "write", "edit", "bash", "terminal", "watcher", "browser", "sessions_spawn", "create_session", "watch_session", "sessions_send", "subagents",
 ]);
 
 /** What the catalog shows as always on: a bot's own tools and OptChat's memory tools, which every bot's chat has. */
@@ -74,6 +74,7 @@ export const BOT_ALWAYS_ON: readonly { name: string; description: string }[] = [
   { name: LOAD_SKILL_TOOL, description: "Load its skills when it has neither read nor bash" },
   { name: "zoom", description: "Open older lines of its memory" },
   { name: "date", description: "Tell when a line of its memory was said" },
+  { name: "search_chat", description: "Search its whole memory for what was said about something" },
 ];
 
 /** What a bot's own tools add to HUI's active-tool section; the `bot_access` section explains the rest. */
@@ -298,6 +299,7 @@ export function turnNote(input: string | undefined): string | undefined {
     case "trigger": return `Asked while handling the trigger "${origin.name}".`;
     case "bot": return `Asked while handling a message from @${origin.handle}.`;
     case "agent": return `Asked while handling a message from the session "${origin.title}".`;
+    case "subagent": return "Asked while handling a subagent's completion report.";
     case "kickoff": return "Asked in its first turn, before you wrote.";
     case "imported": return "Asked in its first turn after it was imported, before you wrote.";
     case "operator": return undefined;
@@ -527,6 +529,12 @@ export function createDurableBots(host: DurableHost, deps: DurableBotsDeps): Dur
       const home = deps.home?.home(state.bot);
       return home ? botSkillsDir(home) : undefined;
     },
+    skillsDirForBot(botId) {
+      const home = deps.home?.home(botId);
+      return home ? botSkillsDir(home) : undefined;
+    },
+    skillsBot: (reader, conversationId) => conversationBotSkills(reader, conversationId, durableContext),
+    writeSkills: writeBotSkills,
     skills: <T extends { readonly name: string; readonly filePath: string }>(skills: readonly T[], state: BotState) => botSkills(skills, state.disabledSkills),
     planOffer(offer, state: BotState, context) {
       const on = botSkills(context.skills, state.disabledSkills).length;

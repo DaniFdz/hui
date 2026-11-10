@@ -1,5 +1,5 @@
 /**
- * Bots (HUI-18): named, persistent agents, each with one forever chat whose
+ * Bots: named, persistent agents, each with one forever chat whose
  * memory is OptChat, whose persona is the SOUL.md it writes, and whose USER.md
  * and MEMORY.md hold what it knows and keeps (never exported; `home.ts`). The
  * gateway's and the `hui bot` CLI's records, limits, files, faces, kickoff and
@@ -108,6 +108,8 @@ export type BotRecord = {
   title?: string;
   /** What it does and when to tag it, as a skill's description: what agents and other bots read to decide. */
   description?: string;
+  /** The custom session group this bot is the chief of, by label; absent for a bot that belongs to no group. */
+  group?: string;
   /** Who may tag it; absent: anyone. */
   tagging?: Exclude<BotTagging, "anyone">;
   /** Absolute working directory of its chat; on a worker, a directory there. Its persona is not here: it is SOUL.md in

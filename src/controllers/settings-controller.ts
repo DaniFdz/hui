@@ -437,6 +437,7 @@ export class SettingsController implements ReactiveController {
       workspaceError: this.workspaceError,
       observability: this.observability,
       observabilityError: this.observabilityError,
+      canOpenExtensionPanel: false,
       onExportDiagnostics: this.exportDiagnostics,
       onRetryPi: () => this.loadControlSurfaceData(true),
       onSaveSubagentRoute: this.saveSubagentRoute,
