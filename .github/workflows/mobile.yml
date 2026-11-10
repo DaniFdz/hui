@@ -218,9 +218,15 @@ jobs:
           # when those pass. `all` (a dispatch from a catch-up branch) runs everything, which is how a worker reads a
           # backlog area's real failures from the artifacts without an emulator on their own machine.
           scope="${{ inputs.scope || 'required' }}"
-          tags=$(node e2e/catalogue/phone.ts)
-          if [ "$scope" = "all" ] || [ -z "$tags" ]; then
+          tags=$(node e2e/catalogue/phone.ts 2>/dev/null || true)
+          count=$(printf '%s' "$tags" | tr ',' '\n' | grep -c . || true)
+          echo "scope=$scope required-ids=$count"
+          if [ "$scope" = "all" ]; then
             npx e2e run --target android --shard "${{ matrix.shard }}"
+          elif [ "$count" -eq 0 ]; then
+            # Running everything here would hide a broken catalogue behind a red job: say so instead.
+            echo "::error::the catalogue names no phone-required id, so scope=required has nothing to prove"
+            exit 1
           else
             npx e2e run --target android --shard "${{ matrix.shard }}" --tag "$tags"
           fi
