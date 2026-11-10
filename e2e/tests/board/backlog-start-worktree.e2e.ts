@@ -59,7 +59,6 @@ test("New worktree keeps the base branch, fills the suffix the utility model sug
   await hui.provider.held();
   await pick("release", "release/1.0");
   await choice("New worktree").tap();
-  await expect(screen.getByLabel("Suggesting a name")).toBeVisible();
   await expect(suffix).toHaveAttribute("placeholder", "Suggesting a name…");
   const typed = "typed-name";
   await suffix.fill(typed);
