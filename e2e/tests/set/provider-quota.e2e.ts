@@ -30,7 +30,7 @@ const account = (card: Locator, name: string) => card.getByRole("article", { nam
 
 test("each signed-in account shows its plan, usage status, a meter per reported period with its reset time, and when it was checked; Refresh limits reads that account again, and a failed read says so", { tags: ["SET-044"], platforms: ["web"] }, async ({ screen, hui }) => {
   const world = await hui.world("quota");
-  const page = await openProviders(screen, hui, world);
+  await openProviders(screen, hui, world);
 
   // Each account of the provider shows its own limits inline, without opening anything per account.
   const codex = card(screen, CODEX);
