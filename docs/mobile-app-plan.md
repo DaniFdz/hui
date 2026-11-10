@@ -280,15 +280,15 @@ Android app's WebView, and the backlog only shrinks. Measured on 2026-11-10, aft
 | SHELL | 24 | 10 | 8 |
 | SESS | 5 | 61 | 10 |
 | CHAT | 0 | 76 | 8 |
-| RICH | 0 | 46 | 5 |
-| AGENT | 0 | 58 | 4 |
-| WORK | 1 | 63 | 20 |
+| RICH | 15 | 31 | 5 |
+| AGENT | 23 | 35 | 4 |
+| WORK | 25 | 39 | 20 |
 | BOARD | 0 | 48 | 3 |
 | SET | 3 | 83 | 4 |
 | PAGE | 0 | 24 | 1 |
 | BOT | 0 | 68 | 6 |
 | CALL | 0 | 25 | 1 |
-| **All** | **33** | **562** | **70** |
+| **All** | **95** | **500** | **70** |
 
 What the catch-up learned, which the areas still to do can reuse:
 
