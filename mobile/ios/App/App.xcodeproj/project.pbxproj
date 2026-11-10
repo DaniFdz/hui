@@ -75,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F6A7B8C9D000C8 /* GatewayAddress.swift */,
+				A1B2C3D4E5F6A7B8C9D0000D /* DeepLink.swift */,
 				A1B2C3D4E5F6A7B8C9D000C9 /* Gateway.swift */,
 				A1B2C3D4E5F6A7B8C9D000CA /* HUIBridgeViewController.swift */,
 				A1B2C3D4E5F6A7B8C9D000CB /* HuiGatewayPlugin.swift */,
@@ -182,6 +183,7 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D00064 /* GatewayAddress.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0000C /* DeepLink.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D00065 /* Gateway.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D00066 /* HUIBridgeViewController.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D00067 /* HuiGatewayPlugin.swift in Sources */,
