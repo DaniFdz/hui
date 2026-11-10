@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { nativeShell, type NativeShell } from "./native-shell.ts";
+import { messageShare, nativeShell, type NativeShell } from "./native-shell.ts";
 
 type Call = { plugin: string; method: string; options: unknown };
 
@@ -262,4 +262,26 @@ test("a shell missing every plugin still answers every call", async () => {
   await shell.forgetGateway();
   shell.onBack(() => true);
   shell.onResume(() => undefined);
+});
+
+test("a shared message is its words, the conversation's name and the conversation's own address", () => {
+  const session = { id: "s-1", title: "Fix the drawer" };
+  assert.deepEqual(messageShare({ text: "the words on screen", session }, "https://gateway.test/sessions/s-1"), {
+    title: "Fix the drawer",
+    text: "the words on screen",
+    url: "https://gateway.test/sessions/s-1",
+  }, "the link names the gateway this page was loaded from");
+  assert.deepEqual(messageShare({ text: "no conversation" }, "https://gateway.test/"), { text: "no conversation" });
+  assert.deepEqual(messageShare({ text: "w", session: { id: "s-2" } }, "https://gateway.test/"), { text: "w", url: "https://gateway.test/sessions/s-2" }, "a conversation without a name titles nothing");
+  assert.deepEqual(messageShare({ text: "w", session: { id: "s", title: "   " } }, "https://gateway.test/"), { text: "w", url: "https://gateway.test/sessions/s" }, "a blank name is no name");
+  assert.deepEqual(messageShare({ text: "w", session: { id: "c-1", title: "Grace", bot: { id: "b-grace" } } }, "https://gateway.test/"), { title: "Grace", text: "w", url: "https://gateway.test/bots/b-grace" }, "a bot's chat shares the address the app opens it by");
+  assert.deepEqual(messageShare({ text: "w", session }, "about:blank"), { title: "Fix the drawer", text: "w" }, "a page with no usable address shares its words alone");
+  assert.deepEqual(messageShare({ text: "w", session }, "not a url"), { title: "Fix the drawer", text: "w" });
+});
+
+test("a share carries words a sheet can take, and nothing past the cap", () => {
+  const shared = messageShare({ text: "x".repeat(70_000) }, "https://gateway.test/");
+  assert.equal(shared.text, `${"x".repeat(64_000)}\n…`, "an Intent over its transaction limit would never open the sheet");
+  assert.equal(shared.url, undefined);
+  assert.equal(messageShare({ text: "short" }, "https://gateway.test/").text, "short", "a normal message is shared as written");
 });

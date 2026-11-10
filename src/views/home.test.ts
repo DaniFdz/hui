@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 
 test("effort preview owns a textContent property without destroying Lit child markers", () => {
   const source = readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8");
@@ -880,4 +880,38 @@ test("a presented file from the working directory offers to open in Files", asyn
   assert.doesNotMatch(outside, /chat-presented-media__reveal/u, "a file outside the working directory has nothing in Files to open");
 
   assert.match(readStyles("../styles/openclaw-chat.css"), /hui-file-ref\.chat-presented-media__reveal:not\(\.is-linked\) \{ display: none; \}/u);
+});
+
+test("a message's action row offers the phone's Share sheet only where a shell answers", async () => {
+  const transcript = [
+    { kind: "message", id: "u", role: "user", text: "Ship the release" },
+    { kind: "message", id: "a", role: "assistant", text: "Shipped." },
+    { kind: "message", id: "b", role: "user", text: "[from @grace] PR #7 needs you." },
+  ];
+
+  // A browser: no injected bridge, so `nativeShell()` answers nothing and the row is what it drew before the sheet.
+  vi.stubGlobal("window", undefined);
+  const web = await renderWorkerSession("idle", { transcript });
+  assert.match(web, /aria-label="Reply to message"/u, "the web keeps the actions it has");
+  assert.match(web, /aria-label=Copy prompt/u);
+  assert.doesNotMatch(web, /chat-group-share|Share prompt|Share response|Share message/u);
+  // Capacitor's own browser build injects a bridge that is not a shell either.
+  vi.stubGlobal("window", { location: { href: "https://gateway.test/sessions/s" }, Capacitor: { isNativePlatform: () => false, getPlatform: () => "web", Plugins: {} } });
+  assert.doesNotMatch(await renderWorkerSession("idle", { transcript }), /chat-group-share/u);
+
+  // The app: Capacitor's bridge, on a page the gateway served.
+  vi.stubGlobal("window", {
+    location: { href: "https://gateway.test/sessions/s" },
+    Capacitor: { isNativePlatform: () => true, getPlatform: () => "android", Plugins: {} },
+  });
+  const phone = await renderWorkerSession("idle", { transcript });
+  const row = (id: string) => phone.slice(phone.indexOf(`data-chat-row-key=${id}`), phone.indexOf("data-chat-row-key=", phone.indexOf(`data-chat-row-key=${id}`) + 1));
+  assert.match(row("u"), /class="chat-copy-btn chat-group-share" aria-label=Share prompt/u, "the operator's own words");
+  assert.match(row("a"), /class="chat-copy-btn chat-group-share" aria-label=Share response/u, "and the reply's");
+  assert.match(row("b"), /class="chat-copy-btn chat-group-share" aria-label=Share message/u, "a sender's message, named as Copy names it");
+  // HUI's own tooltip card, never the browser's `title`.
+  assert.match(row("a"), /role="tooltip">Share</u);
+  assert.doesNotMatch(phone, /title="Share/u);
+  // Beside Copy and Reply, in the one footer row, so the phone draws one action row and not two.
+  assert.match(row("a"), /aria-label="Reply to message"[^>]*>.*aria-label=Copy response.*aria-label=Share response/u);
 });
