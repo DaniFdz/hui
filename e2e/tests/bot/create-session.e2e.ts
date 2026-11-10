@@ -15,6 +15,7 @@ test("an agent creates an ordinary session in a group, not a child", { tags: ["B
     cwd: repo.path,
     title: "Created by an agent",
     group,
+    worker: "local",
     worktree: true,
     branchName: "e2e/created-by-agent",
   }));
