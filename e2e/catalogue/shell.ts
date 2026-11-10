@@ -18,6 +18,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-002",
@@ -28,6 +29,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:page", "nav:kanban", "nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-003",
@@ -42,6 +44,7 @@ const cases: UseCase[] = [
       "webawesome-controls",
     ],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-004",
@@ -52,6 +55,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-005",
@@ -62,6 +66,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:session", "nav:bot", "route:POST /__hui/sessions/:id/open"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-006",
@@ -72,6 +77,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:home", "nav:page", "nav:settings", "nav:session"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-007",
@@ -86,6 +92,7 @@ const cases: UseCase[] = [
       "visual-parity-2026-09-24",
     ],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-011",
@@ -101,6 +108,7 @@ const cases: UseCase[] = [
       "visual-parity-2026-09-24",
     ],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-012",
@@ -116,6 +124,7 @@ const cases: UseCase[] = [
       "sidebar-toolbar",
     ],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-013",
@@ -132,6 +141,7 @@ const cases: UseCase[] = [
       "openclaw-primary-ui-parity",
     ],
     web: "required",
+    phone: { excluded: "Escape is a key press with no touch equivalent; the visible control that does the same is its own use case.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-014",
@@ -142,6 +152,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
+    phone: { excluded: "Resizing a browser window; the phone app is always narrow.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-015",
@@ -157,6 +168,7 @@ const cases: UseCase[] = [
       "update-notice",
     ],
     web: "required",
+    phone: { excluded: "The collapse toggle exists only in the wide layout; the phone app is always narrow.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-018",
@@ -167,6 +179,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["visual-parity-2026-09-24", "shell-navigation"],
     web: "required",
+    phone: { excluded: "A keyboard chord, which a phone cannot press.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-019",
@@ -177,6 +190,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:page", "nav:settings", "nav:session"],
     journeys: ["visual-parity-2026-09-24", "webawesome-controls"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-020",
@@ -187,6 +201,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-021",
@@ -197,6 +212,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-022",
@@ -207,6 +223,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-023",
@@ -217,6 +234,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-024",
@@ -227,6 +245,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-025",
@@ -236,6 +255,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huidiagnosticsui-errors"],
     surfaces: ["route:POST /__hui/diagnostics/ui-errors"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SHELL-026",
@@ -246,6 +266,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-notifications"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-027",
@@ -256,6 +277,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-notifications"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-028",
@@ -265,6 +287,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-029",
@@ -275,6 +298,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["clipboard-fallback"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-031",
@@ -285,6 +309,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/update/check"],
     journeys: ["update-notice"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SHELL-032",
@@ -295,6 +320,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["update-notice"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-033",
@@ -314,6 +340,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["update-notice"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-034",
@@ -324,6 +351,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["update-notice"],
     web: "required",
+    phone: { excluded: "Escape is a key press with no touch equivalent; the visible control that does the same is its own use case.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-035",
@@ -339,6 +367,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["update"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-036",
@@ -349,6 +378,7 @@ const cases: UseCase[] = [
     surfaces: ["command:update", "route:POST /__hui/update/check"],
     journeys: ["update"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-037",
@@ -359,6 +389,7 @@ const cases: UseCase[] = [
     surfaces: ["command:update"],
     journeys: ["update"],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-038",
@@ -369,6 +400,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/update/check"],
     journeys: ["update", "update-notice"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SHELL-039",
@@ -379,6 +411,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/update"],
     journeys: ["update"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SHELL-040",
@@ -389,6 +422,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/update", "route:GET /__hui/update"],
     journeys: ["update", "update-notice"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SHELL-041",
@@ -399,6 +433,7 @@ const cases: UseCase[] = [
     surfaces: ["command:update", "route:GET /__hui/update"],
     journeys: ["update"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SHELL-042",
@@ -409,6 +444,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/update/check"],
     journeys: ["update", "update-notice"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "SHELL-043",
@@ -422,6 +458,7 @@ const cases: UseCase[] = [
         "The browser saves downloads itself, and the save dialog belongs to HUI's Electron desktop app, which the web runner cannot drive; desktop/main.test.mjs covers the chosen path, the cancel and one dialog per download.",
       decision: "SPEC.md#desktop-downloads-ask-where-to-save-them",
     },
+    phone: { excluded: "The save dialog is the desktop app's; the phone app hands a download to the system's own download handling.", decision: "SPEC.md#desktop-downloads-ask-where-to-save-them" },
   },
   {
     id: "SHELL-044",
@@ -431,6 +468,7 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-045",
@@ -440,6 +478,7 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-046",
@@ -449,6 +488,7 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-047",
@@ -458,6 +498,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "required",
+    phone: "required",
   },
   {
     id: "SHELL-048",
@@ -467,6 +508,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["sidebar-toolbar", "shell-navigation"],
     web: "required",
+    phone: { excluded: "The phone app is always narrow, so its sidebar is the drawer, which has no boundary.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
 ];
 

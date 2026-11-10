@@ -60,3 +60,103 @@ jobs:
           name: hui-android-debug
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+  # The shared e2e suite inside the debug app's WebView (`docs/mobile-app-plan.md`, WP4): the web engine attached over
+  # CDP to the WebView the app opened, one emulator per shard, four shards like e2e.yml. The target runs the use cases
+  # the catalogue requires on the phone (`e2e/catalogue/phone.ts` prints their tags), because the web engine's platform
+  # is `web` on both targets and the runner cannot filter the shared suite by platform.
+  #
+  # Measured by spike S4 on ubuntu-latest (4 vCPU): KVM works, cold boot 39 s, 6 s from the cached AVD snapshot, two
+  # emulators on one runner contend (boot +49%), so one emulator per shard. Wait on `sys.boot_completed` AND
+  # `pm path android`, never on `init.svc.bootanim`: `-no-boot-anim` never sets it.
+  android-e2e:
+    runs-on: ubuntu-latest
+    # A shard's boot, its share of the suite (~100 tests at ~12 s each, each relaunching the app) and the gateway build.
+    timeout-minutes: 45
+    needs: android-build
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/4", "2/4", "3/4", "4/4"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm install -g npm@11
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools
+      - name: Enable KVM
+        run: |
+          set -euo pipefail
+          # The device node is root:kvm 0660 before this rule, which the runner user is not in.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || sudo udevadm trigger
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Install the emulator and its system image
+        run: |
+          set -euo pipefail
+          # `yes` outlives sdkmanager and dies of SIGPIPE, so pipefail stands down for the pipe.
+          set +o pipefail
+          yes | sdkmanager --install "emulator" "platforms;android-36" "system-images;android-36;google_apis;x86_64"
+          set -o pipefail
+      - name: Restore the AVD and its boot snapshot
+        id: avd
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          # 2.7 GB booted, 1.2 GB of it the snapshot; a hit turns the 39 s cold boot into 6 s.
+          path: ~/.android/avd/HUI_Pixel_e2e.avd
+          key: avd-android-36-google-apis-x86_64-HUI_Pixel_e2e-v1
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hui-android-debug
+          path: ${{ runner.temp }}/apk
+      - name: Boot the emulator
+        env:
+          HUI_ANDROID_AVD: HUI_Pixel_e2e
+          ANDROID_SERIAL: emulator-5554
+        run: |
+          set -euo pipefail
+          # `avd` makes the AVD from the pinned image when the cache missed, `emulator` boots it headless and waits for
+          # sys.boot_completed. The package manager answers later than that, and an install or `am start` needs it.
+          npm run mobile -- avd
+          npm run mobile -- emulator
+          for _ in $(seq 1 120); do
+            if adb -s "$ANDROID_SERIAL" shell pm path android 2>/dev/null | grep -q package:; then exit 0; fi
+            sleep 1
+          done
+          echo "::error::the package manager never answered"
+          exit 1
+      - name: Run the shared suite in the app's WebView
+        env:
+          ANDROID_SERIAL: emulator-5554
+          E2E_PHONE_PORT: "47400"
+          E2E_CDP_PORT: "9333"
+          E2E_ANDROID_APK: ${{ runner.temp }}/apk/app-debug.apk
+          E2E_TELEMETRY_DISABLED: "1"
+        run: npx e2e run --target android --shard "${{ matrix.shard }}" --tag "$(node e2e/catalogue/phone.ts)"
+      # The suite's traces and screenshots and the launcher's gateway logs, which is where a phone failure is read.
+      - if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-android-${{ strategy.job-index }}
+          path: |
+            .e2e/
+            /tmp/hui-visual-*/artifacts/
+          include-hidden-files: true
+          if-no-files-found: warn
+      - name: Save the AVD snapshot for the next run
+        if: ${{ always() && steps.avd.outputs.cache-hit != 'true' }}
+        run: |
+          adb -s emulator-5554 emu kill || true
+          # The snapshot is written while the emulator shuts down, so wait for the process itself.
+          for _ in $(seq 1 90); do pgrep -f qemu-system > /dev/null || break; sleep 1; done
+          du -sh ~/.android/avd/HUI_Pixel_e2e.avd || true
