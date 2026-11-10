@@ -6,8 +6,8 @@ description: "Use when a change needs its data shape, boundaries and types settl
 # Plan
 
 Settle the shape of a change before writing code, so the implementation decides
-nothing new. Keep the plan in the conversation. Write a repo file only when the
-operator asks for one.
+nothing new. Keep the plan in the conversation. When a plan needs a file, write
+`work/<task>.md`: Git ignores `work/`, and a plan document is never committed.
 
 ## Read first
 

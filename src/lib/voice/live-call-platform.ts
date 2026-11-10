@@ -1,5 +1,5 @@
 /**
- * A GPT-Live call's capabilities in the browser (HUI-18): the microphone with
+ * A GPT-Live call's capabilities in the browser: the microphone with
  * echo cancellation, a native RTCPeerConnection carrying it to ChatGPT with
  * the call's data channel, the bot's voice on a hidden audio element, both
  * levels from analysers (for activity and the bot's face), over the gateway's

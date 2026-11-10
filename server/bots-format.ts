@@ -1,5 +1,5 @@
 /**
- * Bots (HUI-18): named, persistent agents, each with one forever chat whose
+ * Bots: named, persistent agents, each with one forever chat whose
  * memory is OptChat, whose persona is the SOUL.md it writes, and whose USER.md
  * and MEMORY.md hold what it knows and keeps (never exported; `home.ts`). The
  * gateway's and the `hui bot` CLI's records, limits, files, faces, kickoff and
