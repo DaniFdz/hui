@@ -2,8 +2,8 @@
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against (restartable against the same
  * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
  * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, cleanup
- * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
- * gesture or reading would differ per platform, kept in one table per target that the web fills: opening, reloading
+ * of the backlog tasks a test created, the Jira world a test starts for itself, searches of the gateway's state and
+ * secret directories, and every step whose gesture or reading would differ per platform, kept in one table per target that the web fills: opening, reloading
  * and clearing the app, taps, holds, drags held mid-way, context menus, a message's actions (a hover reveals its
  * footer), switches (a Web Awesome switch draws its track over its input, so the web taps the point), attachments,
  * sideways scrolling, downloads, the clipboard, the Work pane's launcher (the + menu writes each shortcut on its entry
@@ -23,6 +23,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
+import { startJiraFixture, type JiraFixture } from "./jira-world.ts";
 import { addWorkerOnThisMachine } from "./worker.ts";
 import { clearAppStorage, onPhone } from "./phone.ts";
 import { IPHONE_SCREEN, onWebKitPhone } from "./phone-webkit.ts";
@@ -54,6 +55,12 @@ export type Hui = {
   offlineFilesReady(): Promise<boolean>;
   restartGateway(): Promise<void>;
   exitRuntimes(): Promise<void>;
+  /**
+   * The Jira world: `e2e/fixtures/jira-fixture.mjs` started for this test, admitted to the gateway and connected
+   * through `/__hui/jira`, then disconnected and stopped with the fixture. The tests that never ask pay nothing for
+   * it. `created` lists the work items HUI created on it.
+   */
+  jira(): Promise<{ origin: string; created(): Promise<{ key: string; fields: Record<string, unknown> }[]> }>;
   /** Waits until the open conversation's stream holds an open WebSocket, so a drop lands on a live stream. */
   streamOpen(): Promise<void>;
   dropStreams(): Promise<void>;
@@ -78,7 +85,8 @@ export type Hui = {
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   type(text: string): Promise<void>;
-  peek(target: Locator): Promise<void>;
+  /** Hovers a target's middle, or a point inside it where a mark of its own sits within the same link. */
+  peek(target: Locator, at?: { x?: number; y?: number }): Promise<void>;
   sessionList(): Promise<void>;
   settingsPages(): Promise<void>;
   appChrome(): Locator;
@@ -144,7 +152,7 @@ export type Hui = {
 };
 
 /** The steps whose gesture or reading differs per platform; each target fills its own table of them. */
-type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository">;
+type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "jira" | "restartGateway" | "exitRuntimes" | "repository">;
 
 /** A tap at the middle of where a target is at the moment of the press. */
 const tapAt = async (target: Locator) => {
@@ -312,14 +320,18 @@ export const test = base.extend<{ hui: Hui }>({
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
     // The shared receipt is safe to print, so the harness token stays in the private one it names.
     const token = (async () => (JSON.parse(await readFile(receipt.receipt, "utf8")) as { token: string }).token)();
-    const network = async (mode: "online" | "offline" | "silent") => {
-      const response = await fetch(`${receipt.url}/__verification/network`, {
-        method: "POST",
+    // The launcher's test-only controls: network modes, the Jira world's origin and the worlds' seeds. They take the
+    // private receipt's token, which never reaches a page.
+    const verification = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+      const response = await fetch(`${receipt.url}${path}`, {
+        method,
         headers: { "x-hui-verification": await token, "content-type": "application/json" },
-        body: JSON.stringify({ mode }),
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
-      if (!response.ok) throw new Error(`network control answered ${response.status}: ${await response.text()}`);
+      if (!response.ok) throw new Error(`${method} ${path} answered ${response.status}: ${await response.text()}`);
+      return (await response.json()) as T;
     };
+    const network = (mode: "online" | "offline" | "silent") => verification<void>("POST", "/__verification/network", { mode });
     const existing = new Set(await sessionIds());
     const existingGroups = new Set((await groups()).map((group) => group.label));
     const existingTasks = new Set(await taskIds());
@@ -328,6 +340,7 @@ export const test = base.extend<{ hui: Hui }>({
     const workerIds = async () => (await api<{ workers: { id: string }[] }>("GET", "/__hui/workers")).workers.map((worker) => worker.id);
     const existingWorkers = new Set(await workerIds());
     const workerHomes: string[] = [];
+    const jiraWorlds: JiraFixture[] = [];
     const settings = await api<unknown>("GET", "/__hui/settings");
     const directories: string[] = [];
 
@@ -404,7 +417,14 @@ export const test = base.extend<{ hui: Hui }>({
       },
       back: () => browser().back(),
       forward: () => browser().forward(),
-      peek: (target) => target.hover(),
+      peek: async (target, at) => {
+        if (!at) return target.hover();
+        // A mark inside the link owns a hover card of its own, so a test may put the pointer on a point inside the
+        // target where that mark sits instead of the middle, which holds the link's words.
+        const box = await target.boundingBox();
+        if (!box) throw new Error("peek: the target is not on screen");
+        await browser().mouse.move(box.x + (at.x ?? box.width / 2), box.y + (at.y ?? box.height / 2));
+      },
       faces: () => browser().evaluate(() => [...document.querySelectorAll(".bot-avatar")].map((node) => ({
         size: [...node.classList].find((name) => name.startsWith("bot-avatar--") && !["bot-avatar--emoji", "bot-avatar--face"].includes(name))?.slice("bot-avatar--".length) ?? "",
         shape: node.querySelector("hui-bot-face")?.getAttribute("shape") ?? "",
@@ -855,6 +875,18 @@ export const test = base.extend<{ hui: Hui }>({
         held: () => control("GET", "/control/wait-replay-ready"),
         release: () => control("POST", "/control/release-replay"),
       },
+      jira: async () => {
+        const world = await startJiraFixture();
+        jiraWorlds.push(world);
+        // The gateway admits one local Jira origin per test (the launcher's `--jira-fixture` seam) and connects it as
+        // the operator's Integrations page does.
+        await verification("POST", "/__verification/jira", { origin: world.origin });
+        await api("PUT", "/__hui/jira", { site: world.origin, email: "e2e@hui.test", token: "e2e-token", defaultProject: "CI" });
+        return {
+          origin: world.origin,
+          created: async () => (await (await fetch(`${world.origin}/control/created`)).json()) as { key: string; fields: Record<string, unknown> }[],
+        };
+      },
       restartGateway: async () => {
         const stopped = receipt.serverPid;
         process.kill(receipt.runnerPid, "SIGUSR2");
@@ -884,6 +916,16 @@ export const test = base.extend<{ hui: Hui }>({
     // A test that failed while offline must not leave the fixture unreachable.
     await network("online");
     await control("POST", "/control/release-replay");
+    // A Jira world goes away before the sessions it was linked to: the gateway is disconnected and the origin withdrawn
+    // first, so nothing reads a stopped fixture.
+    for (const world of jiraWorlds) {
+      try {
+        await api("DELETE", "/__hui/jira");
+        await verification("POST", "/__verification/jira", { origin: "" });
+      } finally {
+        await world.stop();
+      }
+    }
     for (const id of await taskIds()) {
       if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
     }

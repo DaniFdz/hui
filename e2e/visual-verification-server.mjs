@@ -16,6 +16,12 @@ const production = process.env.HUI_VERIFICATION_PRODUCTION === "1";
 
 let network = "online";
 
+async function readJson(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+}
+
 async function verification(request, response) {
   response.setHeader("content-type", "application/json");
   response.setHeader("cache-control", "no-store");
@@ -27,15 +33,25 @@ async function verification(request, response) {
     return response.end(JSON.stringify({ ...identity, serverPid: process.pid, cwd: process.cwd() }));
   }
   if (request.url === "/__verification/network" && request.method === "POST") {
-    const chunks = [];
-    for await (const chunk of request) chunks.push(chunk);
-    const { mode } = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+    const { mode } = await readJson(request);
     if (mode !== "online" && mode !== "offline" && mode !== "silent") {
       response.statusCode = 400;
       return response.end(JSON.stringify({ error: "mode must be online, offline or silent" }));
     }
     network = mode;
     return response.end(JSON.stringify({ mode: network }));
+  }
+  if (request.url === "/__verification/jira" && request.method === "POST") {
+    // A shared test's Jira world (e2e/fixtures/jira-world.ts): the gateway admits the one local origin that test
+    // started, the seam the launcher's `--jira-fixture` fills for a manual run, and an empty origin withdraws it.
+    const { origin = "" } = await readJson(request);
+    if (origin !== "" && !(typeof origin === "string" && /^http:\/\/127\.0\.0\.1:\d{1,5}$/u.test(origin))) {
+      response.statusCode = 400;
+      return response.end(JSON.stringify({ error: "origin must be one loopback address, or empty to withdraw it" }));
+    }
+    if (origin) process.env.HUI_JIRA_TEST_ORIGIN = origin;
+    else delete process.env.HUI_JIRA_TEST_ORIGIN;
+    return response.end(JSON.stringify({ origin }));
   }
   if (request.url === "/__verification/shutdown" && request.method === "POST") {
     response.end(JSON.stringify({ stopping: true }));
