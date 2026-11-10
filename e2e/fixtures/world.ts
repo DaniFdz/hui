@@ -120,14 +120,16 @@ export async function startWorld(name: WorldName): Promise<World> {
   const stop = async () => {
     if (stopped) return;
     stopped = true;
-    if (child.exitCode === null && child.signalCode === null) {
+    const running = child.exitCode === null && child.signalCode === null;
+    if (running) {
       const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
       child.kill("SIGTERM");
       await Promise.race([exited, new Promise((done) => setTimeout(done, 30_000))]);
+      // The launcher rewrites its private receipt as it stops; a gateway still up would keep the world's port. A launcher
+      // that died by itself leaves nothing to wait for, and its own last write says why.
+      await expect.poll(async () => (await readFile(receipt.receipt, "utf8").then((text) => (JSON.parse(text) as { state?: string }).state, () => undefined)),
+        { timeout: 30_000, message: `world ${name} did not stop: its receipt at ${receipt.receipt} never said so` }).toBe("stopped");
     }
-    // The launcher rewrites its private receipt as it stops; a gateway still up would keep the world's port.
-    await expect.poll(async () => (await readFile(receipt.receipt, "utf8").then((text) => (JSON.parse(text) as { state?: string }).state, () => undefined)),
-      { timeout: 30_000, message: `world ${name} did not stop: its receipt at ${receipt.receipt} never said so` }).toBe("stopped");
     if (process.env["E2E_KEEP_WORLDS"] !== "1") await rm(runDir, { recursive: true, force: true });
   };
   return {
