@@ -100,19 +100,14 @@ jobs:
           node e2e/visual-verification.mjs launch --branch "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" --port 47500 \
             --receipt-dir "$RUNNER_TEMP/receipt" --fast-fixture > "$RUNNER_TEMP/gateway.log" 2>&1 &
           for _ in $(seq 1 90); do [ -f "$RUNNER_TEMP/receipt/receipt-47500.json" ] && break; sleep 2; done
-          node -e '
-            const receipt = require(process.env.RUNNER_TEMP + "/receipt/receipt-47500.json");
-            const { execFileSync } = require("node:child_process");
-            const api = async (method, path, body) => {
-              const answer = await fetch(receipt.url + path, { method, headers: { "x-hui": "1", "content-type": "application/json" }, body: body && JSON.stringify(body) });
-              if (!answer.ok) throw new Error(method + " " + path + " answered " + answer.status);
-              return answer.json();
-            };
-            for (const title of ["Fix the flaky upload test", "Plan the Android app"]) {
-              execFileSync("node", ["-e", "0"], { stdio: "ignore" });
-              await api("POST", "/__hui/sessions", { cwd: receipt.workspace, title, group: "Work" });
-            }
-          '
+          receipt="$RUNNER_TEMP/receipt/receipt-47500.json"
+          workspace=$(RECEIPT="$receipt" node -e 'console.log(require(process.env.RECEIPT).workspace)')
+          seed() {
+            curl -fsS -X POST -H 'x-hui: 1' -H 'content-type: application/json' \
+              -d "{\"cwd\":\"$workspace\",\"title\":\"$1\",\"group\":\"Work\"}" http://127.0.0.1:47500/__hui/sessions > /dev/null
+          }
+          seed "Fix the flaky upload test"
+          seed "Plan the Android app"
           xcrun simctl bootstatus "$HUI_IOS_UDID" -b
           app=$(find "$RUNNER_TEMP/iosbuild/Build/Products" -name "App.app" -maxdepth 3 | head -1)
           echo "app=$app"
