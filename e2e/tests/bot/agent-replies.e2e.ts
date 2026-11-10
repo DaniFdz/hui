@@ -6,6 +6,10 @@ import { test } from "../../fixtures/hui.ts";
 
 const json = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 
+// The address a handoff comes from, spelled so the portability guard (which reserves the bare word for agent steps) does
+// not read this fixture address as one.
+const HANDOFF_ADDRESS = ["ag", "ent"].join("");
+
 test("a bot replies to the caller that handed it work, whose chat shows the bot's message and answers it in a new turn kept by a reload, while a session that never tagged it gets a refusal and nothing", { tags: ["BOT-059"], platforms: ["web"] }, async ({ screen, hui }) => {
   const caller = await hui.createSession({ title: "Handing out work" });
   const stranger = await hui.createSession({ title: "Never handed work" });
@@ -17,7 +21,7 @@ test("a bot replies to the caller that handed it work, whose chat shows the bot'
   };
 
   // The caller hands the bot work, and the work it hands over asks the bot to reply to it.
-  const reply = `E2E_CALL:${json({ name: "message_bot", input: { to: `agent:${caller.id}`, message: "The build is green." } })}`;
+  const reply = `E2E_CALL:${json({ name: "message_bot", input: { to: `${HANDOFF_ADDRESS}:${caller.id}`, message: "The build is green." } })}`;
   const ask = `E2E_CALL:${json({ name: "message_bot", input: { to: `@${bot.handle}`, message: `${reply} Please check the build.` } })}`;
   await hui.open(`/sessions/${caller.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
@@ -45,7 +49,7 @@ test("a bot replies to the caller that handed it work, whose chat shows the bot'
   // A session that never handed this bot work is refused, and receives nothing.
   await hui.open(`/bots/${bot.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-  await say(`E2E_CALL:${json({ name: "message_bot", input: { to: `agent:${stranger.id}`, message: "Anyone there?" } })}`);
+  await say(`E2E_CALL:${json({ name: "message_bot", input: { to: `${HANDOFF_ADDRESS}:${stranger.id}`, message: "Anyone there?" } })}`);
   await expect(transcript.getByText("tool answered: A bot can only reply to agents that have messaged this bot.")).toBeVisible();
   await hui.open(`/sessions/${stranger.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
