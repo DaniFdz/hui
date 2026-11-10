@@ -9,7 +9,6 @@ type Pi = { model: { catalog: { provider: string; id: string; name: string }[] }
 /** OpenAI's API-key sign-in asks PI for the key and saves it locally, so a card can be added without a live provider. */
 const PROVIDER = "openai";
 const KEY = "sk-e2e-not-a-secret";
-const NAME = "OPENAI · API key";
 
 const snapshot = (hui: Hui) => hui.api<Snapshot>("GET", "/__hui/providers");
 const configured = async (hui: Hui, id = PROVIDER) => (await snapshot(hui)).providers.find((provider) => provider.id === id);
