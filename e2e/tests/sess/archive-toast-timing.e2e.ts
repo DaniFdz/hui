@@ -5,7 +5,7 @@ import { test, type Hui } from "../../fixtures/hui.ts";
 
 /** Waits, on the page's own clock, until `ms` has passed since `since`: the toast's own timers are what the test reads. */
 const elapse = async (since: number, ms: number) => {
-  await expect.poll(() => Date.now() - since, { timeout: ms + 20_000, intervals: [200] }).toBeGreaterThanOrEqual(ms);
+  await expect.poll(() => Date.now() - since, { timeout: ms + 20_000 }).toBeGreaterThanOrEqual(ms);
 };
 
 /** Archives a session from its row menu and answers when its toast appeared. */

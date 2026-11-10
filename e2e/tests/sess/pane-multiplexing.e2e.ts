@@ -6,7 +6,7 @@ import { test } from "../../fixtures/hui.ts";
 test("two panes keep their own transcript, draft, queue and stream with their own Stop, and an unsent draft marks its session's row", { tags: ["SESS-049"], platforms: ["web"] }, async ({ screen, hui }) => {
   const panes = screen.getByTestId("session-pane");
   const alpha = await hui.createSession({ title: "Alpha pane" });
-  const beta = await hui.createSession({ title: "Beta pane" });
+  await hui.createSession({ title: "Beta pane" });
 
   await hui.wideScreen(2200);
   await hui.open(`/sessions/${alpha.id}`);

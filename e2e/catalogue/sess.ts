@@ -136,7 +136,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessions", "docs/api.md#get-__huisessionsevents"],
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/sessions/events"],
     journeys: ["session-title-generation"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -405,7 +405,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#session-list-progress"],
     surfaces: [],
     journeys: ["session-hovercard"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -425,7 +425,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#session-list-progress"],
     surfaces: ["route:GET /__hui/sessions"],
     journeys: ["session-pr-badges", "github-integration"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -435,7 +435,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#session-list-progress"],
     surfaces: [],
     journeys: ["session-pr-badges", "github-integration"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -445,7 +445,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"],
     surfaces: [],
     journeys: ["session-tree-lifecycle", "session-header-overflow", "subagent-tree-collapse"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -475,7 +475,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-composer-drafts"],
     surfaces: [],
     journeys: ["session-multiplexing", "pane-reposition"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -545,7 +545,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-header-overflow"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -652,7 +652,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-menu-shortcuts"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -719,7 +719,7 @@ const cases: UseCase[] = [
     behaviour: "The Search sessions field also matches a session's linked pull requests (repository#number and title) and Jira work items (key and summary).",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
