@@ -784,7 +784,12 @@ export const test = base.extend<{ hui: Hui }>({
                 return null;
               });
             },
-            holdAppChunks: noBrowserHarness("holdAppChunks"),
+            holdAppChunks: async () => {
+              // Holding the app's chunk needs request interception, which the WebView's single context cannot take. A phone
+              // therefore never sees the held boot screen; this returns at once so a test that holds chunks only to keep
+              // the page still keeps running, and a use case that asserts the held state stays off the phone's required
+              // list (SHELL-020 to SHELL-022 are excluded or backlog for exactly that reason).
+            },
             spoofUserAgent: noBrowserHarness("spoofUserAgent"),
             answerAll: noBrowserHarness("answerAll"),
             wideScreen: noBrowserHarness("wideScreen"),
