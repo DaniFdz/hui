@@ -103,6 +103,8 @@ const TEXT_MAX_CHARS = 40_000;
 const PAGE_SNAPSHOT_CHARS = 8_000;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_FULL_PAGE = { width: 4_096, height: 8_192 } as const;
+/** Numbers drawn over an annotated screenshot; enough to label a viewport, small enough to read. */
+const MAX_ANNOTATIONS = 40;
 const OBJECT_GROUP = "hui-browser-tool";
 /** Chromium sends the next screencast frame only after the previous one is
  * acknowledged; delaying the ack caps a busy page at about ten frames a second. */
@@ -566,6 +568,29 @@ const CONTAINS_HIT = String.raw`function (other, x, y) {
   const classes = typeof element.className === "string" ? element.className.trim().split(/\s+/).filter(Boolean).slice(0, 2) : [];
   return { contains: false, cover: element.tagName.toLowerCase() + (element.id ? "#" + element.id : "") + classes.map((name) => "." + name).join("") };
 }`;
+
+/** Draws numbered boxes over the refs of the latest snapshot, for one capture. */
+function annotationScript(marker: string, boxes: ReadonlyArray<{ label: number; x: number; y: number; width: number; height: number }>): string {
+  return `(() => {
+    const boxes = ${JSON.stringify(boxes)};
+    const selector = ${JSON.stringify(`[data-hui-annotations="${marker}"]`)};
+    document.querySelector(selector)?.remove();
+    const root = document.createElement("div");
+    root.setAttribute("data-hui-annotations", ${JSON.stringify(marker)});
+    root.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:2147483647;";
+    for (const box of boxes) {
+      const outline = document.createElement("div");
+      outline.style.cssText = "position:absolute;box-sizing:border-box;border:2px solid #e11d48;border-radius:3px;left:" + box.x + "px;top:" + box.y + "px;width:" + box.width + "px;height:" + box.height + "px;";
+      const badge = document.createElement("span");
+      badge.textContent = String(box.label);
+      badge.style.cssText = "position:absolute;left:-2px;top:-20px;min-width:20px;height:20px;padding:0 5px;border-radius:4px;background:#e11d48;color:#ffffff;font:600 12px/20px system-ui,sans-serif;text-align:center;";
+      outline.appendChild(badge);
+      root.appendChild(outline);
+    }
+    document.documentElement.appendChild(root);
+    return boxes.length;
+  })()`;
+}
 
 /** A page's storage keys and their value sizes, never the values. */
 function storageScript(kind: "local" | "session"): string {
@@ -2990,6 +3015,13 @@ export class ManagedBrowser {
     const savePath = params["path"] === undefined ? undefined : screenshotPath(cwd, params["path"]);
     // Only a visible tab paints.
     await this.#ensureVisible(instance, tab);
+    const annotate = params["annotate"] === true;
+    if (annotate && params["ref"] !== undefined) {
+      throw new BrowserToolError("annotate labels the viewport or a full page; capture one element without it.");
+    }
+    if (annotate && tab.refs.size === 0) {
+      throw new BrowserToolError("annotate numbers the refs of the latest snapshot, so take a snapshot first.", 409);
+    }
     let region: Record<string, number> | undefined;
     let subject = "viewport";
     if (params["ref"] !== undefined) {
@@ -3017,14 +3049,61 @@ export class ManagedBrowser {
     const capture = async (format: "png" | "jpeg") => str((await connection.send("Page.captureScreenshot", {
       format, ...(format === "jpeg" ? { quality: 75 } : {}), ...(region ? { clip: region, captureBeyondViewport: true } : {}),
     }, tab.session, 60_000))["data"]);
-    const png = await capture("png");
-    const bytes = Buffer.from(png, "base64");
+    // Numbers are drawn into the page for the capture and removed again, so the
+    // screenshot and the refs the agent will act on carry the same labels.
+    let annotated: { marker: string; count: number } | undefined;
+    if (annotate) {
+      const metrics = await connection.send("Page.getLayoutMetrics", {}, tab.session);
+      const layout = isRecord(metrics["cssLayoutViewport"]) ? metrics["cssLayoutViewport"] : {};
+      const scrollX = num(layout["pageX"]);
+      const scrollY = num(layout["pageY"]);
+      const viewWidth = num(layout["clientWidth"]);
+      const viewHeight = num(layout["clientHeight"]);
+      const boxes: Array<{ label: number; x: number; y: number; width: number; height: number }> = [];
+      for (const entry of tab.refs.entries()) {
+        if (boxes.length >= MAX_ANNOTATIONS) break;
+        const quad = await connection.send("DOM.getContentQuads", { backendNodeId: entry.target.backendNodeId }, tab.session, 2_000)
+          .then((reported) => (Array.isArray(reported["quads"]) ? reported["quads"].find((value) => Array.isArray(value) && value.length >= 8) : undefined))
+          .catch(() => undefined) as number[] | undefined;
+        if (!quad) continue;
+        const xs = [num(quad[0]), num(quad[2]), num(quad[4]), num(quad[6])];
+        const ys = [num(quad[1]), num(quad[3]), num(quad[5]), num(quad[7])];
+        const left = Math.min(...xs) + scrollX;
+        const top = Math.min(...ys) + scrollY;
+        const width = Math.max(...xs) - Math.min(...xs);
+        const height = Math.max(...ys) - Math.min(...ys);
+        if (width < 1 || height < 1) continue;
+        // A viewport capture can only show what is on screen; a full page shows all of it.
+        if (!region && (left + width < scrollX || top + height < scrollY || left > scrollX + viewWidth || top > scrollY + viewHeight)) continue;
+        boxes.push({ label: Number(entry.ref.slice(1)), x: Math.round(left), y: Math.round(top), width: Math.round(width), height: Math.round(height) });
+      }
+      const marker = pageNonce();
+      annotated = { marker, count: boxes.length };
+      if (boxes.length) {
+        await connection.send("Runtime.evaluate", { expression: annotationScript(marker, boxes), returnByValue: true }, tab.session, 5_000);
+      }
+    }
+    // The overlay stays until every capture of this call is done, so a JPEG
+    // fallback gets the same labels, and is removed even when a capture throws.
+    let png = "";
+    let bytes = Buffer.alloc(0);
+    let image = { data: "", mimeType: "image/png" };
+    try {
+      png = await capture("png");
+      bytes = Buffer.from(png, "base64");
+      image = { data: png, mimeType: "image/png" };
+      if (bytes.length > MAX_IMAGE_BYTES) image = { data: await capture("jpeg"), mimeType: "image/jpeg" };
+    } finally {
+      if (annotated) {
+        await connection.send("Runtime.evaluate", {
+          expression: `document.querySelector(${JSON.stringify(`[data-hui-annotations="${annotated.marker}"]`)})?.remove()`,
+        }, tab.session, 2_000).catch(() => undefined);
+      }
+    }
     if (savePath) {
       await mkdir(dirname(savePath), { recursive: true });
       await writeFile(savePath, bytes);
     }
-    let image = { data: png, mimeType: "image/png" };
-    if (bytes.length > MAX_IMAGE_BYTES) image = { data: await capture("jpeg"), mimeType: "image/jpeg" };
     if (Buffer.byteLength(image.data, "base64") > MAX_IMAGE_BYTES) {
       throw new BrowserToolError("The screenshot is too large to return. Capture the viewport or one element ref instead.", 413);
     }
@@ -3033,12 +3112,13 @@ export class ManagedBrowser {
     const lines = [
       `Screenshot of the ${subject}${size ? ` (${size.width}×${size.height})` : ""}.`,
       this.#header(tab),
+      ...(annotated ? [annotated.count ? `Annotated with ${annotated.count} number${annotated.count === 1 ? "" : "s"}: a number marks the ref with the same digits (3 is e3).` : "No element was on screen to annotate."] : []),
       ...(savePath ? [`Saved to ${savePath}; use present_media to show it in HUI.`] : []),
     ];
     return {
       text: lines.join("\n"),
       image,
-      details: { action: "screenshot", tab: this.#tabDetails(tab), ...(size ?? {}), bytes: bytes.length, ...(savePath ? { path: savePath } : {}) },
+      details: { action: "screenshot", tab: this.#tabDetails(tab), ...(size ?? {}), bytes: bytes.length, ...(annotated ? { annotated: annotated.count } : {}), ...(savePath ? { path: savePath } : {}) },
     };
   }
 

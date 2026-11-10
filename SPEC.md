@@ -1101,6 +1101,13 @@ log keeps method, URL, status, type, size and timing for at most 200 requests,
 and credential headers (`authorization`, `cookie`, `set-cookie`, and the like) and
 secret query values are `[redacted]` in the log and the HAR, because that
 artifact outlives the session. Bodies are not captured.
+**A picture can carry the refs.** `screenshot` with `annotate: true` draws a
+numbered box on each element the latest snapshot bound to a ref, so the image
+and the outline line up: the number is the ref without its `e` (`3` is `e3`).
+Only what the capture can show is numbered (the viewport, or the full page), at
+most 40 elements, and the labels are removed from the page again before the
+call returns, whether or not the capture succeeded. Annotated labels are
+pointers, not a new source of truth: the snapshot's refs are.
 **Frames are part of the page.** A snapshot reads one level of child frames by
 frame id and hangs each under its Iframe node, so a form inside a frame is
 visible and its refs work for `act`, `get`, `is`, screenshots and the secret

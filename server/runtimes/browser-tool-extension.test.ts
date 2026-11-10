@@ -51,6 +51,7 @@ const calls: Array<Record<string, unknown>> = [
   { action: "text", selector: "article", maxChars: 2000 },
   { action: "screenshot", path: "shots/a.png", fullPage: true },
 
+  { action: "screenshot", annotate: true },
   { action: "console", errorsOnly: true, clear: true },
   { action: "resize", width: 390, height: 844 },
   { action: "handoff", message: "Sign in, then click Continue.", timeoutMs: 120000 },
@@ -97,6 +98,7 @@ test("the schema still refuses what the manager would refuse", () => {
     { action: "network", operation: "requests", id: "3" },
     { action: "snapshot", depth: 0 },
 
+    { action: "screenshot", annotate: "yes" },
   ];
   for (const call of rejected) {
     assert.equal(Value.Check(tool.parameters as never, call as never), false, `schema accepts ${JSON.stringify(call)}`);

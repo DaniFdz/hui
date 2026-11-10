@@ -1586,3 +1586,61 @@ test("storage lists cookie and storage names, flags and sizes but never values",
   assert.match((await call({ action: "storage", what: "local", filter: "nothing" })).text, /localStorage is empty on/u);
   await assert.rejects(call({ action: "storage", what: "indexed" }), /storage needs what: cookies, local or session\./u);
 });
+
+test("an annotated screenshot numbers the latest snapshot's refs and leaves the page unchanged", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-annotate-"));
+  const server = createServer((request, response) => {
+    if ((request.url ?? "").split("?")[0] !== "/annotate") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Annotate page</title><h1>Annotate page</h1>
+      <p id="note">unchanged</p>
+      <button id="one">First action</button>
+      <button id="two">Second action</button>
+      <a href="#later">A link</a>
+      <script>document.getElementById("one").addEventListener("click", () => { document.getElementById("note").textContent = "clicked"; });</script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  // `open` already returns a snapshot, so its refs are what the numbers mark.
+  const opened = await call({ action: "open", url: `http://127.0.0.1:${address.port}/annotate` });
+
+  const plain = await call({ action: "screenshot" });
+  const annotated = await call({ action: "screenshot", annotate: true, path: "shots/annotated.png" });
+  assert.match(annotated.text, /Annotated with (\d+) numbers?: a number marks the ref with the same digits \(3 is e3\)\./u);
+  const labelled = Number(/Annotated with (\d+) numbers?/u.exec(annotated.text)?.[1]);
+  assert.equal(labelled, 3, "the two buttons and the link carry refs");
+  assert.equal(annotated.details["annotated"], 3);
+  assert.match(annotated.text, /Saved to .*shots\/annotated\.png/u);
+  assert.equal((await readFile(join(dir, "shots", "annotated.png"))).subarray(1, 4).toString(), "PNG");
+  // The picture really carries something the plain one did not.
+  assert.notEqual(annotated.image?.data, plain.image?.data);
+
+  // The overlay was removed: the page is exactly as it was, and its refs still act.
+  assert.match((await call({ action: "get", what: "count", selector: "[data-hui-annotations]" })).text, /0 elements match/u);
+  assert.match((await call({ action: "get", what: "text", selector: "#note" })).text, /unchanged/u);
+  const first = /button "First action" \[ref=(e\d+)\]/u.exec(opened.text)?.[1];
+  assert.ok(first);
+  await call({ action: "act", kind: "click", ref: first });
+  assert.match((await call({ action: "get", what: "text", selector: "#note" })).text, /clicked/u);
+
+  await assert.rejects(
+    call({ action: "screenshot", annotate: true, ref: first }),
+    /annotate labels the viewport or a full page; capture one element without it\./u,
+  );
+});

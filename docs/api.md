@@ -4675,7 +4675,7 @@ comes from the per-conversation token. `action` is one of:
 | `snapshot` | Accessibility outline; `interactive`, `query`, `maxChars` (500–40 000, default 12 000; 8 000 for page loads), `selector` to start at one element and `depth` (1–40) to stop after some levels; one level of child frames is inlined under its Iframe node; `diff: true` returns only what changed since the tab's previous whole snapshot |
 | `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `upload` (`files`, or `selector` for a hidden input), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`, `state` with a selector) |
 | `text` | Visible text of `selector`, else the first article, main or body (default 12 000, at most 40 000 characters) |
-| `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory) |
+| `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory); `annotate` numbers each ref of the latest snapshot over the viewport or full page |
 | `console` | The latest 50 of up to 200 recorded console, exception, log and dialog entries; `errorsOnly`, `clear` |
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
 | `get` | One property of one element (`ref` or `selector`): `text`, `html`, `value`, `attr` with `attribute`, `box`, or page-level `title`, `url` and `count` with `selector`; a password field's value is refused with 409 |
@@ -4707,6 +4707,13 @@ status, type, bytes and timing; bodies are never captured. Credential headers
 `password`, `secret`, …) are `[redacted]` in `network requests`,
 `network request` and the HAR. The HAR is JSON 1.2 with one page and its
 entries, written wherever `path` names (relative to the session directory).
+`screenshot` with `annotate: true` asks Chrome for each ref's content quad,
+clips them to what the capture covers, and injects a numbered overlay (a div
+with `pointer-events: none` and inline styles, so no page stylesheet or CSP
+applies) before capturing. The overlay carries a per-call marker and is removed
+in a `finally`, so a failed capture cannot leave it behind; the call reports how
+many numbers it drew. At most 40 refs are labelled, and `annotate` cannot be
+combined with a single-element `ref`.
 `storage` enables the Network domain once per tab and reads `Network.getCookies`
 for the URL, or evaluates one fixed expression that lists `localStorage` or
 `sessionStorage` keys and the length of each value. Cookie `size` is Chrome's,
