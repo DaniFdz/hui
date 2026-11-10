@@ -39,7 +39,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huisettings", "docs/api.md#put-__huisettings"],
     surfaces: ["route:GET /__hui/settings", "route:PUT /__hui/settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-005",
@@ -756,7 +756,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiworkspaces", "SPEC.md#behaviour"],
     surfaces: ["settings-page:memory", "route:GET /__hui/workspaces", "page:memory-import"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-073",
@@ -765,7 +765,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth"],
     surfaces: ["settings-page:security", "route:GET /__hui/health", "route:GET /__hui/pi"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-074",
@@ -831,7 +831,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi"],
     journeys: ["configured-models"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-081",
