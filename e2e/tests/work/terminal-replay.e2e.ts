@@ -21,7 +21,7 @@ const run = async (hui: Hui, screen: Screen, command: string) => {
   await hui.type(`${command}\n`);
 };
 
-test("a terminal comes back on the same shell after a reload, says when its replay was cut, and reconnects after losing the gateway", { tags: ["WORK-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a terminal comes back on the same shell after a reload, says when its replay was cut, and reads Disconnected with Reconnect terminal once the gateway took its shell away", { tags: ["WORK-030"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Keep a terminal's output", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");

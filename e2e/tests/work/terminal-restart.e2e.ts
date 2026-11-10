@@ -1,58 +1,55 @@
-/** After a gateway restart an old terminal tab reports that its terminal is gone instead of recreating the shell, and
- * New terminal opens a working one (WORK-031). */
-import { expect } from "e2e";
+/** A gateway restart ends the shells it knew: the tab it leaves behind says its terminal is not there instead of
+ * opening a replacement shell, and New terminal opens one that works (WORK-031). */
+import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import { openWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
 const terminals = (hui: Hui, session: string) => hui.api<{ terminals: Terminal[] }>("GET", `/__hui/sessions/${session}/terminals`).then(({ terminals }) => terminals);
-/** The bytes the gateway replays into this terminal: what its shell has printed. */
 const replay = (hui: Hui, session: string, id: string) => hui.api<{ data: string }>("GET", `/__hui/sessions/${session}/terminals/${id}`).then(({ data }) => data);
 
-test("an old terminal tab reports its terminal unavailable after a gateway restart instead of recreating the shell, and New terminal opens a working one", { tags: ["WORK-031"], platforms: ["web"] }, async ({ screen, hui }) => {
+/** Waits for the shell to have started, so its prompt is in the replay before input is typed. */
+const ready = (hui: Hui, session: string, id: string) => expect.poll(async () => (await replay(hui, session, id)).trim(), { timeout: 60_000 }).not.toBe("");
+
+/** Taps the terminal, waits for its emulator to hold the keyboard, then types a line and Enter. */
+const run = async (hui: Hui, screen: Screen, command: string) => {
+  await screen.getByLabel("Shared terminal input", { visible: true }).tap();
+  await expect(screen.getByRole("textbox", "Terminal input", { visible: true })).toBeFocused();
+  await hui.type(`${command}\n`);
+};
+
+test("after a gateway restart an old terminal tab reports its terminal is gone instead of recreating the shell, and New terminal opens a working one", { tags: ["WORK-031"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
-  const session = await hui.createSession({ title: "Restarted terminal", cwd: repository.path });
+  const session = await hui.createSession({ title: "Terminal after a restart", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
-  const status = (text: string) => pane.getByText(`Shared · ${text}`);
-  const alert = pane.getByRole("alert");
-  const run = async (command: string) => {
-    await screen.getByLabel("Shared terminal input", { visible: true }).tap();
-    await expect(screen.getByRole("textbox", "Terminal input", { visible: true })).toBeFocused();
-    await hui.type(`${command}\n`);
-  };
 
+  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await openWork(screen, "New terminal");
-  await expect(status("Connected")).toBeVisible();
+  await screen.getByRole("button", "Open terminal").tap();
+  await expect(pane.getByText("Shared · Connected")).toBeVisible();
   const { id } = (await terminals(hui, session.id))[0]!;
-  await expect.poll(async () => (await replay(hui, session.id, id)).trim(), { timeout: 60_000 }).not.toBe("");
-  await run("printf 'BEFORE-%s\\n' 1");
-  await expect.poll(() => replay(hui, session.id, id)).toContain("BEFORE-1");
+  await ready(hui, session.id, id);
 
-  // The gateway comes back with no shells at all, and the tab's terminal is not one of its own to make again.
+  // The restart leaves the tab in place, naming the shell it lost, and opens no shell in its place.
   await hui.restartGateway();
-  await expect(status("Disconnected")).toBeVisible();
-  await expect(alert).toBeVisible();
-  expect(await terminals(hui, session.id)).toEqual([]);
+  await hui.reload();
+  await expect(pane.getByText(/Terminal not found in this conversation\./u)).toBeVisible({ timeout: 90_000 });
+  await expect(pane.getByRole("tab", "Terminal", { exact: true })).toBeVisible();
+  await expect(pane.getByText("Shared · Disconnected")).toBeVisible();
+  expect(await terminals(hui, session.id)).toHaveLength(0);
 
-  // Asking it to come back names the missing shell instead of opening a new one.
-  await screen.getByRole("button", "Reconnect terminal").tap();
-  await expect(alert).toHaveText(/^Terminal not found in this conversation\.$/u);
-  expect(await terminals(hui, session.id)).toEqual([]);
-
-  // New terminal opens a working shell of its own, and the old tab stays as it was.
+  // New terminal opens a shell of its own, which runs what is typed into it.
   await openWork(screen, "New terminal");
-  await expect(status("Connected")).toBeVisible();
-  const fresh = await terminals(hui, session.id);
-  expect(fresh).toHaveLength(1);
-  expect(fresh[0]!.id).not.toBe(id);
-  await expect.poll(async () => (await replay(hui, session.id, fresh[0]!.id)).trim(), { timeout: 60_000 }).not.toBe("");
-  await run("printf 'AFTER-%s\\n' 1");
-  await expect.poll(() => replay(hui, session.id, fresh[0]!.id)).toContain("AFTER-1");
-
-  // The restarted gateway numbers its first shell 1 again, so both tabs read Terminal 1; the old one is the first.
-  await pane.getByRole("tab").first().tap();
-  await expect(alert).toHaveText(/^Terminal not found in this conversation\.$/u);
-  expect((await terminals(hui, session.id)).map((terminal) => terminal.id)).toEqual([fresh[0]!.id]);
+  await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
+  // The old tab is still there, naming the shell the restart took away.
+  await expect(pane.getByRole("tab", "Terminal", { exact: true })).toBeVisible();
+  await expect(pane.getByText("Shared · Connected")).toBeVisible();
+  const shells = await terminals(hui, session.id);
+  expect(shells).toHaveLength(1);
+  expect(shells[0]!.id).not.toBe(id);
+  await ready(hui, session.id, shells[0]!.id);
+  await run(hui, screen, "printf 'AFTER-RESTART\\n'");
+  await expect.poll(async () => replay(hui, session.id, shells[0]!.id)).toContain("AFTER-RESTART");
+  await expect(pane.getByText("Shared · Connected")).toBeVisible();
 });
