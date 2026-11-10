@@ -2908,6 +2908,20 @@ td.data-table-checkbox-col {
   min-width: 180px;
 }
 
+/* A phone shows the table a few columns at a time, so a Key column pinned to the left edge 180 px wide came to
+   cover the columns that scrolled under it: a row's own button there (a session's Restore, say) could not be
+   tapped at all. Below the shell's phone breakpoint the column scrolls with its row instead. */
+@media (max-width: 768px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
+  .data-table .data-table-key-col {
+    position: static;
+    min-width: 0;
+  }
+
+  td.data-table-key-col {
+    box-shadow: none;
+  }
+}
+
 .data-table th.data-table-key-col {
   z-index: 4;
   background: var(--bg-elevated);
