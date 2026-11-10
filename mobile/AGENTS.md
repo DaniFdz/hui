@@ -413,6 +413,25 @@ user-facing half; this is what the build assumes.
   it and the source repeats it exactly, but whether SideStore compares such a version and offers the update is not
   proven; the stable channel's numeric version is the one to rely on until someone tries a nightly on a device.
 
+## Which loop to use
+
+**Local first, CI at the end.** One emulator at a time, on one serial, stopped when you are done:
+
+```sh
+ANDROID_SERIAL=emulator-5554 npm run mobile -- emulator          # one AVD, about 4 cores
+ANDROID_SERIAL=emulator-5554 npm run mobile -- dev --gateway http://127.0.0.1:47400 --fresh
+# then, inside nix develop .#android (the fixture shells out to adb):
+ANDROID_SERIAL=emulator-5554 E2E_PHONE_PORT=47400 npx e2e run --target android e2e/tests/<area>
+ANDROID_SERIAL=emulator-5554 npm run mobile -- stop
+```
+
+A phone test costs about 15 s locally, so an area is ten to twenty minutes, against ten to thirty minutes for one CI
+dispatch that cannot iterate. Run CI when the area is as graduated as you can get it, not as your inner loop.
+
+**Never run two emulators.** Seven of them plus Gradle once took this machine's load average to 70 and left it with
+300 MB of free memory; the rule since is one AVD, and `adb devices` should never show more than one running. Check
+`cat /proc/loadavg` before and after, and always `npm run mobile -- stop` when you finish, even on failure.
+
 ## Proving a phone change in CI
 
 The local emulator loop above is for one-off checks, on a machine that can spare the cores: **one emulator at a time**,
