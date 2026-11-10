@@ -799,7 +799,6 @@ export function renderSidebar(props: ShellProps) {
   const query = props.search.trim().toLocaleLowerCase();
   const filtering = Boolean(query) || props.sessionOptions.status !== "all";
   const visibleGroups = sidebarSessionGroups(props.groups, props.search, props.sessionOptions);
-  const visibleRows = visibleGroups.reduce((count, group) => count + group.sessions.length, 0);
   // On the Bots tab the sidebar is the roster alone, as in Hermes: the primary
   // navigation and New session stay under Agents.
   const botsTab = props.bots.tab === "bots" ? props.bots : undefined;
@@ -942,11 +941,11 @@ export function renderSidebar(props: ShellProps) {
             })}
           </div>` : html`<div class="sidebar-list sidebar-recent-sessions" aria-label="Sessions">
         ${
-          props.loading || (props.retrying && visibleRows === 0)
+          props.loading || (props.retrying && visibleGroups.length === 0)
             ? html`${renderSessionPlaceholder()}${props.error ? renderSessionsNote(props.error, props.retrying) : nothing}`
           : html`
                   ${props.error ? renderSessionsNote(props.error, props.retrying) : nothing}
-                  ${visibleRows === 0
+                  ${visibleGroups.length === 0
                     ? html`
                     <div class="sidebar-empty">
                       <p class="sidebar-list__note" role="status">${filtering ? "No matching sessions." : "No sessions yet."}</p>
