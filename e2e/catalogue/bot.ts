@@ -721,6 +721,24 @@ const cases: UseCase[] = [
     web: "required",
     phone: "backlog",
   },
+  {
+    id: "BOT-073",
+    title: "Create an ordinary session from an agent",
+    behaviour: "An agent calls create_session with a brief, a group and optionally a worker, a worktree, a model and thinking. A top-level session appears in that group with the brief as its first prompt; it is not a child, so sessions_list and sessions_history do not show it to the caller.",
+    spec: ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"],
+    surfaces: ["tool:create_session"],
+    journeys: ["bots"],
+    web: "required",
+  },
+  {
+    id: "BOT-074",
+    title: "See every machine's load before choosing where to run",
+    behaviour: "An agent calls worker_stats and gets this machine and every configured worker with CPU, memory, disk, GPU, connection state, running sessions and the least loaded connected choice. A disconnected or erroring worker has no metrics and is never recommended.",
+    spec: ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"],
+    surfaces: ["tool:worker_stats"],
+    journeys: ["bots"],
+    web: "required",
+  },
 ];
 
 export default cases;
