@@ -66,7 +66,7 @@ async function waitForGatewayPage(gateway: string, timeoutMs = 60_000): Promise<
   const deadline = Date.now() + timeoutMs;
   let listed: string[] = [];
   for (;;) {
-    const pages = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`)
+    const pages = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`, { signal: AbortSignal.timeout(5_000) })
       .then((response) => (response.ok ? response.json() as Promise<Target[]> : []))
       .catch(() => [] as Target[]);
     listed = pages.map((page) => page.url);
