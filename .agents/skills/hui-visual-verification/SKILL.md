@@ -92,7 +92,7 @@ are copied outside the checkout before upload; the library writes there because
 A change under `mobile/`, or one whose phone layout is what moved, gets the emulator's proof: follow
 [the Android procedure](references/android.md), which builds this checkout's Connect page and APK with
 `npm run mobile -- dev`, drives the app with `agent-device` and captures each affected state at `--scale 0.4` in light
-and dark. The iPhone's evidence is CI's: [the iOS evidence](references/ios.md) says where the `ios-smoke` job's
+and dark. The iPhone's evidence is CI's once WP5 adds the job: [the iOS evidence](references/ios.md) says where `ios-smoke`'s
 screenshots are, what they can show and what stays a proof gap, and why a WebKit capture at an iPhone size is never the
 app's proof.
 

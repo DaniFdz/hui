@@ -38,7 +38,7 @@ Preserve the existing description's other sections when preparing that file, the
 
 ```sh
 gh pr edit <pr-number> --repo <owner/repo> --body-file body.md \
-  --attach ./desktop.png --attach ./mobile.png
+  --attach ./desktop.png --attach ./mobile.png --attach ./android.png
 ```
 
 Matching local image references are replaced in place with GitHub attachment URLs;

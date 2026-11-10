@@ -55,8 +55,8 @@ still require the desktop/mobile smoke. -->
 
 ### Phone — iOS, from CI
 
-<!-- When mobile/ios/** changed: the ios-smoke job's screenshots from this HEAD's CI run,
-and what the job does not show (.agents/skills/hui-visual-verification/references/ios.md). -->
+<!-- When mobile/ios/** changed: the ios-smoke job's screenshots from this HEAD's CI run
+(once WP5 adds that job), and what it does not show (.agents/skills/hui-visual-verification/references/ios.md). -->
 
 ## Proof gaps
 

@@ -26,10 +26,10 @@ behaviour is what changed.
    page a first launch shows). The address it is given must answer `/__hui/update`: a value that is not an http(s)
    address reads "Enter an http:// or https:// address.", a gateway that refuses reads "This address doesn't answer as
    a HUI gateway.", and a development gateway loads the UI after its version notice. The app remembers the address and
-   reloads on it, so a later `dev` without `--fresh` opens straight on that gateway; **Change gateway** on the Connect
-   page forgets it. A gateway that stops answering sends the app back to the Connect page naming it.
-   `npm run mobile -- dev --gateway <url> --fresh` skips the page through the debug build's `huiGatewayUrl` launch
-   extra.
+   reloads on it. `dev --gateway <url>` skips the page through the debug build's `huiGatewayUrl` launch extra, and
+   `dev --no-gateway` launches as a user does, so it opens on the remembered gateway (or on Connect to HUI after
+   `--fresh`). **Change gateway** on the Connect page forgets it. A gateway that stops answering sends the app back to
+   the Connect page naming it.
 
 3. **Drive visible controls** with `agent-device`, which is installed only inside `nix develop .#android` (an FHS
    wrapper, because it runs `/bin/ps`, which NixOS lacks):
@@ -50,4 +50,5 @@ behaviour is what changed.
    started it, and leave the launcher's gateway cleanup to its own `cleanup` command.
 
 Screenshots prove appearance only. Streaming, notifications, downloads, the back button and the status bar also need
-the assertion that shows them, and a behaviour the job does not exercise stays a proof gap.
+the assertion that shows them. CI's `android-build` job only builds and unit-tests the project, so a behaviour nothing
+exercises stays a proof gap until WP4's `android-e2e` job drives the suite in the app.

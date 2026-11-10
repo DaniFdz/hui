@@ -11,11 +11,12 @@ status; storage/backend failures use the same shape with 500.
 
 ## Phone apps
 
-The Android and iOS apps are Capacitor shells around this contract, not a second
-client. Each remembers one gateway address and loads that gateway's own web UI at
-its origin, as the Electron renderer uses the desktop gateway's origin ("Desktop
+The Android app is a Capacitor shell around this contract, not a second client:
+it remembers one gateway address and loads that gateway's own web UI at its
+origin, as the Electron renderer uses the desktop gateway's origin ("Desktop
 shell boundary" below), so every route, event and payload here is what a phone
-sends and receives, and no route is phone-specific.
+sends and receives, and no route is phone-specific. The iOS shell keeps to the
+same contract when it lands (WP5 of `docs/mobile-app-plan.md`).
 
 - **Requests** are the same `/__hui/` routes with `x-hui: 1`. The app's page comes
   from the gateway it calls, so its requests are same-origin and never
