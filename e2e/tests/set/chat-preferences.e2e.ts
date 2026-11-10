@@ -85,6 +85,9 @@ test("Send shortcut set to Command or Ctrl + Enter makes Enter break the line, a
     await screen.getByRole("button", `Send shortcut: ${from}`).tap();
     await screen.getByLabel("Send shortcut").getByText(to, { exact: true }).tap();
     await expect(screen.getByRole("button", `Send shortcut: ${to}`)).toBeVisible();
+    // The open conversation reads the shortcut from the settings it loaded with, so the press waits for the write to land.
+    await expect.poll(async () => (await hui.api<Settings>("GET", "/__hui/settings")).chat.sendShortcut)
+      .toBe(to === "Enter" ? "enter" : "modifierEnter");
     await hui.open(`/sessions/${session.id}`);
     await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   };

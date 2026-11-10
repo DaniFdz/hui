@@ -10,7 +10,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:settings"],
     journeys: ["gateway-settings", "shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-002",
@@ -48,7 +48,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huithemes", "docs/api.md#get-__huithemesfilekey"],
     surfaces: ["settings-page:appearance", "setting:theme", "route:GET /__hui/themes", "route:GET /__hui/themes/file/:key", "route:PUT /__hui/settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-006",
@@ -112,7 +112,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:fontUi", "setting:fontChat"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-010",
@@ -122,7 +122,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:fontTerminal"],
     journeys: ["terminal-font"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-011",
@@ -131,7 +131,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:textScale"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-012",
@@ -158,7 +158,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:chat.sendShortcut"],
     web: "required",
-    phone: "backlog",
+    phone: { excluded: "A phone sends with its Send button: on a coarse pointer plain Enter is a line break by design, so only the chord half of the case exists there.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SET-015",
@@ -523,7 +523,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.utility", "command:btw", "route:POST /__hui/sessions/:id/btw"],
     journeys: ["model-routing"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-048",
