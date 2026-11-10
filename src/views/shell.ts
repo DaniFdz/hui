@@ -1161,6 +1161,15 @@ export function setNavigationDrawer(
   }
 }
 
+/** A back press closes the phone's navigation drawer the way Escape does. False when no drawer is open (a wide
+ * layout keeps its sidebar), so the press falls through to the next thing that can take it. */
+export function closeNavigationDrawerOnBack(root: ParentNode): boolean {
+  const sidebar = root.querySelector<HTMLElement>('.sidebar[data-open="true"]');
+  if (!sidebar || !matchMedia(APP_SHELL_DRAWER_MEDIA).matches) return false;
+  setNavigationDrawer(sidebar, false, true);
+  return true;
+}
+
 /** Every routed view renders its own header, so main only hosts the body. */
 export function renderMain(props: ShellProps, body: TemplateResult) {
   const chatLike =

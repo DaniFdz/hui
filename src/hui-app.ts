@@ -105,7 +105,8 @@ import { deleteCall, postCallDelegation, postCallHeartbeat, postCallLines, postC
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { workerAction } from "./api/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
-import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
+import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, closeNavigationDrawerOnBack, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
+import { nativeShell } from "./lib/native-shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
 import { renderSettingsPage, SETTINGS_PAGES, type SettingsPage } from "./views/settings.ts";
 import { clampSuggestionIndex, taskSuggestionPrompt } from "./lib/task-suggestions.ts";
@@ -407,6 +408,8 @@ export class HuiApp extends HuiElement {
     setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
   });
   private mobileNavMedia: MediaQueryList | undefined;
+  /** The phone shell's back button, while this app is the one answering it. */
+  private stopNativeBack: (() => void) | undefined;
   /** The destination chooser a phone renders in the active pane's header instead of a row of its own. */
   private narrowPicker: TemplateResult | undefined;
   private composerTextarea: HTMLTextAreaElement | null = null;
@@ -513,6 +516,28 @@ export class HuiApp extends HuiElement {
     }
   }
 
+  /**
+   * The phone's back button, on the way out of the page: the open dialog first, then the navigation drawer, then the
+   * Work pane. Answering `false` leaves the press to the shell, which goes back in history and then leaves the app.
+   * Escape's other jobs — stopping a turn, closing Settings — are not what a back press means.
+   */
+  private handleSystemBack(): boolean {
+    const dialog = document.querySelector<HTMLDialogElement>("dialog[open]");
+    if (dialog) {
+      // A dialog closes on Escape through `cancel`; a back press is the same intent, and one that prevents it keeps
+      // its own closing in flight.
+      if (dialog.dispatchEvent(new Event("cancel", { cancelable: true }))) dialog.close();
+      return true;
+    }
+    if (closeNavigationDrawerOnBack(this.renderRoot)) return true;
+    if (this.view === "home" && this.conversation.selected && (this.work.narrow ? this.work.narrowShown : this.work.maximized())) {
+      // The Work pane hides the chat: back returns to the conversation and never stops its turn.
+      this.work.leave();
+      return true;
+    }
+    return false;
+  }
+
   private readonly onPageHide = () => {
     void this.composer.persistDraft();
   };
@@ -530,6 +555,8 @@ export class HuiApp extends HuiElement {
       this.mobileNavMedia.addEventListener("change", this.onMobileNavChange);
       window.addEventListener("popstate", this.onPopState);
       document.addEventListener("keydown", this.onGlobalKeyDown);
+      // A phone has no Escape key: the shell hands its back button to the same destinations, in the same order.
+      this.stopNativeBack = nativeShell()?.onBack(() => this.handleSystemBack());
       this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
       this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
       this.addEventListener("hui-files-connection", this.onFilesConnection);
@@ -564,6 +591,8 @@ export class HuiApp extends HuiElement {
     this.removeEventListener("hui-extensions-changed", this.onExtensionsChanged);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
+    this.stopNativeBack?.();
+    this.stopNativeBack = undefined;
     this.work.stop();
     if (!this.embeddedPane) this.voice.dispose();
     this.followResize?.disconnect();
