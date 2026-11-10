@@ -2,6 +2,7 @@
  * USER.md or MEMORY.md, and an import's memories become MEMORY.md, shown in its preview as reference data (BOT-068). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { roster } from "./bot-panel.ts";
 
 test("a bot's export carries SOUL.md and its BOOTSTRAP.md, never USER.md or MEMORY.md", { tags: ["BOT-068"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.api("POST", "/__hui/bots", {
@@ -13,7 +14,7 @@ test("a bot's export carries SOUL.md and its BOOTSTRAP.md, never USER.md or MEMO
   });
 
   await hui.open("/");
-  await screen.getByRole("tab", "Bots").tap();
+  await roster(screen, hui);
   await screen.getByText("Quill").hover();
   await screen.getByRole("button", "Actions for Quill").tap();
   await screen.getByText("Export…", { exact: true, visible: true }).first().tap();
@@ -37,7 +38,7 @@ test("an import's memories become MEMORY.md, which its preview shows as never ex
   });
 
   await hui.open("/");
-  await screen.getByRole("tab", "Bots").tap();
+  await roster(screen, hui);
   await screen.getByRole("button", "New bot").tap();
   await screen.getByText("Import bot…", { exact: true, visible: true }).first().tap();
   await screen.getByLabel("Paste").tap();

@@ -28,5 +28,6 @@ test("an agent creates an ordinary session in a group, not a child", { tags: ["B
   expect(created?.id).not.toBe(source.id);
   expect(created?.cwd).not.toBe(repo.path);
   await hui.open("/");
+  await hui.sessionList();
   await expect(screen.getByLabel(/^Created by an agent, status/)).toBeVisible();
 });
