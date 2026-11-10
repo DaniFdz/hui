@@ -1,7 +1,9 @@
-/** A session's pull request marks, driven against the `github` fixture world whose fake `gh` answers the preview queries: one
- * mark per pull request the session created, colored and named by state with its title, the newest at the trailing edge and
- * the next one half-visible, the strip widening and scrolling on the pointer, narrowing on the title, and a pull request
- * only mentioned in text getting no mark (SESS-044). */
+/** A session's pull request marks and their card, driven against the `github` fixture world whose fake `gh` answers the
+ * preview queries: one mark per pull request the session created, colored and named by state with its title, the newest at
+ * the trailing edge and the next one half-visible, the strip widening and scrolling on the pointer, narrowing on the title,
+ * and a pull request only mentioned in text getting no mark (SESS-044); and a mark's card, which opens on hover or keyboard
+ * focus with its repository number, state pill, title and Markdown description or the no-facts fallback, stays open while
+ * the pointer is on it and scrolls its description, and whose link opens GitHub while HUI stays on the session (SESS-045). */
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, type Locator } from "e2e";
@@ -75,4 +77,68 @@ test("a session's pull request marks name and color each state, the newest sits 
   await title.focus();
   await hui.peek(title);
   await expect.poll(async () => (await edge()).width).toBeLessThan(resting);
+});
+
+test("a mark's card opens on hover or keyboard focus with its repository number, state, title and description, keeps open while the pointer is on it, and its link opens GitHub while HUI stays on the session", { tags: ["SESS-045"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const world = await hui.world("github");
+  const description = "The checkout keeps the cart's currency on every step.";
+  await writeFile(join(world.runDir, "gh", "previews.json"), JSON.stringify({
+    "acme/web#3": node(3, "Ship the new checkout", { state: "MERGED", body: `## Details\n\n${description}\n\n${Array.from({ length: 30 }, (_, index) => `A paragraph ${index + 1} of the description.`).join("\n\n")}` }),
+    "acme/web#4": node(4, "Retire the old form", { state: "CLOSED", body: "" }),
+  }));
+  const press = async (key: string) => {
+    await hui.keyboard.down(key);
+    await hui.keyboard.up(key);
+  };
+  const session = await world.createSession({ title: "Release train" });
+  await world.prompt(session, call("bash", {
+    // #5 has no GitHub facts at all, so its mark and card fall back to the reference alone.
+    command: ["echo gh pr create", ...[3, 4, 5].map((number) => `echo https://github.com/acme/web/pull/${number}`)].join("; "),
+  }));
+  await hui.open(`${world.url}/sessions/${session.id}`);
+  await hui.sessionList();
+  const merged = screen.getByRole("link", "Pull request acme/web#3, merged: Ship the new checkout");
+  const unknown = screen.getByRole("link", /^Pull request acme\/web#5, status unavailable/u);
+  const strip = screen.getByRole("group", "3 pull requests");
+  const card = screen.getByRole("tooltip", { name: /^acme\/web#3 Merged Ship the new checkout/u });
+  await expect(merged).toBeVisible();
+
+  // Hovering a mark opens the card below it with the reference, a state pill, the title and the Markdown description.
+  // The strip widens under the pointer first, as a real pointer would rest on it before reaching the mark it hides.
+  await hui.peek(strip);
+  await hui.peek(merged);
+  await expect(card).toBeVisible();
+  await expect(card.getByText("acme/web#3", { exact: true })).toBeVisible();
+  await expect(card.getByText("Merged", { exact: true })).toBeVisible();
+  await expect(card.getByText("Ship the new checkout", { exact: true })).toBeVisible();
+  await expect(card.getByText(description, { exact: true })).toBeVisible();
+  expect((await card.boundingBox())!.y).toBeGreaterThan((await merged.boundingBox())!.y + (await merged.boundingBox())!.height);
+
+  // The pointer moves onto the card and scrolls its description without closing it.
+  const details = card.getByText("Details", { exact: true });
+  const before = (await details.boundingBox())!.y;
+  await hui.peek(card.getByText(description, { exact: true }));
+  await expect(card).toBeVisible();
+  await hui.peek(card.getByText("A paragraph 30 of the description.", { exact: true }));
+  await expect(card).toBeVisible();
+  await expect.poll(async () => (await details.boundingBox())!.y).toBeLessThan(before);
+
+  // Leaving closes it, and keyboard focus on a mark opens its own, which has no GitHub details.
+  await hui.peek(screen.getByRole("link", { name: /^Release train, status /u }));
+  await expect(card).toBeHidden();
+  const unknownCard = screen.getByRole("tooltip", { name: /^acme\/web#5 Status unavailable GitHub details are unavailable/u });
+  await screen.getByRole("link", { name: /^Release train, status /u }).focus();
+  await press("Tab");
+  await expect(unknown).toBeFocused();
+  await expect(unknownCard).toBeVisible();
+  await expect(unknownCard.getByText("acme/web#5", { exact: true })).toBeVisible();
+  await expect(unknownCard.getByText("Status unavailable", { exact: true })).toBeVisible();
+  await expect(unknownCard.getByText("GitHub details are unavailable. Open the pull request to view it.")).toBeVisible();
+
+  // Activating the mark opens the pull request on GitHub and leaves HUI on the session.
+  await expect(unknown).toHaveAttribute("href", "https://github.com/acme/web/pull/5");
+  await expect(unknown).toHaveAttribute("target", "_blank");
+  await unknown.tap();
+  await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${session.id}`);
+  await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Release train");
 });
