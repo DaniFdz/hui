@@ -262,6 +262,23 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(HANDOFF_FIXTURE_PAGE);
   }
+  if (request.method === "GET" && url.pathname === "/browser-perf-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI performance fixture</title>
+      <h1>HUI performance fixture</h1>
+      <div id="rows"></div>
+      <button id="more">Add row</button>
+      <script>
+        const rows = document.getElementById("rows");
+        const add = () => {
+          const row = document.createElement("div");
+          row.textContent = "row " + rows.children.length;
+          rows.append(row);
+        };
+        for (let index = 0; index < 250; index += 1) add();
+        document.getElementById("more").addEventListener("click", add);
+      </script>`);
+  }
   if (request.method === "GET" && url.pathname === "/browser-upload-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(`<!doctype html><title>HUI upload fixture</title>
@@ -697,6 +714,46 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent measures what a page costs instead of guessing.
+  if (source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-perf-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-perf-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-perf-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-perf-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      open: ["metrics", { action: "performance", operation: "metrics" }],
+      metrics: ["snapshot", { action: "snapshot" }],
+      snapshot: ["click", { action: "act", kind: "click", ref: ref(/button "Add row" \[ref=(e\d+)\]/u) }],
+      click: ["after", { action: "performance", operation: "metrics" }],
+      after: ["timings", { action: "performance", operation: "timings" }],
+    }[step];
+    if (next && (next[1].action !== "act" || next[1].ref)) {
+      toolUse(response, `tool-e2e-perf-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const counts = [...results.matchAll(/nodes (\d+)/gu)].map((match) => Number(match[1]));
+    const before = counts[0] ?? 0;
+    const after = counts.at(-1) ?? 0;
+    // The second metrics call is the text between the two counter notes.
+    const second = results.split("Counters accumulate from this tab's first performance call.")[1] ?? "";
+    const measured = /(layouts [1-9]\d* \(|script \d+ ms of )/u.test(second) && !/Nothing has rendered or run/u.test(second);
+    const load = /Load: [^\n]+/u.exec(results)?.[0];
+    const resources = /Resources: \d+ requests?, [\d.]+ (B|KB|MB) transferred\./u.exec(results)?.[0];
+    text(response, before >= 250 && after > before && measured && load && resources
+      ? `The page went from ${before} to ${after} DOM nodes, and after the click the counters show real work instead of zeros. ${load}. ${resources}`
+      : `The performance check did not complete: before=${before}, after=${after}, measured=${measured}, load=${Boolean(load)}, resources=${Boolean(resources)}.`);
+    return finish(response);
+  }
+
   // The agent uploads a local file into the page's file input.
   if (source.includes("E2E_BROWSER_UPLOAD") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -914,7 +971,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);

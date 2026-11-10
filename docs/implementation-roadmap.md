@@ -814,6 +814,17 @@ a multi-file input, a hidden input by selector, and every refusal) and the
 upload section of `e2e/browser-tool.browser.md`.
 
 
+Follow-up 2026-11-09: the browser tool gains `performance`. `operation:
+"metrics"` enables the renderer's counters once per tab and prints heap, DOM
+nodes, documents, frames, JS listeners, layout and style-recalculation counts
+with their durations, and script time as a share of task time; "timings" reads
+the document's navigation entry, paint marks, subresource count and weight, and
+the five slowest resources over 500 ms. Formatting lives in the pure
+`server/browser/performance.ts` (`performance.test.ts` covers units, missing
+counters, a page with no timing yet and a zero load mark), and
+`server/browser/manager.test.ts` proves both operations against a page with 300
+rows and a real script request.
+
 ### HUI-16 — macOS sleep prevention
 
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on

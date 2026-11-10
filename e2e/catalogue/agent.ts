@@ -518,6 +518,15 @@ const cases: UseCase[] = [
     web: "backlog",
   },
   {
+    id: "AGENT-071",
+    title: "Measure what a page costs",
+    behaviour: "An agent asks the browser what a page costs: performance metrics reads the renderer's heap, DOM node, document, frame, listener, layout, style-recalculation and script-time counters, and performance timings reads the document's first byte, DOMContentLoaded, load, transfer size, paint marks, subresource count and weight, and slowest resources. Numbers arrive with units and a page still loading says so.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
     id: "AGENT-070",
     title: "Upload a local file into a page's form",
     behaviour: "An agent puts local files into a page's file input with act kind upload, addressed by the input's ref, its label or a selector when the page hides it. The page's own change handler runs and the agent reads the site's confirmation; a missing path, a directory, a non-input, a disabled input and too many files for a single-file input are refused with the reason.",
