@@ -66,6 +66,86 @@ setStatusBar({ dark })     onResume(callback)                    onBack(callback
 forgetGateway()            // clears the remembered gateway: HuiGateway.forget() on Android
 ```
 
+## What the shell itself does (WP2)
+
+Six behaviours, each in its own class under `mobile/android/app/src/main/java/dev/hui/app/` so a reviewer can read one
+at a time. They are the shell's alone: none of it is bundled with the web UI, and `src/` never learns that it is running
+in an app.
+
+| Behaviour | Files | What it does |
+|---|---|---|
+| System back | `ShellBack.java` | The page's own overlay first, then the web UI's history, then out of the app on a second press with a toast in between. |
+| Links | `ShellLinks.java`, `MainActivity`'s `BridgeWebViewClient` | The gateway's own pages stay in the app, including a link that only changes the scheme; every other origin and every non-web scheme goes to the system through `Bridge.launchIntent`. |
+| Downloads | `ShellDownloads.java`, `ShellPage.java`, `HuiShellPlugin.java`, `res/raw/hui_shell.js` | An `http(s)` file goes to the system download manager with the anchor's name; the page's own `blob:` downloads are read in the page and written to Downloads. One toast says what happened to each. |
+| File chooser | `AndroidManifest.xml` (`<queries>`), Capacitor's `BridgeWebChromeClient` | The composer's photo, file and camera inputs open the system photo picker, DocumentsUI and the camera app. |
+| Status bar and insets | `ShellWindow.java` | The page is never under the status bar or the navigation bar, and the status bar takes the page's own colour and icon scheme. |
+| Keyboard | `ShellWindow.java`, `windowSoftInputMode` | The composer stays above the soft keyboard and the page shrinks instead of hiding under it. |
+
+### The page answers the back button (`hui:back`)
+
+`ShellBack` dispatches one cancelable event in the page and reads the answer back in the same `evaluateJavascript` call,
+so it always knows whether the page took the press before it goes back in history or leaves:
+
+```js
+const press = new CustomEvent("hui:back", { cancelable: true });
+document.dispatchEvent(press);
+press.defaultPrevented; // true: the page took the press
+```
+
+A page that calls `preventDefault()` keeps it — that is a dialog, the drawer or a pane closing — and the shell then does
+nothing else. Otherwise the shell goes back in the web UI's history, and at the root it leaves only on a second press
+within two seconds, with the "Press back again to leave HUI" toast in between. The Connect page has no listener, which is
+what lets the app leave from there.
+
+**This is the contract WP3's `onBack(callback)` implements.** It is deliberately a page event and not the App plugin's
+`backButton`: the shell registers its own `OnBackPressedCallback` after the bridge exists, so it runs before the plugin's
+and a plugin listener would never fire.
+
+### Links
+
+`ShellLinks.target(appUrl, link)` answers `IN_APP` (load it), `UPGRADE` (the gateway's own page over the other scheme:
+load it on the scheme the app runs on) or `EXTERNAL` (hand it to the system through `Bridge.launchIntent`, which is also
+where a plugin that handles a URL gets its say). The comparison is host and port, with each scheme's default port filled
+in, so `http://gateway` and `https://gateway` are one gateway whose scheme has to be fixed rather than two origins. Only
+main-frame navigations are intercepted: a frame inside the page is the page's own content. `blob:`, `data:` and
+`about:` never leave the page.
+
+### Downloads
+
+Two paths, because the web UI downloads two kinds of thing:
+
+- `http(s)` — a file the gateway or another site serves — goes to the system download manager with the name from
+  `Content-Disposition`, or the anchor's own `download` name when the page's script handed it over. A download of the
+  gateway's own routes carries the `x-hui: 1` header the page's fetches carry (`server/http/route.ts`): the manager's
+  request has no `sec-fetch-site` for the gateway to trust, so without it an attachment answers 403.
+- `blob:`/`data:` — what `src/lib/download.ts`, `src/api/observability.ts` and the bot export make — cannot be read by
+  the manager or the `DownloadListener` at all, and the name only exists in the anchor. `res/raw/hui_shell.js`, injected
+  into the gateway's page after each load (`ShellPage`), takes those anchors' clicks, reads the blob (the web UI revokes
+  the object URL immediately after clicking, so the blob itself is remembered when it is created), and hands the bytes
+  to `HuiShellPlugin.saveDownload`, which writes them to Downloads through MediaStore. A `blob:` download that arrives
+  without a click goes the same way through `window.__huiShell.save`.
+
+`ShellDownloads.fileName`/`sanitize` are pure and pinned by `ShellDownloadsTest`.
+
+### Status bar and insets
+
+The WebView's own frame (`ShellWindow`) is padded with the system bar, cutout and keyboard insets, and the padding — not
+the WebView's own, which Chromium clips instead of shrinking the viewport — is what keeps the page visible. This matters
+because **`env(safe-area-inset-*)` is not a substitute: the emulator without a cutout reports 0px for all four** (measured
+with a probe element in the page), so a page that only pads itself draws under the bars.
+
+The window's decor pads itself with the bars and consumes the insets on the way down, so `ShellWindow` stops that first
+and lets the insets travel to the frame. The status bar's icons and the strip behind the page take the page's own theme:
+the page reports its resolved `color-scheme` and its `--bg` background, read again on every page load and on resume, so a
+theme changed in the UI and then backgrounded is right when the app comes back. WP3's `setStatusBar({ dark })` handles a
+change on screen. Colours come back from CSS as `rgb(…)` or `#rrggbb` (`ShellColor`, pinned by `ShellDownloadsTest`).
+
+### The camera needs `<queries>`
+
+The manifest names `android.media.action.IMAGE_CAPTURE` and `VIDEO_CAPTURE` in a `<queries>` element. Capacitor's
+`onShowFileChooser` asks the package manager whether a camera app answers before it opens one, and Android 11 hides other
+apps from that question: without the element the camera input silently falls back to the file picker.
+
 ## Launch, ports and target names
 
 | Contract | Value |
@@ -131,6 +211,47 @@ npm run mobile -- dev --gateway http://127.0.0.1:47402
 
 Seed a session with `POST /__hui/sessions` (`x-hui: 1`) and drive the screen with `agent-device`
 (`npx agent-device --help`). Never kill another worker's emulator or change another package's checkout.
+
+### The keyboard and text input on the emulator
+
+The AVD has `hw.keyboard=yes` (typed text never waits on the soft one), so the system hides the IME. Two settings make the
+soft keyboard behave like a phone's, and both belong in the dev loop rather than in a commit:
+
+```
+adb -s emulator-5556 shell settings put secure show_ime_with_hard_keyboard 1   # draw the IME despite the hardware keyboard
+adb -s emulator-5556 shell ime list -s                                          # which IMEs exist
+adb -s emulator-5556 shell ime set com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME
+```
+
+`agent-device` installs its own test IME (`com.callstack.agentdevice.imehelper`) and makes it current; it answers input
+but draws nothing, so a keyboard screenshot needs Gboard selected. `adb shell dumpsys input_method | grep mInputShown`
+says whether the IME is up, and the page's own `innerHeight` (867 CSS px on this AVD, 578 with the keyboard up) is the
+cheapest proof that the page shrank instead of hiding under it.
+
+### The commands behind each behaviour
+
+`adb shell input keyevent KEYCODE_BACK` is the system back button. The page's `hui:back` answer has no web caller until
+WP3 lands, so the back evidence installs a stand-in through the WebView's DevTools socket — the same listener WP3's
+`onBack` will ship:
+
+```
+adb -s emulator-5556 forward tcp:9333 localabstract:webview_devtools_remote_$(adb -s emulator-5556 shell pidof dev.hui.app.debug)
+# then, over CDP (Runtime.evaluate, userGesture: true):
+#   document.addEventListener("hui:back", (event) => { closeTheOpenOverlay(); event.preventDefault(); });
+```
+
+| Behaviour | Command | What proves it |
+|---|---|---|
+| Back closes an overlay | open the drawer (`button[aria-label="Open navigation"]`), install the `hui:back` listener, then `adb shell input keyevent KEYCODE_BACK` | the drawer's `data-open` turns `false`, the path is unchanged, the app stays |
+| Back goes back in history | open the drawer, click `a[data-testid="nav-item"][href="/sessions"]`, then back | `location.pathname` returns to `/` |
+| Back at the root | back on `/` | the "Press back again to leave HUI" toast, `topResumedActivity` still the app |
+| Back leaves | back again within two seconds | `dumpsys activity activities` shows the launcher on top |
+| External links | in the page, click an `https://example.com/` anchor | `topResumedActivity` becomes Chrome, `location.href` in the WebView is still the gateway |
+| Scheme redirect | click an `https://<gateway>/sessions` anchor while the app runs on `http://<gateway>` | the WebView loads `http://<gateway>/sessions`, `topResumedActivity` stays the app |
+| Downloads | Settings → Diagnostics → **Export JSON**, then a same-origin `a[download]` | the toast names the file, `adb shell ls /sdcard/Download/` shows it with the anchor's name |
+| File chooser | click `input.agent-chat__photo-input`, `input.agent-chat__generic-file-input`, `input.agent-chat__camera-input` | `topResumedActivity` becomes the photo picker, DocumentsUI and the camera app |
+| Status bar and insets | switch the theme in Settings → Appearance, then `adb shell input keyevent KEYCODE_HOME` and `adb shell am start -n dev.hui.app.debug/dev.hui.app.MainActivity` | the bar's strip and icons follow the page in light and dark, on resume |
+| Keyboard | tap the composer's textarea, then `adb shell exec-out screencap -p > /tmp/shot.png` | the composer sits above the IME and the page's `innerHeight` shrank |
 
 ## The iOS side (WP5)
 

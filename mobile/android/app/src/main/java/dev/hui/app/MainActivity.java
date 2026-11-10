@@ -9,6 +9,8 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.widget.TextView;
 
+import androidx.activity.EdgeToEdge;
+
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebViewClient;
@@ -20,6 +22,10 @@ import com.getcapacitor.WebViewListener;
  * no gateway the bridge loads the bundled Connect page from `https://localhost`. While a gateway loads, a "Connecting
  * to HUI…" view covers the WebView, and a gateway that does not answer falls back to the Connect page instead of
  * leaving an empty WebView behind.
+ *
+ * <p>The shell's own behaviour hangs off the same WebView: the system back button ({@link ShellBack}), the window's
+ * edges and the status bar's colours ({@link ShellWindow}), downloads ({@link ShellDownloads}), the app's script inside
+ * the page ({@link ShellPage}) and the link policy that keeps the gateway's own links in the app ({@link ShellLinks}).
  */
 public class MainActivity extends BridgeActivity {
 
@@ -34,10 +40,25 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(HuiGatewayPlugin.class);
+        registerPlugin(HuiShellPlugin.class);
         gateway = Gateway.resolve(this);
         if (gateway != null) config = EmbeddedConfig.withGateway(this, gateway);
         super.onCreate(savedInstanceState);
-        if (gateway != null) attachGatewayLoad();
+        EdgeToEdge.enable(this);
+        ShellWindow.attach(this, bridge);
+        ShellBack.attach(this, bridge);
+        ShellDownloads.attach(this, bridge);
+        if (gateway != null) {
+            attachGatewayLoad();
+            ShellPage.attach(bridge);
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // A theme changed in the web UI while the app was in the background is only readable now.
+        ShellWindow.read(this, bridge);
     }
 
     @Override
@@ -72,6 +93,7 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void onPageLoaded(WebView webView) {
                 hideConnecting();
+                ShellWindow.read(MainActivity.this, bridge);
             }
         });
         bridge.setWebViewClient(new BridgeWebViewClient(bridge) {
@@ -85,6 +107,27 @@ public class MainActivity extends BridgeActivity {
             public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
                 if (request.isForMainFrame()) fallBack();
                 else super.onReceivedHttpError(view, request, errorResponse);
+            }
+
+            /**
+             * The gateway's own pages stay in the app, including a link that only changes the scheme; every other origin
+             * and every non-web scheme goes to the system, through Capacitor's one opening path so plugins that handle a
+             * URL (an in-app browser, a share target) still see it first. A frame inside the page is left alone: it is
+             * the page's own content, not a navigation the user asked for.
+             */
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (!request.isForMainFrame()) return false;
+                String link = request.getUrl().toString();
+                switch (ShellLinks.target(bridge.getAppUrl(), link)) {
+                    case IN_APP:
+                        return false;
+                    case UPGRADE:
+                        view.loadUrl(ShellLinks.upgraded(bridge.getAppUrl(), link));
+                        return true;
+                    default:
+                        return bridge.launchIntent(request.getUrl());
+                }
             }
         });
     }
