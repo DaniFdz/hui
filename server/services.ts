@@ -463,6 +463,8 @@ liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 async function createSessionFromAgent(callerSessionId: string, params: Record<string, unknown>) {
   const caller = (await readRegistry()).find(({ id }) => id === callerSessionId);
   if (!caller) throw new Error("Conversation no longer exists.");
+  const owner = caller.bot ? (await bots.list({ archived: "all" })).find(({ id }) => id === caller.bot) : undefined;
+  if (owner?.title !== "Chief of Staff") throw new Error("Only a Chief of Staff bot can create an ordinary session. Use sessions_spawn for a fast child.");
   const prompt = typeof params["prompt"] === "string" ? params["prompt"].trim() : "";
   if (!prompt) throw new Error("A new session needs its brief: pass it as prompt.");
   if (prompt.length > 20_000) throw new Error("A session prompt must be at most 20000 characters.");

@@ -1774,7 +1774,7 @@ creates an ordinary top-level session instead: a group, a title, its first
 prompt and optionally a fresh worktree, a worker, a model and thinking. The
 caller's cwd, group, worker, model and thinking are defaults. It writes no
 parent or task metadata, so the caller's subagent tools do not see it and the
-operator opens it from the sidebar. A spawn creates an ordinary HUI session
+operator opens it from the sidebar. Only a Chief of Staff bot may call `create_session`; every other agent is refused and uses `sessions_spawn`. A spawn creates an ordinary HUI session
 with its own PI process and transcript, plus optional parent/task metadata in
 HUI's registry. The child runs independently and its terminal result is sent
 back automatically as a marked, non-user completion event (result wrapped as

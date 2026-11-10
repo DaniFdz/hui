@@ -143,10 +143,10 @@ Every question also offers a free-text answer the card adds itself, and the user
   pi.registerTool({
     name: "create_session",
     label: "Create session",
-    description: "Create an ordinary top-level session: its own chat in the sidebar, in a group, optionally in a new Git worktree and on a worker. Use it for work that will take more than one reply or own a branch or pull request; use sessions_spawn only for fast iteration. The session starts with the prompt you pass.",
+    description: "Create an ordinary top-level session: its own chat in the sidebar, in a group, optionally in a new Git worktree and on a worker. Only a Chief of Staff bot may call this; every other agent gets a refusal and uses sessions_spawn for a fast child. The session starts with the prompt you pass.",
     promptSnippet: "Create a new session for a task that will take more than a quick reply",
     promptGuidelines: [
-      "Create a session for a task that writes code, runs a long check, owns a branch or pull request, or will take more than one reply.",
+      "Only a Chief of Staff bot may create a session. A normal agent must use sessions_spawn for a fast child; a writing task it cannot delegate is reported to the operator instead.",
       "Use sessions_spawn only for fast iteration: a read-only probe, one command, one small check, one reply.",
       "Pass the whole brief as prompt. Name the group; pass worktree true for code, with a branchName or let HUI name it. Pass a worker id when the session should run on a worker.",
       "The session is top-level and owns its work. It is not in your subagent tree, so sessions_list and sessions_history do not show it; the operator can open it in the sidebar.",

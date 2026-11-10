@@ -6,9 +6,11 @@ const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stri
 
 type ListedSession = { id: string; title: string; group: string; cwd: string; parentId?: string; status: string };
 
-test("an agent creates an ordinary session in a group, not a child", { tags: ["BOT-073"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const source = await hui.createSession({ title: "Session creator" });
+test("a Chief of Staff creates an ordinary session in a group, not a child", { tags: ["BOT-073"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const chief = (await hui.api<{ bots: Array<{ name: string; sessionId: string }> }>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
+  const source = { id: chief.sessionId };
   const repo = await hui.repository();
+  try {
   const group = "Created by an agent";
   await hui.prompt(source, call("create_session", {
     prompt: "Report that an agent created you.",
@@ -30,4 +32,19 @@ test("an agent creates an ordinary session in a group, not a child", { tags: ["B
   expect(created?.cwd).not.toBe(repo.path);
   await hui.open("/");
   await expect(screen.getByLabel(/^Created by an agent, status/)).toBeVisible();
+  await expect.poll(async () => (await hui.api<{ groups: Array<{ sessions: ListedSession[] }> }>("GET", "/__hui/sessions"))
+    .groups.flatMap((entry) => entry.sessions).find((session) => session.id === chief.sessionId)?.status, { timeout: 30_000 }).toBe("idle");
+  } finally {
+    await hui.api("PATCH", `/__hui/sessions/${chief.sessionId}`, { unread: false });
+  }
+});
+
+test("a normal agent cannot create an ordinary session", { tags: ["BOT-073"], platforms: ["web"] }, async ({ hui }) => {
+  const normal = await hui.createSession({ title: "Normal agent" });
+  await hui.prompt(normal, call("create_session", { prompt: "This must not start.", cwd: hui.workspace, title: "Should not exist" }));
+  await expect.poll(async () => (await hui.api<{ groups: Array<{ sessions: ListedSession[] }> }>("GET", "/__hui/sessions"))
+    .groups.flatMap((entry) => entry.sessions).find((session) => session.id === normal.id)?.status, { timeout: 30_000 }).toBe("idle");
+  const sessions = (await hui.api<{ groups: Array<{ sessions: ListedSession[] }> }>("GET", "/__hui/sessions")).groups.flatMap((entry) => entry.sessions);
+  expect(sessions.filter((session) => session.title === "Should not exist")).toHaveLength(0);
+  await expect.poll(async () => (await hui.stored("Only a Chief of Staff bot can create an ordinary session")).length, { timeout: 30_000 }).toBeGreaterThan(0);
 });
