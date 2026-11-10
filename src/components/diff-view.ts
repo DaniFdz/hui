@@ -308,11 +308,14 @@ export class HuiDiffView extends HuiElement {
     this.info = undefined;
     this.changes = undefined;
     this.detailOpen = false;
-    await this.refresh(state.comparison);
+    // A view that remembers nothing starts from what the repository offers; `undefined` here would be read as the
+    // field's initial value and pin a clean tree to uncommitted changes.
+    await this.refresh(state.comparison ?? null);
   }
 
-  /** Re-reads what can be compared, then the changes of the current comparison. */
-  private async refresh(remembered: DiffComparison | undefined = this.comparison) {
+  /** Re-reads what can be compared, then the changes of the current comparison. `remembered` is `null` for a view
+   * that has not chosen one yet. */
+  private async refresh(remembered: DiffComparison | null = this.comparison) {
     const generation = ++this.generation;
     this.abort?.abort();
     const abort = new AbortController();
@@ -333,7 +336,7 @@ export class HuiDiffView extends HuiElement {
       this.changes = undefined;
       return;
     }
-    this.comparison = initialComparison(info, remembered);
+    this.comparison = initialComparison(info, remembered ?? undefined);
     this.parent = chosenParent(info, this.parent);
     await this.loadChanges(generation, abort);
   }
