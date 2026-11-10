@@ -128,7 +128,6 @@ test("the android target runs exactly the use cases the phone requires", async (
   const tags = await phoneTags();
   const selection = await list({ cwd: root, tags, tagMode: "any", targets: ["android"] });
   const running = selection.pairs.filter((pair) => pair.target === "android" && pair.disposition === "run");
-  const ids = new Set(useCases.map((entry) => entry.id));
   const problems = [
     ...useCases.filter((entry) => entry.phone === "required" && !running.some((pair) => pair.tags.includes(entry.id)))
       .map((entry) => `${entry.id} is required on the phone but no test the android target runs carries its tag`),
