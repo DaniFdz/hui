@@ -49,9 +49,71 @@ package runs `npm install` or edits `package.json`/`package-lock.json`** without
 - **A gateway that stops answering falls back.** A main-frame load error in `MainActivity` marks the address as failed
   and restarts on the Connect page, which names it and offers "Change gateway", instead of leaving an empty WebView.
   While a gateway loads, a "Connecting to HUI…" view covers the WebView; it goes away on the first committed frame.
+- **The deep link opens one screen.** `hui://open?path=<path>` is an intent filter on `MainActivity`: the path is
+  appended to the gateway this launch loaded and the WebView loads it, so the link never carries an address and cannot
+  point the bridge at a host the user did not connect to. `DeepLink` refuses anything the gateway's own URL cannot simply
+  be prefixed to — the encoded path must start with `/`, must hold no `://` (raw or percent-encoded), no backslash and no
+  character a URL cannot carry — and the app ignores the link when no gateway is remembered (the Connect page has no
+  screens). A launch that also names another gateway restarts the bridge first and then opens the path on *that* gateway:
+  one load, never a link and a gateway changing under each other. `HuiGateway.connect`/`forget` drop the link with the
+  rest of the launch, so a freshly chosen gateway starts on its own root.
 - **Cleartext stays on loopback.** `mobile/android/app/src/main/res/xml/network_security_config.xml` permits plain HTTP
   only for `127.0.0.1`, `localhost` and `10.0.2.2` (the host from the emulator, reached through `adb reverse`). Every
   other gateway needs `https://` (owner decision O3).
+- **The camera's photo is the only file the app shares by URI.** `res/xml/file_paths.xml` exposes
+  `getExternalFilesDir(…)` — where Capacitor's chooser writes the temp JPEG (`BridgeWebChromeClient.createImageFile`)
+  — and the app cache, not all of external storage as it first did. Verified on the emulator: the camera opens from the
+  composer and the temp file appears under `Android/data/dev.hui.app.debug/files/Pictures/`; a path outside the provider
+  would throw while the chooser starts. Nothing else shares a file by path — `share()` sends HUI's own URLs, never a
+  `file:` one.
+
+## The system back button
+
+`ShellBack` is the only answer to a press. **The shell owns the history walk and leaving the app**; the page only says
+whether it closed something. The shell dispatches one cancelable `hui:back` `CustomEvent` to the page and reads
+`defaultPrevented` in the same `evaluateJavascript` call; if the page did not keep the press, the shell goes back in the
+WebView's history and, at its root, leaves the app on a second press within 2 s with "Press back again to leave HUI" in
+between.
+
+- `onBack(callback: () => boolean)` in `src/lib/native-shell.ts` (WP3) is that listener. **A page must not
+  `preventDefault()` without closing something**: the shell then treats the press as answered and nothing happens, which
+  on a phone reads as a dead button. A page without a listener (Connect to HUI) simply lets every press through.
+- Capacitor's App plugin would also walk the history from its own callback. `capacitor.config.ts` switches it off
+  (`plugins.App.disableBackButtonHandler: true`) so the ordering is explicit rather than a matter of which callback was
+  registered last, and `@capacitor/app`'s `backButton` event is not part of the contract.
+
+## Downloads
+
+`ShellDownloads` runs two paths, both reporting in one toast: an `http(s)` file goes to the system download manager, and
+a `blob:`/`data:` URL the page made goes through `res/raw/hui_shell.js` to `HuiShellPlugin.saveDownload`, which writes it
+with MediaStore (Android 10+) or to the app's external Downloads folder.
+
+- **The bytes path is bounded at 16 MiB** (`ShellDownloads.MAX_BYTES`). The page stops before it reads the file and says
+  so; the app refuses a base64 payload over `MAX_BASE64` (4/3 of the cap, rounded up to a whole group of three bytes) and
+  `saveBytes` refuses the bytes too, so neither side depends on the other noticing. Measured on the emulator: a 17 MiB
+  blob and an over-cap direct plugin call each toast "HUI can't save a download larger than 16 MiB" and write no file,
+  while the diagnostics export still saves.
+- **The gateway's headers follow the gateway's own URL only.** `x-hui: "1"` and the cookie the gateway's VSCode proxy
+  needs are added when `ShellLinks.target` says the download is the gateway's own; another origin gets neither. That is
+  because the download manager **replays request headers to the host a redirect lands on**, measured on API 36 with a 302
+  from `127.0.0.1:9001` to `127.0.0.1:9002`: the landing host received the `Cookie` header the shell had set. Scoped this
+  way, the only cookies that can follow a redirect are the gateway's own, which the redirecting server already has.
+
+## Insets, the status bar and older releases
+
+Above API 30 the shell is the one owner of the system insets: it pads the WebView's frame with the system bar, cutout and
+keyboard insets and paints the revealed strip in the page's colour. The page's own `--safe-area-*` tokens (from
+`env(safe-area-inset-*)`) would then pay for the same inset twice on a device with a cutout, so the injected script zeroes
+them whenever the shell pads (`window.__huiShellOwnInsets`).
+
+- **Below API 30 the platform owns the fitting.** `ShellWindow.PADS_FRAME` is false there, `EdgeToEdge.enable` is not
+  called, the window is fitted to the bars and `adjustResize` shrinks it for the keyboard, which is how the composer sat
+  above the keyboard before this shell existed. The shell only paints the bars there.
+- **What was actually run: API 36 only** (the emulator image the flake pins). The API 24–29 branch, and the double-pad
+  case on a device with a cutout, are reasoned from the platform contracts and **not measured** — no cutout device and no
+  older system image were available. A few rules read `env(safe-area-inset-*)` directly instead of through the tokens
+  (`src/styles/openclaw-shell.css`, `openclaw-chat.css`, `openclaw-workspaces.css`); zeroing the tokens does not reach
+  those, so a cutout device would still double-pad in those four places until the web side reads the tokens everywhere.
 
 ## The adapter the web uses (WP3)
 
@@ -153,7 +215,7 @@ apps from that question: without the element the camera input silently falls bac
 | Android launch extra | `am start -n dev.hui.app.debug/dev.hui.app.MainActivity --es huiGatewayUrl <url>` (the app remembers it; honoured in debug builds only) |
 | Fallback marker | `huiGatewayFailed` marks the address that did not answer, so the restart shows the Connect page instead of an empty WebView. The app sets it itself; another app's intent only counts while it names the remembered gateway. |
 | iOS launch argument | `-HUIGatewayURL <url>` |
-| Deep link | `hui://open?path=<path>` on both (WP2/WP5) |
+| Deep link | `hui://open?path=<path>` on both (WP2 implemented; see "The deep link opens one screen") |
 | App ids | `dev.hui.app` (release, iOS), `dev.hui.app.debug` (Android debug, `applicationIdSuffix`) |
 | E2E target names | `web`, `android`, `webkit-phone`, `ios-smoke` |
 | Gateway port for the emulator | `E2E_PHONE_PORT` (default `47400`), reached through `adb reverse` |
@@ -193,6 +255,7 @@ Run only the narrowest check of what you changed, then push the branch and read 
 | The same UI on the phone | The app against your dev gateway; later edits need only a reload | `npm run dev`, then `npm run mobile -- dev --gateway http://127.0.0.1:<dev port>` |
 | Shell code (`mobile/android`) | Emulator: incremental Gradle, install, launch | `npm run mobile -- dev` (builds, installs at `127.0.0.1:$E2E_PHONE_PORT`, launches) |
 | The shell's JVM logic | Host JVM | `npm run mobile -- test` (`./gradlew testDebugUnitTest`) |
+| The deep link | Emulator: `adb shell am start -a android.intent.action.VIEW -d 'hui://open?path=/settings/diagnostics'` | `npm run mobile -- dev` first |
 | The app's build alone | No device | `npm run mobile -- build` (Connect page, `cap sync`, `assembleDebug`) |
 | A screenshot for evidence | Emulator | `npm run mobile -- screenshot /tmp/shot.png` |
 

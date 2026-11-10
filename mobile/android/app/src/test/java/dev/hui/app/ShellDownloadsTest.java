@@ -1,13 +1,14 @@
 package dev.hui.app;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
 /**
- * The name and colour the shell reads back out of what the page or the server said: the file name a download is saved
- * under (a bot export and the diagnostics both carry theirs in the anchor) and the status bar's colour.
+ * The file name a download is saved under (a bot export and the diagnostics both carry theirs in the anchor or in
+ * `Content-Disposition`), the size the page may hand the app, and the JavaScript the app hands the page. The colours the
+ * page reports are {@code ShellColorTest}'s.
  */
 public class ShellDownloadsTest {
 
@@ -37,16 +38,15 @@ public class ShellDownloadsTest {
     }
 
     @Test
-    public void readsTheColourThePageComputed() {
-        assertEquals(Integer.valueOf(0xFF0E1015), ShellColor.parse("rgb(14, 16, 21)"));
-        assertEquals(Integer.valueOf(0xFF0E1015), ShellColor.parse("rgba(14, 16, 21, 1)"));
-        assertEquals(Integer.valueOf(0xFFFAF9F7), ShellColor.parse("#faf9f7"));
-        assertEquals(Integer.valueOf(0xFFFFFFFF), ShellColor.parse("#fff"));
-        assertNull("a transparent strip is not a colour", ShellColor.parse("rgba(0, 0, 0, 0)"));
-        assertNull(ShellColor.parse("transparent"));
-        assertNull(ShellColor.parse("light-dark(#fff, #000)"));
-        assertNull(ShellColor.parse(""));
-        assertNull(ShellColor.parse(null));
+    public void boundsWhatThePageMayHandTheApp() {
+        // 16 MiB, and 4/3 of it in base64 rounded up to a whole group of three bytes, so a payload of exactly the cap
+        // still fits and the page's bound and the app's cannot disagree by the last group.
+        assertEquals(16, ShellDownloads.MAX_MIB);
+        assertEquals(16 * 1024 * 1024, ShellDownloads.MAX_BYTES);
+        assertEquals(22_369_624, ShellDownloads.MAX_BASE64);
+        long fourThirds = (ShellDownloads.MAX_BYTES * 4L) / 3L;
+        assertTrue("no less than 4/3 of the cap", ShellDownloads.MAX_BASE64 >= fourThirds);
+        assertTrue("and no more than the rounding above it", ShellDownloads.MAX_BASE64 < fourThirds + 4);
     }
 
     @Test

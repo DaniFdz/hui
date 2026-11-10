@@ -24,6 +24,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+                hui://open?path=/sessions/…: one screen of the gateway this app remembers (DeepLink). The scheme is the
+                app's own and names no address, so a link cannot point the WebView at a host the user did not connect
+                to; a launch with no remembered gateway ignores it and shows Connect to HUI.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="open"
+                    android:scheme="hui" />
+            </intent-filter>
+
         </activity>
 
         <provider

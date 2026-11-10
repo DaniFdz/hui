@@ -20,9 +20,18 @@ public class HuiShellPlugin extends Plugin {
 
     @PluginMethod
     public void saveDownload(PluginCall call) {
-        String name = call.getString("name");
+        String data = call.getString("data");
+        // The page stops at the same size before it reads the file (res/raw/hui_shell.js), so this bound only answers a
+        // page that ignored it: the payload arrives as one base64 string, and decoding an unbounded one would cost the
+        // app a copy of it before anything could refuse it.
+        if (data != null && data.length() > ShellDownloads.MAX_BASE64) {
+            ShellDownloads.say(getContext(), getContext().getString(R.string.download_too_large, ShellDownloads.MAX_MIB));
+            call.reject("The download is larger than " + ShellDownloads.MAX_MIB + " MiB.");
+            return;
+        }
+        String name = ShellDownloads.sanitize(call.getString("name"));
         String type = call.getString("type", "application/octet-stream");
-        byte[] bytes = ShellPage.bytes(call.getString("data"));
+        byte[] bytes = ShellPage.bytes(data);
         if (bytes == null) {
             call.reject("data must be base64.");
             return;
@@ -37,10 +46,11 @@ public class HuiShellPlugin extends Plugin {
             return;
         }
         JSObject result = new JSObject();
+        // The name the app actually wrote, not the one the page asked for, so the page can name the saved file.
         result.put("name", name);
         result.put("location", saved);
         call.resolve(result);
-        ShellDownloads.say(getContext(), getContext().getString(R.string.download_saved, ShellDownloads.sanitize(name), saved));
+        ShellDownloads.say(getContext(), getContext().getString(R.string.download_saved, name, saved));
     }
 
     @PluginMethod
@@ -52,7 +62,7 @@ public class HuiShellPlugin extends Plugin {
             return;
         }
         // No WebView call here: plugin methods run off the main thread, and the system download manager sends its own
-        // user agent anyway. The cookie the gateway needs is added by ShellDownloads.
+        // user agent anyway. The headers the gateway needs are added by ShellDownloads, for the gateway's own URLs only.
         ShellDownloads.download(getContext(), url, null, name, call.getString("type"), getBridge().getAppUrl());
         JSObject result = new JSObject();
         result.put("name", name);

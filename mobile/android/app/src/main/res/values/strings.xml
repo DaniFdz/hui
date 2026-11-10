@@ -13,5 +13,6 @@
     <string name="downloading">Downloading %1$s…</string>
     <string name="download_saved">Saved %1$s to %2$s</string>
     <string name="download_failed">HUI couldn\'t save that download</string>
+    <string name="download_too_large">HUI can\'t save a download larger than %1$d MiB</string>
     <string name="download_unsupported">HUI can\'t save that download</string>
 </resources>

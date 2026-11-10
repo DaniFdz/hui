@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    What the app's FileProvider may hand another app. The camera's photo is the one file that needs it: Capacitor's
+    chooser writes it to getExternalFilesDir(DIRECTORY_PICTURES) and gives the camera app a content:// URI for it
+    (BridgeWebChromeClient.createImageFile), which is `external-files-path`. It was `external-path` (all of external
+    storage), which handed out far more than the flow needs; nothing else in HUI shares a file by path — the share
+    plugin only ever gets HUI's own URLs.
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
+    <external-files-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
 </paths>

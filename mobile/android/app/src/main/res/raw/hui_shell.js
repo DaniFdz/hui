@@ -11,10 +11,19 @@
  *   <li>Hand a plain `http(s)` download to the app with the name the anchor carries, so the saved file is the one the
  *   page offered rather than whatever the URL's last segment happens to be.</li>
  * </ul>
+ * And for the one thing the app cannot do from native code: when the app pads the page's frame with the system insets
+ * (`ShellWindow`, API 30 and later), the page's own safe-area tokens are zeroed here, because the same inset counted
+ * twice is a cutout device with a double gap.
  * Every failure goes to the app too: it says what happened, in one toast.
  */
 (function () {
   if (window.__huiShell) return;
+
+  /**
+   * The most one download may carry, matching the app's own bound (`ShellDownloads.MAX_BYTES`). The bytes cross the
+   * bridge as one base64 string, so this is what keeps a page from making the app hold a third again of a huge file.
+   */
+  const MAX_BYTES = 16 * 1024 * 1024;
 
   const call = (method, options) => {
     if (!window.Capacitor || !window.Capacitor.nativePromise) return Promise.reject(new Error("the app is not reachable"));
@@ -36,7 +45,8 @@
   /**
    * The blobs behind the object URLs the page made. The web UI revokes its object URL as soon as it has clicked the
    * anchor, so fetching the URL afterwards would fail; the blob itself is still here. Only a short window is kept: the
-   * page also makes object URLs for images it never downloads, and holding those would grow with the conversation.
+   * page also makes object URLs for images it never downloads, and holding those would grow with the conversation. A
+   * revoked URL is dropped at once, which is the page saying it is done with it.
    */
   const blobs = new Map();
   const KEEP_MS = 60_000;
@@ -49,6 +59,11 @@
     blobs.set(url, { blob, at: now });
     return url;
   };
+  const revokeObjectURL = URL.revokeObjectURL.bind(URL);
+  URL.revokeObjectURL = (url) => {
+    blobs.delete(url);
+    revokeObjectURL(url);
+  };
 
   /** Save one URL the page owns (`blob:`/`data:`) as `name`. */
   const save = async (url, name) => {
@@ -60,11 +75,27 @@
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       blob = await response.blob();
     }
+    // Before reading a byte of it: the app would refuse this anyway, and this is what keeps the page from building the
+    // base64 copy first.
+    if (blob.size > MAX_BYTES) {
+      call("report", { message: `HUI can't save a download larger than ${MAX_BYTES / 1024 / 1024} MiB.` }).catch(() => {});
+      return null;
+    }
     const bytes = new Uint8Array(await blob.arrayBuffer());
     return call("saveDownload", { name: name || "", type: blob.type || "application/octet-stream", data: toBase64(bytes) });
   };
 
   window.__huiShell = { save: (url, name) => save(url, name).catch(failed) };
+
+  /**
+   * The page's own `--safe-area-*` tokens come from `env(safe-area-inset-*)` (`src/styles/openclaw-reference/base.css`).
+   * The app sets this flag when it pads the page's frame itself, and then the shell is the owner of every inset: leaving
+   * the tokens at the device's values would pad the page a second time on a device with a cutout. An inline style on the
+   * root outranks the `:root` rule, and a single-page navigation does not replace the element it sits on.
+   */
+  if (window.__huiShellOwnInsets) {
+    for (const side of ["top", "right", "bottom", "left"]) document.documentElement.style.setProperty(`--safe-area-${side}`, "0px");
+  }
 
   /** The anchor's own name, or the last segment of its URL, which the app would fall back to anyway. */
   const nameOf = (anchor) => {

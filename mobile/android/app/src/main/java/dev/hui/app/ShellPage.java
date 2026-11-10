@@ -32,7 +32,10 @@ final class ShellPage {
     }
 
     private static void inject(Bridge bridge) {
-        bridge.eval(read(bridge), null);
+        // Where the shell pads the page's frame (ShellWindow), the shell owns the system insets and the page must not pay
+        // for the same one again; the script zeroes its own `--safe-area-*` tokens when it is told that.
+        String insets = ShellWindow.PADS_FRAME ? "window.__huiShellOwnInsets=true;" : "";
+        bridge.eval(insets + read(bridge), null);
     }
 
     /**

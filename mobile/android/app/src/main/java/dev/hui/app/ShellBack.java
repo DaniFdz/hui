@@ -18,6 +18,12 @@ import com.getcapacitor.Bridge;
  * through. The dispatch and the answer travel in one `evaluateJavascript` call, so the shell always knows before it acts
  * whether the page took the press.
  *
+ * <p>The two halves divide the work, and neither may take the other's: the page only says "I closed something", and
+ * this class does everything else. So a page must not keep the press without closing something — that would make back a
+ * no-op, which on a phone reads as a broken button — and the page never walks the history or leaves the app itself.
+ * Capacitor's App plugin has its own callback that walks the history; `capacitor.config.ts` switches it off
+ * ({@code plugins.App.disableBackButtonHandler}) so this is the only answer to a press.
+ *
  * <p>The app only leaves on the second press within {@link #LEAVE_WINDOW_MS}, with a toast saying so in between: a back
  * press that silently closed HUI was the one thing an installed app must not do.
  */
@@ -47,7 +53,7 @@ final class ShellBack {
         this.bridge = bridge;
     }
 
-    /** Take the back press from the App plugin's own callback, which would otherwise only walk the history. */
+    /** Take the back press from the App plugin's own callback, which `capacitor.config.ts` switches off. */
     static void attach(MainActivity activity, Bridge bridge) {
         ShellBack back = new ShellBack(activity, bridge);
         activity.getOnBackPressedDispatcher().addCallback(

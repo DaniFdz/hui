@@ -6,6 +6,8 @@ import android.content.Context;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
@@ -29,11 +31,25 @@ import java.util.Locale;
  * handed it over through {@link HuiShellPlugin}), shows its progress in the notification shade and needs no permission.
  * A `blob:` or `data:` URL the page made itself is saved by the app: the bytes come from the page (they exist nowhere
  * else) and {@link #saveBytes} writes them to Downloads.
+ *
+ * <p>The bytes path is bounded at {@link #MAX_BYTES}: the page reads the file, turns it into base64 and sends the whole
+ * thing across the bridge as one string, so an unbounded file is an unbounded string in two processes. The page stops
+ * at the same number ({@code res/raw/hui_shell.js}) and says so; this side is the one that has to hold.
  */
 final class ShellDownloads {
 
     /** The name a download gets when neither the server nor the page named it. */
     static final String DEFAULT_NAME = "hui-download";
+
+    /** The most the page may hand the app in one download, in bytes. */
+    static final int MAX_BYTES = 16 * 1024 * 1024;
+    /** {@link #MAX_BYTES} for a person reading a toast. */
+    static final int MAX_MIB = MAX_BYTES / (1024 * 1024);
+    /**
+     * {@link #MAX_BYTES} as base64, which is how the bytes arrive: 4/3 of it, rounded up to a whole group of three bytes
+     * so that a payload of exactly {@link #MAX_BYTES} still fits ({@code 16 MiB} is not a whole number of groups).
+     */
+    static final int MAX_BASE64 = 4 * ((MAX_BYTES + 2) / 3);
 
     private ShellDownloads() {}
 
@@ -69,13 +85,21 @@ final class ShellDownloads {
      * <p>A download of the gateway's own route carries the `x-hui` header the page's own fetches carry
      * (`server/http/route.ts`): the manager's request is not a browser fetch, so it has no `sec-fetch-site` for the
      * gateway to trust, and without the header an attachment would answer 403. `gateway` is the address the app runs on.
+     *
+     * <p>Both of those headers, and the gateway's cookie, are added only while the URL is the gateway's own. The manager
+     * replays request headers to the host a redirect lands on — measured on API 36: a 302 from `127.0.0.1:9001` to
+     * `127.0.0.1:9002` carried the shell's `Cookie` header to the landing host — so a download of another origin gets no
+     * cookie at all, and the gateway's own cookies only ever follow a redirect the gateway itself answered with. A
+     * cookie is what the gateway's VSCode proxy needs for a download served out of the Work pane.
      */
     static void download(Context context, String url, String userAgent, String name, String mime, String gateway) {
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-        String cookie = CookieManager.getInstance().getCookie(url);
-        if (cookie != null) request.addRequestHeader("Cookie", cookie);
+        if (gateway != null && ShellLinks.target(gateway, url) == ShellLinks.Target.IN_APP) {
+            String cookie = CookieManager.getInstance().getCookie(url);
+            if (cookie != null) request.addRequestHeader("Cookie", cookie);
+            request.addRequestHeader("x-hui", "1");
+        }
         if (userAgent != null) request.addRequestHeader("User-Agent", userAgent);
-        if (gateway != null && ShellLinks.target(gateway, url) == ShellLinks.Target.IN_APP) request.addRequestHeader("x-hui", "1");
         if (mime != null && !mime.isEmpty()) request.setMimeType(mime);
         request.setTitle(name);
         request.setDescription(context.getString(R.string.download_description));
@@ -99,9 +123,11 @@ final class ShellDownloads {
      * Write the bytes the page sent into Downloads and answer the folder they went to, so the app can say where. Android
      * 10 and later writes through MediaStore, which needs no permission; older releases fall back to the app's own
      * external files directory, which every file manager can reach under `Android/data`. The answer is the folder as a
-     * person reads it, for the toast and for the page.
+     * person reads it, for the toast and for the page. A payload over {@link #MAX_BYTES} is refused here as well as at
+     * the bridge, so the bound does not depend on which side noticed first.
      */
     static String saveBytes(Context context, String requested, String mime, byte[] bytes) throws IOException {
+        if (bytes.length > MAX_BYTES) throw new IOException("the download is larger than " + MAX_MIB + " MiB");
         String name = sanitize(requested);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ContentValues values = new ContentValues();
@@ -142,9 +168,11 @@ final class ShellDownloads {
         return file;
     }
 
-    /** Say what happened to one download, from the app's own thread. */
+    /** Say what happened to one download. A toast may only go up from the main thread, and a plugin call answers on its
+     * own. */
     static void say(Context context, String message) {
-        Toast.makeText(context, message, Toast.LENGTH_SHORT).show();
+        Context app = context.getApplicationContext() == null ? context : context.getApplicationContext();
+        new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(app, message, Toast.LENGTH_SHORT).show());
     }
 
     /**

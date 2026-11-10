@@ -2,6 +2,7 @@ package dev.hui.app;
 
 import android.content.res.Configuration;
 import android.graphics.Color;
+import android.os.Build;
 import android.view.View;
 import android.view.Window;
 
@@ -18,18 +19,31 @@ import org.json.JSONObject;
 
 /**
  * The window's edges. Android 15 and later draw every app edge to edge, so the page would otherwise sit under the status
- * bar and the navigation bar, and the soft keyboard would cover the composer instead of pushing the page up. The WebView
- * is padded with the system bar, cutout and keyboard insets instead, which is what keeps the whole page — the composer
- * included — visible. The page's own `env(safe-area-inset-*)` padding is not a substitute: a device without a cutout
- * reports zero there (this app's emulator does), so the shell is what guarantees the gap.
+ * bar and the navigation bar, and the soft keyboard would cover the composer instead of pushing the page up. From
+ * Android 11 (API 30, {@link #PADS_FRAME}) the WebView's frame is padded with the system bar, cutout and keyboard insets
+ * instead, which is what keeps the whole page — the composer included — visible. Below 30 the platform still fits the
+ * window to the bars and `adjustResize` shrinks it for the keyboard, so nothing is padded here and the composer is above
+ * the keyboard exactly as it was before this shell existed.
+ *
+ * <p>The shell is the one owner of those insets where it pads. The page also reads them (`env(safe-area-inset-*)` into
+ * its `--safe-area-*` tokens, `src/styles/openclaw-reference/base.css`), so a device with a cutout would pay for the
+ * same inset twice; {@code res/raw/hui_shell.js} zeroes those tokens when this class pads the frame. An emulator without
+ * a cutout reports zero there, so that half is reasoned, not measured (mobile/AGENTS.md says so).
  *
  * <p>The status bar takes the page's own colour and icon scheme: the page reports its resolved `color-scheme` and its
  * `--bg` background, and the strip the padding reveals behind the page is painted with that colour, so it reads as part
- * of HUI rather than as the system's bar. It is read again on resume, so a theme changed in the UI and then backgrounded
- * is right when the app comes back; `@capacitor/status-bar` (`setStatusBar` in `src/lib/native-shell.ts`, WP3) can set
- * it live for a change on screen.
+ * of HUI rather than as the system's bar. Below API 30 the system's own bar is that strip, and it gets the same colour.
+ * It is read again on resume, so a theme changed in the UI and then backgrounded is right when the app comes back;
+ * `@capacitor/status-bar` (`setStatusBar` in `src/lib/native-shell.ts`, WP3) can set it live for a change on screen.
  */
 final class ShellWindow {
+
+    /**
+     * Whether this shell pads the page's frame with the system insets itself, which is what API 30 and later need once
+     * the window draws edge to edge. Below that the platform fits the window to the bars and `adjustResize` handles the
+     * keyboard, so the shell keeps its hands off the insets there.
+     */
+    static final boolean PADS_FRAME = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R;
 
     /**
      * What the page reports: the scheme it resolved (`light`/`dark`) and its own background. The probe element resolves
@@ -48,9 +62,22 @@ final class ShellWindow {
     private ShellWindow() {}
 
     static void attach(MainActivity activity, Bridge bridge) {
+        if (PADS_FRAME) padFrame(activity, bridge);
+        // Until the page reports its own theme, the system's says which way to paint.
+        apply(activity, bridge, night(activity), null);
+        read(activity, bridge);
+    }
+
+    /**
+     * Take the window's insets off the platform and pay for them on the WebView's frame. Only API 30 and later:
+     * {@code MainActivity} asks for edge to edge there, and a page under the bars with nothing padding it would hide the
+     * composer.
+     */
+    private static void padFrame(MainActivity activity, Bridge bridge) {
         Window window = activity.getWindow();
-        // Android 15 and later draw every app edge to edge; this asks older releases for the same, so the padding below
-        // is the one thing that decides where the page ends.
+        // Android 15 and later draw every app edge to edge; this asks older releases for the same (and is idempotent
+        // where the platform already does it), so the padding below is the one thing that decides where the page ends.
+        // Asserted here as well as by the activity's EdgeToEdge.enable, because the padding depends on it.
         WindowCompat.setDecorFitsSystemWindows(window, false);
         window.setStatusBarColor(Color.TRANSPARENT);
         window.setNavigationBarColor(Color.TRANSPARENT);
@@ -78,9 +105,6 @@ final class ShellWindow {
             return insets;
         });
         ViewCompat.requestApplyInsets(frame);
-        // Until the page reports its own theme, the system's says which way to paint.
-        apply(activity, bridge, night(activity), null);
-        read(activity, bridge);
     }
 
     private static boolean night(MainActivity activity) {
@@ -109,11 +133,12 @@ final class ShellWindow {
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
         controller.setAppearanceLightStatusBars(!dark);
         controller.setAppearanceLightNavigationBars(!dark);
-        // The bars are transparent here, so what shows through is the WebView's own background in the strip its padding
-        // leaves, and the view behind it anywhere the WebView does not reach. The window colours stay for older
-        // releases that still paint the bars themselves.
+        // Where the shell pads, the bars are transparent and what shows through is the WebView's own background in the
+        // strip its padding leaves, plus the view behind it anywhere the WebView does not reach. Below API 30 the system
+        // draws the bars itself, and these window colours are what paint them.
         window.setStatusBarColor(painted);
         window.setNavigationBarColor(painted);
+        if (bridge == null) return;
         View web = bridge.getWebView();
         if (web == null) return;
         web.setBackgroundColor(painted);
