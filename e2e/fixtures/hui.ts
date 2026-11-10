@@ -803,7 +803,11 @@ export const test = base.extend<{ hui: Hui }>({
               // fails on the phone rather than passing falsely, and stays off its required list.
               stop: async () => {},
             }),
-            wideScreen: noBrowserHarness("wideScreen"),
+            wideScreen: async () => {
+              // A phone cannot become a wide screen, and the shared setup calls this to reset a viewport between tests, so
+              // refusing it would fail every file. It returns at once: a test that then relies on the wide layout fails
+              // its own assertion, and its use case stays off the phone's required list.
+            },
             peek: noBrowserHarness("peek"),
             messageActions: noBrowserHarness("messageActions"),
             openWorkView: noBrowserHarness("openWorkView"),
