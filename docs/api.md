@@ -4680,6 +4680,7 @@ comes from the per-conversation token. `action` is one of:
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
 | `get` | One property of one element (`ref` or `selector`): `text`, `html`, `value`, `attr` with `attribute`, `box`, or page-level `title`, `url` and `count` with `selector`; a password field's value is refused with 409 |
 | `is` | One state of one element (`ref` or `selector`): `visible`, `hidden`, `enabled`, `disabled`, `checked`, `focused`, `editable`, `attached` |
+| `performance` | What the page costs: `operation` `metrics` (renderer counters: heap, nodes, documents, frames, listeners, layouts, style recalcs, script and task time) or `timings` (navigation entry, paints, subresource count and weight, slowest resources) |
 | `network` | Capture the tab's requests: `operation` `start`/`stop`/`clear`, `requests` with `filter`, `type`, `method` and `status` (`2xx`, `400-499` or an exact code), `request` with `id` such as `n3`, and `har` with `path` (must end in `.har`) |
 | `handoff` | Give the current (or `tabId`) tab to the operator and wait: `message` (at most 500 characters) and `timeoutMs` (5000–1 800 000, default 600 000) |
 | `secret` | Type the operator's stored secret `name` into `ref` on the secret's own origin, optionally `submit`; the value never appears in the result |
@@ -4705,6 +4706,12 @@ status, type, bytes and timing; bodies are never captured. Credential headers
 `password`, `secret`, …) are `[redacted]` in `network requests`,
 `network request` and the HAR. The HAR is JSON 1.2 with one page and its
 entries, written wherever `path` names (relative to the session directory).
+`performance` reads CDP `Performance.getMetrics` after enabling the domain once
+per tab, so the counters accumulate from that first call rather than resetting
+per read; durations arrive in seconds and are printed in ms, s or min. The
+`timings` operation evaluates one fixed expression on the page (navigation,
+paint and resource entries) and prints the document's marks, its paints when
+the browser reports them, and the slowest resources over 500 ms.
 `act` `kind: "upload"` takes `files` (1–10 paths, relative to the session
 directory or absolute, at most 25 MB each) and `ref` to the file input or its
 label, or `selector` for an input the page hides; it sets the input's files
