@@ -31,13 +31,13 @@ test("the Triggers page explains a listener and opens Add trigger, whose Add sho
   await screen.getByRole("button", "Add trigger").tap();
 
   await expect(screen.getByText("Reviews: its URL")).toBeVisible();
-  const shown = await screen.getByLabel("URL of Reviews").textContent();
+  const shown = (await screen.getByLabel("URL of Reviews").textContent()) ?? "";
   expect(shown).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/__hui\/hooks\/[A-Za-z0-9_-]{43}$/u);
   const hook = (await hui.api<{ triggers: { id: string; tokenHint: string }[] }>("GET", `/__hui/bots/${bot.id}/triggers`)).triggers[0]!;
-  expect(shown!.split("/").at(-1)!.slice(0, 4)).toBe(hook.tokenHint);
+  expect(shown.split("/").at(-1)!.slice(0, 4)).toBe(hook.tokenHint);
 
-  await hui.clipboard();
-  await screen.getByRole("button", "Copy").tap();  await expect(screen.getByRole("button", "Copied")).toBeVisible();
+  await screen.getByRole("button", "Copy").tap();
+  await expect(screen.getByRole("button", "Copied")).toBeVisible();
   await expect.poll(() => hui.copied()).toBe(shown);
   await screen.getByRole("button", "Done").tap();
   await expect(screen.getByText("Reviews: its URL")).toHaveCount(0);
