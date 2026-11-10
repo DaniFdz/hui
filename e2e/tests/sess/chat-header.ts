@@ -12,13 +12,20 @@ import { expect, type Locator, type Screen } from "e2e";
 /** The control that shows the open pane's title: the heading on a wide screen, the Active panel selector on a phone. */
 export const chatHeader = (screen: Screen): Locator => screen.getByTestId("session-title").or(screen.getByRole("button", { name: /^Active panel:/u }));
 
-/** The title the open chat's header reads, whichever of the two the page drew. */
+/**
+ * The title the open chat's header reads, whichever of the two the page drew. It returns "" while neither is on screen, so
+ * a caller polling for the title retries instead of failing on a locator that matches nothing yet.
+ */
 export const chatTitle = async (screen: Screen): Promise<string> => {
-  const heading = screen.getByTestId("session-title");
-  if (await heading.count() > 0) return (await heading.first().textContent()) ?? "";
-  const picker = screen.getByRole("button", { name: /^Active panel:/u }).first();
+  const headings = screen.getByTestId("session-title");
+  for (let index = 0, count = await headings.count(); index < count; index++) {
+    const title = (await headings.nth(index).textContent()) ?? "";
+    if (title.trim() !== "") return title;
+  }
+  const picker = screen.getByRole("button", { name: /^Active panel:/u });
+  if (await picker.count() === 0) return "";
   // "Active panel: Chat · Renamed" or "Active panel: 2 · Chat · Renamed": the title is the last segment.
-  return ((await picker.getAttribute("aria-label")) ?? "").split(" · ").at(-1) ?? "";
+  return ((await picker.first().getAttribute("aria-label")) ?? "").split(" · ").at(-1) ?? "";
 };
 
 /** Waits until the open chat's header reads `title`. */
