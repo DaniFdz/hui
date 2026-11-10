@@ -270,6 +270,37 @@ its adapter method's callers and the native permission entries.
 S1 (0.5 day) → WP1 (1 day) → WP4 (2 days) → WP7 (2 to 3 days, 11 in parallel). WP2, WP3, WP5, WP6 and WP9 run beside
 WP4, and WP8 and WP10 beside WP7. About 6 to 8 working days if CI capacity keeps up (section 7).
 
+## 4.5 Phone backlog, as measured
+
+Every use case starts on the phone backlog; an area graduates a test file at a time, on evidence from a run inside the
+Android app's WebView, and the backlog only shrinks. Measured on 2026-11-10:
+
+| Area | Required | Backlog | Excluded |
+|---|---|---|---|
+| SHELL | 27 | 7 | 8 |
+| SESS | 5 | 61 | 10 |
+| CHAT | 1 | 75 | 8 |
+| RICH | 0 | 46 | 5 |
+| AGENT | 0 | 58 | 4 |
+| WORK | 5 | 59 | 20 |
+| BOARD | 0 | 48 | 3 |
+| SET | 4 | 82 | 4 |
+| PAGE | 0 | 24 | 1 |
+| BOT | 0 | 68 | 6 |
+| CALL | 0 | 25 | 1 |
+| **All** | **42** | **553** | **70** |
+
+What the catch-up learned, which the areas still to do can reuse:
+
+- A test that reads the sidebar needs `hui.sessionList()` first on a phone: the drawer is closed, so rows, group headers and
+  the toolbar are not on screen and every poll comes back empty.
+- A control the design draws at every width needs no hover; a hover in a test only proves the desktop's gesture (and
+  `webkit-phone` refuses `hui.peek`), so drop it rather than keep it.
+- A test that calls `hui.wideScreen()` and then reads a wide-only surface (the Work pane's rail, maximize and resizer, the
+  sidebar's collapse and resize) must be excluded on the phone: a WebView viewport override is not a phone screen.
+- HTML5 drag reorder can pass through CDP mouse events while a finger cannot start it; exclude those rather than claim
+  `required`.
+
 ## 5. Lockstep after this lands
 
 - A user-visible web change runs on `web`, `android` and `webkit-phone` in the PR's CI. No phone-specific work is
