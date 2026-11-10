@@ -28,6 +28,36 @@ export type NativeNotification = {
 
 export type NativeShare = { title?: string; text?: string; url?: string };
 
+/** The session a shared thing belongs to, as the transcript and the Files view know it. */
+export type ShareTarget = { id: string; title?: string };
+
+/** HUI's own address for one session on the gateway this page was loaded from, or nothing when the base is not a URL:
+ * sharing a link is only worth it when the link opens the conversation. */
+function sessionAddress(base: string, id: string | undefined): string | undefined {
+  if (!id) return undefined;
+  try {
+    return new URL(`/sessions/${encodeURIComponent(id)}`, base).href;
+  } catch {
+    return undefined;
+  }
+}
+
+/** What the phone's Share sheet gets for one transcript message: its words, the conversation's name as the sheet's
+ * title, and the conversation's own HUI address so whoever receives it can read it there. `base` is this page's own
+ * address, so the link names the gateway the phone is connected to — never a `file:` one. */
+export function messageShare(input: { text: string; session?: ShareTarget }, base: string): NativeShare {
+  const title = input.session?.title?.trim();
+  const url = sessionAddress(base, input.session?.id);
+  return { ...(title ? { title } : {}), text: input.text, ...(url ? { url } : {}) };
+}
+
+/** What the phone's Share sheet gets for the file a Files view has open: its name, and the file's own text where HUI
+ * can show it that way, else its path — the one thing a sheet can carry for a picture or a PDF. The gateway serves a
+ * file only with HUI's own headers, so its address is no use to the app the operator picks. */
+export function fileShare(input: { name: string; path: string; text?: string }): NativeShare {
+  return { title: input.name, text: input.text ? input.text : input.path };
+}
+
 export type NativeShell = {
   platform: NativePlatform;
   /** A link to another origin: the shell's browser, never this page's WebView. */

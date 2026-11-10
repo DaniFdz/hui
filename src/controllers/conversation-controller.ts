@@ -33,6 +33,10 @@ type ConversationDeps = {
 
 type ConversationHost = ReactiveControllerHost & Pick<LitElement, "renderRoot">;
 
+/** The longest silence a live stream can show and still be the socket the api believes in: two of the gateway's 15 s
+ * heartbeats. Longer than that and the app was away, not the network brief. */
+const SUSPENDED_SILENCE_MS = 30_000;
+
 export class ConversationController implements ReactiveController {
   selected: SessionView | undefined;
   transcript: readonly TranscriptItem[] = [];
@@ -71,6 +75,11 @@ export class ConversationController implements ReactiveController {
   #subagentExpiryTimer: number | undefined;
   #frameUpdate: number | undefined;
   #copyTimer: number | undefined;
+  /** When the open stream last handed this controller anything; a wake after a suspension reads it to know whether the
+   * socket the api still trusts can be trusted at all. */
+  #streamFrameAt = 0;
+  /** The listener for the app's wake, ended with the element. */
+  #wake: AbortController | undefined;
   #disconnected = false;
 
   constructor(host: ConversationHost, deps: ConversationDeps) {
@@ -81,10 +90,18 @@ export class ConversationController implements ReactiveController {
 
   hostConnected(): void {
     this.#disconnected = false;
+    // `online` is the one wake path the app already watches: the browser dispatches it when its network returns, and the
+    // phone shell when the OS brings a backgrounded app back (`lib/native-shell-boot.ts`). The signal ends the listener
+    // with the element, so a closed pane holds none.
+    this.#wake?.abort();
+    this.#wake = new AbortController();
+    window.addEventListener("online", this.#reconnectAfterSuspend, { signal: this.#wake.signal });
   }
 
   hostDisconnected(): void {
     this.#disconnected = true;
+    this.#wake?.abort();
+    this.#wake = undefined;
     this.#openRequestToken += 1;
     this.#cancelRead();
     this.#streamStop?.();
@@ -99,6 +116,20 @@ export class ConversationController implements ReactiveController {
   get streamOpen(): boolean {
     return this.#streamStop !== undefined;
   }
+
+  /**
+   * A wake the network cannot explain (`mobile/AGENTS.md`, "Native extras"): the phone shell answers the OS bringing a
+   * backgrounded app back by dispatching `online`, the one path every reconnect listener already watches, and the api
+   * leaves a socket it thinks is live alone. A socket that has heard nothing for longer than two of the gateway's 15 s
+   * heartbeats was frozen with the app, so it is replaced here; a stream that just delivered a frame is kept, which is
+   * what a browser's own network blip must not throw away. A restart that fails is the api's own backoff to run.
+   */
+  readonly #reconnectAfterSuspend = (): void => {
+    const session = this.selected;
+    if (!session || !this.#streamStop || this.opening) return;
+    if (Date.now() - this.#streamFrameAt < SUSPENDED_SILENCE_MS) return;
+    this.#startStream(session.id);
+  };
 
   /** Background rows use the lightweight status stream. A detailed stream is
    * also the server's read receipt, so it must exist only while chat is shown. */
@@ -239,45 +270,51 @@ export class ConversationController implements ReactiveController {
     this.#streamStop?.();
     const requestToken = this.#openRequestToken;
     const current = () => isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken);
+    // Every frame is proof the socket is alive; the resume check (`#reconnectAfterSuspend`) reads the last one.
+    const heard = <A extends unknown[]>(callback: (...args: A) => void) => (...args: A) => {
+      this.#streamFrameAt = Date.now();
+      callback(...args);
+    };
+    this.#streamFrameAt = Date.now();
     this.#streamStop = subscribeSession(id, {
-      onSnapshot: (snapshot) => {
+      onSnapshot: heard((snapshot) => {
         if (current()) this.applySnapshot(snapshot);
-      },
-      onTranscript: (entries) => {
+      }),
+      onTranscript: heard((entries) => {
         if (current()) {
           this.transcript = normalizeTranscript(entries);
           if (this.selected) void saveConversation(this.selected, entries);
           this.#host.requestUpdate();
         }
-      },
-      onEvent: (event) => {
+      }),
+      onEvent: heard((event) => {
         if (current()) {
           this.#applyEvent(event);
         }
-      },
-      onStatus: (status) => {
+      }),
+      onStatus: heard((status) => {
         if (current()) {
           this.#setStatus(status);
         }
-      },
-      onModel: (model) => {
+      }),
+      onModel: heard((model) => {
         if (current()) {
           this.currentModel = model;
           this.#host.requestUpdate();
         }
-      },
-      onThinking: (level) => {
+      }),
+      onThinking: heard((level) => {
         if (current()) {
           this.thinking = level;
           this.#host.requestUpdate();
         }
-      },
-      onFast: (fast) => {
+      }),
+      onFast: heard((fast) => {
         if (current()) {
           this.fast = fast;
           this.#host.requestUpdate();
         }
-      },
+      }),
       onConnection: (state, detail) => {
         if (!current()) {
           return;

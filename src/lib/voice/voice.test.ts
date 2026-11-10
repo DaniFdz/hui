@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { pickerRows } from "../picker-options.ts";
 import { formatCallTime, languageOptions, microphoneContext, microphoneErrorMessage } from "./voice.ts";
 
@@ -47,12 +47,27 @@ test("a language the browser cannot name keeps Whisper's name", () => {
 });
 
 test("microphone failures say what to do", () => {
-  const secure = { secure: true, desktop: false };
+  const secure = { secure: true, desktop: false, phone: null };
   assert.match(microphoneErrorMessage(new DOMException("denied", "NotAllowedError"), secure), /denied\. Allow it for this site/u);
   assert.match(microphoneErrorMessage(new DOMException("none", "NotFoundError"), secure), /No microphone was found/u);
   assert.match(microphoneErrorMessage(new DOMException("busy", "NotReadableError"), secure), /busy or unavailable/u);
   assert.equal(microphoneErrorMessage(new Error("weird"), secure), "The microphone could not be opened: weird");
-  assert.match(microphoneErrorMessage(new DOMException("denied", "NotAllowedError"), { secure: false, desktop: false }), /secure pages: open HUI on https:\/\//u);
-  assert.match(microphoneErrorMessage(undefined, { secure: true, desktop: true }), /desktop app does not allow the microphone yet/u);
-  assert.deepEqual(microphoneContext(), { secure: true, desktop: false }, "outside a browser nothing withholds it");
+  assert.match(microphoneErrorMessage(new DOMException("denied", "NotAllowedError"), { secure: false, desktop: false, phone: null }), /secure pages: open HUI on https:\/\//u);
+  assert.match(microphoneErrorMessage(undefined, { secure: true, desktop: true, phone: null }), /desktop app does not allow the microphone yet/u);
+  assert.deepEqual(microphoneContext(), { secure: true, desktop: false, phone: null }, "outside a browser nothing withholds it");
+  // A phone's permission is the app's own: the way out of a refusal is the system's settings, not a site's.
+  const denied = new DOMException("denied", "NotAllowedError");
+  assert.match(microphoneErrorMessage(denied, { secure: true, desktop: false, phone: "android" }), /denied\. Allow it for HUI in Android's settings \(Apps → HUI → Permissions\), then start the call again\./u);
+  assert.match(microphoneErrorMessage(denied, { secure: true, desktop: false, phone: "ios" }), /denied\. Allow it for HUI in Settings → HUI → Microphone/u);
+});
+
+test("a call in the phone shell knows whose permission the microphone is", () => {
+  vi.stubGlobal("window", { isSecureContext: true, Capacitor: { isNativePlatform: () => true, getPlatform: () => "android", Plugins: {} } });
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: () => undefined } });
+  assert.deepEqual(microphoneContext(), { secure: true, desktop: false, phone: "android" });
+  assert.match(microphoneErrorMessage(new DOMException("denied", "NotAllowedError"), microphoneContext()), /Allow it for HUI in Android's settings/u);
+  // A page that is not in a shell names the browser's own setting, exactly as it did before the app existed.
+  vi.stubGlobal("window", { isSecureContext: true });
+  assert.equal(microphoneContext().phone, null);
+  assert.match(microphoneErrorMessage(new DOMException("denied", "NotAllowedError"), microphoneContext()), /Allow it for this site in the browser's settings/u);
 });

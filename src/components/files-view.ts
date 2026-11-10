@@ -9,7 +9,8 @@
  * unsaved text and saves, shared with other views of the same file; the gateway owns the disk. The editor itself loads
  * on demand (`lib/files/editor.ts`). It refreshes when the conversation's agent turn ends and when it becomes visible
  * again. A reveal request (a file reference clicked in the chat, `lib/files/view-state.ts`) opens a file at a line or a
- * folder in the tree.
+ * folder in the tree. In the phone shell the header also shares the open file through the phone's own sheet
+ * (`lib/native-shell.ts`); a browser draws no such control.
  *
  * Behaviour follows AgentsInTheCloud's Files view (packages/files, MIT, see THIRD_PARTY_NOTICES.md); the markup is HUI's.
  * No decorators: the Work pane's view registry, which imports this lazily, also loads in Node tests.
@@ -41,6 +42,7 @@ import {
   isUploadCancelled,
 } from "../api/files.ts";
 import { onFilesViewReveal, readFilesViewState, takeFilesViewReveal, writeFilesViewState, type FilesViewReveal, type MarkdownDisplayMode } from "../lib/files/view-state.ts";
+import { fileShare, nativeShell } from "../lib/native-shell.ts";
 import { FILES_COPY, filesBytes, filesCreateIn, filesCreatedLabel, filesDeleteLabel, filesDeleteRisks, filesDeleteTitle, filesNoMatch } from "../lib/files/copy.ts";
 import { onTurnEnd } from "../lib/session/turn-end.ts";
 import type { FileEditorHandle } from "../lib/files/editor.ts";
@@ -58,6 +60,8 @@ const folderPlusIcon = svg16(svg`<path d="M12 10v6"/><path d="M9 13h6"/><path d=
 const uploadIcon = svg16(svg`<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>`);
 const fileIcon = svg16(svg`<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>`);
 const linkIcon = svg16(svg`<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>`);
+/** Lucide "share": the phone's own sheet, which a browser does not draw (`nativeShell()`). */
+const shareIcon = svg16(svg`<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/>`);
 const chevronRightIcon = svg16(svg`<path d="m9 18 6-6-6-6"/>`);
 const chevronDownIcon = svg16(svg`<path d="m6 9 6 6 6-6"/>`);
 
@@ -938,6 +942,16 @@ export class HuiFilesView extends HuiElement {
     if (this.draft) await this.copyText(this.draft.content, "markdown");
   }
 
+  /** The open file through the phone's own Share sheet: its text where HUI shows it that way, else where it lives. A
+   * browser has no sheet, so it is offered no control (`lib/native-shell.ts`). */
+  private shareSelected(): void {
+    const shell = nativeShell();
+    const path = this.selected;
+    const file = this.file;
+    if (!shell || !path || !file) return;
+    void shell.share(fileShare({ name: file.name, path, text: file.kind === "text" ? this.draft?.content ?? file.content : undefined }));
+  }
+
   private async copyText(text: string, copied: "path" | "markdown") {
     if (!await writeClipboardText(text)) return;
     this.copied = copied;
@@ -1117,7 +1131,9 @@ export class HuiFilesView extends HuiElement {
       ${path
         ? html`<span class="hui-files-path" data-hui-tooltip=${path}><bdi dir="ltr">${path}</bdi></span>
           <button type="button" class="btn btn--ghost btn--icon hui-files-copy" aria-label="Copy full path" data-hui-tooltip=${this.copied === "path" ? "Copied" : "Copy full path"}
-            @click=${() => void this.copyPath()}>${this.copied === "path" ? icons.check : icons.copy}</button>`
+            @click=${() => void this.copyPath()}>${this.copied === "path" ? icons.check : icons.copy}</button>
+          ${nativeShell() ? html`<button type="button" class="btn btn--ghost btn--icon hui-files-share" data-testid="files-share" aria-label=${`Share ${this.file?.name ?? "file"}`} data-hui-tooltip="Share file"
+            @click=${() => this.shareSelected()}>${shareIcon}</button>` : nothing}`
         : html`<span class="hui-files-path hui-files-path--empty">No file selected</span>`}
       <span class="hui-files-main__spacer"></span>
       ${this.renderStatus()}

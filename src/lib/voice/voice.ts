@@ -2,6 +2,7 @@
  * Small rules a bot's calls share in the browser (HUI-18): how a call's time
  * reads, the Language picker's options and what a microphone error means.
  */
+import { nativeShell, type NativePlatform } from "../native-shell.ts";
 import { VOICE_LANGUAGES, voiceLanguageName, whisperLanguageName, type LanguageNames } from "./languages.ts";
 import type { VoiceLanguage } from "../../api/schema/bots.ts";
 
@@ -28,24 +29,36 @@ export function languageOptions(names?: LanguageNames | null): { value: string; 
   return [{ value: "", label: "Auto (detect)" }, ...languages.sort((a, b) => a.label.localeCompare(b.label, "en"))];
 }
 
+/** What the page can promise the microphone: a secure page, HUI's desktop app, and the phone shell it runs in (whose
+ * permission is the app's own, asked for by the system the first time a call opens the microphone). */
+export type MicrophoneContext = { secure: boolean; desktop: boolean; phone: NativePlatform | null };
+
 /** Whether this page can have the microphone at all: browsers give it only to secure pages, HUI's desktop app to none. */
-export function microphoneContext(): { secure: boolean; desktop: boolean } {
+export function microphoneContext(): MicrophoneContext {
   return {
     secure: typeof window === "undefined" || (window.isSecureContext && Boolean(navigator.mediaDevices?.getUserMedia)),
     desktop: typeof navigator !== "undefined" && /\bElectron\//u.test(navigator.userAgent),
+    // The app asks the system itself: Android's own dialog at the moment the WebView requests the microphone, and iOS's
+    // when the page does, both of which a refusal has to name in the app's settings rather than a site's.
+    phone: typeof window === "undefined" ? null : nativeShell()?.platform ?? null,
   };
 }
 
 /**
  * Why the microphone could not be used, in words: denied, missing, busy, or a
  * page the browser will not give a microphone to (plain HTTP away from this
- * machine, or HUI's desktop app, which allows none yet).
+ * machine, or HUI's desktop app, which allows none yet). A refusal in the phone
+ * app is the app's own permission, so it points at the system settings a phone
+ * has and not at a browser's site settings.
  */
-export function microphoneErrorMessage(error: unknown, context: { secure: boolean; desktop: boolean }): string {
+export function microphoneErrorMessage(error: unknown, context: MicrophoneContext): string {
   if (context.desktop) return "HUI's desktop app does not allow the microphone yet. Open HUI in a browser to talk to bots.";
   if (!context.secure) return "Browsers give the microphone only to secure pages: open HUI on https:// (Tailscale Serve, say) or on this machine's localhost.";
   const name = error instanceof Error || error instanceof DOMException ? error.name : "";
-  if (name === "NotAllowedError" || name === "SecurityError" || name === "PermissionDeniedError") return "Microphone access was denied. Allow it for this site in the browser's settings, then try again.";
+  const denied = name === "NotAllowedError" || name === "SecurityError" || name === "PermissionDeniedError";
+  const settings = context.phone === "ios" ? "Settings → HUI → Microphone" : "Android's settings (Apps → HUI → Permissions)";
+  if (denied && context.phone) return `Microphone access was denied. Allow it for HUI in ${settings}, then start the call again.`;
+  if (denied) return "Microphone access was denied. Allow it for this site in the browser's settings, then try again.";
   if (name === "NotFoundError" || name === "DevicesNotFoundError" || name === "OverconstrainedError") return "No microphone was found. Connect one and try again.";
   if (name === "NotReadableError" || name === "TrackStartError" || name === "AbortError") return "The microphone is busy or unavailable. Close other apps using it and try again.";
   return error instanceof Error && error.message ? `The microphone could not be opened: ${error.message}` : "The microphone could not be opened.";

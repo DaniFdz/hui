@@ -56,6 +56,20 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+        A GPT-Live call records the operator's voice. Declaring it here is what makes the request possible at all; the
+        dialog is the system's own and appears when the call starts, because Capacitor's BridgeWebChromeClient asks for
+        RECORD_AUDIO (and MODIFY_AUDIO_SETTINGS, which the WebRTC capture path names) at the moment the page calls
+        getUserMedia — never at launch (docs/mobile-app-plan.md, WP10). A refusal denies the request, so the page's
+        getUserMedia rejects and the call says the microphone was denied.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Text calls work without one; the app still installs on a device or image that has no microphone. -->
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+
+    <!--
         The camera and video intents the WebView's file chooser starts for an input with `capture`
         (Capacitor's BridgeWebChromeClient asks the package manager whether one answers before it opens it). Android 11
         hides other apps from that question unless they are named here, and without them the chooser silently falls back

@@ -881,3 +881,23 @@ test("a presented file from the working directory offers to open in Files", asyn
 
   assert.match(readStyles("../styles/openclaw-chat.css"), /hui-file-ref\.chat-presented-media__reveal:not\(\.is-linked\) \{ display: none; \}/u);
 });
+
+test("a message's action row offers Share only where a sheet exists, named as the web names Copy", async () => {
+  const transcript = [
+    { kind: "message", id: "u", role: "user", text: "Ship the release" },
+    { kind: "message", id: "a", role: "assistant", text: "Shipped." },
+  ];
+  // A browser: no shell, so the row is exactly what it was. The render helper answers an inert handler for every `on*`
+  // prop, so the browser case is `onShareMessage` absent rather than unlisted.
+  const web = await renderWorkerSession("idle", { transcript, onShareMessage: undefined });
+  assert.doesNotMatch(web, /message-share|Share message|Share prompt|Share response/u);
+
+  const shared: string[] = [];
+  const phone = await renderWorkerSession("idle", { transcript, onShareMessage: (text: string) => shared.push(text) });
+  assert.match(phone, /aria-label=Share prompt/u, "the operator's own words");
+  assert.match(phone, /aria-label=Share response/u, "and the reply's");
+  const promptRow = phone.slice(phone.indexOf("data-chat-row-key=u"), phone.indexOf("data-chat-row-key=a"));
+  assert.match(promptRow, /class="chat-copy-btn chat-group-share" data-testid="message-share" aria-label=Share prompt/u);
+  assert.match(promptRow, /role="tooltip"[^>]*>Share prompt</u, "the tooltip is HUI's own card, never the browser's title");
+  assert.doesNotMatch(phone, /title="Share/u);
+});

@@ -117,6 +117,8 @@ const checkIcon = icons.check;
 const circleIcon = icons.circle;
 const stopIcon = icons.stop;
 const copyIcon = icons.copy;
+/** Lucide "share": the phone's own sheet, which a browser does not draw (`onShareMessage`). */
+const shareIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" x2="12" y1="2" y2="15"></line></svg>`;
 const rewindIcon = icons.rotateCcw;
 const continueIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 5 11 7-11 7Z"></path></svg>`;
 const queueIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 5H3"></path><path d="M16 12H3"></path><path d="M9 19H3"></path><path d="m16 16-3 3 3 3"></path><path d="M21 5v12a2 2 0 0 1-2 2h-6"></path></svg>`;
@@ -351,6 +353,9 @@ export type HomeProps = {
   onAddAttachments: (files: readonly File[]) => void;
   onRemoveAttachment: (index: number) => void;
   onCopy: (text: string, id: string) => Promise<boolean>;
+  /** Shares one transcript message through the phone's own Share sheet. Absent in a browser, which keeps the action
+   * row it has: a Share control that could not open a sheet is never drawn. */
+  onShareMessage?: (text: string) => void;
   onActivityExpanded: (id: string, expanded: boolean) => void;
   onAnswerQuestion: (answer: QuestionResponse) => void;
   onTranscriptScroll: (element: HTMLElement) => void;
@@ -1359,6 +1364,9 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     // Only Pi Durable copies a history into a new conversation; a bot's chat is never forked.
     const forkAt = props.connection === "live" && props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
     const forkTooltipId = sessionControlId(props, `fork-tooltip-${row.id}`);
+    // The sheet and the Copy control share one row's words, so they are named alike and share what is on screen.
+    const shareLabel = sender ? "Share message" : row.role === "assistant" ? "Share response" : "Share prompt";
+    const shareTooltipId = sessionControlId(props, `share-tooltip-${row.id}`);
     return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-chat-row-key=${row.id}
       style=${sender?.color ? `--chat-sender-color: ${sender.color}` : nothing}>
       ${sender ? html`<span class="chat-sender-avatar" aria-hidden="true">${sender.avatar}</span>` : nothing}
@@ -1368,7 +1376,9 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
         ${last && lastText ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
           <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, lastText)}>${icons.messageSquare}</button>
-        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
+        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}${props.onShareMessage ? renderActionTooltip(shareTooltipId, shareLabel, html`
+          <button type="button" class="chat-copy-btn chat-group-share" data-testid="message-share" aria-label=${shareLabel} aria-describedby=${shareTooltipId} @click=${() => props.onShareMessage?.(lastText)}>${shareIcon}</button>
+        `) : nothing}</div>` : nothing}
         ${rewindTo ? html`<div class="chat-group-footer-actions">
           ${renderActionTooltip(rewindTooltipId, props.rewindPending ? "Rewinding…" : "Rewind", html`
             <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "", last?.attachments)}>${rewindIcon}</button>

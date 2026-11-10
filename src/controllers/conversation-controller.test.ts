@@ -337,3 +337,35 @@ test("streamed text, thinking and tool output redraw the conversation once per a
   stream.onEvent({ type: "tool_start", id: "t2", name: "bash" });
   assert.equal(updates(), before + 2, "a new tool row redraws at once");
 });
+
+test("a phone shell that comes back after a suspension reopens the conversation's stream", async () => {
+  // The delayed removal of a live socket, and the timer an evicted pane clears, are the page's own.
+  const page = Object.assign(new EventTarget(), { setTimeout, clearTimeout });
+  vi.stubGlobal("window", page);
+  let now = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+  controller.hostConnected();
+  void controller.open("s1");
+  fake.opens[0]?.resolve("idle");
+  await settle();
+  assert.deepEqual(fake.streams.map(({ id }) => id), ["s1"]);
+  fake.streams[0]?.handlers.onSnapshot({ transcript: [], status: "idle", queue: { steering: [], followUp: [] }, questions: [], subagents: [] });
+
+  // Five minutes in the background: the api still believes its socket, and `online` is the phone's own wake.
+  now += 5 * 60_000;
+  page.dispatchEvent(new Event("online"));
+  assert.deepEqual(fake.streams.map(({ id, stopped }) => `${id}:${stopped}`), ["s1:true", "s1:false"], "the frozen stream is replaced by a fresh one");
+  assert.equal(controller.streamOpen, true);
+
+  // A stream that just delivered a frame is what a browser's own network blip must not throw away.
+  fake.streams[1]?.handlers.onStatus("idle");
+  now += 5_000;
+  page.dispatchEvent(new Event("online"));
+  assert.equal(fake.streams.length, 2, "a live socket keeps its stream");
+
+  controller.hostDisconnected();
+  now += 5 * 60_000;
+  page.dispatchEvent(new Event("online"));
+  assert.equal(fake.streams.length, 2, "a removed element listens for nothing");
+});

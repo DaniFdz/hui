@@ -106,7 +106,7 @@ import { localTimezone, type AutomationProps } from "./views/settings-automation
 import { workerAction } from "./api/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, closeNavigationDrawerOnBack, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
-import { nativeShell } from "./lib/native-shell.ts";
+import { messageShare, nativeShell } from "./lib/native-shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
 import { renderSettingsPage, SETTINGS_PAGES, type SettingsPage } from "./views/settings.ts";
 import { clampSuggestionIndex, taskSuggestionPrompt } from "./lib/task-suggestions.ts";
@@ -1819,6 +1819,17 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  /**
+   * One transcript message through the phone's own Share sheet (`mobile/AGENTS.md`, "Native extras"). The control is
+   * drawn only where `nativeShell()` answers a shell, so a browser never reaches this.
+   */
+  private shareMessage = (text: string): void => {
+    const shell = nativeShell();
+    if (!shell) return;
+    const session = this.conversation.selected;
+    void shell.share(messageShare({ text, session: session ? { id: session.id, title: session.title } : undefined }, window.location.href));
+  };
+
   private retrySelected = () => {
     const id = this.conversation.selected?.id;
     if (id && !this.conversation.opening) void this.conversation.open(id);
@@ -2853,6 +2864,8 @@ export class HuiApp extends HuiElement {
       ...this.composer.props(),
       onContinue: this.continueRun,
       onCopy: this.conversation.copy,
+      // A browser has no sheet to open, so it is not offered one: the action row stays exactly as it was.
+      ...(nativeShell() ? { onShareMessage: this.shareMessage } : {}),
       onActivityExpanded: this.setActivityExpanded,
       onTranscriptScroll: this.transcriptScrolled,
       onTranscriptNavigate: this.navigateTranscript,

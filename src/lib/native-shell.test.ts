@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { nativeShell, type NativeShell } from "./native-shell.ts";
+import { fileShare, messageShare, nativeShell, type NativeShell } from "./native-shell.ts";
 
 type Call = { plugin: string; method: string; options: unknown };
 
@@ -262,4 +262,24 @@ test("a shell missing every plugin still answers every call", async () => {
   await shell.forgetGateway();
   shell.onBack(() => true);
   shell.onResume(() => undefined);
+});
+
+test("a shared message carries its words, the conversation's name and its own address on this gateway", async () => {
+  const { shell, calls } = fakeShell();
+  await shell.share(messageShare({ text: "Ship it", session: { id: "s 1", title: "  Release  " } }, "https://hui.test/sessions/s%201"));
+  assert.deepEqual(calls, [{
+    plugin: "Share",
+    method: "share",
+    options: { title: "Release", text: "Ship it", url: "https://hui.test/sessions/s%201" },
+  }]);
+  // Nothing to link to: a session without an id, or a page whose own address is not one.
+  assert.deepEqual(messageShare({ text: "Hello" }, "https://hui.test/"), { text: "Hello" });
+  assert.deepEqual(messageShare({ text: "Hello", session: { id: "s1" } }, "not a url"), { text: "Hello" }, "a link that cannot be built is left out");
+  assert.deepEqual(messageShare({ text: "Hello", session: { id: "s1", title: "  " } }, "https://hui.test/gateway/"), { text: "Hello", url: "https://hui.test/sessions/s1" });
+});
+
+test("a shared file carries its text where HUI shows one, else where it lives", () => {
+  assert.deepEqual(fileShare({ name: "notes.md", path: "docs/notes.md", text: "# Notes" }), { title: "notes.md", text: "# Notes" });
+  assert.deepEqual(fileShare({ name: "shot.png", path: "docs/shot.png" }), { title: "shot.png", text: "docs/shot.png" }, "a picture shares where it lives");
+  assert.deepEqual(fileShare({ name: "empty.txt", path: "empty.txt", text: "" }), { title: "empty.txt", text: "empty.txt" });
 });

@@ -128,6 +128,25 @@ setStatusBar({ dark })     onResume(callback)                    onBack(callback
 forgetGateway()            // clears the remembered gateway: HuiGateway.forget() on Android
 ```
 
+## Native extras (WP10)
+
+The three things a browser cannot do, each behind the seam above and each absent rather than broken in a browser
+(`nativeShell()` is `null` there). No new adapter method was needed for any of them, and no dependency was added: the
+plugins were already installed in WP1.
+
+| Extra | Where | What it does |
+|---|---|---|
+| Share sheet | `src/lib/native-shell.ts` (`messageShare`, `fileShare`), a message's footer action row (`src/views/home.ts`), the Files view's header (`src/components/files-view.ts`) | `share()` hands `@capacitor/share` what the sheet shows. A message shares its words with the conversation's own address on this gateway (`<origin>/sessions/<id>`) and the conversation's name as the sheet's title; the Files view shares the open file's text where HUI shows it that way (the draft on screen, so unsaved edits are what is shared), else its path. The gateway serves a file only with HUI's own headers, so a file's address is no use to the app the operator picks and is never shared. |
+| Microphone | `mobile/android/app/src/main/AndroidManifest.xml`, `mobile/ios/App/App/Info.plist`, `src/lib/voice/voice.ts` | A GPT-Live call records the operator. Android declares `RECORD_AUDIO` and `MODIFY_AUDIO_SETTINGS`; iOS declares `NSMicrophoneUsageDescription` (without it the system kills the app the first time the page asks). **Nothing asks at launch**: Capacitor's own `BridgeWebChromeClient` requests the Android permission when the page calls `getUserMedia`, and WKWebView's delegate grants the page's request so iOS's own prompt appears — both at the moment a call starts, which is `lib/voice/live-call.ts`'s `openMicrophone`. A refusal rejects `getUserMedia`, so the call screen shows `Call failed` with the reason (`role="alert"`), and in the app that reason points at the app's own permission rather than a browser site setting (`microphoneErrorMessage`). A gateway reached over plain HTTP is not a secure context, so the WebView gives the page no microphone at all and the call says so. |
+| Resume | `src/controllers/conversation-controller.ts`, the `online` the boot half dispatches (`src/lib/native-shell-boot.ts`) | The shell's `onResume` becomes the web's own `online` event, and the conversation watches it. A live socket hears the gateway's heartbeat every 15 s but the page is told nothing of them, so a stream that has handed the controller no frame for **30 s** (two heartbeats) was frozen with the app and is replaced on the wake; a stream that just delivered a frame is kept, which is what a browser's own network blip must not throw away. A restart that fails is the api's own backoff to run. |
+
+What is proven, and what is not: every payload and both adapters are unit-tested against a fake bridge
+(`src/lib/native-shell.test.ts`), the two controls and the resume path by their view and controller tests, and
+`mobile / android-build` compiles the manifest into the APK. **The behaviour on a device is not measured yet**: no
+emulator was run for this package (see "Proving a phone change in CI"), so the sheet's appearance, Android's permission
+dialog, the denied wording on screen and a real resume after minutes in the background are reasoned from the platform
+contracts. The iOS half is not built anywhere on Linux either.
+
 ## What the shell itself does (WP2)
 
 Six behaviours, each in its own class under `mobile/android/app/src/main/java/dev/hui/app/` so a reviewer can read one
@@ -352,9 +371,9 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   gateway the app is on, ignored without a gateway, refused if it carries `://`, a backslash or whitespace.
 - **Cleartext is loopback only** (`NSExceptionDomains` for `127.0.0.1` and `localhost`), the same rule as Android's
   network security config and owner decision O3. A tailnet gateway needs HTTPS (`tailscale serve`).
-- **What iOS does not have:** no App-Bound Domains, so the service worker's offline cache does not run (everything else
-  works online); no share sheet, microphone or resume hooks yet (WP10); and `ios-smoke` proves the Connect page and the
-  gateway's UI load, not a tapped journey.
+- **What iOS does not have:** no App-Bound Domains, so the service worker's offline cache does not run (everything else,
+  the share sheet, the microphone and the resume hook included, works online); and `ios-smoke` proves the Connect page
+  and the gateway's UI load, not a tapped journey.
 
 ## Distribution (WP8)
 
