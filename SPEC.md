@@ -997,9 +997,11 @@ types the value with the same CDP input path `act type` uses. Its result and
 enters PI's transcript, a log or the live view. Once typed the value is in the
 page, where script on that origin can read it: the origin check keeps it away
 from other origins and frames, and is strongest paired with an origin allowlist.
-A field inside an iframe is not addressable at all — a tab's snapshot covers its
-own document, not a frame's — so a sign-in form embedded from elsewhere always
-needs a handoff.
+A frame in the same renderer is part of the tab's snapshot: one level of child
+frames is read by frame id and hung under its Iframe node, and a ref from inside
+a frame carries that frame, so its origin is checked and its field typed into in
+place. A frame the browser runs out of process is not inlined, so an embedded
+sign-in form it holds still needs a handoff.
 
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
@@ -1060,6 +1062,13 @@ with the reason when its target is disabled, hidden or covered instead of
 reporting success, and a ref whose node was replaced keeps working when exactly
 one laid-out element still has its role and name — otherwise it fails as stale
 or ambiguous rather than acting on the wrong element.
+
+**Frames are part of the page.** A snapshot reads one level of child frames by
+frame id and hangs each under its Iframe node, so a form inside a frame is
+visible and its refs work for `act`, `get`, `is`, screenshots and the secret
+origin check. A frame the browser isolates in its own process is not inlined;
+the snapshot lists the Iframe node and nothing inside it, and that embedded
+sign-in needs a handoff.
 
 **A handoff is the operator's turn.** When only a person can continue — a
 password, 2FA, a passkey, a payment or a bot check — the agent calls `handoff`

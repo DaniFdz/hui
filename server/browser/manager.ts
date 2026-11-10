@@ -988,7 +988,7 @@ export class ManagedBrowser {
     const { target, label } = this.#target(tab, params["ref"]);
     const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
     // The field decides where the value goes: its own frame must be the secret's origin.
-    const fieldOrigin = await this.#fieldOrigin(instance, tab, target.backendNodeId);
+    const fieldOrigin = await this.#fieldOrigin(instance, tab, target.backendNodeId, target.frameId);
     if (fieldOrigin !== secret.origin) {
       throw new BrowserToolError(
         `The site secret "${name}" belongs to ${secret.origin}, and ${label} is on ${fieldOrigin || "an unknown origin"}. Refusing to type it there.`,
@@ -1007,14 +1007,16 @@ export class ManagedBrowser {
   }
 
   /** The origin of the frame an element lives in: a main-frame node is the tab's document, a child frame is its own. */
-  async #fieldOrigin(instance: Instance, tab: Tab, backendNodeId: number): Promise<string> {
-    let frameId = tab.frameId;
-    try {
-      const described = await instance.connection.send("DOM.describeNode", { backendNodeId, depth: 0 }, tab.session);
-      const node = isRecord(described["node"]) ? described["node"] : {};
-      frameId = str(node["frameId"]) || tab.frameId;
-    } catch {
-      // Keep the main frame: the value stays on the tab's own origin, which is the strictest guess.
+  async #fieldOrigin(instance: Instance, tab: Tab, backendNodeId: number, knownFrameId?: string): Promise<string> {
+    let frameId = knownFrameId || tab.frameId;
+    if (!knownFrameId) {
+      try {
+        const described = await instance.connection.send("DOM.describeNode", { backendNodeId, depth: 0 }, tab.session);
+        const node = isRecord(described["node"]) ? described["node"] : {};
+        frameId = str(node["frameId"]) || tab.frameId;
+      } catch {
+        // Keep the main frame: the value stays on the tab's own origin, which is the strictest guess.
+      }
     }
     if (frameId === tab.frameId) return originOf(tab.url);
     const tree = await instance.connection.send("Page.getFrameTree", {}, tab.session).catch(() => undefined);
@@ -1762,6 +1764,12 @@ export class ManagedBrowser {
   }
 
   async #refreshInfo(instance: Instance, tab: Tab): Promise<void> {
+    // A blocked page is reported as the blank tab this browser left in its place,
+    // even if its target still names the refused document for a moment.
+    if (tab.blocked) {
+      this.#setInfo(tab, "Blocked by allowed origins", "about:blank");
+      return;
+    }
     try {
       const result = await instance.connection.send("Target.getTargetInfo", { targetId: tab.targetId }, undefined, 5_000);
       const info = isRecord(result["targetInfo"]) ? result["targetInfo"] : undefined;
@@ -2004,12 +2012,67 @@ export class ManagedBrowser {
       const tree = await instance.connection.send("Accessibility.getFullAXTree", {}, tab.session);
       await this.#refreshInfo(instance, tab);
       const nodes = Array.isArray(tree["nodes"]) ? tree["nodes"].filter(isRecord) as unknown as AxNode[] : [];
-      result = renderSnapshot(nodes, tab.refs, { ...options, pageUrl: tab.url });
+      const inlined = await this.#inlineFrames(instance, tab, nodes);
+      result = renderSnapshot(inlined.nodes, tab.refs, { ...options, pageUrl: tab.url, ...(inlined.frameIds.size ? { frameIds: inlined.frameIds } : {}) });
       // A document committed while the tree was read: its refs would be stale.
       if (loaderId === tab.loaderId) break;
       tab.refs.reset();
     }
     return result ?? { text: "", lines: 0, truncated: false };
+  }
+
+  /** One level of child frames is read by frame id and hung under its Iframe node, so a form
+   * inside a frame is in the snapshot and its refs carry the frame they belong to. */
+  async #inlineFrames(instance: Instance, tab: Tab, nodes: readonly AxNode[]): Promise<{ nodes: AxNode[]; frameIds: Map<string, string> }> {
+    const frameIds = new Map<string, string>();
+    let tree: Record<string, unknown> | undefined;
+    try {
+      const result = await instance.connection.send("Page.getFrameTree", {}, tab.session);
+      tree = isRecord(result["frameTree"]) ? result["frameTree"] : undefined;
+    } catch {
+      return { nodes: [...nodes], frameIds };
+    }
+    const children = Array.isArray(tree?.["childFrames"]) ? tree!["childFrames"] as unknown[] : [];
+    if (!children.length) return { nodes: [...nodes], frameIds };
+    const merged = [...nodes];
+    for (const entry of children) {
+      const node = isRecord(entry) ? entry : {};
+      const frame = isRecord(node["frame"]) ? node["frame"] : {};
+      const frameId = str(frame["id"]);
+      if (!frameId || !/^https?:/iu.test(str(frame["url"]))) continue;
+      // A frame can still be loading when the main document fires load; give it a moment.
+      let childNodes: AxNode[] = [];
+      for (let attempt = 0; attempt < 3 && childNodes.length === 0; attempt += 1) {
+        if (attempt > 0) await delay(100);
+        const childTree = await instance.connection.send("Accessibility.getFullAXTree", { frameId }, tab.session, 5_000).catch(() => undefined);
+        childNodes = childTree && Array.isArray(childTree["nodes"]) ? childTree["nodes"].filter(isRecord) as unknown as AxNode[] : [];
+      }
+      if (!childNodes.length) continue;
+      let ownerId: number | undefined;
+      try {
+        const owner = await instance.connection.send("DOM.getFrameOwner", { frameId }, tab.session);
+        ownerId = typeof owner["backendNodeId"] === "number" ? owner["backendNodeId"] as number : undefined;
+      } catch {
+        ownerId = undefined;
+      }
+      const host = ownerId === undefined ? undefined : nodes.find((candidate) => candidate.backendDOMNodeId === ownerId);
+      if (!host) continue;
+      // Frame trees number their nodes per document; prefix them so they cannot collide.
+      const prefix = `f${frameId.slice(0, 8)}:`;
+      for (const child of childNodes) {
+        const copy: AxNode = {
+          ...child,
+          nodeId: `${prefix}${child.nodeId}`,
+          ...(child.parentId ? { parentId: `${prefix}${child.parentId}` } : {}),
+          childIds: (child.childIds ?? []).map((id) => `${prefix}${id}`),
+        };
+        merged.push(copy);
+        frameIds.set(copy.nodeId, frameId);
+      }
+      const root = childNodes.find((child) => !child.parentId);
+      if (root) host.childIds = [...(host.childIds ?? []), `${prefix}${root.nodeId}`];
+    }
+    return { nodes: merged, frameIds };
   }
 
   // ── Interaction ───────────────────────────────────────────────────────────
@@ -2119,7 +2182,8 @@ export class ManagedBrowser {
     const quad = await this.#box(instance, tab, target.backendNodeId, label);
     const x = ((quad[0] ?? 0) + (quad[2] ?? 0) + (quad[4] ?? 0) + (quad[6] ?? 0)) / 4;
     const y = ((quad[1] ?? 0) + (quad[3] ?? 0) + (quad[5] ?? 0) + (quad[7] ?? 0)) / 4;
-    if (requireHit) await this.#assertHit(instance, tab, target, label, x, y);
+    // What sits at a page coordinate is the frame element, not the node inside it.
+    if (requireHit && !target.frameId) await this.#assertHit(instance, tab, target, label, x, y);
     return { x, y };
   }
 

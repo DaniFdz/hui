@@ -4672,7 +4672,7 @@ comes from the per-conversation token. `action` is one of:
 | `open` | Launch lazily, open a tab, load `url` and return a snapshot |
 | `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot; with an origin allowlist set, a page outside it is refused with 403 |
 | `focus`, `close` | Select or close one of this conversation's tabs |
-| `snapshot` | Accessibility outline; `interactive`, `query`, `maxChars` (500–40 000, default 12 000; 8 000 for page loads), `selector` to start at one element and `depth` (1–40) to stop after some levels |
+| `snapshot` | Accessibility outline; `interactive`, `query`, `maxChars` (500–40 000, default 12 000; 8 000 for page loads), `selector` to start at one element and `depth` (1–40) to stop after some levels; one level of child frames is inlined under its Iframe node |
 | `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`, `state` with a selector) |
 | `text` | Visible text of `selector`, else the first article, main or body (default 12 000, at most 40 000 characters) |
 | `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory) |
@@ -4689,7 +4689,11 @@ snapshot of that tab. A ref stays bound to its DOM node within one document; a
 new document retires every ref and numbering never restarts, so a stale ref
 fails instead of addressing another element. A ref whose node was replaced
 keeps its number when exactly one laid-out element still has its role and name;
-with none or several it fails and asks for a new snapshot. A click on a
+with none or several it fails and asks for a new snapshot. A ref from an
+inlined frame carries the frame it belongs to: its origin is that frame's, its
+coordinates are shifted by the frame's content box, and the overlay check is
+skipped because the frame element, not the node, sits at that page point. A
+frame the browser isolates in another process is not inlined. A click on a
 disabled or hidden target fails with the reason, and one covered by another
 element fails naming the cover.
 

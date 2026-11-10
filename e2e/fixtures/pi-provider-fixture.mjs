@@ -107,6 +107,21 @@ const BROWSER_FIXTURE_PAGE = `<!doctype html>
   </script>
 </body>
 </html>`;
+/** For a frame check: a same-origin frame and one from another origin, each with a button. */
+const FRAME_FIXTURE_PAGE = (crossOrigin) => `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>HUI frame fixture</title>
+<style>body{margin:0;font:16px/1.5 system-ui,sans-serif} iframe{width:100%;height:180px;border:0} button{padding:8px 14px}</style></head>
+<body>
+  <h1>HUI frame fixture</h1>
+  <iframe src="/browser-frame-inner" title="Same frame"></iframe>
+  <iframe src="${crossOrigin}/browser-frame-inner" title="Cross frame"></iframe>
+</body>
+</html>`;
+const FRAME_INNER_PAGE = (label) => `<!doctype html><title>${label}</title>
+  <button onclick="document.getElementById('out').textContent = '${label} clicked'">${label} button</button>
+  <p id="out">idle</p>`;
+
 /** For a handoff check: the Name field sits at the viewport's centre, so the
  * operator's click on the middle of the live view lands on it; Greet follows it. */
 const HANDOFF_FIXTURE_PAGE = `<!doctype html>
@@ -227,6 +242,15 @@ const heldUntilRelease = (response) => new Promise((resolve) => {
   signalReplayReady();
 });
 
+let frameOrigin = "";
+const frameServer = createServer((_request, response) => {
+  response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  response.end(FRAME_INNER_PAGE("Cross"));
+});
+frameServer.listen(0, "127.0.0.1", () => {
+  frameOrigin = `http://127.0.0.1:${frameServer.address().port}`;
+});
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (request.method === "GET" && url.pathname === "/health") return json(response, 200, { ok: true });
@@ -238,7 +262,15 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(HANDOFF_FIXTURE_PAGE);
   }
-  if (request.method === "GET" && url.pathname === "/browser-secret-fixture") {
+  if (request.method === "GET" && url.pathname === "/browser-frame-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(FRAME_FIXTURE_PAGE(frameOrigin));
+  }
+  if (request.method === "GET" && url.pathname === "/browser-frame-inner") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(FRAME_INNER_PAGE("Same"));
+  }
+    if (request.method === "GET" && url.pathname === "/browser-secret-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(SECRET_FIXTURE_PAGE);
   }
@@ -616,6 +648,42 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // Both frames are inlined in the snapshot; a click inside each lands on its own button.
+  if (source.includes("E2E_BROWSER_FRAME") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-frame-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-frame-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-frame-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-frame-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      open: ["snapshot", { action: "snapshot" }],
+      snapshot: ["same", { action: "act", kind: "click", ref: ref(/button "Same button" \[ref=(e\d+)\]/u) }],
+      same: ["afterSame", { action: "snapshot" }],
+      afterSame: ["cross", { action: "act", kind: "click", ref: ref(/button "Cross button" \[ref=(e\d+)\]/u) }],
+      cross: ["afterCross", { action: "snapshot" }],
+    }[step];
+    const needsRef = (step) => step[1].action === "act" && step[1].kind === "click";
+    if (next && (!needsRef(next) || next[1].ref)) {
+      toolUse(response, `tool-e2e-frame-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const sameClicked = /Same clicked/u.test(results);
+    const crossClicked = /Cross clicked/u.test(results);
+    const inlined = /Iframe "Same frame"[\s\S]*button "Same button"/u.test(results) && /Iframe "Cross frame"[\s\S]*button "Cross button"/u.test(results);
+    text(response, sameClicked && crossClicked && inlined
+      ? "Both frames were in the snapshot, and a click inside each one landed: **Same clicked** and **Cross clicked**."
+      : `The frame check did not complete: inlined=${inlined}, same=${sameClicked}, cross=${crossClicked}.`);
+    return finish(response);
+  }
+
   // The agent reads and verifies one property at a time instead of re-snapshotting.
   if (source.includes("E2E_BROWSER_LOOP") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -691,7 +759,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);

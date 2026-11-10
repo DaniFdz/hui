@@ -927,62 +927,6 @@ test("a stored site secret is typed only on its own origin and never comes back 
   await assert.rejects(call({ action: "secret", name: "nope", ref: password }), /No site secret named "nope"\. Stored names: fixture/u);
 });
 
-test("a secret cannot reach a field inside a frame, on any origin", {
-  skip: !detected.executable,
-  timeout: 90_000,
-}, async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), "hui-browser-secret-frame-"));
-  const LOGIN = `<!doctype html><title>Embedded sign in</title>
-    <label for="password">Password</label><input id="password" type="password">`;
-  const login = createServer((_request, response) => {
-    response.writeHead(200, { "content-type": "text/html" });
-    response.end(LOGIN);
-  }).listen(0, "127.0.0.1");
-  await once(login, "listening");
-  const loginAddress = login.address();
-  assert.ok(loginAddress && typeof loginAddress !== "string");
-  const loginOrigin = `http://127.0.0.1:${loginAddress.port}`;
-  let embedded = loginOrigin;
-  const host = createServer((_request, response) => {
-    response.writeHead(200, { "content-type": "text/html" });
-    response.end(`<!doctype html><title>Host page</title><h1>Host page</h1>
-      <iframe src="${embedded}/login" title="Sign in" width="400" height="200"></iframe>`);
-  }).listen(0, "127.0.0.1");
-  await once(host, "listening");
-  const hostAddress = host.address();
-  assert.ok(hostAddress && typeof hostAddress !== "string");
-  const hostOrigin = `http://127.0.0.1:${hostAddress.port}`;
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
-  const stored = new Map<string, { name: string; origin: string; value: string; createdAt: string }>();
-  const secrets = {
-    find: async (name: string) => stored.get(name),
-    list: async () => [...stored.values()].map(({ name, origin, createdAt }) => ({ name, origin, createdAt })),
-  };
-  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, secrets });
-  t.onTestFinished(async () => {
-    await browser.stop();
-    host.close();
-    login.close();
-    await rm(dir, { recursive: true, force: true });
-  });
-  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
-  stored.set("fixture", { name: "fixture", origin: hostOrigin, value: "frame-secret", createdAt: "2026-11-08T00:00:00.000Z" });
-
-  // Neither another origin's frame nor the host's own frame puts its fields in the snapshot:
-  // refs only ever name nodes of the tab's own document, so no secret can reach a frame's field.
-  for (const [label, source] of [["another origin", loginOrigin], ["its own origin", ""]] as const) {
-    if (source) embedded = source;
-    const opened = await call({ action: "open", url: `${hostOrigin}/frame` });
-    assert.match(opened.text, /Iframe "Sign in"/u, label);
-    assert.doesNotMatch(opened.text, /textbox "Password"/u, label);
-    // A secret only accepts a ref this tab's own snapshot handed out.
-    const refused = await call({ action: "secret", name: "fixture", ref: "e99" }).then(() => undefined, (error: unknown) => error);
-    assert.ok(refused instanceof BrowserToolError);
-    assert.match(refused.message, /Ref e99 is not in tab t\d+'s latest snapshot/u, label);
-    assert.equal(refused.message.includes("frame-secret"), false, label);
-    await call({ action: "close" });
-  }
-});
 
 test("a steps call runs dependent interactions in one go and reports each one", {
   skip: !detected.executable,
@@ -1209,4 +1153,83 @@ test("a replaced element keeps its ref when its role and name are unique", {
   const twinSwap = refIn(twins.text, /button "Swap" \[ref=(e\d+)\]/u);
   await call({ action: "act", kind: "click", ref: twinSwap });
   await assert.rejects(call({ action: "act", kind: "click", ref: twinTarget }), /share its role and name, so the ref is ambiguous\. Take a new snapshot/u);
+});
+
+test("a form inside a frame is in the snapshot and works through its refs", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-frames-"));
+  const inner = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Cross frame</title><label for="pw">Password</label><input id="pw" type="password"><button onclick="document.getElementById('out').textContent = 'cross clicked'">Cross button</button><p id="out">idle</p>`);
+  }).listen(0, "127.0.0.1");
+  await once(inner, "listening");
+  const innerAddress = inner.address();
+  assert.ok(innerAddress && typeof innerAddress !== "string");
+  const crossOrigin = `http://127.0.0.1:${innerAddress.port}`;
+  const sameFrame = `<!doctype html><title>Same frame</title><button onclick="document.getElementById('out').textContent = 'inner clicked'">Inner button</button><p id="out">idle</p>`;
+  const host = createServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(request.url === "/same"
+      ? sameFrame
+      : `<!doctype html><title>Host</title><h1>Host</h1>
+        <iframe src="/same" title="Same frame"></iframe>
+        <iframe src="${crossOrigin}/cross" title="Cross frame"></iframe>`);
+  }).listen(0, "127.0.0.1");
+  await once(host, "listening");
+  const hostAddress = host.address();
+  assert.ok(hostAddress && typeof hostAddress !== "string");
+  const hostOrigin = `http://127.0.0.1:${hostAddress.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const stored = new Map<string, { name: string; origin: string; value: string; createdAt: string }>();
+  const secrets = {
+    find: async (name: string) => stored.get(name),
+    list: async () => [...stored.values()].map(({ name, origin, createdAt }) => ({ name, origin, createdAt })),
+  };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, secrets });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    host.close();
+    inner.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const refIn = (text: string, pattern: RegExp) => {
+    const ref = pattern.exec(text)?.[1];
+    assert.ok(ref, `missing ${pattern} in:\n${text}`);
+    return ref;
+  };
+  const pageAt = (text: string, url: string) => text.includes(url);
+
+  const opened = await call({ action: "open", url: `${hostOrigin}/` });
+  // Both frames are inlined, one of them from another origin.
+  assert.match(opened.text, /Iframe "Same frame"/u);
+  assert.match(opened.text, /Iframe "Cross frame"/u);
+  assert.match(opened.text, /button "Inner button" \[ref=(e\d+)\]/u);
+  assert.match(opened.text, /textbox "Password" \[ref=(e\d+)\]/u);
+  const innerButton = refIn(opened.text, /button "Inner button" \[ref=(e\d+)\]/u);
+  const password = refIn(opened.text, /textbox "Password" \[ref=(e\d+)\]/u);
+
+  // A click inside a same-origin frame lands on the frame's own button.
+  const clicked = await call({ action: "act", kind: "click", ref: innerButton });
+  assert.match(clicked.text, /Clicked e\d+ \(button "Inner button"\)/u);
+  assert.match((await call({ action: "snapshot" })).text, /inner clicked/u);
+
+  // The secret's origin is the frame's, not the host page's; the field is typed into in place.
+  stored.set("cross", { name: "cross", origin: hostOrigin, value: "frame-secret", createdAt: "2026-11-09T00:00:00.000Z" });
+  const refused = await call({ action: "secret", name: "cross", ref: password }).then(() => undefined, (error: unknown) => error);
+  assert.ok(refused instanceof BrowserToolError);
+  assert.match(refused.message, new RegExp(`belongs to ${hostOrigin.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}, and e\\d+ \\(textbox "Password"\\) is on ${crossOrigin.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`, "u"));
+  stored.set("cross", { name: "cross", origin: crossOrigin, value: "frame-secret", createdAt: "2026-11-09T00:00:00.000Z" });
+  const typed = await call({ action: "secret", name: "cross", ref: password });
+  assert.match(typed.text, new RegExp(`on ${crossOrigin.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`, "u"));
+  assert.doesNotMatch(typed.text, /frame-secret/u);
+  assert.equal(pageAt(typed.text, crossOrigin), true);
+
+  // A click inside the cross-origin frame is shifted onto the page and lands on its button.
+  const crossButton = refIn((await call({ action: "snapshot" })).text, /button "Cross button" \[ref=(e\d+)\]/u);
+  const crossClicked = await call({ action: "act", kind: "click", ref: crossButton });
+  assert.match(crossClicked.text, /Clicked e\d+ \(button "Cross button"\)/u);
+  assert.match((await call({ action: "snapshot" })).text, /cross clicked/u);
 });
