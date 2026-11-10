@@ -792,7 +792,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#notification-settings"],
     surfaces: ["settings-page:notifications", "setting:notifications.runFinished", "setting:notifications.runFailed", "setting:notifications.needsInput"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-077",
