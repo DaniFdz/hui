@@ -156,7 +156,7 @@ Every question also offers a free-text answer the card adds itself, and the user
       cwd: Type.Optional(Type.String({ minLength: 1, maxLength: 4_096, description: "Project directory. Defaults to the caller's." })),
       title: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
       group: Type.Optional(Type.String({ maxLength: 200, description: "Sidebar group. Defaults to the caller's." })),
-      worker: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "Worker id or name. Defaults to the caller's worker, or this machine." })),
+      worker: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "Worker id or name, or local for this machine. Defaults to the caller's worker, or this machine." })),
       worktree: Type.Optional(Type.Boolean({ description: "Create a fresh Git worktree and branch for the session." })),
       branchName: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "Worktree branch; HUI generates one when omitted." })),
       baseRef: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "Base branch or commit." })),

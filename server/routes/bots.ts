@@ -1,5 +1,5 @@
 /**
- * `/__hui/bots` routes (HUI-18); see docs/api.md#bots. `:id` is a bot's id or
+ * `/__hui/bots` routes; see docs/api.md#bots. `:id` is a bot's id or
  * handle. The chat itself (transcript, live stream, prompt, steer, follow-up,
  * questions) is the session API on `bot.sessionId`; these routes do not
  * duplicate it.

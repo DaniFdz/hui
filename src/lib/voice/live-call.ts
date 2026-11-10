@@ -1,5 +1,5 @@
 /**
- * A GPT-Live call with a bot (HUI-18): full-duplex speech with ChatGPT's voice
+ * A GPT-Live call with a bot: full-duplex speech with ChatGPT's voice
  * model over WebRTC, and the bot's own turns for whatever needs its tools,
  * files or memory. The gateway sets the call up and keeps the ChatGPT
  * credential; the browser carries the audio and the call's data channel.

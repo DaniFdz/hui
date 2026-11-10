@@ -1,5 +1,5 @@
 /**
- * The GitHub pull requests a trigger's delivery links to (HUI-18), read through the gateway's GitHub CLI when the
+ * The GitHub pull requests a trigger's delivery links to, read through the gateway's GitHub CLI when the
  * delivery goes out: title, author, state, base and head, the description, the changed files with their additions and
  * deletions, and the diff, each bounded, with what was cut said. A bot reviews from the delivery alone, so it needs no
  * shell, and a listener's event can't make it run commands or act on GitHub as the operator. A pull request gh can't
