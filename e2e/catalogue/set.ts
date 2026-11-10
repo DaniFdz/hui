@@ -473,7 +473,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.primary", "setting:models.fallback", "setting:models.utility", "setting:models.thinking", "setting:models.retryAttempts", "route:PUT /__hui/settings"],
     journeys: ["model-routing"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-091",
