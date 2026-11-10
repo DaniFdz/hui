@@ -1,6 +1,7 @@
 /**
  * Fixture worlds the shared suite can start for one test: a second disposable gateway, launched from this checkout's own
- * visual-verification launcher with the flag that seeds it (`--jira-fixture`, `--github-fixture`, `--activity-fixture`),
+ * visual-verification launcher with the flag that seeds it (`--jira-fixture`, `--github-fixture`, `--activity-fixture`,
+ * `--datadog-fixture` for the fake `pup`, `--quota-fixture` for provider usage),
  * because a world is set on the gateway's *process environment* and the suite's own launcher starts once per target
  * without those flags (`e2e.config.ts` passes `--fast-fixture` and nothing else). A world therefore never replaces or
  * reconfigures that launcher: it is another gateway on another port, which a test opens like the app.
@@ -24,7 +25,7 @@ import { expect } from "e2e";
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 /** The worlds the launcher can seed, and the flag it takes for each. */
-export type WorldName = "jira" | "github" | "activity";
+export type WorldName = "jira" | "github" | "activity" | "datadog" | "quota";
 
 /** A receipt the launcher printed: the public half of `receipt.json`, plus the path of the private one. */
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; artifacts: string; jiraUrl?: string };
@@ -34,8 +35,7 @@ export type World = {
   /** The world's own gateway. A test opens pages of it with `hui.open(...)` and calls it with `api`. */
   url: string;
   /** The fake services this world seeded: Jira's local Cloud subset in the `jira` world. */
-  jiraUrl?: string;
-  /** The launcher's run directory: its state, artifacts, and the fake CLIs' own files (`gh`, `pup`). */
+  jiraUrl?: string;  /** The launcher's run directory: its state, artifacts, and the fake CLIs' own files (`gh`, `pup`). */
   runDir: string;
   /** A `/__hui/` call to the world's gateway, with the `x-hui` guard every browser request carries. */
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
