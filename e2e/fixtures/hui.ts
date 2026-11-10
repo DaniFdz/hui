@@ -773,7 +773,17 @@ export const test = base.extend<{ hui: Hui }>({
             // Playwright init script, a request interception or a live context the WebView refuses, and they failed with
             // "Cannot read properties of undefined (reading 'triggerEvent')" before anyone could read the reason. They
             // refuse here instead, so a test that needs one fails where the phone cannot do it.
-            clearOffline: noBrowserHarness("clearOffline"),
+            clearOffline: async () => {
+              // The web version also installs an init script so a later page cannot be answered by an old worker. The phone
+              // relaunches the app for every test, so the page that matters is the open one: clearing it here is the whole
+              // job, and an init script is the one thing the WebView's single context cannot take.
+              await browser().evaluate(async () => {
+                const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+                await Promise.all(registrations.map((registration) => registration.unregister()));
+                if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
+                return null;
+              });
+            },
             holdAppChunks: noBrowserHarness("holdAppChunks"),
             spoofUserAgent: noBrowserHarness("spoofUserAgent"),
             answerAll: noBrowserHarness("answerAll"),
