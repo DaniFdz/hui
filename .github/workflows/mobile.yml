@@ -26,8 +26,9 @@ concurrency:
   group: mobile-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  # The private jobs that come later (WP4's `android-e2e`, WP5's `ios-smoke`, WP6's `webkit-phone`) are one job each in
-  # this file, so no two packages edit the same lines.
+  # The private jobs that come later (WP4's `android-e2e`, WP5's `ios-smoke`) are one job each in this file, so no two
+  # packages edit the same lines. WP6's `webkit-phone` is its own workflow (mobile-webkit-phone.yml): it triggers on the
+  # page's paths, which must not wake the Android build here.
   android-build:
     runs-on: ubuntu-latest
     # The SDK download, the Gradle distribution and the debug build; a hang fails here, not at GitHub's six hours.

@@ -25,6 +25,7 @@ import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { addWorkerOnThisMachine } from "./worker.ts";
 import { clearAppStorage, onPhone } from "./phone.ts";
+import { IPHONE_SCREEN, onWebKitPhone } from "./phone-webkit.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
@@ -746,16 +747,32 @@ export const test = base.extend<{ hui: Hui }>({
     // The Android app's WebView is HUI's web page in another host, so its table is the web's except for what a WebView
     // cannot do: it has one page and one context, which the engine cannot replace between attempts, so the app's own
     // storage is cleared in place (and the page reloaded) where the web asks the engine for a clean context.
-    const steps: PlatformSteps = onPhone(fixtures.app.baseUrl)
+    // `webkit-phone` is the iPhone's engine at a phone's size: its table is the web's too, except that the steps needing
+    // a desktop would quietly prove the desktop's behaviour on a phone (a mouse still moves in a touch context, and the
+    // engine can be told to lay the page out wide), so they refuse instead and the test fails where the behaviour is
+    // unprovable. WP7's area owners take the failures to a phone step or a catalogue exclusion. `sessionMenu` stays the
+    // web's: its hover only reveals the row's button there, and the phone draws that button at phone widths anyway.
+    const desktopOnly = (step: string) => (): never => {
+      throw new Error(`hui.${step}() needs a desktop: the webkit-phone target is a phone at ${IPHONE_SCREEN.width}x${IPHONE_SCREEN.height} with touch and no hover, so this step would prove the desktop's behaviour on a phone instead of failing where the phone cannot show it`);
+    };
+    const steps: PlatformSteps = onWebKitPhone(fixtures.app.baseUrl)
       ? {
           ...web,
-          clearState: async () => {
-            await fixtures.app.open("/");
-            await browser().evaluate(clearAppStorage);
-            await browser().reload();
-          },
+          wideScreen: desktopOnly("wideScreen"),
+          peek: desktopOnly("peek"),
+          messageActions: desktopOnly("messageActions"),
+          openWorkView: desktopOnly("openWorkView"),
         }
-      : web;
+      : onPhone(fixtures.app.baseUrl)
+        ? {
+            ...web,
+            clearState: async () => {
+              await fixtures.app.open("/");
+              await browser().evaluate(clearAppStorage);
+              await browser().reload();
+            },
+          }
+        : web;
     if (fixtures.platform === "web") await browser().addInitScript(trackSockets);
     await steps.clearState();
 

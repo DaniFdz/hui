@@ -1,0 +1,85 @@
+name: Mobile WebKit
+# The shared e2e suite in the engine the iPhone runs (docs/mobile-app-plan.md, WP6): Playwright's WebKit at an iPhone's
+# viewport, with touch, on a Linux runner and with no device. It proves what the iPhone's engine renders and lays out,
+# not that the app's shell works, so its paths are the page's: every UI change runs it in its own pull request, beside
+# `web` (e2e.yml). It is a file of its own rather than a third job of mobile.yml because mobile.yml triggers on
+# `mobile/**` alone: adding the page's paths there would wake the Android build and its four emulator shards for every UI
+# change, which is the cost the plan exists to avoid.
+#
+# The suite runs whole, unfiltered: a failure here is a phone backlog entry (the catalogue's phone status says whether it
+# is one already), so the run's list IS the work of a WP7 area. Advisory until that backlog closes, like the `android`
+# job.
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "index.html"
+      - "public/**"
+      - "themes/**"
+      - "vite.config.ts"
+      - "e2e/**"
+      - "e2e.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/mobile-webkit-phone.yml"
+  push:
+    branches: [main, "mobile/**"]
+    paths:
+      - "src/**"
+      - "index.html"
+      - "public/**"
+      - "themes/**"
+      - "vite.config.ts"
+      - "e2e/**"
+      - "e2e.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/mobile-webkit-phone.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  # A newer push to the same branch or pull request supersedes a run in progress; a manual run supersedes nothing.
+  group: mobile-webkit-phone-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || '' }}
+  cancel-in-progress: true
+jobs:
+  webkit-phone:
+    runs-on: ubuntu-latest
+    # The launcher's production build (about a minute), then this shard's share of the suite. Measured locally, a phone
+    # failure costs its action timeout instead of its full budget, which is why the run below passes a shorter one:
+    # four shards land well inside this.
+    timeout-minutes: 60
+    # Advisory while the phone backlog is open (docs/mobile-app-plan.md, owner decision O2). It runs the whole suite so
+    # the failures ARE the backlog a WP7 area works from; the traces say which.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/4", "2/4", "3/4", "4/4"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
+      # The WebKit build WebKitGTK's system libraries, installed as their own step so the cost is visible and cacheable.
+      - run: npx e2e-web install webkit --with-deps
+      - name: Run the shared suite in WebKit at an iPhone's size
+        env:
+          E2E_TELEMETRY_DISABLED: "1"
+        # `--action-timeout` is a phone failure's cost: an element the phone layout never shows waits 20 s instead of the
+        # config's 60, so a run whose backlog is mostly failures still finishes. Nothing else about the run changes.
+        run: npx e2e run --target webkit-phone --shard "${{ matrix.shard }}" --action-timeout 20000
+      # The suite's traces and screenshots, and the launcher's gateway and provider logs: where a phone failure is read.
+      - if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-webkit-phone-${{ strategy.job-index }}
+          path: |
+            .e2e/
+            /tmp/hui-visual-*/artifacts/
+          include-hidden-files: true
+          if-no-files-found: warn

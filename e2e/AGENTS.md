@@ -43,13 +43,25 @@ run by `../e2e.config.ts` against a disposable gateway that the visual-verificat
 `npm run e2e` after `npx e2e-web install chromium`; a failure leaves `trace.md`, a screenshot and the screen dump in
 `.e2e/results/`.
 
-The suite has two targets, `web` and `android` (`../e2e.config.ts`), and `webkit-phone` and `ios-smoke` follow. The
+The suite has three targets, `web`, `android` and `webkit-phone` (`../e2e.config.ts`), and `ios-smoke` follows. The
 tests stay portable so a phone can run them: every gesture or reading that would differ per platform is a `hui.*` step
 from the fixture's per-target table, and the rules below keep the tests themselves free of web-only reads. `android`
 runs HUI's own page inside the app's WebView over CDP (`fixtures/phone.ts`), so its steps are the web's except for what
 a WebView cannot do (it has one page and one context, so `hui.clearState()` clears the app's storage in the page). The
-web engine's platform is `web` on both targets, so a test declaring `platforms: ["web"]` runs on the phone too: which use
+web engine's platform is `web` on every target, so a test declaring `platforms: ["web"]` runs on the phones too: which use
 cases `android` runs is the catalogue's phone status, which `catalogue/phone.ts` prints as the `--tag` list the job uses.
+
+`webkit-phone` is Playwright's WebKit at an iPhone's viewport (390 by 844) with touch and a phone user agent, on Linux
+and with no device (`fixtures/phone-webkit.ts`). It proves what the iPhone's engine renders and lays out — the phone
+layout, the drawer, the touch targets, the fonts — in every pull request, so an iPhone-only rendering or layout bug is
+caught before a phone sees it. It is not the app: there is no WebView, no Capacitor bridge, no plugin, no status bar, no
+back button of its own, no soft keyboard and no notification, so a shell behaviour stays on `android`. Its platform is
+`web` too, so the fixture tells it from `web` by its gateway's fixed port (`E2E_WEBKIT_PHONE_PORT`, 47500 by default). A
+phone has no wide screen and no hover, so `hui.wideScreen()`, `hui.peek()`, `hui.messageActions()` and
+`hui.openWorkView()` refuse there instead of proving the desktop's behaviour on a phone: a test that needs one stays on
+`web`, or gets a phone step and a catalogue entry that says what the phone shows. The target runs the whole suite
+unfiltered, and its failures are the phone backlog: a use case is phone-required only once it passes on both `android`
+and `webkit-phone`.
 
 A phone shows one screen at a time, so a test calls `hui.sessionList()` before it checks session rows while a chat
 or the Sessions page is open: on the web's wide layout the sidebar is always there and it does nothing, and on the
