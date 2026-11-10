@@ -803,6 +803,17 @@ and a wholesale change, and `server/browser/manager.test.ts` proves it against a
 real page (an action's one changed line and a revealed button, a ref from the
 diff clicking, and a navigation resetting the baseline).
 
+Follow-up 2026-11-09: `act` gains `kind: "upload"`, which puts one to ten local
+files (relative to the session directory, at most 25 MB each) into a page's file
+input by ref, by its label, or by `selector` for an input the page hides. The
+page's own change handler runs, so the site's reaction is the proof; a missing
+path, a directory, a non-input, a disabled input and too many files for a
+single-file input are refused with the reason. Proof:
+`server/browser/manager.test.ts` (a real file input that shows the picked names,
+a multi-file input, a hidden input by selector, and every refusal) and the
+upload section of `e2e/browser-tool.browser.md`.
+
+
 ### HUI-16 — macOS sleep prevention
 
 Settings → Gateway → Power keeps a macOS gateway host awake (`caffeinate -i`, on

@@ -21,7 +21,7 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 
@@ -73,7 +73,7 @@ export const BROWSER_ACTIONS = [
   "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps", "get", "is", "network",
 ] as const;
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
-export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "scroll", "wait"] as const;
+export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "upload", "scroll", "wait"] as const;
 export type BrowserActKind = (typeof BROWSER_ACT_KINDS)[number];
 
 export const MAX_TABS_PER_CONVERSATION = 8;
@@ -468,6 +468,20 @@ function screenshotPath(cwd: string, raw: unknown): string {
   return path;
 }
 
+/** The largest single file `act upload` puts into a page. */
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+/** Local files an upload puts into the page, resolved against the session directory. */
+function uploadFiles(cwd: string, raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 10) throw new BrowserToolError("files must list 1 to 10 file paths.");
+  return raw.map((entry) => {
+    if (typeof entry !== "string" || !entry.trim() || entry.length > 4_096 || /[\p{Cc}]/u.test(entry)) {
+      throw new BrowserToolError("every entry of files must be a file path.");
+    }
+    return isAbsolute(entry) ? entry : resolve(cwd, entry);
+  });
+}
+
 /** A HAR path for `network`, beside the session's other artifacts. */
 function harPath(cwd: string, raw: unknown): string {
   if (typeof raw !== "string" || !raw.trim() || raw.length > 4_096 || /[\p{Cc}]/u.test(raw)) {
@@ -547,6 +561,14 @@ const CONTAINS_HIT = String.raw`function (other, x, y) {
   return { contains: false, cover: element.tagName.toLowerCase() + (element.id ? "#" + element.id : "") + classes.map((name) => "." + name).join("") };
 }`;
 
+const UPLOAD_TARGET = String.raw`function () {
+  const element = this instanceof HTMLLabelElement && this.control ? this.control : this;
+  if (!(element instanceof HTMLInputElement) || element.type !== "file") return null;
+  return { multiple: element.multiple, disabled: element.disabled, count: element.files ? element.files.length : 0 };
+}`;
+const UPLOAD_FILES = String.raw`function () {
+  return Array.from(this.files ?? [], (file) => file.name);
+}`;
 const PREPARE_TYPING = String.raw`function (append) {
   let element = this;
   if (element instanceof HTMLLabelElement && element.control) element = element.control;
@@ -966,7 +988,7 @@ export class ManagedBrowser {
           },
         };
       }
-      case "act": return this.#act(owner, params);
+      case "act": return this.#act(owner, params, context.cwd);
       case "text": return this.#text(owner, params);
       case "screenshot": return this.#screenshot(owner, params, context.cwd);
       case "console": return this.#console(owner, params);
@@ -976,7 +998,7 @@ export class ManagedBrowser {
       case "resize": return this.#resize(owner, params);
       case "handoff": return this.#handoff(owner, params);
       case "secret": return this.#secret(owner, params);
-      case "steps": return this.#steps(owner, params);
+      case "steps": return this.#steps(owner, params, context.cwd);
     }
   }
 
@@ -1090,7 +1112,7 @@ export class ManagedBrowser {
 
   /** Dependent interactions in one call: menus, hovers and a form submit are transient, and one round
    * trip per step loses them. Each step is an `act` with the same rules, on this call's tab. */
-  async #steps(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+  async #steps(owner: string, params: Record<string, unknown>, cwd: string): Promise<BrowserToolResult> {
     const tab = this.#tabFor(owner, params["tabId"]);
     const steps = params["steps"];
     if (!Array.isArray(steps) || steps.length === 0 || steps.length > MAX_STEPS) {
@@ -1107,7 +1129,7 @@ export class ManagedBrowser {
       }
       try {
         // One tab for the whole sequence: a step never retargets the call.
-        const result = await this.#act(owner, { ...step, tabId: tab.id, ...(timeoutMs === undefined ? {} : { timeoutMs: step["timeoutMs"] ?? timeoutMs }) });
+        const result = await this.#act(owner, { ...step, tabId: tab.id, ...(timeoutMs === undefined ? {} : { timeoutMs: step["timeoutMs"] ?? timeoutMs }) }, cwd);
         log.push(`${index + 1}. ${kind}: ${result.text.split("\n")[0] ?? kind}`);
       } catch (error) {
         const reason = error instanceof Error ? error.message : "the step failed";
@@ -2339,7 +2361,7 @@ export class ManagedBrowser {
     if (state !== "visible") await instance.connection.send("Page.bringToFront", {}, tab.session).catch(() => undefined);
   }
 
-  async #perform(instance: Instance, tab: Tab, kind: BrowserActKind, params: Record<string, unknown>): Promise<{ text: string; point?: { x: number; y: number } }> {
+  async #perform(instance: Instance, tab: Tab, kind: BrowserActKind, params: Record<string, unknown>, cwd: string): Promise<{ text: string; point?: { x: number; y: number } }> {
     if (kind !== "wait") await this.#ensureVisible(instance, tab);
     switch (kind) {
       case "click": {
@@ -2405,6 +2427,45 @@ export class ManagedBrowser {
         }
         const selected = isRecord(result) && Array.isArray(result["selected"]) ? result["selected"].map(String) : [];
         return { text: `Selected ${selected.join(", ") || values.join(", ")} in ${label}.` };
+      }
+      case "upload": {
+        const files = uploadFiles(cwd, params["files"]);
+        for (const file of files) {
+          const info = await stat(file).catch(() => undefined);
+          if (!info?.isFile()) throw new BrowserToolError(`${file} is not a file that can be uploaded.`, 404);
+          if (info.size > MAX_UPLOAD_BYTES) throw new BrowserToolError(`${file} is larger than ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB; that is more than the browser uploads in one action.`, 413);
+        }
+        // A page often hides its file input behind a styled button, so a selector
+        // addresses one the snapshot cannot see.
+        const selector = typeof params["selector"] === "string" ? params["selector"] : "";
+        let objectId: string;
+        let label: string;
+        if (selector) {
+          const nodeId = await this.#elementNode(instance, tab, selector);
+          const resolved = await instance.connection.send("DOM.resolveNode", { nodeId, objectGroup: OBJECT_GROUP }, tab.session);
+          objectId = isRecord(resolved["object"]) ? str(resolved["object"]["objectId"]) : "";
+          if (!objectId) throw new BrowserToolError(`No element to upload to at ${selector}.`, 404);
+          label = selector;
+        } else {
+          if (params["ref"] === undefined) throw new BrowserToolError("upload needs ref to the file input, or selector when the page hides it.");
+          const live = await this.#liveTarget(instance, tab, params["ref"]);
+          objectId = await this.#resolve(instance, tab, live.target.backendNodeId, live.label);
+          label = live.label;
+        }
+        const described = await this.#call(instance, tab, objectId, UPLOAD_TARGET);
+        if (!isRecord(described)) throw new BrowserToolError(`${label} is not a file input. Point ref at the file input itself, or at its label.`, 409);
+        if (described["disabled"] === true) throw new BrowserToolError(`${label} is disabled; nothing was uploaded.`, 409);
+        if (files.length > 1 && described["multiple"] !== true) throw new BrowserToolError(`${label} accepts one file, but ${files.length} were given.`, 409);
+        try {
+          await instance.connection.send("DOM.setFileInputFiles", { files, objectId }, tab.session);
+        } catch (error) {
+          throw new BrowserToolError(`${label} did not accept the files: ${error instanceof Error ? error.message : "the browser refused"}`, 409);
+        }
+        const picked = await this.#call(instance, tab, objectId, UPLOAD_FILES);
+        const names = Array.isArray(picked) ? picked.map(String) : [];
+        if (!names.length) throw new BrowserToolError(`${label} kept no file after the upload; the page may have cleared it.`, 409);
+        const shown = names.length > 4 ? [...names.slice(0, 4), `and ${names.length - 4} more`] : names;
+        return { text: `Uploaded ${shown.join(", ")} to ${label} (${names.length} file${names.length === 1 ? "" : "s"}).` };
       }
       case "scroll": {
         if (params["ref"] !== undefined) {
@@ -2491,7 +2552,7 @@ export class ManagedBrowser {
     }
   }
 
-  async #act(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+  async #act(owner: string, params: Record<string, unknown>, cwd: string): Promise<BrowserToolResult> {
     const kind = params["kind"];
     if (typeof kind !== "string" || !(BROWSER_ACT_KINDS as readonly string[]).includes(kind)) {
       throw new BrowserToolError(`act needs kind: ${BROWSER_ACT_KINDS.join(", ")}.`);
@@ -2512,7 +2573,7 @@ export class ManagedBrowser {
     let summary: string;
     let outcome: NavigationOutcome = { navigated: false, loaded: true, sameDocument: false };
     try {
-      const performed = await this.#perform(instance, tab, kind as BrowserActKind, params);
+      const performed = await this.#perform(instance, tab, kind as BrowserActKind, params, cwd);
       summary = performed.text;
       this.#emitAction(tab, summary.replace(/\.$/u, ""), performed.point);
       if (kind !== "wait" && (await watch.started(NAVIGATION_START_MS))) {

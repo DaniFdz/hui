@@ -1063,6 +1063,13 @@ reporting success, and a ref whose node was replaced keeps working when exactly
 one laid-out element still has its role and name — otherwise it fails as stale
 or ambiguous rather than acting on the wrong element.
 
+**A form that only accepts a file can be completed.** `act` with `kind: "upload"`
+puts one to ten local files (relative to the session directory or absolute,
+each up to 25 MB) into a page's file input, addressed by the ref of the input
+or its label, or by a `selector` when the page hides it behind a styled button.
+The page's own `change` handler runs, so what the site shows afterwards is the
+proof; a directory, a missing file, a non-file element, a disabled input and
+several files into a single-file input are refused with the reason.
 **A snapshot can say what changed.** `snapshot` with `diff: true` compares the
 tab's current whole snapshot with the last one it took in the same document and
 returns only the changed lines, marked `+` and `-` with two lines of context,

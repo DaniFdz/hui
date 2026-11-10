@@ -518,6 +518,15 @@ const cases: UseCase[] = [
     web: "backlog",
   },
   {
+    id: "AGENT-070",
+    title: "Upload a local file into a page's form",
+    behaviour: "An agent puts local files into a page's file input with act kind upload, addressed by the input's ref, its label or a selector when the page hides it. The page's own change handler runs and the agent reads the site's confirmation; a missing path, a directory, a non-input, a disabled input and too many files for a single-file input are refused with the reason.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["tool:browser"],
+    journeys: ["browser-tool"],
+    web: "backlog",
+  },
+  {
     id: "AGENT-069",
     title: "Read only what an action changed",
     behaviour: "After acting, an agent takes a snapshot with diff: true and receives only the lines that changed, prefixed + or -, with two lines of context and a count. Unchanged lines keep their refs, so the agent acts straight from a diff; a first diff in a tab, a navigation, or a change too large to match says so and returns the whole snapshot.",
