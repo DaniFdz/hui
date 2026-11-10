@@ -33,7 +33,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["markdown-formatting"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-004",
@@ -43,7 +43,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["markdown-formatting"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-005",
@@ -53,7 +53,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: [],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-006",
@@ -72,7 +72,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-008",
@@ -81,7 +81,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-009",
@@ -91,7 +91,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["markdown-formatting"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-010",
@@ -111,7 +111,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["rich-embeds"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-012",
@@ -131,7 +131,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["rich-embeds"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-014",
@@ -161,7 +161,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: [],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-017",
@@ -171,7 +171,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-018",
@@ -211,7 +211,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-022",
@@ -221,7 +221,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-023",
@@ -260,7 +260,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:present_media", "route:GET /__hui/media/:id/:name"],
     journeys: ["presented-media", "media-viewer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-027",
