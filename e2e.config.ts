@@ -1,11 +1,13 @@
 /**
- * The shared e2e suite: HUI's web UI in a browser, and in the Android app's WebView (`android`), each against a disposable
- * gateway started by the visual-verification launcher.
+ * The shared e2e suite: HUI's web UI in a browser (`web`), in the Android app's WebView (`android`), and in the iPhone's
+ * engine at a phone's size (`webkit-phone`), each against a disposable gateway started by the visual-verification
+ * launcher.
  */
 import { execFileSync } from "node:child_process";
 import type { E2EConfig } from "e2e";
 import { web } from "@e2e-dev/web";
 import { PHONE_PORT, phoneCdpEndpoint, phoneReconnectEndpoint } from "./e2e/fixtures/phone.ts";
+import { WEBKIT_PHONE_PORT, webkitPhoneOptions } from "./e2e/fixtures/phone-webkit.ts";
 
 const branch = execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim() || "HEAD";
 
@@ -39,6 +41,22 @@ const phone = {
   app: { url: phoneGateway, command: launcher("android", PHONE_PORT, true) },
 };
 
+/**
+ * The same suite in the engine the iPhone runs, on Linux and with no device: Playwright's WebKit at an iPhone's
+ * viewport, which `e2e/fixtures/phone-webkit.ts` completes into a phone (touch and the mobile viewport) and whose
+ * gateway's fixed port tells the fixture which target it drives.
+ *
+ * Its page is HUI's own web UI, so its steps are the web's except where a phone has no gesture at all (a wide screen, a
+ * hover), which the fixture's phone branch refuses instead of proving the desktop's behaviour. It runs the whole suite:
+ * which of its failures are real phone bugs is the catalogue's phone backlog, which the target's failure list feeds
+ * (docs/mobile-app-plan.md, WP6).
+ */
+const webkitPhone = {
+  name: "webkit-phone",
+  engine: web(webkitPhoneOptions()),
+  app: { url: `http://127.0.0.1:${WEBKIT_PHONE_PORT}`, command: launcher("webkit-phone", WEBKIT_PHONE_PORT, true) },
+};
+
 export default {
   tests: "e2e/tests/**/*.e2e.ts",
   retries: 0,
@@ -54,5 +72,6 @@ export default {
       app: { url: "http://127.0.0.1:0", command: launcher("web", "{port}", true) },
     },
     phone,
+    webkitPhone,
   ],
 } satisfies E2EConfig;
