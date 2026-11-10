@@ -734,7 +734,6 @@
   },
   "unexercisedLabels": [
     "Answer",
-    "Archived bots",
     "Attachments",
     "Back to changed files",
     "CRLF",
@@ -771,7 +770,6 @@
     "PI",
     "Panel tabs",
     "Reload VS Code",
-    "Routines",
     "Search Jira work items",
     "Send mode",
     "Session filters",
@@ -783,7 +781,6 @@
     "Sleep prevention",
     "Subscription and limits",
     "Suggesting a name",
-    "Triggers",
     "View",
     "Work views",
     "Worktree filters",
