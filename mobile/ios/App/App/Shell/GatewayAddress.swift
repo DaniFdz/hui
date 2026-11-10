@@ -3,7 +3,8 @@ import Foundation
 /**
  The gateway address the app accepts: `http://` or `https://`, with a host, without credentials, without a query or a
  fragment, and without trailing slashes. It is the same rule as the Android shell's `GatewayAddress.java` and the Connect
- page's `normalizeGateway` (`mobile/gateway-addresses.txt` holds the cases all three read).
+ page's `normalizeGateway`. Those two read `mobile/gateway-addresses.txt`; the Swift rule has no test target, so the
+ ios-smoke job is its only proof and the contract test keeps its shape in step with the others.
  */
 enum GatewayAddress {
     static func normalize(_ raw: String?) -> String? {
@@ -21,7 +22,8 @@ enum GatewayAddress {
         components.fragment = nil
         var path = components.path
         while path.hasSuffix("/") { path.removeLast() }
-        var authority = host.lowercased()
+        // A literal IPv6 host comes back unbracketed, and a URL needs the brackets back.
+        var authority = host.contains(":") ? "[\(host.lowercased())]" : host.lowercased()
         if let port = components.port { authority += ":\(port)" }
         return "\(scheme)://\(authority)\(path)"
     }

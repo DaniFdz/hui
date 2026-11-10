@@ -328,6 +328,34 @@ The flake adds `devShells.android` for `x86_64-linux` only: that is the machine 
 on. On macOS the Android shell is absent, so `npm run mobile -- …` there fails inside `nix develop .#android`; use the
 iOS half (WP5) or a plain SDK instead. `npm run mobile:build` (the Connect page) needs no Android toolchain at all.
 
+## iOS
+
+`mobile/ios/` is the iOS half of the shell: a Capacitor 8 project generated on Linux with `npx cap add ios` (Swift Package
+Manager, no CocoaPods) and committed. Nothing on Linux can build it, so the proof is `.github/workflows/ios.yml`'s
+`ios-smoke` job: it builds for the simulator, boots one in the background, launches on a fixture gateway and captures the
+screen, on the paths that can break it (not on every PR, because macOS minutes cost about ten times Linux ones).
+
+- **The bridge on a runtime gateway.** `Shell/HUIBridgeViewController` overrides `instanceDescriptor()`, which Capacitor
+  calls once per bridge before the WebView exists, and sets `serverURL` to the address `Shell/Gateway` resolves. With no
+  gateway the bundled Connect page loads.
+- **The plugin must be registered.** Capacitor 8 does not discover a plugin by class name; `capacitorDidLoad()` calls
+  `bridge?.registerPluginInstance(HuiGatewayPlugin())` before the WebView loads. Without it every `HuiGateway` call rejects
+  with "`HuiGateway` plugin is not implemented on ios" and the Connect page cannot connect at all — which no screenshot
+  shows, so `scripts/mobile-contract.test.mjs` asserts the registration on both platforms.
+- **One launch, in memory.** `-HUIGatewayURL` and the "did not answer" marker live in statics, as Android keeps them on
+  the launch Intent: `UserDefaults`' argument domain cannot be cleared, so a launch argument is consumed rather than
+  removed. A relaunch retries the gateway.
+- **The fallback** polls for a committed page whose address starts with the gateway (Android uses `onPageCommitVisible`);
+  after about a minute without one it marks the address and rebuilds on Connect. The bridge cannot change its server URL,
+  so a rebuild replaces the root view controller.
+- **Deep links.** `SceneDelegate` handles `hui://open?path=/…` the way Android's `DeepLink` does: a plain path on the
+  gateway the app is on, ignored without a gateway, refused if it carries `://`, a backslash or whitespace.
+- **Cleartext is loopback only** (`NSExceptionDomains` for `127.0.0.1` and `localhost`), the same rule as Android's
+  network security config and owner decision O3. A tailnet gateway needs HTTPS (`tailscale serve`).
+- **What iOS does not have:** no App-Bound Domains, so the service worker's offline cache does not run (everything else
+  works online); no share sheet, microphone or resume hooks yet (WP10); and `ios-smoke` proves the Connect page and the
+  gateway's UI load, not a tapped journey.
+
 ## Rules
 
 - One package, one branch, one worktree; no pull request per package (the orchestrator merges).

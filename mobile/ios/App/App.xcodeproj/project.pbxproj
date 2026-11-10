@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D4E5F6A7B8C9D0000C /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0000D /* DeepLink.swift */; };
 		A1B2C3D4E5F6A7B8C9D00064 /* GatewayAddress.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D000C8 /* GatewayAddress.swift */; };
 		A1B2C3D4E5F6A7B8C9D00065 /* Gateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D000C9 /* Gateway.swift */; };
 		A1B2C3D4E5F6A7B8C9D00066 /* HUIBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D000CA /* HUIBridgeViewController.swift */; };
@@ -23,6 +24,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A1B2C3D4E5F6A7B8C9D0000D /* DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLink.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D000C8 /* GatewayAddress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayAddress.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D000C9 /* Gateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gateway.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D000CA /* HUIBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HUIBridgeViewController.swift; sourceTree = "<group>"; };

@@ -22,7 +22,6 @@ public class HuiGatewayPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         Gateway.remember(url)
-        Gateway.clearLaunch()
         call.resolve(["url": url])
         // The answer reaches the page first; the rebuild then loads the gateway's origin.
         DispatchQueue.main.async { [weak self] in self?.reloadBridge() }
@@ -30,7 +29,6 @@ public class HuiGatewayPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func forget(_ call: CAPPluginCall) {
         Gateway.forget()
-        Gateway.clearLaunch()
         call.resolve(["gateway": NSNull()])
         DispatchQueue.main.async { [weak self] in self?.reloadBridge() }
     }
@@ -44,12 +42,10 @@ public class HuiGatewayPlugin: CAPPlugin, CAPBridgedPlugin {
 
     /// A bridge's app URL is fixed, so the root view controller is replaced by a fresh bridge.
     private func reloadBridge() {
-        guard let window = bridge?.viewController?.view.window ?? UIApplication.shared.connectedScenes
-            .compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first,
-            let scene = window.windowScene
-        else { return }
-        window.rootViewController = HUIBridgeViewController()
-        window.makeKeyAndVisible()
-        _ = scene
+        guard let controller = bridge?.viewController as? HUIBridgeViewController else {
+            CAPLog.print("HuiGateway: no bridge controller to rebuild on")
+            return
+        }
+        controller.reloadBridge()
     }
 }

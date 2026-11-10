@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFile(join(root, path), "utf8");
-const [native, plugin, gateway, launch, page, script, agents, swiftPlugin, swiftGateway] = await Promise.all([
+const [native, plugin, gateway, launch, page, script, agents, swiftPlugin, swiftGateway, swiftBridge, javaActivity, swiftDeepLink] = await Promise.all([
   read("mobile/connect/src/native.ts"),
   read("mobile/android/app/src/main/java/dev/hui/app/HuiGatewayPlugin.java"),
   read("mobile/android/app/src/main/java/dev/hui/app/Gateway.java"),
@@ -22,6 +22,9 @@ const [native, plugin, gateway, launch, page, script, agents, swiftPlugin, swift
   read("mobile/AGENTS.md"),
   read("mobile/ios/App/App/Shell/HuiGatewayPlugin.swift"),
   read("mobile/ios/App/App/Shell/Gateway.swift"),
+  read("mobile/ios/App/App/Shell/HUIBridgeViewController.swift"),
+  read("mobile/android/app/src/main/java/dev/hui/app/MainActivity.java"),
+  read("mobile/ios/App/App/Shell/DeepLink.swift"),
 ]);
 
 test("the Connect page and the plugin agree on the plugin name and its methods", () => {
@@ -36,14 +39,20 @@ test("the Connect page and the plugin agree on the plugin name and its methods",
   assert.deepEqual(called.filter((name) => !methods.includes(name)), [], "native.ts calls no plugin method the plugin does not declare");
 });
 
-test("the iOS shell speaks the same protocol as the Android one", () => {
+test("the iOS shell speaks the same protocol as the Android one, and registers its plugin", () => {
   const swiftMethods = [...swiftPlugin.matchAll(/CAPPluginMethod\(name: "(\w+)"/gu)].map(([, name]) => name).sort();
   const javaMethods = [...plugin.matchAll(/@PluginMethod\s+public void (\w+)\(/gu)].map(([, name]) => name).sort();
   assert.deepEqual(swiftMethods, javaMethods, "the Swift plugin declares the methods the Java plugin declares");
-  assert.ok(/jsName = "HuiGateway"/u.test(swiftPlugin), "the Swift plugin answers to the name the Connect page calls");
-  for (const extra of ["HUIGatewayURL", "HUIGatewayFailed"]) {
-    assert.ok(swiftGateway.includes(extra), `the Swift shell reads ${extra}, as the Android one does`);
+  const javaName = /@CapacitorPlugin\(name = "(\w+)"\)/u.exec(plugin)?.[1];
+  assert.ok(swiftPlugin.includes(`jsName = "${javaName}"`), "both plugins answer to the name the Connect page calls");
+  // Capacitor discovers neither plugin by itself: an unregistered plugin rejects every call, which no screenshot shows.
+  assert.ok(/registerPluginInstance\(HuiGatewayPlugin\(\)\)/u.test(swiftBridge), "the iOS bridge registers its plugin");
+  assert.ok(/registerPlugin\(HuiGatewayPlugin\.class\)/u.test(javaActivity), "the Android activity registers its plugin");
+  // The one-launch keys, asserted on their assignments so a doc comment cannot satisfy them.
+  for (const key of ["HUIGatewayURL", "HUIGatewayFailed"]) {
+    assert.ok(new RegExp(`=\\s*"${key}"`, "u").test(swiftGateway), `the Swift shell assigns ${key}, as the Android one does`);
   }
+  assert.ok(/path\.hasPrefix\("\/"\)/u.test(swiftDeepLink) && /contains\(":\/\/"\)/u.test(swiftDeepLink), "the iOS deep link refuses anything but a plain path, as the Android one does");
 });
 
 test("the launch extras the activity reads are the ones the loop script and the guide use", () => {
