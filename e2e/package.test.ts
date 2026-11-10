@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { test } from "node:test";
 import { watch } from "node:fs";
 import { WebSocket } from "ws";
+import { bundledSkills } from "../server/pi/bundled-skills.ts";
 import { releaseFixture } from "./fixtures/release-fixture.mjs";
 import { fixtureEnvironment } from "./visual-verification.mjs";
 
@@ -75,8 +76,11 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   for (const path of ["SKILL.md", "references/LICENSE", "references/UPSTREAM.md", "references/agent-compatibility.md", "references/evidence-delivery.md", "references/feature-map-example/README.md", "references/feature-map-example/search.md", "references/feature-map-example/create-note.md"]) {
     assert(packed.files.some((file: { path: string }) => file.path === `build/skills/create-verification-skill/${path}`), `Package contains generator ${path}`);
   }
-  assert(packed.files.some((file: { path: string }) => file.path === "build/skills/git-selective-staging/SKILL.md"), "Package contains git-selective-staging");
-  assert(packed.files.some((file: { path: string }) => file.path === "build/skills/visualize/SKILL.md"), "Package contains visualize");
+  // Every skill HUI declares bundled must travel in the archive; reading the
+  // declaration keeps a newly shipped skill from silently staying behind.
+  for (const skill of bundledSkills) {
+    assert(packed.files.some((file: { path: string }) => file.path === `build/skills/${skill.name}/SKILL.md`), `Package contains ${skill.name}`);
+  }
   assert(!packed.files.some((file: { path: string }) => /\.test\.|^(src|media|e2e|node_modules)\//u.test(file.path)), "Package excludes source/tests/personal data");
   // npm reads a root npm-shrinkwrap.json instead of package-lock.json, so a stale one breaks npm ci.
   await assert.rejects(stat(join(repo, "npm-shrinkwrap.json")), { code: "ENOENT" }, "The build leaves no npm-shrinkwrap.json in the checkout");
@@ -217,17 +221,20 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   const history = (await api(`sessions/${session.id}/open`, {})).snapshot.transcript;
   assert.match(JSON.stringify(history), /Installed SDK content/u);
   assert.equal((await api(`sessions/${session.id}/tools`)).backend, "sdk");
-  const bundledSkills = (await api("pi")).skills.filter((skill: { origin?: string }) => skill.origin === "hui");
-  assert.deepEqual(bundledSkills.map((skill: { name: string }) => skill.name), ["automate-me", "build-hui-extension", "cost-investigation", "create-formal-verification-skill", "create-verification-skill", "git-selective-staging", "maintain-formal-verification-skill", "maintain-verification-skill", "visualize"]);
+  // The expectation is the shipped declaration, not a second copy of it: a copy
+  // went stale when the browser skill landed and failed every nightly's
+  // installed-package proof on Linux and macOS.
+  const installedSkills = (await api("pi")).skills.filter((skill: { origin?: string }) => skill.origin === "hui");
+  assert.deepEqual(
+    installedSkills.map((skill: { name: string }) => skill.name),
+    bundledSkills.map((skill) => skill.name),
+    "the installed package offers exactly the bundled skills, in their declared order",
+  );
   const commands = (await api(`sessions/${session.id}/commands`)).commands as { name: string }[];
-  const tags: Record<string, string[]> = {
-    "automate-me": ["bots"], "build-hui-extension": ["good practices"], "cost-investigation": ["good practices"], "create-formal-verification-skill": ["good practices"],
-    "create-verification-skill": ["good practices"], "git-selective-staging": ["good practices"],
-    "maintain-formal-verification-skill": ["good practices"], "maintain-verification-skill": ["good practices"], visualize: ["presentation"],
-  };
-  for (const bundled of bundledSkills) {
+  for (const bundled of installedSkills) {
+    const declared = bundledSkills.find((skill) => skill.name === bundled.name);
     assert.equal(bundled.preferencePath, `hui:skill:${bundled.name}`);
-    assert.deepEqual(bundled.tags, tags[bundled.name]);
+    assert.deepEqual(bundled.tags, [...(declared?.tags ?? [])], `${bundled.name} keeps its declared tags`);
     assert(bundled.path.startsWith(installed), `${bundled.name} resolves inside the installed package, not the checkout`);
     assert(commands.some((command) => command.name === `skill:${bundled.name}`), `${bundled.name} is loaded as a skill command`);
   }
