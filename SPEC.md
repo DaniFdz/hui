@@ -1043,6 +1043,24 @@ other's pages. A browser on a worker is not streamed here: its tabs stay on that
 machine, no preview or browser view shows them, and what the agent sees arrives
 as tool results, a screenshot included (which `present_media` shows in the chat).
 
+**Page content is marked, and the loop is cheap.** Every result that carries
+something a page said — a snapshot, `text`, console entries, `get text|html` —
+puts it between `--- HUI_PAGE_CONTENT nonce=… origin=… ---` and
+`--- END_HUI_PAGE_CONTENT nonce=… ---`, with a nonce minted for that result, so
+a caller can tell HUI's own words from a page's even when the page imitates the
+format. `get` reads one property (`text`, `html`, `value`, `attr`, `box`,
+`title`, `url`, `count`) and `is` checks one state (`visible`, `hidden`,
+`enabled`, `disabled`, `checked`, `focused`, `editable`, `attached`), so
+verifying an action costs a line rather than a snapshot; a password field's
+`value` is refused rather than read, because the operator's secrets are typed by
+the gateway and must not come back through the transcript. `snapshot` takes
+`selector` to start at one element and `depth` to stop after some levels (marking
+where it stopped); `act wait` takes `state` with the selector. A click fails
+with the reason when its target is disabled, hidden or covered instead of
+reporting success, and a ref whose node was replaced keeps working when exactly
+one laid-out element still has its role and name — otherwise it fails as stale
+or ambiguous rather than acting on the wrong element.
+
 **A handoff is the operator's turn.** When only a person can continue — a
 password, 2FA, a passkey, a payment or a bot check — the agent calls `handoff`
 with one sentence saying what to do and waits: ten minutes by default, at most
@@ -1687,8 +1705,19 @@ bundled `visualize` skill.
 ## Session-born subagents
 
 HUI supplies regular PI sessions with the OpenClaw-style coordination tools
-`sessions_spawn`, `sessions_list`, `sessions_history`, `sessions_send` and
-`subagents` (`list`, `steer`, `kill`). A spawn creates an ordinary HUI session
+`create_session`, `sessions_spawn`, `sessions_list`, `sessions_history`,
+`sessions_send` and `subagents` (`list`, `steer`, `kill`). `worker_stats`
+reports this machine and every configured worker with CPU, memory, disk, GPU,
+connection state and running sessions, and names the least loaded connected
+machine within headroom (CPU 70%, memory 80%, disk 85%, fewer running sessions
+than half its cores); when every machine is over a limit it returns a
+`leastLoaded` fallback instead of a recommendation. `local` is the gateway's
+machine. `create_session`
+creates an ordinary top-level session instead: a group, a title, its first
+prompt and optionally a fresh worktree, a worker, a model and thinking. The
+caller's cwd, group, worker, model and thinking are defaults. It writes no
+parent or task metadata, so the caller's subagent tools do not see it and the
+operator opens it from the sidebar. A spawn creates an ordinary HUI session
 with its own PI process and transcript, plus optional parent/task metadata in
 HUI's registry. The child runs independently and its terminal result is sent
 back automatically as a marked, non-user completion event (result wrapped as

@@ -12,8 +12,15 @@
  * A `handoff` gives one tab to the operator: the agent waits, the live view
  * forwards their pointer and keys to that tab over the same CDP session, and
  * the call returns a fresh snapshot once they continue.
+ *
+ * Page-sourced output (snapshots, text, console entries) travels between
+ * markers carrying a nonce minted for that result, so a caller can tell HUI's
+ * own words from a page's; `get` and `is` read one property or state without a
+ * whole snapshot, and a ref whose node was replaced is re-bound to the one
+ * element with the same role and name when that match is unique.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
@@ -61,7 +68,7 @@ export type BrowserViewHandle = {
 
 export const BROWSER_ACTIONS = [
   "status", "tabs", "open", "navigate", "back", "forward", "reload", "focus", "close",
-  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps",
+  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps", "get", "is",
 ] as const;
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
 export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "scroll", "wait"] as const;
@@ -102,6 +109,9 @@ const SCREENCAST = { format: "jpeg", quality: 70, maxWidth: 1600, maxHeight: 160
 const SCREENCAST_START_MS = 5_000;
 const SCREENCAST_RETRY_MS = 100;
 const TRUNCATED_NOTE = "[Snapshot truncated. Use snapshot with query, interactive: true or a larger maxChars to see more.]";
+const DEPTH_NOTE = "[Deeper content was left out by depth. Use snapshot with a larger depth, or scope it with selector.]";
+/** A ref whose node was replaced but whose role and name still match one element. */
+const RELINKED_NOTE = " (The element was replaced; the ref was re-bound to the one element with the same role and name.)";
 
 type ConsoleEntry = { level: string; text: string };
 
@@ -272,6 +282,14 @@ function settingsKey(settings: LaunchSettings): string {
   return JSON.stringify([settings.enabled, settings.headless, settings.executablePath]);
 }
 
+function depthFrom(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 40) {
+    throw new BrowserToolError("depth must be an integer from 1 to 40.");
+  }
+  return value;
+}
+
 function timeoutFrom(value: unknown): number {
   if (value === undefined) return DEFAULT_TIMEOUT_MS;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1_000 || value > MAX_TIMEOUT_MS) {
@@ -332,6 +350,66 @@ function frameUrlIn(tree: unknown, frameId: string): string {
 function browserEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined && !key.startsWith("HUI_AGENT_")));
 }
+
+/** Page-sourced text travels between markers with a nonce minted for this result, so a caller can tell
+ * HUI's words from a page's even when the page mimics our format. */
+function pageBoundary(nonce: string, origin: string, text: string): string {
+  return `--- HUI_PAGE_CONTENT nonce=${nonce} origin=${origin || "unknown"} ---\n${text}\n--- END_HUI_PAGE_CONTENT nonce=${nonce} ---`;
+}
+
+function pageNonce(): string {
+  return randomBytes(8).toString("hex");
+}
+
+/** Whether the element can be clicked at all, before coordinates or overlays matter. */
+const ELEMENT_STATE = String.raw`function () {
+  const element = this;
+  const style = getComputedStyle(element);
+  return {
+    connected: element.isConnected,
+    hidden: style.display === "none" || style.visibility === "hidden" || element.getClientRects().length === 0,
+    disabled: element.disabled === true || element.getAttribute("aria-disabled") === "true",
+  };
+}`;
+
+/** One property of an element, for `get`; a password field's value is refused rather than read. */
+const ELEMENT_GET = String.raw`function (what, attribute, maximum) {
+  const element = this;
+  const clip = (value) => String(value ?? "").slice(0, maximum);
+  if (what === "text") return { value: clip(element.innerText || element.textContent || "") };
+  if (what === "html") return { value: clip(element.innerHTML || "") };
+  if (what === "value") {
+    const type = element instanceof HTMLInputElement ? element.type : "";
+    if (type === "password") return { error: "password" };
+    return { value: clip("value" in element ? element.value : "") };
+  }
+  if (what === "attr") return { value: clip(element.getAttribute(attribute)) };
+  if (what === "box") {
+    const rect = element.getBoundingClientRect();
+    return { box: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) } };
+  }
+  return { error: "unknown" };
+}`;
+
+/** One yes/no state of an element, for `is`. */
+const ELEMENT_IS = String.raw`function (state) {
+  const element = this;
+  const style = getComputedStyle(element);
+  const hidden = style.display === "none" || style.visibility === "hidden" || element.getClientRects().length === 0;
+  const disabled = element.disabled === true || element.getAttribute("aria-disabled") === "true";
+  if (state === "visible") return { value: !hidden };
+  if (state === "hidden") return { value: hidden };
+  if (state === "enabled") return { value: !disabled };
+  if (state === "disabled") return { value: disabled };
+  if (state === "checked") return { value: element.checked === true || element.getAttribute("aria-checked") === "true" };
+  if (state === "focused") return { value: document.activeElement === element || element.contains(document.activeElement) };
+  if (state === "editable") return { value: Boolean(element.isContentEditable || ((element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && !disabled && !element.readOnly)) };
+  if (state === "attached") return { value: true };
+  return { error: "unknown" };
+}`;
+
+const GET_WHAT = ["text", "html", "value", "attr", "box", "title", "url", "count"] as const;
+const IS_STATE = ["visible", "hidden", "enabled", "disabled", "checked", "focused", "editable", "attached"] as const;
 
 function startupFailure(name: string, code: number | null, signal: NodeJS.Signals | null, stderr: string): string {
   const reason = code !== null ? `code ${code}` : signal ?? "no exit status";
@@ -803,21 +881,34 @@ export class ManagedBrowser {
         const tab = this.#tabFor(owner, params["tabId"]);
         const instance = this.#live();
         const query = optionalText(params, "query", 200);
+        const selector = optionalText(params, "selector", 1_000);
+        const rootId = selector ? await this.#snapshotRoot(instance, tab, selector) : undefined;
         const snapshot = await this.#snapshot(instance, tab, {
           interactive: params["interactive"] === true,
           maxChars: clampSnapshotChars(params["maxChars"]),
           ...(query ? { query } : {}),
+          ...(rootId ? { rootId } : {}),
+          ...(depthFrom(params["depth"]) !== undefined ? { maxDepth: depthFrom(params["depth"]) } : {}),
         });
+        const nonce = pageNonce();
+        const origin = originOf(tab.url);
         const lines = [this.#header(tab)];
+        if (selector) lines.push(`Scoped to ${selector}.`);
         if (snapshot.matched !== undefined) lines.push(`${snapshot.matched} matching line${snapshot.matched === 1 ? "" : "s"} for "${query}".`);
-        lines.push("", snapshot.text || "(No accessible content matched.)");
+        lines.push("", pageBoundary(nonce, origin, snapshot.text || "(No accessible content matched.)"));
         if (snapshot.truncated) lines.push(TRUNCATED_NOTE);
-        return { text: lines.join("\n"), details: { action, tab: this.#tabDetails(tab), lines: snapshot.lines, truncated: snapshot.truncated } };
+        if (snapshot.depthLimited) lines.push(DEPTH_NOTE);
+        return {
+          text: lines.join("\n"),
+          details: { action, tab: this.#tabDetails(tab), lines: snapshot.lines, truncated: snapshot.truncated, ...(snapshot.depthLimited ? { depthLimited: true } : {}), boundary: { nonce, origin } },
+        };
       }
       case "act": return this.#act(owner, params);
       case "text": return this.#text(owner, params);
       case "screenshot": return this.#screenshot(owner, params, context.cwd);
       case "console": return this.#console(owner, params);
+      case "get": return this.#get(owner, params);
+      case "is": return this.#is(owner, params);
       case "resize": return this.#resize(owner, params);
       case "handoff": return this.#handoff(owner, params);
       case "secret": return this.#secret(owner, params);
@@ -861,7 +952,7 @@ export class ManagedBrowser {
         this.#header(current),
         ...(blocked ? [blocked] : []),
         "",
-        snapshot.text || "(No accessible content matched.)",
+        pageBoundary(pageNonce(), originOf(current.url), snapshot.text || "(No accessible content matched.)"),
         ...(snapshot.truncated ? [TRUNCATED_NOTE] : []),
         "",
         "The snapshot above is current: act on its refs.",
@@ -1892,15 +1983,17 @@ export class ManagedBrowser {
       interactive: params["interactive"] === true,
       maxChars: params["maxChars"] === undefined ? PAGE_SNAPSHOT_CHARS : clampSnapshotChars(params["maxChars"]),
     });
+    const nonce = pageNonce();
+    const origin = originOf(tab.url);
     const lines = [lead, this.#header(tab)];
     const blocked = this.#blockedLine(tab);
     if (blocked) lines.push(blocked);
     if (!outcome.loaded) lines.push("The page was still loading when the timeout elapsed; this is its current state.");
-    lines.push("", snapshot.text || "(The page has no accessible content yet.)");
+    lines.push("", pageBoundary(nonce, origin, snapshot.text || "(The page has no accessible content yet.)"));
     if (snapshot.truncated) lines.push(TRUNCATED_NOTE);
     return {
       text: lines.join("\n"),
-      details: { action, tab: this.#tabDetails(tab), loaded: outcome.loaded, truncated: snapshot.truncated },
+      details: { action, tab: this.#tabDetails(tab), loaded: outcome.loaded, truncated: snapshot.truncated, boundary: { nonce, origin } },
     };
   }
 
@@ -1928,6 +2021,56 @@ export class ManagedBrowser {
       throw new BrowserToolError(`Ref ${raw} is not in tab ${tab.id}'s latest snapshot. Take a new snapshot; refs do not carry across pages or tabs.`, 404);
     }
     return { ref: raw, target, label: describeTarget(raw, target) };
+  }
+
+  /** A ref as it is now: if its node was replaced, re-bind it to the one element with the same role and name. */
+  async #liveTarget(instance: Instance, tab: Tab, raw: unknown): Promise<{ target: SnapshotTarget; label: string; relinked: boolean }> {
+    const { ref, target, label } = this.#target(tab, raw);
+    if (!target.role || !target.name) return { target, label, relinked: false };
+    let attached = false;
+    try {
+      const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
+      const state = await this.#call(instance, tab, objectId, ELEMENT_STATE);
+      attached = !isRecord(state) || state["connected"] !== false;
+    } catch {
+      attached = false;
+    }
+    // A detached node can still resolve (the accessibility tree keeps it alive), so ask the page.
+    if (attached) return { target, label, relinked: false };
+    let candidates: number[] = [];
+    try {
+      const doc = await instance.connection.send("DOM.getDocument", { depth: 0 }, tab.session);
+      const rootId = isRecord(doc["root"]) ? num(doc["root"]["nodeId"]) : 0;
+      const found = await instance.connection.send("Accessibility.queryAXTree", { nodeId: rootId, accessibleName: target.name, role: target.role }, tab.session);
+      candidates = (Array.isArray(found["nodes"]) ? found["nodes"].filter(isRecord) : [])
+        .flatMap((node) => typeof node["backendDOMNodeId"] === "number" ? [node["backendDOMNodeId"] as number] : []);
+    } catch {
+      candidates = [];
+    }
+    // The old node can linger in the accessibility tree with no layout; only a
+    // candidate the page still lays out may take the ref.
+    const visible: number[] = [];
+    for (const blackendNodeId of candidates) {
+      try {
+        const resolved = await instance.connection.send("DOM.resolveNode", { backendNodeId: blackendNodeId, objectGroup: OBJECT_GROUP }, tab.session);
+        const objectId = isRecord(resolved["object"]) ? str(resolved["object"]["objectId"]) : "";
+        if (!objectId) continue;
+        const state = await this.#call(instance, tab, objectId, ELEMENT_STATE);
+        if (isRecord(state) && state["connected"] !== false && state["hidden"] !== true) visible.push(blackendNodeId);
+      } catch {
+        // A candidate the browser cannot resolve is not the replacement.
+      }
+    }
+    if (visible.length === 1) {
+      const next = { ...target, backendNodeId: visible[0]! };
+      tab.refs.relink(ref, next);
+      return { target: next, label, relinked: true };
+    }
+    throw new BrowserToolError(
+      visible.length === 0
+        ? `${label} is no longer in the page and nothing with the same role and name is. Take a new snapshot.`
+        : `${label} was replaced and ${visible.length} elements now share its role and name, so the ref is ambiguous. Take a new snapshot.`,
+      404);
   }
 
   async #resolve(instance: Instance, tab: Tab, backendNodeId: number, label: string): Promise<string> {
@@ -2048,28 +2191,32 @@ export class ManagedBrowser {
     if (kind !== "wait") await this.#ensureVisible(instance, tab);
     switch (kind) {
       case "click": {
-        const { target, label } = this.#target(tab, params["ref"]);
+        const { target, label, relinked } = await this.#liveTarget(instance, tab, params["ref"]);
+        const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
+        const state = await this.#call(instance, tab, objectId, ELEMENT_STATE);
+        if (isRecord(state) && state["hidden"] === true) throw new BrowserToolError(`${label} is not visible; scroll it into view or take a new snapshot.`, 409);
+        if (isRecord(state) && state["disabled"] === true) throw new BrowserToolError(`${label} is disabled; nothing was clicked.`, 409);
         const point = await this.#point(instance, tab, target, label, true);
         await this.#mouse(instance, tab, point, params["double"] === true ? 2 : 1);
-        return { text: `${params["double"] === true ? "Double-clicked" : "Clicked"} ${label}.`, point };
+        return { text: `${params["double"] === true ? "Double-clicked" : "Clicked"} ${label}.${relinked ? RELINKED_NOTE : ""}`, point };
       }
       case "hover": {
-        const { target, label } = this.#target(tab, params["ref"]);
+        const { target, label, relinked } = await this.#liveTarget(instance, tab, params["ref"]);
         const point = await this.#point(instance, tab, target, label, false);
         await instance.connection.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point, button: "none", buttons: 0 }, tab.session);
-        return { text: `Hovered ${label}.`, point };
+        return { text: `Hovered ${label}.${relinked ? RELINKED_NOTE : ""}`, point };
       }
       case "type": {
         const text = params["text"];
         if (typeof text !== "string" || text.length > 20_000) throw new BrowserToolError("text must be a string of at most 20000 characters.");
-        const { target, label } = this.#target(tab, params["ref"]);
+        const { target, label, relinked } = await this.#liveTarget(instance, tab, params["ref"]);
         const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
         const state = await this.#call(instance, tab, objectId, PREPARE_TYPING, [params["append"] === true]);
         if (state === "not-editable") throw new BrowserToolError(`${label} is not a text field. Click it instead, or type into a textbox ref.`, 409);
         if (state === "read-only") throw new BrowserToolError(`${label} is disabled or read-only.`, 409);
         if (text) await instance.connection.send("Input.insertText", { text }, tab.session);
         if (params["submit"] === true) await this.#key(instance, tab, parseKey("Enter"));
-        return { text: `Typed ${[...text].length} character${[...text].length === 1 ? "" : "s"} into ${label}${params["submit"] === true ? " and pressed Enter" : ""}.` };
+        return { text: `Typed ${[...text].length} character${[...text].length === 1 ? "" : "s"} into ${label}${params["submit"] === true ? " and pressed Enter" : ""}.${relinked ? RELINKED_NOTE : ""}` };
       }
       case "press": {
         const raw = params["key"];
@@ -2081,7 +2228,7 @@ export class ManagedBrowser {
           throw new BrowserToolError(error instanceof KeyParseError ? error.message : "Unknown key.");
         }
         if (params["ref"] !== undefined) {
-          const { target, label } = this.#target(tab, params["ref"]);
+          const { target, label } = await this.#liveTarget(instance, tab, params["ref"]);
           try {
             await instance.connection.send("DOM.focus", { backendNodeId: target.backendNodeId }, tab.session);
           } catch {
@@ -2096,7 +2243,7 @@ export class ManagedBrowser {
         if (!Array.isArray(values) || values.length === 0 || values.length > 20 || !values.every((value) => typeof value === "string" && value.length <= 500)) {
           throw new BrowserToolError("values must list 1 to 20 option values or labels.");
         }
-        const { target, label } = this.#target(tab, params["ref"]);
+        const { target, label } = await this.#liveTarget(instance, tab, params["ref"]);
         const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
         const result = await this.#call(instance, tab, objectId, SELECT_OPTIONS, [values]);
         if (isRecord(result) && result["error"] === "not-select") throw new BrowserToolError(`${label} is not a native select. Click it and then click the option instead.`, 409);
@@ -2109,7 +2256,7 @@ export class ManagedBrowser {
       }
       case "scroll": {
         if (params["ref"] !== undefined) {
-          const { target, label } = this.#target(tab, params["ref"]);
+          const { target, label } = await this.#liveTarget(instance, tab, params["ref"]);
           await this.#box(instance, tab, target.backendNodeId, label);
           return { text: `Scrolled ${label} into view.` };
         }
@@ -2139,11 +2286,32 @@ export class ManagedBrowser {
       selector: optionalText(params, "selector", 1_000) ?? null,
       url: optionalText(params, "url", 2_048) ?? null,
     };
+    const state = params["state"];
+    if (state !== undefined && state !== "visible" && state !== "hidden" && state !== "attached" && state !== "detached") {
+      throw new BrowserToolError("state must be visible, hidden, attached or detached.");
+    }
+    if (state !== undefined && conditions.selector === null) throw new BrowserToolError("wait state needs selector.");
     if (Object.values(conditions).every((value) => value === null)) {
       throw new BrowserToolError("wait needs at least one of text, textGone, selector or url.");
     }
     const timeoutMs = timeoutFrom(params["timeoutMs"]);
-    const expression = `(() => { const c = ${JSON.stringify(conditions)}; const body = document.body ? document.body.innerText : ""; return (c.text === null || body.includes(c.text)) && (c.textGone === null || !body.includes(c.textGone)) && (c.selector === null || document.querySelector(c.selector) !== null) && (c.url === null || location.href.includes(c.url)); })()`;
+    const expression = `(() => {
+      const c = ${JSON.stringify(conditions)};
+      const state = ${JSON.stringify(state ?? null)};
+      const body = document.body ? document.body.innerText : "";
+      let elementState = true;
+      if (state !== null) {
+        const element = document.querySelector(c.selector);
+        if (state === "attached") elementState = element !== null;
+        else if (state === "detached") elementState = element === null;
+        else if (element) {
+          const style = getComputedStyle(element);
+          const visible = style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
+          elementState = state === "visible" ? visible : !visible;
+        } else elementState = state === "hidden";
+      }
+      return (c.text === null || body.includes(c.text)) && (c.textGone === null || !body.includes(c.textGone)) && (state !== null || c.selector === null || document.querySelector(c.selector) !== null) && (c.url === null || location.href.includes(c.url)) && elementState;
+    })()`;
     const started = Date.now();
     for (;;) {
       let met = false;
@@ -2161,7 +2329,10 @@ export class ManagedBrowser {
       }
       if (met) return `Waited ${Date.now() - started} ms until the condition was met.`;
       if (Date.now() - started >= timeoutMs || instance.connection.closed) {
-        const wanted = Object.entries(conditions).filter(([, value]) => value !== null).map(([key, value]) => `${key} ${JSON.stringify(value)}`).join(", ");
+        const wanted = [
+          ...Object.entries(conditions).filter(([, value]) => value !== null).map(([key, value]) => `${key} ${JSON.stringify(value)}`),
+          ...(state !== undefined ? [`state ${JSON.stringify(state)}`] : []),
+        ].join(", ");
         throw new BrowserToolError(`Timed out after ${timeoutMs} ms waiting for ${wanted}.`, 408);
       }
       await delay(150);
@@ -2222,6 +2393,133 @@ export class ManagedBrowser {
 
   // ── Reading ───────────────────────────────────────────────────────────────
 
+  /** A CSS selector's DOM node, for a scoped snapshot or a selector-based read. */
+  async #elementNode(instance: Instance, tab: Tab, selector: string): Promise<number> {
+    const doc = await instance.connection.send("DOM.getDocument", { depth: 0 }, tab.session);
+    const rootId = isRecord(doc["root"]) ? num(doc["root"]["nodeId"]) : 0;
+    let nodeId = 0;
+    try {
+      const found = await instance.connection.send("DOM.querySelector", { nodeId: rootId, selector }, tab.session);
+      nodeId = isRecord(found) ? num(found["nodeId"]) : 0;
+    } catch (error) {
+      throw new BrowserToolError(`selector is not valid CSS: ${error instanceof Error ? error.message : selector}`);
+    }
+    if (!nodeId) throw new BrowserToolError(`No element matches ${selector}.`, 404);
+    return nodeId;
+  }
+
+  /** The accessibility node a scoped snapshot starts from. */
+  async #snapshotRoot(instance: Instance, tab: Tab, selector: string): Promise<string> {
+    const nodeId = await this.#elementNode(instance, tab, selector);
+    const partial = await instance.connection.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false }, tab.session);
+    const nodes = Array.isArray(partial["nodes"]) ? partial["nodes"].filter(isRecord) : [];
+    const rootId = nodes.length > 0 ? str(nodes[0]?.["nodeId"]) : "";
+    if (!rootId) throw new BrowserToolError(`No accessible content at ${selector}; it may be hidden.`, 404);
+    return rootId;
+  }
+
+  /** One element from a ref or a selector, as a JS object the page can be asked about. */
+  async #element(instance: Instance, tab: Tab, params: Record<string, unknown>): Promise<{ label: string; objectId?: string }> {
+    const ref = params["ref"];
+    const selector = optionalText(params, "selector", 1_000);
+    if (ref !== undefined && selector) throw new BrowserToolError("Use either ref or selector, not both.");
+    if (ref === undefined && !selector) throw new BrowserToolError("Needs a ref from the latest snapshot or a CSS selector.");
+    if (ref !== undefined) {
+      const { target, label } = await this.#liveTarget(instance, tab, ref);
+      return { label, objectId: await this.#resolve(instance, tab, target.backendNodeId, label) };
+    }
+    let nodeId: number;
+    try {
+      nodeId = await this.#elementNode(instance, tab, selector!);
+    } catch (error) {
+      if (error instanceof BrowserToolError && error.status === 404) return { label: selector! };
+      throw error;
+    }
+    const resolved = await instance.connection.send("DOM.resolveNode", { nodeId, objectGroup: OBJECT_GROUP }, tab.session);
+    const objectId = isRecord(resolved["object"]) ? str(resolved["object"]["objectId"]) : "";
+    if (!objectId) throw new BrowserToolError(`No element matches ${selector}.`, 404);
+    return { label: selector!, objectId };
+  }
+
+  /** One property of one element: cheaper to read and to check than a whole snapshot. */
+  async #get(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const what = params["what"];
+    if (typeof what !== "string" || !(GET_WHAT as readonly string[]).includes(what)) {
+      throw new BrowserToolError(`get needs what: ${GET_WHAT.join(", ")}.`);
+    }
+    if (what === "title" || what === "url") {
+      const result = await instance.connection.send("Runtime.evaluate", { expression: what === "title" ? "document.title" : "location.href", returnByValue: true }, tab.session);
+      await this.#refreshInfo(instance, tab);
+      const value = isRecord(result["result"]) ? str(result["result"]["value"]) : "";
+      return { text: `${what === "title" ? "Title" : "URL"}: ${value}`, details: { action: "get", what, tab: this.#tabDetails(tab) } };
+    }
+    if (what === "count") {
+      const selector = optionalText(params, "selector", 1_000);
+      if (!selector) throw new BrowserToolError("get count needs selector.");
+      const result = await instance.connection.send("Runtime.evaluate", { expression: `document.querySelectorAll(${JSON.stringify(selector)}).length`, returnByValue: true }, tab.session);
+      if (isRecord(result["exceptionDetails"])) throw new BrowserToolError(`selector is not valid CSS: ${exceptionText(result["exceptionDetails"])}`);
+      const count = isRecord(result["result"]) ? num(result["result"]["value"]) : 0;
+      return { text: `${count} element${count === 1 ? "" : "s"} ${count === 1 ? "matches" : "match"} ${selector}.`, details: { action: "get", what, count, tab: this.#tabDetails(tab) } };
+    }
+    const attribute = what === "attr" ? optionalText(params, "attribute", 100) : undefined;
+    if (what === "attr" && !attribute) throw new BrowserToolError("get attr needs attribute.");
+    const maximum = typeof params["maxChars"] === "number" && Number.isFinite(params["maxChars"])
+      ? Math.min(TEXT_MAX_CHARS, Math.max(100, Math.floor(params["maxChars"])))
+      : 2_000;
+    const { label, objectId } = await this.#element(instance, tab, params);
+    if (!objectId) throw new BrowserToolError(`No element matches ${label}.`, 404);
+    const result = await this.#call(instance, tab, objectId, ELEMENT_GET, [what, attribute ?? "", maximum]);
+    if (isRecord(result) && result["error"] === "password") {
+      throw new BrowserToolError(`Refusing to read the value of ${label}: it is a password field.`, 409);
+    }
+    if (isRecord(result) && isRecord(result["box"])) {
+      const box = result["box"];
+      const values = { x: num(box["x"]), y: num(box["y"]), width: num(box["width"]), height: num(box["height"]) };
+      return { text: `${label} is at ${values.x},${values.y} with ${values.width}×${values.height} px.`, details: { action: "get", what, tab: this.#tabDetails(tab), box: values } };
+    }
+    const value = isRecord(result) ? str(result["value"]) : "";
+    if (what === "text" || what === "html") {
+      const nonce = pageNonce();
+      const origin = originOf(tab.url);
+      return {
+        text: `${what} of ${label}:\n${pageBoundary(nonce, origin, value || "(empty)")}`,
+        details: { action: "get", what, tab: this.#tabDetails(tab), characters: value.length, boundary: { nonce, origin } },
+      };
+    }
+    if (what === "attr" && !value) return { text: `${label} has no attribute ${attribute}.`, details: { action: "get", what, tab: this.#tabDetails(tab) } };
+    return { text: `${what} of ${label}: ${JSON.stringify(value)}`, details: { action: "get", what, tab: this.#tabDetails(tab) } };
+  }
+
+  /** One yes/no state of one element, so verifying an action does not cost a whole snapshot. */
+  async #is(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const state = params["state"];
+    if (typeof state !== "string" || !(IS_STATE as readonly string[]).includes(state)) {
+      throw new BrowserToolError(`is needs state: ${IS_STATE.join(", ")}.`);
+    }
+    let label = typeof params["selector"] === "string" ? params["selector"] : "the ref";
+    let objectId: string | undefined;
+    try {
+      ({ label, objectId } = await this.#element(instance, tab, params));
+    } catch (error) {
+      if (error instanceof BrowserToolError && error.status === 404 && state === "attached") {
+        return { text: `${label} is not attached (nothing matches).`, details: { action: "is", state, value: false, tab: this.#tabDetails(tab) } };
+      }
+      throw error;
+    }
+    if (!objectId) {
+      if (state === "attached") return { text: `${label} is not attached (nothing matches).`, details: { action: "is", state, value: false, tab: this.#tabDetails(tab) } };
+      if (state === "hidden") return { text: `${label} is hidden (nothing matches).`, details: { action: "is", state, value: true, tab: this.#tabDetails(tab) } };
+      throw new BrowserToolError(`No element matches ${label}.`, 404);
+    }
+    const result = await this.#call(instance, tab, objectId, ELEMENT_IS, [state]);
+    const value = isRecord(result) && result["value"] === true;
+    return { text: `${label} is ${value ? "" : "not "}${state}.`, details: { action: "is", state, value, tab: this.#tabDetails(tab) } };
+  }
+
   async #text(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
     const tab = this.#tabFor(owner, params["tabId"]);
     const instance = this.#live();
@@ -2237,9 +2535,11 @@ export class ManagedBrowser {
     const full = str(value["text"]).replace(/\n{3,}/gu, "\n\n").trim();
     const truncated = full.length > maxChars;
     await this.#refreshInfo(instance, tab);
-    const lines = [this.#header(tab), "", truncated ? full.slice(0, maxChars) : full || "(No visible text.)"];
+    const nonce = pageNonce();
+    const origin = originOf(tab.url);
+    const lines = [this.#header(tab), "", pageBoundary(nonce, origin, truncated ? full.slice(0, maxChars) : full || "(No visible text.)")];
     if (truncated) lines.push(`[Text truncated at ${maxChars} of ${full.length} characters. Use selector or a larger maxChars.]`);
-    return { text: lines.join("\n"), details: { action: "text", tab: this.#tabDetails(tab), characters: full.length, truncated } };
+    return { text: lines.join("\n"), details: { action: "text", tab: this.#tabDetails(tab), characters: full.length, truncated, boundary: { nonce, origin } } };
   }
 
   async #screenshot(owner: string, params: Record<string, unknown>, cwd: string): Promise<BrowserToolResult> {
@@ -2252,7 +2552,7 @@ export class ManagedBrowser {
     let region: Record<string, number> | undefined;
     let subject = "viewport";
     if (params["ref"] !== undefined) {
-      const { target, label } = this.#target(tab, params["ref"]);
+      const { target, label } = await this.#liveTarget(instance, tab, params["ref"]);
       const quad = await this.#box(instance, tab, target.backendNodeId, label);
       const xs = [quad[0] ?? 0, quad[2] ?? 0, quad[4] ?? 0, quad[6] ?? 0];
       const ys = [quad[1] ?? 0, quad[3] ?? 0, quad[5] ?? 0, quad[7] ?? 0];
@@ -2306,13 +2606,15 @@ export class ManagedBrowser {
     const errorsOnly = params["errorsOnly"] === true;
     const entries = tab.console.filter((entry) => !errorsOnly || entry.level === "error" || entry.level === "warning" || entry.level === "assert");
     const recent = entries.slice(-50);
+    const nonce = pageNonce();
+    const origin = originOf(tab.url);
     const lines = [this.#header(tab)];
     if (entries.length > recent.length) lines.push(`Showing the latest 50 of ${entries.length} entries.`);
-    lines.push("", recent.length
+    lines.push("", pageBoundary(nonce, origin, recent.length
       ? recent.map((entry) => `[${entry.level}] ${entry.text}`).join("\n")
-      : errorsOnly ? "No errors or warnings recorded." : "No console messages recorded.");
+      : errorsOnly ? "No errors or warnings recorded." : "No console messages recorded."));
     if (params["clear"] === true) tab.console = [];
-    return { text: lines.join("\n"), details: { action: "console", tab: this.#tabDetails(tab), entries: entries.length } };
+    return { text: lines.join("\n"), details: { action: "console", tab: this.#tabDetails(tab), entries: entries.length, boundary: { nonce, origin } } };
   }
 
   /** Resolves after the page has laid out and painted twice, so the next

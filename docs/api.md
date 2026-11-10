@@ -1245,6 +1245,8 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
+| `create_session` | `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker; the caller's directory, group, worker, model and thinking are defaults. The brief is the session's first prompt; it is not a child, so `sessions_list` and `sessions_history` do not show it |
+| `worker_stats` | `{}`: this machine and every configured worker with CPU, memory, disk, GPU, connection state and running session counts, plus the least loaded connected machine within headroom (CPU under 70%, memory under 80%, disk under 85%, fewer running sessions than half its cores). A disconnected or erroring worker has no metrics and is not recommended; when every machine is over a limit the reply carries `leastLoaded` instead; `local` is the gateway's machine |
 | `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/route or model/thinking, a bounded run timeout and `collect`; a `route` resolves to its model and pinned reasoning level from HUI settings before the child exists, and a route that is unknown, sent together with `model`, or whose model is missing from the caller's available models is rejected before any child is created, naming the route to fix or the configured route names; a raw `model` missing from that catalog names close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
 | `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished, at the timeout (default 600, 1-3600 s), or as soon as a message is steered to the caller (once per change of its steering queue in a tool round), with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId], interrupted?: string }`; `interrupted` says a steered message ended the wait while tasks were pending. An abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
 | `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
@@ -4670,12 +4672,14 @@ comes from the per-conversation token. `action` is one of:
 | `open` | Launch lazily, open a tab, load `url` and return a snapshot |
 | `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot; with an origin allowlist set, a page outside it is refused with 403 |
 | `focus`, `close` | Select or close one of this conversation's tabs |
-| `snapshot` | Accessibility outline; `interactive`, `query` and `maxChars` (500–40 000, default 12 000; 8 000 for page loads) narrow it |
-| `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`) |
+| `snapshot` | Accessibility outline; `interactive`, `query`, `maxChars` (500–40 000, default 12 000; 8 000 for page loads), `selector` to start at one element and `depth` (1–40) to stop after some levels |
+| `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`, `state` with a selector) |
 | `text` | Visible text of `selector`, else the first article, main or body (default 12 000, at most 40 000 characters) |
 | `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory) |
 | `console` | The latest 50 of up to 200 recorded console, exception, log and dialog entries; `errorsOnly`, `clear` |
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
+| `get` | One property of one element (`ref` or `selector`): `text`, `html`, `value`, `attr` with `attribute`, `box`, or page-level `title`, `url` and `count` with `selector`; a password field's value is refused with 409 |
+| `is` | One state of one element (`ref` or `selector`): `visible`, `hidden`, `enabled`, `disabled`, `checked`, `focused`, `editable`, `attached` |
 | `handoff` | Give the current (or `tabId`) tab to the operator and wait: `message` (at most 500 characters) and `timeoutMs` (5000–1 800 000, default 600 000) |
 | `secret` | Type the operator's stored secret `name` into `ref` on the secret's own origin, optionally `submit`; the value never appears in the result |
 | `steps` | 1–20 `act` steps in order on one tab (`kind`, `ref`, and the same fields `act` takes), each with its own `timeoutMs` or the call's; the result lists each step and a failure names the step and what already ran |
@@ -4683,7 +4687,17 @@ comes from the per-conversation token. `action` is one of:
 Tab handles are `t1`, `t2`…; element refs are `e1`, `e2`… from the latest
 snapshot of that tab. A ref stays bound to its DOM node within one document; a
 new document retires every ref and numbering never restarts, so a stale ref
-fails instead of addressing another element. Clicks check that the element is
+fails instead of addressing another element. A ref whose node was replaced
+keeps its number when exactly one laid-out element still has its role and name;
+with none or several it fails and asks for a new snapshot. A click on a
+disabled or hidden target fails with the reason, and one covered by another
+element fails naming the cover.
+
+Every result that carries page-sourced text (a snapshot, `text`, console
+entries, `get text|html`) wraps it in
+`--- HUI_PAGE_CONTENT nonce=<16 hex> origin=<origin> ---` …
+`--- END_HUI_PAGE_CONTENT nonce=<same> ---`, with a nonce minted per result; the
+result's `details.boundary` repeats `nonce` and `origin`. Clicks check that the element is
 not covered by an overlay, and an action that starts a same-tab navigation waits
 for the new document (`timeoutMs`, 1000–60 000, default 30 000). Alerts and
 `beforeunload` dialogs are accepted and confirm/prompt dialogs dismissed unless

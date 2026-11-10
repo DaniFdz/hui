@@ -21,7 +21,7 @@ One ledger every session can read, and one decision log that never rewrites itse
 - **Evidence.** A pointer that resolves: commit, `path:line`, command with its result, or artifact path. Never a paragraph, never a self-grade.
 - **PR.** `#N`, or `-` before one exists.
 
-A playbook may add columns it needs, such as `Step`, `Route`, or `Child`; these five stay and the task row keeps this meaning. A step-level log may use finer words (`running`, `verified`, `inconclusive`); the task row keeps the statuses above.
+A playbook may add columns it needs, such as `Step`, `Route`, `Child`, or `Machine`; these five stay and the task row keeps this meaning. A step-level log may use finer words (`running`, `verified`, `inconclusive`); the task row keeps the statuses above.
 
 Write the row at dispatch: task, owner, `in flight`, the branch, no PR. At settle, update that row with the outcome, resolved evidence, PR, and final status. Update it when the status changes, not at every step.
 

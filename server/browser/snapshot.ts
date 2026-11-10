@@ -52,6 +52,14 @@ export class SnapshotRefs {
     return this.#targets.get(ref);
   }
 
+  /** Point an existing ref at the node that replaced the one it described, keeping its number. */
+  relink(ref: string, target: SnapshotTarget): void {
+    const previous = this.#targets.get(ref);
+    if (previous && previous.backendNodeId !== target.backendNodeId) this.#byNode.delete(previous.backendNodeId);
+    this.#byNode.set(target.backendNodeId, ref);
+    this.#targets.set(ref, target);
+  }
+
   get size(): number {
     return this.#targets.size;
   }
@@ -65,9 +73,13 @@ export type SnapshotOptions = {
   maxChars?: number;
   /** Lets same-origin link targets print as short paths. */
   pageUrl?: string;
+  /** Render only this accessibility node's subtree, for a snapshot scoped to a selector. */
+  rootId?: string;
+  /** Stop after this many levels, marking where deeper content was left out. */
+  maxDepth?: number;
 };
 
-export type SnapshotResult = { text: string; lines: number; truncated: boolean; matched?: number };
+export type SnapshotResult = { text: string; lines: number; truncated: boolean; matched?: number; depthLimited?: boolean };
 
 export const SNAPSHOT_DEFAULT_CHARS = 12_000;
 export const SNAPSHOT_MAX_CHARS = 40_000;
@@ -227,7 +239,7 @@ function describe(line: Line): string {
   return `- ${line.role}${name}${ref}${attrs}${content ? `: ${content}` : ""}`;
 }
 
-function print(views: readonly View[], depth: number, interactive: boolean, out: string[]): void {
+function print(views: readonly View[], depth: number, interactive: boolean, out: string[], maxDepth: number | undefined, state: { depthLimited: boolean }): void {
   for (const view of views) {
     if (view.kind === "text") {
       if (!interactive) out.push(`${"  ".repeat(depth)}- text: ${clean(view.text, 300)}`);
@@ -235,7 +247,12 @@ function print(views: readonly View[], depth: number, interactive: boolean, out:
     }
     if (!interactive) out.push(`${"  ".repeat(depth)}${describe(view)}`);
     else if (view.ref) out.push(describe(view));
-    print(view.children, interactive ? 0 : Math.min(depth + 1, 40), interactive, out);
+    if (maxDepth !== undefined && depth >= maxDepth && view.children.length > 0) {
+      state.depthLimited = true;
+      out.push(`${"  ".repeat(depth + 1)}- [deeper content omitted by depth]`);
+      continue;
+    }
+    print(view.children, interactive ? 0 : Math.min(depth + 1, 40), interactive, out, maxDepth, state);
   }
 }
 
@@ -248,11 +265,15 @@ export function clampSnapshotChars(value: unknown): number {
 /** Pure: `refs` is the only state it touches. */
 export function renderSnapshot(axNodes: readonly AxNode[], refs: SnapshotRefs, options: SnapshotOptions = {}): SnapshotResult {
   const nodes = new Map(axNodes.map((node) => [node.nodeId, node]));
-  const roots = axNodes.filter((node) => !node.parentId || !nodes.has(node.parentId));
+  const scoped = options.rootId ? nodes.get(options.rootId) : undefined;
+  const roots = options.rootId
+    ? scoped ? [scoped] : []
+    : axNodes.filter((node) => !node.parentId || !nodes.has(node.parentId));
   const seen = new Set<string>();
   const views = finalize(roots.flatMap((root) => build(root.nodeId, nodes, refs, options.pageUrl, "", 0, seen)));
   let lines: string[] = [];
-  print(views, 0, options.interactive === true, lines);
+  const depthState = { depthLimited: false };
+  print(views, 0, options.interactive === true, lines, options.maxDepth, depthState);
   let matched: number | undefined;
   const tokens = (options.query ?? "").toLocaleLowerCase().split(/\s+/u).filter(Boolean);
   if (tokens.length) {
@@ -274,5 +295,9 @@ export function renderSnapshot(axNodes: readonly AxNode[], refs: SnapshotRefs, o
     text += `${line}\n`;
     count += 1;
   }
-  return { text: text.trimEnd(), lines: count, truncated, ...(matched !== undefined ? { matched } : {}) };
+  return {
+    text: text.trimEnd(), lines: count, truncated,
+    ...(matched !== undefined ? { matched } : {}),
+    ...(depthState.depthLimited ? { depthLimited: true } : {}),
+  };
 }
