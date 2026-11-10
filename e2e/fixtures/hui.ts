@@ -752,9 +752,6 @@ export const test = base.extend<{ hui: Hui }>({
     // engine can be told to lay the page out wide), so they refuse instead and the test fails where the behaviour is
     // unprovable. WP7's area owners take the failures to a phone step or a catalogue exclusion. `sessionMenu` stays the
     // web's: its hover only reveals the row's button there, and the phone draws that button at phone widths anyway.
-    const noBrowserHarness = (step: string): never => {
-      throw new Error(`hui.${step}() needs Playwright's own browser: the android target rides the app's WebView over CDP, which has one page and no context, so a route, an init script or a fresh context cannot be installed there`);
-    };
     const desktopOnly = (step: string) => (): never => {
       throw new Error(`hui.${step}() needs a desktop: the webkit-phone target is a phone at ${IPHONE_SCREEN.width}x${IPHONE_SCREEN.height} with touch and no hover, so this step would prove the desktop's behaviour on a phone instead of failing where the phone cannot show it`);
     };
