@@ -1233,3 +1233,154 @@ test("a form inside a frame is in the snapshot and works through its refs", {
   assert.match(crossClicked.text, /Clicked e\d+ \(button "Cross button"\)/u);
   assert.match((await call({ action: "snapshot" })).text, /cross clicked/u);
 });
+
+test("network captures a tab's requests and writes a HAR with credentials redacted", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-network-"));
+  const server = createServer((request, response) => {
+    const path = (request.url ?? "").split("?")[0];
+    if (path === "/api") {
+      response.writeHead(200, { "content-type": "application/json" });
+      return response.end(JSON.stringify({ ok: true }));
+    }
+    if (path === "/page") {
+      response.writeHead(200, { "content-type": "text/html" });
+      return response.end(`<!doctype html><title>Network page</title><h1>Network page</h1>
+        <script>
+          fetch("/api?token=page-secret", { headers: { authorization: "Bearer api-secret" } });
+          fetch("/missing");
+        </script>`);
+    }
+    response.writeHead(404, { "content-type": "text/html" });
+    response.end("missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await call({ action: "open", url: `${origin}/page` });
+  assert.match((await call({ action: "network", operation: "start" })).text, /Capturing requests in tab t1/u);
+  await call({ action: "reload" });
+  const listed = await eventually(() => call({ action: "network", operation: "requests" }), (result) => /\/api/u.test(result.text) && /\/missing/u.test(result.text));
+  assert.match(listed.text, /n\d+ · GET 200 OK · Fetch · \d+ ms/u);
+  assert.match(listed.text, /GET 404 Not Found/u);
+  assert.match(listed.text, /\/api\?token=%5Bredacted%5D/u);
+  assert.doesNotMatch(listed.text, /api-secret|page-secret/u);
+
+  // Filters narrow the list; a request detail carries redacted headers.
+  assert.match((await call({ action: "network", operation: "requests", status: "404" })).text, /\/missing/u);
+  assert.doesNotMatch((await call({ action: "network", operation: "requests", status: "404" })).text, /\/api/u);
+  assert.match((await call({ action: "network", operation: "requests", filter: "api", type: "fetch" })).text, /n\d+ · GET 200 OK · Fetch/u);
+  const id = /n\d+/u.exec((await call({ action: "network", operation: "requests", filter: "api" })).text)?.[0];
+  assert.ok(id);
+  const detail = await call({ action: "network", operation: "request", id });
+  assert.match(detail.text, /authorization: \[redacted\]/u);
+  assert.match(detail.text, /content-type: application\/json/u);
+  await assert.rejects(call({ action: "network", operation: "request", id: "n9999" }), /No captured request n9999/u);
+
+  // The HAR keeps the shape and drops the secret values.
+  const written = await call({ action: "network", operation: "har", path: "artifacts/network.har" });
+  assert.match(written.text, /Wrote \d+ requests to .*artifacts\/network\.har/u);
+  const har = JSON.parse(await readFile(join(dir, "artifacts", "network.har"), "utf8")) as { log: { version: string; entries: Array<{ request: { headers: Array<{ name: string; value: string }>; url: string }; response: { status: number } }> } };
+  assert.equal(har.log.version, "1.2");
+  assert.ok(har.log.entries.length >= 3);
+  assert.equal(JSON.stringify(har).includes("api-secret"), false);
+  assert.equal(JSON.stringify(har).includes("page-secret"), false);
+  assert.ok(har.log.entries.some((entry) => entry.request.headers.some((header) => header.name === "authorization" && header.value === "[redacted]")));
+
+  await call({ action: "network", operation: "stop" });
+  await call({ action: "network", operation: "clear" });
+  assert.match((await call({ action: "network", operation: "requests" })).text, /No request matches/u);
+  await assert.rejects(call({ action: "network", operation: "har", path: "notes.txt" }), /path must end in \.har/u);
+});
+
+test("a snapshot diff reports only what an action changed, with usable refs", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-diff-"));
+  const server = createServer((request, response) => {
+    if ((request.url ?? "").split("?")[0] !== "/diff") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Diff page</title><h1>Diff page</h1>
+      <p id="status">2 items</p>
+      <button id="add">Add item</button>
+      <button id="confirm" hidden>Confirm</button>
+      <script>
+        document.getElementById("add").onclick = () => {
+          document.getElementById("status").textContent = "3 items";
+          document.getElementById("confirm").hidden = false;
+        };
+        document.getElementById("confirm").onclick = () => {
+          document.getElementById("status").textContent = "confirmed";
+        };
+      </script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  // A tab with no snapshot yet has no baseline to compare against.
+  const opened = await call({ action: "open", url: `${origin}/diff` });
+  assert.match(opened.text, /Diff page/u);
+  const first = await call({ action: "snapshot", diff: true });
+  assert.match(first.text, /No previous snapshot in this tab, so this one is the baseline\./u);
+  assert.match(first.text, /- button "Add item" \[ref=e\d+\]/u);
+
+  const unchanged = await call({ action: "snapshot", diff: true });
+  assert.match(unchanged.text, /Nothing changed in the page since the previous snapshot\./u);
+  assert.match(unchanged.text, /\(No lines changed\.\)/u);
+
+  // An action changes one line and reveals a button; only those are reported.
+  const addRef = /button "Add item" \[ref=(e\d+)\]/u.exec(opened.text)?.[1];
+  assert.ok(addRef);
+  await call({ action: "act", ref: addRef, kind: "click" });
+  const changed = await call({ action: "snapshot", diff: true });
+  assert.match(changed.text, /Page changed since the previous snapshot: 3 lines added, 2 removed\./u);
+  assert.match(changed.text, /- - paragraph: 2 items/u);
+  assert.match(changed.text, /\+ - paragraph: 3 items/u);
+  assert.doesNotMatch(changed.text, /\+ - heading "Diff page"/u);
+  const confirmRef = /\+ - button "Confirm" \[ref=(e\d+)\]/u.exec(changed.text)?.[1];
+  assert.ok(confirmRef, changed.text);
+
+  // The ref a diff line carries acts, so the loop can continue from a diff.
+  await call({ action: "act", ref: confirmRef, kind: "click" });
+  const confirmed = await call({ action: "snapshot", diff: true });
+  assert.match(confirmed.text, /\+ - paragraph: confirmed/u);
+  assert.match(confirmed.text, /- - paragraph: 3 items/u);
+
+  // Filtered snapshots are not comparable with a whole one.
+  await assert.rejects(
+    call({ action: "snapshot", diff: true, query: "button" }),
+    /snapshot diff compares whole snapshots; drop query, selector, interactive and depth\./u,
+  );
+
+  // A new document makes the previous lines a poor comparison; say so.
+  await call({ action: "reload" });
+  const navigated = await call({ action: "snapshot", diff: true });
+  assert.match(navigated.text, /The page navigated since the previous snapshot, so this one is the new baseline\./u);
+  assert.match(navigated.text, /- heading "Diff page" \[level=1\]/u);
+});

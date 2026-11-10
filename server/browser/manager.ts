@@ -30,9 +30,11 @@ import type { BrowserSettings } from "../hui-settings.ts";
 import { CdpConnection, CdpError, type CdpEvent } from "./cdp.ts";
 import { defaultExecutableProbe, resolveBrowserExecutable, type BrowserExecutable, type ExecutableProbe } from "./executable.ts";
 import { KeyParseError, parseKey, type KeyStroke } from "./keys.ts";
+import { buildHar, describeEntry, NetworkLog } from "./network.ts";
 import { allowsUrl, blockedOriginMessage } from "./origins.ts";
 import type { SiteSecret, SiteSecretView } from "./secrets.ts";
 import { clampSnapshotChars, renderSnapshot, SnapshotRefs, type AxNode, type SnapshotOptions, type SnapshotResult, type SnapshotTarget } from "./snapshot.ts";
+import { describeDiff, diffSnapshots } from "./diff.ts";
 import { EMPTY_BROWSER_STATE, isHttpOrigin, mergeBrowserState, STATE_CAPTURE, STATE_SEED, trimBrowserState, type BrowserState, type StoredCookie, type StoredDatabase, type StoredOrigin } from "./state.ts";
 
 export class BrowserToolError extends Error {
@@ -68,7 +70,7 @@ export type BrowserViewHandle = {
 
 export const BROWSER_ACTIONS = [
   "status", "tabs", "open", "navigate", "back", "forward", "reload", "focus", "close",
-  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps", "get", "is",
+  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps", "get", "is", "network",
 ] as const;
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
 export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "scroll", "wait"] as const;
@@ -136,6 +138,10 @@ type Tab = {
   frame?: BrowserViewFrame;
   /** A page that tried to leave the allowed origins, reported once. */
   blocked?: string;
+  /** Requests captured for this tab, once a conversation asks for them. */
+  network?: NetworkLog;
+  /** The whole snapshot last read in this document, the baseline for a diff. */
+  lastSnapshot?: { loaderId: string; lines: string[] };
 };
 
 type Viewer = { owner: string; listener: BrowserViewListener; pinned: string | null; watching: string | null; closed: boolean };
@@ -460,6 +466,21 @@ function screenshotPath(cwd: string, raw: unknown): string {
   const path = isAbsolute(raw) ? raw : resolve(cwd, raw);
   if (extname(path).toLowerCase() !== ".png") throw new BrowserToolError("path must end in .png.");
   return path;
+}
+
+/** A HAR path for `network`, beside the session's other artifacts. */
+function harPath(cwd: string, raw: unknown): string {
+  if (typeof raw !== "string" || !raw.trim() || raw.length > 4_096 || /[\p{Cc}]/u.test(raw)) {
+    throw new BrowserToolError("path must be a file path ending in .har.");
+  }
+  const path = isAbsolute(raw) ? raw : resolve(cwd, raw);
+  if (extname(path).toLowerCase() !== ".har") throw new BrowserToolError("path must end in .har.");
+  return path;
+}
+
+function headerRecord(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined;
+  return Object.fromEntries(Object.entries(value).map(([name, entry]) => [name, typeof entry === "string" ? entry : String(entry)]));
 }
 
 /** The cookie jar as the mirror carries it, dropping what only describes this machine. */
@@ -882,6 +903,11 @@ export class ManagedBrowser {
         const instance = this.#live();
         const query = optionalText(params, "query", 200);
         const selector = optionalText(params, "selector", 1_000);
+        const diffRequested = params["diff"] === true;
+        // A diff compares like with like, so both sides are whole snapshots.
+        if (diffRequested && (query || selector || params["interactive"] === true || depthFrom(params["depth"]) !== undefined)) {
+          throw new BrowserToolError("snapshot diff compares whole snapshots; drop query, selector, interactive and depth.", 400);
+        }
         const rootId = selector ? await this.#snapshotRoot(instance, tab, selector) : undefined;
         const snapshot = await this.#snapshot(instance, tab, {
           interactive: params["interactive"] === true,
@@ -895,12 +921,49 @@ export class ManagedBrowser {
         const lines = [this.#header(tab)];
         if (selector) lines.push(`Scoped to ${selector}.`);
         if (snapshot.matched !== undefined) lines.push(`${snapshot.matched} matching line${snapshot.matched === 1 ? "" : "s"} for "${query}".`);
-        lines.push("", pageBoundary(nonce, origin, snapshot.text || "(No accessible content matched.)"));
-        if (snapshot.truncated) lines.push(TRUNCATED_NOTE);
+        const previous = tab.lastSnapshot;
+        let body = snapshot.text || "(No accessible content matched.)";
+        let change: { added: number; removed: number } | undefined;
+        let bodyTruncated = snapshot.truncated;
+        if (diffRequested) {
+          if (!previous) {
+            lines.push("No previous snapshot in this tab, so this one is the baseline.");
+          } else if (previous.loaderId !== tab.loaderId) {
+            lines.push("The page navigated since the previous snapshot, so this one is the new baseline.");
+          } else {
+            const delta = diffSnapshots(previous.lines, snapshot.allLines);
+            lines.push(describeDiff(delta));
+            change = { added: delta.added, removed: delta.removed };
+            if (delta.coarse) {
+              bodyTruncated ||= snapshot.truncated;
+            } else {
+              const kept: string[] = [];
+              let length = 0;
+              for (const line of delta.lines) {
+                if (length + line.length + 1 > clampSnapshotChars(params["maxChars"])) { bodyTruncated = true; break; }
+                kept.push(line);
+                length += line.length + 1;
+              }
+              body = kept.length ? kept.join("\n") : "(No lines changed.)";
+              if (delta.omitted) lines.push(`${delta.omitted} more changed line${delta.omitted === 1 ? "" : "s"} were left out; read the page with snapshot after an action that changes less.`);
+            }
+          }
+        }
+        // Only a whole unfiltered snapshot can be a baseline.
+        if (!query && !selector && params["interactive"] !== true && depthFrom(params["depth"]) === undefined) {
+          tab.lastSnapshot = { loaderId: tab.loaderId, lines: snapshot.allLines };
+        }
+        lines.push("", pageBoundary(nonce, origin, body));
+        if (bodyTruncated) lines.push(TRUNCATED_NOTE);
         if (snapshot.depthLimited) lines.push(DEPTH_NOTE);
         return {
           text: lines.join("\n"),
-          details: { action, tab: this.#tabDetails(tab), lines: snapshot.lines, truncated: snapshot.truncated, ...(snapshot.depthLimited ? { depthLimited: true } : {}), boundary: { nonce, origin } },
+          details: {
+            action, tab: this.#tabDetails(tab), lines: snapshot.lines, truncated: bodyTruncated,
+            ...(snapshot.depthLimited ? { depthLimited: true } : {}),
+            ...(diffRequested ? { diff: { baseline: !previous || previous.loaderId !== tab.loaderId, ...(change ?? { added: 0, removed: 0 }) } } : {}),
+            boundary: { nonce, origin },
+          },
         };
       }
       case "act": return this.#act(owner, params);
@@ -909,6 +972,7 @@ export class ManagedBrowser {
       case "console": return this.#console(owner, params);
       case "get": return this.#get(owner, params);
       case "is": return this.#is(owner, params);
+      case "network": return this.#network(owner, params, context.cwd);
       case "resize": return this.#resize(owner, params);
       case "handoff": return this.#handoff(owner, params);
       case "secret": return this.#secret(owner, params);
@@ -1641,6 +1705,30 @@ export class ManagedBrowser {
         this.#log(tab, str(entry["level"]) || "info", `${str(entry["text"])}${url ? ` (${url})` : ""}`);
         break;
       }
+      case "Network.requestWillBeSent": {
+        if (!tab.network?.recording) break;
+        const request = isRecord(params["request"]) ? params["request"] : {};
+        tab.network.record({
+          requestId: str(params["requestId"]), url: str(request["url"]), method: str(request["method"]),
+          type: str(params["type"]), headers: headerRecord(request["headers"]), at: Date.now(),
+        });
+        break;
+      }
+      case "Network.responseReceived": {
+        if (!tab.network?.recording) break;
+        const response = isRecord(params["response"]) ? params["response"] : {};
+        tab.network.record({
+          requestId: str(params["requestId"]), status: num(response["status"]), statusText: str(response["statusText"]),
+          mimeType: str(response["mimeType"]), responseHeaders: headerRecord(response["headers"]), at: Date.now(),
+        });
+        break;
+      }
+      case "Network.loadingFinished":
+        if (tab.network?.recording) tab.network.record({ requestId: str(params["requestId"]), bytes: num(params["encodedDataLength"]), at: Date.now() });
+        break;
+      case "Network.loadingFailed":
+        if (tab.network?.recording) tab.network.record({ requestId: str(params["requestId"]), failure: str(params["errorText"]) || "failed", at: Date.now() });
+        break;
       case "Inspector.targetCrashed":
         tab.crashed = true;
         break;
@@ -2018,7 +2106,7 @@ export class ManagedBrowser {
       if (loaderId === tab.loaderId) break;
       tab.refs.reset();
     }
-    return result ?? { text: "", lines: 0, truncated: false };
+    return result ?? { text: "", lines: 0, truncated: false, allLines: [] };
   }
 
   /** One level of child frames is read by frame id and hung under its Iframe node, so a form
@@ -2582,6 +2670,88 @@ export class ManagedBrowser {
     const result = await this.#call(instance, tab, objectId, ELEMENT_IS, [state]);
     const value = isRecord(result) && result["value"] === true;
     return { text: `${label} is ${value ? "" : "not "}${state}.`, details: { action: "is", state, value, tab: this.#tabDetails(tab) } };
+  }
+
+  /** Capture the tab's requests for one conversation, read them, and write a redacted HAR. */
+  async #network(owner: string, params: Record<string, unknown>, cwd: string): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const operation = params["operation"];
+    if (typeof operation !== "string" || !["start", "stop", "clear", "requests", "request", "har"].includes(operation)) {
+      throw new BrowserToolError("network needs operation: start, stop, clear, requests, request or har.");
+    }
+    if (operation === "start") {
+      tab.network ??= new NetworkLog();
+      tab.network.start();
+      try {
+        await instance.connection.send("Network.enable", { maxTotalBufferSize: 20_000_000, maxResourceBufferSize: 5_000_000 }, tab.session);
+      } catch (error) {
+        throw new BrowserToolError(`The page's requests could not be watched: ${error instanceof Error ? error.message : "the browser refused"}`, 502);
+      }
+      return { text: `Capturing requests in tab ${tab.id}. Navigate or act, then read them with network requests.`, details: { action: "network", operation, tab: this.#tabDetails(tab) } };
+    }
+    if (operation === "stop") {
+      const count = tab.network?.size ?? 0;
+      tab.network?.stop();
+      await instance.connection.send("Network.disable", {}, tab.session).catch(() => undefined);
+      return { text: `Stopped capturing in tab ${tab.id}; ${count} request${count === 1 ? "" : "s"} kept.`, details: { action: "network", operation, entries: count, tab: this.#tabDetails(tab) } };
+    }
+    if (operation === "clear") {
+      tab.network?.clear();
+      return { text: "Cleared the captured requests.", details: { action: "network", operation, entries: 0, tab: this.#tabDetails(tab) } };
+    }
+    const log = tab.network;
+    if (!log) throw new BrowserToolError("No capture has run in this tab. Call network with operation start first.", 409);
+    if (operation === "requests") {
+      const filter = typeof params["filter"] === "string" ? params["filter"].toLowerCase() : "";
+      const type = typeof params["type"] === "string" ? params["type"].toLowerCase() : "";
+      const method = typeof params["method"] === "string" ? params["method"].toUpperCase() : "";
+      const status = typeof params["status"] === "string" ? params["status"] : "";
+      const matches = log.entries().filter((entry) => {
+        if (filter && !entry.url.toLowerCase().includes(filter)) return false;
+        if (type && entry.type.toLowerCase() !== type) return false;
+        if (method && entry.method.toUpperCase() !== method) return false;
+        if (status) {
+          const family = /^(\d)xx$/iu.exec(status);
+          const range = /^(\d{3})-(\d{3})$/u.exec(status);
+          if (family) { if (entry.status === undefined || Math.floor(entry.status / 100) !== Number(family[1])) return false; }
+          else if (range) { if (entry.status === undefined || entry.status < Number(range[1]) || entry.status > Number(range[2])) return false; }
+          else if (entry.status !== Number(status)) return false;
+        }
+        return true;
+      });
+      const shown = matches.slice(-50);
+      const lines = [`${log.size} request${log.size === 1 ? "" : "s"} captured in tab ${tab.id}${log.recording ? " (capturing)" : ""}.`];
+      if (matches.length > shown.length) lines.push(`Showing the latest 50 of ${matches.length} matching requests.`);
+      lines.push("", shown.length ? shown.map(describeEntry).join("\n") : "No request matches. Start a capture and navigate, or loosen the filter.");
+      return { text: lines.join("\n"), details: { action: "network", operation, entries: log.size, matching: matches.length, tab: this.#tabDetails(tab) } };
+    }
+    if (operation === "request") {
+      const id = params["id"];
+      if (typeof id !== "string" || !/^n\d{1,6}$/u.test(id)) throw new BrowserToolError("request needs id, such as n3 from network requests.");
+      const entry = log.find(id);
+      if (!entry) throw new BrowserToolError(`No captured request ${id}. Read network requests for the ids.`, 404);
+      const lines = [
+        describeEntry(entry),
+        `${entry.method} ${entry.url}`,
+        `Type ${entry.type || "Other"}${entry.mimeType ? ` · ${entry.mimeType}` : ""}${entry.failure ? ` · failed: ${entry.failure}` : ""}`,
+        "",
+        "Request headers:",
+        entry.requestHeaders.length ? entry.requestHeaders.map((header) => `  ${header.name}: ${header.value}`).join("\n") : "  (none)",
+        "Response headers:",
+        entry.responseHeaders.length ? entry.responseHeaders.map((header) => `  ${header.name}: ${header.value}`).join("\n") : "  (none)",
+      ];
+      return { text: lines.join("\n"), details: { action: "network", operation, id, tab: this.#tabDetails(tab) } };
+    }
+    const path = harPath(cwd, params["path"]);
+    const entries = log.entries();
+    const har = buildHar(entries, { creator: "HUI", version: "1.0.0" });
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${JSON.stringify(har, null, 2)}\n`, "utf8");
+    return {
+      text: `Wrote ${entries.length} request${entries.length === 1 ? "" : "s"} to ${path}. Credential headers and secret query values are [redacted].`,
+      details: { action: "network", operation, path, entries: entries.length, tab: this.#tabDetails(tab) },
+    };
   }
 
   async #text(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
