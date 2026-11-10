@@ -3,8 +3,9 @@ import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
 const groupMenu = async (screen: Screen, hui: Hui, label: string, item: string) => {
+  // A group's header and its menu live in the sidebar, which a phone keeps in its drawer; its actions button is drawn
+  // at every width, so it needs no hover first.
   await hui.sessionList();
-  await hui.peek(screen.getByRole("button", label.toLocaleUpperCase()));
   await screen.getByRole("button", `Group options for ${label}`).tap();
   await screen.getByText(item, { visible: true }).tap();
 };
