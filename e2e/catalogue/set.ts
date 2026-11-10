@@ -720,7 +720,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-069",
@@ -729,7 +729,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-070",
@@ -738,7 +738,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huiautomationtasksidrun", "docs/api.md#post-__huiautomationrunsidcancel", "SPEC.md#behaviour"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run", "route:POST /__hui/automation/runs/:id/cancel", "page:cron", "route:GET /__hui/automation"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-071",
