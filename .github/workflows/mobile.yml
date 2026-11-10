@@ -95,10 +95,13 @@ jobs:
       - name: Enable KVM
         run: |
           set -euo pipefail
-          # The device node is root:kvm 0660 before this rule, which the runner user is not in.
+          # The device node is root:kvm 0660 before this rule, which the runner user is not in. The rule is what a reboot
+          # would need; the chmod is what this run needs, and neither the udev daemon nor the rule has to be running.
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm || sudo udevadm trigger
+          sudo udevadm control --reload-rules || echo "udev is not running here; the chmod below is what this run needs"
+          sudo udevadm trigger --name-match=kvm || sudo udevadm trigger || true
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm
       - name: Install the emulator and its system image
         run: |
