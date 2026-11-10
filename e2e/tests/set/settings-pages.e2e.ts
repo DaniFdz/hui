@@ -10,6 +10,8 @@ test("Settings opens the page chosen from its grouped list, a direct link or the
   const title = screen.getByTestId("settings-page-title");
 
   await hui.open("/settings/appearance");
+  // A phone keeps the page list in a sheet: the same list, and Exit Settings, live in it.
+  await hui.settingsPages();
   await expect(pages).toHaveText(EVERY_PAGE, { ignoreCase: true });
   await expect(title).toHaveText("Appearance");
   await expect(page("Appearance")).toHaveAttribute("aria-current", "page");
@@ -17,20 +19,24 @@ test("Settings opens the page chosen from its grouped list, a direct link or the
   await page("Gateway").tap();
   await expect(title).toHaveText("Gateway");
   await expect(screen.getByText("Gateway access and live PI runtime state.")).toBeVisible();
+  await hui.settingsPages();
   await expect(page("Gateway")).toHaveAttribute("aria-current", "page");
   await expect(page("Appearance")).toHaveAttribute("aria-current", "false");
   await hui.reload();
   await expect(title).toHaveText("Gateway");
+  await hui.settingsPages();
   await expect(page("Gateway")).toHaveAttribute("aria-current", "page");
   expect(await hui.url()).toMatch(/\/settings\/connection$/u);
 
   await hui.open("/settings/diagnostics");
   await expect(title).toHaveText("Diagnostics");
+  await hui.settingsPages();
   await expect(page("Diagnostics")).toHaveAttribute("aria-current", "page");
   await hui.open("/worktrees");
   await expect(title).toHaveText("Worktrees");
   await expect.poll(() => hui.url()).toMatch(/\/settings\/worktrees$/u);
 
+  await hui.settingsPages();
   await screen.getByRole("button", "Exit Settings").tap();
   await expect(screen.getByRole("button", "Start session")).toBeVisible();
   await expect(title).toBeHidden();
