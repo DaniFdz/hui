@@ -50,9 +50,9 @@ test("Search sessions filters by title, directory and group, opens collapsed gro
   await expect(screen.getByText("No matching sessions.")).toBeVisible();
 
   await search.fill("");
-  // The top bar's Search is behind the drawer the rows above were read from, so the drawer closes before it is tapped;
-  // tapping it opens the drawer again with the field focused.
-  await screen.getByRole("button", { name: "Close navigation", expanded: true }).tap();
+  // A reload draws the sidebar closed, so the top bar's Search is reachable: tapping it is a phone's way into a field
+  // it keeps in the drawer, which opens with the field focused.
+  await hui.reload();
   await hui.phoneScreen();
   await screen.getByRole("button", "Search sessions").tap();
   await expect(search).toBeVisible();
