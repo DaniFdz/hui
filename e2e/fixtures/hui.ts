@@ -11,9 +11,10 @@
  * layout, the shell's drawer media, the navigation drawer), the Settings page list (the drawer on a phone), the app's
  * chrome outside Settings (the primary navigation), the chosen button of a group (aria-pressed), the app's and the
  * device's colour scheme, the session menu, status glyphs, how a piece of the screen looks, the window's size, Back and
- * Forward, sideways overflow, whether a tap reaches a control and the command palette's chord. The web page never
- * opens Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway
- * does. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
+ * Forward, sideways overflow, whether a tap reaches a control, the command palette's chord and a frame's own document
+ * (an agent widget runs where only its sandbox can reach it, so a test reads and taps inside it there). The web page
+ * never opens Vite's development socket, whose client reloads the page when the gateway restarts, which no installed
+ * gateway does. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
  * themselves.
  */
 import { execFileSync } from "node:child_process";
@@ -22,7 +23,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
-import type { Browser, WebRoute } from "@e2e-dev/web";
+import type { Browser, FrameScreen, WebRoute } from "@e2e-dev/web";
 import { addWorkerOnThisMachine } from "./worker.ts";
 import { clearAppStorage, onPhone } from "./phone.ts";
 import { IPHONE_SCREEN, onWebKitPhone } from "./phone-webkit.ts";
@@ -120,6 +121,9 @@ export type Hui = {
   /** A tap at the middle of where the target is now, read at the moment of the press: a phone sends a plain tap to the row its last reading put the target in, which a screen that just laid that row out elsewhere would miss. */
   tapAt(target: Locator): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
+  /** The screen of the frame a CSS selector matches, so a test reads and taps a document HUI only hosts, such as an agent
+   * widget's sandboxed frame; a frame nested inside it comes from that screen's own `frameLocator`. */
+  frame(selector: string): Promise<FrameScreen>;
   expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   messageActions(target: Locator): Promise<void>;
@@ -635,6 +639,7 @@ export const test = base.extend<{ hui: Hui }>({
         await within.getByRole("button", `Delete ${name}`).tap();
       },
       scrollTo: (_within, target) => target.scrollIntoView(),
+      frame: async (selector) => browser().frameLocator(selector),
       expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
       textOf: async (target) => (await target.textContent()) ?? "",
       stepState: (step, state) => expect(step).toHaveAttribute("data-status", state),
