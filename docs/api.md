@@ -4672,12 +4672,14 @@ comes from the per-conversation token. `action` is one of:
 | `open` | Launch lazily, open a tab, load `url` and return a snapshot |
 | `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot; with an origin allowlist set, a page outside it is refused with 403 |
 | `focus`, `close` | Select or close one of this conversation's tabs |
-| `snapshot` | Accessibility outline; `interactive`, `query` and `maxChars` (500–40 000, default 12 000; 8 000 for page loads) narrow it |
-| `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`) |
+| `snapshot` | Accessibility outline; `interactive`, `query`, `maxChars` (500–40 000, default 12 000; 8 000 for page loads), `selector` to start at one element and `depth` (1–40) to stop after some levels |
+| `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`, `state` with a selector) |
 | `text` | Visible text of `selector`, else the first article, main or body (default 12 000, at most 40 000 characters) |
 | `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory) |
 | `console` | The latest 50 of up to 200 recorded console, exception, log and dialog entries; `errorsOnly`, `clear` |
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
+| `get` | One property of one element (`ref` or `selector`): `text`, `html`, `value`, `attr` with `attribute`, `box`, or page-level `title`, `url` and `count` with `selector`; a password field's value is refused with 409 |
+| `is` | One state of one element (`ref` or `selector`): `visible`, `hidden`, `enabled`, `disabled`, `checked`, `focused`, `editable`, `attached` |
 | `handoff` | Give the current (or `tabId`) tab to the operator and wait: `message` (at most 500 characters) and `timeoutMs` (5000–1 800 000, default 600 000) |
 | `secret` | Type the operator's stored secret `name` into `ref` on the secret's own origin, optionally `submit`; the value never appears in the result |
 | `steps` | 1–20 `act` steps in order on one tab (`kind`, `ref`, and the same fields `act` takes), each with its own `timeoutMs` or the call's; the result lists each step and a failure names the step and what already ran |
@@ -4685,7 +4687,17 @@ comes from the per-conversation token. `action` is one of:
 Tab handles are `t1`, `t2`…; element refs are `e1`, `e2`… from the latest
 snapshot of that tab. A ref stays bound to its DOM node within one document; a
 new document retires every ref and numbering never restarts, so a stale ref
-fails instead of addressing another element. Clicks check that the element is
+fails instead of addressing another element. A ref whose node was replaced
+keeps its number when exactly one laid-out element still has its role and name;
+with none or several it fails and asks for a new snapshot. A click on a
+disabled or hidden target fails with the reason, and one covered by another
+element fails naming the cover.
+
+Every result that carries page-sourced text (a snapshot, `text`, console
+entries, `get text|html`) wraps it in
+`--- HUI_PAGE_CONTENT nonce=<16 hex> origin=<origin> ---` …
+`--- END_HUI_PAGE_CONTENT nonce=<same> ---`, with a nonce minted per result; the
+result's `details.boundary` repeats `nonce` and `origin`. Clicks check that the element is
 not covered by an overlay, and an action that starts a same-tab navigation waits
 for the new document (`timeoutMs`, 1000–60 000, default 30 000). Alerts and
 `beforeunload` dialogs are accepted and confirm/prompt dialogs dismissed unless

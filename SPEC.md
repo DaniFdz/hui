@@ -1043,6 +1043,24 @@ other's pages. A browser on a worker is not streamed here: its tabs stay on that
 machine, no preview or browser view shows them, and what the agent sees arrives
 as tool results, a screenshot included (which `present_media` shows in the chat).
 
+**Page content is marked, and the loop is cheap.** Every result that carries
+something a page said — a snapshot, `text`, console entries, `get text|html` —
+puts it between `--- HUI_PAGE_CONTENT nonce=… origin=… ---` and
+`--- END_HUI_PAGE_CONTENT nonce=… ---`, with a nonce minted for that result, so
+a caller can tell HUI's own words from a page's even when the page imitates the
+format. `get` reads one property (`text`, `html`, `value`, `attr`, `box`,
+`title`, `url`, `count`) and `is` checks one state (`visible`, `hidden`,
+`enabled`, `disabled`, `checked`, `focused`, `editable`, `attached`), so
+verifying an action costs a line rather than a snapshot; a password field's
+`value` is refused rather than read, because the operator's secrets are typed by
+the gateway and must not come back through the transcript. `snapshot` takes
+`selector` to start at one element and `depth` to stop after some levels (marking
+where it stopped); `act wait` takes `state` with the selector. A click fails
+with the reason when its target is disabled, hidden or covered instead of
+reporting success, and a ref whose node was replaced keeps working when exactly
+one laid-out element still has its role and name — otherwise it fails as stale
+or ambiguous rather than acting on the wrong element.
+
 **A handoff is the operator's turn.** When only a person can continue — a
 password, 2FA, a passkey, a payment or a bot check — the agent calls `handoff`
 with one sentence saying what to do and waits: ten minutes by default, at most
