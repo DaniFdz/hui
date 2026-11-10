@@ -4673,13 +4673,14 @@ comes from the per-conversation token. `action` is one of:
 | `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot; with an origin allowlist set, a page outside it is refused with 403 |
 | `focus`, `close` | Select or close one of this conversation's tabs |
 | `snapshot` | Accessibility outline; `interactive`, `query`, `maxChars` (500–40 000, default 12 000; 8 000 for page loads), `selector` to start at one element and `depth` (1–40) to stop after some levels; one level of child frames is inlined under its Iframe node; `diff: true` returns only what changed since the tab's previous whole snapshot |
-| `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`, `state` with a selector) |
+| `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `upload` (`files`, or `selector` for a hidden input), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`, `state` with a selector) |
 | `text` | Visible text of `selector`, else the first article, main or body (default 12 000, at most 40 000 characters) |
 | `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory) |
 | `console` | The latest 50 of up to 200 recorded console, exception, log and dialog entries; `errorsOnly`, `clear` |
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
 | `get` | One property of one element (`ref` or `selector`): `text`, `html`, `value`, `attr` with `attribute`, `box`, or page-level `title`, `url` and `count` with `selector`; a password field's value is refused with 409 |
 | `is` | One state of one element (`ref` or `selector`): `visible`, `hidden`, `enabled`, `disabled`, `checked`, `focused`, `editable`, `attached` |
+| `performance` | What the page costs: `operation` `metrics` (renderer counters: heap, nodes, documents, frames, listeners, layouts, style recalcs, script and task time) or `timings` (navigation entry, paints, subresource count and weight, slowest resources) |
 | `network` | Capture the tab's requests: `operation` `start`/`stop`/`clear`, `requests` with `filter`, `type`, `method` and `status` (`2xx`, `400-499` or an exact code), `request` with `id` such as `n3`, and `har` with `path` (must end in `.har`) |
 | `handoff` | Give the current (or `tabId`) tab to the operator and wait: `message` (at most 500 characters) and `timeoutMs` (5000–1 800 000, default 600 000) |
 | `secret` | Type the operator's stored secret `name` into `ref` on the secret's own origin, optionally `submit`; the value never appears in the result |
@@ -4705,6 +4706,20 @@ status, type, bytes and timing; bodies are never captured. Credential headers
 `password`, `secret`, …) are `[redacted]` in `network requests`,
 `network request` and the HAR. The HAR is JSON 1.2 with one page and its
 entries, written wherever `path` names (relative to the session directory).
+`performance` reads CDP `Performance.getMetrics` after enabling the domain once
+per tab, so the counters accumulate from that first call rather than resetting
+per read; durations arrive in seconds and are printed in ms, s or min. The
+`timings` operation evaluates one fixed expression on the page (navigation,
+paint and resource entries) and prints the document's marks, its paints when
+the browser reports them, and the slowest resources over 500 ms.
+`act` `kind: "upload"` takes `files` (1–10 paths, relative to the session
+directory or absolute, at most 25 MB each) and `ref` to the file input or its
+label, or `selector` for an input the page hides; it sets the input's files
+with CDP `DOM.setFileInputFiles`, which fires the page's `input` and `change`
+events, then reports the names the input kept. A directory, a missing path, a
+non-input target, a disabled input and more files than a single-file input
+accepts are refused before the page is touched.
+
 `snapshot` with `diff: true` compares the tab's current whole snapshot with the
 last whole snapshot it took in the same document: changed lines are prefixed
 `+`/`-` with two context lines, unchanged lines keep their refs, and the result

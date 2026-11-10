@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1383,4 +1383,146 @@ test("a snapshot diff reports only what an action changed, with usable refs", {
   const navigated = await call({ action: "snapshot", diff: true });
   assert.match(navigated.text, /The page navigated since the previous snapshot, so this one is the new baseline\./u);
   assert.match(navigated.text, /- heading "Diff page" \[level=1\]/u);
+});
+
+test("act upload puts local files into a page's file input, visible or hidden", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-upload-"));
+  const server = createServer((request, response) => {
+    if ((request.url ?? "").split("?")[0] !== "/upload") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Upload page</title><h1>Upload page</h1>
+      <input id="one" type="file" aria-label="One file">
+      <input id="many" type="file" multiple aria-label="Many files">
+      <input id="hidden" type="file" hidden>
+      <p id="picked">nothing picked</p>
+      <script>
+        const picked = document.getElementById("picked");
+        for (const id of ["one", "many", "hidden"]) {
+          document.getElementById(id).addEventListener("change", (event) => {
+            picked.textContent = id + ": " + [...event.target.files].map((file) => file.name).join(", ");
+          });
+        }
+      </script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  await writeFile(join(dir, "notes.txt"), "first note\n");
+  await writeFile(join(dir, "second.md"), "# second\n");
+  await mkdir(join(dir, "folder"), { recursive: true });
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  const opened = await call({ action: "open", url: `http://127.0.0.1:${address.port}/upload` });
+  const ref = (name: string) => new RegExp(`button "${name}" \\[ref=(e\\d+)\\]`, "u").exec(opened.text)?.[1];
+  const one = ref("One file");
+  const many = ref("Many files");
+  assert.ok(one && many, opened.text);
+
+  // One file into a single-file input: the page's own change handler runs.
+  const single = await call({ action: "act", kind: "upload", ref: one, files: ["notes.txt"] });
+  assert.match(single.text, /Uploaded notes\.txt to e\d+ \(button "One file"\) \(1 file\)\./u);
+  assert.match((await call({ action: "get", what: "text", selector: "#picked" })).text, /one: notes\.txt/u);
+
+  // Several files need a multiple input.
+  await assert.rejects(
+    call({ action: "act", kind: "upload", ref: one, files: ["notes.txt", "second.md"] }),
+    /button "One file"\) accepts one file, but 2 were given\./u,
+  );
+  const multiple = await call({ action: "act", kind: "upload", ref: many, files: ["notes.txt", "second.md"] });
+  assert.match(multiple.text, /Uploaded notes\.txt, second\.md to e\d+ \(button "Many files"\) \(2 files\)\./u);
+  assert.match((await call({ action: "get", what: "text", selector: "#picked" })).text, /many: notes\.txt, second\.md/u);
+
+  // A hidden input is reachable by selector, which is how pages style their pickers.
+  const hidden = await call({ action: "act", kind: "upload", selector: "#hidden", files: [join(dir, "second.md")] });
+  assert.match(hidden.text, /Uploaded second\.md to #hidden \(1 file\)\./u);
+  assert.match((await call({ action: "get", what: "text", selector: "#picked" })).text, /hidden: second\.md/u);
+
+  // Refusals name the reason instead of letting the browser fail obscurely.
+  await assert.rejects(call({ action: "act", kind: "upload", ref: many, files: ["missing.txt"] }), /.*missing\.txt is not a file that can be uploaded\./u);
+  await assert.rejects(call({ action: "act", kind: "upload", ref: many, files: ["folder"] }), /.*folder is not a file that can be uploaded\./u);
+  await assert.rejects(call({ action: "act", kind: "upload", ref: many, files: [] }), /files must list 1 to 10 file paths\./u);
+  await assert.rejects(call({ action: "act", kind: "upload", files: ["notes.txt"] }), /upload needs ref to the file input, or selector when the page hides it\./u);
+  await assert.rejects(
+    call({ action: "act", kind: "upload", selector: "#picked", files: ["notes.txt"] }),
+    /#picked is not a file input\./u,
+  );
+});
+
+test("performance reports the renderer's counters and the document's own timings", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-performance-"));
+  const server = createServer((request, response) => {
+    const path = (request.url ?? "").split("?")[0];
+    if (path === "/slow.js") {
+      response.writeHead(200, { "content-type": "text/javascript" });
+      return response.end("window.slowLoaded = true;");
+    }
+    if (path !== "/perf") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Performance page</title><h1>Performance page</h1>
+      <div id="rows"></div>
+      <script>
+        const rows = document.getElementById("rows");
+        for (let index = 0; index < 300; index += 1) {
+          const row = document.createElement("div");
+          row.textContent = "row " + index;
+          rows.append(row);
+        }
+        const script = document.createElement("script");
+        script.src = "/slow.js";
+        document.head.append(script);
+      </script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await call({ action: "open", url: `http://127.0.0.1:${address.port}/perf` });
+
+  const metrics = await call({ action: "performance", operation: "metrics" });
+  assert.match(metrics.text, /nodes (\d+)/u);
+  const nodes = Number(/nodes (\d+)/u.exec(metrics.text)?.[1]);
+  assert.ok(nodes >= 300, metrics.text);
+  assert.match(metrics.text, /heap [\d.]+ (B|KB|MB)/u);
+  assert.match(metrics.text, /layouts \d+ \(/u);
+  assert.match(metrics.text, /script \d+( ms|\.\d s)? of /u);
+  assert.match(metrics.text, /Counters accumulate from this tab's first performance call\./u);
+
+  const timings = await call({ action: "performance", operation: "timings" });
+  assert.match(timings.text, /Load: first byte \d+ ms, DOMContentLoaded \d+ ms, load \d+ ms · document \d+ (B|KB|MB)/u);
+  // Headless Chrome reports no paint entries until it composites; both answers are valid.
+  assert.match(timings.text, /Paints: (first-paint \d+(\.\d)? (ms|s)|none reported yet\.)/u);
+  assert.match(timings.text, /Resources: \d+ requests?, [\d.]+ (B|KB|MB) transferred\./u);
+
+  await assert.rejects(call({ action: "performance", operation: "vitals" }), /performance needs operation: metrics or timings\./u);
+  // The counters survive a second call and only grow.
+  const again = await call({ action: "performance" });
+  assert.match(again.text, /nodes (\d+)/u);
+  assert.ok(Number(/nodes (\d+)/u.exec(again.text)?.[1]) >= nodes);
 });

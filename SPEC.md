@@ -1063,6 +1063,22 @@ reporting success, and a ref whose node was replaced keeps working when exactly
 one laid-out element still has its role and name — otherwise it fails as stale
 or ambiguous rather than acting on the wrong element.
 
+**What a page costs is measured, not guessed.** `performance` with
+`operation: "metrics"` reads the renderer's own counters (JS heap used and
+total, DOM nodes, documents, frames, JS listeners, layout and style-recalculation
+counts and durations, and script time as a share of task time) and
+`operation: "timings"` reads the document's navigation entry (first byte,
+DOMContentLoaded, load, transferred and decoded bytes, navigation type), its
+paint marks, the number and weight of subresources, and the five slowest ones
+over 500 ms. Counters accumulate from the tab's first performance call, which
+the result says; a page still loading says so instead of reporting zeroes.
+**A form that only accepts a file can be completed.** `act` with `kind: "upload"`
+puts one to ten local files (relative to the session directory or absolute,
+each up to 25 MB) into a page's file input, addressed by the ref of the input
+or its label, or by a `selector` when the page hides it behind a styled button.
+The page's own `change` handler runs, so what the site shows afterwards is the
+proof; a directory, a missing file, a non-file element, a disabled input and
+several files into a single-file input are refused with the reason.
 **A snapshot can say what changed.** `snapshot` with `diff: true` compares the
 tab's current whole snapshot with the last one it took in the same document and
 returns only the changed lines, marked `+` and `-` with two lines of context,

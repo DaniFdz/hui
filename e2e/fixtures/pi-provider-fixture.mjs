@@ -262,6 +262,32 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(HANDOFF_FIXTURE_PAGE);
   }
+  if (request.method === "GET" && url.pathname === "/browser-perf-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI performance fixture</title>
+      <h1>HUI performance fixture</h1>
+      <div id="rows"></div>
+      <script>
+        const rows = document.getElementById("rows");
+        for (let index = 0; index < 250; index += 1) {
+          const row = document.createElement("div");
+          row.textContent = "row " + index;
+          rows.append(row);
+        }
+      </script>`);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-upload-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI upload fixture</title>
+      <h1>HUI upload fixture</h1>
+      <input id="doc" type="file" aria-label="Attach document">
+      <p id="picked">nothing picked</p>
+      <script>
+        document.getElementById("doc").addEventListener("change", (event) => {
+          document.getElementById("picked").textContent = "picked: " + [...event.target.files].map((file) => file.name).join(", ");
+        });
+      </script>`);
+  }
   if (request.method === "GET" && url.pathname === "/browser-diff-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(`<!doctype html><title>HUI diff fixture</title>
@@ -685,6 +711,72 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent measures what a page costs instead of guessing.
+  if (source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-perf-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-perf-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-perf-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-perf-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const next = {
+      open: ["metrics", { action: "performance", operation: "metrics" }],
+      metrics: ["timings", { action: "performance", operation: "timings" }],
+    }[step];
+    if (next) {
+      toolUse(response, `tool-e2e-perf-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const nodes = Number(/nodes (\d+)/u.exec(results)?.[1]);
+    const load = /Load: [^\n]+/u.exec(results)?.[0];
+    const resources = /Resources: \d+ requests?, [\d.]+ (B|KB|MB) transferred\./u.exec(results)?.[0];
+    const accum = /Counters accumulate from this tab's first performance call\./u.test(results);
+    text(response, nodes >= 250 && load && resources && accum
+      ? `The page reports ${nodes} DOM nodes, and ${load}. ${resources} Counters accumulate from the tab's first performance call.`
+      : `The performance check did not complete: nodes=${nodes}, load=${Boolean(load)}, resources=${Boolean(resources)}, counters=${accum}.`);
+    return finish(response);
+  }
+
+  // The agent uploads a local file into the page's file input.
+  if (source.includes("E2E_BROWSER_UPLOAD") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-upload-write", "bash", { command: "printf 'hello upload\\n' > upload-note.txt && ls -l upload-note.txt" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-upload-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-upload-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      write: ["open", { action: "open", url: `http://127.0.0.1:${port}/browser-upload-fixture` }],
+      open: ["snapshot", { action: "snapshot" }],
+      snapshot: ["upload", { action: "act", kind: "upload", ref: ref(/button "Attach document" \[ref=(e\d+)\]/u), files: ["upload-note.txt"] }],
+      upload: ["picked", { action: "get", what: "text", selector: "#picked" }],
+    }[step];
+    const needsRef = (step) => step[1].action === "act" && step[1].kind === "upload";
+    if (next && (!needsRef(next) || next[1].ref)) {
+      toolUse(response, `tool-e2e-upload-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const uploaded = /Uploaded upload-note\.txt to e\d+ \(button "Attach document"\) \(1 file\)\./u.test(results);
+    const picked = /picked: upload-note\.txt/u.test(results);
+    text(response, uploaded && picked
+      ? "Uploaded upload-note.txt to the file input, and the page's change handler shows **picked: upload-note.txt**."
+      : `The upload check did not complete: uploaded=${uploaded}, picked=${picked}.`);
+    return finish(response);
+  }
+
   // The agent reads only what an action changed, then acts on a ref from the diff.
   if (source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
@@ -868,7 +960,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);
