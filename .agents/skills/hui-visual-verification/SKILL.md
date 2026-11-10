@@ -87,6 +87,15 @@ Also run the shared tests of the use cases the change touches with
 are copied outside the checkout before upload; the library writes there because
 `.e2e/` is ignored, so keep everything else outside the tree.
 
+### The phone app
+
+A change under `mobile/`, or one whose phone layout is what moved, gets the emulator's proof: follow
+[the Android procedure](references/android.md), which builds this checkout's Connect page and APK with
+`npm run mobile -- dev`, drives the app with `agent-device` and captures each affected state at `--scale 0.4` in light
+and dark. The iPhone's evidence is CI's once WP5 adds the job: [the iOS evidence](references/ios.md) says where `ios-smoke`'s
+screenshots are, what they can show and what stays a proof gap, and why a WebKit capture at an iPhone size is never the
+app's proof.
+
 **Done:** fresh, visually inspected images and behavior assertions agree.
 
 ## 5. Deliver the PR evidence

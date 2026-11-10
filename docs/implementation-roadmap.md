@@ -1314,17 +1314,21 @@ Browser-tool journey.
 
 ### HUI-22 — Phone apps for Android and iOS from one web UI
 
-**Status:** planned, not started. The plan is [`mobile-app-plan.md`](mobile-app-plan.md)
-(SPEC.md, "The phone apps wrap the web UI"). It replaces the native SwiftUI app
-(draft PR #347, unmerged) and the native Compose app (PR #458, unmerged).
+**Status:** in progress. Wave 0's measurements (recorded in the plan, section 4) and WP1
+(the scaffold: `mobile/`, the Connect page, `npm run mobile`, `mobile/AGENTS.md` and the
+Android debug-build job) are merged on the integration branch
+`danifdz/mobile-shell-plan`. WP2 to WP8 and WP10 are planned and not started. The plan is
+[`mobile-app-plan.md`](mobile-app-plan.md) (SPEC.md, "The phone apps wrap the web UI").
+It replaces the native SwiftUI app (draft PR #347, unmerged) and the native Compose
+app (PR #458, unmerged).
 
 Capacitor shells for Android and iOS that load the connected gateway's own web
 UI and add only native behaviour: the remembered gateway, the back button,
 external links, downloads, notifications, sharing and permissions. The shared
-tester-army/e2e suite runs inside the Android app's WebView on a Linux emulator
-and in mobile WebKit, in every PR's CI; the iOS shell is built and smoke-tested
-on a macOS runner. The catalogue gains a phone status whose backlog only
-shrinks. Work packages, the parallel waves and the orchestration are in the
+tester-army/e2e suite will run inside the Android app's WebView on a Linux
+emulator (WP4) and in mobile WebKit (WP6), in every PR's CI, and the iOS shell
+will be built and smoke-tested on a macOS runner (WP5). The catalogue gains a
+phone status whose backlog only shrinks. Work packages, the parallel waves and the orchestration are in the
 plan, sections 4 and 6.
 
 ### HUI-23 — Subagent model routes
