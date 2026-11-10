@@ -41,13 +41,18 @@ const adb = (...args: string[]) => execFileSync(ADB, [...(SERIAL ? ["-s", SERIAL
   stdio: ["ignore", "pipe", "pipe"],
 }).trim();
 
-/** The app's process, which owns its WebView and its DevTools socket. */
+/**
+ * The app's process, which owns its WebView and its DevTools socket. `am start -W` returns when the activity is drawn,
+ * which is before the process has a pid under load, so the pid is polled for a few seconds instead of read once: a single
+ * read cost every catch-up worker its first attempt and reported itself as a test failure.
+ */
 function appPid(): number {
-  const pid = Number(adb("shell", "pidof", PACKAGE).split(/\s+/u)[0]);
-  if (!Number.isInteger(pid) || pid <= 0) {
-    throw new Error(`${PACKAGE} is not running on ${SERIAL ?? "the attached device"}: build and install it with \`npm run mobile -- build\`, and check \`npm run mobile -- doctor\``);
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const pid = Number(adb("shell", "pidof", PACKAGE).split(/\s+/u)[0]);
+    if (Number.isInteger(pid) && pid > 0) return pid;
+    execFileSync("sleep", ["0.25"]);
   }
-  return pid;
+  throw new Error(`${PACKAGE} is not running on ${SERIAL ?? "the attached device"} after 10 s: build and install it with \`npm run mobile -- build\`, and check \`npm run mobile -- doctor\``);
 }
 
 const launch = (gateway: string) => adb("shell", "am", "start", "-S", "-W", "-n", `${PACKAGE}/${ACTIVITY}`, "--es", "huiGatewayUrl", gateway);
