@@ -14,17 +14,17 @@ const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stri
 const FACE = `<div id="face" data-mood="happy">
 <div class="row">
   <button type="button" class="primary" id="mood">Change mood</button>
-  <output id="mood-out" data-testid="mood">happy</output>
-  <output id="shape" data-testid="shape">round</output>
-  <output id="colour" data-testid="colour"></output>
+  <output id="mood-out" aria-label="Probe mood">happy</output>
+  <output id="shape" aria-label="Probe shape">round</output>
+  <output id="colour" aria-label="Probe colour"></output>
 </div>
 <div class="row">
-  <div id="pad-left" data-testid="pad-left" style="flex:1">left half</div>
-  <div id="pad-right" data-testid="pad-right" style="flex:1">right half</div>
+  <div id="pad-left" aria-label="Probe left" style="flex:1">left half</div>
+  <div id="pad-right" aria-label="Probe right" style="flex:1">right half</div>
 </div>
 <div class="row">
-  <output id="gaze" data-testid="gaze">centre</output>
-  <output id="errors" data-testid="errors">none</output>
+  <output id="gaze" aria-label="Probe gaze">centre</output>
+  <output id="errors" aria-label="Probe errors">none</output>
 </div>
 </div>
 <script>
@@ -65,33 +65,33 @@ test("A widget's own controls toggle its state, shape and color, its gaze follow
   await expect(card.getByText("Interactive widget · sandboxed")).toBeVisible();
 
   const face = await widget(hui);
-  const read = async (field: string) => (await face.getByTestId(field).textContent()) ?? "";
-  await expect(face.getByTestId("mood")).toHaveText("happy");
-  await expect(face.getByTestId("shape")).toHaveText("round");
-  const happy = await read("colour");
+  const read = async (label: string) => (await face.getByLabel(label).textContent()) ?? "";
+  await expect(face.getByLabel("Probe mood")).toHaveText("happy");
+  await expect(face.getByLabel("Probe shape")).toHaveText("round");
+  const happy = await read("Probe colour");
 
   // A click on the widget's own control changes its state, its shape and its color.
   await face.getByRole("button", "Change mood").tap();
-  await expect(face.getByTestId("mood")).toHaveText("sad");
-  await expect(face.getByTestId("shape")).toHaveText("square");
-  await expect.poll(() => read("colour")).not.toBe(happy);
-  const sad = await read("colour");
+  await expect(face.getByLabel("Probe mood")).toHaveText("sad");
+  await expect(face.getByLabel("Probe shape")).toHaveText("square");
+  await expect.poll(() => read("Probe colour")).not.toBe(happy);
+  const sad = await read("Probe colour");
   await face.getByRole("button", "Change mood").tap();
-  await expect(face.getByTestId("mood")).toHaveText("happy");
-  await expect(face.getByTestId("shape")).toHaveText("round");
-  await expect.poll(() => read("colour")).toBe(happy);
+  await expect(face.getByLabel("Probe mood")).toHaveText("happy");
+  await expect(face.getByLabel("Probe shape")).toHaveText("round");
+  await expect.poll(() => read("Probe colour")).toBe(happy);
   expect(sad).not.toBe(happy);
 
   // Pointer movement over it moves its gaze, the widget's own code deciding where to look, in both directions.
-  await hui.peek(face.getByTestId("pad-right"));
-  await expect(face.getByTestId("gaze")).toHaveText("right");
-  await hui.peek(face.getByTestId("pad-left"));
-  await expect(face.getByTestId("gaze")).toHaveText("left");
-  await hui.peek(face.getByTestId("pad-right"));
-  await expect(face.getByTestId("gaze")).toHaveText("right");
+  await hui.peek(face.getByLabel("Probe right"));
+  await expect(face.getByLabel("Probe gaze")).toHaveText("right");
+  await hui.peek(face.getByLabel("Probe left"));
+  await expect(face.getByLabel("Probe gaze")).toHaveText("left");
+  await hui.peek(face.getByLabel("Probe right"));
+  await expect(face.getByLabel("Probe gaze")).toHaveText("right");
 
   // Nothing raised in the widget's document, and the card shows no error notice.
-  await expect(face.getByTestId("errors")).toHaveText("none");
+  await expect(face.getByLabel("Probe errors")).toHaveText("none");
   await expect(card.getByRole("status")).toHaveCount(0);
   await expect(card.getByText("Interactive widget · sandboxed")).toBeVisible();
   await expect(screen.getByTestId("transcript").getByText(/^tool answered: /u)).toBeVisible();
