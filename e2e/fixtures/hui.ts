@@ -808,9 +808,19 @@ export const test = base.extend<{ hui: Hui }>({
               // refusing it would fail every file. It returns at once: a test that then relies on the wide layout fails
               // its own assertion, and its use case stays off the phone's required list.
             },
-            peek: noBrowserHarness("peek"),
-            messageActions: noBrowserHarness("messageActions"),
-            openWorkView: noBrowserHarness("openWorkView"),
+            peek: async () => {
+              // A peek is a pointer moving over a control to reveal something a phone draws outright (or cannot show at all),
+              // and the shared setup calls it to settle the page, so refusing it fails every file. It returns at once: a
+              // test whose assertion needs the revealed state fails there, and its use case stays off the required list.
+            },
+            messageActions: async () => {
+              // A message's actions are the footer a hover reveals on the web; a phone draws them on the row, so there is
+              // no hover to make. Tests that read them through this step stay off the phone's required list.
+            },
+            openWorkView: async () => {
+              // The Work pane's launcher is web furniture: on a phone the pane is a destination the Active panel selector
+              // opens (WORK-010), so this returns at once and a test that needs the launcher fails on the phone.
+            },
             clearState: async () => {
               await fixtures.app.open("/");
               await browser().evaluate(clearAppStorage);
