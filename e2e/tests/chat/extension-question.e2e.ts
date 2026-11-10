@@ -40,7 +40,7 @@ test("an extension's question opens above the composer, and submitting or skippi
   await message.fill("/hui-e2e-question");
   await screen.getByRole("button", "Send message").tap();
   await expect(card).toBeVisible();
-  await expect(card.getByLabel("Answer")).toBeVisible();
+  await expect(card.getByPlaceholder("Type browser answer")).toBeVisible();
   await card.getByRole("button", "Skip").tap();
   await expect(card).toBeHidden();
   await expect(screen.getByText("Question cancelled")).toBeVisible();
