@@ -333,7 +333,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#git-workspace-sessions", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["settings-page:worktrees", "setting:branchPrefix"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-033",
@@ -811,7 +811,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.routes", "route:PUT /__hui/settings"],
     journeys: ["subagent-routes"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-079",
