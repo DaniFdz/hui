@@ -1,5 +1,5 @@
 /**
- * A bot's Tools & skills page (HUI-18): what the operator can turn off in the bot's chat,
+ * A bot's Tools & skills page: what the operator can turn off in the bot's chat,
  * what is off, and an access request waiting for them. Everything is on until
  * the operator turns it off; each change is a `PATCH /__hui/bots/:id` with the
  * whole list, and applies from the chat's next request. The page reads

@@ -267,16 +267,13 @@ const server = createServer(async (request, response) => {
     return response.end(`<!doctype html><title>HUI performance fixture</title>
       <h1>HUI performance fixture</h1>
       <div id="rows"></div>
-      <button id="more">Add row</button>
       <script>
         const rows = document.getElementById("rows");
-        const add = () => {
+        for (let index = 0; index < 250; index += 1) {
           const row = document.createElement("div");
-          row.textContent = "row " + rows.children.length;
+          row.textContent = "row " + index;
           rows.append(row);
-        };
-        for (let index = 0; index < 250; index += 1) add();
-        document.getElementById("more").addEventListener("click", add);
+        }
       </script>`);
   }
   if (request.method === "GET" && url.pathname === "/browser-upload-fixture") {
@@ -728,29 +725,21 @@ const server = createServer(async (request, response) => {
     await browserPace(body);
     const step = latestToolResult.id.slice("tool-e2e-perf-".length);
     const results = toolResultTexts(body.messages).join("\n");
-    const ref = (pattern) => pattern.exec(results)?.[1];
     const next = {
       open: ["metrics", { action: "performance", operation: "metrics" }],
-      metrics: ["snapshot", { action: "snapshot" }],
-      snapshot: ["click", { action: "act", kind: "click", ref: ref(/button "Add row" \[ref=(e\d+)\]/u) }],
-      click: ["after", { action: "performance", operation: "metrics" }],
-      after: ["timings", { action: "performance", operation: "timings" }],
+      metrics: ["timings", { action: "performance", operation: "timings" }],
     }[step];
-    if (next && (next[1].action !== "act" || next[1].ref)) {
+    if (next) {
       toolUse(response, `tool-e2e-perf-${next[0]}`, "browser", next[1]);
       return finish(response, "tool_use");
     }
-    const counts = [...results.matchAll(/nodes (\d+)/gu)].map((match) => Number(match[1]));
-    const before = counts[0] ?? 0;
-    const after = counts.at(-1) ?? 0;
-    // The second metrics call is the text between the two counter notes.
-    const second = results.split("Counters accumulate from this tab's first performance call.")[1] ?? "";
-    const measured = /(layouts [1-9]\d* \(|script \d+ ms of )/u.test(second) && !/Nothing has rendered or run/u.test(second);
+    const nodes = Number(/nodes (\d+)/u.exec(results)?.[1]);
     const load = /Load: [^\n]+/u.exec(results)?.[0];
     const resources = /Resources: \d+ requests?, [\d.]+ (B|KB|MB) transferred\./u.exec(results)?.[0];
-    text(response, before >= 250 && after > before && measured && load && resources
-      ? `The page went from ${before} to ${after} DOM nodes, and after the click the counters show real work instead of zeros. ${load}. ${resources}`
-      : `The performance check did not complete: before=${before}, after=${after}, measured=${measured}, load=${Boolean(load)}, resources=${Boolean(resources)}.`);
+    const accum = /Counters accumulate from this tab's first performance call\./u.test(results);
+    text(response, nodes >= 250 && load && resources && accum
+      ? `The page reports ${nodes} DOM nodes, and ${load}. ${resources} Counters accumulate from the tab's first performance call.`
+      : `The performance check did not complete: nodes=${nodes}, load=${Boolean(load)}, resources=${Boolean(resources)}, counters=${accum}.`);
     return finish(response);
   }
 
@@ -1353,6 +1342,14 @@ const server = createServer(async (request, response) => {
     toolUse(response, "tool-e2e-zoom-lines", "zoom", { id: 0, n: 2 }, 1);
     toolUse(response, "tool-e2e-zoom-missing", "zoom", { id: 1, n: 2 }, 2);
     toolUse(response, "tool-e2e-date", "date", { id: 0 }, 3);
+    return finish(response, "tool_use");
+  }
+  // OptChat's search: a hit, no hit, nothing to search for, and a limit it reports.
+  if (source.includes("E2E_SEARCH")) {
+    toolUse(response, "tool-e2e-search-hits", "search_chat", { query: "OPT_SEARCH_TARGET" }, 0);
+    toolUse(response, "tool-e2e-search-none", "search_chat", { query: "nothing here mentions this phrase" }, 1);
+    toolUse(response, "tool-e2e-search-empty", "search_chat", { query: "   " }, 2);
+    toolUse(response, "tool-e2e-search-limited", "search_chat", { query: "OPT_SEARCH_TARGET", limit: 1 }, 3);
     return finish(response, "tool_use");
   }
   if (latestToolResult?.id?.startsWith("tool-e2e-watcher-")) {

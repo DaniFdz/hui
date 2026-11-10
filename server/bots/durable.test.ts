@@ -657,6 +657,8 @@ test("the operator and memory sections carry their own files, keep what they sav
   assert.match(memory, /It is not the chat's log/u);
   assert.match(memory, /never leaves this machine with an export/u);
   assert.match(memory, /## Projects\n\nHUI\./u);
+  assert.match(memory, /Store what you cannot read again \(a rule, a decision, a trap\) and point to the rest instead of pasting it: an id from this chat that zoom opens, or a path in your folder\./u, "the injected layer is an index, not an archive");
+  assert.match(memory, /Mark what you checked against its source as checked, and say what you have not confirmed\./u, "a note keeps its own evidence");
   assert.match(memorySection("/home/me/MEMORY.md", "y".repeat(10_001)), /\[MEMORY\.md has 10,001 characters; only the first 10,000 are shown here\. Shorten it\.\]/u);
 
   // A BOOTSTRAP.md replaces the generated questions, never the rules around them.

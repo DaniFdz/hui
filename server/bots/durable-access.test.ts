@@ -716,7 +716,7 @@ test("the conversations port writes the lists in the creating commit, reads and 
   assert.ok(builtin.tools.some((tool) => tool.name === "bash") && builtin.tools.some((tool) => tool.name === "message_bot"));
   assert.ok(!builtin.tools.some((tool) => tool.name === "fixture_echo"), "no chat runs yet: no extension's tools");
   assert.ok(!builtin.tools.some((tool) => ["write_soul", "update_user", "update_memory", "set_profile", "request_access", "load_skill"].includes(tool.name)), "a bot's own tools are never offered");
-  assert.deepEqual(builtin.alwaysOn.map((tool) => tool.name), ["write_soul", "update_user", "update_memory", "set_profile", "request_access", "load_skill", "zoom", "date"]);
+  assert.deepEqual(builtin.alwaysOn.map((tool) => tool.name), ["write_soul", "update_user", "update_memory", "set_profile", "request_access", "load_skill", "zoom", "date", "search_chat"]);
   const bundled = builtin.skills.find((skill) => skill.name === "create-verification-skill");
   assert.equal(bundled?.source, "HUI defaults");
   assert.equal(bundled?.path, "hui:skill:create-verification-skill", "a bundled skill by its stable path");

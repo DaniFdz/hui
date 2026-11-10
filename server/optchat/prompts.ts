@@ -1,8 +1,10 @@
 /**
  * OptChat's prompts, verbatim from the OptChat spec (sections 4.4 and 7.2) with the agent's
- * name in place of "OptChat". They took many iterations: keep their structure and
- * words. They name no user, and hold no date or state, so every request that
- * carries them starts with the same cacheable bytes.
+ * name in place of "OptChat", but for the paragraph about search_chat: the
+ * recipe's agent can only open a line its view already names, and HUI's can also
+ * search the log for a word (search.ts). They took many iterations: keep their
+ * structure and words. They name no user, and hold no date or state, so every
+ * request that carries them starts with the same cacheable bytes.
  */
 import { flatten } from "./text.ts";
 
@@ -104,7 +106,11 @@ Navigating: zoom(id, n) opens line id+n into the two lines of n/2
 messages it was made from; zoom(id, 1) gives message id in full. Zoom
 whenever a summary only mentions something you need, such as what your
 last reply said, a decision, a past attempt or where a file is, before
-you act, guess or ask. date(id) gives the date and time of message id.`;
+you act, guess or ask. date(id) gives the date and time of message id.
+search_chat(query) reads the whole chat, not just the view: the lines
+of the messages that mention query, newest first, each named id+1 so
+zoom(id, 1) opens it whole. Use it for what the view no longer names,
+such as a decision, a path, what was tried before or who asked.`;
 
 /**
  * The compactor's size reference: models cannot count bytes, so each step shows how long a line may be as this many
@@ -120,7 +126,7 @@ const named = (text: string, name: string) => text.split(NAME).join(name);
 export const compactPrompt = (name: string): string => named(COMPACT, name);
 /** The agent's master prompt (spec 7.2). */
 export const masterPrompt = (name: string): string => named(MASTER, name);
-/** How the agent reads its view and uses zoom and date (spec 7.2), including "zoom before you act, guess or ask". */
+/** How the agent reads its view and uses zoom, date and search_chat (spec 7.2), including "zoom before you act, guess or ask". */
 export const viewDoc = (name: string): string => named(VIEW_DOC, name);
 
 const scaleIntro = (node: number) => `For scale, the line of dashes below is exactly ${node} bytes:\n${ruler(node)}\n\n`;

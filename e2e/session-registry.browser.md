@@ -1,6 +1,6 @@
 # Browser journey: session registry and gateway restart
 
-This HUI-03 journey exercises only visible controls against real PI processes.
+This journey exercises only visible controls against real PI processes.
 The shared tests in `e2e/tests/sess/` now prove pinning, renaming, search,
 collapsing and the group actions. What is left here is a gateway restart and
 transparent resume (SESS-057), the Sessions page (SESS-058), PI's session file

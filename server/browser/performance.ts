@@ -79,14 +79,9 @@ export function describeMetrics(metrics: MetricMap): string[] {
   const lines = [counts.length ? counts.join(" · ") : "The browser reported no counters for this page."];
   const work = [part("layouts", layouts), part("style recalcs", styles)].filter((value): value is string => value !== undefined);
   if (work.length) lines.push(work.join(" · "));
-  // A page whose counters were enabled after its load shows work that happened
-  // since, which can be almost nothing; say that instead of "0 ms (0%)".
-  const measured = (metrics["LayoutCount"] ?? 0) > 0 || (metrics["RecalcStyleCount"] ?? 0) > 0 || (script ?? 0) >= 1 || (task ?? 0) >= 1;
-  if (measured) {
-    const share = script !== undefined && task !== undefined && script >= 1 && task >= 1 ? ` (${Math.round((script / task) * 100)}% of task time)` : "";
+  if (script !== undefined || task !== undefined) {
+    const share = script !== undefined && task !== undefined && task > 0 ? ` (${Math.round((script / task) * 100)}% of task time)` : "";
     lines.push(`script ${formatDuration(script ?? 0)} of ${formatDuration(task ?? 0)} task time${share}`);
-  } else {
-    lines.push("Nothing has rendered or run since the counters were enabled. Call performance before the navigation you want to measure, then read it again.");
   }
   return lines;
 }

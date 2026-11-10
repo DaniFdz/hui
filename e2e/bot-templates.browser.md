@@ -1,7 +1,7 @@
 # Bot templates browser verification
 
 Journey for importing bots from other platforms' templates and exporting them
-(HUI-18; SPEC.md, "Bots import other platforms' templates and export their
+(SPEC.md, "Bots import other platforms' templates and export their
 own"): + → **Import bot…** → preview → **Create bot**, a bot's ⋯ → **Export…**,
 and `hui bot import`/`export` against the same gateway.
 

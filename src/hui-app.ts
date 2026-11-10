@@ -159,7 +159,7 @@ const HUI_UPDATE_SESSION_TITLE = "HUI update";
  * button may keep an older one: capture only the pane/session id and the parent. */
 const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
 
-/** A bot pane's Call button (HUI-18): offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
+/** A bot pane's Call button: offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
 type PaneCall = { botId: string; inCall: boolean };
 const paneCallProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
@@ -2279,7 +2279,7 @@ export class HuiApp extends HuiElement {
     return html`${importing ? renderBotImportDialog(importing) : nothing}${exporting ? renderBotExportDialog(exporting) : nothing}`;
   }
 
-  /* ── calls with bots (HUI-18) ─────────────────────────────────────────── */
+  /* ── calls with bots ─────────────────────────────────────────── */
 
   /** Captures only the bot's id: a rendered button may keep an older closure, and the bot is read again when used. */
   private paneCallAction(bot: BotView): () => void {

@@ -1511,10 +1511,7 @@ test("performance reports the renderer's counters and the document's own timings
   assert.ok(nodes >= 300, metrics.text);
   assert.match(metrics.text, /heap [\d.]+ (B|KB|MB)/u);
   assert.match(metrics.text, /layouts \d+ \(/u);
-  // The counters began after the load, so the result explains the zeros rather
-  // than printing "0 ms (0%)"; script time appears only once there is work to report.
-  assert.match(metrics.text, /Nothing has rendered or run since the counters were enabled\. Call performance before the navigation you want to measure, then read it again\./u);
-  assert.doesNotMatch(metrics.text, /% of task time/u);
+  assert.match(metrics.text, /script \d+( ms|\.\d s)? of /u);
   assert.match(metrics.text, /Counters accumulate from this tab's first performance call\./u);
 
   const timings = await call({ action: "performance", operation: "timings" });

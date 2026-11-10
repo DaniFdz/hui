@@ -29,12 +29,8 @@ test("renderer counters become heap, node, layout and script lines", () => {
 test("missing counters are left out instead of printed as zero", () => {
   const lines = describeMetrics({ Nodes: 10 });
   assert.equal(lines[0], "nodes 10");
-  assert.equal(lines.length, 2);
-  assert.match(lines[1] ?? "", /Nothing has rendered or run since the counters were enabled\./u);
-  assert.deepEqual(describeMetrics({}), [
-    "The browser reported no counters for this page.",
-    "Nothing has rendered or run since the counters were enabled. Call performance before the navigation you want to measure, then read it again.",
-  ]);
+  assert.equal(lines.length, 1);
+  assert.deepEqual(describeMetrics({}), ["The browser reported no counters for this page."]);
 });
 
 test("navigation and paint entries become load and paint lines", () => {
@@ -44,13 +40,6 @@ test("navigation and paint entries become load and paint lines", () => {
   );
   assert.equal(lines[0], "Load: first byte 312 ms, DOMContentLoaded 588 ms, load 942 ms · document 402 KB (1.1 MB decoded) · type navigate");
   assert.equal(lines[1], "Paints: first-paint 401 ms, first-contentful-paint 520 ms");
-});
-
-test("counters enabled after a load are explained instead of read as an idle page", () => {
-  const lines = describeMetrics({ Nodes: 527, LayoutCount: 0, RecalcStyleCount: 0, LayoutDuration: 0, RecalcStyleDuration: 0, ScriptDuration: 0.0004, TaskDuration: 0.0006 });
-  assert.equal(lines[1], "layouts 0 (0 ms) · style recalcs 0 (0 ms)");
-  assert.match(lines[2] ?? "", /Call performance before the navigation you want to measure/u);
-  assert.doesNotMatch(lines.join("\n"), /% of task time/u);
 });
 
 test("a page still loading says so rather than reporting zeroes", () => {

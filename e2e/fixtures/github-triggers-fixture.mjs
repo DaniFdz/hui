@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* A fake GitHub REST API behind a fake `gh`, for triggers' tests (HUI-18). It answers what a gateway reads through
+/* A fake GitHub REST API behind a fake `gh`, for triggers' tests. It answers what a gateway reads through
  * `gh api [--include] [-H "Accept: …"] <path>` from a JSON state: the signed-in user, and a pull request, its files
  * and its diff, as triggers' deliveries read them. Every request is logged with its status.
  *
