@@ -10,7 +10,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { JsonFile } from "./json-file.ts";
-import type { OptChatUsage } from "./memory.ts";
+import type { OptChatUsage } from "./compactor.ts";
 
 export const USAGE_FILE = "usage.json";
 const VERSION = 1;

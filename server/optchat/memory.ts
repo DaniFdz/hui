@@ -9,7 +9,7 @@
  * them; only a missing or invalid file folds them again from message 0.
  */
 import { browsePage } from "./html.ts";
-import { Compactor, SYSTEM_TIMERS, type Failing, type Limiter, type Summarize, type SummaryUsage, type Timers } from "./compactor.ts";
+import { Compactor, SYSTEM_TIMERS, type Failing, type Limiter, type OptChatUsage, type Summarize, type SummaryUsage, type Timers } from "./compactor.ts";
 import { compactPrompt } from "./prompts.ts";
 import { searchLog } from "./search.ts";
 import { Store, type JsonValue, type Kind, type MessageLine } from "./store.ts";
@@ -58,7 +58,7 @@ export type OptChatOptions = {
   readonly report?: (problem: string, error?: unknown) => void;
 };
 
-export type OptChatUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number };
+export type { OptChatUsage };
 
 export type OptChatStatus = {
   readonly messages: number;
