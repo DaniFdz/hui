@@ -97,7 +97,9 @@ function integer(
 
 function visibleTree(records: readonly SessionRecord[], callerId: string): SessionRecord[] {
   const root = rootSessionId(records, callerId);
-  return records.filter((record) => rootSessionId(records, record.id) === root);
+  const caller = records.find((record) => record.id === callerId);
+  const watched = new Set(caller?.watches ?? []);
+  return records.filter((record) => rootSessionId(records, record.id) === root || watched.has(record.id));
 }
 
 /** The session and its ancestors. */
