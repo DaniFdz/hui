@@ -5,6 +5,7 @@
  * leave through callbacks; the app element owns that state, and the chat projection decides the transcript's rows.
  */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
+import { messageShare, nativeShell, type NativeShell } from "../lib/native-shell.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
@@ -117,6 +118,8 @@ const checkIcon = icons.check;
 const circleIcon = icons.circle;
 const stopIcon = icons.stop;
 const copyIcon = icons.copy;
+/** Lucide "share": the phone's own sheet, which a browser never draws (see `renderShare`). */
+const shareIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" x2="12" y1="2" y2="15"></line></svg>`;
 const rewindIcon = icons.rotateCcw;
 const continueIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 5 11 7-11 7Z"></path></svg>`;
 const queueIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 5H3"></path><path d="M16 12H3"></path><path d="M9 19H3"></path><path d="m16 16-3 3 3 3"></path><path d="M21 5v12a2 2 0 0 1-2 2h-6"></path></svg>`;
@@ -896,6 +899,13 @@ function renderCopy(props: HomeProps, text: string, id: string, label = "Copy") 
   </button>`);
 }
 
+/** Offers the phone's own sheet beside Copy, and is drawn only where `nativeShell()` answers a shell: a browser keeps
+ * exactly the action row it had. The row's words are what Copy hands over, so both actions share what is on screen. */
+function renderShare(sheet: NativeShell, props: HomeProps, text: string, id: string, label: string) {
+  const tooltipId = sessionControlId(props, `share-tooltip-${id}`);
+  return renderActionTooltip(tooltipId, "Share", html`<button type="button" class="chat-copy-btn chat-group-share" aria-label=${label} aria-describedby=${tooltipId} @click=${() => void sheet.share(messageShare({ text, session: props.session }, window.location.href))}>${shareIcon}</button>`);
+}
+
 /** Long prompts collapse by default, like ChatGPT; expansion is session-scoped UI state. */
 export function isLongPrompt(text: string): boolean {
   return text.length > 700 || text.split("\n").length > 10;
@@ -1271,6 +1281,8 @@ function renderCompaction(row: Extract<ChatProjectionRow, { kind: "compaction" }
 
 function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow[], start: number): TemplateResult {
   const latestAssistantRowId = rows.findLast((row) => row.kind === "messages" && row.role === "assistant")?.id;
+  // Asked once per draw rather than once per row: a browser answers `null`, and its action rows are what they were.
+  const sheet = nativeShell();
   const latestSent = (role: ChatMessage["role"]) => rows.flatMap((row) => row.kind === "messages" && row.role === role ? row.messages : []).findLast((item) => !item.pending && !item.failed);
   const withEmbeds = [latestSent("user"), latestSent("assistant")];
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
@@ -1368,7 +1380,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
         ${last && lastText ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
           <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, lastText)}>${icons.messageSquare}</button>
-        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
+        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}${sheet ? renderShare(sheet, props, lastText, `message-${last.id}`, sender ? "Share message" : row.role === "assistant" ? "Share response" : "Share prompt") : nothing}</div>` : nothing}
         ${rewindTo ? html`<div class="chat-group-footer-actions">
           ${renderActionTooltip(rewindTooltipId, props.rewindPending ? "Rewinding…" : "Rewind", html`
             <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "", last?.attachments)}>${rewindIcon}</button>

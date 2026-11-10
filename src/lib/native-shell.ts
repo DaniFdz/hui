@@ -11,7 +11,11 @@
  * the background (a visible page already shows what it would say), and a tap on one opens the path it announced. A
  * back press the page does not consume is the shell's own business (`onBack`): it goes back in the page's history and,
  * at the root, leaves the app.
+ *
+ * It also says what a sheet is handed: `messageShare` is one transcript message as the phone's own sheet takes it, so a
+ * view that offers the action never assembles a link, a title or a cap of its own.
  */
+import { navigationPath } from "./navigation.ts";
 
 export type NativePlatform = "android" | "ios";
 
@@ -27,6 +31,9 @@ export type NativeNotification = {
 };
 
 export type NativeShare = { title?: string; text?: string; url?: string };
+
+/** The conversation a shared message belongs to, as the transcript and the app's routes know it. */
+export type ShareSession = { id: string; title?: string; bot?: { id: string } };
 
 export type NativeShell = {
   platform: NativePlatform;
@@ -223,6 +230,30 @@ function shellFor(cap: CapacitorBridge, platform: NativePlatform): NativeShell {
         await gateway?.forget?.();
       } catch { /* The Connect page is the shell's own; a failure still leaves the address in place. */ }
     },
+  };
+}
+
+/** The most a sheet is handed. Android passes it to another app as an `Intent` extra, and a transaction over 1 MiB is
+ * refused outright — which reads as a sheet that never opens rather than an error to show. 64 000 characters is at
+ * most 256 KiB of UTF-8, and a sheet is a note to another app, not a file transfer. */
+const MAX_SHARE_TEXT = 64_000;
+
+/** One transcript message as the phone's Share sheet takes it: the words the row shows (what Copy hands over), the
+ * conversation's name as the sheet's title, and the conversation's own HUI address so whoever receives it can read it
+ * there. `base` is this page's address, so the link names the gateway the app is connected to and never a `file:` one;
+ * a page without a usable base shares the words alone. */
+export function messageShare(input: { text: string; session?: ShareSession }, base: string): NativeShare {
+  const session = input.session;
+  const title = session?.title?.trim();
+  const path = session && (session.bot ? navigationPath({ kind: "bot", id: session.bot.id }) : navigationPath({ kind: "session", id: session.id }));
+  let url: string | undefined;
+  try {
+    url = path ? new URL(path, base).href : undefined;
+  } catch { /* A page with no readable address still shares its words. */ }
+  return {
+    ...(title ? { title } : {}),
+    text: input.text.length > MAX_SHARE_TEXT ? `${input.text.slice(0, MAX_SHARE_TEXT)}\n…` : input.text,
+    ...(url ? { url } : {}),
   };
 }
 

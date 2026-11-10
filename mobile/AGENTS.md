@@ -128,6 +128,17 @@ setStatusBar({ dark })     onResume(callback)                    onBack(callback
 forgetGateway()            // clears the remembered gateway: HuiGateway.forget() on Android
 ```
 
+## Native extras (WP10)
+
+- **The share sheet only exists in the app.** A transcript message's action row offers **Share** beside Reply and Copy,
+  and draws it only where `nativeShell()` answers a shell, so a browser's action row is exactly what it was. The button
+  hands the phone `share({ title, text, url })` with the words the row shows, the conversation's name and the
+  conversation's own HUI address (`/sessions/<id>`, or `/bots/<id>` in a bot's chat), built by `messageShare` in
+  `src/lib/native-shell.ts` and capped at 64 000 characters, because Android refuses an `Intent` over its transaction
+  limit and the sheet would simply never open. `@capacitor/share` is wired on both platforms
+  (`app/capacitor.build.gradle`, `CapApp-SPM/Package.swift`). **What was run:** the Android build and the web unit
+  tests; no emulator opened the sheet, and no test on the web can reach a control only the app draws.
+
 ## What the shell itself does (WP2)
 
 Six behaviours, each in its own class under `mobile/android/app/src/main/java/dev/hui/app/` so a reviewer can read one
@@ -353,8 +364,8 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
 - **Cleartext is loopback only** (`NSExceptionDomains` for `127.0.0.1` and `localhost`), the same rule as Android's
   network security config and owner decision O3. A tailnet gateway needs HTTPS (`tailscale serve`).
 - **What iOS does not have:** no App-Bound Domains, so the service worker's offline cache does not run (everything else
-  works online); no share sheet, microphone or resume hooks yet (WP10); and `ios-smoke` proves the Connect page and the
-  gateway's UI load, not a tapped journey.
+  works online); no microphone or resume hooks yet (WP10), the share sheet being `@capacitor/share`'s; and `ios-smoke`
+  proves the Connect page and the gateway's UI load, not a tapped journey.
 
 ## Distribution (WP8)
 
