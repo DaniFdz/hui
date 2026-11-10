@@ -797,7 +797,12 @@ export const test = base.extend<{ hui: Hui }>({
               // The app's WebView already sends the phone's own user agent, so there is nothing to spoof and no init script
               // to install; the web version exists to make a desktop browser answer as a phone.
             },
-            answerAll: noBrowserHarness("answerAll"),
+            answerAll: async () => ({
+              // A stubbed route needs Playwright's interception, which the WebView's single context cannot take: the phone
+              // makes the real request and the gateway answers it. A use case that asserts the stubbed answer therefore
+              // fails on the phone rather than passing falsely, and stays off its required list.
+              stop: async () => {},
+            }),
             wideScreen: noBrowserHarness("wideScreen"),
             peek: noBrowserHarness("peek"),
             messageActions: noBrowserHarness("messageActions"),
