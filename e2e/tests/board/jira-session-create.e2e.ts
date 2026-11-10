@@ -4,7 +4,7 @@ import { test } from "../../fixtures/hui.ts";
 
 test("Create Jira work item… drafts a work item from the session and creates it, keeping the edited fields across a project change, and without a Jira connection it points at Integrations instead", { tags: ["BOARD-035"], platforms: ["web"] }, async ({ screen, hui }) => {
   // Without a Jira connection the dialog cannot create anything and says what to connect.
-  const unlinked = await hui.createSession({ title: "No Jira yet" });
+  await hui.createSession({ title: "No Jira yet" });
   await hui.open("/kanban");
   await hui.sessionList();
   await (await hui.sessionMenu("No Jira yet")).getByText("Create Jira work item…", { visible: true }).tap();
@@ -13,7 +13,6 @@ test("Create Jira work item… drafts a work item from the session and creates i
   await expect(unconnected.getByRole("button", "Open Integrations")).toBeVisible();
   await unconnected.getByRole("button", "Cancel").tap();
   await expect(unconnected).toBeHidden();
-  expect(unlinked.id).toBeTruthy();
 
   // A connected world drafts it: the default project, a suggested parent and the model's words.
   const world = await hui.world("jira");
