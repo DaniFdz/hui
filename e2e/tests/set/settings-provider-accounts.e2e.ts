@@ -121,7 +121,12 @@ test("a provider's Models disclosure lists its models with their limits, filters
     const list = screen.getByRole("checkbox");
     const count = () => list.count();
     const matching = (query: string) => catalog.filter((model) => `${model.id} ${model.name}`.toLocaleLowerCase().includes(query));
-    const disclose = () => screen.getByText("Provider configuration · 1 provider", { exact: true }).tap();
+    const disclose = async () => {
+      // The page renders once before its settings load and once after, which closes a disclosure opened too early.
+      await expect(screen.getByText(/^Saved by HUI\./u)).toBeVisible({ timeout: 60_000 });
+      await screen.getByText("Provider configuration · 1 provider", { exact: true }).tap();
+      await expect(screen.getByRole("article", { name: "OpenAI · API key" })).toBeVisible();
+    };
 
     await screen.getByText("Models Choose models", { exact: true }).tap();
     // Every model of the provider is listed, each with its context and output limits.
@@ -175,6 +180,79 @@ test("a provider's Models disclosure lists its models with their limits, filters
     await screen.getByLabel(/^Model: /u).first().tap();
     await expect(screen.getByText(first!.name, { exact: true }).first()).toBeVisible();
     await expect(screen.getByText(catalog[2]!.name, { exact: true })).toHaveCount(0);
+  } finally {
+    await disconnect(hui);
+  }
+});
+
+test("dragging an account's grip picks it up with an insertion line, saves the new priority, and keeps the last confirmed order when the drag is cancelled or the save fails", { tags: ["SET-041"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const order = async () => (await configured(hui))!.accounts.map((account) => account.name);
+  const account = (name: string) => screen.getByRole("article", { name });
+  const grip = (name: string) => screen.getByRole("button", `Reorder ${name}`);
+  const centre = async (name: string) => {
+    const box = (await account(name).boundingBox())!;
+    return box.y + box.height / 2;
+  };
+  /** The step that takes one account's grip to a height on the page. */
+  const stepTo = async (from: string, y: number) => {
+    const box = (await grip(from).boundingBox())!;
+    return y - (box.y + box.height / 2);
+  };
+
+  try {
+    await addProvider(screen, hui, "Personal");
+    await addAccount(screen, "Work", "sk-e2e-work-not-a-secret");
+    expect(await order()).toEqual(["Personal", "Work"]);
+
+    // Dragging the second account above the first marks the picked account and the position it would take.
+    const work = grip("Work");
+    await work.scrollIntoView();
+    await hui.dragBy(work, { dx: 0, dy: await stepTo("Work", (await centre("Personal")) - 40) }, async () => {
+      await expect(work).toHaveAttribute("aria-pressed", "true");
+      await expect(screen.getByText("Work, position 1 of 2.", { exact: true })).toBeVisible();
+    });
+    await expect(screen.getByText("Account priority saved.", { exact: true })).toBeVisible();
+    expect(await order()).toEqual(["Work", "Personal"]);
+
+    // A save that fails shows its error and keeps the last confirmed order.
+    const save = await hui.intercept("PUT", /\/__hui\/providers\/openai\/accounts$/u);
+    const moving = grip("Work");
+    await moving.scrollIntoView();
+    await hui.dragBy(moving, { dx: 0, dy: await stepTo("Work", (await centre("Personal")) + 40) }, async () => {
+      await expect(screen.getByText("Work, position 2 of 2.", { exact: true })).toBeVisible();
+    });
+    await save.arrived();
+    await save.reject(500, "The account order could not be saved.");
+    await expect(screen.getByText("The account order could not be saved.", { exact: true }).first()).toBeVisible();
+    expect(await order()).toEqual(["Work", "Personal"]);
+
+    // Cancelling a drag keeps it too.
+    const personal = grip("Personal");
+    await personal.scrollIntoView();
+    await hui.dragBy(personal, { dx: 0, dy: await stepTo("Personal", (await centre("Work")) - 40) }, async () => {
+      await expect(screen.getByText("Personal, position 1 of 2.", { exact: true })).toBeVisible();
+      await hui.keyboard.down("Escape");
+      await hui.keyboard.up("Escape");
+    });
+    await expect(screen.getByText("Reordering cancelled.", { exact: true })).toBeVisible();
+    expect(await order()).toEqual(["Work", "Personal"]);
+
+    // Dropping outside the accounts keeps it as well, even when it would have moved the account.
+    const outside = grip("Work");
+    await outside.scrollIntoView();
+    const last = (await account("Personal").boundingBox())!;
+    await hui.dragBy(outside, { dx: 0, dy: await stepTo("Work", last.y + last.height + 80) }, async () => {
+      await expect(screen.getByText("Work, position 2 of 2.", { exact: true })).toBeVisible();
+    });
+    await expect(screen.getByText("Reordering cancelled.", { exact: true })).toBeVisible();
+    expect(await order()).toEqual(["Work", "Personal"]);
+
+    // The saved priority is what the page reads after a reload.
+    await hui.reload();
+    await expect(screen.getByText(/^Saved by HUI\./u)).toBeVisible({ timeout: 60_000 });
+    await screen.getByText("Provider configuration · 1 provider", { exact: true }).tap();
+    await expect(account("Work")).toBeVisible();
+    expect(await order()).toEqual(["Work", "Personal"]);
   } finally {
     await disconnect(hui);
   }
