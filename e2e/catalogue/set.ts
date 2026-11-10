@@ -112,7 +112,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:fontUi", "setting:fontChat"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-010",
@@ -122,7 +122,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:fontTerminal"],
     journeys: ["terminal-font"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-011",
@@ -483,7 +483,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:tools", "route:GET /__hui/browser/secrets", "route:POST /__hui/browser/secrets", "route:POST /__hui/browser/secrets/remove", "tool:browser"],
     journeys: ["browser-tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-090",
@@ -493,7 +493,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:tools", "setting:browser.allowedOrigins"],
     journeys: ["browser-tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-087",
@@ -573,7 +573,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:browser.headless", "setting:browser.executablePath", "route:GET /__hui/browser"],
     journeys: ["browser-tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-054",
@@ -583,7 +583,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/browser", "route:POST /__hui/browser", "route:GET /__hui/browser/tabs/:tab/preview"],
     journeys: ["browser-tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-055",
@@ -851,7 +851,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:browser.mirrorState", "settings-page:tools"],
     journeys: ["browser-tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-088",
