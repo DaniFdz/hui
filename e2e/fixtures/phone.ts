@@ -99,6 +99,18 @@ export function onPhone(baseUrl: string | undefined): boolean {
 let first = true;
 
 /**
+ * Whether tests in a file share one app launch (`E2E_PHONE_REUSE=1`). The engine wants a browser identity it has not seen
+ * for every attempt, and a WebView's default context has none, so the fixture hands out a synthetic one: the app's
+ * process plus an attempt number. Relaunching per attempt made that number the process id; reusing the app keeps the
+ * process and counts the attempts instead, which an in-page `clearState()` between tests makes safe enough to try. Off
+ * by default: a suite that shares a process also shares its failures, so this is measured before it is trusted.
+ */
+const REUSE = process.env["E2E_PHONE_REUSE"] === "1";
+/** The synthetic context identity of the attempt being prepared. */
+let contextId = "";
+let attempts = 0;
+
+/**
  * Prepares the app for one CDP attach and resolves the endpoint to attach to. `relaunch` is what a fresh attempt needs
  * (a new process, and so a new WebView and default context); a transport drop reattaches to the same app instead.
  */
@@ -112,7 +124,19 @@ async function prepare({ relaunch, gateway }: { relaunch: boolean; gateway: stri
     first = false;
     relaunch = true;
   }
-  if (relaunch) launch(gateway);
+  if (relaunch) {
+    // A reused app keeps its process; only the identity the engine checks changes from attempt to attempt.
+    if (REUSE && attempts > 0) {
+      attempts += 1;
+      contextId = `webview-${appPid()}-${attempts}`;
+    } else {
+      launch(gateway);
+      attempts += 1;
+      contextId = `webview-${appPid()}`;
+    }
+  } else {
+    contextId = `webview-${appPid()}-${attempts}`;
+  }
   forwardDevTools();
   await waitForGatewayPage(gateway);
   await webViewProtocol();
@@ -165,7 +189,7 @@ function webViewProtocol(): Promise<void> {
         const session = await openBrowserSession();
         const send = session.send.bind(session);
         session.send = ((method: string, params?: Record<string, unknown>) => method === "Target.getBrowserContexts"
-          ? Promise.resolve({ browserContextIds: [], defaultBrowserContextId: `webview-${appPid()}` })
+          ? Promise.resolve({ browserContextIds: [], defaultBrowserContextId: contextId || `webview-${appPid()}` })
           : send(method, params)) as typeof session.send;
         return session;
       };
