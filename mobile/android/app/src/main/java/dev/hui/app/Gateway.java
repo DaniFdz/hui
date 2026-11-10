@@ -61,12 +61,17 @@ final class Gateway {
         if (intent != null) intent.putExtra(FAILED_EXTRA, url);
     }
 
-    /** Drop what this launch carried, so the next resolve reads the remembered address. */
+    /**
+     * Drop what this launch carried, so the next resolve reads the remembered address. The deep link a launch opened
+     * ({@link DeepLink}) goes with it: a gateway the user has just chosen starts on its own page, not on a path an
+     * earlier launch happened to name.
+     */
     static void clearLaunch(Activity activity) {
         Intent intent = activity.getIntent();
         if (intent == null) return;
         intent.removeExtra(EXTRA);
         intent.removeExtra(FAILED_EXTRA);
+        intent.setData(null);
     }
 
     static String remembered(Context context) {

@@ -4,4 +4,7 @@
          view match the page they lead to instead of flashing white. -->
     <color name="connecting_background">#101014</color>
     <color name="connecting_text">#ECECF1</color>
+    <!-- HUI's own page backgrounds (src/lib/boot-screen.ts), for the status bar until the page reports its theme. -->
+    <color name="page_background_dark">#0E1015</color>
+    <color name="page_background_light">#FAF9F7</color>
 </resources>

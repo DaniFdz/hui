@@ -22,6 +22,15 @@ const config: CapacitorConfig = {
   ios: {
     path: "mobile/ios",
   },
+  plugins: {
+    // The shell answers the system back button itself (mobile/android/.../ShellBack.java): it dispatches a cancelable
+    // `hui:back` event to the page and, when the page does not keep it, walks the WebView's history and then leaves the
+    // app on a second press. Capacitor's App plugin would otherwise also walk the history from its own callback, so its
+    // handler is switched off and the ordering is explicit rather than a matter of which callback registered last.
+    App: {
+      disableBackButtonHandler: true,
+    },
+  },
   server: {
     // A real gateway needs https (default only for loopback and `10.0.2.2` tests, see the app's network security
     // config). Capacitor requires https for the bundled page's own origin.
