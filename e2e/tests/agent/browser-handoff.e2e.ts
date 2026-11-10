@@ -4,7 +4,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-const browser = (input: Record<string, unknown>) =>
+const browserCall = (input: Record<string, unknown>) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name: "browser", input })).toString("base64url")}`;
 
 test("a dependent browser flow runs as one steps call that lists every step and names a failing one", { tags: ["AGENT-064"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -31,15 +31,15 @@ test("a dependent browser flow runs as one steps call that lists every step and 
   await expect(transcript.getByText("Ran a sequence of steps")).toBeVisible();
 
   // A failing step names itself and the steps that already ran.
-  await hui.prompt(session, browser({ action: "steps", steps: [{ kind: "type", ref: "e1", text: "x" }, { kind: "click", ref: "e99" }] }));
+  await hui.prompt(session, browserCall({ action: "steps", steps: [{ kind: "type", ref: "e1", text: "x" }, { kind: "click", ref: "e99" }] }));
   await expect(transcript.getByText(/Step 2 \(click\) failed: Ref e99 is not in tab t\d+'s latest snapshot/u)).toBeVisible();
   await expect(transcript.getByText(/Steps that ran: 1\. type: Typed 1 character into e\d+ \(textbox "Name"\)\./u)).toBeVisible();
 
   // A navigation retires the refs the earlier snapshot handed out, so a later step using one fails.
   const page = await hui.textOf(transcript.getByText(/^http:\/\/127\.0\.0\.1:\d+\/browser-fixture$/u).first());
-  await hui.prompt(session, browser({ action: "navigate", url: page }));
+  await hui.prompt(session, browserCall({ action: "navigate", url: page }));
   await expect(idle).toBeVisible({ timeout: 60_000 });
-  await hui.prompt(session, browser({ action: "steps", steps: [{ kind: "click", ref: "e1" }] }));
+  await hui.prompt(session, browserCall({ action: "steps", steps: [{ kind: "click", ref: "e1" }] }));
   await expect(transcript.getByText(/Step 1 \(click\) failed: Ref e1 is not in tab t\d+'s latest snapshot/u)).toBeVisible({ timeout: 60_000 });
 });
 
@@ -82,13 +82,13 @@ test("an agent hands its tab to the operator, and the wait ends on Continue, on 
 
   // A wait nobody answers ends after its own timeout.
   const second = /Your turn\. Finish the page yourself/u;
-  await hui.prompt(session, browser({ action: "handoff", message: "Finish the page yourself.", timeoutMs: 5_000 }));
+  await hui.prompt(session, browserCall({ action: "handoff", message: "Finish the page yourself.", timeoutMs: 5_000 }));
   await expect(transcript.getByText(second)).toBeVisible();
   await expect(transcript.getByText(/did not take over tab t\d+ within 5 seconds/u)).toBeVisible({ timeout: 60_000 });
   await expect(transcript.getByText(second)).toBeHidden();
 
   // The browser stopping under the wait ends it too.
-  await hui.prompt(session, browser({ action: "handoff", message: "Finish the page yourself.", timeoutMs: 300_000 }));
+  await hui.prompt(session, browserCall({ action: "handoff", message: "Finish the page yourself.", timeoutMs: 300_000 }));
   await expect(screen.getByRole("complementary", "Work pane").getByText(second)).toBeVisible();
   await hui.open("/settings/tools");
   await screen.getByRole("button", "Stop").tap();
