@@ -199,6 +199,10 @@ jobs:
           for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
             adb -s "$ANDROID_SERIAL" shell settings put global "$scale" 0 || true
           done
+          # The cached AVD can arrive with a debug build installed by an earlier run, signed with that runner's own debug
+          # keystore: `adb install -r` then fails with INSTALL_FAILED_UPDATE_INCOMPATIBLE on every test. Drop the package
+          # so this run installs the APK this workflow built.
+          timeout 60 adb -s "$ANDROID_SERIAL" uninstall dev.hui.app.debug > /dev/null 2>&1 || true
           adb devices -l
           echo "booted in $((SECONDS)) s of this step"
       - name: Run the shared suite in the app's WebView
