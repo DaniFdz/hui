@@ -7,7 +7,8 @@ const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stri
 type Listed = { id: string; title: string; status: string };
 
 test("a watcher sees the session it started and can continue it", { tags: ["BOT-075"], platforms: ["web"] }, async ({ hui }) => {
-  const source = await hui.createSession({ title: "Watcher" });
+  const chief = (await hui.api<{ bots: Array<{ name: string; sessionId: string }> }>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
+  const source = { id: chief.sessionId };
   await hui.prompt(source, call("create_session", {
     prompt: "Say ready.",
     cwd: hui.workspace,
