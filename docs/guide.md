@@ -953,8 +953,8 @@ hui bot memory ada --html ada.html # the whole memory as one page
 ```
 
 The status line counts the messages, the summaries built and still pending, the
-view's size and lines, and what the compactor spent since the gateway opened the
-memory (calls, tokens, cost). Every view line is `id+n|text`: `n` messages
+view's size and lines, and what the compactor spent in total (calls, tokens,
+cost), across restarts. Every view line is `id+n|text`: `n` messages
 from `id`, in one summary; `--zoom id+n` opens it, down to a single message
 with `n` = 1. The page lists the view, every message and each level of the
 tree; a browser opens it from a link on HUI's own pages, such as the Bots tab

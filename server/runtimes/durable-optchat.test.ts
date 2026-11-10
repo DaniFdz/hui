@@ -516,6 +516,24 @@ test("a restart catches the log up from Durable without duplicates, and a resent
   await (await (await third.open()).conversation(id, durableContext))!.waitForIdle(durableContext);
 });
 
+test("what the compactor spent survives a gateway restart", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const first = f.host();
+  const { session, id } = await botSession(f, first, "bot-usage");
+  await turns(session, [`OPT_U1${" kept".repeat(200)}`]);
+  const before = await statusWhere(first, id, (status) => status.usage.calls > 0 && status.pending === 0);
+  assert(before.usage.calls > 0, JSON.stringify(before.usage));
+  session.dispose();
+  await first.close();
+
+  const second = f.host();
+  await second.open();
+  const after = await statusWhere(second, id, (status) => status.pending === 0);
+  assert.deepEqual(after.usage, before.usage, "the totals are read back from usage.json, not reset with the process");
+  assert(existsSync(join(f.store, "optchat", String(id), "usage.json")), "beside the log and the tree");
+  await second.close();
+});
+
 test("a turn waits while the view has a line to summarize, says so, and goes on once it is built; Stop ends the wait", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
   const host = f.host();
