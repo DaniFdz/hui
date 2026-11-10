@@ -130,7 +130,9 @@ export async function startWorld(name: WorldName): Promise<World> {
       await expect.poll(async () => (await readFile(receipt.receipt, "utf8").then((text) => (JSON.parse(text) as { state?: string }).state, () => undefined)),
         { timeout: 30_000, message: `world ${name} did not stop: its receipt at ${receipt.receipt} never said so` }).toBe("stopped");
     }
-    if (process.env["E2E_KEEP_WORLDS"] !== "1") await rm(runDir, { recursive: true, force: true });
+    // A gateway that has just been stopped can still be flushing a file it was writing (PI's agent directory and
+    // Vite's cache both take writes), so the removal retries instead of failing on the directory that appeared.
+    if (process.env["E2E_KEEP_WORLDS"] !== "1") await rm(runDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
   };
   return {
     name,
