@@ -1,6 +1,7 @@
 /** The Work pane beside a conversation: its empty state and launchers, its tabs, hiding to the rail, closing the last view, maximizing, the narrow panel selector, what a reload restores and the banner a refused launch shows (WORK-001, 002, 003, 006, 007, 008, 010, 011, 014). */
 import { expect, type Locator } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openWork } from "./work-views.ts";
 
 const launchers = ["New terminal", "Browser", "Files", "VS Code", "Diff"];
 /** A + menu entry, found by the shortcut only that kind shows. */
@@ -36,10 +37,8 @@ test("the plus menu lists every launcher and its shortcut and adds the chosen vi
   const pane = screen.getByLabel("Work pane");
   const menu = screen.getByRole("button", "Open Work view");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await pane.getByRole("button", { name: /^New terminal/u }).tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByRole("tab", "Terminal 1")).toBeVisible();
 
   await menu.tap();
@@ -74,10 +73,8 @@ test("clicking a tab shows its view while the others stay mounted, and a close b
   const connected = screen.getByText("Shared · Connected");
   const terminal = screen.getByLabel("Shared terminal input");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await pane.getByRole("button", { name: /^New terminal/u }).tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
   await expect(connected).toBeVisible();
   await expect(terminal).toBeVisible();
@@ -316,10 +313,8 @@ test("a launch the gateway refuses shows its reason in a banner over the pane an
   const reason = "Terminal limit reached. End an unused terminal first.";
   const refused = await hui.intercept("POST", /\/__hui\/sessions\/[^/]+\/terminals$/u);
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await pane.getByRole("button", { name: /^New terminal/u }).tap();
+  await openWork(screen, "New terminal");
   await refused.arrived();
   await refused.reject(409, reason);
   await expect(pane.getByText(reason)).toBeVisible();

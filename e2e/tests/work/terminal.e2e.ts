@@ -4,6 +4,7 @@
  * terminal the pane is connected to. */
 import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { backToChat, openWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -59,12 +60,20 @@ test("Open terminal in the chat header shows the conversation's terminal in the 
   await expect(pane.getByText(repository.path, { exact: true })).toBeVisible();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   expect(await terminals(hui, session.id)).toHaveLength(1);
+  // The sidebar is a drawer a phone opens over the chat, which the full-screen Work destination is not.
+  await backToChat(screen);
   await hui.sessionList();
   expect((await hui.glyph("Open terminal")).animated).toBe(false);
 
-  await screen.getByRole("button", "Open Work view").tap();
-  await item(screen, "F").first().tap();
+  // Coming back to the conversation leaves the drawer behind and restores its Work views, so the header's
+  // Open terminal shows the terminal this conversation already has.
+  await hui.open(`/sessions/${session.id}`);
+  await open.tap();
+  await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
+  await openWork(screen, "Files");
   await expect(pane.getByRole("tab", "Files")).toHaveAttribute("aria-selected", "true");
+  // The header is the chat's; a phone reaches it again by leaving the full-screen destination.
+  await backToChat(screen);
   await open.tap();
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
   expect(await terminals(hui, session.id)).toHaveLength(1);
@@ -152,6 +161,7 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   await expect.poll(() => replay(hui, session.id, id)).toContain("SET hello-from-operator");
 
   await hui.prompt(session, "E2E_SHARED_TERMINAL");
+  await backToChat(screen);
   await expect(screen.getByText("I sent the command to your shared terminal.", { exact: false })).toBeVisible();
   await expect.poll(() => replay(hui, session.id, id)).toContain("Shared variable: hello-from-operator");
   expect(await replay(hui, session.id, id)).toContain("PI_SHARED_TERMINAL");
