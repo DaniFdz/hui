@@ -10,7 +10,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:settings"],
     journeys: ["gateway-settings", "shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-002",
@@ -20,7 +20,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-003",
@@ -48,7 +48,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huithemes", "docs/api.md#get-__huithemesfilekey"],
     surfaces: ["settings-page:appearance", "setting:theme", "route:GET /__hui/themes", "route:GET /__hui/themes/file/:key", "route:PUT /__hui/settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-006",
@@ -168,7 +168,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:chat.githubEmbeds", "settings-page:appearance"],
     journeys: ["github-embeds"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-016",
@@ -178,7 +178,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:chat.datadogEmbeds", "settings-page:appearance"],
     journeys: ["datadog-embeds"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-017",
@@ -503,7 +503,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["model-routing"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-046",
@@ -513,7 +513,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.primary", "setting:models.fallback"],
     journeys: ["model-routing"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-047",
@@ -533,7 +533,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/sessions/:id/models"],
     journeys: ["configured-models"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-050",
@@ -563,7 +563,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:tools", "setting:browser.enabled"],
     journeys: ["browser-tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-053",
@@ -592,7 +592,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["setting:codemode.enabled"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-056",
@@ -602,7 +602,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:questions.timeoutMinutes"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-057",
