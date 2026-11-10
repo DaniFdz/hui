@@ -188,7 +188,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:connection", "route:GET /__hui/health", "page:connection", "route:GET /__hui/pi"],
     journeys: ["gateway-settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-018",
@@ -198,7 +198,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/health"],
     journeys: ["gateway-settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-019",
@@ -353,7 +353,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login", "route:DELETE /__hui/providers/login/:id"],
     journeys: ["providers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-034",
@@ -543,7 +543,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi"],
     journeys: ["configured-models"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-051",
@@ -553,7 +553,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:calls.voice", "route:GET /__hui/calls", "settings-page:models", "route:PUT /__hui/settings"],
     journeys: ["bot-setup"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-052",
@@ -612,7 +612,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:vscode.provider", "setting:vscode.executable", "route:GET /__hui/vscode-server"],
     journeys: ["vscode-view", "work-pane"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-058",
@@ -642,7 +642,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:skills", "setting:disabledSkills", "route:PUT /__hui/settings", "route:GET /__hui/sessions/:id/commands", "page:skills"],
     journeys: ["skill-disable"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-061",
@@ -831,7 +831,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi"],
     journeys: ["configured-models"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-081",
@@ -860,7 +860,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#gateway-extensions"],
     surfaces: ["settings-page:extensions", "route:GET /__hui/ext", "route:PUT /__hui/ext/:id", "route:POST /__hui/ext/:id/reload"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-089",
@@ -869,7 +869,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#gateway-extensions"],
     surfaces: ["settings-page:extensions"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
 ];
 
