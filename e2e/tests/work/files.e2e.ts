@@ -4,6 +4,7 @@ import { mkdir, readdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openWork, showFiles } from "./work-views.ts";
 
 test("Files in the plus menu lists the conversation's folder, folders first and without .git, expanding on demand", { tags: ["WORK-042"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
@@ -14,7 +15,7 @@ test("Files in the plus menu lists the conversation's folder, folders first and 
   const navigator = screen.getByLabel("Files navigator");
 
   await hui.open(`/sessions/${session.id}`);
-  await hui.openWorkView("Files");
+  await openWork(screen, "Files");
 
   await expect(navigator.getByRole("button", "sub")).toBeVisible();
   const names = (await Promise.all((await navigator.getByRole("listitem").all()).map((row) => hui.textOf(row)))).map((name) => name.trim());
@@ -43,7 +44,7 @@ test("typing in Filter files lists the matching files with their folders and emp
   const filter = navigator.getByLabel("Filter files");
 
   await hui.open(`/sessions/${session.id}`);
-  await hui.openWorkView("Files");
+  await openWork(screen, "Files");
   await expect(navigator.getByRole("button", "sub")).toBeVisible();
 
   await filter.fill("keep");
@@ -71,13 +72,14 @@ test("New file and New folder create the named entry and open a new file, and a 
   const navigator = screen.getByLabel("Files navigator");
 
   await hui.open(`/sessions/${session.id}`);
-  await hui.openWorkView("Files");
+  await openWork(screen, "Files");
   await expect(navigator.getByRole("button", "sub")).toBeVisible();
 
   await navigator.getByRole("button", "New file").tap();
   await screen.getByLabel("Name").fill("notes.md");
   await screen.getByRole("button", "Create file").tap();
   await expect(pane.getByRole("tab", "notes.md")).toBeVisible();
+  await showFiles(screen);
   await expect(navigator.getByRole("button", "notes.md")).toBeVisible();
   expect(await repository.git("status", "--porcelain")).toContain("notes.md");
 
@@ -92,6 +94,7 @@ test("New file and New folder create the named entry and open a new file, and a 
   await navigator.getByRole("button", "sub").tap();
   await navigator.getByRole("button", "keep.txt").tap();
   await expect(pane.getByRole("tab", "keep.txt")).toBeVisible();
+  await showFiles(screen);
   await navigator.getByRole("button", "New folder").tap();
   await expect(screen.getByText("In sub")).toBeVisible();
   await screen.getByLabel("Name").fill("docs");
@@ -109,7 +112,7 @@ test("Escape in a non-empty Filter files field clears it and restores the tree",
   const filter = navigator.getByLabel("Filter files");
 
   await hui.open(`/sessions/${session.id}`);
-  await hui.openWorkView("Files");
+  await openWork(screen, "Files");
   await expect(navigator.getByRole("button", "readme.md")).toBeVisible();
 
   await filter.fill("note");
@@ -133,7 +136,7 @@ test("deleting asks before it goes, says it cannot be undone and lists what goes
   const navigator = screen.getByLabel("Files navigator");
 
   await hui.open(`/sessions/${session.id}`);
-  await hui.openWorkView("Files");
+  await openWork(screen, "Files");
   await expect(navigator.getByRole("button", "gone.txt")).toBeVisible();
 
   await hui.deleteEntry(navigator, "gone.txt");
@@ -154,6 +157,7 @@ test("deleting asks before it goes, says it cannot be undone and lists what goes
   await navigator.getByRole("button", "inner.txt").tap();
   await screen.getByLabel(/Contents of .*inner\.txt/u).fill("edited on screen");
   await held.arrived();
+  await showFiles(screen);
   await hui.deleteEntry(navigator, "docs");
   await expect(screen.getByText("Delete docs?")).toBeVisible();
   await expect(screen.getByText(/The folder .*docs.* and everything inside it\./u)).toBeVisible();
