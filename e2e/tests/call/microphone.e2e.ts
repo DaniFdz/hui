@@ -33,7 +33,8 @@ test("a call whose microphone does not open says why and Back to the chat leaves
   const transcript = screen.getByTestId("transcript");
 
   await hui.open(`/bots/${bot.id}`);
-  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  // A fresh bot's chat has nothing to say yet: the empty state is the chat that a call must leave untouched.
+  await expect(transcript.getByText("Say hi to Juno")).toBeVisible();
   const chat = await hui.textOf(transcript);
 
   await header.getByRole("button", "Call Juno").tap();
