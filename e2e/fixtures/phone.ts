@@ -13,6 +13,10 @@
  * - **The selection.** The target's platform is the engine's (`web`), so a test declaring `platforms: ["web"]` still
  *   runs here: `e2e/catalogue/phone.ts` owns which use cases the `android` target runs, and the job passes them as
  *   `--tag`. This module holds what the device needs, not which tests run.
+ * - **What the device wrote.** A download in the app is the shell's own (`ShellDownloads` writes `Downloads` through
+ *   `DownloadManager` or `MediaStore`), so the browser's download event never fires there: `deviceFiles` and
+ *   `deviceBytes` read the folder the shell saved into, which is how the fixture's `download` step observes the app's
+ *   result instead of claiming one.
  *
  * Two workers on one machine need their own emulator, DevTools port and gateway port (plan §2, ports):
  * `ANDROID_SERIAL`, `E2E_CDP_PORT` and `E2E_PHONE_PORT`. `adb` comes from `nix develop .#android`; the CI job's shell
@@ -40,6 +44,45 @@ const adb = (...args: string[]) => execFileSync(ADB, [...(SERIAL ? ["-s", SERIAL
   timeout: 120_000,
   stdio: ["ignore", "pipe", "pipe"],
 }).trim();
+
+/** The folder the app saves a download into: `Downloads`, which `DownloadManager` and `MediaStore` both write on Android
+ * 10 and later (`ShellDownloads.download`, `ShellDownloads.saveBytes`). */
+export const PHONE_DOWNLOADS = "/sdcard/Download";
+
+/**
+ * One file a device directory holds. A phone keeps a download its own way, so a fixture reads the device rather than the
+ * browser's download event: `ls -l` gives the size that tells a download still being written from a settled one.
+ */
+export type DeviceFile = { name: string; size: number };
+
+/** The files in a device directory, read through `adb shell ls -l`. */
+export function deviceFiles(directory = PHONE_DOWNLOADS): DeviceFile[] {
+  // An absent folder has nothing to list, which is the same answer to a caller: no file of that name.
+  const listing = (() => {
+    try {
+      return adb("shell", "ls", "-l", directory);
+    } catch {
+      return "";
+    }
+  })();
+  return listing.split("\n").flatMap((line) => {
+    // `-rw-rw---- 1 u0_a155 media_rw 77 2026-11-10 22:20 flaky-test.pdf`; a name may hold spaces, so the rest of the line
+    // after the date and time is the name.
+    const fields = line.trim().split(/\s+/u);
+    if (fields.length < 8 || !fields[0]!.startsWith("-")) return [];
+    const size = Number(fields[4]);
+    if (!Number.isInteger(size)) return [];
+    return [{ name: fields.slice(7).join(" "), size }];
+  });
+}
+
+/** One device file's bytes, read through `adb exec-out`, which passes them through untouched. */
+export function deviceBytes(path: string): Buffer {
+  return execFileSync(ADB, [...(SERIAL ? ["-s", SERIAL] : []), "exec-out", "cat", path], {
+    timeout: 120_000,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
 
 /**
  * The app's process, which owns its WebView and its DevTools socket. `am start -W` returns when the activity is drawn,

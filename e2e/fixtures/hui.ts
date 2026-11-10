@@ -12,10 +12,13 @@
  * chrome outside Settings (the primary navigation), the chosen button of a group (aria-pressed), the app's and the
  * device's colour scheme, the session menu, status glyphs, how a piece of the screen looks, the window's size, Back and
  * Forward, sideways overflow, whether a tap reaches a control, the command palette's chord and a frame's own document
- * (an agent widget runs where only its sandbox can reach it, so a test reads and taps inside it there). The web page
- * never opens Vite's development socket, whose client reloads the page when the gateway restarts, which no installed
- * gateway does. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
- * themselves.
+ * (an agent widget runs where only its sandbox can reach it, so a test reads and taps inside it there); and the steps
+ * that are the fixture's own rather than a platform's: a download the app saves itself (the browser's download event on
+ * the web, and on the phone the file the shell wrote into `Downloads`), a subagent's conversation opened from the card
+ * its parent's chat draws, a tool call held while it runs so its row and the working indicator can be read in flight, and
+ * a fixture world started for one test (`world.ts`). The web page never opens Vite's development socket, whose client
+ * reloads the page when the gateway restarts, which no installed gateway does. Test files import `test` from here, never
+ * from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -25,8 +28,9 @@ import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, FrameScreen, WebRoute } from "@e2e-dev/web";
 import { addWorkerOnThisMachine } from "./worker.ts";
-import { clearAppStorage, onPhone } from "./phone.ts";
+import { clearAppStorage, deviceBytes, deviceFiles, onPhone, PHONE_DOWNLOADS } from "./phone.ts";
 import { IPHONE_SCREEN, onWebKitPhone } from "./phone-webkit.ts";
+import { startWorld, type World, type WorldName } from "./world.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
@@ -96,6 +100,9 @@ export type Hui = {
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
+  /** Taps a download control and answers with the file it saved: the browser's download event on the web, and on the
+   * app the file the shell wrote into `Downloads`, read off the device. A step that saved nothing fails with what the
+   * folder holds instead of answering with a file no one wrote. */
   download(target: Locator): Promise<{ name: string; text: string }>;
   /** A worker on this machine: its own home, this checkout pre-installed as its release. */
   addWorker(name: string): Promise<{ id: string; home: string }>;
@@ -103,6 +110,27 @@ export type Hui = {
   clipboardSpy(): Promise<void>;
   clipboardWrites(): Promise<string[]>;
   hold(target: Locator, until: Locator): Promise<void>;
+  /**
+   * Prompts a session for one tool call and holds it while it runs, so a test can read the row and the working indicator
+   * in flight: the tool answers only when the returned `release` runs. `name` is any tool the fixture's disposable
+   * extension registers as holdable — `fixture_echo`, and the `read`, `edit` and `git` classes HUI names its indicator
+   * after (`read_file`, `apply_patch`, `git_status`) — or the shell's own `bash`, whose held call waits on the same
+   * control endpoint. A name no tool answers waits until the test ends, so the prompt is refused here rather than
+   * hanging. */
+  holdTool(session: { id: string }, name: string, input?: Record<string, unknown>): Promise<{ release(): Promise<void> }>;
+  /**
+   * Opens a subagent's own conversation from its parent's Swarm card, the row the chat draws for it, opening the
+   * folded card first. The card is the same control on every target; a phone reaches it in the chat where the web's
+   * sidebar also lists the child, so a test that reads a child's header works on both.
+   */
+  openSubagent(child: { title: string }): Promise<void>;
+  /**
+   * Starts a fixture world for this test: its own disposable gateway, seeded by the launcher's `--jira-fixture`,
+   * `--github-fixture` or `--activity-fixture` (`world.ts`). The world is another gateway on another port, so a test
+   * opens its pages with `hui.open(`${world.url}/...`)` and calls it with `world.api`. The Android app loads the gateway
+   * it was launched with and cannot follow a test to another origin, so this refuses there.
+   */
+  world(name: WorldName): Promise<World>;
   textOf(target: Locator): Promise<string>;
   /** A task progress step's state, its `data-status`. */
   stepState(step: Locator, state: string): Promise<void>;
@@ -148,7 +176,7 @@ export type Hui = {
 };
 
 /** The steps whose gesture or reading differs per platform; each target fills its own table of them. */
-type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository">;
+type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "holdTool" | "openSubagent" | "world">;
 
 /** A tap at the middle of where a target is at the moment of the press. */
 const tapAt = async (target: Locator) => {
@@ -156,6 +184,8 @@ const tapAt = async (target: Locator) => {
   if (!box) throw new Error("tapAt: the target is not on screen");
   await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
 };
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
 const holding = <R>() => {
   let arrive: () => void = () => undefined;
@@ -332,6 +362,7 @@ export const test = base.extend<{ hui: Hui }>({
     const workerIds = async () => (await api<{ workers: { id: string }[] }>("GET", "/__hui/workers")).workers.map((worker) => worker.id);
     const existingWorkers = new Set(await workerIds());
     const workerHomes: string[] = [];
+    const worlds: World[] = [];
     const settings = await api<unknown>("GET", "/__hui/settings");
     const directories: string[] = [];
 
@@ -830,6 +861,30 @@ export const test = base.extend<{ hui: Hui }>({
               await browser().evaluate(clearAppStorage);
               await browser().reload();
             },
+            download: async (target) => {
+              // The app saves a download itself: an `http(s)` one goes to the system's download manager, a `blob:` or
+              // `data:` one is written by the shell (`ShellDownloads`), and both land in `Downloads`. No browser download
+              // event reaches the engine in a WebView, so this reads the folder the app wrote and fails, naming what it
+              // found, when no file appeared.
+              const before = new Map(deviceFiles().map(({ name, size }) => [name, size]));
+              await target.tap();
+              let written: { name: string; size: number } | undefined;
+              await expect.poll(() => {
+                written = deviceFiles().find(({ name, size }) => before.get(name) !== size && size > 0);
+                return written?.name;
+              }, { timeout: 60_000, message: `hui.download: the app saved nothing into ${PHONE_DOWNLOADS}; it holds ${JSON.stringify(deviceFiles())}` }).toBeDefined();
+              // The download manager writes the file itself, so its size settles a moment after it appears.
+              const saving = written!;
+              let settled = saving.size;
+              let file: { name: string; size: number } | undefined;
+              await expect.poll(() => {
+                const now = deviceFiles().find(({ name }) => name === saving.name);
+                file = now !== undefined && now.size > 0 && now.size === settled ? now : undefined;
+                settled = now?.size ?? settled;
+                return file !== undefined;
+              }, { timeout: 60_000, message: `hui.download: ${saving.name} never finished writing to ${PHONE_DOWNLOADS}` }).toBe(true);
+              return { name: file!.name, text: deviceBytes(`${PHONE_DOWNLOADS}/${file!.name}`).toString("utf8") };
+            },
           }
         : web;
     if (fixtures.platform === "web") await browser().addInitScript(trackSockets);
@@ -844,6 +899,35 @@ export const test = base.extend<{ hui: Hui }>({
       createSession: async (input) =>
         (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
       prompt,
+      world: async (name) => {
+        if (onPhone(fixtures.app.baseUrl)) {
+          throw new Error("hui.world() needs a gateway the Android app was not launched with: the WebView holds one page on one origin, which `phone.ts` gives it as `huiGatewayUrl`, so a world's own gateway cannot be opened there. A use case that needs one stays off the phone's required list.");
+        }
+        const world = await startWorld(name);
+        worlds.push(world);
+        return world;
+      },
+      /** Prompts for one held tool call and answers with the release, once the tool is running. */
+      holdTool: async (session, name, input) => {
+        const call = Buffer.from(JSON.stringify({ name, input: input ?? {} })).toString("base64url");
+        await prompt(session, `E2E_HOLD:${call}`);
+        // The provider registers a held response only once a tool is actually waiting, so this resolves when the call is
+        // in flight and names the tool when nothing answers it.
+        const waiting = await fetch(`${receipt.providerUrl}/control/wait-replay-ready`, { signal: AbortSignal.timeout(60_000) })
+          .catch(() => undefined);
+        if (!waiting?.ok) throw new Error(`hui.holdTool: ${name} never started: only a tool the fixture's disposable extension registers as holdable (fixture_echo, read_file, apply_patch, git_status) or the shell's own bash waits on the control endpoint`);
+        return { release: () => control("POST", "/control/release-replay") };
+      },
+      openSubagent: async ({ title }) => {
+        // The chat's Swarm card holds each child as `Open subagent <title>`, and a new batch folds it: open the card by its
+        // summary title when the row is not on screen yet. The same card is what a phone shows, so no target branches here.
+        const card = fixtures.screen.getByLabel("Parallel tasks");
+        const row = card.getByLabel(new RegExp(`^Open subagent ${escapeRegExp(title)}`, "u"));
+        if (!(await row.isVisible())) await card.getByText(title, { exact: true }).first().tap();
+        await expect(row).toBeVisible();
+        await steps.scrollTo(fixtures.screen.getByTestId("transcript"), row);
+        await row.tap();
+      },
       createSubagent: async (parent) => {
         await prompt(parent, "E2E_SUBAGENTS_START");
         let child: ListedSession | undefined;
@@ -915,5 +999,7 @@ export const test = base.extend<{ hui: Hui }>({
     }
     await api("PUT", "/__hui/settings", settings);
     for (const path of directories) await rm(path, { recursive: true, force: true });
+    // A world is another gateway and its own fake services: stop each one the test started, gateway and all.
+    for (const world of worlds.reverse()) await world.stop();
   },
 });
