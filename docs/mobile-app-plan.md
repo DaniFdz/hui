@@ -301,6 +301,25 @@ What the catch-up learned, which the areas still to do can reuse:
 - HTML5 drag reorder can pass through CDP mouse events while a finger cannot start it; exclude those rather than claim
   `required`.
 
+### 4.6 Coverage before phone parity
+
+The catalogue lists every user outcome; a use case is proven by one shared tester-army test that runs on each target, so
+"proven on the phone" needs a test to exist first. Measured on 2026-11-10, that ordering exposed debt that predates the
+phone work: of 665 use cases, the web proves 368 and **294 have no test on any platform** (main carried 301 when the
+catalogue landed on 2026-10-21). The phone cannot prove what no test describes.
+
+So the catch-up runs in two phases:
+
+1. **Write, on the browser.** A green web test costs about 1.5 s (one Chromium per file); a green phone test costs about
+   15 s, because the WebView has one page and no context, so the engine needs a relaunch per attempt. Three or four
+   writers work different areas in parallel and verify only on `--target web`, where they also burn down the web backlog.
+2. **Sweep, on the phone.** Once writing is done, one sweep per area with at most two emulators. Every test that reaches
+   the emulator is already green in Chromium, so a failure there is a phone difference rather than an unfinished test.
+
+`e2e/fixtures/phone.ts` carries `E2E_PHONE_REUSE=1`, which keeps the app's process alive for a whole file and counts
+attempts for the identity the engine checks (instead of using the process id). It is off until the sweep measures what a
+shared launch buys and what process-sharing costs.
+
 ## 5. Lockstep after this lands
 
 - A user-visible web change runs on `web`, `android` and `webkit-phone` in the PR's CI. No phone-specific work is
