@@ -793,7 +793,10 @@ export const test = base.extend<{ hui: Hui }>({
               deliver: async () => {},
               reject: async () => {},
             }),
-            spoofUserAgent: noBrowserHarness("spoofUserAgent"),
+            spoofUserAgent: async () => {
+              // The app's WebView already sends the phone's own user agent, so there is nothing to spoof and no init script
+              // to install; the web version exists to make a desktop browser answer as a phone.
+            },
             answerAll: noBrowserHarness("answerAll"),
             wideScreen: noBrowserHarness("wideScreen"),
             peek: noBrowserHarness("peek"),
