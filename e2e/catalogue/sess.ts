@@ -217,7 +217,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/session-groups"],
     journeys: ["session-groups", "session-registry"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-024",
@@ -227,7 +227,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/session-groups/:name"],
     journeys: ["session-registry"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-025",
@@ -237,7 +237,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/session-groups/:name"],
     journeys: ["session-registry"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-026",
@@ -246,7 +246,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#put-__huisession-groups"],
     surfaces: ["route:PUT /__hui/session-groups"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-027",
@@ -256,7 +256,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-registry"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-028",
