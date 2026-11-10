@@ -2,6 +2,7 @@
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
+import { expectChatTitle } from "./chat-header.ts";
 import { test } from "../../fixtures/hui.ts";
 
 const heldHelper = `E2E_CALL:${Buffer.from(JSON.stringify({ name: "sessions_spawn", input: { task: "E2E_REPLAY", label: "Held helper" } })).toString("base64url")}`;
@@ -9,13 +10,12 @@ const question = { questions: [{ header: "Pick", question: "Which colour?", opti
 
 test("selecting a row loads its conversation with its header and models, a failed load offers Try again, and the URL opens the same session", { tags: ["SESS-016"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
-  const heading = screen.getByTestId("session-title", { visible: true });
   const target = await hui.createSession({ title: "Open from the sidebar", group: "Inbox" });
   await hui.prompt(target, "Hello from the sidebar");
   const other = await hui.createSession({ title: "Start elsewhere" });
 
   await hui.open(`/sessions/${other.id}`);
-  await expect(heading).toHaveText("Start elsewhere");
+  await expectChatTitle(screen, "Start elsewhere");
   await hui.sessionList();
   const row = screen.getByLabel(/^Open from the sidebar, status idle, tool durable, stage investigation/u);
   await expect(row).toBeVisible();
@@ -31,12 +31,12 @@ test("selecting a row loads its conversation with its header and models, a faile
   await screen.getByRole("button", "Try again").tap();
   await expect(transcript.getByText("Hello from the sidebar")).toBeVisible();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
-  await expect(heading).toHaveText("Open from the sidebar");
+  await expectChatTitle(screen, "Open from the sidebar");
   await expect(screen.getByText("durable · INBOX · Idle", { visible: true })).toBeVisible();
   await expect(screen.getByLabel("Model: HUI SDK Fixture", { visible: true })).toBeVisible();
 
   await hui.open(`/sessions/${target.id}`);
-  await expect(heading).toHaveText("Open from the sidebar");
+  await expectChatTitle(screen, "Open from the sidebar");
   await expect(transcript.getByText("Hello from the sidebar")).toBeVisible();
   await expect(screen.getByText("durable · INBOX · Idle", { visible: true })).toBeVisible();
 });
@@ -52,6 +52,7 @@ test("rows show running, waiting and failed sessions and a parent's watcher or s
 
   try {
     await hui.open("/");
+    await hui.sessionList();
     await expect(row("Runs a turn", "idle")).toBeVisible();
     await hui.sessionList();
     expect(await hui.glyph("Runs a turn")).toEqual({ label: "", animated: false });
@@ -96,6 +97,7 @@ test("the list shows placeholder rows and a failed first load, retries once the 
   const stream = await hui.intercept("GET", /\/__hui\/sessions\/events$/u);
   await hui.open("/");
   await list.arrived();
+  await hui.sessionList();
   await expect(screen.getByLabel("Loading sessions…")).toBeVisible();
   await list.reject(503, "The gateway is unavailable.");
   await expect(screen.getByText("The gateway is unavailable.")).toBeVisible();
@@ -112,7 +114,8 @@ test("the list shows placeholder rows and a failed first load, retries once the 
   await refresh.reject(503, "Could not reach the session registry.");
   const pinned = screen.getByLabel("Kept through a failed refresh, status idle, tool durable, stage investigation, pinned");
   await pinned.tap();
-  await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Kept through a failed refresh");
+  await expectChatTitle(screen, "Kept through a failed refresh");
+  await hui.sessionList();
   await expect(pinned).toBeVisible();
   await expect(screen.getByText("Could not reach the session registry.")).toBeHidden();
   await expect(screen.getByText("No sessions yet.")).toBeHidden();
