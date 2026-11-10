@@ -124,20 +124,48 @@ jobs:
           path: ${{ runner.temp }}/apk
       - name: Boot the emulator
         env:
-          HUI_ANDROID_AVD: HUI_Pixel_e2e
           ANDROID_SERIAL: emulator-5554
         run: |
           set -euo pipefail
-          # `avd` makes the AVD from the pinned image when the cache missed, `emulator` boots it headless and waits for
-          # sys.boot_completed. The package manager answers later than that, and an install or `am start` needs it.
-          npm run mobile -- avd
-          npm run mobile -- emulator
-          for _ in $(seq 1 120); do
-            if adb -s "$ANDROID_SERIAL" shell pm path android 2>/dev/null | grep -q package:; then exit 0; fi
-            sleep 1
+          # Spike S4's measured recipe. `ANDROID_AVD_HOME` is pinned so `avdmanager`, the emulator and the cache all name
+          # the same directory: on this image `avdmanager` otherwise writes its AVD somewhere the step cannot find.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          avd=HUI_Pixel_e2e
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
+          if [ ! -f "$ANDROID_AVD_HOME/$avd.avd/config.ini" ]; then
+            device=$(avdmanager list device -c 2>/dev/null | grep -E '^pixel_[0-9]+$' | sort -V | tail -1 || true)
+            echo "device profile: ${device:-pixel}"
+            echo no | avdmanager create avd -n "$avd" -k "system-images;android-36;google_apis;x86_64" -d "${device:-pixel}" \
+              -p "$ANDROID_AVD_HOME/$avd.avd" --force
+            # A hardware keyboard so typed text never waits on the soft one, and no device frame or camera.
+            {
+              echo 'hw.keyboard=yes'
+              echo 'hw.ramSize=4096'
+              echo 'showDeviceFrame=no'
+              echo 'hw.camera.back=none'
+            } >> "$ANDROID_AVD_HOME/$avd.avd/config.ini"
+          fi
+          ls "$ANDROID_AVD_HOME"
+          adb start-server
+          "$ANDROID_HOME/emulator/emulator" -avd "$avd" -port 5554 -no-window -no-audio -no-boot-anim \
+            -gpu swiftshader_indirect -no-metrics > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          booted() {
+            adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -qx 1
+          }
+          for _ in $(seq 1 300); do booted && break; sleep 2; done
+          if ! booted; then tail -60 "$RUNNER_TEMP/emulator.log"; echo "::error::the emulator never finished booting"; exit 1; fi
+          # boot_completed comes before the package manager answers, which an install and `am start` need. Never wait on
+          # init.svc.bootanim: -no-boot-anim never sets it.
+          answered() {
+            adb -s "$ANDROID_SERIAL" shell pm path android 2>/dev/null | grep -q package:
+          }
+          for _ in $(seq 1 180); do answered && break; sleep 1; done
+          if ! answered; then tail -60 "$RUNNER_TEMP/emulator.log"; echo "::error::the package manager never answered"; exit 1; fi
+          for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
+            adb -s "$ANDROID_SERIAL" shell settings put global "$scale" 0
           done
-          echo "::error::the package manager never answered"
-          exit 1
+          adb devices -l
       - name: Run the shared suite in the app's WebView
         env:
           ANDROID_SERIAL: emulator-5554
