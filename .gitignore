@@ -32,6 +32,9 @@ npm-shrinkwrap.json
 /result
 /result-*
 
+# A run's plan, ledger and decision log (AGENTS.md, "Change Discipline"): scratch state, never versioned.
+/work/
+
 # Personal OpenClaw workspace state (never part of HUI)
 /IDENTITY.md
 /SOUL.md

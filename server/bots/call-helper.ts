@@ -1,6 +1,6 @@
 /**
  * The bot's quick helper during a GPT-Live call, and the record of the call at
- * hang-up (HUI-18), after OpenDots (CopilotKit/OpenDots, MIT): the voice model
+ * hang-up, after OpenDots (CopilotKit/OpenDots, MIT): the voice model
  * has one tool, which asks the bot. Here that tool is answered by the bot's
  * utility model at low thinking, from the bot's soul (its SOUL.md), its memory
  * and the call so far; what needs tools or real work is handed to the bot's own

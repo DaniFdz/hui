@@ -795,7 +795,7 @@ The settings document also holds `questions: { timeoutMinutes }`, the question t
 [Structured questions](#structured-questions), `0` (Off) unless 5, 10, 15, 30
 or 60 is saved.
 
-It also includes `calls: { voice }` (Settings → Models → Calls, HUI-18): the GPT-Live
+It also includes `calls: { voice }` (Settings → Models → Calls): the GPT-Live
 voice of a bot without one of its own ([GPT-Live calls](#gpt-live-calls)).
 Anything else normalizes to the default, `{ "voice": "cove" }`. A file saved while
 HUI also had VoiceStudio may hold `calls.engine` and `voice.sendNotesImmediately`:
@@ -1704,7 +1704,7 @@ other runtime requests to them return 409 with a message saying why.
 
 ## Bots
 
-A bot (HUI-18) is a named, persistent agent with one forever chat. The chat is
+A bot is a named, persistent agent with one forever chat. The chat is
 an ordinary local Durable session (`tool: "durable"`, `group: ""`, title = the
 bot's name) registered through `createSession`, New Session's path; its record
 carries `bot`. The bot routes below never duplicate the session API: the chat's
@@ -5888,7 +5888,7 @@ last line pup printed (ANSI removed, ≤ 300 characters). HUI stops a sign-in af
 
 ### GPT-Live calls
 
-A call with a bot (HUI-18) is a full-duplex WebRTC session between the browser and GPT-Live
+A call with a bot is a full-duplex WebRTC session between the browser and GPT-Live
 (`gpt-live-1-codex`), over the ChatGPT login HUI keeps for the `openai-codex`
 provider. Calls are with bots only. This is the route ChatGPT's own voice mode uses, not a public API: it may
 change. The gateway sets each call up and keeps the credential; the browser

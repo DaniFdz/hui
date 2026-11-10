@@ -1,5 +1,5 @@
 /**
- * Bots in Pi Durable (HUI-18): the document that marks a conversation as a
+ * Bots in Pi Durable: the document that marks a conversation as a
  * bot's chat and holds what the operator turned off in it, the `bots`,
  * `operator`, `memory` and `soul` prompt sections, and the `message_bot`,
  * `write_soul`, `update_user`, `update_memory` and `set_profile` tools only
