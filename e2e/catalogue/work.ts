@@ -15,7 +15,7 @@ const cases: UseCase[] = [
   {
     id: "WORK-002",
     title: "Launch a Work view from the + menu",
-    behaviour: "Open Work view (+) lists New terminal, Browser, Files, VS Code and Diff with their shortcuts; choosing one adds its tab and shows it. Browser and VS Code open at most one view per conversation, so launching them again shows the open one. On a phone the same + sits in the Work destination's tab strip, which the Active panel selector opens (WORK-010).",
+    behaviour: "Open Work view (+) lists New terminal, Browser, Files, VS Code and Diff with their shortcuts; choosing one adds its tab and shows it. Browser and VS Code open at most one view per conversation, so launching them again shows the open one.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
@@ -25,7 +25,7 @@ const cases: UseCase[] = [
   {
     id: "WORK-003",
     title: "Switch between and close Work view tabs",
-    behaviour: "Clicking a tab shows its view; the other views stay mounted, so a terminal keeps its socket and VS Code its window without a replay. A tab's close button removes it and shows a neighbouring view. A phone's Work destination has the same tab strip and close buttons.",
+    behaviour: "Clicking a tab shows its view; the other views stay mounted, so a terminal keeps its socket and VS Code its window without a replay. A tab's close button removes it and shows a neighbouring view.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
