@@ -729,6 +729,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:create_session"],
     journeys: ["bots"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-074",
@@ -738,6 +739,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:worker_stats"],
     journeys: ["bots"],
     web: "required",
+    phone: "backlog",
   },
 ];
 
