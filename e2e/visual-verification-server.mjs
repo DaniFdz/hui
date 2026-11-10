@@ -53,6 +53,12 @@ async function verification(request, response) {
     else delete process.env.HUI_JIRA_TEST_ORIGIN;
     return response.end(JSON.stringify({ origin }));
   }
+  if (request.url === "/__verification/activity" && request.method === "POST") {
+    // A shared test's activity world (e2e/fixtures/activity-world.ts): a session's Durable turns stamped at the times
+    // the test picked, recorded through this gateway's own harness, which owns the store. Loaded only when asked.
+    const { recordWork } = await import("./fixtures/activity-world.ts");
+    return response.end(JSON.stringify(await recordWork(await readJson(request))));
+  }
   if (request.url === "/__verification/shutdown" && request.method === "POST") {
     response.end(JSON.stringify({ stopping: true }));
     process.send?.({ type: "shutdown" });

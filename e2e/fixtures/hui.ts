@@ -2,8 +2,9 @@
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against (restartable against the same
  * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
  * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, cleanup
- * of the backlog tasks a test created, the Jira world a test starts for itself, searches of the gateway's state and
- * secret directories, and every step whose gesture or reading would differ per platform, kept in one table per target that the web fills: opening, reloading
+ * of the backlog tasks a test created, the Jira and activity worlds a test starts for itself, searches of the
+ * gateway's state and secret directories, and every step whose gesture or reading would differ per platform, kept in
+ * one table per target that the web fills: opening, reloading
  * and clearing the app, taps, holds, drags held mid-way, context menus, a message's actions (a hover reveals its
  * footer), switches (a Web Awesome switch draws its track over its input, so the web taps the point), attachments,
  * sideways scrolling, downloads, the clipboard, the Work pane's launcher (the + menu writes each shortcut on its entry
@@ -19,7 +20,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
@@ -61,6 +62,12 @@ export type Hui = {
    * it. `created` lists the work items HUI created on it.
    */
   jira(): Promise<{ origin: string; created(): Promise<{ key: string; fields: Record<string, unknown> }[]> }>;
+  /**
+   * Records one session of work at times this test picks, as a Durable conversation stamped then and the row the
+   * Calendar tab lists it through (`e2e/fixtures/activity-world.ts`). `project` names a directory under the fixture's
+   * workspace, so the calendar's Group by → Project shows it.
+   */
+  recordWork(work: { title: string; group?: string; project?: string; model?: string; blocks: { from: Date; minutes: number; firstMessage: string }[] }): Promise<{ id: string }>;
   /** Waits until the open conversation's stream holds an open WebSocket, so a drop lands on a live stream. */
   streamOpen(): Promise<void>;
   dropStreams(): Promise<void>;
@@ -152,7 +159,7 @@ export type Hui = {
 };
 
 /** The steps whose gesture or reading differs per platform; each target fills its own table of them. */
-type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "jira" | "restartGateway" | "exitRuntimes" | "repository">;
+type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "jira" | "recordWork" | "restartGateway" | "exitRuntimes" | "repository">;
 
 /** A tap at the middle of where a target is at the moment of the press. */
 const tapAt = async (target: Locator) => {
@@ -887,6 +894,13 @@ export const test = base.extend<{ hui: Hui }>({
           created: async () => (await (await fetch(`${world.origin}/control/created`)).json()) as { key: string; fields: Record<string, unknown> }[],
         };
       },
+      recordWork: (work) => verification<{ id: string }>("POST", "/__verification/activity", {
+        title: work.title,
+        group: work.group ?? "",
+        cwd: join(receipt.workspace, work.project ?? basename(receipt.workspace)),
+        ...(work.model ? { model: work.model } : {}),
+        blocks: work.blocks.map(({ from, minutes, firstMessage }) => ({ from: from.valueOf(), minutes, firstMessage })),
+      }),
       restartGateway: async () => {
         const stopped = receipt.serverPid;
         process.kill(receipt.runnerPid, "SIGUSR2");
