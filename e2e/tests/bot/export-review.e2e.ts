@@ -1,6 +1,8 @@
 /** Export… reviews a bot before anything leaves: every change by group with its reason and picker, what the cleanup
  * took out, what it needs, what stays behind and the files as they will be saved, all following the picks; Download
- * saves the zip, and a bot with no soul yet or one that changed since its review is refused with the reason (BOT-061). */
+ * saves the zip, and a bot with no soul yet or one that changed since its review is refused with the reason (BOT-061).
+ * Missed something? adds a passage the review did not flag, and refuses one the bot doesn't hold as the review read it
+ * (BOT-062). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
@@ -98,4 +100,42 @@ test("Export… lists every change by group with its reason and picker, the clea
   const empty = await openExport(screen, hui, "Unwritten");
   await expect(empty.getByRole("alert")).toHaveText(/Unwritten has no soul yet: finish its first conversation, then export it\./u);
   await expect(empty.getByRole("button", "Download")).toBeHidden();
+});
+
+test("Missed something? adds a passage no change touches to the changes and to the files as they will be saved, and refuses a passage the bot doesn't hold or one the cleanup changed with the reason", { tags: ["BOT-062"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const settings = await hui.api<Settings>("GET", "/__hui/settings");
+  await hui.api("PUT", "/__hui/settings", { ...settings, models: { ...settings.models, utility: "hui-e2e/fixture" } });
+  await hui.api("POST", "/__hui/bots", { name: "Misser", title: "Fixture reviewer", soul: `${SOUL}\nThe fixture project is called Quasar.\n` });
+
+  const dialog = await openExport(screen, hui, "Misser");
+  await expect(dialog.getByText(/^Added by you\./u)).toHaveCount(0);
+  await dialog.getByText("Missed something?").tap();
+  const passage = dialog.getByRole("textbox", "Passage");
+  const add = dialog.getByRole("button", "Add");
+
+  // A passage the bot doesn't hold, and a sentence whose wording the cleanup changed (the e-mail is gone from it).
+  await passage.fill("Mentions a beach house in Lisbon.");
+  await add.tap();
+  await expect(dialog.getByRole("alert")).toHaveText(/It isn't in the bot's text as the review read it: copy it from text no change touches\./u);
+  await passage.fill("Write to pat.doe@example.com when CI is red.");
+  await add.tap();
+  await expect(dialog.getByRole("alert")).toHaveText(/It isn't in the bot's text as the review read it: copy it from text no change touches\./u);
+
+  // A passage no change touches, taken out and replaced, reaches the changes and the files the picks make.
+  await dialog.getByText("Files as they will be saved").tap();
+  await dialog.getByText("SOUL.md", { exact: true }).last().tap();
+  const soulFile = async () => (await dialog.getByText(/^# Who I am/u).textContent()) ?? "";
+  await expect.poll(soulFile).toContain("The fixture project is called Quasar.");
+  await passage.fill("The fixture project is called Quasar.");
+  await dialog.getByRole("textbox", "Becomes").fill("the fixture project");
+  await add.tap();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(dialog.getByText("The fixture project is called Quasar.", { exact: true })).toBeVisible();
+  await expect(dialog.getByText(/^Added by you\./u)).toBeVisible();
+  await expect.poll(soulFile).toContain("the fixture project");
+  expect(await soulFile()).not.toContain("Quasar");
+
+  await dialog.getByRole("button", "Undo").tap();
+  await expect(dialog.getByText("The fixture project is called Quasar.", { exact: true })).toHaveCount(0);
+  await expect.poll(soulFile).toContain("The fixture project is called Quasar.");
 });
