@@ -32,6 +32,7 @@ import { defaultExecutableProbe, resolveBrowserExecutable, type BrowserExecutabl
 import { KeyParseError, parseKey, type KeyStroke } from "./keys.ts";
 import { buildHar, describeEntry, NetworkLog } from "./network.ts";
 import { describeMetrics, describeTimings, formatBytes, navigationFromEntry, type MetricMap, type PaintTiming } from "./performance.ts";
+import { describeCookies, describeStorage, matching, type CookieInfo, type StorageEntry } from "./storage.ts";
 import { allowsUrl, blockedOriginMessage } from "./origins.ts";
 import type { SiteSecret, SiteSecretView } from "./secrets.ts";
 import { clampSnapshotChars, renderSnapshot, SnapshotRefs, type AxNode, type SnapshotOptions, type SnapshotResult, type SnapshotTarget } from "./snapshot.ts";
@@ -71,7 +72,7 @@ export type BrowserViewHandle = {
 
 export const BROWSER_ACTIONS = [
   "status", "tabs", "open", "navigate", "back", "forward", "reload", "focus", "close",
-  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps", "get", "is", "network", "performance",
+  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps", "get", "is", "network", "performance", "storage",
 ] as const;
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
 export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "upload", "scroll", "wait"] as const;
@@ -145,6 +146,8 @@ type Tab = {
   lastSnapshot?: { loaderId: string; lines: string[] };
   /** `Performance.enable` was sent on this tab, so its counters accumulate. */
   metricsEnabled?: boolean;
+  /** `Network.enable` was sent for cookie reads (capture has its own log). */
+  cookiesEnabled?: boolean;
 };
 
 type Viewer = { owner: string; listener: BrowserViewListener; pinned: string | null; watching: string | null; closed: boolean };
@@ -563,6 +566,13 @@ const CONTAINS_HIT = String.raw`function (other, x, y) {
   const classes = typeof element.className === "string" ? element.className.trim().split(/\s+/).filter(Boolean).slice(0, 2) : [];
   return { contains: false, cover: element.tagName.toLowerCase() + (element.id ? "#" + element.id : "") + classes.map((name) => "." + name).join("") };
 }`;
+
+/** A page's storage keys and their value sizes, never the values. */
+function storageScript(kind: "local" | "session"): string {
+  const store = `${kind}Storage`;
+  return `Array.from({ length: ${store}.length }, (_, index) => ${store}.key(index))
+    .map((key) => ({ key, size: (${store}.getItem(key) ?? "").length }))`;
+}
 
 /** The document's own navigation, paint and resource entries, in milliseconds. */
 const TIMING_SCRIPT = String.raw`(() => {
@@ -1019,6 +1029,7 @@ export class ManagedBrowser {
       case "is": return this.#is(owner, params);
       case "network": return this.#network(owner, params, context.cwd);
       case "performance": return this.#performance(owner, params);
+      case "storage": return this.#storage(owner, params);
       case "resize": return this.#resize(owner, params);
       case "handoff": return this.#handoff(owner, params);
       case "secret": return this.#secret(owner, params);
@@ -2755,6 +2766,60 @@ export class ManagedBrowser {
     const result = await this.#call(instance, tab, objectId, ELEMENT_IS, [state]);
     const value = isRecord(result) && result["value"] === true;
     return { text: `${label} is ${value ? "" : "not "}${state}.`, details: { action: "is", state, value, tab: this.#tabDetails(tab) } };
+  }
+
+  /** What the page keeps: its cookies and storage, by name only. */
+  async #storage(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const what = params["what"] ?? "cookies";
+    if (what !== "cookies" && what !== "local" && what !== "session") {
+      throw new BrowserToolError("storage needs what: cookies, local or session.");
+    }
+    const filter = typeof params["filter"] === "string" ? params["filter"].slice(0, 200) : "";
+    const lines = [this.#header(tab)];
+    let count = 0;
+    if (what === "cookies") {
+      if (!tab.cookiesEnabled) {
+        await instance.connection.send("Network.enable", {}, tab.session);
+        tab.cookiesEnabled = true;
+      }
+      const reported = await instance.connection.send("Network.getCookies", { urls: [tab.url] }, tab.session);
+      const cookies: CookieInfo[] = (Array.isArray(reported["cookies"]) ? reported["cookies"] : []).flatMap((entry) => {
+        if (!isRecord(entry)) return [];
+        const name = str(entry["name"]);
+        if (!name) return [];
+        return [{
+          name,
+          ...(typeof entry["domain"] === "string" ? { domain: entry["domain"] } : {}),
+          ...(typeof entry["path"] === "string" ? { path: entry["path"] } : {}),
+          ...(typeof entry["expires"] === "number" ? { expires: entry["expires"] } : {}),
+          ...(typeof entry["httpOnly"] === "boolean" ? { httpOnly: entry["httpOnly"] } : {}),
+          ...(typeof entry["secure"] === "boolean" ? { secure: entry["secure"] } : {}),
+          ...(typeof entry["sameSite"] === "string" ? { sameSite: entry["sameSite"] } : {}),
+          ...(typeof entry["size"] === "number" ? { size: entry["size"] } : {}),
+        }];
+      });
+      const shown = matching(cookies, filter);
+      count = shown.length;
+      lines.push("", ...describeCookies(shown, { url: tab.url, now: Date.now() }));
+      if (filter && shown.length !== cookies.length) lines.push(`Filtered to "${filter}" from ${cookies.length}.`);
+    } else {
+      const result = await instance.connection.send("Runtime.evaluate", { expression: storageScript(what), returnByValue: true }, tab.session, 5_000);
+      if (isRecord(result["exceptionDetails"])) throw new BrowserToolError("The page refused a storage read; it may block storage in this context.");
+      const value = isRecord(result["result"]) ? result["result"]["value"] : undefined;
+      const entries: StorageEntry[] = (Array.isArray(value) ? value : []).flatMap((entry) => {
+        if (!isRecord(entry)) return [];
+        const key = str(entry["key"]);
+        return key ? [{ key, size: num(entry["size"]) }] : [];
+      });
+      const shown = matching(entries, filter);
+      count = shown.length;
+      lines.push("", ...describeStorage(what, shown, originOf(tab.url)));
+      if (filter && shown.length !== entries.length) lines.push(`Filtered to "${filter}" from ${entries.length}.`);
+    }
+    lines.push("", "Values are never read: a cookie or storage value is usually a session token.");
+    return { text: lines.join("\n"), details: { action: "storage", what, tab: this.#tabDetails(tab), entries: count } };
   }
 
   /** What the page costs: the renderer's counters, or the document's own timings. */

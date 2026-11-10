@@ -1063,6 +1063,12 @@ reporting success, and a ref whose node was replaced keeps working when exactly
 one laid-out element still has its role and name — otherwise it fails as stale
 or ambiguous rather than acting on the wrong element.
 
+**What a page keeps is listed without its contents.** `storage` reads the
+cookies for the tab's URL (name, flags, SameSite, expiry, size, path) or the
+keys of `localStorage` and `sessionStorage` (name and value size). Values are
+never read or printed, because a cookie or storage value is usually a session
+token and the transcript outlives the tab. A `filter` narrows by name, and an
+empty result says so.
 **What a page costs is measured, not guessed.** `performance` with
 `operation: "metrics"` reads the renderer's own counters (JS heap used and
 total, DOM nodes, documents, frames, JS listeners, layout and style-recalculation
