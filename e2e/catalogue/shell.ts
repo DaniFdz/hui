@@ -18,7 +18,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-002",
@@ -29,7 +29,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:page", "nav:kanban", "nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-003",
@@ -44,7 +44,7 @@ const cases: UseCase[] = [
       "webawesome-controls",
     ],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-004",
@@ -55,7 +55,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-005",
@@ -66,7 +66,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:session", "nav:bot", "route:POST /__hui/sessions/:id/open"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-006",
@@ -77,7 +77,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:home", "nav:page", "nav:settings", "nav:session"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-007",
@@ -92,7 +92,7 @@ const cases: UseCase[] = [
       "visual-parity-2026-09-24",
     ],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-011",
@@ -108,7 +108,7 @@ const cases: UseCase[] = [
       "visual-parity-2026-09-24",
     ],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-012",
@@ -124,7 +124,7 @@ const cases: UseCase[] = [
       "sidebar-toolbar",
     ],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-013",
@@ -190,7 +190,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:page", "nav:settings", "nav:session"],
     journeys: ["visual-parity-2026-09-24", "webawesome-controls"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-020",
@@ -201,7 +201,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-021",
@@ -212,7 +212,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-022",
@@ -223,7 +223,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-023",
@@ -234,7 +234,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-024",
@@ -245,7 +245,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-025",
@@ -266,7 +266,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-notifications"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-027",
@@ -277,7 +277,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-notifications"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-028",
@@ -287,7 +287,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-029",
@@ -298,7 +298,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["clipboard-fallback"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-031",
@@ -320,7 +320,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["update-notice"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-033",
@@ -340,7 +340,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["update-notice"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-034",
@@ -367,7 +367,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["update"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-036",
@@ -378,7 +378,7 @@ const cases: UseCase[] = [
     surfaces: ["command:update", "route:POST /__hui/update/check"],
     journeys: ["update"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-037",
@@ -389,7 +389,7 @@ const cases: UseCase[] = [
     surfaces: ["command:update"],
     journeys: ["update"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-038",
@@ -468,7 +468,7 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-045",
@@ -478,7 +478,7 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-046",
@@ -488,7 +488,7 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-047",
@@ -498,7 +498,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "SHELL-048",

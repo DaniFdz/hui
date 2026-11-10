@@ -16,7 +16,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-002",
@@ -26,7 +26,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-003",
@@ -36,7 +36,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-004",
@@ -46,7 +46,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-005",
@@ -66,7 +66,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-007",
@@ -76,7 +76,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["ask-user-question", "secret-requests"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-008",
@@ -86,7 +86,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["ask-user-question", "secret-requests"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-009",
@@ -96,7 +96,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-010",
@@ -106,7 +106,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-011",
@@ -116,7 +116,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-013",
@@ -146,7 +146,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-016",
@@ -156,7 +156,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-017",
@@ -166,7 +166,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-018",
@@ -206,7 +206,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["ask-user-question", "secret-requests", "task-suggestions"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-022",
@@ -246,7 +246,7 @@ const cases: UseCase[] = [
     surfaces: ["row:subagentEvent"],
     journeys: ["subagent-steering", "subagent-delivery"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-026",
@@ -344,7 +344,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-037",
@@ -354,7 +354,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher", "route:GET /__hui/sessions/:id/watchers/:wid/log"],
     journeys: ["watchers"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-038",
@@ -364,7 +364,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/stop"],
     journeys: ["watchers"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-039",
@@ -374,7 +374,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/restart"],
     journeys: ["watchers"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-040",
@@ -384,7 +384,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id/watchers/:wid"],
     journeys: ["watchers"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-062",
@@ -394,7 +394,7 @@ const cases: UseCase[] = [
     surfaces: ["row:watcherEvent"],
     journeys: ["watchers"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-063",
@@ -404,7 +404,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-041",
@@ -433,7 +433,7 @@ const cases: UseCase[] = [
     spec: WATCHERS,
     surfaces: ["tool:watcher"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-044",
@@ -443,7 +443,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["watchers"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-045",
@@ -532,7 +532,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#task-progress"],
     surfaces: ["setting:chat.collapseTaskProgress", "setting:models.utility"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
   {
     id: "AGENT-054",
@@ -619,7 +619,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#clickable-desktop-notifications", "docs/api.md#desktop-notifications"],
     surfaces: ["tool:notify_user"],
     web: "required",
-    phone: "required",
+    phone: "backlog",
   },
 ];
 

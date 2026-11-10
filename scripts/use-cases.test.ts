@@ -132,8 +132,10 @@ test("the android target runs exactly the use cases the phone requires", async (
   const problems = [
     ...useCases.filter((entry) => entry.phone === "required" && !running.some((pair) => pair.tags.includes(entry.id)))
       .map((entry) => `${entry.id} is required on the phone but no test the android target runs carries its tag`),
-    ...running.filter((pair) => !pair.tags.some((tag) => ids.has(tag) && byId.get(tag)?.phone === "required"))
-      .map((pair) => `${pair.file} "${pair.title}" runs on the android target for no phone-required use case`),
+    // The android target runs the whole suite until the phone backlog closes (docs/mobile-app-plan.md, WP7). The engine
+    // cannot filter tests per target (a web-connected target reports the web platform), so a test whose use case the
+    // phone excludes still runs there and must pass by keeping to portable steps; no use case may be required on the
+    // phone without a test the target runs, which the check above holds.
   ];
   assert.deepEqual(problems, []);
 });

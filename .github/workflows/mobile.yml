@@ -73,6 +73,9 @@ jobs:
     runs-on: ubuntu-latest
     # A shard's boot, its share of the suite (~100 tests at ~12 s each, each relaunching the app) and the gateway build.
     timeout-minutes: 45
+    # Advisory until the phone backlog closes (docs/mobile-app-plan.md, owner decision O2: required after 20 green runs).
+    # It runs the whole suite so the failures ARE the backlog a WP7 area works from; the traces say which.
+    continue-on-error: true
     needs: android-build
     strategy:
       fail-fast: false
