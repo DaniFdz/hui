@@ -19,6 +19,14 @@ const within = async (inner: Locator, outer: Locator) => {
   return a.x >= b.x && a.x + a.width <= b.x + b.width;
 };
 
+/**
+ * A drawing fills the turn it sits in. An embed's width is a percentage of the turn, so a bubble sized to its own
+ * content resolves those percentages against itself and collapses the drawing, and every label with it: a flowchart
+ * drawn 92 px wide in a 768 px transcript, and 104 px on the phone, passed every containment check before this.
+ */
+const fillsTheTurn = async (drawn: Locator, transcript: Locator) =>
+  (await drawn.boundingBox())!.width > (await transcript.boundingBox())!.width / 2;
+
 test("A mermaid fence shows Rendering diagram…, then the diagram within the transcript on a phone, drawn again after a reload", { tags: ["RICH-010"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.phoneScreen();
   const renderer = await hui.intercept("GET", /mermaid/u);
@@ -29,6 +37,7 @@ test("A mermaid fence shows Rendering diagram…, then the diagram within the tr
   await expect(diagram.getByText("Useful model")).toBeVisible();
   await expect(transcript.getByText("Rendering diagram…")).toBeHidden();
   expect(await within(diagram, transcript)).toBe(true);
+  expect(await fillsTheTurn(diagram, transcript)).toBe(true);
   for (const label of ["Idea", "Explain clearly", "Use concise prose"]) await expect.poll(() => within(diagram.getByText(label), diagram)).toBe(true);
   expect(await hui.overflowX()).toBe(0);
 
@@ -54,6 +63,7 @@ test("chart, vega-lite and vegalite fences show Rendering chart…, then charts 
   await expect(charts.getByRole("button", "Open chart viewer")).toHaveCount(3);
   for (const drawn of await charts.all()) {
     expect(await within(drawn, transcript)).toBe(true);
+    expect(await fillsTheTurn(drawn, transcript)).toBe(true);
     for (const label of ["Prose", "Chart"]) await expect.poll(() => within(drawn.getByText(label, { exact: true }), drawn)).toBe(true);
   }
   await expect(transcript.getByText("Rendering chart…")).toBeHidden();
