@@ -52,7 +52,7 @@ export const OptChatDoc = defineDoc<OptChatState>({
 
 /** The global extension (hooks and the prompt section), in every conversation's default selection. */
 export const OPTCHAT_EXTENSION = "hui-optchat";
-/** zoom and date, selected only by enabled conversations: other conversations are never offered them. */
+/** zoom, date and search_chat, selected only by enabled conversations: other conversations are never offered them. */
 export const OPTCHAT_TOOLS_EXTENSION = "hui-optchat-tools";
 
 /** A change to the document: a given field replaces the stored one, `null` clears it, `undefined` keeps it. */
@@ -87,6 +87,7 @@ const THINKING = new Set<string>(THINKING_LEVELS);
 const CALL_TIMEOUT_MS = 120_000;
 const ZOOM = "Open the line id+n of the view into the two lines of n/2 under it; n = 1 gives the message whole.";
 const DATE = "The date and time of message id.";
+const SEARCH = "Search the whole chat, not just the view: the lines of the messages that mention query, newest first, each named id+1 so zoom(id, 1) opens it whole.";
 const NO_USAGE: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -451,6 +452,11 @@ export class OptChatManager {
           name: "date", description: DATE, parameters: Type.Object({ id: Type.Integer() }), replay: "safe",
           execute: async ({ id }, api) => this.#answer(api.conversationId, (memory) => memory.date(id)),
         }),
+        defineTool({
+          name: "search_chat", description: SEARCH,
+          parameters: Type.Object({ query: Type.String(), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })) }), replay: "safe",
+          execute: async ({ query, limit }, api) => this.#answer(api.conversationId, (memory) => memory.search(query, limit)),
+        }),
       ],
     });
   }
@@ -472,7 +478,7 @@ export class OptChatManager {
     return (await this.#harness?.snapshot(OptChatDoc, conversationId, context))?.enabled === true;
   }
 
-  /** The extension carrying zoom and date when the conversation has OptChat; its session selects it. */
+  /** The extension carrying zoom, date and search_chat when the conversation has OptChat; its session selects it. */
   async toolsFor(conversationId: ConversationId): Promise<Extension | undefined> {
     return await this.enabled(conversationId) ? this.toolsExtension : undefined;
   }
@@ -492,6 +498,10 @@ export class OptChatManager {
 
   async date(conversationId: ConversationId, id: number): Promise<string | undefined> {
     return (await this.#current(conversationId))?.memory.date(id);
+  }
+
+  async search(conversationId: ConversationId, query: string, limit?: number): Promise<string | undefined> {
+    return (await this.#current(conversationId))?.memory.search(query, limit);
   }
 
   /** The browse page: view, every message and each tree level. */

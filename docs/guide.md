@@ -371,8 +371,9 @@ MEMORY.md never leave with an export. Its chat's **history** is
 [OptChat](optchat.md): every message is kept word for word and a cheap model
 condenses it into a tree of one-line summaries, so each turn starts fresh from a
 bounded view of the whole history (64 to 128 KB) and the bot opens a line (`zoom`)
-when it needs the detail. The chat is never compacted or cleared; when a turn has
-to wait for the newest messages to be summarized, `hui bot chat` says
+or searches it (`search_chat`) when it needs the detail. The chat is never
+compacted or cleared; when a turn has to wait for the newest messages to be
+summarized, `hui bot chat` says
 "Summarizing memory…". `hui bot memory` shows MEMORY.md, `hui bot user` USER.md,
 and `hui bot history` the chat's own history (`--zoom`, `--html`).
 

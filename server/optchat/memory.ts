@@ -11,6 +11,7 @@
 import { browsePage } from "./html.ts";
 import { Compactor, SYSTEM_TIMERS, type Failing, type Limiter, type Summarize, type SummaryUsage, type Timers } from "./compactor.ts";
 import { compactPrompt } from "./prompts.ts";
+import { searchLog } from "./search.ts";
 import { Store, type JsonValue, type Kind, type MessageLine } from "./store.ts";
 import { bytes, capText, flatten, localDateTime } from "./text.ts";
 import { label, nodeCount, partAt, PLACEHOLDER, Tree, type Part } from "./tree.ts";
@@ -235,6 +236,14 @@ export class OptChatMemory {
   date(id: number): string {
     const message = isIndex(id) ? this.#log[id] : undefined;
     return message ? localDateTime(new Date(message.date)) : `No message ${id}.`;
+  }
+
+  /**
+   * The search tool: the messages mentioning `query`, newest first, each as the view's line `id+1` that
+   * `zoom(id, 1)` opens whole. It reads the log, which append-only means it changes nothing.
+   */
+  search(query: string, limit?: number): string {
+    return searchLog(this.#log, query, limit);
   }
 
   /** The current view, rendered. */

@@ -310,11 +310,11 @@ const cases: UseCase[] = [
   {
     id: "BOT-035",
     title: "Let a bot recall older parts of its chat",
-    behaviour: "Asked about something said long ago, the bot opens older lines of its memory and when they were said, and its chat shows those zoom and date calls before an answer that quotes them. Its chat is never compacted.",
+    behaviour: "Asked about something said long ago, the bot searches its whole chat and opens the lines it finds, and its chat shows those search_chat, zoom and date calls (each search named \"Searched for <query>\") before an answer that quotes them. A search that finds nothing says so, and an empty query is refused. Its chat is never compacted.",
     spec: ["SPEC.md#bots", "docs/api.md#bots"],
-    surfaces: ["tool:zoom", "tool:date"],
+    surfaces: ["tool:zoom", "tool:date", "tool:search_chat"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
   },
   {
     id: "BOT-036",
