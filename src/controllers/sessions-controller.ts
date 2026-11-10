@@ -16,7 +16,7 @@ import { isGatewayUnavailable } from "../api/request.ts";
 import { forgetConversation, reconcileSavedConversations, savedConversationGroups } from "../lib/session/offline-store.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import { navigationPath } from "../lib/navigation.ts";
-import { nativeShell } from "../lib/native-shell.ts";
+import { nativeShell, type NativeShell } from "../lib/native-shell.ts";
 import { mergeSessionStatuses } from "../lib/session/ui-state.ts";
 import { sessionTreeIds } from "../lib/session/tree.ts";
 import { worktreesOnlyUsedBy, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "../lib/worktrees.ts";
@@ -36,14 +36,6 @@ function readCollapsed(): Set<string> {
 }
 
 type SessionsHost = ReactiveControllerHost & Pick<HTMLElement, "querySelector">;
-
-/** The shell's notification slot for a session: a stable 31-bit hash, so a session that settles twice replaces its own
- * notification instead of stacking a second one. */
-function notificationSlot(id: string): number {
-  let hash = 0;
-  for (let index = 0; index < id.length; index += 1) hash = (Math.imul(hash, 31) + id.charCodeAt(index)) | 0;
-  return (Math.abs(hash) % 2_000_000_000) + 1;
-}
 
 type SessionsDeps = {
   presented: (id: string) => boolean;
@@ -96,6 +88,9 @@ export class SessionsController {
   #streamWanted = false;
   /** One lightweight connection keeps background session lifecycle visible. */
   #statusStreamStop: (() => void) | undefined;
+  /** The phone shell's notification slot per session, handed out in the order sessions announce themselves: a session
+   * that settles twice replaces its own notification, and two sessions can never land in one slot. */
+  #notificationSlots = new Map<string, number>();
   #archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
   #actionToastTimer: ReturnType<typeof setTimeout> | undefined;
   #worktreePoll: ReturnType<typeof setTimeout> | undefined;
@@ -511,7 +506,11 @@ export class SessionsController {
   #applyStatusUpdate = (update: SessionStatusUpdate) => {
     const { id, status, unread, creating, creationError, title } = update;
     const presented = this.#deps.presented(id);
-    const previous = this.statuses.get(id) ?? this.listed(id)?.status;
+    // Only a phone shell has anything to say about a settled turn, so a browser pays for neither lookup an announcement
+    // needs. The row is read once here and handed to the announcement rather than looked up a second time.
+    const shell = nativeShell();
+    const session = shell ? this.listed(id) : undefined;
+    const previous = shell ? this.statuses.get(id) ?? session?.status : undefined;
     this.statuses.set(id, status);
     if (unread !== undefined) this.unread.set(id, unread);
     // A settled worktree session now has its real title and directory, or its error.
@@ -533,30 +532,37 @@ export class SessionsController {
     }));
     this.#host.requestUpdate();
     if (created) void this.refresh(true);
-    this.#announceActivity(previous, update);
+    if (shell) this.#announceActivity(shell, update, previous, session);
     this.#deps.statusApplied(update);
   };
 
   /** A phone in the background cannot show a turn that settled or a question that waits: the shell says it. The seam
-   * is silent in a browser and while the shell is in the foreground, so nothing here changes the web. */
-  #announceActivity(previous: SessionStatus | undefined, update: SessionStatusUpdate): void {
-    const shell = nativeShell();
-    if (!shell || previous === undefined || previous === update.status) return;
+   * is silent while the shell is in the foreground, and a browser never gets here, so nothing changes the web. */
+  #announceActivity(shell: NativeShell, update: SessionStatusUpdate, previous: SessionStatus | undefined, session: SessionView | undefined): void {
+    if (previous === undefined || previous === update.status) return;
     const waiting = update.status === "waiting";
     const finished = update.status === "idle" && (previous === "running" || previous === "waiting");
     if (!waiting && !finished) return;
-    const session = this.listed(update.id);
     // A subagent's own turn is its parent's news, not a notification of its own.
     if (session?.parentId) return;
     const path = session?.bot
       ? navigationPath({ kind: "bot", id: session.bot.id })
       : navigationPath({ kind: "session", id: update.id });
     void shell.notify({
-      id: notificationSlot(update.id),
+      id: this.#notificationSlot(update.id),
       title: update.title ?? session?.title ?? "HUI",
       body: waiting ? "Waiting for your answer" : "Its turn finished",
       path,
     });
+  }
+
+  /** This session's notification slot, allocated the first time it announces itself so no two sessions can collide. */
+  #notificationSlot(id: string): number {
+    const existing = this.#notificationSlots.get(id);
+    if (existing !== undefined) return existing;
+    const slot = this.#notificationSlots.size + 1;
+    this.#notificationSlots.set(id, slot);
+    return slot;
   }
 
   #applyListChange = (update: SessionListUpdate) => {

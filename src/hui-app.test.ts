@@ -67,6 +67,7 @@ type Shell = {
   activePaneApp: () => { handleGlobalEscape: (event: KeyboardEvent) => void } | undefined;
   onGlobalKeyDown: (event: KeyboardEvent) => void;
   handleGlobalEscape: (event: KeyboardEvent) => void;
+  handleSystemBack: () => boolean;
   closeSettings: () => void;
   scrollToBottom: () => void;
   continueRun: () => void;
@@ -107,7 +108,7 @@ function escape() {
 beforeEach(() => {
   api.calls = [];
   textarea.calls = [];
-  vi.stubGlobal("document", { querySelector: () => null });
+  vi.stubGlobal("document", { querySelector: () => null, querySelectorAll: () => [] });
   vi.stubGlobal("HTMLDialogElement", class {});
 });
 
@@ -166,6 +167,7 @@ test("Escape on the shell's frame closes the mobile drawer", () => {
 
 test("document-level Escape closes Settings or stops the running turn", () => {
   const app = shell();
+  app.renderRoot = { querySelector: () => null };
   let closed = 0;
   app.closeSettings = () => { closed += 1; };
   app.settingsOpen = true;
@@ -175,6 +177,7 @@ test("document-level Escape closes Settings or stops the running turn", () => {
   assert.equal(event.defaultPrevented, true);
 
   const embedded = shell();
+  embedded.renderRoot = { querySelector: () => null };
   let aborted = 0;
   embedded.composer.abort = () => { aborted += 1; };
   embedded.embeddedPane = true;
@@ -187,6 +190,78 @@ test("document-level Escape closes Settings or stops the running turn", () => {
   embedded.conversation.stopping = true;
   embedded.handleGlobalEscape(escape());
   assert.equal(aborted, 1);
+});
+
+test("Escape and a back press close the same overlays, and only Escape stops the turn", () => {
+  // A turn is not an overlay: the app that shows it keeps it running on a back press and stops it on Escape.
+  const app = shell();
+  app.renderRoot = { querySelector: () => null };
+  app.embeddedPane = true;
+  app.conversation.select(session("s1"));
+  let aborted = 0;
+  app.composer.abort = () => { aborted += 1; };
+  app.conversation.streaming = true;
+  assert.equal(app.handleSystemBack(), false, "a bare conversation has nothing for a press to close");
+  assert.equal(aborted, 0, "a back press never stops a running turn");
+  assert.equal(app.handleSystemBack(), false, "and again: nothing changed, so the press is still the shell's");
+  assert.equal(aborted, 0);
+
+  const stop = escape();
+  app.handleGlobalEscape(stop);
+  assert.equal(aborted, 1, "Escape still stops it");
+  assert.equal(stop.defaultPrevented, true);
+
+  let closed = 0;
+  app.closeSettings = () => { closed += 1; };
+  app.settingsOpen = true;
+  app.conversation.streaming = false;
+  assert.equal(app.handleSystemBack(), true, "back closes Settings, the way Escape does");
+  assert.equal(closed, 1);
+
+  app.settingsOpen = false;
+  let sideChat = 0;
+  app.composer.sideChat = { question: "why?", answer: "because", model: "m", loading: false, error: "" };
+  app.composer.closeSideChat = () => { sideChat += 1; };
+  assert.equal(app.handleSystemBack(), true, "and the side chat before it");
+  assert.equal(sideChat, 1);
+});
+
+test("a dialog is the topmost thing either press closes, and only the one on top", () => {
+  const app = shell();
+  app.settingsOpen = true;
+  app.closeSettings = () => { throw new Error("a dialog closed first"); };
+  const closed: string[] = [];
+  const dialog = (id: string, takesItself: boolean) => ({
+    dispatchEvent: () => takesItself,
+    close: () => closed.push(id),
+  });
+  // The last open dialog is the one on top: the press goes to it and nothing underneath it moves.
+  vi.stubGlobal("document", { querySelector: () => null, querySelectorAll: () => [dialog("under", true), dialog("top", true)] });
+  assert.equal(app.handleSystemBack(), true);
+  assert.deepEqual(closed, ["top"]);
+
+  // A dialog that answers its own `cancel` keeps its closing in flight.
+  vi.stubGlobal("document", { querySelector: () => null, querySelectorAll: () => [dialog("self-closing", false)] });
+  assert.equal(app.handleSystemBack(), true, "the press is still consumed");
+  assert.deepEqual(closed, ["top"], "nothing else closes it on the page's behalf");
+});
+
+test("a back press on a phone closes the narrow drawer before it closes the pane", () => {
+  const app = shell();
+  app.conversation.select(session("s1"));
+  app.work.narrow = true;
+  app.work.narrowShown = true;
+  const left: string[] = [];
+  app.work.leave = () => { left.push("pane"); };
+  const drawer = { dataset: { open: "true" } as DOMStringMap, querySelector: () => null } as unknown as HTMLElement;
+  vi.stubGlobal("matchMedia", () => ({ matches: true }) as MediaQueryList);
+  app.renderRoot = { querySelector: (selector: string) => (selector === '.sidebar[data-open="true"]' ? drawer : null) } as unknown as Shell["renderRoot"];
+  assert.equal(app.handleSystemBack(), true);
+  assert.equal(drawer.dataset.open, "false", "the drawer is what a back press closes first");
+  assert.deepEqual(left, [], "the pane waits for the next press");
+  app.renderRoot = { querySelector: () => null } as unknown as Shell["renderRoot"];
+  assert.equal(app.handleSystemBack(), true);
+  assert.deepEqual(left, ["pane"]);
 });
 
 test("embedded panes omit global monitors and delegate routing and Escape", () => {
@@ -205,6 +280,7 @@ test("embedded panes omit global monitors and delegate routing and Escape", () =
   assert.deepEqual(routed, ["s2"]);
 
   const host = shell();
+  host.renderRoot = { querySelector: () => null };
   const delegated: KeyboardEvent[] = [];
   host.activePaneApp = () => ({ handleGlobalEscape: (event) => delegated.push(event) });
   host.conversation.select(session("s1"));

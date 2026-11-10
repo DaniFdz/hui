@@ -1,7 +1,7 @@
 /**
  * The phone seam against a fake bridge: a browser with no bridge answers `null`, and in the shell every plugin call,
- * listener and policy (foreground silence, a consumed back press, a tapped notification opening its path) is what
- * `mobile/AGENTS.md` promises.
+ * listener and policy (foreground silence, the page's answer to a back press, a tapped notification opening its path)
+ * is what `mobile/AGENTS.md` promises.
  */
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
@@ -14,23 +14,19 @@ type Harness = {
   calls: Call[];
   /** Fires a plugin event the page subscribed to. */
   emit: (plugin: string, event: string, data: unknown) => void;
-  back: () => number;
-  minmized: () => number;
   pushed: string[];
   pops: () => number;
   shell: NativeShell;
 };
 
-const PLUGIN_ACTIONS = ["open", "schedule", "share", "setStyle", "forget", "minimizeApp"] as const;
+const PLUGIN_ACTIONS = ["open", "schedule", "share", "setStyle", "forget"] as const;
 
 /** A page as far as the adapter reads one: `window`, its `history`, its `location`, and the injected bridge. */
-function fakeShell(options: { platform?: string; history?: string[]; plugins?: readonly string[]; startActive?: boolean; navigation?: { canGoBack: boolean } } = {}): Harness {
+function fakeShell(options: { platform?: string; history?: string[]; plugins?: readonly string[]; startActive?: boolean } = {}): Harness {
   const calls: Call[] = [];
   const active = options.startActive ?? true;
   const listeners = new Map<string, Array<(data: unknown) => void>>();
   const entries = [...(options.history ?? ["/"])];
-  let backs = 0;
-  let minimized = 0;
   let pops = 0;
   const pushed: string[] = [];
   const plugins: Record<string, Record<string, unknown>> = {};
@@ -47,7 +43,6 @@ function fakeShell(options: { platform?: string; history?: string[]; plugins?: r
       Object.defineProperty(instance, action, {
         value: (payload: unknown) => {
           calls.push({ plugin: name, method: action, options: payload });
-          if (name === "App" && action === "minimizeApp") minimized += 1;
           return Promise.resolve();
         },
         enumerable: true,
@@ -67,9 +62,7 @@ function fakeShell(options: { platform?: string; history?: string[]; plugins?: r
       entries.push(url);
       page["location"] = { pathname: url, search: "" };
     },
-    back: () => { backs += 1; },
   };
-  if (options.navigation) page["navigation"] = options.navigation;
   page["Capacitor"] = { isNativePlatform: () => true, getPlatform: () => options.platform ?? "android", Plugins: plugins };
   vi.stubGlobal("window", page);
   const shell = nativeShell();
@@ -80,30 +73,39 @@ function fakeShell(options: { platform?: string; history?: string[]; plugins?: r
     emit: (name, event, data) => {
       for (const listener of [...(listeners.get(`${name}:${event}`) ?? [])]) listener(data);
     },
-    back: () => backs,
-    minmized: () => minimized,
     pushed,
     pops: () => pops,
     shell,
   };
 }
 
-/** A page whose own visibility the adapter also reads, so both signals are exercised. */
+/** A page whose own visibility the adapter also reads, and whose document carries the shell's `hui:back` press. */
 function fakeDocument(visibility: "visible" | "hidden" = "visible"): EventTarget & { visibilityState: string } {
   const page = Object.assign(new EventTarget(), { visibilityState: visibility });
   vi.stubGlobal("document", page);
   return page;
 }
 
-test("a browser has no shell: no window, no bridge, a web bridge, or no phone platform", () => {
+/** The shell's own press: a cancelable `hui:back` on the document, answered through `preventDefault()`. */
+function backPress(page: EventTarget): boolean {
+  const press = new Event("hui:back", { cancelable: true });
+  page.dispatchEvent(press);
+  return press.defaultPrevented;
+}
+
+test("a browser has no shell: no window, no bridge, a web bridge, or a phone it cannot name", () => {
   vi.stubGlobal("window", undefined);
   assert.equal(nativeShell(), null, "no window at all");
   vi.stubGlobal("window", {});
   assert.equal(nativeShell(), null, "a window without the injected bridge");
   vi.stubGlobal("window", { Capacitor: { isNativePlatform: () => false, getPlatform: () => "web", Plugins: {} } });
   assert.equal(nativeShell(), null, "Capacitor's own browser build");
-  vi.stubGlobal("window", { Capacitor: { getPlatform: () => "web", Plugins: {} } });
-  assert.equal(nativeShell(), null);
+  vi.stubGlobal("window", { Capacitor: { getPlatform: () => "android", Plugins: {} } });
+  assert.equal(nativeShell(), null, "a bridge that cannot say it is native");
+  vi.stubGlobal("window", { Capacitor: { isNativePlatform: () => true, getPlatform: () => "web", Plugins: {} } });
+  assert.equal(nativeShell(), null, "a bridge on a platform no shell knows");
+  vi.stubGlobal("window", { Capacitor: { isNativePlatform: () => true, Plugins: {} } });
+  assert.equal(nativeShell(), null, "a bridge that names no platform at all");
 });
 
 test("the shell names its platform and is the same shell for every caller", () => {
@@ -185,52 +187,46 @@ test("the status bar follows the mode the page resolved", async () => {
   ]);
 });
 
-test("a back press the page consumed stops there", () => {
+test("a back press runs every callback, and one answering true keeps it for the page", () => {
+  const page = fakeDocument();
+  const harness = fakeShell({ history: ["/", "/sessions/abc"] });
+  const first = vi.fn(() => false);
+  const second = vi.fn(() => true);
+  const third = vi.fn(() => false);
+  for (const callback of [first, second, third]) harness.shell.onBack(callback);
+  assert.equal(backPress(page), true);
+  assert.deepEqual([first, second, third].map((callback) => callback.mock.calls.length), [1, 1, 1], "every callback answers");
+  assert.deepEqual(harness.calls, [], "a consumed press asks the phone for nothing");
+});
+
+test("a press nothing consumed is the shell's: the page neither walks the history nor leaves the app", () => {
+  const page = fakeDocument();
+  const harness = fakeShell({ history: ["/", "/sessions/abc"] });
+  const back = vi.fn(() => false);
+  harness.shell.onBack(back);
+  assert.equal(backPress(page), false);
+  assert.equal(back.mock.calls.length, 1);
+  assert.deepEqual(harness.calls, [], "an unconsumed press is the shell's own back step, not the page's");
+});
+
+test("the App plugin's own back button is not what the page answers", () => {
+  fakeDocument();
   const harness = fakeShell({ history: ["/", "/sessions/abc"] });
   const back = vi.fn(() => true);
   harness.shell.onBack(back);
   harness.emit("App", "backButton", { canGoBack: true });
-  assert.equal(back.mock.calls.length, 1);
-  assert.equal(harness.back(), 0, "a consumed press never leaves the page");
-  assert.equal(harness.minmized(), 0);
+  assert.equal(back.mock.calls.length, 0, "the shell dispatches hui:back from its own callback, before the App plugin");
 });
 
-test("an unconsumed back press goes back in the shell's history", () => {
-  const harness = fakeShell({ history: ["/", "/sessions/abc"] });
-  const back = vi.fn((): boolean => false);
-  harness.shell.onBack(back);
-  harness.emit("App", "backButton", { canGoBack: true });
-  assert.equal(back.mock.calls.length, 1);
-  assert.equal(harness.back(), 1);
-  assert.equal(harness.minmized(), 0);
-});
-
-test("the page's own route history wins over the WebView, which does not count a pushed route", () => {
-  // The emulator reports canGoBack:false after HUI pushed a session route; the page still has somewhere to go.
-  const harness = fakeShell({ history: ["/", "/sessions/abc"] });
-  harness.shell.onBack(() => false);
-  harness.emit("App", "backButton", { canGoBack: false });
-  assert.equal(harness.back(), 1);
-  assert.equal(harness.minmized(), 0);
-});
-
-test("the Navigation API decides when the page has nowhere left to go, whatever the entry count says", () => {
-  const harness = fakeShell({ history: ["/", "/sessions/abc"], navigation: { canGoBack: false } });
-  harness.shell.onBack(() => false);
-  harness.emit("App", "backButton", { canGoBack: true });
-  assert.equal(harness.back(), 0);
-  assert.equal(harness.minmized(), 1, "the shell leaves instead of going back to an entry that is not there");
-});
-
-test("a back press at the root of the shell's history leaves the app", () => {
-  const harness = fakeShell({ history: ["/"] });
-  harness.shell.onBack(() => false);
-  harness.emit("App", "backButton", { canGoBack: false });
-  assert.deepEqual(harness.calls, [{ plugin: "App", method: "minimizeApp", options: undefined }]);
+test("a page without a back callback lets the press through", () => {
+  const page = fakeDocument();
+  fakeShell();
+  assert.equal(backPress(page), false);
 });
 
 test("unsubscribing a back or resume callback drops just that callback", () => {
-  const harness = fakeShell({ history: ["/", "/sessions/abc"] });
+  const page = fakeDocument();
+  const harness = fakeShell();
   const back = vi.fn(() => true);
   const resume = vi.fn();
   const stopBack = harness.shell.onBack(back);
@@ -241,7 +237,7 @@ test("unsubscribing a back or resume callback drops just that callback", () => {
   assert.equal(resume.mock.calls.length, 1, "leaving the foreground is not a resume");
   stopBack();
   stopResume();
-  harness.emit("App", "backButton", { canGoBack: false });
+  assert.equal(backPress(page), false);
   harness.emit("App", "appStateChange", { isActive: true });
   assert.equal(back.mock.calls.length, 0);
   assert.equal(resume.mock.calls.length, 1);

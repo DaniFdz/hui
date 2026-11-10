@@ -7,15 +7,17 @@
  * plugins by name. In a browser there is no bridge, `nativeShell()` answers `null`, and every caller keeps exactly
  * its web behaviour.
  *
- * The shell also owns three policies a caller should not repeat: a notification is posted only while the shell is in
- * the background (a visible page already shows what it would say), a tap on one opens the path it announced, and a
- * back press the page does not consume goes back in the shell's history and then leaves the app.
+ * The shell also owns two policies a caller should not repeat: a notification is posted only while the shell is in
+ * the background (a visible page already shows what it would say), and a tap on one opens the path it announced. A
+ * back press the page does not consume is the shell's own business (`onBack`): it goes back in the page's history and,
+ * at the root, leaves the app.
  */
 
 export type NativePlatform = "android" | "ios";
 
-/** What a posted notification says and where tapping it lands. `id` is the shell's 32-bit slot: a session reusing its
- * own id replaces its notification instead of stacking a second one. */
+/** What a posted notification says and where tapping it lands. `id` is the shell's 32-bit slot: a session announcing
+ * itself again replaces its own notification instead of stacking a second one, so the caller hands out one slot per
+ * session. */
 export type NativeNotification = {
   id: number;
   title: string;
@@ -37,15 +39,18 @@ export type NativeShell = {
   setStatusBar(options: { dark: boolean }): Promise<void>;
   /** Calls back when the shell comes back to the foreground; returns the unsubscribe. */
   onResume(callback: () => void): () => void;
-  /** Hands the page the system back button. Answer `true` when the page consumed it (a dialog, the drawer or the Work
-   * pane closed); `false` goes back in the shell's history and then leaves the app. Returns the unsubscribe. */
+  /** Hands the page the system back button: the shell dispatches a cancelable `hui:back` event on the document, and
+   * every registered callback runs. Answer `true` to keep the press (a dialog, the drawer or the Work pane closed), and
+   * the event's `preventDefault()` tells the shell so; a press nothing consumed is the shell's, which goes back in the
+   * page's history and, at the root, leaves the app. Returns the unsubscribe. */
   onBack(callback: () => boolean): () => void;
   /** Drops the remembered gateway: the app returns to the shell's own Connect page. */
   forgetGateway(): Promise<void>;
 };
 
 /** The subset of Capacitor's injected bridge this module reads. It is typed here because `src/` holds no
- * `@capacitor/*` import (see R18). */
+ * `@capacitor/*` import (see R18). Both of the first two answers are required: `isNativePlatform()` is what tells a
+ * browser with Capacitor's own web build apart from a shell, and `getPlatform()` names the phone. */
 type CapacitorBridge = {
   isNativePlatform?: () => boolean;
   getPlatform?: () => string;
@@ -61,10 +66,7 @@ type Plugin = Record<string, unknown> & {
   addListener?: (event: string, listener: Listener) => Promise<ListenerHandle> | ListenerHandle;
 };
 
-type AppPlugin = Plugin & {
-  getState?: () => Promise<{ isActive?: boolean }>;
-  minimizeApp?: () => Promise<void>;
-};
+type AppPlugin = Plugin & { getState?: () => Promise<{ isActive?: boolean }> };
 type BrowserPlugin = Plugin & { open?: (options: { url: string }) => Promise<void> };
 type NotificationsPlugin = Plugin & {
   schedule?: (options: { notifications: Array<Record<string, unknown>> }) => Promise<unknown>;
@@ -75,14 +77,18 @@ type SharePlugin = Plugin & { share?: (options: NativeShare) => Promise<unknown>
 type StatusBarPlugin = Plugin & { setStyle?: (options: { style: "DARK" | "LIGHT" }) => Promise<void> };
 type GatewayPlugin = Plugin & { forget?: () => Promise<void> };
 
-function bridge(): CapacitorBridge | undefined {
-  if (typeof window === "undefined") return undefined;
+/** The injected bridge and the phone it answers for, or nothing: a browser has no bridge, and Capacitor's own browser
+ * build injects one that answers `isNativePlatform() === false`. A bridge that cannot name an Android or iOS shell is
+ * not one this module knows how to drive, so it answers no shell either. */
+function phone(): { cap: CapacitorBridge; platform: NativePlatform } | null {
+  if (typeof window === "undefined") return null;
   const injected = (window as { Capacitor?: unknown }).Capacitor;
-  if (!injected || typeof injected !== "object") return undefined;
-  const candidate = injected as CapacitorBridge;
-  // Capacitor's own browser build injects a bridge too, and it answers `false` here.
-  if (candidate.isNativePlatform?.() === false) return undefined;
-  return candidate;
+  if (!injected || typeof injected !== "object") return null;
+  const cap = injected as CapacitorBridge;
+  if (cap.isNativePlatform?.() !== true) return null;
+  const platform = cap.getPlatform?.();
+  if (platform !== "android" && platform !== "ios") return null;
+  return { cap, platform };
 }
 
 function plugin<T extends Plugin>(cap: CapacitorBridge, name: string): T | undefined {
@@ -100,14 +106,6 @@ function listen(target: Plugin | undefined, event: string, listener: Listener): 
     stopped = true;
     void Promise.resolve(handle).then((registered) => registered?.remove?.()).catch(() => undefined);
   };
-}
-
-/** Whether the page has an earlier entry of its own to go back to. The Navigation API answers exactly that; an older
- * WebView without it falls back to what the shell reported and then to the entry count. */
-function pageCanGoBack(reported: boolean): boolean {
-  const navigation = (window as { navigation?: { canGoBack?: boolean } }).navigation;
-  if (typeof navigation?.canGoBack === "boolean") return navigation.canGoBack;
-  return reported || window.history.length > 1;
 }
 
 /** Taps land in the app, not in a new page load: HUI's routes are its own history entries, and `hui-app.ts` reads the
@@ -150,13 +148,16 @@ function shellFor(cap: CapacitorBridge, platform: NativePlatform): NativeShell {
   listen(app, "appStateChange", (data) => {
     if ((data as { isActive?: boolean } | undefined)?.isActive === true) for (const callback of [...resume]) callback();
   });
-  listen(app, "backButton", (data) => {
-    if (back.some((callback) => callback() === true)) return;
-    // The page left the press alone: its own history first, then the app. `navigation.canGoBack` knows about a route the
-    // page pushed itself, which the WebView's `canGoBack` does not count and a length alone cannot rule out.
-    if (typeof window !== "undefined" && pageCanGoBack((data as { canGoBack?: boolean } | undefined)?.canGoBack === true)) window.history.back();
-    else void app?.minimizeApp?.();
-  });
+  // The shell asks the page before it acts: it dispatches a cancelable `hui:back` from its own back callback, which
+  // runs before Capacitor's App plugin would only walk the history. Every registered callback answers, and one that
+  // answers `true` keeps the press by cancelling the event. An unconsumed press never reaches this module: the shell
+  // goes back in the page's history itself, and at the root leaves the app on a second press.
+  const onBackPress = (event: Event) => {
+    let consumed = false;
+    for (const callback of [...back]) if (callback() === true) consumed = true;
+    if (consumed) event.preventDefault();
+  };
+  if (typeof document !== "undefined") document.addEventListener("hui:back", onBackPress);
   // A tapped notification opens the session it announced, whether the app was running or started for it.
   listen(notifications, "localNotificationActionPerformed", (data) => {
     const extra = (data as { notification?: { extra?: unknown } } | undefined)?.notification?.extra;
@@ -230,13 +231,11 @@ const shells = new WeakMap<CapacitorBridge, NativeShell>();
 
 /** The shell in the app, `null` in a browser. */
 export function nativeShell(): NativeShell | null {
-  const cap = bridge();
-  if (!cap) return null;
-  const platform = cap.getPlatform?.() ?? "android";
-  if (platform !== "android" && platform !== "ios") return null;
-  const existing = shells.get(cap);
+  const found = phone();
+  if (!found) return null;
+  const existing = shells.get(found.cap);
   if (existing) return existing;
-  const shell = shellFor(cap, platform);
-  shells.set(cap, shell);
+  const shell = shellFor(found.cap, found.platform);
+  shells.set(found.cap, shell);
   return shell;
 }

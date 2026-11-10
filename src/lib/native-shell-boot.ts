@@ -1,6 +1,6 @@
 /**
- * What the web installs once when it runs inside the phone shell (WP3 of `docs/mobile-app-planning`): links that leave
- * HUI go to the shell's browser instead of a WebView that cannot navigate there, and a resumed shell runs the same
+ * What the web installs once when it runs inside the phone shell (WP3 of `docs/mobile-app-plan.md`): links to other
+ * origins go to the shell's browser instead of a WebView that cannot navigate there, and a resumed shell runs the same
  * reconnect checks the web already runs when the network comes back.
  *
  * Both are no-ops in a browser (`nativeShell()` is `null`), so a page that is not in the app keeps the browser's own
@@ -8,8 +8,9 @@
  */
 import { nativeShell } from "./native-shell.ts";
 
-/** The URL a click or `window.open` should hand to the shell, or `undefined` when the page itself owns the target:
- * another origin, or a scheme the shell opens (mail, phone). */
+/** The URL a click or `window.open` hands to the shell, or `undefined` when the page itself owns the target: its own
+ * origin, a fragment, or anything that is not `http:`/`https:`. A `mailto:` or `tel:` link is the native layer's: the
+ * shell opens the mail or dialer app with it, which a web page cannot do. */
 export function externalLink(href: string, base: string): string | undefined {
   let target: URL;
   let home: URL;
@@ -19,7 +20,6 @@ export function externalLink(href: string, base: string): string | undefined {
   } catch {
     return undefined;
   }
-  if (target.protocol === "mailto:" || target.protocol === "tel:") return target.href;
   if (target.protocol !== "http:" && target.protocol !== "https:") return undefined;
   // HUI's own pages stay in the page, including a link to the gateway by its full address.
   return target.origin === home.origin ? undefined : target.href;
@@ -38,6 +38,8 @@ export function installNativeShell(): () => void {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
     if (!(anchor instanceof HTMLAnchorElement)) return;
+    // A download is the shell's own file handling, not a navigation: the page keeps the press.
+    if (anchor.hasAttribute("download")) return;
     const url = externalLink(anchor.getAttribute("href") ?? "", window.location.href);
     if (!url) return;
     event.preventDefault();

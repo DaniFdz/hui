@@ -16,8 +16,12 @@ class FakeElement {
 
 class FakeAnchor extends FakeElement {
   href = "";
+  attributes: string[] = [];
   getAttribute(name: string): string | null {
     return name === "href" ? this.href : null;
+  }
+  hasAttribute(name: string): boolean {
+    return this.attributes.includes(name);
   }
 }
 
@@ -74,14 +78,16 @@ function page(options: { shell?: boolean } = {}): {
   };
 }
 
-test("a link to another origin is the shell's; HUI's own pages are the page's", () => {
+test("a link to another origin is the shell's; HUI's own pages and non-web schemes are the page's", () => {
   const base = "https://gw.test/sessions/abc";
   assert.equal(externalLink("https://example.com/x?y=1", base), "https://example.com/x?y=1");
   assert.equal(externalLink("/settings/appearance", base), undefined);
   assert.equal(externalLink("https://gw.test/kanban", base), undefined, "the gateway by its full address stays in the page");
-  assert.equal(externalLink("mailto:someone@example.com", base), "mailto:someone@example.com");
-  assert.equal(externalLink("tel:+1234", base), "tel:+1234");
+  // The shell's own link policy opens the mail and dialer apps; a web page cannot, so it must keep the press.
+  assert.equal(externalLink("mailto:someone@example.com", base), undefined);
+  assert.equal(externalLink("tel:+1234", base), undefined);
   assert.equal(externalLink("javascript:alert(1)", base), undefined);
+  assert.equal(externalLink("ftp://files.test/a", base), undefined);
   assert.equal(externalLink("", base), undefined);
   assert.equal(externalLink("#anchor", base), undefined);
 });
@@ -100,7 +106,11 @@ test("in the shell an external link opens in the shell's browser and an internal
   assert.deepEqual(harness.calls, [{ plugin: "Browser", method: "open", options: { url: "https://example.com/doc" } }]);
   assert.deepEqual(harness.click(Object.assign(new FakeAnchor(), { href: "/settings/appearance" })), { prevented: false });
   assert.deepEqual(harness.click(Object.assign(new FakeAnchor(), { href: "https://example.com/doc" }), { metaKey: true }), { prevented: false });
-  assert.equal(harness.calls.length, 1, "a modified press is the browser's, not the shell's");
+  const download = Object.assign(new FakeAnchor(), { href: "https://example.com/report.csv", attributes: ["download"] });
+  assert.deepEqual(harness.click(download), { prevented: false }, "a download stays with the shell's own file handling");
+  const mail = Object.assign(new FakeAnchor(), { href: "mailto:someone@example.com" });
+  assert.deepEqual(harness.click(mail), { prevented: false }, "mail and phone links are the shell's own link policy");
+  assert.equal(harness.calls.length, 1, "a modified press, a download and a mail link are not the shell's browser");
   uninstall();
 });
 

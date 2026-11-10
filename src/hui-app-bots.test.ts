@@ -17,7 +17,7 @@ const SESSION = { id: "s-ada", title: "Ada", cwd: "/work", status: "idle", bot: 
 beforeEach(() => {
   const stored = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) });
-  vi.stubGlobal("document", { querySelector: () => null, activeElement: null });
+  vi.stubGlobal("document", { querySelector: () => null, querySelectorAll: () => [], activeElement: null });
   vi.stubGlobal("HTMLDialogElement", class {});
   vi.stubGlobal("HTMLButtonElement", class {});
   vi.stubGlobal("HTMLElement", class {});

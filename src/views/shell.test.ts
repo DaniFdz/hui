@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import {
   type DrawerMediaQuery,
   APP_SHELL_DRAWER_MEDIA,
+  closeNavigationDrawerOnBack,
   filterSessionGroups,
   isSessionGroupCollapsed,
   PRIMARY_NAV,
@@ -663,6 +664,34 @@ test("navigation drawer makes main inert and clears it before returning focus", 
   assert.equal(attributes.get("aria-expanded"), "false");
   assert.equal(attributes.get("aria-label"), "Open navigation");
   assert.deepEqual(sequence, ["set-inert", "clear-inert", "focus-trigger"]);
+});
+
+test("a back press closes the narrow drawer and leaves a wide sidebar alone", () => {
+  const narrow = controlledMedia(true);
+  vi.stubGlobal("matchMedia", () => narrow.media);
+  const attributes = new Map<string, string>();
+  let focused = 0;
+  const trigger = { setAttribute: (name: string, value: string) => attributes.set(name, value), focus: () => { focused += 1; } };
+  const sidebar = {
+    dataset: {} as DOMStringMap,
+    querySelector: () => trigger,
+  } as unknown as HTMLElement;
+  const root = { querySelector: (selector: string) => (selector === '.sidebar[data-open="true"]' && sidebar.dataset.open === "true" ? sidebar : null) } as unknown as ParentNode;
+
+  assert.equal(closeNavigationDrawerOnBack(root), false, "nothing is open: the press falls through to the next thing");
+
+  sidebar.dataset.open = "true";
+  assert.equal(closeNavigationDrawerOnBack(root), true);
+  assert.equal(sidebar.dataset.open, "false", "the drawer is closed, the way Escape closes it");
+  assert.equal(attributes.get("aria-expanded"), "false");
+  assert.equal(focused, 1, "focus goes back to the toggle that opened it");
+
+  // A wide layout keeps its sidebar: there is no drawer to close, so back belongs to something else.
+  sidebar.dataset.open = "true";
+  const wide = controlledMedia(false);
+  vi.stubGlobal("matchMedia", () => wide.media);
+  assert.equal(closeNavigationDrawerOnBack(root), false);
+  assert.equal(sidebar.dataset.open, "true");
 });
 
 test("settings drawer makes its workspace inert and clears it before returning focus", () => {
