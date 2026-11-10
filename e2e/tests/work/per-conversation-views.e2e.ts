@@ -1,7 +1,7 @@
 /** Each conversation keeps its own Work views, empty for a new one and intact when returning (WORK-012). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-import { openWork } from "./work-views.ts";
+import { openWork, settle } from "./work-views.ts";
 
 test("each conversation keeps its own Work views", { tags: ["WORK-012"], platforms: ["web"] }, async ({ screen, hui }) => {
   const first = await hui.createSession({ title: "First work views" });
@@ -17,6 +17,7 @@ test("each conversation keeps its own Work views", { tags: ["WORK-012"], platfor
 
   await hui.open(`/sessions/${first.id}`);
   // A wide pane keeps its views open across the switch; a narrow screen leaves them one selector choice away.
+  await settle(pane.getByRole("tab", "Files"), screen.getByRole("button", { name: /^Active panel/u }));
   if (!(await pane.getByRole("tab", "Files").isVisible())) await openWork(screen, "Files");
   await expect(pane.getByRole("tab", "Files")).toBeVisible();
 });
