@@ -160,10 +160,11 @@ export class SessionsController {
         this.groups = [];
       }
       const message = error instanceof Error ? error.message : "Could not read sessions.";
-      if (this.groups.length === 0) {
-        this.error = message;
-      } else if (this.revision) {
+      if (this.revision) {
         this.#deps.reportError(error, message);
+      } else {
+        // Saved copies may stand in for the list; the note says they are stale.
+        this.error = message;
       }
       if (!this.revision && isGatewayUnavailable(error)) this.#retry();
     } finally {

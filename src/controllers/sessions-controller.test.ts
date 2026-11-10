@@ -194,13 +194,15 @@ test("deleting selected sessions removes their trees and the worktrees only they
   assert.deepEqual(sessions.actionToast, { message: "Deleted 1 session. Removed 1 worktree.", failed: false });
 });
 
-test("an unreachable gateway lists the saved conversations instead of an error", async () => {
-  fake.loadError = new TypeError("Failed to fetch");
+test("an unreachable gateway lists the saved conversations and says it reads again", async () => {
+  vi.useFakeTimers();
+  fake.loadError = gatewayRequestError(new TypeError("Failed to fetch"));
   fake.saved = async () => [group(session("saved"))];
   const { sessions, calls } = controller();
   await sessions.refresh();
   assert.deepEqual(sessions.groups.flatMap(({ sessions: rows }) => rows.map(({ id }) => id)), ["saved"]);
-  assert.equal(sessions.error, "");
+  assert.equal(sessions.error, "Could not reach HUI. Check the connection and try again.", "the note says the rows are stale");
+  assert.equal(sessions.retrying, true);
   assert.equal(sessions.loading, false);
   assert.ok(calls.settled > 0, "a saved list still settles the sidebar");
   sessions.stop();
