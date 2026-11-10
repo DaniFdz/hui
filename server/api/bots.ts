@@ -1,4 +1,4 @@
-/** Public bot payloads (HUI-18) and the routes that exchange them; the bot registry's stored records are not ones. */
+/** Public bot payloads and the routes that exchange them; the bot registry's stored records are not ones. */
 import { Type, type Static } from "typebox";
 import { UsageTotals } from "./diagnostics.ts";
 

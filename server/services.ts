@@ -160,7 +160,7 @@ function forWorkerSessions(workerId: string, act: (record: SessionRecord) => voi
 workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
 workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
 
-/** Bots (HUI-18): their registry, and the service that runs each one's forever chat as an ordinary Durable session
+/** Bots: their registry, and the service that runs each one's forever chat as an ordinary Durable session
  * whose memory is OptChat's (docs/optchat.md). */
 const botMemory = optChatBotMemory(durableHost());
 export const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosticEvent({
@@ -472,9 +472,11 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
   };
   const worktree = params["worktree"] === true;
   const requestedWorker = text("worker");
-  const worker = requestedWorker
-    ? (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker
-    : caller.worker;
+  const worker = requestedWorker === "local"
+    ? undefined
+    : requestedWorker
+      ? (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker
+      : caller.worker;
   const model = text("model") ?? caller.model;
   const thinking = text("thinking") ?? caller.thinking;
   const record = await createSession({
@@ -654,7 +656,7 @@ registerAgentToolHandler(async (invocation) => {
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
 export const providerRoutes = createProviderRoutes({ providerService });
 
-/** GPT-Live calls with bots over the ChatGPT login (HUI-18): the credential stays here, audio goes browser ↔ ChatGPT.
+/** GPT-Live calls with bots over the ChatGPT login: the credential stays here, audio goes browser ↔ ChatGPT.
  * A call's quick questions go to the bot's helper (its utility model); its record goes to the bot's chat at the end. */
 const callBroker = new CallBroker({
   accounts: providerCallAccounts(providerService.accounts),
@@ -711,7 +713,7 @@ async function browserStatus(): Promise<BrowserStatus> {
  * `gh`; HUI never sees the token. `HUI_GITHUB_CLI` points E2E at a fake executable. */
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 export const githubCli = new GitHubCli({ command: GH_COMMAND });
-/** Bots' triggers (HUI-18): what listeners the operator runs report, with the pull requests it links to read through the
+/** Bots' triggers: what listeners the operator runs report, with the pull requests it links to read through the
  * same `gh`. */
 export const triggers = createGatewayTriggers({
   send: (botId, message) => bots.send(botId, message),

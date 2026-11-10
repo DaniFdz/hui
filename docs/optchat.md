@@ -7,6 +7,9 @@ the log into a binary tree of one-line summaries; and every turn starts fresh
 from a bounded **view** of the whole chat (recent messages one line each, older
 ones many per line) followed by the new message. The agent opens a line with
 `zoom(id, n)`, down to the original message, and asks `date(id)` for its time.
+HUI also gives it `search_chat(query)`, which reads the whole log for the
+messages that mention a word: the recipe's view can only be opened where it
+already names a line, so this is the one navigation tool the recipe lacks.
 
 HUI was built from the recipe's first revision (`f51fe5c`, 2026-10-04), whose
 section numbers the "spec section" references here and in the code use. How the
@@ -27,7 +30,7 @@ HUI implements it in two parts:
   per Durable conversation that enables it, kept current from the conversation's
   entries, and a fresh-turn request for each of its generations.
 
-Bots use it (roadmap HUI-18): a bot's chat enables it in the commit that
+Bots use it: a bot's chat enables it in the commit that
 creates its conversation, and `hui bot history`, `hui bot memory --zoom`/
 `--html` and the `/__hui/bots/:id/memory` routes ([api.md](api.md#bots)) read it
 through `DurableHost.optchat`. It is the chat's **history**: a bot's curated
@@ -124,6 +127,11 @@ VIEW_DOC for the document's name: no date and no state, so it is byte-identical
 across calls. It renders after HUI's own sections. `zoom(id, n)` and `date(id)`
 use the spec's descriptions, answer in its formats (`id+0|kind: text` for a whole
 message, two `id+n|text` lines otherwise, `No line id+n.`) and are replay-safe.
+VIEW_DOC ends with the paragraph HUI adds for `search_chat(query)`: the messages
+mentioning the query, newest first, each the line `id+1` that `zoom(id, 1)`
+opens whole (`server/optchat/search.ts`). It reads the newest 50,000 messages or
+8 MB of them, whichever comes first, answers at most 20 lines (100 when asked)
+with 200 bytes of each, and says in a line which limits applied.
 
 **Durable compaction is declined.** The memory is the history: OptChat's
 `beforeCompact` answers `{ decline: true }` for enabled conversations, ahead of
@@ -153,7 +161,8 @@ replaces could end up copied into summaries, as revision `3c190e0` observed. A
 call that has not answered after 2 minutes fails like any other. A failed node
 is retried every 10 seconds; only its first failure is reported
 (`optchat_memory` diagnostic) and shown in the memory's status. Its usage
-(tokens, cache, cost) is counted in the status since the memory opened.
+(tokens, cache, cost) is counted in the status in total: the calls it made since
+the memory was created, kept across restarts ([Storage](#storage)).
 
 ## The view
 
@@ -243,6 +252,7 @@ Each memory lives in `<HUI_DURABLE_DIR>/optchat/<conversation id>/` (by default
 | `main/YYYY-MM-DD.jsonl` | the log, one message per line: `{i, kind, text, size, date, src}` |
 | `tree/YYYY-MM-DD.jsonl` | the summaries, one node per line: `{l, i, text, size}` |
 | `runs.jsonl` | the frozen view of each run: `{run, entry, t0, parts}` |
+| `usage.json` | the compactor's totals: `{version: 1, usage: {calls, input, output, cacheRead, cacheWrite, cost}}` |
 | `view.json` | the chat view and the compaction view: `{version: 1, chat: {parts, batch}, compaction: {parts, batch}}`, parts as `[level, index]`, `batch` true while a batch is under way |
 
 A line goes to the file of the local day it is written on; ids are global. Each
@@ -267,6 +277,7 @@ otherwise (or while this process does not own the store):
 const status = await host.optchat.status(id); // messages, built, pending, viewBytes, viewLines, waiting, failing, usage
 const view = await host.optchat.view(id); // the current view, rendered
 await host.optchat.zoom(id, 0, 8); await host.optchat.date(id, 0);
+const hits = await host.optchat.search(id, "deploy window"); // id+1 lines, newest first
 const page = await host.optchat.html(id); // view, every message and each tree level, escaped
 const stop = host.optchat.subscribe(id, (status) => render(status)); // e.g. "Summarizing memory…" while waiting
 ```
@@ -279,13 +290,19 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
 ## Deviations from the spec, and why
 
 - **OptChat's tools are an extension of their own.** `hui-optchat-tools` (zoom,
-  date) is selected only by enabled conversations, in their stored agent, and
-  `DurableSession.applyTools()` keeps it selected; the global `hui-optchat`
-  extension (section and hooks) is in every conversation's default selection. A
-  tools filter removing them from every other conversation would hide a PI
-  extension's own `zoom` or `date` tool everywhere, would rewrite every existing
-  conversation's stored agent, and would still offer them to a conversation whose
-  run resumes before its session reopens.
+  date, search_chat) is selected only by enabled conversations, in their stored
+  agent, and `DurableSession.applyTools()` keeps it selected; the global
+  `hui-optchat` extension (section and hooks) is in every conversation's default
+  selection. A tools filter removing them from every other conversation would
+  hide a PI extension's own `zoom` or `date` tool everywhere, would rewrite every
+  existing conversation's stored agent, and would still offer them to a
+  conversation whose run resumes before its session reopens.
+- **`search_chat` is HUI's own.** The recipe's agent can reach an old message only
+  by zooming a line its view still names. HUI's reads the log the memory already
+  holds for the messages that mention a word, newest first, and names each as the
+  view's line `id+1`, so the answer costs one line per hit instead of a summary's
+  place in the view. Its own call is skipped, or every search would answer with
+  the line that asked. It never appends, edits or summarizes.
 - **The view is frozen per run and stored.** The spec renders the view once per
   turn in its own process. Durable reruns a request after a retry, a crash or a
   restart, so the view is stored before the request is sent.
@@ -301,8 +318,12 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
   The bots' own base prompt is for a later change.
 - **The lock is the store's.** The spec holds a Unix socket per chat directory;
   here the gateway's Durable store lock covers every memory.
-- **Usage is per process.** The compactor's spend is in the status since the
-  memory opened; it is not persisted, nor added to Durable's `pi.usage`.
+- **Usage is kept per memory, not per process.** The compactor's spend is in
+  the status in total, in `usage.json` beside the log and the tree, so a restart
+  keeps counting where it left off and a bot's memory cost can be compared with
+  what the memory is worth. A memory older than that file starts at zero: the
+  spend before it is not reconstructed, and nothing reads it back into Durable's
+  `pi.usage`.
 - **Subagents and computer use (spec section 9) are not implemented.** MASTER
   keeps its paragraph about them, verbatim.
 - **Turns and compactions keep their own system prompts.** Revision `3c190e0`

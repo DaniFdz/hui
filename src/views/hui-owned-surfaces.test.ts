@@ -30,7 +30,7 @@ const LABS = HUI_PAGES.find((page) => page.id === "labs")!;
 const labs = (settings: Settings, onSettings: (patch: Partial<Settings>) => void = () => {}) =>
   renderOwnedSurface({ page: LABS, settings, health: undefined, onSettings });
 
-test("HUI-10 implements every retained HUI-owned surface", () => {
+test("every retained HUI-owned surface is implemented", () => {
   for (const id of ["labs", "profile", "about"]) assert.match(source, new RegExp(`case \\"${id}\\"`));
   assert.doesNotMatch(source, /dashboards|dashboardWidgets/u);
   assert.match(source, /Experimental and opt-in features\./u);

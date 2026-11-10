@@ -21,7 +21,7 @@ const TOOL_ICON_BASE = "/__hui/tool-icons/";
 const READ_TOOLS = new Set(["read", "read_file", "readfile", "notebookread", "notebook_read"]);
 const EDIT_TOOLS = new Set(["edit", "edit_file", "apply_patch", "multiedit", "multi_edit"]);
 const WRITE_TOOLS = new Set(["write", "write_file", "create_file", "file_write"]);
-const SEARCH_TOOLS = new Set(["grep", "glob", "find", "search", "code_search", "ripgrep", "rg"]);
+const SEARCH_TOOLS = new Set(["grep", "glob", "find", "search", "code_search", "ripgrep", "rg", "search_chat"]);
 const COMMAND_TOOLS = new Set(["bash", "shell", "exec", "run_command", "run_terminal_cmd", "command", "terminal"]);
 const FETCH_TOOLS = new Set(["web_fetch", "webfetch", "fetch"]);
 const WEB_SEARCH_TOOLS = new Set(["web_search", "websearch"]);
@@ -106,6 +106,11 @@ export function toolCallMeta(item: ToolItem): string | undefined {
   }
   const output = item.output?.trimEnd() ?? "";
   if (!output) return undefined;
+  // A bot's chat search answers in lines of its memory, `id+1|…`: its header and limit notes are not results.
+  if (name === "search_chat") {
+    const hits = output.split("\n").filter((line) => /^\d+\+1\|/u.test(line)).length;
+    return hits ? `${hits} result${hits === 1 ? "" : "s"}` : undefined;
+  }
   const lines = output.split("\n").filter((line) => line.trim()).length;
   // Only a read's output is the file; an edit or write returns a confirmation, whose line count says nothing.
   if (READ_TOOLS.has(name)) return `${lines} line${lines === 1 ? "" : "s"}`;

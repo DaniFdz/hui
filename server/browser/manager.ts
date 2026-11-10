@@ -12,9 +12,16 @@
  * A `handoff` gives one tab to the operator: the agent waits, the live view
  * forwards their pointer and keys to that tab over the same CDP session, and
  * the call returns a fresh snapshot once they continue.
+ *
+ * Page-sourced output (snapshots, text, console entries) travels between
+ * markers carrying a nonce minted for that result, so a caller can tell HUI's
+ * own words from a page's; `get` and `is` read one property or state without a
+ * whole snapshot, and a ref whose node was replaced is re-bound to the one
+ * element with the same role and name when that match is unique.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 
@@ -23,9 +30,13 @@ import type { BrowserSettings } from "../hui-settings.ts";
 import { CdpConnection, CdpError, type CdpEvent } from "./cdp.ts";
 import { defaultExecutableProbe, resolveBrowserExecutable, type BrowserExecutable, type ExecutableProbe } from "./executable.ts";
 import { KeyParseError, parseKey, type KeyStroke } from "./keys.ts";
+import { buildHar, describeEntry, NetworkLog } from "./network.ts";
+import { describeMetrics, describeTimings, formatBytes, navigationFromEntry, type MetricMap, type PaintTiming } from "./performance.ts";
+import { describeCookies, describeStorage, matching, type CookieInfo, type StorageEntry } from "./storage.ts";
 import { allowsUrl, blockedOriginMessage } from "./origins.ts";
 import type { SiteSecret, SiteSecretView } from "./secrets.ts";
 import { clampSnapshotChars, renderSnapshot, SnapshotRefs, type AxNode, type SnapshotOptions, type SnapshotResult, type SnapshotTarget } from "./snapshot.ts";
+import { describeDiff, diffSnapshots } from "./diff.ts";
 import { EMPTY_BROWSER_STATE, isHttpOrigin, mergeBrowserState, STATE_CAPTURE, STATE_SEED, trimBrowserState, type BrowserState, type StoredCookie, type StoredDatabase, type StoredOrigin } from "./state.ts";
 
 export class BrowserToolError extends Error {
@@ -61,10 +72,10 @@ export type BrowserViewHandle = {
 
 export const BROWSER_ACTIONS = [
   "status", "tabs", "open", "navigate", "back", "forward", "reload", "focus", "close",
-  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps",
+  "snapshot", "act", "text", "screenshot", "console", "resize", "handoff", "secret", "steps", "get", "is", "network", "performance", "storage",
 ] as const;
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
-export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "scroll", "wait"] as const;
+export const BROWSER_ACT_KINDS = ["click", "type", "press", "hover", "select", "upload", "scroll", "wait"] as const;
 export type BrowserActKind = (typeof BROWSER_ACT_KINDS)[number];
 
 export const MAX_TABS_PER_CONVERSATION = 8;
@@ -92,6 +103,8 @@ const TEXT_MAX_CHARS = 40_000;
 const PAGE_SNAPSHOT_CHARS = 8_000;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_FULL_PAGE = { width: 4_096, height: 8_192 } as const;
+/** Numbers drawn over an annotated screenshot; enough to label a viewport, small enough to read. */
+const MAX_ANNOTATIONS = 40;
 const OBJECT_GROUP = "hui-browser-tool";
 /** Chromium sends the next screencast frame only after the previous one is
  * acknowledged; delaying the ack caps a busy page at about ten frames a second. */
@@ -102,6 +115,9 @@ const SCREENCAST = { format: "jpeg", quality: 70, maxWidth: 1600, maxHeight: 160
 const SCREENCAST_START_MS = 5_000;
 const SCREENCAST_RETRY_MS = 100;
 const TRUNCATED_NOTE = "[Snapshot truncated. Use snapshot with query, interactive: true or a larger maxChars to see more.]";
+const DEPTH_NOTE = "[Deeper content was left out by depth. Use snapshot with a larger depth, or scope it with selector.]";
+/** A ref whose node was replaced but whose role and name still match one element. */
+const RELINKED_NOTE = " (The element was replaced; the ref was re-bound to the one element with the same role and name.)";
 
 type ConsoleEntry = { level: string; text: string };
 
@@ -126,6 +142,14 @@ type Tab = {
   frame?: BrowserViewFrame;
   /** A page that tried to leave the allowed origins, reported once. */
   blocked?: string;
+  /** Requests captured for this tab, once a conversation asks for them. */
+  network?: NetworkLog;
+  /** The whole snapshot last read in this document, the baseline for a diff. */
+  lastSnapshot?: { loaderId: string; lines: string[] };
+  /** `Performance.enable` was sent on this tab, so its counters accumulate. */
+  metricsEnabled?: boolean;
+  /** `Network.enable` was sent for cookie reads (capture has its own log). */
+  cookiesEnabled?: boolean;
 };
 
 type Viewer = { owner: string; listener: BrowserViewListener; pinned: string | null; watching: string | null; closed: boolean };
@@ -272,6 +296,14 @@ function settingsKey(settings: LaunchSettings): string {
   return JSON.stringify([settings.enabled, settings.headless, settings.executablePath]);
 }
 
+function depthFrom(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 40) {
+    throw new BrowserToolError("depth must be an integer from 1 to 40.");
+  }
+  return value;
+}
+
 function timeoutFrom(value: unknown): number {
   if (value === undefined) return DEFAULT_TIMEOUT_MS;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1_000 || value > MAX_TIMEOUT_MS) {
@@ -333,6 +365,66 @@ function browserEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([key, value]) => value !== undefined && !key.startsWith("HUI_AGENT_")));
 }
 
+/** Page-sourced text travels between markers with a nonce minted for this result, so a caller can tell
+ * HUI's words from a page's even when the page mimics our format. */
+function pageBoundary(nonce: string, origin: string, text: string): string {
+  return `--- HUI_PAGE_CONTENT nonce=${nonce} origin=${origin || "unknown"} ---\n${text}\n--- END_HUI_PAGE_CONTENT nonce=${nonce} ---`;
+}
+
+function pageNonce(): string {
+  return randomBytes(8).toString("hex");
+}
+
+/** Whether the element can be clicked at all, before coordinates or overlays matter. */
+const ELEMENT_STATE = String.raw`function () {
+  const element = this;
+  const style = getComputedStyle(element);
+  return {
+    connected: element.isConnected,
+    hidden: style.display === "none" || style.visibility === "hidden" || element.getClientRects().length === 0,
+    disabled: element.disabled === true || element.getAttribute("aria-disabled") === "true",
+  };
+}`;
+
+/** One property of an element, for `get`; a password field's value is refused rather than read. */
+const ELEMENT_GET = String.raw`function (what, attribute, maximum) {
+  const element = this;
+  const clip = (value) => String(value ?? "").slice(0, maximum);
+  if (what === "text") return { value: clip(element.innerText || element.textContent || "") };
+  if (what === "html") return { value: clip(element.innerHTML || "") };
+  if (what === "value") {
+    const type = element instanceof HTMLInputElement ? element.type : "";
+    if (type === "password") return { error: "password" };
+    return { value: clip("value" in element ? element.value : "") };
+  }
+  if (what === "attr") return { value: clip(element.getAttribute(attribute)) };
+  if (what === "box") {
+    const rect = element.getBoundingClientRect();
+    return { box: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) } };
+  }
+  return { error: "unknown" };
+}`;
+
+/** One yes/no state of an element, for `is`. */
+const ELEMENT_IS = String.raw`function (state) {
+  const element = this;
+  const style = getComputedStyle(element);
+  const hidden = style.display === "none" || style.visibility === "hidden" || element.getClientRects().length === 0;
+  const disabled = element.disabled === true || element.getAttribute("aria-disabled") === "true";
+  if (state === "visible") return { value: !hidden };
+  if (state === "hidden") return { value: hidden };
+  if (state === "enabled") return { value: !disabled };
+  if (state === "disabled") return { value: disabled };
+  if (state === "checked") return { value: element.checked === true || element.getAttribute("aria-checked") === "true" };
+  if (state === "focused") return { value: document.activeElement === element || element.contains(document.activeElement) };
+  if (state === "editable") return { value: Boolean(element.isContentEditable || ((element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && !disabled && !element.readOnly)) };
+  if (state === "attached") return { value: true };
+  return { error: "unknown" };
+}`;
+
+const GET_WHAT = ["text", "html", "value", "attr", "box", "title", "url", "count"] as const;
+const IS_STATE = ["visible", "hidden", "enabled", "disabled", "checked", "focused", "editable", "attached"] as const;
+
 function startupFailure(name: string, code: number | null, signal: NodeJS.Signals | null, stderr: string): string {
   const reason = code !== null ? `code ${code}` : signal ?? "no exit status";
   const inUse = /ProcessSingleton|SingletonLock|profile.*in use/iu.test(stderr)
@@ -382,6 +474,35 @@ function screenshotPath(cwd: string, raw: unknown): string {
   const path = isAbsolute(raw) ? raw : resolve(cwd, raw);
   if (extname(path).toLowerCase() !== ".png") throw new BrowserToolError("path must end in .png.");
   return path;
+}
+
+/** The largest single file `act upload` puts into a page. */
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+/** Local files an upload puts into the page, resolved against the session directory. */
+function uploadFiles(cwd: string, raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 10) throw new BrowserToolError("files must list 1 to 10 file paths.");
+  return raw.map((entry) => {
+    if (typeof entry !== "string" || !entry.trim() || entry.length > 4_096 || /[\p{Cc}]/u.test(entry)) {
+      throw new BrowserToolError("every entry of files must be a file path.");
+    }
+    return isAbsolute(entry) ? entry : resolve(cwd, entry);
+  });
+}
+
+/** A HAR path for `network`, beside the session's other artifacts. */
+function harPath(cwd: string, raw: unknown): string {
+  if (typeof raw !== "string" || !raw.trim() || raw.length > 4_096 || /[\p{Cc}]/u.test(raw)) {
+    throw new BrowserToolError("path must be a file path ending in .har.");
+  }
+  const path = isAbsolute(raw) ? raw : resolve(cwd, raw);
+  if (extname(path).toLowerCase() !== ".har") throw new BrowserToolError("path must end in .har.");
+  return path;
+}
+
+function headerRecord(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined;
+  return Object.fromEntries(Object.entries(value).map(([name, entry]) => [name, typeof entry === "string" ? entry : String(entry)]));
 }
 
 /** The cookie jar as the mirror carries it, dropping what only describes this machine. */
@@ -448,6 +569,64 @@ const CONTAINS_HIT = String.raw`function (other, x, y) {
   return { contains: false, cover: element.tagName.toLowerCase() + (element.id ? "#" + element.id : "") + classes.map((name) => "." + name).join("") };
 }`;
 
+/** Draws numbered boxes over the refs of the latest snapshot, for one capture. */
+function annotationScript(marker: string, boxes: ReadonlyArray<{ label: number; x: number; y: number; width: number; height: number }>): string {
+  return `(() => {
+    const boxes = ${JSON.stringify(boxes)};
+    const selector = ${JSON.stringify(`[data-hui-annotations="${marker}"]`)};
+    document.querySelector(selector)?.remove();
+    const root = document.createElement("div");
+    root.setAttribute("data-hui-annotations", ${JSON.stringify(marker)});
+    root.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:2147483647;";
+    for (const box of boxes) {
+      const outline = document.createElement("div");
+      outline.style.cssText = "position:absolute;box-sizing:border-box;border:2px solid #e11d48;border-radius:3px;left:" + box.x + "px;top:" + box.y + "px;width:" + box.width + "px;height:" + box.height + "px;";
+      const badge = document.createElement("span");
+      badge.textContent = String(box.label);
+      badge.style.cssText = "position:absolute;left:-2px;top:-20px;min-width:20px;height:20px;padding:0 5px;border-radius:4px;background:#e11d48;color:#ffffff;font:600 12px/20px system-ui,sans-serif;text-align:center;";
+      outline.appendChild(badge);
+      root.appendChild(outline);
+    }
+    document.documentElement.appendChild(root);
+    return boxes.length;
+  })()`;
+}
+
+/** A page's storage keys and their value sizes, never the values. */
+function storageScript(kind: "local" | "session"): string {
+  const store = `${kind}Storage`;
+  return `Array.from({ length: ${store}.length }, (_, index) => ${store}.key(index))
+    .map((key) => ({ key, size: (${store}.getItem(key) ?? "").length }))`;
+}
+
+/** The document's own navigation, paint and resource entries, in milliseconds. */
+const TIMING_SCRIPT = String.raw`(() => {
+  const navigation = performance.getEntriesByType("navigation")[0];
+  const paints = performance.getEntriesByType("paint").map((entry) => ({ name: entry.name, start: entry.startTime }));
+  const resources = performance.getEntriesByType("resource");
+  const slow = resources
+    .filter((entry) => entry.duration >= 500)
+    .sort((left, right) => right.duration - left.duration)
+    .slice(0, 5)
+    .map((entry) => ({ name: (entry.name.split("/").pop() || entry.name).slice(0, 60), start: entry.duration }));
+  return {
+    navigation: navigation ? JSON.parse(JSON.stringify(navigation.toJSON())) : null,
+    paints,
+    resources: {
+      count: resources.length,
+      transferSize: resources.reduce((sum, entry) => sum + (entry.transferSize || 0), 0),
+    },
+    slow,
+  };
+})()`;
+const UPLOAD_TARGET = String.raw`function () {
+  const element = this instanceof HTMLLabelElement && this.control ? this.control : this;
+  if (!(element instanceof HTMLInputElement) || element.type !== "file") return null;
+  return { multiple: element.multiple, disabled: element.disabled, count: element.files ? element.files.length : 0 };
+}`;
+const UPLOAD_FILES = String.raw`function () {
+  return Array.from(this.files ?? [], (file) => file.name);
+}`;
 const PREPARE_TYPING = String.raw`function (append) {
   let element = this;
   if (element instanceof HTMLLabelElement && element.control) element = element.control;
@@ -803,25 +982,83 @@ export class ManagedBrowser {
         const tab = this.#tabFor(owner, params["tabId"]);
         const instance = this.#live();
         const query = optionalText(params, "query", 200);
+        const selector = optionalText(params, "selector", 1_000);
+        const diffRequested = params["diff"] === true;
+        // A diff compares like with like, so both sides are whole snapshots.
+        if (diffRequested && (query || selector || params["interactive"] === true || depthFrom(params["depth"]) !== undefined)) {
+          throw new BrowserToolError("snapshot diff compares whole snapshots; drop query, selector, interactive and depth.", 400);
+        }
+        const rootId = selector ? await this.#snapshotRoot(instance, tab, selector) : undefined;
         const snapshot = await this.#snapshot(instance, tab, {
           interactive: params["interactive"] === true,
           maxChars: clampSnapshotChars(params["maxChars"]),
           ...(query ? { query } : {}),
+          ...(rootId ? { rootId } : {}),
+          ...(depthFrom(params["depth"]) !== undefined ? { maxDepth: depthFrom(params["depth"]) } : {}),
         });
+        const nonce = pageNonce();
+        const origin = originOf(tab.url);
         const lines = [this.#header(tab)];
+        if (selector) lines.push(`Scoped to ${selector}.`);
         if (snapshot.matched !== undefined) lines.push(`${snapshot.matched} matching line${snapshot.matched === 1 ? "" : "s"} for "${query}".`);
-        lines.push("", snapshot.text || "(No accessible content matched.)");
-        if (snapshot.truncated) lines.push(TRUNCATED_NOTE);
-        return { text: lines.join("\n"), details: { action, tab: this.#tabDetails(tab), lines: snapshot.lines, truncated: snapshot.truncated } };
+        const previous = tab.lastSnapshot;
+        let body = snapshot.text || "(No accessible content matched.)";
+        let change: { added: number; removed: number } | undefined;
+        let bodyTruncated = snapshot.truncated;
+        if (diffRequested) {
+          if (!previous) {
+            lines.push("No previous snapshot in this tab, so this one is the baseline.");
+          } else if (previous.loaderId !== tab.loaderId) {
+            lines.push("The page navigated since the previous snapshot, so this one is the new baseline.");
+          } else {
+            const delta = diffSnapshots(previous.lines, snapshot.allLines);
+            lines.push(describeDiff(delta));
+            change = { added: delta.added, removed: delta.removed };
+            if (delta.coarse) {
+              bodyTruncated ||= snapshot.truncated;
+            } else {
+              const kept: string[] = [];
+              let length = 0;
+              for (const line of delta.lines) {
+                if (length + line.length + 1 > clampSnapshotChars(params["maxChars"])) { bodyTruncated = true; break; }
+                kept.push(line);
+                length += line.length + 1;
+              }
+              body = kept.length ? kept.join("\n") : "(No lines changed.)";
+              if (delta.omitted) lines.push(`${delta.omitted} more changed line${delta.omitted === 1 ? "" : "s"} were left out; read the page with snapshot after an action that changes less.`);
+            }
+          }
+        }
+        // Only a whole unfiltered snapshot can be a baseline.
+        if (!query && !selector && params["interactive"] !== true && depthFrom(params["depth"]) === undefined) {
+          tab.lastSnapshot = { loaderId: tab.loaderId, lines: snapshot.allLines };
+        }
+        lines.push("", pageBoundary(nonce, origin, body));
+        if (bodyTruncated) lines.push(TRUNCATED_NOTE);
+        if (snapshot.depthLimited) lines.push(DEPTH_NOTE);
+        return {
+          text: lines.join("\n"),
+          details: {
+            action, tab: this.#tabDetails(tab), lines: snapshot.lines, truncated: bodyTruncated,
+            ...(snapshot.depthLimited ? { depthLimited: true } : {}),
+            ...(diffRequested ? { diff: { baseline: !previous || previous.loaderId !== tab.loaderId, ...(change ?? { added: 0, removed: 0 }) } } : {}),
+            boundary: { nonce, origin },
+          },
+        };
       }
-      case "act": return this.#act(owner, params);
+      case "act": return this.#act(owner, params, context.cwd);
       case "text": return this.#text(owner, params);
       case "screenshot": return this.#screenshot(owner, params, context.cwd);
       case "console": return this.#console(owner, params);
+      case "get": return this.#get(owner, params);
+      case "is": return this.#is(owner, params);
+      case "network": return this.#network(owner, params, context.cwd);
+      case "performance": return this.#performance(owner, params);
+      case "storage": return this.#storage(owner, params);
       case "resize": return this.#resize(owner, params);
       case "handoff": return this.#handoff(owner, params);
       case "secret": return this.#secret(owner, params);
-      case "steps": return this.#steps(owner, params);
+      case "steps": return this.#steps(owner, params, context.cwd);
     }
   }
 
@@ -861,7 +1098,7 @@ export class ManagedBrowser {
         this.#header(current),
         ...(blocked ? [blocked] : []),
         "",
-        snapshot.text || "(No accessible content matched.)",
+        pageBoundary(pageNonce(), originOf(current.url), snapshot.text || "(No accessible content matched.)"),
         ...(snapshot.truncated ? [TRUNCATED_NOTE] : []),
         "",
         "The snapshot above is current: act on its refs.",
@@ -897,7 +1134,7 @@ export class ManagedBrowser {
     const { target, label } = this.#target(tab, params["ref"]);
     const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
     // The field decides where the value goes: its own frame must be the secret's origin.
-    const fieldOrigin = await this.#fieldOrigin(instance, tab, target.backendNodeId);
+    const fieldOrigin = await this.#fieldOrigin(instance, tab, target.backendNodeId, target.frameId);
     if (fieldOrigin !== secret.origin) {
       throw new BrowserToolError(
         `The site secret "${name}" belongs to ${secret.origin}, and ${label} is on ${fieldOrigin || "an unknown origin"}. Refusing to type it there.`,
@@ -916,14 +1153,16 @@ export class ManagedBrowser {
   }
 
   /** The origin of the frame an element lives in: a main-frame node is the tab's document, a child frame is its own. */
-  async #fieldOrigin(instance: Instance, tab: Tab, backendNodeId: number): Promise<string> {
-    let frameId = tab.frameId;
-    try {
-      const described = await instance.connection.send("DOM.describeNode", { backendNodeId, depth: 0 }, tab.session);
-      const node = isRecord(described["node"]) ? described["node"] : {};
-      frameId = str(node["frameId"]) || tab.frameId;
-    } catch {
-      // Keep the main frame: the value stays on the tab's own origin, which is the strictest guess.
+  async #fieldOrigin(instance: Instance, tab: Tab, backendNodeId: number, knownFrameId?: string): Promise<string> {
+    let frameId = knownFrameId || tab.frameId;
+    if (!knownFrameId) {
+      try {
+        const described = await instance.connection.send("DOM.describeNode", { backendNodeId, depth: 0 }, tab.session);
+        const node = isRecord(described["node"]) ? described["node"] : {};
+        frameId = str(node["frameId"]) || tab.frameId;
+      } catch {
+        // Keep the main frame: the value stays on the tab's own origin, which is the strictest guess.
+      }
     }
     if (frameId === tab.frameId) return originOf(tab.url);
     const tree = await instance.connection.send("Page.getFrameTree", {}, tab.session).catch(() => undefined);
@@ -933,7 +1172,7 @@ export class ManagedBrowser {
 
   /** Dependent interactions in one call: menus, hovers and a form submit are transient, and one round
    * trip per step loses them. Each step is an `act` with the same rules, on this call's tab. */
-  async #steps(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+  async #steps(owner: string, params: Record<string, unknown>, cwd: string): Promise<BrowserToolResult> {
     const tab = this.#tabFor(owner, params["tabId"]);
     const steps = params["steps"];
     if (!Array.isArray(steps) || steps.length === 0 || steps.length > MAX_STEPS) {
@@ -950,7 +1189,7 @@ export class ManagedBrowser {
       }
       try {
         // One tab for the whole sequence: a step never retargets the call.
-        const result = await this.#act(owner, { ...step, tabId: tab.id, ...(timeoutMs === undefined ? {} : { timeoutMs: step["timeoutMs"] ?? timeoutMs }) });
+        const result = await this.#act(owner, { ...step, tabId: tab.id, ...(timeoutMs === undefined ? {} : { timeoutMs: step["timeoutMs"] ?? timeoutMs }) }, cwd);
         log.push(`${index + 1}. ${kind}: ${result.text.split("\n")[0] ?? kind}`);
       } catch (error) {
         const reason = error instanceof Error ? error.message : "the step failed";
@@ -1548,6 +1787,30 @@ export class ManagedBrowser {
         this.#log(tab, str(entry["level"]) || "info", `${str(entry["text"])}${url ? ` (${url})` : ""}`);
         break;
       }
+      case "Network.requestWillBeSent": {
+        if (!tab.network?.recording) break;
+        const request = isRecord(params["request"]) ? params["request"] : {};
+        tab.network.record({
+          requestId: str(params["requestId"]), url: str(request["url"]), method: str(request["method"]),
+          type: str(params["type"]), headers: headerRecord(request["headers"]), at: Date.now(),
+        });
+        break;
+      }
+      case "Network.responseReceived": {
+        if (!tab.network?.recording) break;
+        const response = isRecord(params["response"]) ? params["response"] : {};
+        tab.network.record({
+          requestId: str(params["requestId"]), status: num(response["status"]), statusText: str(response["statusText"]),
+          mimeType: str(response["mimeType"]), responseHeaders: headerRecord(response["headers"]), at: Date.now(),
+        });
+        break;
+      }
+      case "Network.loadingFinished":
+        if (tab.network?.recording) tab.network.record({ requestId: str(params["requestId"]), bytes: num(params["encodedDataLength"]), at: Date.now() });
+        break;
+      case "Network.loadingFailed":
+        if (tab.network?.recording) tab.network.record({ requestId: str(params["requestId"]), failure: str(params["errorText"]) || "failed", at: Date.now() });
+        break;
       case "Inspector.targetCrashed":
         tab.crashed = true;
         break;
@@ -1671,6 +1934,12 @@ export class ManagedBrowser {
   }
 
   async #refreshInfo(instance: Instance, tab: Tab): Promise<void> {
+    // A blocked page is reported as the blank tab this browser left in its place,
+    // even if its target still names the refused document for a moment.
+    if (tab.blocked) {
+      this.#setInfo(tab, "Blocked by allowed origins", "about:blank");
+      return;
+    }
     try {
       const result = await instance.connection.send("Target.getTargetInfo", { targetId: tab.targetId }, undefined, 5_000);
       const info = isRecord(result["targetInfo"]) ? result["targetInfo"] : undefined;
@@ -1892,15 +2161,17 @@ export class ManagedBrowser {
       interactive: params["interactive"] === true,
       maxChars: params["maxChars"] === undefined ? PAGE_SNAPSHOT_CHARS : clampSnapshotChars(params["maxChars"]),
     });
+    const nonce = pageNonce();
+    const origin = originOf(tab.url);
     const lines = [lead, this.#header(tab)];
     const blocked = this.#blockedLine(tab);
     if (blocked) lines.push(blocked);
     if (!outcome.loaded) lines.push("The page was still loading when the timeout elapsed; this is its current state.");
-    lines.push("", snapshot.text || "(The page has no accessible content yet.)");
+    lines.push("", pageBoundary(nonce, origin, snapshot.text || "(The page has no accessible content yet.)"));
     if (snapshot.truncated) lines.push(TRUNCATED_NOTE);
     return {
       text: lines.join("\n"),
-      details: { action, tab: this.#tabDetails(tab), loaded: outcome.loaded, truncated: snapshot.truncated },
+      details: { action, tab: this.#tabDetails(tab), loaded: outcome.loaded, truncated: snapshot.truncated, boundary: { nonce, origin } },
     };
   }
 
@@ -1911,12 +2182,67 @@ export class ManagedBrowser {
       const tree = await instance.connection.send("Accessibility.getFullAXTree", {}, tab.session);
       await this.#refreshInfo(instance, tab);
       const nodes = Array.isArray(tree["nodes"]) ? tree["nodes"].filter(isRecord) as unknown as AxNode[] : [];
-      result = renderSnapshot(nodes, tab.refs, { ...options, pageUrl: tab.url });
+      const inlined = await this.#inlineFrames(instance, tab, nodes);
+      result = renderSnapshot(inlined.nodes, tab.refs, { ...options, pageUrl: tab.url, ...(inlined.frameIds.size ? { frameIds: inlined.frameIds } : {}) });
       // A document committed while the tree was read: its refs would be stale.
       if (loaderId === tab.loaderId) break;
       tab.refs.reset();
     }
-    return result ?? { text: "", lines: 0, truncated: false };
+    return result ?? { text: "", lines: 0, truncated: false, allLines: [] };
+  }
+
+  /** One level of child frames is read by frame id and hung under its Iframe node, so a form
+   * inside a frame is in the snapshot and its refs carry the frame they belong to. */
+  async #inlineFrames(instance: Instance, tab: Tab, nodes: readonly AxNode[]): Promise<{ nodes: AxNode[]; frameIds: Map<string, string> }> {
+    const frameIds = new Map<string, string>();
+    let tree: Record<string, unknown> | undefined;
+    try {
+      const result = await instance.connection.send("Page.getFrameTree", {}, tab.session);
+      tree = isRecord(result["frameTree"]) ? result["frameTree"] : undefined;
+    } catch {
+      return { nodes: [...nodes], frameIds };
+    }
+    const children = Array.isArray(tree?.["childFrames"]) ? tree!["childFrames"] as unknown[] : [];
+    if (!children.length) return { nodes: [...nodes], frameIds };
+    const merged = [...nodes];
+    for (const entry of children) {
+      const node = isRecord(entry) ? entry : {};
+      const frame = isRecord(node["frame"]) ? node["frame"] : {};
+      const frameId = str(frame["id"]);
+      if (!frameId || !/^https?:/iu.test(str(frame["url"]))) continue;
+      // A frame can still be loading when the main document fires load; give it a moment.
+      let childNodes: AxNode[] = [];
+      for (let attempt = 0; attempt < 3 && childNodes.length === 0; attempt += 1) {
+        if (attempt > 0) await delay(100);
+        const childTree = await instance.connection.send("Accessibility.getFullAXTree", { frameId }, tab.session, 5_000).catch(() => undefined);
+        childNodes = childTree && Array.isArray(childTree["nodes"]) ? childTree["nodes"].filter(isRecord) as unknown as AxNode[] : [];
+      }
+      if (!childNodes.length) continue;
+      let ownerId: number | undefined;
+      try {
+        const owner = await instance.connection.send("DOM.getFrameOwner", { frameId }, tab.session);
+        ownerId = typeof owner["backendNodeId"] === "number" ? owner["backendNodeId"] as number : undefined;
+      } catch {
+        ownerId = undefined;
+      }
+      const host = ownerId === undefined ? undefined : nodes.find((candidate) => candidate.backendDOMNodeId === ownerId);
+      if (!host) continue;
+      // Frame trees number their nodes per document; prefix them so they cannot collide.
+      const prefix = `f${frameId.slice(0, 8)}:`;
+      for (const child of childNodes) {
+        const copy: AxNode = {
+          ...child,
+          nodeId: `${prefix}${child.nodeId}`,
+          ...(child.parentId ? { parentId: `${prefix}${child.parentId}` } : {}),
+          childIds: (child.childIds ?? []).map((id) => `${prefix}${id}`),
+        };
+        merged.push(copy);
+        frameIds.set(copy.nodeId, frameId);
+      }
+      const root = childNodes.find((child) => !child.parentId);
+      if (root) host.childIds = [...(host.childIds ?? []), `${prefix}${root.nodeId}`];
+    }
+    return { nodes: merged, frameIds };
   }
 
   // ── Interaction ───────────────────────────────────────────────────────────
@@ -1928,6 +2254,56 @@ export class ManagedBrowser {
       throw new BrowserToolError(`Ref ${raw} is not in tab ${tab.id}'s latest snapshot. Take a new snapshot; refs do not carry across pages or tabs.`, 404);
     }
     return { ref: raw, target, label: describeTarget(raw, target) };
+  }
+
+  /** A ref as it is now: if its node was replaced, re-bind it to the one element with the same role and name. */
+  async #liveTarget(instance: Instance, tab: Tab, raw: unknown): Promise<{ target: SnapshotTarget; label: string; relinked: boolean }> {
+    const { ref, target, label } = this.#target(tab, raw);
+    if (!target.role || !target.name) return { target, label, relinked: false };
+    let attached = false;
+    try {
+      const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
+      const state = await this.#call(instance, tab, objectId, ELEMENT_STATE);
+      attached = !isRecord(state) || state["connected"] !== false;
+    } catch {
+      attached = false;
+    }
+    // A detached node can still resolve (the accessibility tree keeps it alive), so ask the page.
+    if (attached) return { target, label, relinked: false };
+    let candidates: number[] = [];
+    try {
+      const doc = await instance.connection.send("DOM.getDocument", { depth: 0 }, tab.session);
+      const rootId = isRecord(doc["root"]) ? num(doc["root"]["nodeId"]) : 0;
+      const found = await instance.connection.send("Accessibility.queryAXTree", { nodeId: rootId, accessibleName: target.name, role: target.role }, tab.session);
+      candidates = (Array.isArray(found["nodes"]) ? found["nodes"].filter(isRecord) : [])
+        .flatMap((node) => typeof node["backendDOMNodeId"] === "number" ? [node["backendDOMNodeId"] as number] : []);
+    } catch {
+      candidates = [];
+    }
+    // The old node can linger in the accessibility tree with no layout; only a
+    // candidate the page still lays out may take the ref.
+    const visible: number[] = [];
+    for (const blackendNodeId of candidates) {
+      try {
+        const resolved = await instance.connection.send("DOM.resolveNode", { backendNodeId: blackendNodeId, objectGroup: OBJECT_GROUP }, tab.session);
+        const objectId = isRecord(resolved["object"]) ? str(resolved["object"]["objectId"]) : "";
+        if (!objectId) continue;
+        const state = await this.#call(instance, tab, objectId, ELEMENT_STATE);
+        if (isRecord(state) && state["connected"] !== false && state["hidden"] !== true) visible.push(blackendNodeId);
+      } catch {
+        // A candidate the browser cannot resolve is not the replacement.
+      }
+    }
+    if (visible.length === 1) {
+      const next = { ...target, backendNodeId: visible[0]! };
+      tab.refs.relink(ref, next);
+      return { target: next, label, relinked: true };
+    }
+    throw new BrowserToolError(
+      visible.length === 0
+        ? `${label} is no longer in the page and nothing with the same role and name is. Take a new snapshot.`
+        : `${label} was replaced and ${visible.length} elements now share its role and name, so the ref is ambiguous. Take a new snapshot.`,
+      404);
   }
 
   async #resolve(instance: Instance, tab: Tab, backendNodeId: number, label: string): Promise<string> {
@@ -1976,7 +2352,8 @@ export class ManagedBrowser {
     const quad = await this.#box(instance, tab, target.backendNodeId, label);
     const x = ((quad[0] ?? 0) + (quad[2] ?? 0) + (quad[4] ?? 0) + (quad[6] ?? 0)) / 4;
     const y = ((quad[1] ?? 0) + (quad[3] ?? 0) + (quad[5] ?? 0) + (quad[7] ?? 0)) / 4;
-    if (requireHit) await this.#assertHit(instance, tab, target, label, x, y);
+    // What sits at a page coordinate is the frame element, not the node inside it.
+    if (requireHit && !target.frameId) await this.#assertHit(instance, tab, target, label, x, y);
     return { x, y };
   }
 
@@ -2044,32 +2421,36 @@ export class ManagedBrowser {
     if (state !== "visible") await instance.connection.send("Page.bringToFront", {}, tab.session).catch(() => undefined);
   }
 
-  async #perform(instance: Instance, tab: Tab, kind: BrowserActKind, params: Record<string, unknown>): Promise<{ text: string; point?: { x: number; y: number } }> {
+  async #perform(instance: Instance, tab: Tab, kind: BrowserActKind, params: Record<string, unknown>, cwd: string): Promise<{ text: string; point?: { x: number; y: number } }> {
     if (kind !== "wait") await this.#ensureVisible(instance, tab);
     switch (kind) {
       case "click": {
-        const { target, label } = this.#target(tab, params["ref"]);
+        const { target, label, relinked } = await this.#liveTarget(instance, tab, params["ref"]);
+        const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
+        const state = await this.#call(instance, tab, objectId, ELEMENT_STATE);
+        if (isRecord(state) && state["hidden"] === true) throw new BrowserToolError(`${label} is not visible; scroll it into view or take a new snapshot.`, 409);
+        if (isRecord(state) && state["disabled"] === true) throw new BrowserToolError(`${label} is disabled; nothing was clicked.`, 409);
         const point = await this.#point(instance, tab, target, label, true);
         await this.#mouse(instance, tab, point, params["double"] === true ? 2 : 1);
-        return { text: `${params["double"] === true ? "Double-clicked" : "Clicked"} ${label}.`, point };
+        return { text: `${params["double"] === true ? "Double-clicked" : "Clicked"} ${label}.${relinked ? RELINKED_NOTE : ""}`, point };
       }
       case "hover": {
-        const { target, label } = this.#target(tab, params["ref"]);
+        const { target, label, relinked } = await this.#liveTarget(instance, tab, params["ref"]);
         const point = await this.#point(instance, tab, target, label, false);
         await instance.connection.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point, button: "none", buttons: 0 }, tab.session);
-        return { text: `Hovered ${label}.`, point };
+        return { text: `Hovered ${label}.${relinked ? RELINKED_NOTE : ""}`, point };
       }
       case "type": {
         const text = params["text"];
         if (typeof text !== "string" || text.length > 20_000) throw new BrowserToolError("text must be a string of at most 20000 characters.");
-        const { target, label } = this.#target(tab, params["ref"]);
+        const { target, label, relinked } = await this.#liveTarget(instance, tab, params["ref"]);
         const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
         const state = await this.#call(instance, tab, objectId, PREPARE_TYPING, [params["append"] === true]);
         if (state === "not-editable") throw new BrowserToolError(`${label} is not a text field. Click it instead, or type into a textbox ref.`, 409);
         if (state === "read-only") throw new BrowserToolError(`${label} is disabled or read-only.`, 409);
         if (text) await instance.connection.send("Input.insertText", { text }, tab.session);
         if (params["submit"] === true) await this.#key(instance, tab, parseKey("Enter"));
-        return { text: `Typed ${[...text].length} character${[...text].length === 1 ? "" : "s"} into ${label}${params["submit"] === true ? " and pressed Enter" : ""}.` };
+        return { text: `Typed ${[...text].length} character${[...text].length === 1 ? "" : "s"} into ${label}${params["submit"] === true ? " and pressed Enter" : ""}.${relinked ? RELINKED_NOTE : ""}` };
       }
       case "press": {
         const raw = params["key"];
@@ -2081,7 +2462,7 @@ export class ManagedBrowser {
           throw new BrowserToolError(error instanceof KeyParseError ? error.message : "Unknown key.");
         }
         if (params["ref"] !== undefined) {
-          const { target, label } = this.#target(tab, params["ref"]);
+          const { target, label } = await this.#liveTarget(instance, tab, params["ref"]);
           try {
             await instance.connection.send("DOM.focus", { backendNodeId: target.backendNodeId }, tab.session);
           } catch {
@@ -2096,7 +2477,7 @@ export class ManagedBrowser {
         if (!Array.isArray(values) || values.length === 0 || values.length > 20 || !values.every((value) => typeof value === "string" && value.length <= 500)) {
           throw new BrowserToolError("values must list 1 to 20 option values or labels.");
         }
-        const { target, label } = this.#target(tab, params["ref"]);
+        const { target, label } = await this.#liveTarget(instance, tab, params["ref"]);
         const objectId = await this.#resolve(instance, tab, target.backendNodeId, label);
         const result = await this.#call(instance, tab, objectId, SELECT_OPTIONS, [values]);
         if (isRecord(result) && result["error"] === "not-select") throw new BrowserToolError(`${label} is not a native select. Click it and then click the option instead.`, 409);
@@ -2107,9 +2488,48 @@ export class ManagedBrowser {
         const selected = isRecord(result) && Array.isArray(result["selected"]) ? result["selected"].map(String) : [];
         return { text: `Selected ${selected.join(", ") || values.join(", ")} in ${label}.` };
       }
+      case "upload": {
+        const files = uploadFiles(cwd, params["files"]);
+        for (const file of files) {
+          const info = await stat(file).catch(() => undefined);
+          if (!info?.isFile()) throw new BrowserToolError(`${file} is not a file that can be uploaded.`, 404);
+          if (info.size > MAX_UPLOAD_BYTES) throw new BrowserToolError(`${file} is larger than ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB; that is more than the browser uploads in one action.`, 413);
+        }
+        // A page often hides its file input behind a styled button, so a selector
+        // addresses one the snapshot cannot see.
+        const selector = typeof params["selector"] === "string" ? params["selector"] : "";
+        let objectId: string;
+        let label: string;
+        if (selector) {
+          const nodeId = await this.#elementNode(instance, tab, selector);
+          const resolved = await instance.connection.send("DOM.resolveNode", { nodeId, objectGroup: OBJECT_GROUP }, tab.session);
+          objectId = isRecord(resolved["object"]) ? str(resolved["object"]["objectId"]) : "";
+          if (!objectId) throw new BrowserToolError(`No element to upload to at ${selector}.`, 404);
+          label = selector;
+        } else {
+          if (params["ref"] === undefined) throw new BrowserToolError("upload needs ref to the file input, or selector when the page hides it.");
+          const live = await this.#liveTarget(instance, tab, params["ref"]);
+          objectId = await this.#resolve(instance, tab, live.target.backendNodeId, live.label);
+          label = live.label;
+        }
+        const described = await this.#call(instance, tab, objectId, UPLOAD_TARGET);
+        if (!isRecord(described)) throw new BrowserToolError(`${label} is not a file input. Point ref at the file input itself, or at its label.`, 409);
+        if (described["disabled"] === true) throw new BrowserToolError(`${label} is disabled; nothing was uploaded.`, 409);
+        if (files.length > 1 && described["multiple"] !== true) throw new BrowserToolError(`${label} accepts one file, but ${files.length} were given.`, 409);
+        try {
+          await instance.connection.send("DOM.setFileInputFiles", { files, objectId }, tab.session);
+        } catch (error) {
+          throw new BrowserToolError(`${label} did not accept the files: ${error instanceof Error ? error.message : "the browser refused"}`, 409);
+        }
+        const picked = await this.#call(instance, tab, objectId, UPLOAD_FILES);
+        const names = Array.isArray(picked) ? picked.map(String) : [];
+        if (!names.length) throw new BrowserToolError(`${label} kept no file after the upload; the page may have cleared it.`, 409);
+        const shown = names.length > 4 ? [...names.slice(0, 4), `and ${names.length - 4} more`] : names;
+        return { text: `Uploaded ${shown.join(", ")} to ${label} (${names.length} file${names.length === 1 ? "" : "s"}).` };
+      }
       case "scroll": {
         if (params["ref"] !== undefined) {
-          const { target, label } = this.#target(tab, params["ref"]);
+          const { target, label } = await this.#liveTarget(instance, tab, params["ref"]);
           await this.#box(instance, tab, target.backendNodeId, label);
           return { text: `Scrolled ${label} into view.` };
         }
@@ -2139,11 +2559,32 @@ export class ManagedBrowser {
       selector: optionalText(params, "selector", 1_000) ?? null,
       url: optionalText(params, "url", 2_048) ?? null,
     };
+    const state = params["state"];
+    if (state !== undefined && state !== "visible" && state !== "hidden" && state !== "attached" && state !== "detached") {
+      throw new BrowserToolError("state must be visible, hidden, attached or detached.");
+    }
+    if (state !== undefined && conditions.selector === null) throw new BrowserToolError("wait state needs selector.");
     if (Object.values(conditions).every((value) => value === null)) {
       throw new BrowserToolError("wait needs at least one of text, textGone, selector or url.");
     }
     const timeoutMs = timeoutFrom(params["timeoutMs"]);
-    const expression = `(() => { const c = ${JSON.stringify(conditions)}; const body = document.body ? document.body.innerText : ""; return (c.text === null || body.includes(c.text)) && (c.textGone === null || !body.includes(c.textGone)) && (c.selector === null || document.querySelector(c.selector) !== null) && (c.url === null || location.href.includes(c.url)); })()`;
+    const expression = `(() => {
+      const c = ${JSON.stringify(conditions)};
+      const state = ${JSON.stringify(state ?? null)};
+      const body = document.body ? document.body.innerText : "";
+      let elementState = true;
+      if (state !== null) {
+        const element = document.querySelector(c.selector);
+        if (state === "attached") elementState = element !== null;
+        else if (state === "detached") elementState = element === null;
+        else if (element) {
+          const style = getComputedStyle(element);
+          const visible = style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
+          elementState = state === "visible" ? visible : !visible;
+        } else elementState = state === "hidden";
+      }
+      return (c.text === null || body.includes(c.text)) && (c.textGone === null || !body.includes(c.textGone)) && (state !== null || c.selector === null || document.querySelector(c.selector) !== null) && (c.url === null || location.href.includes(c.url)) && elementState;
+    })()`;
     const started = Date.now();
     for (;;) {
       let met = false;
@@ -2161,14 +2602,17 @@ export class ManagedBrowser {
       }
       if (met) return `Waited ${Date.now() - started} ms until the condition was met.`;
       if (Date.now() - started >= timeoutMs || instance.connection.closed) {
-        const wanted = Object.entries(conditions).filter(([, value]) => value !== null).map(([key, value]) => `${key} ${JSON.stringify(value)}`).join(", ");
+        const wanted = [
+          ...Object.entries(conditions).filter(([, value]) => value !== null).map(([key, value]) => `${key} ${JSON.stringify(value)}`),
+          ...(state !== undefined ? [`state ${JSON.stringify(state)}`] : []),
+        ].join(", ");
         throw new BrowserToolError(`Timed out after ${timeoutMs} ms waiting for ${wanted}.`, 408);
       }
       await delay(150);
     }
   }
 
-  async #act(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+  async #act(owner: string, params: Record<string, unknown>, cwd: string): Promise<BrowserToolResult> {
     const kind = params["kind"];
     if (typeof kind !== "string" || !(BROWSER_ACT_KINDS as readonly string[]).includes(kind)) {
       throw new BrowserToolError(`act needs kind: ${BROWSER_ACT_KINDS.join(", ")}.`);
@@ -2189,7 +2633,7 @@ export class ManagedBrowser {
     let summary: string;
     let outcome: NavigationOutcome = { navigated: false, loaded: true, sameDocument: false };
     try {
-      const performed = await this.#perform(instance, tab, kind as BrowserActKind, params);
+      const performed = await this.#perform(instance, tab, kind as BrowserActKind, params, cwd);
       summary = performed.text;
       this.#emitAction(tab, summary.replace(/\.$/u, ""), performed.point);
       if (kind !== "wait" && (await watch.started(NAVIGATION_START_MS))) {
@@ -2222,6 +2666,326 @@ export class ManagedBrowser {
 
   // ── Reading ───────────────────────────────────────────────────────────────
 
+  /** A CSS selector's DOM node, for a scoped snapshot or a selector-based read. */
+  async #elementNode(instance: Instance, tab: Tab, selector: string): Promise<number> {
+    const doc = await instance.connection.send("DOM.getDocument", { depth: 0 }, tab.session);
+    const rootId = isRecord(doc["root"]) ? num(doc["root"]["nodeId"]) : 0;
+    let nodeId = 0;
+    try {
+      const found = await instance.connection.send("DOM.querySelector", { nodeId: rootId, selector }, tab.session);
+      nodeId = isRecord(found) ? num(found["nodeId"]) : 0;
+    } catch (error) {
+      throw new BrowserToolError(`selector is not valid CSS: ${error instanceof Error ? error.message : selector}`);
+    }
+    if (!nodeId) throw new BrowserToolError(`No element matches ${selector}.`, 404);
+    return nodeId;
+  }
+
+  /** The accessibility node a scoped snapshot starts from. */
+  async #snapshotRoot(instance: Instance, tab: Tab, selector: string): Promise<string> {
+    const nodeId = await this.#elementNode(instance, tab, selector);
+    const partial = await instance.connection.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false }, tab.session);
+    const nodes = Array.isArray(partial["nodes"]) ? partial["nodes"].filter(isRecord) : [];
+    const rootId = nodes.length > 0 ? str(nodes[0]?.["nodeId"]) : "";
+    if (!rootId) throw new BrowserToolError(`No accessible content at ${selector}; it may be hidden.`, 404);
+    return rootId;
+  }
+
+  /** One element from a ref or a selector, as a JS object the page can be asked about. */
+  async #element(instance: Instance, tab: Tab, params: Record<string, unknown>): Promise<{ label: string; objectId?: string }> {
+    const ref = params["ref"];
+    const selector = optionalText(params, "selector", 1_000);
+    if (ref !== undefined && selector) throw new BrowserToolError("Use either ref or selector, not both.");
+    if (ref === undefined && !selector) throw new BrowserToolError("Needs a ref from the latest snapshot or a CSS selector.");
+    if (ref !== undefined) {
+      const { target, label } = await this.#liveTarget(instance, tab, ref);
+      return { label, objectId: await this.#resolve(instance, tab, target.backendNodeId, label) };
+    }
+    let nodeId: number;
+    try {
+      nodeId = await this.#elementNode(instance, tab, selector!);
+    } catch (error) {
+      if (error instanceof BrowserToolError && error.status === 404) return { label: selector! };
+      throw error;
+    }
+    const resolved = await instance.connection.send("DOM.resolveNode", { nodeId, objectGroup: OBJECT_GROUP }, tab.session);
+    const objectId = isRecord(resolved["object"]) ? str(resolved["object"]["objectId"]) : "";
+    if (!objectId) throw new BrowserToolError(`No element matches ${selector}.`, 404);
+    return { label: selector!, objectId };
+  }
+
+  /** One property of one element: cheaper to read and to check than a whole snapshot. */
+  async #get(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const what = params["what"];
+    if (typeof what !== "string" || !(GET_WHAT as readonly string[]).includes(what)) {
+      throw new BrowserToolError(`get needs what: ${GET_WHAT.join(", ")}.`);
+    }
+    if (what === "title" || what === "url") {
+      const result = await instance.connection.send("Runtime.evaluate", { expression: what === "title" ? "document.title" : "location.href", returnByValue: true }, tab.session);
+      await this.#refreshInfo(instance, tab);
+      const value = isRecord(result["result"]) ? str(result["result"]["value"]) : "";
+      return { text: `${what === "title" ? "Title" : "URL"}: ${value}`, details: { action: "get", what, tab: this.#tabDetails(tab) } };
+    }
+    if (what === "count") {
+      const selector = optionalText(params, "selector", 1_000);
+      if (!selector) throw new BrowserToolError("get count needs selector.");
+      const result = await instance.connection.send("Runtime.evaluate", { expression: `document.querySelectorAll(${JSON.stringify(selector)}).length`, returnByValue: true }, tab.session);
+      if (isRecord(result["exceptionDetails"])) throw new BrowserToolError(`selector is not valid CSS: ${exceptionText(result["exceptionDetails"])}`);
+      const count = isRecord(result["result"]) ? num(result["result"]["value"]) : 0;
+      return { text: `${count} element${count === 1 ? "" : "s"} ${count === 1 ? "matches" : "match"} ${selector}.`, details: { action: "get", what, count, tab: this.#tabDetails(tab) } };
+    }
+    const attribute = what === "attr" ? optionalText(params, "attribute", 100) : undefined;
+    if (what === "attr" && !attribute) throw new BrowserToolError("get attr needs attribute.");
+    const maximum = typeof params["maxChars"] === "number" && Number.isFinite(params["maxChars"])
+      ? Math.min(TEXT_MAX_CHARS, Math.max(100, Math.floor(params["maxChars"])))
+      : 2_000;
+    const { label, objectId } = await this.#element(instance, tab, params);
+    if (!objectId) throw new BrowserToolError(`No element matches ${label}.`, 404);
+    const result = await this.#call(instance, tab, objectId, ELEMENT_GET, [what, attribute ?? "", maximum]);
+    if (isRecord(result) && result["error"] === "password") {
+      throw new BrowserToolError(`Refusing to read the value of ${label}: it is a password field.`, 409);
+    }
+    if (isRecord(result) && isRecord(result["box"])) {
+      const box = result["box"];
+      const values = { x: num(box["x"]), y: num(box["y"]), width: num(box["width"]), height: num(box["height"]) };
+      return { text: `${label} is at ${values.x},${values.y} with ${values.width}×${values.height} px.`, details: { action: "get", what, tab: this.#tabDetails(tab), box: values } };
+    }
+    const value = isRecord(result) ? str(result["value"]) : "";
+    if (what === "text" || what === "html") {
+      const nonce = pageNonce();
+      const origin = originOf(tab.url);
+      return {
+        text: `${what} of ${label}:\n${pageBoundary(nonce, origin, value || "(empty)")}`,
+        details: { action: "get", what, tab: this.#tabDetails(tab), characters: value.length, boundary: { nonce, origin } },
+      };
+    }
+    if (what === "attr" && !value) return { text: `${label} has no attribute ${attribute}.`, details: { action: "get", what, tab: this.#tabDetails(tab) } };
+    return { text: `${what} of ${label}: ${JSON.stringify(value)}`, details: { action: "get", what, tab: this.#tabDetails(tab) } };
+  }
+
+  /** One yes/no state of one element, so verifying an action does not cost a whole snapshot. */
+  async #is(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const state = params["state"];
+    if (typeof state !== "string" || !(IS_STATE as readonly string[]).includes(state)) {
+      throw new BrowserToolError(`is needs state: ${IS_STATE.join(", ")}.`);
+    }
+    let label = typeof params["selector"] === "string" ? params["selector"] : "the ref";
+    let objectId: string | undefined;
+    try {
+      ({ label, objectId } = await this.#element(instance, tab, params));
+    } catch (error) {
+      if (error instanceof BrowserToolError && error.status === 404 && state === "attached") {
+        return { text: `${label} is not attached (nothing matches).`, details: { action: "is", state, value: false, tab: this.#tabDetails(tab) } };
+      }
+      throw error;
+    }
+    if (!objectId) {
+      if (state === "attached") return { text: `${label} is not attached (nothing matches).`, details: { action: "is", state, value: false, tab: this.#tabDetails(tab) } };
+      if (state === "hidden") return { text: `${label} is hidden (nothing matches).`, details: { action: "is", state, value: true, tab: this.#tabDetails(tab) } };
+      throw new BrowserToolError(`No element matches ${label}.`, 404);
+    }
+    const result = await this.#call(instance, tab, objectId, ELEMENT_IS, [state]);
+    const value = isRecord(result) && result["value"] === true;
+    return { text: `${label} is ${value ? "" : "not "}${state}.`, details: { action: "is", state, value, tab: this.#tabDetails(tab) } };
+  }
+
+  /** What the page keeps: its cookies and storage, by name only. */
+  async #storage(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const what = params["what"] ?? "cookies";
+    if (what !== "cookies" && what !== "local" && what !== "session") {
+      throw new BrowserToolError("storage needs what: cookies, local or session.");
+    }
+    const filter = typeof params["filter"] === "string" ? params["filter"].slice(0, 200) : "";
+    const lines = [this.#header(tab)];
+    let count = 0;
+    if (what === "cookies") {
+      if (!tab.cookiesEnabled) {
+        await instance.connection.send("Network.enable", {}, tab.session);
+        tab.cookiesEnabled = true;
+      }
+      const reported = await instance.connection.send("Network.getCookies", { urls: [tab.url] }, tab.session);
+      const cookies: CookieInfo[] = (Array.isArray(reported["cookies"]) ? reported["cookies"] : []).flatMap((entry) => {
+        if (!isRecord(entry)) return [];
+        const name = str(entry["name"]);
+        if (!name) return [];
+        return [{
+          name,
+          ...(typeof entry["domain"] === "string" ? { domain: entry["domain"] } : {}),
+          ...(typeof entry["path"] === "string" ? { path: entry["path"] } : {}),
+          ...(typeof entry["expires"] === "number" ? { expires: entry["expires"] } : {}),
+          ...(typeof entry["httpOnly"] === "boolean" ? { httpOnly: entry["httpOnly"] } : {}),
+          ...(typeof entry["secure"] === "boolean" ? { secure: entry["secure"] } : {}),
+          ...(typeof entry["sameSite"] === "string" ? { sameSite: entry["sameSite"] } : {}),
+          ...(typeof entry["size"] === "number" ? { size: entry["size"] } : {}),
+        }];
+      });
+      const shown = matching(cookies, filter);
+      count = shown.length;
+      lines.push("", ...describeCookies(shown, { url: tab.url, now: Date.now() }));
+      if (filter && shown.length !== cookies.length) lines.push(`Filtered to "${filter}" from ${cookies.length}.`);
+    } else {
+      const result = await instance.connection.send("Runtime.evaluate", { expression: storageScript(what), returnByValue: true }, tab.session, 5_000);
+      if (isRecord(result["exceptionDetails"])) throw new BrowserToolError("The page refused a storage read; it may block storage in this context.");
+      const value = isRecord(result["result"]) ? result["result"]["value"] : undefined;
+      const entries: StorageEntry[] = (Array.isArray(value) ? value : []).flatMap((entry) => {
+        if (!isRecord(entry)) return [];
+        const key = str(entry["key"]);
+        return key ? [{ key, size: num(entry["size"]) }] : [];
+      });
+      const shown = matching(entries, filter);
+      count = shown.length;
+      lines.push("", ...describeStorage(what, shown, originOf(tab.url)));
+      if (filter && shown.length !== entries.length) lines.push(`Filtered to "${filter}" from ${entries.length}.`);
+    }
+    lines.push("", "Values are never read: a cookie or storage value is usually a session token.");
+    return { text: lines.join("\n"), details: { action: "storage", what, tab: this.#tabDetails(tab), entries: count } };
+  }
+
+  /** What the page costs: the renderer's counters, or the document's own timings. */
+  async #performance(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const operation = params["operation"] ?? "metrics";
+    if (operation !== "metrics" && operation !== "timings") {
+      throw new BrowserToolError("performance needs operation: metrics or timings.");
+    }
+    const lines = [this.#header(tab)];
+    if (operation === "metrics") {
+      // Counters accumulate from the moment the domain is enabled, so it is enabled once per tab.
+      if (!tab.metricsEnabled) {
+        await instance.connection.send("Performance.enable", {}, tab.session);
+        tab.metricsEnabled = true;
+      }
+      const reported = await instance.connection.send("Performance.getMetrics", {}, tab.session);
+      const metrics: Record<string, number> = {};
+      for (const entry of Array.isArray(reported["metrics"]) ? reported["metrics"] : []) {
+        if (!isRecord(entry) || typeof entry["name"] !== "string" || typeof entry["value"] !== "number") continue;
+        metrics[entry["name"]] = entry["value"];
+      }
+      lines.push("", ...describeMetrics(metrics as MetricMap), "Counters accumulate from this tab's first performance call.");
+      return {
+        text: lines.join("\n"),
+        details: { action: "performance", operation, tab: this.#tabDetails(tab), nodes: Math.round(metrics["Nodes"] ?? 0), heapBytes: Math.round(metrics["JSHeapUsedSize"] ?? 0) },
+      };
+    }
+    const result = await instance.connection.send("Runtime.evaluate", { expression: TIMING_SCRIPT, returnByValue: true, awaitPromise: true }, tab.session, 5_000);
+    if (isRecord(result["exceptionDetails"])) throw new BrowserToolError("The page refused a timing read; try again after it finishes loading.");
+    const value = isRecord(result["result"]) && isRecord(result["result"]["value"]) ? result["result"]["value"] : {};
+    const navigation = isRecord(value["navigation"]) ? value["navigation"] : undefined;
+    const paints: PaintTiming[] = (Array.isArray(value["paints"]) ? value["paints"] : []).flatMap((entry) => {
+      if (!isRecord(entry)) return [];
+      const name = str(entry["name"]);
+      const start = num(entry["start"]);
+      return name && Number.isFinite(start) ? [{ name, start }] : [];
+    });
+    const resources = isRecord(value["resources"]) ? value["resources"] : undefined;
+    lines.push("", ...describeTimings(navigationFromEntry(navigation), paints));
+    if (resources) {
+      const count = num(resources["count"]);
+      const transferred = num(resources["transferSize"]);
+      if (count > 0) lines.push(`Resources: ${count} request${count === 1 ? "" : "s"}, ${formatBytes(transferred)} transferred.`);
+    }
+    if (Array.isArray(value["slow"])) {
+      const slow = value["slow"].flatMap((entry) => (isRecord(entry) ? [`${str(entry["name"])} ${num(entry["start"]).toFixed(0)} ms`] : []));
+      if (slow.length) lines.push(`Slowest marks: ${slow.join(", ")}.`);
+    }
+    return {
+      text: lines.join("\n"),
+      details: {
+        action: "performance", operation, tab: this.#tabDetails(tab),
+        ...(navigation && typeof navigation["loadEventEnd"] === "number" ? { load: Math.round(navigation["loadEventEnd"]) } : {}),
+      },
+    };
+  }
+
+  /** Capture the tab's requests for one conversation, read them, and write a redacted HAR. */
+  async #network(owner: string, params: Record<string, unknown>, cwd: string): Promise<BrowserToolResult> {
+    const tab = this.#tabFor(owner, params["tabId"]);
+    const instance = this.#live();
+    const operation = params["operation"];
+    if (typeof operation !== "string" || !["start", "stop", "clear", "requests", "request", "har"].includes(operation)) {
+      throw new BrowserToolError("network needs operation: start, stop, clear, requests, request or har.");
+    }
+    if (operation === "start") {
+      tab.network ??= new NetworkLog();
+      tab.network.start();
+      try {
+        await instance.connection.send("Network.enable", { maxTotalBufferSize: 20_000_000, maxResourceBufferSize: 5_000_000 }, tab.session);
+      } catch (error) {
+        throw new BrowserToolError(`The page's requests could not be watched: ${error instanceof Error ? error.message : "the browser refused"}`, 502);
+      }
+      return { text: `Capturing requests in tab ${tab.id}. Navigate or act, then read them with network requests.`, details: { action: "network", operation, tab: this.#tabDetails(tab) } };
+    }
+    if (operation === "stop") {
+      const count = tab.network?.size ?? 0;
+      tab.network?.stop();
+      await instance.connection.send("Network.disable", {}, tab.session).catch(() => undefined);
+      return { text: `Stopped capturing in tab ${tab.id}; ${count} request${count === 1 ? "" : "s"} kept.`, details: { action: "network", operation, entries: count, tab: this.#tabDetails(tab) } };
+    }
+    if (operation === "clear") {
+      tab.network?.clear();
+      return { text: "Cleared the captured requests.", details: { action: "network", operation, entries: 0, tab: this.#tabDetails(tab) } };
+    }
+    const log = tab.network;
+    if (!log) throw new BrowserToolError("No capture has run in this tab. Call network with operation start first.", 409);
+    if (operation === "requests") {
+      const filter = typeof params["filter"] === "string" ? params["filter"].toLowerCase() : "";
+      const type = typeof params["type"] === "string" ? params["type"].toLowerCase() : "";
+      const method = typeof params["method"] === "string" ? params["method"].toUpperCase() : "";
+      const status = typeof params["status"] === "string" ? params["status"] : "";
+      const matches = log.entries().filter((entry) => {
+        if (filter && !entry.url.toLowerCase().includes(filter)) return false;
+        if (type && entry.type.toLowerCase() !== type) return false;
+        if (method && entry.method.toUpperCase() !== method) return false;
+        if (status) {
+          const family = /^(\d)xx$/iu.exec(status);
+          const range = /^(\d{3})-(\d{3})$/u.exec(status);
+          if (family) { if (entry.status === undefined || Math.floor(entry.status / 100) !== Number(family[1])) return false; }
+          else if (range) { if (entry.status === undefined || entry.status < Number(range[1]) || entry.status > Number(range[2])) return false; }
+          else if (entry.status !== Number(status)) return false;
+        }
+        return true;
+      });
+      const shown = matches.slice(-50);
+      const lines = [`${log.size} request${log.size === 1 ? "" : "s"} captured in tab ${tab.id}${log.recording ? " (capturing)" : ""}.`];
+      if (matches.length > shown.length) lines.push(`Showing the latest 50 of ${matches.length} matching requests.`);
+      lines.push("", shown.length ? shown.map(describeEntry).join("\n") : "No request matches. Start a capture and navigate, or loosen the filter.");
+      return { text: lines.join("\n"), details: { action: "network", operation, entries: log.size, matching: matches.length, tab: this.#tabDetails(tab) } };
+    }
+    if (operation === "request") {
+      const id = params["id"];
+      if (typeof id !== "string" || !/^n\d{1,6}$/u.test(id)) throw new BrowserToolError("request needs id, such as n3 from network requests.");
+      const entry = log.find(id);
+      if (!entry) throw new BrowserToolError(`No captured request ${id}. Read network requests for the ids.`, 404);
+      const lines = [
+        describeEntry(entry),
+        `${entry.method} ${entry.url}`,
+        `Type ${entry.type || "Other"}${entry.mimeType ? ` · ${entry.mimeType}` : ""}${entry.failure ? ` · failed: ${entry.failure}` : ""}`,
+        "",
+        "Request headers:",
+        entry.requestHeaders.length ? entry.requestHeaders.map((header) => `  ${header.name}: ${header.value}`).join("\n") : "  (none)",
+        "Response headers:",
+        entry.responseHeaders.length ? entry.responseHeaders.map((header) => `  ${header.name}: ${header.value}`).join("\n") : "  (none)",
+      ];
+      return { text: lines.join("\n"), details: { action: "network", operation, id, tab: this.#tabDetails(tab) } };
+    }
+    const path = harPath(cwd, params["path"]);
+    const entries = log.entries();
+    const har = buildHar(entries, { creator: "HUI", version: "1.0.0" });
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${JSON.stringify(har, null, 2)}\n`, "utf8");
+    return {
+      text: `Wrote ${entries.length} request${entries.length === 1 ? "" : "s"} to ${path}. Credential headers and secret query values are [redacted].`,
+      details: { action: "network", operation, path, entries: entries.length, tab: this.#tabDetails(tab) },
+    };
+  }
+
   async #text(owner: string, params: Record<string, unknown>): Promise<BrowserToolResult> {
     const tab = this.#tabFor(owner, params["tabId"]);
     const instance = this.#live();
@@ -2237,9 +3001,11 @@ export class ManagedBrowser {
     const full = str(value["text"]).replace(/\n{3,}/gu, "\n\n").trim();
     const truncated = full.length > maxChars;
     await this.#refreshInfo(instance, tab);
-    const lines = [this.#header(tab), "", truncated ? full.slice(0, maxChars) : full || "(No visible text.)"];
+    const nonce = pageNonce();
+    const origin = originOf(tab.url);
+    const lines = [this.#header(tab), "", pageBoundary(nonce, origin, truncated ? full.slice(0, maxChars) : full || "(No visible text.)")];
     if (truncated) lines.push(`[Text truncated at ${maxChars} of ${full.length} characters. Use selector or a larger maxChars.]`);
-    return { text: lines.join("\n"), details: { action: "text", tab: this.#tabDetails(tab), characters: full.length, truncated } };
+    return { text: lines.join("\n"), details: { action: "text", tab: this.#tabDetails(tab), characters: full.length, truncated, boundary: { nonce, origin } } };
   }
 
   async #screenshot(owner: string, params: Record<string, unknown>, cwd: string): Promise<BrowserToolResult> {
@@ -2249,10 +3015,17 @@ export class ManagedBrowser {
     const savePath = params["path"] === undefined ? undefined : screenshotPath(cwd, params["path"]);
     // Only a visible tab paints.
     await this.#ensureVisible(instance, tab);
+    const annotate = params["annotate"] === true;
+    if (annotate && params["ref"] !== undefined) {
+      throw new BrowserToolError("annotate labels the viewport or a full page; capture one element without it.");
+    }
+    if (annotate && tab.refs.size === 0) {
+      throw new BrowserToolError("annotate numbers the refs of the latest snapshot, so take a snapshot first.", 409);
+    }
     let region: Record<string, number> | undefined;
     let subject = "viewport";
     if (params["ref"] !== undefined) {
-      const { target, label } = this.#target(tab, params["ref"]);
+      const { target, label } = await this.#liveTarget(instance, tab, params["ref"]);
       const quad = await this.#box(instance, tab, target.backendNodeId, label);
       const xs = [quad[0] ?? 0, quad[2] ?? 0, quad[4] ?? 0, quad[6] ?? 0];
       const ys = [quad[1] ?? 0, quad[3] ?? 0, quad[5] ?? 0, quad[7] ?? 0];
@@ -2276,14 +3049,61 @@ export class ManagedBrowser {
     const capture = async (format: "png" | "jpeg") => str((await connection.send("Page.captureScreenshot", {
       format, ...(format === "jpeg" ? { quality: 75 } : {}), ...(region ? { clip: region, captureBeyondViewport: true } : {}),
     }, tab.session, 60_000))["data"]);
-    const png = await capture("png");
-    const bytes = Buffer.from(png, "base64");
+    // Numbers are drawn into the page for the capture and removed again, so the
+    // screenshot and the refs the agent will act on carry the same labels.
+    let annotated: { marker: string; count: number } | undefined;
+    if (annotate) {
+      const metrics = await connection.send("Page.getLayoutMetrics", {}, tab.session);
+      const layout = isRecord(metrics["cssLayoutViewport"]) ? metrics["cssLayoutViewport"] : {};
+      const scrollX = num(layout["pageX"]);
+      const scrollY = num(layout["pageY"]);
+      const viewWidth = num(layout["clientWidth"]);
+      const viewHeight = num(layout["clientHeight"]);
+      const boxes: Array<{ label: number; x: number; y: number; width: number; height: number }> = [];
+      for (const entry of tab.refs.entries()) {
+        if (boxes.length >= MAX_ANNOTATIONS) break;
+        const quad = await connection.send("DOM.getContentQuads", { backendNodeId: entry.target.backendNodeId }, tab.session, 2_000)
+          .then((reported) => (Array.isArray(reported["quads"]) ? reported["quads"].find((value) => Array.isArray(value) && value.length >= 8) : undefined))
+          .catch(() => undefined) as number[] | undefined;
+        if (!quad) continue;
+        const xs = [num(quad[0]), num(quad[2]), num(quad[4]), num(quad[6])];
+        const ys = [num(quad[1]), num(quad[3]), num(quad[5]), num(quad[7])];
+        const left = Math.min(...xs) + scrollX;
+        const top = Math.min(...ys) + scrollY;
+        const width = Math.max(...xs) - Math.min(...xs);
+        const height = Math.max(...ys) - Math.min(...ys);
+        if (width < 1 || height < 1) continue;
+        // A viewport capture can only show what is on screen; a full page shows all of it.
+        if (!region && (left + width < scrollX || top + height < scrollY || left > scrollX + viewWidth || top > scrollY + viewHeight)) continue;
+        boxes.push({ label: Number(entry.ref.slice(1)), x: Math.round(left), y: Math.round(top), width: Math.round(width), height: Math.round(height) });
+      }
+      const marker = pageNonce();
+      annotated = { marker, count: boxes.length };
+      if (boxes.length) {
+        await connection.send("Runtime.evaluate", { expression: annotationScript(marker, boxes), returnByValue: true }, tab.session, 5_000);
+      }
+    }
+    // The overlay stays until every capture of this call is done, so a JPEG
+    // fallback gets the same labels, and is removed even when a capture throws.
+    let png = "";
+    let bytes = Buffer.alloc(0);
+    let image = { data: "", mimeType: "image/png" };
+    try {
+      png = await capture("png");
+      bytes = Buffer.from(png, "base64");
+      image = { data: png, mimeType: "image/png" };
+      if (bytes.length > MAX_IMAGE_BYTES) image = { data: await capture("jpeg"), mimeType: "image/jpeg" };
+    } finally {
+      if (annotated) {
+        await connection.send("Runtime.evaluate", {
+          expression: `document.querySelector(${JSON.stringify(`[data-hui-annotations="${annotated.marker}"]`)})?.remove()`,
+        }, tab.session, 2_000).catch(() => undefined);
+      }
+    }
     if (savePath) {
       await mkdir(dirname(savePath), { recursive: true });
       await writeFile(savePath, bytes);
     }
-    let image = { data: png, mimeType: "image/png" };
-    if (bytes.length > MAX_IMAGE_BYTES) image = { data: await capture("jpeg"), mimeType: "image/jpeg" };
     if (Buffer.byteLength(image.data, "base64") > MAX_IMAGE_BYTES) {
       throw new BrowserToolError("The screenshot is too large to return. Capture the viewport or one element ref instead.", 413);
     }
@@ -2292,12 +3112,13 @@ export class ManagedBrowser {
     const lines = [
       `Screenshot of the ${subject}${size ? ` (${size.width}×${size.height})` : ""}.`,
       this.#header(tab),
+      ...(annotated ? [annotated.count ? `Annotated with ${annotated.count} number${annotated.count === 1 ? "" : "s"}: a number marks the ref with the same digits (3 is e3).` : "No element was on screen to annotate."] : []),
       ...(savePath ? [`Saved to ${savePath}; use present_media to show it in HUI.`] : []),
     ];
     return {
       text: lines.join("\n"),
       image,
-      details: { action: "screenshot", tab: this.#tabDetails(tab), ...(size ?? {}), bytes: bytes.length, ...(savePath ? { path: savePath } : {}) },
+      details: { action: "screenshot", tab: this.#tabDetails(tab), ...(size ?? {}), bytes: bytes.length, ...(annotated ? { annotated: annotated.count } : {}), ...(savePath ? { path: savePath } : {}) },
     };
   }
 
@@ -2306,13 +3127,15 @@ export class ManagedBrowser {
     const errorsOnly = params["errorsOnly"] === true;
     const entries = tab.console.filter((entry) => !errorsOnly || entry.level === "error" || entry.level === "warning" || entry.level === "assert");
     const recent = entries.slice(-50);
+    const nonce = pageNonce();
+    const origin = originOf(tab.url);
     const lines = [this.#header(tab)];
     if (entries.length > recent.length) lines.push(`Showing the latest 50 of ${entries.length} entries.`);
-    lines.push("", recent.length
+    lines.push("", pageBoundary(nonce, origin, recent.length
       ? recent.map((entry) => `[${entry.level}] ${entry.text}`).join("\n")
-      : errorsOnly ? "No errors or warnings recorded." : "No console messages recorded.");
+      : errorsOnly ? "No errors or warnings recorded." : "No console messages recorded."));
     if (params["clear"] === true) tab.console = [];
-    return { text: lines.join("\n"), details: { action: "console", tab: this.#tabDetails(tab), entries: entries.length } };
+    return { text: lines.join("\n"), details: { action: "console", tab: this.#tabDetails(tab), entries: entries.length, boundary: { nonce, origin } } };
   }
 
   /** Resolves after the page has laid out and painted twice, so the next

@@ -1,5 +1,5 @@
 /**
- * A bot's home files on the host that runs its chat (HUI-18): the folder HUI
+ * A bot's home files on the host that runs its chat: the folder HUI
  * keeps for every bot, `BOTS_DIR/<id>` (owner-only; also the working directory
  * of a bot created without one), holding
  *

@@ -997,9 +997,11 @@ types the value with the same CDP input path `act type` uses. Its result and
 enters PI's transcript, a log or the live view. Once typed the value is in the
 page, where script on that origin can read it: the origin check keeps it away
 from other origins and frames, and is strongest paired with an origin allowlist.
-A field inside an iframe is not addressable at all — a tab's snapshot covers its
-own document, not a frame's — so a sign-in form embedded from elsewhere always
-needs a handoff.
+A frame in the same renderer is part of the tab's snapshot: one level of child
+frames is read by frame id and hung under its Iframe node, and a ref from inside
+a frame carries that frame, so its origin is checked and its field typed into in
+place. A frame the browser runs out of process is not inlined, so an embedded
+sign-in form it holds still needs a handoff.
 
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
@@ -1042,6 +1044,76 @@ Headless tabs each get their own window, so conversations never hide each
 other's pages. A browser on a worker is not streamed here: its tabs stay on that
 machine, no preview or browser view shows them, and what the agent sees arrives
 as tool results, a screenshot included (which `present_media` shows in the chat).
+
+**Page content is marked, and the loop is cheap.** Every result that carries
+something a page said — a snapshot, `text`, console entries, `get text|html` —
+puts it between `--- HUI_PAGE_CONTENT nonce=… origin=… ---` and
+`--- END_HUI_PAGE_CONTENT nonce=… ---`, with a nonce minted for that result, so
+a caller can tell HUI's own words from a page's even when the page imitates the
+format. `get` reads one property (`text`, `html`, `value`, `attr`, `box`,
+`title`, `url`, `count`) and `is` checks one state (`visible`, `hidden`,
+`enabled`, `disabled`, `checked`, `focused`, `editable`, `attached`), so
+verifying an action costs a line rather than a snapshot; a password field's
+`value` is refused rather than read, because the operator's secrets are typed by
+the gateway and must not come back through the transcript. `snapshot` takes
+`selector` to start at one element and `depth` to stop after some levels (marking
+where it stopped); `act wait` takes `state` with the selector. A click fails
+with the reason when its target is disabled, hidden or covered instead of
+reporting success, and a ref whose node was replaced keeps working when exactly
+one laid-out element still has its role and name — otherwise it fails as stale
+or ambiguous rather than acting on the wrong element.
+
+**What a page keeps is listed without its contents.** `storage` reads the
+cookies for the tab's URL (name, flags, SameSite, expiry, size, path) or the
+keys of `localStorage` and `sessionStorage` (name and value size). Values are
+never read or printed, because a cookie or storage value is usually a session
+token and the transcript outlives the tab. A `filter` narrows by name, and an
+empty result says so.
+**What a page costs is measured, not guessed.** `performance` with
+`operation: "metrics"` reads the renderer's own counters (JS heap used and
+total, DOM nodes, documents, frames, JS listeners, layout and style-recalculation
+counts and durations, and script time as a share of task time) and
+`operation: "timings"` reads the document's navigation entry (first byte,
+DOMContentLoaded, load, transferred and decoded bytes, navigation type), its
+paint marks, the number and weight of subresources, and the five slowest ones
+over 500 ms. Counters accumulate from the tab's first performance call, which
+the result says; a page still loading says so instead of reporting zeroes.
+**A form that only accepts a file can be completed.** `act` with `kind: "upload"`
+puts one to ten local files (relative to the session directory or absolute,
+each up to 25 MB) into a page's file input, addressed by the ref of the input
+or its label, or by a `selector` when the page hides it behind a styled button.
+The page's own `change` handler runs, so what the site shows afterwards is the
+proof; a directory, a missing file, a non-file element, a disabled input and
+several files into a single-file input are refused with the reason.
+**A snapshot can say what changed.** `snapshot` with `diff: true` compares the
+tab's current whole snapshot with the last one it took in the same document and
+returns only the changed lines, marked `+` and `-` with two lines of context,
+plus a count (`Page changed since the previous snapshot: 2 lines added, 1
+removed.`). A line that did not change keeps its ref, so the conversation can
+act straight from a diff; a first diff in a tab, a new document, or a change
+too large to match reports that and returns the whole snapshot instead. The
+diff is capped at 400 lines, and a page's own `- ` line prefix is separated
+from the marker by a space so the two never blur.
+**Requests can be watched and kept.** With `network` a conversation can capture
+the tab's requests (`start`, then `requests`, `request`, `clear`, `stop`) and
+write a HAR for a person (`har` with a path, beside the session's files). The
+log keeps method, URL, status, type, size and timing for at most 200 requests,
+and credential headers (`authorization`, `cookie`, `set-cookie`, and the like) and
+secret query values are `[redacted]` in the log and the HAR, because that
+artifact outlives the session. Bodies are not captured.
+**A picture can carry the refs.** `screenshot` with `annotate: true` draws a
+numbered box on each element the latest snapshot bound to a ref, so the image
+and the outline line up: the number is the ref without its `e` (`3` is `e3`).
+Only what the capture can show is numbered (the viewport, or the full page), at
+most 40 elements, and the labels are removed from the page again before the
+call returns, whether or not the capture succeeded. Annotated labels are
+pointers, not a new source of truth: the snapshot's refs are.
+**Frames are part of the page.** A snapshot reads one level of child frames by
+frame id and hangs each under its Iframe node, so a form inside a frame is
+visible and its refs work for `act`, `get`, `is`, screenshots and the secret
+origin check. A frame the browser isolates in its own process is not inlined;
+the snapshot lists the Iframe node and nothing inside it, and that embedded
+sign-in needs a handoff.
 
 **A handoff is the operator's turn.** When only a person can continue — a
 password, 2FA, a passkey, a payment or a bot check — the agent calls `handoff`
@@ -2027,8 +2099,6 @@ question are kept, and the card stays folded while the operator writes in the
 composer. The folded row, Enter on it or Escape opens the card again where the
 operator left it; Escape on the folded row opens it rather than declining the
 questions. A new call's card, and a reload, open unfolded.
-The fold is the web card's: the iPhone app draws questions in its own card
-(`docs/native-ios-plan.md`).
 
 The agent learns each answer as `"question"="answer"` (several joined by
 commas, a chosen option's preview after it), or that the operator declined:
@@ -2354,7 +2424,7 @@ leaves worker records unchanged.
 
 A **bot** is a named, persistent agent: a role, a persona it writes itself
 (SOUL.md), its own model, a working directory and **one chat that never ends**,
-whose memory is OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
+whose memory is OptChat. Sessions keep everything they have (worktrees, rewind,
 `/compact`); bots are for assistants the operator returns to every day. The
 sidebar splits into **Agents | Bots**, and the `hui bot` CLI can do
 everything the Bots tab can, through the same routes.
@@ -2461,7 +2531,9 @@ everything the Bots tab can, through the same routes.
   kept word for word and condensed into a summary tree a fresh turn reads, so
   the chat is never compacted. Bots reach it only through one interface, so its
   engine stays separate; `hui bot memory` and the memory routes show its
-  status, its view, any line zoomed down to a message, and a browse page.
+  status, its view, any line zoomed down to a message, and a browse page. Its
+  tools are `zoom`, `date` and `search_chat`, which finds the messages that
+  mention a word in the log the view no longer names.
 - **Always on.** Bots have no switch (decision below).
 - **The Bots tab**: an **Agents | Bots** switch fills the sidebar's top
   row after the collapse toggle (arrow keys, Home/End; the browser remembers the
@@ -2845,7 +2917,7 @@ implement it for android".
   PR #347 stays unmerged as an archive), and `main` loses the iOS target, the
   iOS status of every use case and the iOS fixture steps.
 - **The native client is a Kotlin and Jetpack Compose Android app**, not a
-  WebView shell around the web UI. `docs/native-android-plan.md` is its plan.
+  WebView shell around the web UI.
 - **Lockstep starts with the Android target.** Until the shared suite has an
   Android target, use cases carry only a web status. The PR that adds the
   target gives every use case an Android status, with existing ones in a
@@ -4285,8 +4357,9 @@ The browser addresses only opaque inventory ids. The server revalidates each id
 against current PI settings, never executes the resource, never accepts a path,
 and limits returned text to 256 KiB.
 
-The ordered implementation tasks and accepted capability matrix are in
-`docs/implementation-roadmap.md`.
+The accepted capability matrix is the use-case catalogue in `e2e/catalogue/`,
+where `backlog` means the capability exists and its shared test does not yet
+pass.
 
 ## Desktop distribution
 

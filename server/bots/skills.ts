@@ -1,5 +1,5 @@
 /**
- * A bot's own skills (HUI-18): `skills/<name>/SKILL.md` in its home folder, `BOTS_DIR/<id>` on the host that runs its chat,
+ * A bot's own skills: `skills/<name>/SKILL.md` in its home folder, `BOTS_DIR/<id>` on the host that runs its chat,
  * with the files beside it (a template's scripts and references). Only that bot's chat loads them
  * (`DurableHost.skillDirsFor`), beside the skills of its directory; its Tools & skills page lists them with the rest, so
  * each can be turned off like any other. Imports write them and exports read them, through this port (a bot on a worker
