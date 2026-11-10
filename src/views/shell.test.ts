@@ -833,12 +833,12 @@ function handlers(value: unknown, attribute: string): ((event: { preventDefault(
   return found;
 }
 
-function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents", loading = false): string {
+function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents", loading = false, error = "", retrying = false): string {
   const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
   if (open) sessions.push(session(open, "Open", "Work"));
   const data = {
     view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
-    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading, error: "",
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading, retrying, error,
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: open,
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
     groupDropTarget: undefined, groupReorderPending: false,
@@ -862,6 +862,16 @@ test("the session list draws placeholder rows until its first read answers", () 
   assert.equal(loading.split('class="sidebar-placeholder__row"').length - 1, 6, "the placeholder keeps the list's shape");
   assert.doesNotMatch(loading, /sidebar-list__note/u, "no loading note stands beside the placeholder");
   assert.doesNotMatch(sidebar(2), /sidebar-placeholder/u, "rows replace the placeholder");
+});
+
+test("a failed first read keeps a loading state and says it reads again", () => {
+  const retrying = sidebar(0, "", "agents", false, "HUI did not answer within 20 s. Check the connection and try again.", true);
+  assert.match(retrying, /role="status" aria-label="Loading sessions…"/u, "a read that will happen again still looks like loading");
+  assert.match(retrying, /HUI did not answer within 20 s\. Check the connection and try again\. Retrying…/u);
+  const withRows = sidebar(1, "", "agents", false, "HUI did not answer within 20 s.", true);
+  assert.match(withRows, /Session 0/u, "a failed read never hides the rows HUI already has");
+  assert.match(withRows, /Retrying…/u);
+  assert.doesNotMatch(sidebar(0, "", "agents", false, "Could not read sessions."), /Retrying/u, "a read HUI is not repeating never claims to retry");
 });
 
 test("a right click on a session row asks for the actions menu its button opens", () => {

@@ -6,7 +6,7 @@
 import type { BotInput, BotPatch, BotUsageResponse, BotView } from "./schema/bots.ts";
 import type { UsageTotals } from "./schema/diagnostics.ts";
 import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers } from "../lib/bots/bots.ts";
-import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
+import { CLIENT_HEADERS, fetchJson, fetchWithResponseDeadline, RESPONSE_TIMEOUT_MS, trackedFetch } from "./request.ts";
 import { readEventStream } from "./sessions.ts";
 import { reconnectDelay } from "../lib/event-stream.ts";
 
@@ -55,7 +55,12 @@ export function subscribeBots(handlers: BotsStreamHandlers, fetcher: typeof fetc
 async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal, fetcher: typeof fetch, onLive: () => void): Promise<"dropped" | "unsupported"> {
   let response: Response;
   try {
-    response = await fetcher(BOTS_EVENTS_URL, { headers: { ...CLIENT_HEADERS, accept: "text/event-stream" }, cache: "no-store", signal });
+    // Headers only: a gateway that never starts answering must not leave the
+    // roster waiting forever with no retry.
+    response = await fetchWithResponseDeadline(fetcher, BOTS_EVENTS_URL, {
+      headers: { ...CLIENT_HEADERS, accept: "text/event-stream" },
+      cache: "no-store",
+    }, RESPONSE_TIMEOUT_MS, signal);
   } catch {
     return "dropped";
   }

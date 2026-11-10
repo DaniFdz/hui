@@ -660,7 +660,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-076",
     title: "See the session list load, come up empty or fail",
-    behaviour: "The list shows \"Loading sessions…\", \"No sessions yet.\" when empty, and an error when the first load fails, retried when the gateway is back; a later refresh failure keeps the last list.",
+    behaviour: "The list shows \"Loading sessions…\" while its first read is pending and \"No sessions yet.\" when empty. A failed first read keeps the loading rows and names the error with \"Retrying…\", and HUI reads the list again by itself, so the list appears once the gateway is back without a reload; a later refresh failure keeps the last list.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisessions"],
     surfaces: ["route:GET /__hui/sessions"],
     web: "required",

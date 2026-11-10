@@ -1,4 +1,4 @@
-/** A sidebar row opens its session at /sessions/:id, every row shows its session's live status as a glyph without being opened, and the list shows its loading, empty and failed states (SESS-016, SESS-075, SESS-076). */
+/** A sidebar row opens its session at /sessions/:id, every row shows its session's live status as a glyph without being opened, and the list shows its loading, empty and failing states, reading itself again after a failed first read (SESS-016, SESS-075, SESS-076). */
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
@@ -85,15 +85,20 @@ test("rows show running, waiting and failed sessions and a parent's watcher or s
   }
 });
 
-test("the list shows placeholder rows and a failed first load, retries once the gateway is back, and keeps its rows when a later refresh fails", { tags: ["SESS-076"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the list shows placeholder rows, reads again by itself after a failed first load, and keeps its rows when a later refresh fails", { tags: ["SESS-076"], platforms: ["web"] }, async ({ screen, hui }) => {
   const list = await hui.intercept("GET", /\/__hui\/sessions$/u);
-  const stream = await hui.intercept("GET", /\/__hui\/sessions\/events$/u);
+  const noStatus = await hui.answerAll("GET", /\/__hui\/sessions\/events$/u, JSON.stringify({ error: "The gateway is unavailable." }), 503);
   await hui.open("/");
   await list.arrived();
   await expect(screen.getByLabel("Loading sessions…")).toBeVisible();
+  // A distinct pattern, so releasing `list` leaves this refusal in place.
+  const noList = await hui.answerAll("GET", /\/__hui\/sessions(?!\/)/u, JSON.stringify({ error: "The gateway is unavailable." }), 503);
   await list.reject(503, "The gateway is unavailable.");
-  await expect(screen.getByText("The gateway is unavailable.")).toBeVisible();
-  await stream.reject(503, "The gateway is unavailable.");
+  await expect(screen.getByText("The gateway is unavailable. Retrying…")).toBeVisible();
+  await expect(screen.getByLabel("Loading sessions…")).toBeVisible();
+  await noStatus.stop();
+  await noList.stop();
+  // The gateway answers again: the list arrives without a reload or a Retry click.
   await expect(screen.getByText("No sessions yet.")).toBeVisible();
 
   await hui.createSession({ title: "Kept through a failed refresh" });

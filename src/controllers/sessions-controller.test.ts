@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import type { SessionGroup, SessionStatusUpdate, SessionView } from "../api/sessions.ts";
-import { GatewayHttpError } from "../api/request.ts";
+import { GatewayHttpError, gatewayRequestError } from "../api/request.ts";
 import type { WorktreeInventory } from "../lib/worktrees.ts";
 import { SessionsController } from "./sessions-controller.ts";
 
@@ -19,11 +19,13 @@ const fake = vi.hoisted(() => ({
   inventory: { worktrees: [] } as unknown as WorktreeInventory,
   removed: [] as string[][],
   loadError: undefined as unknown,
+  loads: 0,
   gate: undefined as Promise<void> | undefined,
   saved: async () => [] as SessionGroup[],
 }));
 vi.mock("../api/sessions.ts", () => ({
   loadSessions: async () => {
+    fake.loads += 1;
     await fake.gate;
     if (fake.loadError) throw fake.loadError;
     return fake.list;
@@ -58,6 +60,7 @@ beforeEach(() => {
   fake.inventory = { worktrees: [] } as unknown as WorktreeInventory;
   fake.removed = [];
   fake.loadError = undefined;
+  fake.loads = 0;
   fake.gate = undefined;
   fake.saved = async () => [];
 });
@@ -200,6 +203,59 @@ test("an unreachable gateway lists the saved conversations instead of an error",
   assert.equal(sessions.error, "");
   assert.equal(sessions.loading, false);
   assert.ok(calls.settled > 0, "a saved list still settles the sidebar");
+  sessions.stop();
+});
+
+test("a first read the gateway never answers is read again until the list arrives", async () => {
+  vi.useFakeTimers();
+  fake.loadError = gatewayRequestError(new DOMException("The gateway did not answer in time.", "TimeoutError"), 20_000);
+  const { sessions, calls } = controller();
+  sessions.start();
+  const first = sessions.refresh();
+  await vi.advanceTimersByTimeAsync(0);
+  await first;
+  assert.equal(sessions.error, "HUI did not answer within 20 s. Check the connection and try again.");
+  assert.equal(sessions.retrying, true, "the sidebar says it is reading again instead of dead-ending");
+  assert.equal(fake.loads, 1);
+
+  fake.loadError = undefined;
+  fake.list = { revision: 4, groups: [group(session("a"))] };
+  await vi.advanceTimersByTimeAsync(4_000);
+  assert.equal(sessions.listed("a")?.id, "a", "the retry lands without a page reload");
+  assert.equal(sessions.retrying, false);
+  assert.equal(sessions.error, "");
+  assert.equal(fake.loads, 2, "one retry was enough");
+  assert.ok(calls.received.length > 0);
+  sessions.stop();
+});
+
+test("a list the status stream delivers ends the retry", async () => {
+  vi.useFakeTimers();
+  fake.loadError = new TypeError("Failed to fetch");
+  const { sessions } = controller();
+  sessions.start();
+  const first = sessions.refresh();
+  await vi.advanceTimersByTimeAsync(0);
+  await first;
+  assert.equal(sessions.retrying, true);
+
+  fake.loadError = undefined;
+  fake.streams[0]!.handlers.onSessions({ revision: 3, groups: [{ label: "ungrouped", ids: ["a"] }], upserts: [session("a")] });
+  assert.equal(sessions.retrying, false);
+  assert.equal(sessions.loading, false);
+  await vi.advanceTimersByTimeAsync(4_000);
+  assert.equal(fake.loads, 1, "a list the stream already delivered is not read again");
+  sessions.stop();
+});
+
+test("a gateway that refuses the list is not read again", async () => {
+  vi.useFakeTimers();
+  fake.loadError = new GatewayHttpError(403, "refused 403");
+  const { sessions } = controller();
+  await sessions.refresh();
+  assert.equal(sessions.retrying, false, "a refusal waits for a reload, not for a retry");
+  await vi.advanceTimersByTimeAsync(4_000);
+  assert.equal(fake.loads, 1);
 });
 
 test("a gateway that refuses the list shows its error, not the saved conversations", async () => {

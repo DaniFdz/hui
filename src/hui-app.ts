@@ -3096,6 +3096,7 @@ export class HuiApp extends HuiElement {
       draftSessionIds: this.composer.draftSessionIds,
       collapsed: this.sessions.collapsed,
       loading: this.sessions.loading,
+      retrying: this.sessions.retrying,
       error: this.sessions.error,
       importNote: this.importNote,
       importFailed: this.importFailed,

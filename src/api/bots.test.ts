@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { createBot, loadBots, subscribeBots } from "./bots.ts";
+import { RESPONSE_TIMEOUT_MS } from "./request.ts";
+import { reconnectDelay } from "../lib/event-stream.ts";
 
 const RECORD = {
   id: "b1",
@@ -61,6 +63,37 @@ test("the bot stream reads SSE frames, reports a gateway without it, and stops w
     subscribeBots({ onUpdate: () => {}, onConnection: resolve }, async () => new Response("{}", { status: 404 }));
   });
   assert.equal(unsupported, "unsupported");
+});
+
+test("the bot stream retries a gateway that never starts answering", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  let attempts = 0;
+  const states: string[] = [];
+  const fetcher = ((_url: RequestInfo | URL, init?: RequestInit) => {
+    attempts += 1;
+    if (attempts === 1) {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    }
+    return Promise.resolve(new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode('event: bots\ndata: {"revision":1,"upserts":[]}\n\n')); },
+    }), { status: 200, headers: { "content-type": "text/event-stream" } }));
+  }) as typeof fetch;
+  const stop = subscribeBots({ onUpdate: () => {}, onConnection: (state) => states.push(state) }, fetcher);
+  t.onTestFinished(stop);
+  const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise(setImmediate); };
+
+  await settle();
+  assert.equal(attempts, 1);
+  await vi.advanceTimersByTimeAsync(RESPONSE_TIMEOUT_MS);
+  await settle();
+  assert.deepEqual(states, ["reconnecting"], "a roster that never arrived says it is retrying");
+  await vi.advanceTimersByTimeAsync(reconnectDelay(1, () => 1));
+  await settle();
+  assert.equal(attempts, 2, "a hung request must not stop the roster's retries");
+  assert.equal(states.at(-1), "live");
 });
 
 test("reading the list asks for active and archived bots, as the stream lists both", async () => {
