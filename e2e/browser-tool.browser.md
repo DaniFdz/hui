@@ -93,6 +93,23 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Uploading a file
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_UPLOAD` writes a local file with `bash`, opens a page with a file
+input, and uploads it with `act` `kind: "upload"`.
+
+- The action read "Uploaded upload-note.txt to e1 (button \"Attach document\") (1
+  file)."
+- The page's own `change` handler ran: the input shows the chosen file name in
+  the browser pane and a `get text` of `#picked` returned "picked:
+  upload-note.txt", which the reply quoted.
+- At 390×844 the reply and the fixture card wrapped without sideways scrolling.
+- `server/browser/manager.test.ts` also covers a multi-file input, a hidden input
+  addressed by `selector`, a single-file input refusing two files, a missing
+  path, a directory, an empty `files` list, no target at all, and a target that
+  is not a file input.
+
 ## Snapshot diffs
 
 Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
