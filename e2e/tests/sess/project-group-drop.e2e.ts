@@ -15,6 +15,7 @@ test("dropping a session row on a project group leaves it where it was", { tags:
   await hui.createSession({ title: "Away row", cwd: parent });
 
   await hui.open("/");
+  await hui.sessionList();
   await screen.getByRole("button", "Filter & sort").tap();
   await screen.getByText("Project", { exact: true, visible: true }).tap();
   await expect(heading(there)).toBeVisible();
@@ -27,6 +28,7 @@ test("dropping a session row on a project group leaves it where it was", { tags:
   expect(await grouping()).toEqual(groups);
 
   await hui.api("POST", "/__hui/session-groups", { name: "Drop zone" });
+  await hui.sessionList();
   await screen.getByRole("button", "Filter & sort").tap();
   await screen.getByText("Custom groups", { exact: true, visible: true }).tap();
   await expect(heading("DROP ZONE")).toBeVisible();

@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
-type Worker = { id: string; name: string; command: string; state: string; extraPaths: string[]; host?: { hostname: string; os: string; arch: string; node: string; home: string }; sync?: { at: string; files: number } };
+type Worker = { id: string; name: string; command: string; state: string; extraPaths: string[]; host?: { hostname: string; [field: string]: string }; sync?: { at: string; files: number } };
 type Session = { id: string; title: string; worker?: { id: string; name: string } };
 
 const workers = (hui: Hui) => hui.api<{ workers: Worker[] }>("GET", "/__hui/workers").then(({ workers }) => workers);

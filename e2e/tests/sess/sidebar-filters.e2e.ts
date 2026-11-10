@@ -18,6 +18,7 @@ test("Search sessions filters by title, directory and group, opens collapsed gro
   await hui.createSession({ title: "Upstairs draft", cwd: dirname(hui.workspace) });
 
   await hui.open("/");
+  await hui.sessionList();
   await expect(row("Upstairs draft")).toBeVisible();
   await search.fill("miami");
   await expect(row("Miami appearance")).toBeVisible();
@@ -49,6 +50,9 @@ test("Search sessions filters by title, directory and group, opens collapsed gro
 
   await search.fill("");
   await hui.phoneScreen();
+  // The top bar's Search is the phone's own way into the list, so the drawer starts closed: a wide screen shows the
+  // field outright and the button is not drawn there.
+  await hui.reload();
   await screen.getByRole("button", "Search sessions").tap();
   await expect(search).toBeVisible();
   await expect(search).toBeFocused();
@@ -69,6 +73,7 @@ test("Sort by orders rows by Created, Last updated, Name or Stage with pinned fi
   await hui.prompt(bravo, "Bump Bravo");
 
   await hui.open("/");
+  await hui.sessionList();
   await expect(screen.getByLabel(/^Bravo sort, status idle, tool durable, stage testing/u)).toBeVisible();
   const before = await registry();
   await expect.poll(order).toEqual(["Charlie sort", "Bravo sort", "Echo sort", "Delta sort", "Alpha sort"]);
@@ -98,6 +103,7 @@ test("Group by Project splits rows by directory with only New session, None list
   await hui.createSession({ title: "Third row", group: "Atlas" });
 
   await hui.open("/");
+  await hui.sessionList();
   await expect(heading("ATLAS")).toBeVisible();
   await expect(screen.getByRole("button", "Group options for Atlas")).toHaveCount(1);
   await expect.poll(order).toEqual(["Third row", "First row", "Second row"]);
@@ -115,6 +121,7 @@ test("Group by Project splits rows by directory with only New session, None list
   await expect(screen.getByLabel("Project directory")).toHaveValue(parent);
   await expect(screen.getByLabel("Choose session group")).toContainText("OTHER");
   await hui.reload();
+  await hui.sessionList();
   await expect(heading(there)).toBeVisible();
   await expect.poll(order).toEqual(["Second row", "Third row", "First row"]);
 
@@ -138,6 +145,7 @@ test("Status shows only sessions in that live status, announces when none match 
   await hui.api("POST", "/__hui/session-groups", { name: "Empty shelf" });
 
   await hui.open("/");
+  await hui.sessionList();
   await expect(empty).toBeVisible();
   await hui.prompt(busy, "E2E_REPLAY");
   await hui.provider.held();

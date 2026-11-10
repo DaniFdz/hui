@@ -27,6 +27,7 @@ test("New session in a group selects it and its directory, and the Group picker 
   await expect(screen.getByText("durable · BETA · Idle", { visible: true })).toBeVisible();
   const rows = () => screen.getByLabel(/^.+, status \w+, tool durable, stage \w+/u).allTextContents();
   await expect.poll(async () => (await rows()).length).toBe(3);
+  await hui.sessionList();
   await screen.getByRole("button", "BETA").tap();
   await expect.poll(rows).toEqual(["Alpha anchor"]);
   await expect.poll(() => groupSize("Beta")).toBe(2);
@@ -107,7 +108,8 @@ test("a group's Git defaults are saved, survive a reload and a cancel, start ses
   await expect(screen.getByLabel("Checkout: New worktree from release/1.0")).toBeVisible();
   await checkout.tap();
   await screen.getByPlaceholder("Generated from the prompt").fill("e2e-release");
-  await screen.getByText("Pick where this session works, then say what to do.").tap();
+  // The popover covers the hint below it on a phone; its own trigger is outside it and closes it either way.
+  await screen.getByLabel("Checkout: New worktree from release/1.0").tap();
   await expect(screen.getByPlaceholder("Generated from the prompt")).toBeHidden();
   await screen.getByRole("button", "Start session").tap();
   await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();

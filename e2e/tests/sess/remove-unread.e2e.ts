@@ -29,6 +29,7 @@ test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI remov
   await screen.getByText("Delete…", { visible: true }).tap();
   await screen.getByRole("button", "Remove from HUI").tap();
   await expect.poll(() => hui.url()).toMatch(/\/$/u);
+  await hui.sessionList();
   await expect(screen.getByLabel(row("Keep me"))).toBeVisible();
   await expect(screen.getByLabel(row("Retire me"))).toBeHidden();
   await hui.open("/sessions");

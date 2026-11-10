@@ -1,5 +1,6 @@
 /** Renaming a session changes only HUI's registry title; PI's own session file keeps its name and contents (SESS-066). */
 import { expect } from "e2e";
+import { expectChatTitle } from "./chat-header.ts";
 import { test } from "../../fixtures/hui.ts";
 
 test("renaming a session leaves PI's own session file alone", { tags: ["SESS-066"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -17,6 +18,6 @@ test("renaming a session leaves PI's own session file alone", { tags: ["SESS-066
   await expect(name).toHaveValue("Rename keeps PI");
   await name.fill("Renamed keeps PI");
   await screen.getByLabel("Message", { visible: true }).tap();
-  await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Renamed keeps PI");
+  await expectChatTitle(screen, "Renamed keeps PI");
   await expect.poll(() => hui.stored("PI session marker")).toEqual(before);
 });
