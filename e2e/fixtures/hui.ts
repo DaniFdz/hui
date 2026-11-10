@@ -11,7 +11,11 @@
  * layout, the shell's drawer media, the navigation drawer), the Settings page list (the drawer on a phone), the app's
  * chrome outside Settings (the primary navigation), the chosen button of a group (aria-pressed), the app's and the
  * device's colour scheme, the session menu, status glyphs, how a piece of the screen looks, the window's size, Back and
- * Forward, sideways overflow, whether a tap reaches a control and the command palette's chord. The web page never
+ * Forward, sideways overflow, whether a tap reaches a control and the command palette's chord; and the steps that are
+ * the fixture's own rather than a platform's: a download the app saves itself (the browser's download event on the web,
+ * and on the phone the file the shell wrote into `Downloads`), a subagent's conversation opened from the card its
+ * parent's chat draws, a tool call held while it runs so its row and the working indicator can be read in flight, and a
+ * fixture world started for one test (`world.ts`). The web page never
  * opens Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway
  * does. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
  * themselves.
