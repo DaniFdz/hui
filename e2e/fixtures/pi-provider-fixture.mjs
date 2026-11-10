@@ -960,7 +960,7 @@ const server = createServer(async (request, response) => {
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("E2E_BROWSER_SKILL") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);
@@ -1086,6 +1086,28 @@ const server = createServer(async (request, response) => {
   }
   if (latestToolResult?.id === "tool-e2e-secret-use") {
     text(response, "I used the secret in a command without seeing it, then deleted its file.");
+    return finish(response);
+  }
+
+  // The shipped browser skill is in a session's prompt and readable from its folder.
+  if (source.includes("E2E_BROWSER_SKILL") && !source.includes("Name this coding-agent session")) {
+    const prompt = flattenedText(body.system);
+    const description = /reading a site that needs JavaScript or a login/u.test(prompt);
+    const path = /<location>([^<]*\/skills\/browser\/SKILL\.md)<\/location>/u.exec(prompt)?.[1];
+    if (!description || !path) {
+      text(response, `The browser skill is not in this session's prompt: described=${description}, path=${path ?? "none"}.`);
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-skill", "bash", { command: `sed -n '1,3p' '${path}' && grep -c '^## The loop that works' '${path}'` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-skill") {
+    const result = String(latestToolResult.result ?? "");
+    const named = /name: browser/u.test(result);
+    const loop = /^1$/mu.test(result.trim().split("\n").at(-1) ?? "");
+    text(response, named && loop
+      ? "The browser skill is listed in this session's prompt, and its file opens with **name: browser** and the loop section."
+      : `The browser skill file did not read as expected: ${result.slice(0, 200)}`);
     return finish(response);
   }
 

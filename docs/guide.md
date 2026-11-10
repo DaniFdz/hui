@@ -1436,6 +1436,21 @@ the origin allowlist narrow. A sign-in form inside an embedded frame works when 
 in the same process; a frame it isolates cannot be reached, and that needs a
 handoff.
 
+## How the agent browses
+
+HUI ships a `browser` skill: a short procedure the agent reads when a task
+needs a real page. It decides whether a page needs a browser at all (a JSON
+API does not), keeps snapshots small, acts only on refs from the latest
+snapshot, and after each action reads `snapshot` with `diff: true` so it sees
+the lines that changed instead of the whole page.
+
+It also says when to use the rest: `get`/`is` for one property, `steps` for
+transient UI, frames, `upload` for a form that takes a file, `console` and
+`network` when the DOM does not explain a failure, `performance` for weight
+and speed, `secret` for a stored password, and `handoff` only when a person
+has to continue. Skills are on unless you turned them off in settings; the
+agent still decides per task.
+
 ## Limiting where the agent's browser goes
 
 Settings → Tools → Browser → **Allowed origins** is empty by default: the
