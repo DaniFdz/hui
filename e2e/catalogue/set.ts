@@ -66,7 +66,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:accent"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-083",
@@ -94,7 +94,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["settings-page:appearance"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-008",
@@ -711,7 +711,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiautomation", "docs/api.md#post-__huiautomationtasks", "SPEC.md#behaviour"],
     surfaces: ["settings-page:automation", "route:GET /__hui/automation", "route:POST /__hui/automation/tasks", "page:cron"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-068",
@@ -747,7 +747,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#delete-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:DELETE /__hui/automation/tasks/:id", "page:cron"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-072",
