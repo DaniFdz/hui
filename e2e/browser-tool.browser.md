@@ -93,6 +93,30 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Performance
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_PERFORMANCE` opens a page of 250 rows, reads the counters, clicks
+"Add row" so real work happens after the counters were enabled, reads the
+counters again and then the timings.
+
+- After the click the metrics read: "heap 903 KB of 1.3 MB · nodes 532 ·
+  documents 4 · frames 4 · JS listeners 1", "layouts 1 (1 ms) · style recalcs 3
+  (0 ms)", "script 0 ms of 35 ms task time".
+- The first metrics call, before any work, said "Nothing has rendered or run
+  since the counters were enabled. Call performance before the navigation you
+  want to measure, then read it again." — a zero reading is explained instead of
+  printed as "0 ms (0%)".
+- The timings read "Load: first byte 8 ms, DOMContentLoaded 71 ms, load 75 ms ·
+  document 857 B (557 B decoded) · type navigate", "Paints: first-paint 212 ms,
+  first-contentful-paint 212 ms" and "Resources: 1 request, 321 B transferred."
+- The reply read "The page went from 530 to 532 DOM nodes, and after the click
+  the counters show real work instead of zeros."
+- At 390×844 both expanded outputs wrapped without sideways scrolling.
+- `server/browser/performance.test.ts` covers units, missing counters, a page
+  with no timing yet and a zero load mark; `server/browser/manager.test.ts`
+  proves both operations against a page with 300 rows and a real script request.
+
 ## Uploading a file
 
 Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
