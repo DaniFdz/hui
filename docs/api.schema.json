@@ -6638,6 +6638,20 @@
         "vale"
       ]
     },
+    "HeartbeatRun": {
+      "type": "object",
+      "required": [
+        "continued"
+      ],
+      "properties": {
+        "continued": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "HostMetrics": {
       "type": "object",
       "required": [
@@ -14991,6 +15005,9 @@
     "staff": [
       "StaffChiefInput"
     ],
+    "heartbeat": [
+      "HeartbeatRun"
+    ],
     "extensions": [
       "ExtensionEnginesInfo",
       "ExtensionPage",
@@ -15673,6 +15690,13 @@
       "path": "/__hui/health",
       "response": {
         "$ref": "#/$defs/GatewayHealth"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/heartbeat",
+      "response": {
+        "$ref": "#/$defs/HeartbeatRun"
       }
     },
     {

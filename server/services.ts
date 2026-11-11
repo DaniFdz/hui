@@ -15,6 +15,7 @@ import { remoteBots } from "./bots/remote.ts";
 import { createBotRoutes } from "./routes/bots.ts";
 import { createStaffRoutes } from "./routes/staff.ts";
 import { createHeartbeat } from "./heartbeat.ts";
+import { createHeartbeatRoutes } from "./routes/heartbeat.ts";
 import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
 import { accountFullName, BotExportService } from "./bots/export.ts";
 import { nameFromUsername } from "./bots/templates/cleanup.ts";
@@ -372,6 +373,7 @@ export const heartbeat = createHeartbeat({
   watchers: (id) => watchers.list(id),
   prompt: (id, text) => liveSessions.prompt(id, text),
 });
+export const heartbeatRoutes = createHeartbeatRoutes({ heartbeat });
 /** One managed browser per gateway; its settings are re-read on every call. With mirroring on it seeds itself from
  * what any worker sent, and hands what it captured to every worker's document. State goes through this machine: a
  * worker's document never reaches another worker. */

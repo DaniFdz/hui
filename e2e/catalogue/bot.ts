@@ -676,6 +676,15 @@ const cases: UseCase[] = [
     journeys: ["bots"],
     web: "required",
   },
+  {
+    id: "BOT-077",
+    title: "The gateway heartbeat continues a watched session",
+    behaviour: "A session watches another and the watched session is idle. Running the gateway heartbeat returns the watched session as continued and sends it one continuation prompt, with no heartbeat turn in any bot's chat.",
+    spec: ["SPEC.md#a-staff-pack-seeds-one-chief-of-staff-2026-11-06", "docs/api.md#post-__huiheartbeat"],
+    surfaces: ["route:POST /__hui/heartbeat", "tool:watch_session"],
+    journeys: ["bots"],
+    web: "required",
+  },
 ];
 
 export default cases;

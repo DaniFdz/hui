@@ -2006,6 +2006,10 @@ Query `id=&n=`.
 
 200 `{ text }`. OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400)
 
+### `POST /__hui/heartbeat`
+
+200 `{ continued: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and continues each idle watched session with no running watcher, at most once per idle span. It starts no bot turn and writes nothing into a bot's chat. The same scan runs at gateway start and every 15 minutes; this route lets the operator check without waiting. There is no request body.
+
 ### `POST /__hui/staff/chiefs`
 
 201 `BotResponse`. `{ group, cwd }`, nothing else: the custom session group's label (1-200 characters) and its project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its home, its `group` set, and its chat in `cwd`; the pack's routes are added to Settings when missing. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, cwd or an unknown field

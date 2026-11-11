@@ -57,6 +57,7 @@ import {
   extensionRoutes,
   fileRoutes,
   githubRoutes,
+  heartbeatRoutes,
   hostMetricsRoutes,
   jiraRoutes,
   localPathRoutes,
@@ -399,6 +400,11 @@ async function handleRequest(
 
   if (path === CALLS_ROUTE || BOT_CALLS.test(path)) {
     await serveCallRoute(response, routed);
+    return;
+  }
+
+  if (path === "/__hui/heartbeat") {
+    sendRouteResult(response, path, await heartbeatRoutes(routed));
     return;
   }
 
