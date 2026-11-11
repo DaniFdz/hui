@@ -71,6 +71,7 @@ test("the roster reads sleeping, done with the Bots tab marked, working, waiting
   await hui.provider.release();
   await expect.poll(async () => (await read(hui, busy)).unread).toBe(true);
   await hui.open("/");
+  await hui.sessionList();
   await screen.getByRole("tab", "Agents").tap();
   await expect(screen.getByRole("tab", "Agents")).toHaveAttribute("aria-selected", "true");
   await expect(screen.getByRole("tab", /^Bots\s*, unread$/u)).toBeVisible();
@@ -87,6 +88,7 @@ test("the roster reads sleeping, done with the Bots tab marked, working, waiting
   await expect(screen.getByTestId("transcript").getByText("Written while the chat was open.")).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await hui.reload();
+  await roster(screen, hui);
   await expect(screen.getByLabel("Busy, idle")).toBeVisible();
   await expect(screen.getByLabel(/^Busy, done/u)).toHaveCount(0);
   await expect(screen.getByRole("tab", /^Bots$/u)).toBeVisible();
