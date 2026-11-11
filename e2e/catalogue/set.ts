@@ -323,7 +323,7 @@ const cases: UseCase[] = [
     behaviour: "“Remove” asks to confirm that sessions on the worker must be deleted first and nothing on the remote is deleted; confirming removes the worker from the list. While any session still uses it the removal is refused and the page shows why.",
     spec: ["SPEC.md#remote-workers", "docs/api.md#delete-__huiworkersid"],
     surfaces: ["route:DELETE /__hui/workers/:id"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

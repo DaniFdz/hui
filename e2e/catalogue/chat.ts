@@ -410,7 +410,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["message-metadata"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -809,7 +809,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#hui-owns-an-isolated-pi-sdk-backend-not-a-pi-fork"],
     surfaces: [],
     journeys: ["sdk-backend", "rewind-continue", "compaction-rewind"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

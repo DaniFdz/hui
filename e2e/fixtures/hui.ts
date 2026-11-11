@@ -18,7 +18,7 @@
  * drives one page, so a `window.open` or a `target="_blank"` press is recorded as the address it asked for instead of
  * being followed), a controllable clock a test advances so a timer's deadline can be read on both sides of it
  * (`clock.ts`), the browser's permission for the fake camera and microphone the web target's Chromium carries
- * (`web-browser.ts`), a subagent's conversation opened from the card
+ * (`web-browser.ts`), a native dialog the page asks to confirm, a subagent's conversation opened from the card
  * its parent's chat draws, a tool call held while it runs so its row and the working indicator can be read in flight, and
  * a fixture world started for one test (`world.ts`). The web page never opens Vite's development socket, whose client
  * reloads the page when the gateway restarts, which no installed gateway does. Test files import `test` from here, never
@@ -75,6 +75,8 @@ export type Hui = {
   prompt(session: { id: string }, text: string): Promise<void>;
   provider: { url: string; held(): Promise<void>; release(): Promise<void> };
   network(mode: "online" | "offline" | "silent"): Promise<void>;
+  /** Answers the page's next native dialog (`window.confirm`) as an operator does, instead of the engine dismissing it. */
+  answerNextDialog(answer: "accept" | "dismiss"): Promise<void>;
   /** True once this browser has installed the open build's offline files and can serve its shell without the gateway. */
   offlineFilesReady(): Promise<boolean>;
   restartGateway(): Promise<void>;
@@ -531,6 +533,14 @@ export const test = base.extend<{ hui: Hui }>({
       zone: () => browser().evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
       providerRequests: async () => (await readFile(join(dirname(receipt.workspace), "artifacts/provider.jsonl"), "utf8").catch(() => "")).split("\n").filter((line) => line.trim()).length,
       network,
+      answerNextDialog: async (answer) => {
+        const off = await browser().onDialog(async (dialog) => {
+          // One answer only: a later dialog is the test's to expect.
+          await off();
+          if (answer === "accept") await dialog.accept();
+          else await dialog.dismiss();
+        });
+      },
       offlineFilesReady: () => browser().evaluate(async () => {
         if (!("serviceWorker" in navigator)) return false;
         const registration = await navigator.serviceWorker.getRegistration();

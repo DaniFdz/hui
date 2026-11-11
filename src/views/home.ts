@@ -69,7 +69,7 @@ import { renderReadToolCard, renderToolFileReference } from "./chat/read-tool-ca
 import { renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
 import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
-import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath } from "../lib/tool-cards.ts";
+import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath, toolTiming } from "../lib/tool-cards.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { renderWatcherActivity, renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
@@ -1009,7 +1009,7 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
       onCopy: (text) => props.onCopy(text, `tool-${item.id}`),
     });
   }
-  const statusLabel = status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed";
+  const statusLabel = `${status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed"}${toolTiming(item)}`;
   const summary = item.name === "browser" ? browserToolSummary(item.args) : "";
   const filePath = toolFilePath(item);
   return html`<details class="chat-tool-msg-collapse ${status === "running" ? "chat-tool-row--running" : ""}"

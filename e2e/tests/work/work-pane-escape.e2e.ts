@@ -21,6 +21,7 @@ test("Escape in the Work pane returns focus to the chat composer and leaves the 
   await expect(terminal).toBeVisible();
   // Adding the view disables the launcher that had focus, so give the pane's tab the keyboard again.
   await terminal.tap();
+  await expect(terminal).toBeFocused();
 
   await hui.keyboard.down("Escape");
   await hui.keyboard.up("Escape");
