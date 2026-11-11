@@ -70,7 +70,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:set_profile", "tool:write_soul"],
     journeys: ["bot-triggers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-008",
@@ -110,7 +110,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["bots"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-012",
@@ -120,7 +120,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-013",
@@ -140,7 +140,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/bots/:id"],
     journeys: ["bots"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-015",
@@ -160,7 +160,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/bots/:id"],
     journeys: ["bots", "bots-workers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-017",
@@ -170,7 +170,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-018",
@@ -290,7 +290,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup", "bots"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-030",
@@ -300,7 +300,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id", "route:GET /__hui/directories"],
     journeys: ["bot-setup"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-031",
@@ -320,7 +320,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/bots/:id/catalog", "route:PATCH /__hui/bots/:id", "tool:write_soul", "tool:set_profile", "tool:request_access", "tool:load_skill", "tool:zoom", "tool:date"],
     journeys: ["bots", "bot-schedules"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-033",
@@ -330,7 +330,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:request_access", "route:POST /__hui/sessions/:id/question", "route:GET /__hui/bots/:id/catalog"],
     journeys: ["bots"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-034",
@@ -349,7 +349,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:zoom", "tool:date"],
     journeys: ["bots"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-036",
@@ -439,7 +439,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/automation"],
     journeys: ["bot-schedules", "bot-routine-recovery"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-045",
@@ -469,7 +469,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/automation/tasks/:id/run", "route:POST /__hui/automation/runs/:id/cancel"],
     journeys: ["bot-routine-recovery"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-048",
@@ -479,7 +479,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/bots/:id/triggers", "route:POST /__hui/bots/:id/triggers", "tool:triggers"],
     journeys: ["bot-triggers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-049",
@@ -489,7 +489,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/hooks/<token>", "route:GET /__hui/bots/:id/triggers"],
     journeys: ["bot-triggers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-050",
@@ -509,7 +509,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/hooks/<token>", "route:GET /__hui/bots/:id/triggers"],
     journeys: ["bot-triggers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-052",
@@ -519,7 +519,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/bots/:id/triggers/:trigger/test"],
     journeys: ["bot-triggers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-053",
@@ -529,7 +529,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/bots/:id/triggers/:trigger/token"],
     journeys: ["bot-triggers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-054",
@@ -539,7 +539,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id/triggers/:trigger", "route:DELETE /__hui/bots/:id/triggers/:trigger", "tool:triggers"],
     journeys: ["bot-triggers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-055",
@@ -549,7 +549,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/bots/:id/triggers", "route:POST /__hui/hooks/<token>"],
     journeys: ["bot-triggers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-056",
@@ -559,7 +559,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-tagging"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-057",
@@ -569,7 +569,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt", "tool:message_bot"],
     journeys: ["bot-tagging"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-058",
@@ -579,7 +579,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bot-tagging"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-059",
@@ -589,7 +589,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bot-agent-replies"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-060",
@@ -609,7 +609,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/bots/:id/export/review", "route:POST /__hui/bots/:id/export"],
     journeys: ["bot-templates"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-062",
@@ -619,7 +619,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/bots/:id/export"],
     journeys: ["bot-templates"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-063",
@@ -659,7 +659,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/bots", "route:GET /__hui/bots"],
     journeys: ["bots-workers", "bot-setup"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-067",

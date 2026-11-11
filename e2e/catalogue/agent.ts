@@ -265,7 +265,7 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: [],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-028",
@@ -295,7 +295,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_spawn", "tool:agents_wait"],
     journeys: ["swarm", "subagents"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-032",
@@ -414,7 +414,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-042",
@@ -424,7 +424,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-043",

@@ -222,7 +222,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bots", "bot-setup"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CALL-027",
@@ -232,7 +232,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CALL-028",

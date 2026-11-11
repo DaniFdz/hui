@@ -70,7 +70,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-008",
@@ -80,7 +80,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-009",
@@ -110,7 +110,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-013",
@@ -120,7 +120,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-014",
@@ -130,7 +130,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-015",
@@ -140,7 +140,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-016",
@@ -170,7 +170,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/backlog"],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-020",
@@ -180,7 +180,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/backlog/items/:id"],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-021",
@@ -190,7 +190,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-022",
@@ -200,7 +200,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/backlog/items/:id"],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-023",
@@ -240,7 +240,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/git-checkout", "route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-027",
@@ -250,7 +250,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/git-checkout", "route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-028",
@@ -260,7 +260,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/backlog/items/:id/branch-name", "route:POST /__hui/backlog/items/:id/start", "setting:branchPrefix"],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-029",
@@ -270,7 +270,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-033",
@@ -410,7 +410,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-053",
@@ -420,7 +420,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-calendar"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-054",
@@ -440,7 +440,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-calendar"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-056",
@@ -460,7 +460,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-058",
@@ -470,7 +470,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-059",
@@ -490,7 +490,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-061",
