@@ -42,10 +42,11 @@ export const hideBotPanel = async (screen: Screen): Promise<void> => {
   await expect(screen.getByRole("button", "Show the bot panel")).toBeVisible();
 };
 
-/** The roster, switched to Bots: the sidebar's tab on the web, the drawer a phone opens first. */
+/** The roster, switched to Bots: the sidebar's tab on the web, the drawer a phone opens first. The tab's own label
+ * carries the roster's mark while a bot has a turn nobody read ("Bots , unread"), which is still the Bots tab. */
 export const roster = async (screen: Screen, hui: Hui): Promise<void> => {
   await hui.sessionList();
-  await screen.getByRole("tab", "Bots").tap();
+  await screen.getByRole("tab", /^Bots(?:\s*, unread)?$/u).tap();
   await expect(screen.getByPlaceholder("Search bots")).toBeVisible();
 };
 
