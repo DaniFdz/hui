@@ -9,7 +9,7 @@ const cases: UseCase[] = [
   {
     id: "CALL-001",
     title: "See Call when a ChatGPT login exists",
-    behaviour: "With a ChatGPT login, a bot's chat header and its overview profile show a button labelled `Call <bot>`. Without a login, or when the login status cannot be read, neither shows Call, and the bot's Settings tab says *Needs a ChatGPT login* beside its Calls heading.",
+    behaviour: "With a ChatGPT login, a bot's chat header and its overview profile show a button labelled `Call <bot>`. Without a login neither shows Call, and the bot's Settings tab says *Needs a ChatGPT login* beside its Calls heading; a login status that could not be read also leaves Call out, and the note stays away rather than claim a login is missing.",
     spec: ["SPEC.md#bots", GPT_LIVE_ONLY, "docs/api.md#get-__huicalls"],
     surfaces: ["route:GET /__hui/calls"],
     journeys: ["bot-setup"],
