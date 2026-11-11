@@ -91,6 +91,12 @@ export type Hui = {
   clearState(): Promise<void>;
   url(): Promise<string>;
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
+  /**
+   * States the insets a device reports but an emulator never does — the notch's, the status bar's, the home indicator's —
+   * by writing the same \`--safe-area-*\` tokens the installed app's shell writes, so a page laid out for a phone can be
+   * read as a cutout phone draws it. Refuses in the app, where the shell owns those tokens and zeroes them.
+   */
+  insets(insets: { top?: number; right?: number; bottom?: number; left?: number }): Promise<void>;
   wideScreen(width?: number): Promise<void>;
   paletteChord(): Promise<void>;
   /** A bot's Settings chord: ⇧⌘, on Apple platforms and Ctrl+Shift+, elsewhere. */
@@ -501,6 +507,12 @@ export const test = base.extend<{ hui: Hui }>({
         const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
         await browser().setViewport(phone);
         return phone;
+      },
+      insets: async ({ top = 0, right = 0, bottom = 0, left = 0 }) => {
+        await browser().evaluate((insets) => {
+          for (const [side, value] of Object.entries(insets)) document.documentElement.style.setProperty(`--safe-area-${side}`, `${value}px`);
+          return null;
+        }, { top, right, bottom, left });
       },
       overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
         .some((element) => element.scrollWidth > element.clientWidth)),

@@ -24,6 +24,8 @@
       max(var(--chat-mobile-edge-inset, 4px), var(--safe-area-right, 0px));
     overflow: visible;
   }
+
+
   .chat-main__conversation {
     --chat-composer-top-margin: 6px;
   }

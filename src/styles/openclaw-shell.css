@@ -1209,6 +1209,9 @@
     gap: 10px;
   }
 
+
+
+
   .app-shell .topnav-shell__content {
     display: flex;
     justify-content: center;
@@ -1628,4 +1631,17 @@
   line-height: 1.35;
   overflow-wrap: anywhere;
   pointer-events: none;
+}
+
+/* A phone browser draws the page under the status bar and the cutout: `index.html` opts into `viewport-fit=cover`, and
+   Safari does not inset the layout for it. The installed app pads the page's own frame natively (the shell zeroes these
+   tokens, `mobile/android/.../hui_shell.js`), and a standalone page pads `body` (`base.css`), so only the browser needs
+   this. Every other environment reports 0px, which leaves the row exactly as it was. */
+@media (display-mode: browser) and (max-width: 900px), (display-mode: browser) and (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
+  /* The frame, not the row: the topbar keeps its own 58px and the grid keeps its rows, so nothing that already measures
+     from `--shell-topbar-height` has to learn about the inset. `box-sizing: border-box` keeps the shell inside the
+     viewport it had. */
+  .app-shell {
+    padding-top: var(--safe-area-top, 0px);
+  }
 }

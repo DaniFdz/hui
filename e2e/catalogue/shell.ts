@@ -510,6 +510,17 @@ const cases: UseCase[] = [
     web: "required",
     phone: { excluded: "The phone app is always narrow, so its sidebar is the drawer, which has no boundary.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
+  {
+    id: "SHELL-049",
+    title: "Clear of the phone's own chrome",
+    behaviour:
+      "The status bar, the notch and the home indicator never cover HUI's own chrome: the header a phone draws starts below the top inset so its menu button is a full tap, and the composer ends above the bottom one. A page loaded in a browser reserves the insets itself (\`viewport-fit=cover\` is set, and Safari does not inset the layout); the installed app pads the page's frame natively and reports the tokens as zero, and a standalone page pads \`body\`, so no surface counts an inset twice.",
+    spec: [LAYOUT],
+    surfaces: ["nav:session", "nav:home"],
+    journeys: ["phone", "shell-navigation"],
+    web: "required",
+    phone: "backlog",
+  },
 ];
 
 export default cases;
