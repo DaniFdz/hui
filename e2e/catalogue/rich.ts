@@ -13,7 +13,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["markdown-formatting"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-002",
@@ -23,7 +23,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["markdown-formatting"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-003",
@@ -121,7 +121,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["rich-embeds"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-013",
@@ -151,7 +151,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["rich-embeds"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-016",
@@ -250,7 +250,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: ["route:GET /__hui/sessions/:id/attachments/:message/:image"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-026",
@@ -280,7 +280,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:present_media", "route:GET /__hui/media/:id/:name"],
     journeys: ["presented-media"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-029",
@@ -410,7 +410,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi/resources/:kind/:id"],
     journeys: ["resource-reader"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-051",
@@ -440,7 +440,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-054",
@@ -470,7 +470,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:show_widget", "route:GET /__hui/widget-sandbox"],
     journeys: ["widgets"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "RICH-057",
@@ -510,7 +510,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:show_widget", "route:GET /__hui/widget-sandbox"],
     journeys: ["widgets"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
 ];
 
