@@ -31,7 +31,7 @@ const cases: UseCase[] = [
     behaviour: "Starting a call asks for the microphone; once allowed, the call connects. The microphone is open only while the call runs and is released when the call ends, so the system's microphone indicator goes off after hanging up.",
     spec: ["SPEC.md#bots", CALLS],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
