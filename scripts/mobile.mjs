@@ -7,7 +7,7 @@
  * mobile/AGENTS.md; two workers can run at once with HUI_ANDROID_AVD, ANDROID_SERIAL and E2E_PHONE_PORT.
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -209,7 +209,13 @@ const commands = {
     const minutes = ((Date.now() - started) / 60_000).toFixed(1);
     if (state.conclusion !== "success") throw new Error(`the IPA build ${state.conclusion} after ${minutes} min: ${run.url}`);
     mkdirSync(out, { recursive: true });
-    call(["run", "download", String(run.databaseId), "-n", "ios-ipa", "-D", out]);
+    // A folder that already holds the previous IPA is the normal case, and `gh run download` refuses to write into one,
+    // so the artifact lands in a directory of its own and is moved over.
+    const staging = join(out, ".download");
+    rmSync(staging, { recursive: true, force: true });
+    call(["run", "download", String(run.databaseId), "-n", "ios-ipa", "-D", staging]);
+    for (const name of readdirSync(staging)) copyFileSync(join(staging, name), join(out, name));
+    rmSync(staging, { recursive: true, force: true });
     // The artifact names its files after the version it archived, so the folder is read rather than assumed.
     const files = readdirSync(out).filter((name) => name.endsWith(".ipa") || name.endsWith(".ipa.sha256")).sort();
     console.log(`${minutes} min. ${out} holds:`);
