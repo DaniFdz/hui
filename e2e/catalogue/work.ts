@@ -562,7 +562,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/files"],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
 
@@ -793,7 +793,7 @@ const cases: UseCase[] = [
     behaviour: "The VS Code view of a conversation on a remote worker shows \"VS Code is not available here\" with the reason that its files are not on this machine.",
     spec: ["SPEC.md#vs-code"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

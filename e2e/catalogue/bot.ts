@@ -169,7 +169,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -518,7 +518,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#post-__huibotsidtriggerstriggertest"],
     surfaces: ["route:POST /__hui/bots/:id/triggers/:trigger/test"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -538,7 +538,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#patch-__huibotsidtriggerstrigger", "docs/api.md#delete-__huibotsidtriggerstrigger"],
     surfaces: ["route:PATCH /__hui/bots/:id/triggers/:trigger", "route:DELETE /__hui/bots/:id/triggers/:trigger", "tool:triggers"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -628,7 +628,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#importing-and-exporting-bots"],
     surfaces: ["route:POST /__hui/bots/import"],
     journeys: ["bot-templates"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -648,7 +648,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#a-bot-has-every-tool-and-skill-until-the-operator-turns-some-off-2026-10-06", "SPEC.md#bots-run-on-remote-workers-2026-10-06", "docs/api.md#bots-on-a-worker"],
     surfaces: ["route:GET /__hui/bots/:id/catalog", "route:PATCH /__hui/bots/:id"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

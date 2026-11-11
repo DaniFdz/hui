@@ -267,7 +267,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#github-cli-login", "docs/api.md#post-__huigithublogin", "docs/api.md#delete-__huigithublogin", "docs/api.md#get-__huigithub"],
     surfaces: ["route:GET /__hui/github", "route:POST /__hui/github/login", "route:DELETE /__hui/github/login", "settings-page:integrations"],
     journeys: ["github-integration"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
