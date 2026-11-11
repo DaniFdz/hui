@@ -17,18 +17,22 @@ test("a request that could not reach the gateway reaches Logs as one ui entry wi
   await hui.open("/");
   await expect(screen.getByRole("button", "Start session")).toBeVisible();
 
-  // Two loads of the same page data while the gateway cannot be reached.
+  // Two loads of the same page data while the gateway cannot be reached. A destination opened from the drawer closes
+  // it, so the phone opens it again for each choice; the web's sidebar stays beside the page and this does nothing.
   await hui.network("offline");
   await hui.sessionList();
   await nav("Contributions").tap();
   await expect(title).toHaveText("Contributions");
+  await hui.sessionList();
   await nav("Usage").tap();
   await expect(title).toHaveText("Usage");
+  await hui.sessionList();
   await nav("Contributions").tap();
   await expect(title).toHaveText("Contributions");
 
   // Back online, the next HUI request carries the report the page held while it could not reach the gateway.
   await hui.network("online");
+  await hui.sessionList();
   await nav("Usage").tap();
   await expect(title).toHaveText("Usage");
   await expect.poll(async () => (await uiEntries(hui, "/__hui/github/contributions")).length, { timeout: 60_000 }).toBe(1);

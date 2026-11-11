@@ -563,17 +563,23 @@ export const test = base.extend<{ hui: Hui }>({
       },
       sessionList: async () => {
         const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
-        if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
+        // The drawer is open only when its own toggle says so: the backdrop's close control is on screen in either state,
+        // so counting that one read a shut drawer as open and left the drawer a phone needs shut.
+        const open = fixtures.screen.getByRole("button", { name: "Close navigation", expanded: true, visible: true });
+        if (phone && await open.count() === 0) {
           await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
           // A row is tappable only once a drawer has taken the screen. A split renders one per pane, so wait for
           // any of them instead of making a two-match locator an error.
-          await expect.poll(() => fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count()).toBeGreaterThan(0);
+          await expect.poll(() => fixtures.screen.getByRole("button", { name: "Close navigation", expanded: true, visible: true }).count()).toBeGreaterThan(0);
         }
       },
       settingsPages: async () => {
-        const close = fixtures.screen.getByRole("button", "Close settings navigation", { visible: true });
+        const close = fixtures.screen.getByRole("button", { name: "Close settings navigation", expanded: true, visible: true });
         const open = fixtures.screen.getByRole("button", "Open settings navigation", { visible: true });
-        if (await close.count() === 0 && await open.count() > 0) await open.tap();
+        if (await close.count() === 0 && await open.count() > 0) {
+          await open.tap();
+          await expect(close).toBeVisible();
+        }
       },
       sessionMenu: async (title) => {
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
