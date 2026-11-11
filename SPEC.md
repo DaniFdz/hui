@@ -3018,15 +3018,6 @@ reproduce a control the phone already shows. Watching a web upload and stopping
 it is therefore a web-only use case, while the gateway's larger cap applies to
 both clients and the upload itself is WORK-054 on each.
 
-### The side chat is a Work pane view on the web (2026-11-08)
-
-`/btw`'s exchange is a view of the Work pane, which exists in HUI's wide layout
-and is a browser surface: a tab beside the terminals, Files, Diff and the rest.
-The iPhone app is always narrow, has no Work pane and draws one screen at a
-time, so this row is the web's. When the app gets its own side chat it is its
-own use case with its own shared test, and CHAT-043 and SET-047 are excluded on
-iOS rather than left on its backlog.
-
 ### A secondary click is the web's way into a row's menu (2026-11-04)
 
 A mouse or trackpad's secondary click on a session row opens the row's

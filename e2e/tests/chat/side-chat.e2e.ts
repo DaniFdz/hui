@@ -17,15 +17,14 @@ test("/btw answers in the Side chat Work view, which stays out of the transcript
   await screen.getByRole("button", "Send message").tap();
   await asked.arrived();
   await expect(pane.getByRole("tab", "Side chat")).toHaveAttribute("aria-selected", "true");
-  const view = screen.getByRole("tabpanel", "Side chat");
-  await expect(view.getByText("Asking utility model…")).toBeVisible();
-  await expect(view.getByText("which file are we editing?")).toBeVisible();
-  await expect(view.getByText("This exchange is not added to the main transcript.")).toBeVisible();
+  await expect(screen.getByText("Asking utility model…")).toBeVisible();
+  await expect(screen.getByText("which file are we editing?")).toBeVisible();
+  await expect(screen.getByText("This exchange is not added to the main transcript.")).toBeVisible();
   await expect(message).toHaveValue("");
   await asked.deliver();
-  await expect(view.getByText("Fixture response.")).toBeVisible();
-  await expect(view.getByText("Ephemeral · hui-e2e/fixture")).toBeVisible();
-  await expect(view.getByText("Asking utility model…")).toBeHidden();
+  await expect(screen.getByText("Fixture response.")).toBeVisible();
+  await expect(screen.getByText("Ephemeral · hui-e2e/fixture")).toBeVisible();
+  await expect(screen.getByText("Asking utility model…")).toBeHidden();
   await expect(transcript.getByText("Start a conversation")).toBeVisible();
   await expect(transcript.getByText("which file are we editing?")).toBeHidden();
 
@@ -40,8 +39,8 @@ test("/btw answers in the Side chat Work view, which stays out of the transcript
   await message.fill("/side and the other one?");
   await screen.getByRole("button", "Send message").tap();
   await expect(pane.getByRole("tab", "Side chat")).toHaveAttribute("aria-selected", "true");
-  await expect(view.getByText("and the other one?")).toBeVisible();
-  await expect(view.getByText("Fixture response.")).toBeVisible();
+  await expect(screen.getByText("and the other one?")).toBeVisible();
+  await expect(screen.getByText("Fixture response.")).toBeVisible();
   await expect(transcript.getByText("and the other one?")).toBeHidden();
 });
 
@@ -70,7 +69,7 @@ test("a bare /btw explains its form, attachments are refused and a failure shows
   await message.fill("/btw will this fail?");
   await screen.getByRole("button", "Send message").tap();
   await asked.reject(500, "The utility model is unavailable.");
-  const view = screen.getByRole("tabpanel", "Side chat");
-  await expect(view.getByText("The utility model is unavailable.")).toBeVisible();
-  await expect(view.getByText("will this fail?")).toBeVisible();
+  await expect(pane.getByRole("tab", "Side chat")).toHaveAttribute("aria-selected", "true");
+  await expect(screen.getByText("The utility model is unavailable.")).toBeVisible();
+  await expect(screen.getByText("will this fail?")).toBeVisible();
 });

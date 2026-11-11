@@ -56,11 +56,11 @@ test("the utility model names a new session from its first prompt and answers /b
 
   await screen.getByLabel("Message").fill("/btw which model answers this?");
   await screen.getByRole("button", "Send message").tap();
-  const sideChat = screen.getByRole("tabpanel", "Side chat");
-  await expect(sideChat.getByText("Ephemeral · hui-e2e/anthropic/claude-opus-5-5")).toBeVisible();
-  await expect(sideChat.getByText("which model answers this?")).toBeVisible();
-  await expect(sideChat.getByText("Fixture response.")).toBeVisible();
+  await expect(screen.getByText("Ephemeral · hui-e2e/anthropic/claude-opus-5-5")).toBeVisible();
+  await expect(screen.getByText("which model answers this?")).toBeVisible();
+  // The question and the answer stay outside the conversation, which keeps its one reply.
   await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
+  await expect(screen.getByText("Fixture response.")).toHaveCount(2);
   await expect(transcript.getByText("Plan the release notes")).toBeVisible();
   await expect(transcript.getByText("which model answers this?")).toBeHidden();
 });

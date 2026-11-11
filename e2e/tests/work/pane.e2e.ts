@@ -245,7 +245,7 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await expect(pane.getByRole("tab", "Browser")).toHaveAttribute("aria-selected", "true");
   await screen.getByRole("button", "Back to chat").tap();
   await selector.tap();
-  // The Browser's view is open, so its launcher is gone and five launchers remain.
+  // The Browser's view is open, so its launcher is gone and four launchers remain.
   await expect(screen.getByText(/^Work$/u)).toHaveCount(2);
   await expect(screen.getByText(/^Open$/u)).toHaveCount(4);
   await screen.getByText("VS Code").first().tap();
