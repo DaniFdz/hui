@@ -1,7 +1,7 @@
 /** Opening a bot's Settings: the Settings chord on its chat opens the panel there and pressed again closes it (BOT-025), and Edit bot… in a roster row's menu or the chat header's, or Edit on the overview, opens its chat with the panel on Settings while a Setup row opens Settings at its own section (BOT-026). */
 import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { hideBotPanel, hideRoster, panelOverview } from "./bot-panel.ts";
+import { hideBotPanel, panelOverview } from "./bot-panel.ts";
 
 /** A roster row's ⋯: a phone draws it on the row, and the wide layout reveals it to the pointer first. */
 const rowMenu = async (screen: Screen, hui: Hui, name: string): Promise<Locator> => {
@@ -33,7 +33,6 @@ test("Edit bot… in a roster row's menu or the chat header's, or Edit on the ov
   // A phone keeps the roster in the navigation drawer; on the wide layout this is nothing.
   await hui.sessionList();
   await screen.getByRole("tab", "Bots").tap();
-  const row = screen.getByLabel(/^Solo,/u);
   const panel = screen.getByLabel("Solo: bot panel");
   const header = screen.getByTestId("chat-header");
 
