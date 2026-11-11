@@ -19,9 +19,14 @@ export const botPanel = (screen: Screen, name: string): Locator => screen.getByL
  * left alone.
  */
 export const hideRoster = async (screen: Screen): Promise<void> => {
-  const close = screen.getByRole("button", "Close navigation", { visible: true }).first();
-  if (await close.count()) await close.tap();
-  await expect(close).toBeHidden();
+  // A phone dismisses the drawer by tapping outside it (SHELL-011). The drawer's backdrop is the whole screen with the
+  // drawer over its left side, so the tap goes at the backdrop's own right edge, clear of the drawer's body.
+  const backdrop = screen.getByRole("button", "Close navigation", { visible: true }).first();
+  if (await backdrop.count()) {
+    const box = (await backdrop.boundingBox())!;
+    await screen.tapAt({ x: Math.round(box.x + box.width) - 12, y: Math.round(box.y + box.height / 2) });
+  }
+  await expect(screen.getByRole("button", "Close navigation", { visible: true })).toHaveCount(0);
 };
 
 /**
