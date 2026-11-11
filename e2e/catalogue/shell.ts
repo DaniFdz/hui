@@ -255,7 +255,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huidiagnosticsui-errors"],
     surfaces: ["route:POST /__hui/diagnostics/ui-errors"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-026",
@@ -309,7 +309,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/update/check"],
     journeys: ["update-notice"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-032",
@@ -400,7 +400,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/update/check"],
     journeys: ["update", "update-notice"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-039",

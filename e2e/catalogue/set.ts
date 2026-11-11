@@ -297,7 +297,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkers", "docs/api.md#post-__huiworkersidconnect", "docs/api.md#get-__huiworkers"],
     surfaces: ["settings-page:workers", "route:GET /__hui/workers", "route:POST /__hui/workers", "route:POST /__hui/workers/:id/connect"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-029",
@@ -306,7 +306,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkersidconnect", "docs/api.md#post-__huiworkersiddisconnect", "docs/api.md#post-__huiworkersidsync"],
     surfaces: ["route:POST /__hui/workers/:id/connect", "route:POST /__hui/workers/:id/disconnect", "route:POST /__hui/workers/:id/sync", "route:GET /__hui/workers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-030",
@@ -315,7 +315,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#patch-__huiworkersid"],
     surfaces: ["route:PATCH /__hui/workers/:id"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-031",
@@ -324,7 +324,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#delete-__huiworkersid"],
     surfaces: ["route:DELETE /__hui/workers/:id"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-032",
@@ -343,7 +343,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:models", "route:GET /__hui/providers", "route:POST /__hui/providers/:provider/login", "route:POST /__hui/providers/login/:id", "route:PUT /__hui/providers/:provider"],
     journeys: ["providers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-086",
@@ -373,7 +373,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/providers/login/:id"],
     journeys: ["providers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-036",
@@ -423,7 +423,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login", "route:GET /__hui/providers"],
     journeys: ["providers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-041",
@@ -672,7 +672,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:plugins", "setting:disabledPlugins", "route:PUT /__hui/settings", "route:GET /__hui/sessions/:id/commands", "page:plugins"],
     journeys: ["plugin-disable-sdk"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-064",
@@ -682,7 +682,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/pi/resources/:kind/:id", "page:plugins", "page:plugin", "page:skills"],
     journeys: ["plugin-disable-sdk", "resource-reader"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-065",
@@ -702,7 +702,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/pi/packages/remove", "page:plugins", "settings-page:plugins", "route:POST /__hui/pi/packages/install"],
     journeys: ["pi-control-surfaces"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-067",
