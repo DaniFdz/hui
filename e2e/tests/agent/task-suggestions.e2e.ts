@@ -187,5 +187,8 @@ test("Start in a new session reads Starting…, keeps the card when it fails, th
   expect(created?.group).toBe("Suggestion group");
 
   await hui.open(`/sessions/${source.id}`);
-  await expect(screen.getByRole("article")).toHaveCount(0);
+  // The started card left the source conversation and the card nobody started is still there to start: the gutter
+  // draws one card at a time, so the count of articles alone is a check that passes before the page has drawn any.
+  await expect(screen.getByRole("article", { name: NO_FIX.title })).toBeVisible();
+  await expect(screen.getByRole("article", { name: WITH_FIX.title })).toHaveCount(0);
 });
