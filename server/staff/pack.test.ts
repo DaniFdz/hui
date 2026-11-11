@@ -12,7 +12,7 @@ import { packFilePaths, readStaffPack, STAFF_PACK_ROOT, hashText } from "./pack.
 
 test("the shipped pack validates and holds the chief, its routes and its skills", async () => {
   const pack = await readStaffPack();
-  assert.equal(pack.version, 10);
+  assert.equal(pack.version, 11);
   assert.equal(pack.bot.name, "Chief of Staff");
   assert.match(pack.soul, /chief of staff/u);
   assert.deepEqual(pack.routes.map((route) => route.name), ["planner", "explorer", "worker", "reviewer", "verifier"]);

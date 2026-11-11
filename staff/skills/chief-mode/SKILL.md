@@ -63,9 +63,13 @@ is not a child.
 **Everything else is a session.** A task with more than one step, a change that writes code, a
 long build, test or e2e, or anything that owns a branch or a pull request gets a new session,
 not a child. Write the brief, name the worktree branch and the worker when one is available,
-and create it with `create_session`. It is watched by default; HUI's gateway heartbeat continues it,
-and `watch_session` lists it. No heartbeat routine lives in this chat. Call
-`worker_stats` at the start
+and create it with `create_session`. It is the **lead** for one PR: HUI adds the PR-lead phase
+protocol. Choose its model for orchestration and tell it to run one phase at a time: an `explorer`,
+then after its report a `worker` in a worktree, then a fresh `verifier`, then a different-family
+`reviewer`. It stops with `Waiting for the go...`; read its evidence and send the next go.
+Never create another session for a phase. A model-less route inherits the lead's model; set route models to change a
+phase's model. It is watched by default; HUI's gateway heartbeat continues it, and `watch_session`
+lists it. No heartbeat routine lives in this chat. Call `worker_stats` at the start
 and state the machine plan. `machines` owns the choice: a session gets a connected machine with
 headroom, independent pieces spread across machines, and no worker is filled. `local` is this
 machine. Do not spawn a lead for it. The session owns the work;
