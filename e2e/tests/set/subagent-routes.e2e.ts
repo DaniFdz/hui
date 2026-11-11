@@ -187,7 +187,11 @@ test("a routed spawn uses its model and thinking; invalid routes create no child
   await hui.open(`/sessions/${session.id}`);
   await expect(screen.getByLabel("Model: HUI SDK Fixture", { exact: true, visible: true })).toBeVisible();
   await expect(screen.getByLabel("Thinking: high", { exact: true, visible: true })).toBeVisible();
+  // The row list is the sidebar, which a phone keeps in its drawer while the chat is open: read it from there, then come
+  // back to the chat, because a drawer's backdrop is what the composer sits behind.
+  await hui.sessionList();
   await expect(sessions).toHaveCount(1);
+  await hui.open(`/sessions/${session.id}`);
   await send({ task: "E2E_SUBAGENT_CHILD unknown", label: "Unknown worker", route: "no-such-route" });
   await expect(transcript.getByText(/^tool answered:.*Unknown route: no-such-route\. Configured routes are fast, deep\./su)).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
@@ -199,15 +203,16 @@ test("a routed spawn uses its model and thinking; invalid routes create no child
   await expect(expand).toBeHidden();
 
   await send({ task: "E2E_SUBAGENT_CHILD routed", label: "Routed worker", route: "deep" });
+  await hui.sessionList();
   await expand.tap();
   const child = screen.getByLabel(/^Routed worker, status idle,/u);
   await expect(child).toBeVisible();
   await expect(sessions).toHaveCount(2);
-  await expect(screen.getByLabel("Model: HUI SDK Fixture", { exact: true })).toBeVisible();
   await child.tap();
   await expect(screen.getByLabel("Model: HUI Route Fixture", { exact: true })).toBeVisible();
   await expect(screen.getByLabel("Thinking: low", { exact: true })).toBeVisible();
   await expect(transcript.getByText("Subagent child result: the fixture contract is working.", { exact: true, visible: true })).toBeVisible();
+  await hui.sessionList();
   await screen.getByLabel(/^Route parent, status idle,/u).tap();
   await expect(screen.getByLabel("Model: HUI SDK Fixture", { exact: true })).toBeVisible();
   await expect(screen.getByLabel("Thinking: high", { exact: true })).toBeVisible();
@@ -229,6 +234,7 @@ test("a route without a model runs its child on the caller's model and thinking"
     task: "E2E_SUBAGENT_CHILD inherited", label: "Inherited worker", route: "inherit",
   } })).toString("base64url")}`);
   await screen.getByRole("button", "Send message").tap();
+  await hui.sessionList();
   await screen.getByRole("button", "Expand subagents of Inherit parent").tap();
   await expect(sessions).toHaveCount(2);
   await screen.getByLabel(/^Inherited worker, status idle,/u).tap();
