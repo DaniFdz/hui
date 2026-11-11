@@ -47,14 +47,10 @@ test("a chat left running keeps running, and the accent unread dot it gets on se
   await screen.getByLabel("Message").fill("E2E_REPLAY");
   await screen.getByRole("button", "Send message").tap();
   await hui.provider.held();
-  // The rows and the group's new-session button lie in the sidebar, which a phone keeps in its drawer.
-  await hui.sessionList();
   await screen.getByLabel("Somewhere else, status idle, tool durable, stage investigation").tap();
-  await hui.sessionList();
   await expect(row("running")).toBeVisible();
   await screen.getByRole("button", "New session in OTHER").tap();
   await expect(screen.getByRole("button", "Start session")).toBeVisible();
-  await hui.sessionList();
   await expect(row("running")).toBeVisible();
 
   await hui.provider.release();
@@ -62,13 +58,11 @@ test("a chat left running keeps running, and the accent unread dot it gets on se
   expect(await hui.accentDot("Left running")).toBe(true);
   await hui.restartGateway();
   await hui.reload();
-  await hui.sessionList();
   await expect(unread).toBeVisible();
   expect(await hui.accentDot("Left running")).toBe(true);
 
   await unread.tap();
   await expect(screen.getByTestId("transcript", { visible: true }).getByText("Replay prefix — replay suffix")).toBeVisible();
-  await hui.sessionList();
   await expect(row("idle")).toBeVisible();
   expect(await hui.accentDot("Left running")).toBe(false);
 });
