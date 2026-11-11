@@ -89,7 +89,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#resting-bots-sleep-and-a-green-dot-means-done-2026-10-19", "SPEC.md#bots-have-animated-faces-2026-10-06"],
     surfaces: ["route:GET /__hui/bots/events"],
     journeys: ["bot-faces"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -438,7 +438,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#schedules-are-a-cli-and-bots-schedule-their-own-routines-2026-10-07", "docs/api.md#routines"],
     surfaces: ["route:GET /__hui/automation"],
     journeys: ["bot-schedules", "bot-routine-recovery"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -468,7 +468,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#routines", "docs/api.md#post-__huiautomationrunsidcancel"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run", "route:POST /__hui/automation/runs/:id/cancel"],
     journeys: ["bot-routine-recovery"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -598,7 +598,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-import-other-platforms-templates-and-export-their-own-2026-10-07", "docs/api.md#importing-and-exporting-bots", "docs/api.md#post-__huibotsimportpreview", "docs/api.md#post-__huibotsimport"],
     surfaces: ["route:POST /__hui/bots/import/preview", "route:POST /__hui/bots/import", "row:botCreated"],
     journeys: ["bot-templates"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

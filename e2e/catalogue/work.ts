@@ -381,7 +381,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["work-view:browser", "route:POST /__hui/sessions/:id/browser/connect", "route:WS /__hui/browser-stream"],
     journeys: ["work-pane", "browser-tool"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -452,7 +452,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view", "work-pane"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -613,7 +613,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["chat-file-links"],
-    web: "backlog",
+    web: "required",
     phone: { excluded: "Tabbing to a link is keyboard navigation; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
 
@@ -684,7 +684,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

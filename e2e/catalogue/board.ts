@@ -19,7 +19,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -99,7 +99,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#session-stages"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -279,7 +279,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#jira-work-items"],
     surfaces: [],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -289,7 +289,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#kanban", "docs/api.md#jira-work-items"],
     surfaces: [],
     journeys: ["jira-integration", "kanban"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

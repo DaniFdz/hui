@@ -11,7 +11,7 @@
  * twice.
  */
 import { expect } from "e2e";
-import { test, type Hui } from "../../fixtures/hui.ts";
+import { test } from "../../fixtures/hui.ts";
 import { hideBotPanel, panelOverview } from "./bot-panel.ts";
 
 type Task = { id: string; name: string; sessionId: string; until?: string; runsLeft?: number; nextRunAt?: string | null };
