@@ -1,9 +1,10 @@
 /**
  * The terminal Work view kind: one tab per shared terminal of the conversation, drawn by `<hui-terminal-pane>`.
  * "New terminal" creates a PTY in the gateway; closing the tab only hides it (the shell keeps running and can be
- * reopened from the launcher menu); "End terminal" inside the view stops it. The PTYs and the agent's terminal tool
- * belong to the gateway (`server/terminals/terminals.ts`), which also serves a conversation on a remote worker
- * through that worker's connect command.
+ * reopened from the launcher menu); "End terminal" inside the view stops it. A new tab takes a name no other tab of
+ * the conversation already shows. The PTYs and the agent's terminal tool belong to the gateway
+ * (`server/terminals/terminals.ts`), which also serves a conversation on a remote worker through that worker's
+ * connect command.
  */
 import { html, svg } from "lit";
 import { createTerminal, listTerminals } from "../../api/terminals.ts";
@@ -20,20 +21,39 @@ export type TerminalWorkViewEnvironment = {
 
 export const TERMINAL_WORK_VIEW_SHORTCUT = WORK_SHORTCUTS.terminal;
 
+/**
+ * A new tab's default name: "Terminal 1", or the first number no tab of this conversation already shows. The gateway
+ * names a shell after how many it holds, so after a restart it would hand a fresh shell the name of the tab that lost
+ * its own (`Terminal 1` twice); only the page still knows the names those lost tabs carry.
+ */
+export function nextTerminalTitle(taken: Iterable<string>): string {
+  const shown = new Set(taken);
+  let number = 1;
+  while (shown.has(`Terminal ${number}`)) number += 1;
+  return `Terminal ${number}`;
+}
+
 /** Lucide square-terminal, the shape of `icons.squareTerminal`, at 16px. */
 export const terminalWorkViewIcon = html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svg`<path d="m7 11 2-2-2-2M11 13h4" /><rect width="18" height="18" x="3" y="3" rx="2" ry="2" />`}</svg>`;
 
 export function terminalWorkViewKind(env: TerminalWorkViewEnvironment): WorkViewKind<TerminalWorkViewRef> {
-  // The gateway names terminals ("Terminal 2"); tab captions read the last name seen.
+  // The gateway names terminals ("Terminal 2"); tab captions read the last name seen, and a new tab avoids the names
+  // its conversation already shows, the ones whose shell a restart took away included.
   const titles = new Map<string, string>();
-  const remember = (view: TerminalView) => { titles.set(view.id, view.title); };
+  const shown = new Map<string, Set<string>>();
+  const remember = (view: TerminalView) => {
+    titles.set(view.id, view.title);
+    const names = shown.get(view.ownerSessionId) ?? new Set<string>();
+    names.add(view.title);
+    shown.set(view.ownerSessionId, names);
+  };
   return {
     kind: "terminal",
     label: "New terminal",
     icon: terminalWorkViewIcon,
     shortcut: TERMINAL_WORK_VIEW_SHORTCUT,
     async create(sessionId) {
-      const view = await createTerminal(sessionId);
+      const view = await createTerminal(sessionId, nextTerminalTitle(shown.get(sessionId) ?? []));
       remember(view);
       return { kind: "terminal", terminalId: view.id };
     },
