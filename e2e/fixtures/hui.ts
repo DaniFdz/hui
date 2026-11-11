@@ -14,7 +14,10 @@
  * Forward, sideways overflow, whether a tap reaches a control, the command palette's chord and a frame's own document
  * (an agent widget runs where only its sandbox can reach it, so a test reads and taps inside it there); and the steps
  * that are the fixture's own rather than a platform's: a download the app saves itself (the browser's download event on
- * the web, and on the phone the file the shell wrote into `Downloads`), a subagent's conversation opened from the card
+ * the web, and on the phone the file the shell wrote into `Downloads`), the other tabs the page asks for (the engine
+ * drives one page, so a `window.open` or a `target="_blank"` press is recorded as the address it asked for instead of
+ * being followed), a controllable clock a test advances so a timer's deadline can be read on both sides of it
+ * (`clock.ts`), a subagent's conversation opened from the card
  * its parent's chat draws, a tool call held while it runs so its row and the working indicator can be read in flight, and
  * a fixture world started for one test (`world.ts`). The web page never opens Vite's development socket, whose client
  * reloads the page when the gateway restarts, which no installed gateway does. Test files import `test` from here, never
@@ -28,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, FrameScreen, WebRoute } from "@e2e-dev/web";
 import { addWorkerOnThisMachine } from "./worker.ts";
+import { advanceClock, installClock } from "./clock.ts";
 import { clearAppStorage, deviceBytes, deviceFiles, onPhone, PHONE_DOWNLOADS } from "./phone.ts";
 import { IPHONE_SCREEN, onWebKitPhone } from "./phone-webkit.ts";
 import { startWorld, type World, type WorldName } from "./world.ts";
@@ -36,6 +40,20 @@ type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig:
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; runtime?: { active: true }; subagent?: { status: string; completionDelivery?: string } };
+/** One other tab the page asked for: what it asked to open, and how. */
+export type TabRequest = {
+  /** The address it asked for, resolved against the page that asked. */
+  url: string;
+  /** `window.open`: a page script asked; `link`: a press on a `target="_blank"` link asked. */
+  via: "window.open" | "link";
+  /** Whether the request asked for no opener (`noopener` in `window.open`'s features, or in the link's `rel`). */
+  noopener: boolean;
+  /** Whether the request asked for no referrer (`noreferrer`, in the same place). */
+  noreferrer: boolean;
+  /** What the request said about the new tab: `window.open`'s features, or the link's `rel`, as written. */
+  asked: string;
+};
+
 type Intercepted = {
   arrived(): Promise<void>;
   deliver(): Promise<void>;
@@ -153,6 +171,25 @@ export type Hui = {
   /** The screen of the frame a CSS selector matches, so a test reads and taps a document HUI only hosts, such as an agent
    * widget's sandboxed frame; a frame nested inside it comes from that screen's own `frameLocator`. */
   frame(selector: string): Promise<FrameScreen>;
+  /**
+   * Installs a controllable clock in the page: `Date.now()` and every timer the app schedules from now on run on a clock
+   * only `advanceClock` moves, so a test can assert both sides of a deadline without waiting for it. Rendering and
+   * animation keep real time (`performance.now`, `requestAnimationFrame`), and a timer due at once still runs on the
+   * loop's next turn. The clock survives a reload; nothing is installed until a test asks. Answers the time it starts at.
+   */
+  controllableClock(): Promise<number>;
+  /** Advances the controlled clock by `ms`, running every timer that falls due in order, and answers the time it now
+   * reads. Needs `controllableClock()` first. */
+  advanceClock(ms: number): Promise<number>;
+  /**
+   * Every other tab the page asked for since it loaded: a `window.open` call, or a press on a `target="_blank"` link
+   * nothing else handled, in the order the app asked. It answers the address the app asked to open, resolved against
+   * the page, and whether the request asked for `noopener`/`noreferrer` — never what a second page would end up with,
+   * because the engine only ever drives one page. An empty list means the app asked for no tab at all.
+   */
+  tabs(): Promise<TabRequest[]>;
+  /** The last tab the page asked for, or `undefined` when it asked for none. */
+  tab(): Promise<TabRequest | undefined>;
   expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   messageActions(target: Locator): Promise<void>;
@@ -284,6 +321,40 @@ const fingerDrag = ({ dx, dy }: { dx: number; dy: number }) => {
   fire("pointerup", held.x + dx, held.y + dy);
   Element.prototype.setPointerCapture = capture;
   delete (window as unknown as { huiFinger?: unknown }).huiFinger;
+  return null;
+};
+
+/**
+ * Records every other tab the app asks this page for — a `window.open` call, or the press of a `target="_blank"` link —
+ * and lets the browser do exactly what it would do without this script: the app's request is what a test reads, because
+ * the engine only ever drives one page. The listener sits on `window` in the bubble phase on purpose: HUI's own handlers
+ * (the media viewer, a link's own component) run first and cancel the press with `preventDefault`, and a press the app
+ * handled is no tab request at all. Each document keeps its own list, so a widget's frame records only what the widget
+ * itself asked.
+ */
+const recordTabs = () => {
+  type Raw = { url: string; via: "window.open" | "link"; asked: string };
+  const requests: Raw[] = [];
+  (window as unknown as { huiTabs: Raw[] }).huiTabs = requests;
+  const address = (url: unknown) => {
+    const asked = typeof url === "string" ? url : url instanceof URL ? url.href : "";
+    try {
+      return new URL(asked, window.location.href).href;
+    } catch {
+      return asked;
+    }
+  };
+  const open = window.open.bind(window);
+  window.open = function recordedOpen(url?: string | URL, _target?: string, features?: string) {
+    requests.push({ url: address(url), via: "window.open", asked: features ?? "" });
+    return open(url, _target, features);
+  } as typeof window.open;
+  window.addEventListener("click", (event) => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    const anchor = event.composedPath().find((node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement);
+    if (!anchor || anchor.target !== "_blank" || anchor.hasAttribute("download")) return;
+    requests.push({ url: anchor.href, via: "link", asked: anchor.getAttribute("rel") ?? "" });
+  });
   return null;
 };
 
@@ -672,6 +743,15 @@ export const test = base.extend<{ hui: Hui }>({
       },
       scrollTo: (_within, target) => target.scrollIntoView(),
       frame: async (selector) => browser().frameLocator(selector),
+      controllableClock: async () => {
+        // The page that is open gets it now, and every page after it through an init script, so a reload keeps the clock.
+        await browser().addInitScript(installClock);
+        return browser().evaluate(installClock);
+      },
+      advanceClock: (ms) => browser().evaluate(advanceClock, ms),
+      tabs: () => browser().evaluate(() => ((window as unknown as { huiTabs?: { url: string; via: "window.open" | "link"; asked: string }[] }).huiTabs ?? [])
+        .map(({ url, via, asked }) => ({ url, via, asked, noopener: /\bnoopener\b/u.test(asked), noreferrer: /\bnoreferrer\b/u.test(asked) }))),
+      tab: async () => (await steps.tabs()).at(-1),
       expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
       textOf: async (target) => (await target.textContent()) ?? "",
       stepState: (step, state) => expect(step).toHaveAttribute("data-status", state),
@@ -857,6 +937,23 @@ export const test = base.extend<{ hui: Hui }>({
               // The Work pane's launcher is web furniture: on a phone the pane is a destination the Active panel selector
               // opens (WORK-010), so this returns at once and a test that needs the launcher fails on the phone.
             },
+            tabs: async () => {
+              // The app never asks its page for a tab in the app: `installNativeShell` hands an external address to the
+              // shell's own browser (`openExternal`), so a WebView has no `window.open` request to read and no second page
+              // to open. Refusing names that, instead of answering with a list that would mean "the app asked for none".
+              throw new Error("hui.tabs() needs a browser: the app's WebView hands an external address to the shell's own browser, so the page never asks for a tab there and there is nothing to read. A use case that reads one stays off the phone's required list.");
+            },
+            tab: async () => {
+              throw new Error("hui.tab() needs a browser: the app's WebView hands an external address to the shell's own browser, so the page never asks for a tab there and there is nothing to read. A use case that reads one stays off the phone's required list.");
+            },
+            controllableClock: async () => {
+              // A clock installed through an init script is the one thing the WebView's single context cannot take, and a
+              // use case that needs a timer to pass keeps its real-time proof on the phone.
+              throw new Error("hui.controllableClock() needs a browser that can take an init script: the app's WebView has one context it cannot replace, so a use case that needs a timer to pass keeps to real time on the phone and stays off its required list until it has a step there.");
+            },
+            advanceClock: async () => {
+              throw new Error("hui.advanceClock() needs a controllable clock, which the app's WebView cannot take an init script for. A use case that needs a timer to pass keeps to real time on the phone.");
+            },
             clearState: async () => {
               await fixtures.app.open("/");
               await browser().evaluate(clearAppStorage);
@@ -889,6 +986,7 @@ export const test = base.extend<{ hui: Hui }>({
           }
         : web;
     if (fixtures.platform === "web") await browser().addInitScript(trackSockets);
+    if (fixtures.platform === "web") await browser().addInitScript(recordTabs);
     await steps.clearState();
 
     await use({
