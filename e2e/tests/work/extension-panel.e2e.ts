@@ -1,6 +1,7 @@
 /** An enabled gateway extension's panel opens sandboxed in the Work pane, from Settings or the + menu, and its route answers (WORK-085). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { leaveWork, resumeWork, showWork } from "./work-views.ts";
 
 type Extensions = { extensions: { id: string; state: string }[] };
 
@@ -15,7 +16,7 @@ test("an enabled extension's panel opens sandboxed in the Work pane and calls it
 
   await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
+  await showWork(screen);
   await expect(screen.getByRole("button", "Extension panel")).toBeVisible();
   await screen.getByRole("button", "Open Work view").tap();
   await screen.getByRole("menuitem").filter({ hasText: "Extension panel" }).tap();
@@ -30,7 +31,11 @@ test("an enabled extension's panel opens sandboxed in the Work pane and calls it
   expect(style).toMatch(/height:\d+px/u);
   expect(style).not.toContain("height:360px");
 
+  // Settings is reached from the shell's own navigation, which a phone keeps in a drawer, and only from the chat.
+  await leaveWork(screen);
+  await hui.sessionList();
   await screen.getByTestId("nav-settings").tap();
+  await hui.settingsPages();
   await screen.getByTestId("settings-page-link").filter({ hasText: "Extensions" }).tap();
   await screen.getByRole("button", "Open panel").tap();
   await expect(screen.getByTestId("extension-panel")).toHaveAttribute("data-extension-panel", "hello");
@@ -41,6 +46,8 @@ test("an enabled extension's panel opens sandboxed in the Work pane and calls it
   expect(listed.extensions.find((extension) => extension.id === "hello")?.state).toBe("loaded");
 
   await hui.reload();
+  // A phone lands on the chat and picks the panel's view from the Active panel selector again.
+  await resumeWork(hui, screen, "Extension: hello");
   await expect(screen.getByTestId("extension-panel")).toHaveAttribute("data-extension-panel", "hello");
 
   await hui.api("PUT", "/__hui/ext/hello", { enabled: false });

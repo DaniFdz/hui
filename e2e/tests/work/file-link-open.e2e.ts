@@ -6,6 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { leaveWork, showFiles } from "./work-views.ts";
 
 test("a file link opens the Files view on that file at its line and a folder link expands it", { tags: ["WORK-059"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
@@ -28,12 +29,16 @@ test("a file link opens the Files view on that file at its line and a folder lin
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, "E2E_FILE_LINKS");
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-  // The pane the link expands is the rail's: nothing opened it first.
-  await expect(screen.getByRole("button", "Show Work pane")).toBeVisible();
+  // Nothing opened the pane first: the link is what puts a view in it. A phone reads the chat's links while the chat is
+  // the screen, so each link is tapped from the chat and the view it opens is what comes back.
+  await expect(screen.getByLabel("Message")).toBeVisible();
+  await expect(pane.getByRole("tab")).toHaveCount(0);
 
   await transcript.getByRole("link", "Open src/lib/greeting.ts at line 3 in Files").tap();
   await expect(pane.getByRole("tab", "greeting.ts")).toHaveAttribute("aria-selected", "true");
-  // The navigator opened the folders down to the file and marks it as the one on screen.
+  // The navigator opened the folders down to the file and marks it as the one on screen. A narrow view keeps its
+  // navigator in a drawer, which its own Show files control opens.
+  await showFiles(screen);
   await expect(navigator.getByRole("button", "src")).toHaveAttribute("aria-expanded", "true");
   await expect(navigator.getByRole("button", "lib")).toHaveAttribute("aria-expanded", "true");
   await expect(navigator.getByRole("button", "greeting.ts")).toHaveAttribute("aria-current", "true");
@@ -42,12 +47,15 @@ test("a file link opens the Files view on that file at its line and a folder lin
   expect(await editor("src/lib/greeting.ts").getByText("export const line4 = 4;").getAttribute("class")).toBe("cm-line");
 
   // A second link for the same file reuses the active Files tab, and marks the line it names.
+  await leaveWork(screen);
   await transcript.getByRole("link", "Open src/lib/greeting.ts at line 58 in Files").tap();
   await expect(pane.getByRole("tab", "greeting.ts")).toHaveAttribute("aria-selected", "true");
   await expect.poll(() => marked("src/lib/greeting.ts", "export const line58 = 58;")).toContain("cm-hui-target-line");
 
   // A folder link expands that folder in the navigator, over the folder the file is in.
+  await leaveWork(screen);
   await transcript.getByRole("link", "Open folder docs in Files").tap();
+  await showFiles(screen);
   await expect(navigator.getByRole("button", "docs")).toHaveAttribute("aria-expanded", "true");
   await expect(navigator.getByRole("button", "src")).toHaveAttribute("aria-expanded", "true");
 
@@ -55,6 +63,7 @@ test("a file link opens the Files view on that file at its line and a folder lin
   await screen.getByRole("button", "Open Work view").tap();
   await screen.getByRole("menuitem").filter({ hasText: "Files" }).tap();
   await expect(pane.getByRole("tab", "Files")).toHaveAttribute("aria-selected", "true");
+  await leaveWork(screen);
   await transcript.getByRole("link", "Open README.md in Files").tap();
   await expect(pane.getByRole("tab", "README.md")).toHaveAttribute("aria-selected", "true");
   await expect(pane.getByRole("tab", "greeting.ts")).toHaveAttribute("aria-selected", "false");
@@ -64,6 +73,7 @@ test("a file link opens the Files view on that file at its line and a folder lin
   await screen.getByRole("button", "Open Work view").tap();
   await screen.getByRole("menuitem").filter({ hasText: "New terminal" }).tap();
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
+  await leaveWork(screen);
   await transcript.getByRole("link", "Open docs/design.md at line 2 in Files").tap();
   await expect(pane.getByRole("tab", "design.md")).toHaveAttribute("aria-selected", "true");
   await expect(screen.getByRole("button", "Source")).toHaveAttribute("aria-pressed", "true");
