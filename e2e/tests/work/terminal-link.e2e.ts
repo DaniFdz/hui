@@ -16,7 +16,7 @@ test("a link printed in the terminal opens in a new tab, and a scheme HUI does n
   const session = await hui.createSession({ title: "Terminal links", cwd: repository.path });
   const link = "http://127.0.0.1:8611/hui-link";
   const osc = "http://127.0.0.1:8611/hui-osc8";
-  const surface = screen.getByRole("application", "Shared terminal input");
+  const surface = screen.getByLabel("Shared terminal input");
   const status = screen.getByText("Shared · Connected");
 
   await hui.wideScreen();
