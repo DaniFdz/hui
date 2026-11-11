@@ -36,7 +36,11 @@ test("A widget's uncaught errors, rejected promise and blocked load show on its 
   ]));
 
   await hui.open(`/sessions/${session.id}`);
+  const transcript = screen.getByTestId("transcript");
+  // A card's frame loads once it nears the screen (`loading="lazy"`), so a phone reads a widget by scrolling to it; the
+  // wide layout already draws it where the reply starts.
   const fails = screen.getByLabel("Widget: Fails");
+  await hui.scrollTo(transcript, fails);
   await expect(fails.getByText("Interactive widget · sandboxed")).toBeVisible();
   const notice = fails.getByRole("status");
   // The first message, its line counted from the widget's own code rather than HUI's document, and the count after it.
@@ -45,10 +49,12 @@ test("A widget's uncaught errors, rejected promise and blocked load show on its 
   expect(await notice.getAttribute("title")).toBe("first failure (line 3, column 32)\nsecond failure (line 4, column 32)\nthird failure (line 5, column 32)");
 
   const rejects = screen.getByLabel("Widget: Rejects");
+  await hui.scrollTo(transcript, rejects);
   await expect(rejects.getByText("Interactive widget · sandboxed")).toBeVisible();
   await expect.poll(() => hui.textOf(rejects.getByRole("status"))).toBe("the promise failed");
 
   const blocks = screen.getByLabel("Widget: Blocks");
+  await hui.scrollTo(transcript, blocks);
   await expect(blocks.getByText("Interactive widget · sandboxed")).toBeVisible();
   await expect.poll(() => hui.textOf(blocks.getByRole("status"))).toBe("Blocked by the widget policy (img-src): https://example.com/tracker.png");
 
