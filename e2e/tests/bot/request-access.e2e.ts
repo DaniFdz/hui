@@ -14,6 +14,7 @@ test("an access request waits in the chat, the roster and Tools & skills, surviv
   const bot = (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Tooly", soul: "# Who I am\nA terse fixture bot.\n" })).bot;
   const transcript = screen.getByTestId("transcript");
   await hui.open(`/bots/${bot.id}`);
+  await panelOverview(screen, "Tooly");
 
   // The operator turns the shell off for this bot.
   await screen.getByText("Tools & skills", { exact: true }).tap();

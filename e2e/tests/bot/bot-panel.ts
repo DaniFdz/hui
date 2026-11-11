@@ -14,10 +14,24 @@ import type { Hui } from "../../fixtures/hui.ts";
 export const botPanel = (screen: Screen, name: string): Locator => screen.getByLabel(`${name}: bot panel`);
 
 /**
+ * Puts the navigation drawer away, which only a phone draws: the roster covers the chat until it is dismissed, while the
+ * wide layout keeps the same roster in the sidebar with nothing to close. A drawer that is already away, or absent, is
+ * left alone.
+ */
+export const hideRoster = async (screen: Screen): Promise<void> => {
+  const close = screen.getByRole("button", "Close navigation", { visible: true }).first();
+  if (await close.count()) await close.tap();
+  await expect(close).toBeHidden();
+};
+
+/**
  * Shows the bot's panel, which a phone's chat opens without, and leaves it on the page it last showed. Closing it is the
  * caller's: the sheet covers the chat a test may go on to use.
  */
 export const showBotPanel = async (screen: Screen, name: string): Promise<Locator> => {
+  // A phone keeps the roster in the navigation drawer, over the chat the panel belongs to; the wide layout has no drawer
+  // to dismiss, and one the page never opened is not there at all.
+  await hideRoster(screen);
   const panel = botPanel(screen, name);
   const show = screen.getByRole("button", "Show the bot panel");
   await expect.poll(async () => (await panel.count()) > 0 || (await show.count()) > 0).toBe(true);
