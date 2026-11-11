@@ -893,6 +893,40 @@ test("the session list draws placeholder rows until its first read answers", () 
   assert.doesNotMatch(sidebar(2), /sidebar-placeholder/u, "rows replace the placeholder");
 });
 
+test("a parent opened on its own keeps its subagents folded until its disclosure opens the tree", () => {
+  const tree = (selectedId: string, toggled: string[] = []): string => markup(renderSidebar({
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined,
+    selectedSessionId: selectedId, splitSessionId: "",
+    groups: [{ label: "Work", sessions: [session("parent", "Parent task", "Work"), session("child", "Child task", "Work", { parentId: "parent" }) ] }],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(toggled), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "",
+    groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
+    groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+  } as unknown as Parameters<typeof renderSidebar>[0]));
+
+  // The open parent shows no subagent row: its disclosure is the only thing that opens the tree.
+  const parentOpen = tree("parent");
+  assert.match(parentOpen, /aria-current=true/u, "the parent is the open chat");
+  assert.match(parentOpen, /class="session-tree-toggle"\s+aria-label=Expand subagents of Parent task\s+aria-expanded=false\s+@click=/u);
+  assert.doesNotMatch(parentOpen, /Child task/u, "opening the parent is not an opening of its subagents");
+
+  // Its own choice opens the whole subtree, and the button now offers to fold it again.
+  const unfolded = tree("parent", ["parent"]);
+  assert.match(unfolded, /aria-label=Collapse subagents of Parent task\s+aria-expanded=true/u);
+  assert.match(unfolded, />Child task</u);
+
+  // Loading or opening the subagent itself shows the path down to it.
+  const childOpen = tree("child");
+  assert.match(childOpen, /aria-current=true[^]{0,120}Child task/u, "the subagent is the open chat");
+  assert.match(childOpen, /aria-label=Collapse subagents of Parent task\s+aria-expanded=true/u);
+  assert.match(childOpen, />Child task</u);
+  // A row without children has no disclosure to offer.
+  const childRow = childOpen.slice(childOpen.indexOf("data-session-id=child"));
+  assert.ok(childRow.length < childOpen.length, "the subagent's own row is drawn");
+  assert.doesNotMatch(childRow, /session-tree-toggle/u);
+});
+
 test("a right click on a session row asks for the actions menu its button opens", () => {
   const menus: string[] = [];
   const selected: string[] = [];
