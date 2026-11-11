@@ -27,7 +27,12 @@ test("a failed chat action shows a dismissible toast in the trailing top corner,
   const head = (await header.boundingBox())!;
   const box = (await toast.boundingBox())!;
   expect(box.y).toBeGreaterThanOrEqual(head.y + head.height);
-  expect(box.x).toBeGreaterThan(head.x + head.width / 2);
+  // The toast takes the trailing top corner of the chat pane, which the pane's width decides: the phone stylesheet
+  // stretches a toast across the pane below 768px, and it keeps the corner card on anything wider.
+  if (head.width > 768) expect(box.x).toBeGreaterThan(head.x + head.width / 2);
+  // Either way it stays inside the pane, below its header.
+  expect(box.x).toBeGreaterThanOrEqual(head.x);
+  expect(box.x + box.width).toBeLessThanOrEqual(head.x + head.width);
   await expect(screen.getByLabel(/^Model: HUI SDK Fixture$/u)).toBeVisible();
 
   await screen.getByRole("button", "Dismiss notification").tap();
