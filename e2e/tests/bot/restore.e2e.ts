@@ -3,7 +3,7 @@
  * on." while its chat opens again only once it is restored (BOT-015). */
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { roster } from "./bot-panel.ts";
+import { roster, showBotPanel } from "./bot-panel.ts";
 
 const makeBot = async (hui: Hui, name: string) =>
   (await hui.api<{ bot: { id: string; sessionId: string } }>("POST", "/__hui/bots", { name, soul: "# Who I am\nA terse fixture bot.\n" })).bot;
@@ -46,5 +46,5 @@ test("Show archived lists archived bots with Restore and Delete, and Restore fro
   await screen.getByRole("button", "Restore").tap();
   await expect(screen.getByText("Restored Stranded. Its routines stay paused until you turn them on.")).toBeVisible();
   await expect(screen.getByText("Say hi to Stranded")).toBeVisible();
-  await expect(screen.getByLabel("Stranded: bot panel")).toBeVisible();
+  await showBotPanel(screen, "Stranded");
 });
