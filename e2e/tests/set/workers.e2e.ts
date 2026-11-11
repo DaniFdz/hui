@@ -94,3 +94,26 @@ test("Edit fills the worker's form as Edit <name>, Cancel leaves it unchanged an
   expect((await workers(hui)).find((entry) => entry.id === worker.id)!.name).toBe("Backend box 2");
   expect((await listed(hui, session.id))?.worker?.id).toBe(worker.id);
 });
+
+test("Remove asks to confirm, a worker a session still runs on is refused with the gateway's reason on screen, and confirming after that session goes removes it", { tags: ["SET-031"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const page = screen.getByTestId("settings-page");
+  const worker = await hui.addWorker("Old box");
+  const session = await sessionOn(hui, worker.id, "Remote report");
+
+  await hui.open("/settings/workers");
+  await expect(page.getByText(/^Old box\b/u)).toBeVisible();
+
+  // While a session still runs there the removal is refused, and the reason the gateway gave stays on the page.
+  await hui.answerNextDialog("accept");
+  await page.getByRole("button", "Remove").tap();
+  await expect(screen.getByText("1 session still runs on this worker. Delete them first.", { exact: true })).toBeVisible();
+  expect((await workers(hui)).some((entry) => entry.id === worker.id)).toBe(true);
+  await expect(page.getByText(/^Old box\b/u)).toBeVisible();
+
+  // Once that session is gone the same answer removes the worker from the list.
+  await hui.api("DELETE", `/__hui/sessions/${session.id}`);
+  await hui.answerNextDialog("accept");
+  await page.getByRole("button", "Remove").tap();
+  await expect(page.getByText(/^Old box\b/u)).toBeHidden();
+  expect((await workers(hui)).some((entry) => entry.id === worker.id)).toBe(false);
+});
