@@ -236,6 +236,40 @@ const tapAt = async (target: Locator) => {
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
+/**
+ * The clipboard a test reads and refuses: `navigator.clipboard`'s writes recorded on `window.huiCopied`, and a refused
+ * write throwing the way a browser refuses one. It runs in the page, so it closes over nothing, and it is installed
+ * twice where a browser can: as an init script for every page after it and in the page that is open, so a test may
+ * install it before or after its last navigation. The app's WebView has no init script to take (`clipboard` in the
+ * phone branch), so a phone test installs it once its page is the one it means.
+ */
+const clipboardStub = ({ refuse = false, legacyCopy = false }: { refuse?: boolean; legacyCopy?: boolean } = {}) => {
+  const page = window as unknown as { huiCopied: string };
+  page.huiCopied = "";
+  navigator.clipboard.writeText = async (text) => {
+    if (refuse) throw new DOMException("Clipboard write refused", "NotAllowedError");
+    page.huiCopied = text;
+  };
+  navigator.clipboard.write = async (items) => {
+    if (refuse) throw new DOMException("Clipboard write refused", "NotAllowedError");
+    const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
+    const sizes = await Promise.all(blobs.map(async (blob) => blob.type === "image/png" ? createImageBitmap(blob).then((bitmap) => ` ${bitmap.width}x${bitmap.height}`, () => "") : ""));
+    page.huiCopied = blobs.map((blob, index) => `${blob.type}${sizes[index]}`).join(",");
+  };
+  if (refuse) {
+    document.execCommand = ((command: string) => {
+      if (command === "copy" && legacyCopy) {
+        const active = document.activeElement;
+        page.huiCopied = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
+          ? active.value
+          : String(document.getSelection() ?? "");
+      }
+      return legacyCopy;
+    }) as typeof document.execCommand;
+  }
+  return null;
+};
+
 const holding = <R>() => {
   let arrive: () => void = () => undefined;
   let decide: (handle: (route: R) => Promise<void>) => void = () => undefined;
@@ -454,31 +488,12 @@ export const test = base.extend<{ hui: Hui }>({
       reload: () => browser().reload(),
       clearState: () => fixtures.app.clearState(),
       url: () => browser().url(),
-      clipboard: ({ refuse = false, legacyCopy = false } = {}) => browser().addInitScript(({ refused, legacy }: { refused: boolean; legacy: boolean }) => {
-        const page = window as unknown as { huiCopied: string };
-        page.huiCopied = "";
-        navigator.clipboard.writeText = async (text) => {
-          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
-          page.huiCopied = text;
-        };
-        navigator.clipboard.write = async (items) => {
-          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
-          const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
-          const sizes = await Promise.all(blobs.map(async (blob) => blob.type === "image/png" ? createImageBitmap(blob).then((bitmap) => ` ${bitmap.width}x${bitmap.height}`, () => "") : ""));
-          page.huiCopied = blobs.map((blob, index) => `${blob.type}${sizes[index]}`).join(",");
-        };
-        if (refused) {
-          document.execCommand = ((command: string) => {
-            if (command === "copy" && legacy) {
-              const active = document.activeElement;
-              page.huiCopied = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
-                ? active.value
-                : String(document.getSelection() ?? "");
-            }
-            return legacy;
-          }) as typeof document.execCommand;
-        }
-      }, { refused: refuse, legacy: legacyCopy }),
+      // The stub goes into the page that is open as well as every page after it, so a test may install it once its last
+      // navigation is behind it — which is the only order a WebView can take (`clipboardStub`).
+      clipboard: async (options = {}) => {
+        await browser().addInitScript(clipboardStub, options);
+        await browser().evaluate(clipboardStub, options);
+      },
       copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
       type: (text) => browser().keyboard.type(text),
@@ -973,12 +988,14 @@ export const test = base.extend<{ hui: Hui }>({
               throw new Error("hui.tab() needs a browser: the app's WebView hands an external address to the shell's own browser, so the page never asks for a tab there and there is nothing to read. A use case that reads one stays off the phone's required list.");
             },
             controllableClock: async () => {
-              // A clock installed through an init script is the one thing the WebView's single context cannot take, and a
-              // use case that needs a timer to pass keeps its real-time proof on the phone.
-              throw new Error("hui.controllableClock() needs a browser that can take an init script: the app's WebView has one context it cannot replace, so a use case that needs a timer to pass keeps to real time on the phone and stays off its required list until it has a step there.");
+              // The WebView has one context the engine cannot replace, so no init script reaches a later page: the clock
+              // goes into the page that is open. A test that installs it keeps that page — a reload would drop it, and a
+              // use case whose timer has to pass across a reload waits on the real clock instead.
+              return browser().evaluate(installClock);
             },
-            advanceClock: async () => {
-              throw new Error("hui.advanceClock() needs a controllable clock, which the app's WebView cannot take an init script for. A use case that needs a timer to pass keeps to real time on the phone.");
+            advanceClock: (ms) => browser().evaluate(advanceClock, ms),
+            clipboard: async ({ refuse = false, legacyCopy = false } = {}) => {
+              await browser().evaluate(clipboardStub, { refuse, legacyCopy });
             },
             allowMedia: async () => {
               // The app's WebView answers a page's permission prompt with the app's own Android grant (`RECORD_AUDIO`),
