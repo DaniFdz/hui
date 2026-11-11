@@ -25,7 +25,9 @@ test("the effort slider offers the model's levels and Ultra, applies a choice li
   await screen.getByLabel("Thinking: medium").tap();
   await screen.getByLabel("Thinking effort").fill("5");
   await expect(screen.getByLabel("Thinking: ultra")).toBeVisible();
-  await expect(screen.getByLabel(/^Thinking: /u).getByText("Ultra", { exact: true })).toBeVisible();
+  // The picker holds the level it fitted to: its slider's value reads it, and the panel draws the same text beside its
+  // Effort heading. A phone folds the chip's own label beside the gauge, so this value is what both layouts share.
+  await expect(screen.getByLabel("Thinking effort")).toHaveAttribute("aria-valuetext", "Ultra");
 
   // The Opus fixture has no Minimal: a session left there shows the level it fits to.
   await screen.getByLabel("Thinking effort").fill("1");
@@ -35,5 +37,6 @@ test("the effort slider offers the model's levels and Ultra, applies a choice li
   await screen.getByLabel("Model: HUI SDK Fixture").tap();
   await screen.getByRole("listbox", "Model").getByRole("option", { name: /Opus fixture/u }).tap();
   await expect(screen.getByLabel("Model: Opus fixture")).toBeVisible();
-  await expect(screen.getByLabel(/^Thinking: /u).getByText("Low", { exact: true })).toBeVisible();
+  await screen.getByLabel(/^Thinking: /u).tap();
+  await expect(screen.getByLabel("Thinking effort")).toHaveAttribute("aria-valuetext", "Low");
 });
