@@ -16,7 +16,8 @@
  * that are the fixture's own rather than a platform's: a download the app saves itself (the browser's download event on
  * the web, and on the phone the file the shell wrote into `Downloads`), the other tabs the page asks for (the engine
  * drives one page, so a `window.open` or a `target="_blank"` press is recorded as the address it asked for instead of
- * being followed), a subagent's conversation opened from the card
+ * being followed), a controllable clock a test advances so a timer's deadline can be read on both sides of it
+ * (`clock.ts`), a subagent's conversation opened from the card
  * its parent's chat draws, a tool call held while it runs so its row and the working indicator can be read in flight, and
  * a fixture world started for one test (`world.ts`). The web page never opens Vite's development socket, whose client
  * reloads the page when the gateway restarts, which no installed gateway does. Test files import `test` from here, never
@@ -30,6 +31,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, FrameScreen, WebRoute } from "@e2e-dev/web";
 import { addWorkerOnThisMachine } from "./worker.ts";
+import { advanceClock, installClock } from "./clock.ts";
 import { clearAppStorage, deviceBytes, deviceFiles, onPhone, PHONE_DOWNLOADS } from "./phone.ts";
 import { IPHONE_SCREEN, onWebKitPhone } from "./phone-webkit.ts";
 import { startWorld, type World, type WorldName } from "./world.ts";
@@ -169,6 +171,16 @@ export type Hui = {
   /** The screen of the frame a CSS selector matches, so a test reads and taps a document HUI only hosts, such as an agent
    * widget's sandboxed frame; a frame nested inside it comes from that screen's own `frameLocator`. */
   frame(selector: string): Promise<FrameScreen>;
+  /**
+   * Installs a controllable clock in the page: `Date.now()` and every timer the app schedules from now on run on a clock
+   * only `advanceClock` moves, so a test can assert both sides of a deadline without waiting for it. Rendering and
+   * animation keep real time (`performance.now`, `requestAnimationFrame`), and a timer due at once still runs on the
+   * loop's next turn. The clock survives a reload; nothing is installed until a test asks. Answers the time it starts at.
+   */
+  controllableClock(): Promise<number>;
+  /** Advances the controlled clock by `ms`, running every timer that falls due in order, and answers the time it now
+   * reads. Needs `controllableClock()` first. */
+  advanceClock(ms: number): Promise<number>;
   /**
    * Every other tab the page asked for since it loaded: a `window.open` call, or a press on a `target="_blank"` link
    * nothing else handled, in the order the app asked. It answers the address the app asked to open, resolved against
@@ -731,6 +743,12 @@ export const test = base.extend<{ hui: Hui }>({
       },
       scrollTo: (_within, target) => target.scrollIntoView(),
       frame: async (selector) => browser().frameLocator(selector),
+      controllableClock: async () => {
+        // The page that is open gets it now, and every page after it through an init script, so a reload keeps the clock.
+        await browser().addInitScript(installClock);
+        return browser().evaluate(installClock);
+      },
+      advanceClock: (ms) => browser().evaluate(advanceClock, ms),
       tabs: () => browser().evaluate(() => ((window as unknown as { huiTabs?: { url: string; via: "window.open" | "link"; asked: string }[] }).huiTabs ?? [])
         .map(({ url, via, asked }) => ({ url, via, asked, noopener: /\bnoopener\b/u.test(asked), noreferrer: /\bnoreferrer\b/u.test(asked) }))),
       tab: async () => (await steps.tabs()).at(-1),
@@ -927,6 +945,14 @@ export const test = base.extend<{ hui: Hui }>({
             },
             tab: async () => {
               throw new Error("hui.tab() needs a browser: the app's WebView hands an external address to the shell's own browser, so the page never asks for a tab there and there is nothing to read. A use case that reads one stays off the phone's required list.");
+            },
+            controllableClock: async () => {
+              // A clock installed through an init script is the one thing the WebView's single context cannot take, and a
+              // use case that needs a timer to pass keeps its real-time proof on the phone.
+              throw new Error("hui.controllableClock() needs a browser that can take an init script: the app's WebView has one context it cannot replace, so a use case that needs a timer to pass keeps to real time on the phone and stays off its required list until it has a step there.");
+            },
+            advanceClock: async () => {
+              throw new Error("hui.advanceClock() needs a controllable clock, which the app's WebView cannot take an init script for. A use case that needs a timer to pass keeps to real time on the phone.");
             },
             clearState: async () => {
               await fixtures.app.open("/");
