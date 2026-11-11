@@ -46,6 +46,7 @@ test("a listener's report wakes the bot once, as the trigger's message with its 
   expect((await hui.api<{ status: string }>("POST", hook.path, report("one", "C0123"))).status).toBe("ignored");
   expect((await hui.api<{ status: string }>("POST", hook.path, report("two", "C9999"))).status).toBe("ignored");
   await expect(transcript.getByText("review two", { exact: true })).toBeHidden();
+  await expect(transcript.getByText("Reviews", { exact: true })).toHaveCount(1);
   await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
   expect((await triggerList(hui, bot.id)).runs).toHaveLength(1);
 });

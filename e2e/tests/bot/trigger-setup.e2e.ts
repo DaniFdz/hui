@@ -19,6 +19,7 @@ test("Add trigger takes its name, filter, options, prompt and cooldown, shows it
   // The overview's + opens the Triggers page on its add form.
   await screen.getByRole("button", "Add trigger").tap();
   await expect(screen.getByRole("region", "Triggers")).toBeVisible();
+  await expect(screen.getByText(/^No triggers yet\. A trigger wakes Watcher when a listener you run reports something: a program that watches what HUI doesn't read itself/u)).toBeVisible();
   await expect(screen.getByPlaceholder("Reviews")).toBeVisible();
   await expect(screen.getByPlaceholder("fields.channel")).toBeVisible();
   await expect(screen.getByPlaceholder("C0123ABCD")).toBeVisible();
