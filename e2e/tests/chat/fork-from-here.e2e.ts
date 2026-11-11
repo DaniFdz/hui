@@ -2,6 +2,7 @@
  * checkout, and a refusal stays in the dialog that asked (CHAT-035). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { expectChatTitle } from "../sess/chat-header.ts";
 
 test("Fork from here offers a new worktree or the same checkout, keeps a refusal in the dialog, copies the reply with the source's model and reasoning, and works in the same folder outside Git", { tags: ["CHAT-035"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
@@ -59,7 +60,9 @@ test("Fork from here offers a new worktree or the same checkout, keeps a refusal
   await fork.tap();
   await expect(dialog).toBeHidden();
 
-  await expect(screen.getByRole("heading", { name: "Fork the reply (fork)" })).toBeVisible();
+  // The open conversation is the fork, in the source's group: the header's heading names it on the wide layout and its
+  // Active panel chooser names it on a phone, where the chooser takes the title's place.
+  await expectChatTitle(screen, "Fork the reply (fork)");
   await expect.poll(async () => (await hui.textOf(screen.getByTestId("chat-header", { visible: true }))).split("·")[1]?.trim()).toBe(sourceGroup);
   await expect(screen.getByLabel("Model: Opus fixture", { visible: true })).toBeVisible();
   await expect(screen.getByLabel("Thinking: max", { visible: true })).toBeVisible();
@@ -68,7 +71,7 @@ test("Fork from here offers a new worktree or the same checkout, keeps a refusal
 
   // The source is untouched: its own history, model and level are what they were.
   await hui.open(`/sessions/${source.id}`);
-  await expect(header.getByRole("heading", { name: "Fork the reply" })).toBeVisible();
+  await expectChatTitle(screen, "Fork the reply");
   await expect(screen.getByLabel("Model: Opus fixture", { visible: true })).toBeVisible();
   await expect(screen.getByLabel("Thinking: max", { visible: true })).toBeVisible();
   await expect(transcript.getByText("Keep this turn")).toBeVisible();
