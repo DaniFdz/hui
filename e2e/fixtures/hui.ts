@@ -447,6 +447,11 @@ export const test = base.extend<{ hui: Hui }>({
     const workerHomes: string[] = [];
     const worlds: World[] = [];
     const settings = await api<unknown>("GET", "/__hui/settings");
+    // An extension a test switches on is gateway state the next test inherits: a loaded panel adds a Work pane launcher
+    // (WORK-001, WORK-010), so the enablement each test started with is restored with the settings it started with.
+    const extensionStates = async () => new Map((await api<{ extensions: { id: string; enabled: boolean }[] }>("GET", "/__hui/ext"))
+      .extensions.map((extension) => [extension.id, extension.enabled]));
+    const enabledExtensions = await extensionStates();
     const directories: string[] = [];
 
     const webSteps: PlatformSteps = {
@@ -1129,6 +1134,10 @@ export const test = base.extend<{ hui: Hui }>({
       if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
     }
     await api("PUT", "/__hui/settings", settings);
+    const leftExtensions = await extensionStates();
+    for (const [id, enabled] of enabledExtensions) {
+      if (leftExtensions.get(id) !== undefined && leftExtensions.get(id) !== enabled) await api("PUT", `/__hui/ext/${encodeURIComponent(id)}`, { enabled });
+    }
     for (const path of directories) await rm(path, { recursive: true, force: true });
     // A world is another gateway and its own fake services: stop each one the test started, gateway and all.
     for (const world of worlds.reverse()) await world.stop();
