@@ -519,7 +519,7 @@ starts idle: it has a SOUL.md and its skills, and it says nothing until you
 message it. Its home folder holds the pack's skills under `skills/`, and the
 bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
 with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
-`machines`, `heartbeat`, `learn`, `lessons`,
+`machines`, `learn`, `lessons`,
 `verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
 `figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
 `principles` reference. No other chat loads them.
@@ -546,11 +546,10 @@ You archive the session then; the chief settles the ledger row and never
 archives it for you. A **lead** is opt-in inside such a session, or when you
 ask for one, not the chief's default.
 
-Each session the chief creates is **watched** by default. A `Heartbeat` routine
-in its chat, every 15 minutes, lists the watched sessions and continues one that
-is idle with an open task; it leaves a running session, or one with a running
-watcher, alone, and never starts new work. HUI gives every Chief of Staff,
-including a group chief, one at gateway start or when that chief is created.
+Each session the chief creates is **watched** by default. HUI runs the
+**heartbeat** itself, every 15 minutes, without a turn in the bot's chat: it
+continues a watched session that is idle and has no running watcher, and leaves
+a running one alone. Nothing from the heartbeat enters the bot's context.
 
 After a task that failed, drifted, or needed a step the pack did not know, the chief adds one evidence-backed entry to its own **`lessons`** skill. It never edits the pack's skills: an edited pack file stops taking pack updates. The `lessons` skill is the bot's, and `hui doctor` reports it.
 

@@ -1763,7 +1763,7 @@ HUI supplies regular PI sessions with the OpenClaw-style coordination tools
 `sessions_send` and `subagents` (`list`, `steer`, `kill`). `watch_session`
 records sessions a session watches, in its group; a watched session becomes
 visible to `sessions_list`, `sessions_history` and `sessions_send`, so a
-heartbeat can read its status and continue it. `worker_stats`
+gateway heartbeat can read its status and continue it. `worker_stats`
 reports this machine and every configured worker with CPU, memory, disk, GPU,
 connection state and running sessions, and names the least loaded connected
 machine within headroom (CPU 70%, memory 80%, disk 85%, fewer running sessions
@@ -3786,7 +3786,7 @@ seeds it once:
   whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
   BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
   `--fix` installs the untouched updates.
-- **Every chief has a heartbeat.** At every gateway start HUI adds one Heartbeat routine to every live Chief of Staff, including a group chief the pack does not re-seed, and creating a group chief adds it immediately. It is an Automation task every 15 minutes that checks the sessions that chief watches and continues one that stopped; it never starts new work. An existing routine with that name is left alone.
+- **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches; an idle watched session with no running watcher gets one continuation, and the heartbeat itself never starts new work. The watch is what makes a session a candidate; no routine lives in the bot's context.
 - **Workers carry the pack, nothing else.** A spawn from a bot's chat records
   `botSkills`, written as the `hui.botSkills` document in the child's creating
   commit; `skillDirsFor` loads that bot's skill folder for the child and its

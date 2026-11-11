@@ -14,6 +14,7 @@ import { BotService } from "./bots/service.ts";
 import { remoteBots } from "./bots/remote.ts";
 import { createBotRoutes } from "./routes/bots.ts";
 import { createStaffRoutes } from "./routes/staff.ts";
+import { createHeartbeat } from "./heartbeat.ts";
 import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
 import { accountFullName, BotExportService } from "./bots/export.ts";
 import { nameFromUsername } from "./bots/templates/cleanup.ts";
@@ -29,7 +30,6 @@ import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
 import { readStaffPack } from "./staff/pack.ts";
 import { ensureStaff } from "./staff/service.ts";
-import { ensureChiefHeartbeats } from "./staff/heartbeat.ts";
 import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
@@ -258,7 +258,6 @@ export const staffRoutes = createStaffRoutes({
   skills: localBotSkills(),
   readSettings: readHuiSettings,
   writeSettings: writeHuiSettings,
-  ensureHeartbeat: () => ensureChiefHeartbeats({ bots, automation }),
 });
 export const botRoutes = createBotRoutes({
   service: bots,
@@ -366,6 +365,13 @@ export const watchers = new WatcherService({
   onChange: (id) => liveSessions.notifySnapshot(id),
 });
 export const watcherRoutes = createWatcherRoutes({ watchers, readRegistry });
+/** HUI's gateway heartbeat: no bot turn, just the watched sessions that stopped. */
+export const heartbeat = createHeartbeat({
+  records: readRegistry,
+  status: (id) => liveSessions.status(id),
+  watchers: (id) => watchers.list(id),
+  prompt: (id, text) => liveSessions.prompt(id, text),
+});
 /** One managed browser per gateway; its settings are re-read on every call. With mirroring on it seeds itself from
  * what any worker sent, and hands what it captured to every worker's document. State goes through this machine: a
  * worker's document never reaches another worker. */
