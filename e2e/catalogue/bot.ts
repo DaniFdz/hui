@@ -65,7 +65,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-007",
     title: "Keep routines, triggers and other bots from rewriting a bot",
-    behaviour: "In a turn that took a message from a routine, a trigger, another bot or an agent, the bot's attempt to rename itself, rewrite its SOUL.md or add a routine is refused, and the chat shows the refusal in its tool call. Its name, title and persona stay as they were.",
+    behaviour: "In a turn that took a message from a routine, a trigger, another bot or an agent, the bot's attempt to rename itself or rewrite its SOUL.md is refused, and the chat shows the refusal in its tool call; only the operator's turns, its routines' own turns and HUI's kickoff may add or change a routine, so a routine's turn still adds one. Its name, title and persona stay as they were.",
     spec: ["SPEC.md#bots", "SPEC.md#agents-and-bots-tag-bots-by-handle-2026-10-16", "SPEC.md#schedules-are-a-cli-and-bots-schedule-their-own-routines-2026-10-07"],
     surfaces: ["tool:set_profile", "tool:write_soul"],
     journeys: ["bot-triggers"],
