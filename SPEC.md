@@ -2050,8 +2050,9 @@ terminal. The call names the secret (`label`) and says why it is needed
 (`reason`); both stay in the conversation, so they must not hold the secret.
 The call waits for the operator.
 
-The open conversation shows the request in the question dock above the
-composer, in OpenClaw's question card: *Secret*, the label, the reason, a line
+The open conversation shows the request in the question card at the end of the
+transcript, the conversation's last row above the composer, in OpenClaw's
+question card: *Secret*, the label, the reason, a line
 saying the value stays out of the conversation, a masked field and *Cancel* /
 *Submit*. Escape does not cancel it: password managers close their menus over
 the field with Escape. Meanwhile the session reads *Waiting*, like a session
@@ -2079,31 +2080,43 @@ a restart.
 
 An agent that cannot go on without decisions from the operator asks for them
 with HUI's `ask_user_question` tool: one to four questions in a single call,
-each with a short header, the question and two to four options with a label
-and a description. A question may allow several answers (`multiSelect`), and
-the options of a single-select question may carry a Markdown preview (a
-mockup, a snippet, a config) to compare. HUI's tool takes the place of any PI
+each with a short header, the question and one of three inputs. An `options`
+question (the default) takes two to four options with a label and a
+description; it may allow several answers (`multiSelect`), and the options of
+a single-select question may carry a Markdown preview (a mockup, a snippet, a
+config) to compare. A `slider` question takes a number over `min`–`max`, with
+an optional `step` and a `unit` (a budget, hours, a percentage). A `text`
+question takes a longer written answer, with an optional `placeholder`. HUI's
+tool takes the place of any PI
 extension tool of the same name, such as `@juicesharp/rpiv-ask-user-question`,
 whose plain select and input dialogs it replaces.
 
-The open conversation shows the questions in one card in the question dock
-above the composer, and the session reads *Waiting*. With several questions a
-row of header chips leads the card, ticked once answered; one question shows at
-a time with its progress (*2/4*). Options are radio rows, or checkbox rows for
-a multi-select question, each with its label, description and number; every
-question ends with a *Type something…* row for the operator's own answer, which
+The open conversation shows the questions in one card at the end of the
+transcript, the conversation's last row above the composer, and the session
+reads *Waiting*. The card scrolls with the conversation, so reading earlier
+context neither hides nor moves it. With several questions the card is
+stepped like ChatGPT's questionnaire: a segmented progress bar and *Step n of
+m*, one question at a time, and a sticky footer with *Back* and *Next*
+(*Submit* on the last question). Options are radio rows, or checkbox rows for
+a multi-select question, each with its label, description and number; an
+options question ends with a *Type something…* row for the operator's own
+answer, which
 replaces a single-select choice or adds to a multi-select one. When options
 carry previews, the focused option's preview shows beside them, or under them
-on a narrow screen. Picks are kept while moving between questions.
+on a narrow screen. A slider shows its value large with its unit above the
+range input and its bounds beneath it; a long-text question is a multi-line
+field. Picks, slider values and typed text are kept while moving between
+questions.
 
 The keyboard drives the whole card: number keys choose a row, arrows move
 between rows (↑/↓) and questions (←/→), Space toggles a checkbox, Enter moves
 to the next question (choosing the focused single-select option first) and on
 the last one submits, Ctrl/⌘+Enter always moves on, and Escape cancels the
 card (the first Escape in typed text only leaves the field). The pointer does
-the same with the chips, rows, *Back*, *Next*, *Submit* and *Cancel*; the
-actions stay in reach when the card scrolls. *Submit* needs at least one
-answer; a question left blank is left out.
+the same with the rows, the slider, the text field, *Back*, *Next*, *Submit*
+and *Cancel*; the actions stay in reach when the card scrolls. *Submit* needs
+at least one answer; a question left blank is left out. A slider always has an
+answer: it starts in the middle of its range.
 
 The card can cover most of the conversation it is asked about. Its top line,
 which carries the card's title and the progress, is also its fold control:
@@ -2117,13 +2130,15 @@ operator left it; Escape on the folded row opens it rather than declining the
 questions. A new call's card, and a reload, open unfolded.
 
 The agent learns each answer as `"question"="answer"` (several joined by
-commas, a chosen option's preview after it), or that the operator declined:
+commas, a chosen option's preview after it; a slider's value as it reads, such
+as `5,050 €`), or that the operator declined:
 *Cancel*, Escape, Stop and a gateway stop all decline. Once answered, the
 transcript keeps a short summary of the answers by header in place of the card.
 A call the card could not show (more than four questions, a reserved label such
 as *Other*, duplicate labels, a header over 16 characters, a preview on a
-multi-select question) fails back to the agent with the reason, and no card
-opens. Questions from parallel calls show one after another. A reload shows a
+multi-select question, a slider without a numeric range, a long text with
+options, a unit over 16 characters) fails back to the agent with the reason,
+and no card opens. Questions from parallel calls show one after another. A reload shows a
 pending card again from its first question. Pending questionnaires live in
 gateway memory and do not survive a restart.
 

@@ -1400,9 +1400,12 @@ older PI worker (before `hui doctor --fix` moved them) never get it.
 
 ## When the agent asks you questions
 
-An agent that needs decisions from you asks them in a card above the composer:
-up to four questions, each with its options and a *Type something…* row for
-your own answer. Pick or type, then **Submit**; **Cancel** or Escape declines.
+An agent that needs decisions from you asks them in a card at the end of the
+transcript, above the composer, where it scrolls with the conversation: up to
+four questions, one at a time, with a progress bar and **Back** / **Next**.
+A question offers choices (plus a *Type something…* row for your own answer), a
+slider for a number such as a budget, or a long text field. Pick, slide or
+type, then **Submit**; **Cancel** or Escape declines.
 The session shows *Waiting* until you answer, and once you do, the transcript
 keeps a short summary of your answers.
 
@@ -1506,8 +1509,8 @@ finishing a docs pass.
 ## Giving an agent a secret
 
 When an agent needs an API key, a token, a password or a one-time login code,
-it asks for it with a **Secret** card above the composer instead of asking you
-to paste it into the chat. The card names the secret and says why the agent
+it asks for it with a **Secret** card at the end of the transcript instead of
+asking you to paste it into the chat. The card names the secret and says why the agent
 needs it; type or paste the value into the masked field and press **Submit**,
 or **Cancel** to refuse. The session shows *Waiting* until you answer, and the
 request expires after 15 minutes.

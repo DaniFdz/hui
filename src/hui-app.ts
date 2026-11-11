@@ -796,7 +796,8 @@ export class HuiApp extends HuiElement {
     this.renderedCompaction = this.conversation.compaction;
     const transcriptChanged = this.renderedTranscript !== this.conversation.transcript;
     this.renderedTranscript = this.conversation.transcript;
-    if ((transcriptChanged || compactionChanged || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
+    // A pending question is the transcript's last row now, so it follows the live edge with it.
+    if ((transcriptChanged || compactionChanged || questionChanged || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
     if (!this.renamingFor) {
       return;
     }
