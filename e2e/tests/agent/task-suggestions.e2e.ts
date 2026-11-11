@@ -3,6 +3,7 @@
 import { basename } from "node:path";
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { expectChatTitle } from "../sess/chat-header.ts";
 
 type Suggestion = { title: string; problem: string; fix?: string };
 
@@ -155,7 +156,7 @@ test("Start in this session sends the card as a new turn in the same conversatio
 
   await expect(card).toBeHidden();
   expect(await hui.url()).toBe(url);
-  await expect(screen.getByTestId("session-title").filter({ hasText: "Started in this session" })).toBeVisible();
+  await expectChatTitle(screen, "Started in this session");
   // A user turn is the card's prompt as sent, not Markdown the browser re-rendered.
   await expect(transcript.getByText(oneLine(promptOf(WITH_FIX)))).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
@@ -176,7 +177,7 @@ test("Start in a new session reads Starting…, keeps the card when it fails, th
   expect(await hui.url()).toContain(`/sessions/${source.id}`);
 
   await card.getByRole("button", "Start in a new session").tap();
-  await expect(screen.getByTestId("session-title").filter({ hasText: WITH_FIX.title })).toBeVisible();
+  await expectChatTitle(screen, WITH_FIX.title);
   expect(await hui.url()).not.toContain(`/sessions/${source.id}`);
   await expect(transcript.getByText(oneLine(promptOf(WITH_FIX)))).toBeVisible();
   // The session lands in the card's directory and the source conversation's group; the chat header shows the group
