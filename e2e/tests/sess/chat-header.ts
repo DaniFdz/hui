@@ -4,8 +4,9 @@
  * A desktop draws the title as the pane's heading (`[data-testid=session-title]`); a phone replaces that heading with
  * its Active panel selector, whose label ends with the same title ("Active panel: Chat · <title>" with one pane, or
  * "Active panel: <n> · Chat · <title>" beside others, `src/views/home.ts`). A test that read the heading alone would
- * assert a wide arrangement, so every SESS test that names the open chat goes through these two steps instead and
- * proves the same title where a phone shows it. SESS-016, SESS-032, SESS-066.
+ * assert a wide arrangement, so every shared test that names the open chat — in SESS and in another area, such as a
+ * subagent's own transcript — goes through these two steps instead and proves the same title where a phone shows it.
+ * SESS-016, SESS-032, SESS-066.
  */
 import { expect, type Locator, type Screen } from "e2e";
 

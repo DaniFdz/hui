@@ -2,6 +2,7 @@
  * Stop on a waiting parent cancels the whole batch (AGENT-034, AGENT-033). */
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { expectChatTitle } from "../sess/chat-header.ts";
 
 const call = (name: string, input: Record<string, unknown>) => ({ name, input });
 const calls = (...list: { name: string; input: Record<string, unknown> }[]) =>
@@ -42,10 +43,10 @@ test("a batch whose helpers all succeed folds into one Parallel tasks row that s
 
   // A collected helper opens its own transcript the same way a spawned child does.
   await slow.tap();
-  await expect(screen.getByTestId("session-title").filter({ hasText: "Slow verifier" })).toBeVisible();
+  await expectChatTitle(screen, "Slow verifier");
   await expect(screen.getByTestId("transcript").getByText("E2E_SUBAGENT_CHILD_SLOW")).toBeVisible();
   await screen.getByRole("button", { name: "Open parent" }).tap();
-  await expect(screen.getByTestId("session-title").filter({ hasText: "Swarm parent" })).toBeVisible();
+  await expectChatTitle(screen, "Swarm parent");
 });
 
 test("Stop on a parent waiting for its helpers cancels the wait and every helper, and nothing follows", { tags: ["AGENT-033"] }, async ({ screen, hui }) => {
