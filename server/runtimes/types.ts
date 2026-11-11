@@ -219,6 +219,9 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
 export type AgentRuntime = {
   /** Runtime adapter ID, such as `pi`. */
   readonly id: string;
+  /** Every session this adapter starts continues an interrupted run itself when it reopens. A worker's sessions say
+   * so only once it answers, so a remote adapter leaves this out. */
+  readonly resumesInterruptedRuns?: boolean;
   start(options: StartOptions): Promise<RuntimeSession>;
 };
 

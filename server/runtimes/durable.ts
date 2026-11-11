@@ -1562,5 +1562,6 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
 
 export const durableRuntime = {
   id: "durable",
+  resumesInterruptedRuns: true,
   start: (options: StartOptions) => startDurable(options),
 } satisfies AgentRuntime;

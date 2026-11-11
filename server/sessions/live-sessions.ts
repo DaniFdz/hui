@@ -267,6 +267,11 @@ export class LiveSessions {
       && live.status !== "starting" && live.submissions === 0 && live.followUps.length === 0).length;
   }
 
+  /** A session whose runtime continues an interrupted run itself when it reopens, so nothing has to prompt it. */
+  resumesRun(record: SessionRecord): boolean {
+    return this.#runtimes.get(record.tool)?.resumesInterruptedRuns === true;
+  }
+
   /** Active work a gateway stop would lose; ordinary stop and update refuse it. */
   get blockingWorkCount(): number {
     return this.activeWorkCount - this.resumableWorkCount;
