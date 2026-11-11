@@ -866,7 +866,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["rewind-continue"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

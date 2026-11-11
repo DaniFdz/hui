@@ -340,7 +340,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: [],
     journeys: ["shared-terminal"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -583,7 +583,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: ["work-view:files"],
     journeys: ["chat-file-links"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {

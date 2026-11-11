@@ -22,7 +22,7 @@ const cases: UseCase[] = [
     behaviour: "Call opens the call view over the bot's chat in the bot's color: *Voice call*, a running timer, the bot's face and name, the status *Connecting…* then *Listening*, and the controls Mute, Speaker and Hang up with the focus on Hang up. The bot greets the caller briefly once connected, and the privacy line says the call runs through GPT-Live on the ChatGPT account, names the voice and says HUI stores no audio.",
     spec: ["SPEC.md#bots", CALLS, "docs/api.md#post-__huibotsidcalls"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -58,7 +58,7 @@ const cases: UseCase[] = [
     behaviour: "**Mute** turns pressed and reads *Muted*, the status reads *Microphone muted* and the bot hears nothing; pressing it again reads *Mute* and the bot hears the caller again. The minimized bar's microphone button mutes and unmutes the same way.",
     spec: ["SPEC.md#bots", CALLS],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -67,7 +67,7 @@ const cases: UseCase[] = [
     behaviour: "**Speaker** turns pressed and reads *Speaker off*, and the bot's voice stops playing while the call goes on; pressing it again reads *Speaker* and the voice plays again.",
     spec: ["SPEC.md#bots"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -85,7 +85,7 @@ const cases: UseCase[] = [
     behaviour: "**Minimize the call** shrinks the call to a bar above the chat with the bot's face, name, status, timer, a microphone button and Hang up; the chat underneath is usable. The bar's `Return to the call with <bot>`, or the header's button of the same name, opens the call view again with the call still running.",
     spec: ["SPEC.md#bots"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -94,7 +94,7 @@ const cases: UseCase[] = [
     behaviour: "Pressing Escape in the call view minimizes the call to its bar, as **Minimize the call** does; a failed call does not minimize.",
     spec: ["SPEC.md#bots"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     phone: { excluded: "Escape is a keyboard-only affordance; Minimize the call is its visible control (CALL-009).", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {

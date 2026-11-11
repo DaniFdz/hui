@@ -479,7 +479,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "SPEC.md#agent-widgets-run-in-an-opaque-origin-sandbox", "docs/api.md#frame-protocol"],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
