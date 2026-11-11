@@ -3,7 +3,7 @@
  * of the conversation already shows (WORK-031). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { openWork } from "./work-views.ts";
+import { openWork, reopenWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -25,7 +25,6 @@ test("after a gateway restart the open terminal tab reports its shell is gone by
   const session = await hui.createSession({ title: "Terminal after a restart", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
@@ -57,6 +56,7 @@ test("after a gateway restart the open terminal tab reports its shell is gone by
 
   // A reload still finds that shell and keeps the two names apart.
   await hui.reload();
+  await reopenWork(screen, "Terminal 2");
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   await expect(pane.getByRole("tab", "Terminal 2")).toBeVisible();
 });

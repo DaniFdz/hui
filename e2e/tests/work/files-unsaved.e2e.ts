@@ -7,7 +7,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-import { openWork } from "./work-views.ts";
+import { openWork, reopenWork } from "./work-views.ts";
 
 test("unsaved text shows in every Files view of its file and survives closing the tab and a reload, and a closed tab's selection goes with it", { tags: ["WORK-046"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
@@ -66,6 +66,7 @@ test("unsaved text shows in every Files view of its file and survives closing th
   // The reloaded page restores the unsaved text from the page's own copy, and the save it was waiting on then runs.
   await hui.reload();
   await expect.poll(() => readFile(keep, "utf8")).toBe("keep and more");
-  await pane.getByRole("tab", "keep.txt").tap();
+  // A phone reloads onto the chat, so the file's view is chosen again from its Active panel selector.
+  await reopenWork(screen, "keep.txt");
   await expect(editor()).toHaveText("keep and more");
 });

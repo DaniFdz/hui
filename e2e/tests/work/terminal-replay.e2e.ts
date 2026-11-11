@@ -3,6 +3,7 @@
  * cut, and a connection that cannot come back reads Disconnected with Reconnect terminal (WORK-030). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { reopenWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -26,7 +27,6 @@ test("a terminal comes back on the same shell after a reload, says when its repl
   const session = await hui.createSession({ title: "Keep a terminal's output", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
@@ -38,8 +38,10 @@ test("a terminal comes back on the same shell after a reload, says when its repl
   await expect.poll(async () => (await replay(hui, session.id, id)).data).toContain("MARK-one");
   const printed = (await replay(hui, session.id, id)).data.split("MARK-one").length - 1;
 
-  // The reload comes back on the same shell, with its output already there and nothing typed again.
+  // The reload comes back on the same shell, with its output already there and nothing typed again. A phone reloads
+  // onto the chat and keeps the tab in its chooser, so the terminal is shown again from there.
   await hui.reload();
+  await reopenWork(screen, "Terminal 1");
   await expect(pane.getByRole("tab", "Terminal 1")).toBeVisible();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   expect(await terminals(hui, session.id)).toHaveLength(1);
@@ -54,6 +56,7 @@ test("a terminal comes back on the same shell after a reload, says when its repl
   await run(hui, screen, "seq 1 60000");
   await expect.poll(async () => (await replay(hui, session.id, id)).truncated, { timeout: 60_000 }).toBe(true);
   await hui.reload();
+  await reopenWork(screen, "Terminal 1");
   await expect(pane.getByText("Older output was trimmed from the replay.")).toBeVisible();
 
   // The gateway restarts and that shell cannot come back: the tab says so and offers its own reconnect.

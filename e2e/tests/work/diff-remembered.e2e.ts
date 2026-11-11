@@ -4,7 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-import { openWork } from "./work-views.ts";
+import { openWork, reopenWork } from "./work-views.ts";
 
 test("each Diff view keeps its comparison and selected file across a reload, several open at once, and a closed tab's choices are forgotten", { tags: ["WORK-072"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
@@ -42,9 +42,10 @@ test("each Diff view keeps its comparison and selected file across a reload, sev
   await expect(row("keep.txt")).toBeVisible();
   await expect(row("second.txt")).toHaveCount(0);
 
-  // A reload brings each view back with its own comparison and the file it had picked.
+  // A reload brings each view back with its own comparison and the file it had picked. A wide pane comes back open on
+  // its tabs; a phone reloads onto the chat and keeps both views in its chooser.
   await hui.reload();
-  await expect(pane.getByRole("tab", "Diff").first()).toBeVisible();
+  await reopenWork(screen, "Diff");
   await pane.getByRole("tab", "Diff").first().tap();
   await expect(compare()).toHaveAttribute("aria-label", "Compare: Last commit");
   await expect(row("second.txt")).toHaveAttribute("aria-current", "true");
