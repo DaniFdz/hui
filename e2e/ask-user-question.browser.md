@@ -74,15 +74,17 @@ Date: 2026-11-11, branch `danifdz/center-question-prompt`.
 
 Date: 2026-11-11, branch `danifdz/center-question-prompt` (card format).
 
-- A three-step questionnaire (options, slider, long text) on the same fixture:
-  the card read *Interactive questionnaire*, *STEP 1 OF 3* with a segmented
-  progress bar, one question per step, and Back on the second step; the slider
-  showed *5,050 €* large above its track and *100 €* / *10,000 €* beneath it,
-  and Home/PageUp/→ moved the readout to *1,550 €*; the text field carried the
-  agent's placeholder and accepted the answer. Submit sent `1,550 €` and the
-  typed text, the transcript showed the per-header summary in the card's place,
-  and the fixture quoted the tool result back. Checked at 1440×900 and 390×844;
-  screenshots are in the pull request.
+- A three-step questionnaire (a rooftop cinema night: film options, a guest
+  slider, setup notes) on the same fixture: the card read *Interactive
+  questionnaire*, *STEP 1 OF 3* with a segmented progress bar and one question
+  per step; picking *A neon noir* marked its row; the slider read *110 guests*
+  at its start and *90 guests* after two ← steps, between *20 guests* and
+  *200 guests*; the text field carried the agent's placeholder and took a
+  multi-line note; *Back* stepped back and kept every answer. Checked at
+  1440×900 and 390×844, and the screenshots in the pull request are this run.
+  Submitting is covered by the shared AGENT-063 test and an earlier run on this
+  branch, which returned `1,550 €` and a typed text to the agent and left the
+  per-header summary in the card's place.
 
 ## Limits and gaps
 
