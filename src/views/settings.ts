@@ -1012,7 +1012,7 @@ export function renderSettingsPage(props: SettingsProps) {
         aria-expanded="false"
         @click=${toggleSettingsDrawer}
       >
-        <span aria-hidden="true">☰</span>
+        <span class="settings-mobile-topbar__icon" aria-hidden="true">${icons.menu}</span>
         <span>Settings</span>
         <strong>${SETTINGS_PAGES.find((page) => page.id === props.page)?.label}</strong>
       </button>
