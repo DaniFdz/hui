@@ -45,7 +45,7 @@ export class SideChatView extends HuiElement {
     }
     return html`${this.rail ? html`<header class="side-chat__rail-header">
         <div><strong>Side chat</strong><span>Ephemeral · ${sideChat.model || "utility model"}</span></div>
-        <button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Close side chat" @click=${() => clearSideChat(this.sessionId)}>${icons.close}</button>
+        <button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Close Side chat" @click=${() => clearSideChat(this.sessionId)}>${icons.close}</button>
       </header>` : html`<p class="side-chat__meta">Ephemeral · ${sideChat.model || "utility model"}</p>`}
       <div class="side-chat__thread" role="status" aria-live="polite">
         <div class="side-chat__question">${sideChat.question}</div>

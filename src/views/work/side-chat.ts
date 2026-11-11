@@ -1,7 +1,7 @@
 /**
  * The Side chat kind of Work view: the conversation's `/btw` exchange, drawn by `<hui-side-chat-view>`. `/btw` opens
- * it, and the pane's launcher lists it like any other view, so it resizes, maximizes, collapses and takes a place in
- * the tab strip instead of pinning a rail of its own beside the chat. One per conversation.
+ * it, and the pane then holds it like any other view, so it resizes, maximizes, collapses and takes a place in the tab
+ * strip instead of pinning a rail of its own beside the chat. One per conversation.
  */
 import { html } from "lit";
 import type { WorkViewKind } from "../../lib/work-pane.ts";
@@ -16,6 +16,8 @@ export const sideChatWorkViewKind: WorkViewKind<SideChatWorkViewRef> = {
   label: "Side chat",
   icon: sideChatWorkViewIcon,
   single: true,
+  // The question is typed in the composer, so there is nothing for a launcher to open: `/btw` is this view's launcher.
+  hidden: () => true,
   // The exchange lives in `lib/session/side-chat-store.ts`, in memory: a reload never restores an empty Side chat.
   ephemeral: true,
   create: () => ({ kind: "side-chat" }),

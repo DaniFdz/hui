@@ -1,4 +1,4 @@
-/** Settings → Models chooses the primary, fallback and utility models and the default reasoning, and the utility model names sessions and answers /btw (SET-045, SET-047). */
+/** Settings → Models chooses the primary, fallback and utility models and the default reasoning, and the utility model names sessions and answers /btw in the Side chat Work view (SET-045, SET-047). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -39,9 +39,8 @@ test("Primary, Fallback, Utility and Default reasoning choose their values, say 
   await expect.poll(async () => (await hui.api<{ models: Record<string, unknown> }>("GET", "/__hui/settings")).models.thinking).toBe("");
 });
 
-test("the utility model names a new session from its first prompt and answers /btw in the side rail without touching the transcript", { tags: ["SET-047"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the utility model names a new session from its first prompt and answers /btw in the Side chat Work view without touching the transcript", { tags: ["SET-047"], platforms: ["web"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
-  const rail = screen.getByLabel("Side chat");
   const settings = await hui.api<{ models: Record<string, string> }>("GET", "/__hui/settings");
   const start = async (utility: string, title: string) => {
     await hui.api("PUT", "/__hui/settings", { ...settings, models: { primary: "hui-e2e/fixture", fallback: "", utility } });
@@ -57,9 +56,10 @@ test("the utility model names a new session from its first prompt and answers /b
 
   await screen.getByLabel("Message").fill("/btw which model answers this?");
   await screen.getByRole("button", "Send message").tap();
-  await expect(rail.getByText("Ephemeral · hui-e2e/anthropic/claude-opus-5-5")).toBeVisible();
-  await expect(rail.getByText("which model answers this?")).toBeVisible();
-  await expect(rail.getByText("Fixture response.")).toBeVisible();
+  const sideChat = screen.getByRole("tabpanel", "Side chat");
+  await expect(sideChat.getByText("Ephemeral · hui-e2e/anthropic/claude-opus-5-5")).toBeVisible();
+  await expect(sideChat.getByText("which model answers this?")).toBeVisible();
+  await expect(sideChat.getByText("Fixture response.")).toBeVisible();
   await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
   await expect(transcript.getByText("Plan the release notes")).toBeVisible();
   await expect(transcript.getByText("which model answers this?")).toBeHidden();

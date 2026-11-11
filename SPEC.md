@@ -1669,13 +1669,13 @@ Skills/templates can use the existing queue; extension commands run when idle.
 An extension that completes without a model turn must also unlock the composer.
 
 `/btw <question>` and its `/side` alias open the conversation's **Side chat**
-Work view, a single view that the Work pane's launcher also lists: it resizes,
-maximizes, collapses and takes a place in the tab strip like every other view,
-instead of pinning a rail of its own beside the chat. The question is typed in
-the composer; the view keeps focus there for the next one. A new question
-replaces the previous exchange, `/clear` clears it, and closing the tab only
-hides it; the tab is not saved, so a reload never restores a Side chat it could
-not fill. A bot's chat has no Work pane, so it draws the same exchange in an
+Work view, a single view that `/btw` opens and the pane's launcher does not
+list (the question is typed in the composer, so a launcher would only open a
+placeholder): it resizes, maximizes, collapses and takes a place in the tab strip
+like every other view, instead of pinning a rail of its own beside the chat. The question is typed in the composer; the view keeps focus there for the
+next one. A new question replaces the previous exchange, `/clear` clears it, and
+closing the tab only hides it; the tab is not saved, so a reload never restores a
+Side chat it could not fill. A bot's chat has no Work pane, so it draws the same exchange in an
 inline rail. HUI sends a bounded visible transcript snapshot to the configured
 utility model with tools and thinking disabled. The question and answer never
 enter PI's durable session or the main transcript, so they cannot influence
@@ -3017,6 +3017,15 @@ own progress and has no in-app Cancel; a second progress bar there would
 reproduce a control the phone already shows. Watching a web upload and stopping
 it is therefore a web-only use case, while the gateway's larger cap applies to
 both clients and the upload itself is WORK-054 on each.
+
+### The side chat is a Work pane view on the web (2026-11-08)
+
+`/btw`'s exchange is a view of the Work pane, which exists in HUI's wide layout
+and is a browser surface: a tab beside the terminals, Files, Diff and the rest.
+The iPhone app is always narrow, has no Work pane and draws one screen at a
+time, so this row is the web's. When the app gets its own side chat it is its
+own use case with its own shared test, and CHAT-043 and SET-047 are excluded on
+iOS rather than left on its backlog.
 
 ### A secondary click is the web's way into a row's menu (2026-11-04)
 
