@@ -2008,7 +2008,7 @@ Query `id=&n=`.
 
 ### `POST /__hui/staff/chiefs`
 
-201 `BotResponse`. `{ group, cwd }`, nothing else: the custom session group's label (1-200 characters) and its project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its home, its `group` set, and its chat in `cwd`; the pack's routes are added to Settings when missing. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, cwd or an unknown field
+201 `BotResponse`. `{ group, cwd }`, nothing else: the custom session group's label (1-200 characters) and its project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its home, its `group` set, and its chat in `cwd`; the pack's routes are added to Settings when missing and HUI's Heartbeat routine is added if the chief has none. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, cwd or an unknown field
 
 ### `GET /__hui/bots/:id/catalog`
 

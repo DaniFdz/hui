@@ -8,15 +8,16 @@ description: "Use to set up or run the chief's Heartbeat: watch the sessions it 
 The heartbeat is a routine in this chat, not a new agent. It checks the sessions this chief
 watches and continues one that went quiet. It never starts new work.
 
-## Set it up once
+## The routine HUI seeds
 
 Every session `create_session` starts is watched by default; add an older one with
-`watch_session add`. In your first operator turn, keep one routine named Heartbeat:
+`watch_session add`. HUI gives every Chief of Staff, including a group chief, one routine
+named Heartbeat at gateway start. Leave it alone unless its prompt is older than this skill.
+If it is missing and the operator asks, create it:
 
 `routines add { name: "Heartbeat", every: "15m", prompt: "<the block below>" }`
 
-If a Heartbeat routine already exists, leave it alone unless its prompt is older than this
-skill. A routine runs in this chat as `[routine: Heartbeat] <prompt>`, so it can use the same
+A routine runs in this chat as `[routine: Heartbeat] <prompt>`, so it can use the same
 tools. Do not create a second one.
 
 ## The routine prompt

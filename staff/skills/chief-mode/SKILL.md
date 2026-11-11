@@ -64,8 +64,8 @@ is not a child.
 long build, test or e2e, or anything that owns a branch or a pull request gets a new session,
 not a child. Write the brief, name the worktree branch and the worker when one is available,
 and create it with `create_session`. It is watched by default; the Heartbeat routine uses
-`watch_session` to list it and `sessions_send` to continue it. In your first operator turn,
-create the one Heartbeat routine (`heartbeat` owns its prompt) if it is missing. Call
+`watch_session` to list it and `sessions_send` to continue it. HUI seeds the one Heartbeat routine
+(`heartbeat` owns its prompt); if it is missing, create it. Call
 `worker_stats` at the start
 and state the machine plan. `machines` owns the choice: a session gets a connected machine with
 headroom, independent pieces spread across machines, and no worker is filled. `local` is this

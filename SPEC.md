@@ -3786,6 +3786,7 @@ seeds it once:
   whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
   BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
   `--fix` installs the untouched updates.
+- **Every chief has a heartbeat.** At every gateway start HUI adds one Heartbeat routine to every live Chief of Staff, including a group chief the pack does not re-seed, and creating a group chief adds it immediately. It is an Automation task every 15 minutes that checks the sessions that chief watches and continues one that stopped; it never starts new work. An existing routine with that name is left alone.
 - **Workers carry the pack, nothing else.** A spawn from a bot's chat records
   `botSkills`, written as the `hui.botSkills` document in the child's creating
   commit; `skillDirsFor` loads that bot's skill folder for the child and its

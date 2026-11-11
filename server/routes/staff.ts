@@ -31,6 +31,8 @@ export type StaffRouteDeps = {
   skills?: BotSkillFiles;
   readSettings: () => Promise<Settings>;
   writeSettings: (settings: Settings) => Promise<Settings>;
+  /** Ensure every live Chief of Staff, including this one, has HUI's Heartbeat routine. */
+  ensureHeartbeat?: () => Promise<unknown>;
 };
 
 function statusOf(error: unknown): number {
@@ -58,6 +60,7 @@ export function createStaffRoutes(deps: StaffRouteDeps) {
 
       const existing = (await deps.bots()).find((bot) => bot.group === group);
       if (existing) {
+        await deps.ensureHeartbeat?.().catch(() => undefined);
         return reply(BotResponse, { bot: existing.archived ? await deps.restoreBot(existing.id) : await deps.getBot(existing.id) });
       }
 
@@ -72,6 +75,7 @@ export function createStaffRoutes(deps: StaffRouteDeps) {
       });
       const skills = deps.skills ?? localBotSkills();
       await skills.write(bot.id, pack.skills.map((skill) => ({ name: skill.name, text: skill.text, ...(skill.files.length ? { files: skill.files } : {}) })));
+      await deps.ensureHeartbeat?.().catch(() => undefined);
 
       // The routes are shared settings, so a group chief adds only what the installation does not have yet.
       const settings = await deps.readSettings();
