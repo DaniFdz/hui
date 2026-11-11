@@ -3,13 +3,13 @@
  * Start draws exactly one row (SESS-015). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { expectChatTitle } from "./chat-header.ts";
 
 test("a started session opens under its first prompt line and takes the generated title at once, while a slow naming call never blocks it or doubles its row", { tags: ["SESS-015"], platforms: ["web"] }, async ({ screen, hui }) => {
   const directory = screen.getByLabel("Project directory");
   const message = screen.getByPlaceholder("What should this session work on?");
   const start = screen.getByRole("button", "Start session");
   const transcript = screen.getByTestId("transcript");
-  const heading = screen.getByTestId("session-title", { visible: true });
   const rows = screen.getByTestId("session-row");
   const row = (title: string) => screen.getByLabel(new RegExp(`^${title}, status `, "u"));
   // The fixture's utility model holds the title call until the replay is released, so the prompt line is read while
@@ -27,7 +27,8 @@ test("a started session opens under its first prompt line and takes the generate
 
   // The session opens and answers under the provisional title, which is the prompt's first line.
   await hui.provider.held();
-  await expect(heading).toHaveText(prompt);
+  // The heading on a wide screen, the Active panel selector on a phone (chat-header.ts).
+  await expectChatTitle(screen, prompt);
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await hui.sessionList();
@@ -36,7 +37,7 @@ test("a started session opens under its first prompt line and takes the generate
 
   // The generated title replaces it in the row and the heading, without a reload.
   await hui.provider.release();
-  await expect(heading).toHaveText("Improve session naming");
+  await expectChatTitle(screen, "Improve session naming");
   await hui.sessionList();
   await expect(row("Improve session naming")).toBeVisible();
   await expect(screen.getByTestId("session-row").filter({ hasText: "Improve session naming" })).toHaveCount(1);
