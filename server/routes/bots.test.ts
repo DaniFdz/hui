@@ -869,6 +869,22 @@ test("a group gets one Chief of Staff with the pack's skills", async () => {
   assert.equal((await call("/__hui/staff/chiefs", "POST", { group: " ", cwd: workspace })).status, 400);
 });
 
+test("a session a chief starts opens with its brief tagged from the chief, never as the operator's own words", { timeout: 120_000 }, async () => {
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "Brief E2E", cwd: workspace }));
+  const brief = "This session owns PR #167221: address the three open review threads, then request review again.";
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "create_session", input: { prompt: brief, title: "PR shepherding" } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  const child = (await readRegistry()).find((record) => record.title === "PR shepherding");
+  assert.ok(child, JSON.stringify(asked.body));
+  await settledWith(child.id, says("user", brief));
+  assert.deepEqual(liveSessions.transcript(child.id).flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []),
+    [`[from @${chief.handle}] ${brief}`]);
+});
+
 test("one of a bot's own skills is read and replaced through the guarded routes", async () => {
   const created = await call("/__hui/bots", "POST", { name: "Scribe", soul: "# Who I am\nA fixture bot.\n" });
   const bot = botOf(created);

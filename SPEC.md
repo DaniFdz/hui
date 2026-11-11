@@ -1772,7 +1772,10 @@ than half its cores); when every machine is over a limit it returns a
 machine. `create_session`
 creates an ordinary top-level session instead: a group, a title, its first
 prompt and optionally a fresh worktree, a worker, a model and thinking. The
-caller's cwd, group, worker, model and thinking are defaults. It writes no
+caller's cwd, group, worker, model and thinking are defaults. The brief reaches
+the new chat tagged from the calling bot, like every message a bot sends into a
+chat, so the new session's own chat shows it under that bot's name rather than
+as the operator's words. It writes no
 parent or task metadata, so the caller's subagent tools do not see it and the
 operator opens it from the sidebar. Only a Chief of Staff bot may call `create_session`; every other agent is refused and uses `sessions_spawn`. A spawn creates an ordinary HUI session
 with its own PI process and transcript, plus optional parent/task metadata in
@@ -3159,10 +3162,13 @@ behalf now shows as theirs, in group-chat style:
   the agents write it (routine and trigger prompts stay plain); Copy and Reply
   take that text. Rewind is not offered: the message was never the operator's
   to edit and send again.
-- **The same senders the gateway trusts.** The chat attributes exactly the
-  headers `botTurnOrigin` reads (plus `sessions_send` and a subagent's task),
-  so a message shows as someone else's when the bot's gated tools refuse to
-  treat it as the operator's.
+- **The same senders the gateway trusts, and one it does not.** The chat
+  attributes exactly the headers `botTurnOrigin` reads (plus `sessions_send` and
+  a subagent's task), so a message shows as someone else's when the bot's gated
+  tools refuse to treat it as the operator's. A header a bot wrote itself, when
+  HUI delivered the text untagged (the handle without its `@`, or a
+  `· <note>` after it), shows as that bot's too: presentation only, since the
+  gateway still reads a turn by HUI's own headers, never by one a bot wrote.
 - **What an agent hands a bot stays in sight.** Its `message_bot` call keeps a
   row of its own after the turn folds: *Sent to <bot>* (or to the calling
   agent's session) with the bot's face and the message's first paragraph, the

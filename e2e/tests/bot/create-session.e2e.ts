@@ -1,4 +1,4 @@
-/** An agent creates an ordinary top-level session in a group, not a child (BOT-073). */
+/** An agent creates an ordinary top-level session in a group, not a child, and its brief arrives tagged from the bot that wrote it (BOT-073). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -7,7 +7,7 @@ const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stri
 type ListedSession = { id: string; title: string; group: string; cwd: string; parentId?: string; status: string };
 
 test("a Chief of Staff creates an ordinary session in a group, not a child", { tags: ["BOT-073"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const chief = (await hui.api<{ bots: Array<{ name: string; sessionId: string }> }>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
+  const chief = (await hui.api<{ bots: Array<{ id: string; name: string; sessionId: string }> }>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
   const source = { id: chief.sessionId };
   const repo = await hui.repository();
   try {
@@ -32,6 +32,13 @@ test("a Chief of Staff creates an ordinary session in a group, not a child", { t
   expect(created?.cwd).not.toBe(repo.path);
   await hui.open("/");
   await expect(screen.getByLabel(/^Created by an agent, status/)).toBeVisible();
+  // The brief is the bot's message in the new chat, never the operator's own words.
+  await hui.open(`/sessions/${created!.id}`);
+  const transcript = screen.getByTestId("transcript");
+  await expect(transcript.getByText("Report that an agent created you.")).toBeVisible();
+  hui.expectLinkTo(transcript, "Chief of Staff", `/bots/${chief.id}`);
+  await expect(transcript.getByText(/\[from @/u)).toHaveCount(0);
+  await expect(transcript.getByText("You", { exact: true })).toHaveCount(0);
   await expect.poll(async () => (await hui.api<{ groups: Array<{ sessions: ListedSession[] }> }>("GET", "/__hui/sessions"))
     .groups.flatMap((entry) => entry.sessions).find((session) => session.id === chief.sessionId)?.status, { timeout: 30_000 }).toBe("idle");
   } finally {

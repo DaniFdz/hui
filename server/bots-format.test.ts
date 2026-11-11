@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "vitest";
 import {
   agentReplyTo, agentTagPrefix, BOT_ACCESS_ANSWERS, BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_FACE_SHAPES, BOT_LIMITS,
-  BOT_THINKING_LEVELS, botColorName, botFaceColor, botFaceEars, botFaceShape, botKickoffName, botLook, isBotFaceEars, isBotFaceShape, isBotTagging,
+  BOT_THINKING_LEVELS, botColorName, botFaceColor, botFaceEars, botFaceShape, botKickoffName, botLook, botTagPrefix, isBotFaceEars, isBotFaceShape, isBotTagging,
   previewLine, storedTagging,
 } from "./bots-format.ts";
 import { botTurnOrigin } from "./runtimes/turn-origins.ts";
@@ -23,6 +23,12 @@ test("bot limits, faces, labels, tagging and sender parsing match the portable f
   for (const item of fixture.kickoffNames) assert.equal(botKickoffName(item.input) ?? null, item.expected);
   for (const item of fixture.turnOrigins) assert.deepEqual(botTurnOrigin(item.input ?? undefined), item.expected);
   for (const item of fixture.replyTo) assert.equal(agentReplyTo(item.input ?? undefined) ?? null, item.expected);
+});
+
+test("a bot's tag reads back as that bot, at the first hop or a later one", () => {
+  assert.equal(botTagPrefix("roboto"), "[from @roboto] ");
+  assert.equal(botTagPrefix("roboto", 3), "[from @roboto · hop 3] ");
+  assert.deepEqual(botTurnOrigin(`${botTagPrefix("roboto")}the brief`), { kind: "bot", handle: "roboto" });
 });
 
 test("a session's tag carries a sanitized title, its return address and the hop after the first", () => {
