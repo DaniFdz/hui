@@ -35,6 +35,10 @@ test("an idle watched session is continued once, and again only after it changes
   const heartbeat = createHeartbeat(f.deps);
   assert.deepEqual(await heartbeat.scan(), { continued: ["target"] });
   assert.deepEqual(f.prompts, [{ id: "target", text: HEARTBEAT_PROMPT }]);
+  assert.equal(f.notifications.length, 1);
+  assert.match(f.notifications[0]?.text ?? "", /\| Session \| Pull request \| Status \/ blockers \|/u);
+  assert.match(f.notifications[0]?.text ?? "", /\[target\]\(\/sessions\/target\?open=app\)/u);
+  assert.match(f.notifications[0]?.text ?? "", /Report this status to the operator/u);
   assert.deepEqual(await heartbeat.scan(), { continued: [] });
   // The target's transcript/record moved: a new idle span is due.
   f.deps.records = async () => [
@@ -53,6 +57,7 @@ test("an idle decision is sent to the watcher instead of a continuation", async 
   assert.equal(f.notifications.length, 1);
   assert.equal(f.notifications[0]?.id, "watcher");
   assert.match(f.notifications[0]?.text ?? "", /^\[routine: Heartbeat\] Watched session "target" is idle and waiting for a decision\./u);
+  assert.match(f.notifications[0]?.text ?? "", /\| \[target\]\(\/sessions\/target\?open=app\) \| — \| Waiting on you: a decision \|/u);
   assert.match(f.notifications[0]?.text ?? "", /Should I deploy it\?/u);
   // The target did not change: one status, not one every scan.
   assert.deepEqual(await heartbeat.scan(), { continued: [] });

@@ -129,7 +129,9 @@ desktop and mobile widths, and its pull request is merged and, where the change 
 deployed and validated in production. The operator archives the session once that is true. Open the reply with the restated goal, then what changed, what
 proved it, what was chosen and why, what stays open, and the proof gaps. Short declarative
 sentences, no emoji, no long dash, and never a claim that an unrun check passed. One line
-per task, never one per child; a lead's rollup is one item.
+per task, never one per child; a lead's rollup is one item. A status request, or a heartbeat
+change, uses `status`: one table row per session with its PR and blockers, then one question
+only if the operator must decide.
 
 ## 9. Keep one lesson
 

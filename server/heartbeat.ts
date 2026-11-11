@@ -37,12 +37,26 @@ export function looksLikeDecision(text: string | undefined): boolean {
   return last.length > 0 && DECISION.test(last);
 }
 
-function statusMessage(title: string, state: HeartbeatState, last: string | undefined): string {
+function statusMessage(title: string, id: string, state: HeartbeatState, last: string | undefined): string {
   const detail = last?.trim().slice(0, 1_000);
+  const status = state === "error" ? "Blocked: error" : state === "waiting" ? "Waiting on you: an answer" : "Waiting on you: a decision";
   return [
     `[routine: Heartbeat] Watched session "${title}" is ${state === "error" ? "in error" : state === "waiting" ? "waiting for an answer" : "idle and waiting for a decision"}.`,
-    ...(detail ? [detail] : []),
-    "Read it with sessions_history; answer it, ask the operator, or remove the watch. Do not start unrelated work.",
+    "| Session | Pull request | Status / blockers |",
+    "| --- | --- | --- |",
+    `| [${title}](/sessions/${id}?open=app) | — | ${status} |`,
+    ...(detail ? ["", detail] : []),
+    "Report this to the operator with the status table, then ask the one decision if it waits on them. Read it with sessions_history; answer it, ask the operator, or remove the watch. Do not start unrelated work.",
+  ].join("\n");
+}
+
+function continuedMessage(title: string, id: string): string {
+  return [
+    `[routine: Heartbeat] Continued watched session "${title}" after it was idle.`,
+    "| Session | Pull request | Status / blockers |",
+    "| --- | --- | --- |",
+    `| [${title}](/sessions/${id}?open=app) | — | Running: continued by heartbeat |`,
+    "Report this status to the operator with the status table; ask one question only if it waits on them.",
   ].join("\n");
 }
 
@@ -77,7 +91,7 @@ export function createHeartbeat(deps: HeartbeatDeps) {
         let sent = false;
         for (const watcherId of watcherIds) {
           try {
-            await deps.notify(watcherId, statusMessage(target.title, state, deps.lastAssistant(id)));
+            await deps.notify(watcherId, statusMessage(target.title, id, state, deps.lastAssistant(id)));
             sent = true;
           } catch {
             // A busy watcher is retried on the next scan.
@@ -94,6 +108,9 @@ export function createHeartbeat(deps: HeartbeatDeps) {
         await deps.prompt(id, HEARTBEAT_PROMPT);
         promptedAt.set(id, at);
         continued.push(id);
+        for (const watcherId of watcherIds) {
+          await deps.notify(watcherId, continuedMessage(target.title, id)).catch(() => undefined);
+        }
       } catch {
         // A session that went busy between the status read and the prompt is retried on the next scan.
       }
