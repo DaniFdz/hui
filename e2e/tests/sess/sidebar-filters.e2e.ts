@@ -87,6 +87,8 @@ test("Sort by orders rows by Created, Last updated, Name or Stage with pinned fi
   await expect.poll(order).toEqual(["Charlie sort", "Alpha sort", "Bravo sort", "Delta sort", "Echo sort"]);
 
   await hui.reload();
+  // A reload closes a phone's drawer, so the list has to be opened again before its rows are read.
+  await hui.sessionList();
   await expect(screen.getByLabel(/^Bravo sort, status idle, tool durable, stage testing/u)).toBeVisible();
   await expect.poll(order).toEqual(["Charlie sort", "Alpha sort", "Bravo sort", "Delta sort", "Echo sort"]);
   expect(await registry()).toEqual(before);
@@ -120,6 +122,9 @@ test("Group by Project splits rows by directory with only New session, None list
   await screen.getByRole("button", `New session in ${there}`).tap();
   await expect(screen.getByLabel("Project directory")).toHaveValue(parent);
   await expect(screen.getByLabel("Choose session group")).toContainText("OTHER");
+  // A phone keeps the session list in a drawer, and the New Session page — a full-screen destination — has no control
+  // that opens it, so the load that proves the grouping was stored lands on the list.
+  await hui.open("/");
   await hui.reload();
   await hui.sessionList();
   await expect(heading(there)).toBeVisible();
