@@ -213,6 +213,21 @@ The stable source is the channel to use: the nightly one follows the rolling
 prerelease, whose version carries its build stamp
 (`0.2.0-nightly.202611091200.g1a2b3c4`), so treat it as a preview.
 
+**Without waiting for a release, and without a Mac.** Dispatch the Mobile workflow on the branch that has the app and
+ask it for the IPA:
+
+```sh
+gh workflow run mobile.yml --repo DaniFdz/hui --ref <branch> -f ios_ipa=true
+gh run download <run-id> --repo DaniFdz/hui -n ios-ipa -D /tmp/hui-ipa
+```
+
+That job archives the app for a device on a macOS runner, unsigned, and uploads
+`hui-<version>-unsigned.ipa` with its checksum. In SideStore open **+** and import
+that file: SideStore signs it with your Apple ID as it would a release. The same
+seven-day limit applies. Building from a checkout on a Mac works too: `npm ci`,
+`npm run mobile:build`, `npx cap sync ios`, then Run in Xcode with your team
+selected.
+
 The seven days are Apple's limit for a free Apple ID, not HUI's. SideStore
 re-signs HUI for another seven days whenever it refreshes it, and a refresh needs
 the device to be online; you can also start one in SideStore yourself at any
