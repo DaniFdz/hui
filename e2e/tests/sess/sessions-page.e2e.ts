@@ -88,16 +88,19 @@ test("Search session registry filters by title, directory, runtime and group, an
   await expect(listed("Zulu registry")).toBeVisible();
   await expect(listed("SDK charlie")).toBeVisible();
 
-  const registry = screen.getByText("REGISTRY TEAM", { exact: true, visible: true });
-  const project = screen.getByText(basename(repo.path), { exact: true, visible: true });
-  await expect(registry).toHaveCount(1);
+  // The page's own grouping headings, not the sidebar's: a phone keeps the session list in a drawer, so the page's
+  // headings are all a narrow screen draws and the count is the same on both.
+  const table = screen.getByTestId("session-data-table");
+  const registry = table.getByText("REGISTRY TEAM", { exact: true });
+  const project = table.getByText(basename(repo.path), { exact: true });
+  await expect(registry).toHaveCount(0);
   await expect(project).toHaveCount(0);
   await screen.getByRole("button", "Group").tap();
-  await expect(registry).toHaveCount(2);
+  await expect(registry).toHaveCount(1);
   await expect(screen.getByText("3 sessions", { exact: true })).toBeVisible();
   await expect(screen.getByText("1 session", { exact: true })).toBeVisible();
   await screen.getByRole("button", "Project").tap();
-  await expect(registry).toHaveCount(1);
+  await expect(registry).toHaveCount(0);
   await expect(project).toHaveCount(1);
   await expect(screen.getByText("3 sessions", { exact: true })).toBeVisible();
   await expect(screen.getByText("1 session", { exact: true })).toBeVisible();
