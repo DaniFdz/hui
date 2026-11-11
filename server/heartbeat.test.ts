@@ -13,6 +13,7 @@ const session = (id: string, updatedAt = "2026-11-11T10:00:00.000Z", extra: Part
 
 function fixture(targetStatus: SessionStatus = "idle", watcherStates: WatcherState[] = []) {
   const prompts: Array<{ id: string; text: string }> = [];
+  const notifications: Array<{ id: string; text: string }> = [];
   let now = Date.parse("2026-11-11T10:05:00.000Z");
   const deps = {
     records: async () => [
@@ -22,9 +23,11 @@ function fixture(targetStatus: SessionStatus = "idle", watcherStates: WatcherSta
     status: () => targetStatus,
     watchers: () => watcherStates.map((state) => ({ state })),
     prompt: async (id: string, text: string) => { prompts.push({ id, text }); },
+    lastAssistant: () => "Done.",
+    notify: async (id: string, text: string) => { notifications.push({ id, text }); },
     now: () => now,
   };
-  return { deps, prompts, advance: (ms: number) => { now += ms; } };
+  return { deps, prompts, notifications, advance: (ms: number) => { now += ms; } };
 }
 
 test("an idle watched session is continued once, and again only after it changes", async () => {
@@ -39,6 +42,34 @@ test("an idle watched session is continued once, and again only after it changes
     session("target", "2026-11-11T10:06:00.000Z"),
   ];
   assert.deepEqual(await heartbeat.scan(), { continued: ["target"] });
+});
+
+test("an idle decision is sent to the watcher instead of a continuation", async () => {
+  const f = fixture();
+  f.deps.lastAssistant = () => "The migration is ready. Should I deploy it?";
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { continued: [] });
+  assert.deepEqual(f.prompts, []);
+  assert.equal(f.notifications.length, 1);
+  assert.equal(f.notifications[0]?.id, "watcher");
+  assert.match(f.notifications[0]?.text ?? "", /^\[routine: Heartbeat\] Watched session "target" is idle and waiting for a decision\./u);
+  assert.match(f.notifications[0]?.text ?? "", /Should I deploy it\?/u);
+  // The target did not change: one status, not one every scan.
+  assert.deepEqual(await heartbeat.scan(), { continued: [] });
+  assert.equal(f.notifications.length, 1);
+  f.deps.records = async () => [session("watcher", undefined, { watches: ["target"] }), session("target", "2026-11-11T10:06:00.000Z")];
+  assert.deepEqual(await heartbeat.scan(), { continued: [] });
+  assert.equal(f.notifications.length, 2);
+});
+
+test("waiting and error states tell the watcher, and never prompt the target", async () => {
+  for (const status of ["waiting", "error"] as const) {
+    const f = fixture(status);
+    assert.deepEqual(await createHeartbeat(f.deps).scan(), { continued: [] });
+    assert.deepEqual(f.prompts, []);
+    assert.equal(f.notifications.length, 1);
+    assert.match(f.notifications[0]?.text ?? "", new RegExp(status === "error" ? "is in error" : "is waiting for an answer", "u"));
+  }
 });
 
 test("waiting for input, an error, a starting runtime and a done stage are never continued", async () => {
@@ -72,6 +103,7 @@ test("a paused goal, an archived target, a bot chat and an archived watcher are 
     const prompts: string[] = [];
     const heartbeat = createHeartbeat({
       records: async () => records, status: () => "idle", watchers: () => [], prompt: async (id) => { prompts.push(id); },
+      lastAssistant: () => "Done.", notify: async () => {},
     });
     assert.deepEqual(await heartbeat.scan(), { continued: [] });
     assert.deepEqual(prompts, []);
@@ -85,6 +117,8 @@ test("a stopped prompt is retried on the next scan", async () => {
     status: () => "idle",
     watchers: () => [],
     prompt: async () => { attempts += 1; if (attempts === 1) throw new Error("busy"); },
+    lastAssistant: () => "Done.",
+    notify: async () => {},
   });
   assert.deepEqual(await heartbeat.scan(), { continued: [] });
   assert.deepEqual(await heartbeat.scan(), { continued: ["target"] });

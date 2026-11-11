@@ -372,6 +372,15 @@ export const heartbeat = createHeartbeat({
   status: (id) => liveSessions.status(id),
   watchers: (id) => watchers.list(id),
   prompt: (id, text) => liveSessions.prompt(id, text),
+  lastAssistant: (id) => {
+    const entries = liveSessions.transcript(id);
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (entry?.kind === "message" && entry.role === "assistant") return entry.text;
+    }
+    return undefined;
+  },
+  notify: (id, text) => liveSessions.prompt(id, text),
 });
 export const heartbeatRoutes = createHeartbeatRoutes({ heartbeat });
 /** One managed browser per gateway; its settings are re-read on every call. With mirroring on it seeds itself from
