@@ -146,8 +146,8 @@ export type Hui = {
   openSubagent(child: { title: string }): Promise<void>;
   /**
    * Starts a fixture world for this test: its own disposable gateway, seeded by the launcher's `--jira-fixture`,
-   * `--github-fixture`, `--activity-fixture`, `--datadog-fixture` or `--quota-fixture` (`world.ts`). The world is another
-   * gateway on another port, so a test
+   * `--github-fixture`, `--activity-fixture`, `--datadog-fixture` or `--quota-fixture` (`world.ts`), or by none of them
+   * with `plain`, which is a gateway of this test's own. The world is another gateway on another port, so a test
    * opens its pages with `hui.open(`${world.url}/...`)` and calls it with `world.api`. The Android app loads the gateway
    * it was launched with and cannot follow a test to another origin, so this refuses there.
    */
