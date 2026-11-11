@@ -1,5 +1,6 @@
 /** A gateway restart ends the shells it knew: the tab it leaves behind says its terminal is not there instead of
- * opening a replacement shell, and New terminal opens one that works (WORK-031). */
+ * opening a replacement shell, it says so on its own, and New terminal opens one that works under a name no other tab
+ * of the conversation already shows (WORK-031). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import { openWork } from "./work-views.ts";
@@ -19,7 +20,7 @@ const run = async (hui: Hui, screen: Screen, command: string) => {
   await hui.type(`${command}\n`);
 };
 
-test("after a gateway restart an old terminal tab reports its terminal is gone instead of recreating the shell, and New terminal opens a working one", { tags: ["WORK-031"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("after a gateway restart the open terminal tab reports its shell is gone by itself, and New terminal opens a working one under a name no tab already shows", { tags: ["WORK-031"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Terminal after a restart", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
@@ -30,26 +31,32 @@ test("after a gateway restart an old terminal tab reports its terminal is gone i
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);
+  await expect(pane.getByRole("tab", "Terminal 1")).toBeVisible();
 
-  // The restart leaves the tab in place, naming the shell it lost, and opens no shell in its place.
+  // The restart leaves the tab in place, naming the shell it lost. No reload and no press: the tab keeps asking the
+  // gateway as it comes back, and reports the answer that ends it instead of opening a shell in its place.
   await hui.restartGateway();
-  await hui.reload();
   await expect(pane.getByText(/Terminal not found in this conversation\./u)).toBeVisible({ timeout: 90_000 });
-  await expect(pane.getByRole("tab", "Terminal", { exact: true })).toBeVisible();
+  await expect(pane.getByRole("tab", "Terminal 1")).toBeVisible();
   await expect(pane.getByText("Shared · Disconnected")).toBeVisible();
   expect(await terminals(hui, session.id)).toHaveLength(0);
 
-  // New terminal opens a shell of its own, which runs what is typed into it.
+  // New terminal opens a shell of its own under the next free name, since that tab still shows "Terminal 1".
   await openWork(screen, "New terminal");
-  await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
-  // The old tab is still there, naming the shell the restart took away.
-  await expect(pane.getByRole("tab", "Terminal", { exact: true })).toBeVisible();
+  await expect(pane.getByRole("tab", "Terminal 2")).toHaveAttribute("aria-selected", "true");
+  await expect(pane.getByRole("tab", "Terminal 1")).toBeVisible();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   const shells = await terminals(hui, session.id);
   expect(shells).toHaveLength(1);
   expect(shells[0]!.id).not.toBe(id);
+  expect(shells[0]!.title).toBe("Terminal 2");
   await ready(hui, session.id, shells[0]!.id);
   await run(hui, screen, "printf 'AFTER-RESTART\\n'");
   await expect.poll(async () => replay(hui, session.id, shells[0]!.id)).toContain("AFTER-RESTART");
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
+
+  // A reload still finds that shell and keeps the two names apart.
+  await hui.reload();
+  await expect(pane.getByText("Shared · Connected")).toBeVisible();
+  await expect(pane.getByRole("tab", "Terminal 2")).toBeVisible();
 });
