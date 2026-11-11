@@ -2,7 +2,7 @@
  * switches it to another tab the conversation opened, and Follow agent returns it to the agent's tab (WORK-040). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-import { openWork } from "./work-views.ts";
+import { backToChat, openWork, reopenWork } from "./work-views.ts";
 
 const call = (calls: { name: string; input: Record<string, unknown> }[]) =>
   `E2E_CALL:${Buffer.from(JSON.stringify(calls)).toString("base64url")}`;
@@ -25,7 +25,11 @@ test("the Browser tab picker switches the view to another tab the conversation o
     { name: "browser", input: { action: "open", url: fixturePage } },
     { name: "browser", input: { action: "open", url: handoffPage } },
   ]));
+  // A phone shows the Work destination instead of the chat, so the settled turn is read from the chat and the view is
+  // then shown again from the chooser.
+  await backToChat(screen);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible({ timeout: 120_000 });
+  await reopenWork(screen, "Browser");
   await expect(picker).toHaveAttribute("aria-label", /^Browser tab: t\d+ · HUI (browser|handoff) fixture$/u);
   const agentTitle = ((await picker.getAttribute("aria-label")) ?? "").split(" · ")[1] ?? "";
   const agentPage = agentTitle === "HUI handoff fixture" ? handoffPage : fixturePage;

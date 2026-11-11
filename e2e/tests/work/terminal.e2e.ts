@@ -92,7 +92,6 @@ test("typing a command into the terminal runs it in a real shell and its output,
   const session = await hui.createSession({ title: "Run a command", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
@@ -105,8 +104,11 @@ test("typing a command into the terminal runs it in a real shell and its output,
   expect(printed).toContain("\u001b[31mRED\u001b[0m plain");
 
   await hui.prompt(session, "E2E_REPLY:V2hhdCBhIHNoZWxs");
-  await expect(screen.getByText("What a shell")).toBeVisible();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
+  // A phone shows the Work destination instead of the chat, so the reply is read after leaving it; the terminal
+  // stays mounted and connected behind the chat either way.
+  await backToChat(screen);
+  await expect(screen.getByText("What a shell")).toBeVisible();
   await expect(screen.getByLabel("Message")).toBeVisible();
   await expect(screen.getByTestId("transcript")).toBeVisible();
 });
@@ -116,7 +118,6 @@ test("New terminal adds a second tab with its own shell, and each tab keeps its 
   const session = await hui.createSession({ title: "Two terminals", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
@@ -151,7 +152,6 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   const session = await hui.createSession({ title: "Share a terminal", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
@@ -184,7 +184,6 @@ test("End terminal stops its shell and closes its tab while the other terminals 
   const session = await hui.createSession({ title: "End a terminal", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
@@ -266,7 +265,6 @@ test("a scrolled-back terminal keeps its place while output arrives, and Jump to
   const terminal = screen.getByLabel("Shared terminal input", { visible: true });
   const jump = screen.getByLabel("Jump to bottom");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(screen.getByText("Shared · Connected")).toBeVisible();

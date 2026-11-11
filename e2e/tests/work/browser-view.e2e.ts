@@ -3,7 +3,7 @@
  * same tab, live and headless, with its address and the last thing the agent did (WORK-039). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-import { openWork } from "./work-views.ts";
+import { backToChat, hideWork, openWork, reopenWork } from "./work-views.ts";
 
 test("the browser view says no page is open before the agent browses, then shows the agent's headless tab from the header and from its preview card", { tags: ["WORK-039"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
@@ -25,20 +25,24 @@ test("the browser view says no page is open before the agent browses, then shows
 
   // The agent browses in its own headless browser, and the view shows that tab, its address and what it did last.
   await hui.prompt(session, "E2E_BROWSER");
+  // A phone shows the Work destination instead of the chat, so the settled turn is read from the chat and the view is
+  // then shown again from the chooser.
+  await backToChat(screen);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible({ timeout: 120_000 });
+  await reopenWork(screen, "Browser");
   await expect(pane.getByText(/^(Live|Idle) · headless$/u)).toBeVisible();
   await expect(pane.getByText(/^http:\/\/127\.0\.0\.1:\d+\/browser-fixture$/u)).toBeVisible();
   await expect(pane.getByText("Took a screenshot")).toBeVisible();
   await expect(pane.getByText("View only · the agent controls this browser")).toHaveCount(0);
 
   // The header's globe shows that same tab again, expanding the pane it is hidden in without adding a second one.
-  await screen.getByRole("button", "Hide Work pane").tap();
+  await hideWork(screen);
   await header.tap();
   await expect(pane.getByRole("tab", "Browser")).toHaveAttribute("aria-selected", "true");
   await expect(pane.getByRole("tab")).toHaveCount(1);
 
   // And so does the chat's preview card, which is the conversation's one Browser view as well.
-  await screen.getByRole("button", "Hide Work pane").tap();
+  await hideWork(screen);
   await preview.tap();
   await expect(pane.getByRole("tab", "Browser")).toHaveAttribute("aria-selected", "true");
   await expect(pane.getByRole("tab")).toHaveCount(1);

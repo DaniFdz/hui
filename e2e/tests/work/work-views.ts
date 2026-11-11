@@ -5,7 +5,10 @@
  * case where a desktop draws the pane beside the chat and where a phone draws it as a destination of its own.
  *
  * Every step waits for whichever of the two the page settles into: `isVisible()` answers at once, so a check that ran
- * before the page had rendered its layout would pick the other width's route.
+ * before the page had rendered its layout would pick the other width's route. `reopenWork` shows a view that is already
+ * open — a wide pane collapsed to its rail, or a phone's chat with the view in its Active panel selector — and
+ * `hideWork` hides the pane either way. A reload at phone size lands on the chat, so a test that reloads reopens the
+ * view it means.
  */
 import { expect, type Locator, type Screen } from "e2e";
 
@@ -29,6 +32,40 @@ export const openWork = async (screen: Screen, name: string): Promise<void> => {
   }
   await panelSelector(screen).tap();
   await screen.getByText(name, { exact: true }).first().tap();
+};
+
+/**
+ * Shows a Work view that is already open. A wide screen keeps its pane open across a reload; a phone leaves it on the
+ * chat, with the conversation's views still listed in the Active panel selector, so the test picks the view there
+ * (WORK-010, WORK-011). A caller that has just opened the view on a phone finds it shown already and this does nothing.
+ */
+export const reopenWork = async (screen: Screen, name: string): Promise<void> => {
+  const pane = screen.getByLabel("Work pane");
+  const tab = pane.getByRole("tab", name).first();
+  const rail = pane.getByRole("button", `Show ${name}`);
+  await settle(tab, rail, panelSelector(screen));
+  // A visible tab still has to be the active one: the pane comes back on whichever view was in front.
+  if (await tab.isVisible()) {
+    await tab.tap();
+    return;
+  }
+  if (await rail.isVisible()) {
+    await rail.tap();
+    return;
+  }
+  await panelSelector(screen).tap();
+  await screen.getByText(name, { exact: true }).first().tap();
+};
+
+/**
+ * Hides the Work pane: a wide screen collapses it to its rail and a phone leaves the full-screen destination for the
+ * chat (WORK-006, WORK-010). Both show the chat again and both keep the views mounted.
+ */
+export const hideWork = async (screen: Screen): Promise<void> => {
+  const hide = screen.getByRole("button", "Hide Work pane");
+  await settle(hide, screen.getByRole("button", "Back to chat"), panelSelector(screen));
+  if (await hide.isVisible()) await hide.tap();
+  else await backToChat(screen);
 };
 
 /**
