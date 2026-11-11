@@ -173,6 +173,20 @@ const commands = {
     const call = (ghArgs) => execFileSync(gh, ghArgs, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
     const ref = flag("ref", execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim() || "HEAD");
     const out = resolve(flag("out", join(homedir(), "Downloads", "hui-ipa")));
+    // An archive is 90 seconds of work behind a macOS queue, so it is only worth asking for when the shell itself moved:
+    // the app loads the gateway's UI at runtime, and every web change reaches the phone through the gateway instead.
+    const native = ["mobile/ios", "mobile/connect", "capacitor.config.ts", "package.json", "package-lock.json", "src/lib/native-shell.ts", "src/lib/native-shell-boot.ts"];
+    const stamp = join(out, ".ipa-commit");
+    const tip = execFileSync("git", ["rev-parse", ref], { cwd: root, encoding: "utf8" }).trim();
+    if (!args.includes("--force") && existsSync(stamp)) {
+      const archived = readFileSync(stamp, "utf8").trim();
+      const changed = spawnSync("git", ["diff", "--name-only", archived, tip, "--", ...native], { cwd: root, encoding: "utf8" });
+      if (changed.status === 0 && changed.stdout.trim() === "") {
+        console.log(`The IPA in ${out} is already this branch's shell (${archived.slice(0, 8)}); nothing under ${native.join(", ")} changed since.`);
+        console.log("Pass --force to archive it again anyway.");
+        return;
+      }
+    }
     const started = Date.now();
     console.log(`Dispatching the IPA build for ${ref}…`);
     call(["workflow", "run", "mobile.yml", "--ref", ref, "-f", "ios_ipa=true"]);
@@ -200,6 +214,7 @@ const commands = {
     const files = readdirSync(out).filter((name) => name.endsWith(".ipa") || name.endsWith(".ipa.sha256")).sort();
     console.log(`${minutes} min. ${out} holds:`);
     for (const name of files) console.log(`  ${name}`);
+    writeFileSync(stamp, `${tip}\n`);
     const sums = files.find((name) => name.endsWith(".sha256"));
     if (sums) console.log(`  sha256 ${readFileSync(join(out, sums), "utf8").split(/\s+/u)[0]}`);
   },
