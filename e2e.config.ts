@@ -8,6 +8,7 @@ import type { E2EConfig } from "e2e";
 import { web } from "@e2e-dev/web";
 import { PHONE_PORT, phoneCdpEndpoint, phoneReconnectEndpoint } from "./e2e/fixtures/phone.ts";
 import { WEBKIT_PHONE_PORT, webkitPhoneOptions } from "./e2e/fixtures/phone-webkit.ts";
+import { webEngine } from "./e2e/fixtures/web-browser.ts";
 
 const branch = execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim() || "HEAD";
 
@@ -68,7 +69,10 @@ export default {
   targets: [
     {
       name: "web",
-      engine: web({ viewport: { width: 1440, height: 900 } }),
+      // This machine's Chromium, launched with a fake camera and microphone so a call can open one, and leased to the
+      // engine over CDP (`fixtures/web-browser.ts`). The permission itself stays the page's: `hui.allowMedia()` grants
+      // it for a test that wants a microphone, and a test that proves a refused one is still refused.
+      engine: webEngine,
       app: { url: "http://127.0.0.1:0", command: launcher("web", "{port}", true) },
     },
     phone,

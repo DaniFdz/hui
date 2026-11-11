@@ -17,7 +17,8 @@
  * the web, and on the phone the file the shell wrote into `Downloads`), the other tabs the page asks for (the engine
  * drives one page, so a `window.open` or a `target="_blank"` press is recorded as the address it asked for instead of
  * being followed), a controllable clock a test advances so a timer's deadline can be read on both sides of it
- * (`clock.ts`), a subagent's conversation opened from the card
+ * (`clock.ts`), the browser's permission for the fake camera and microphone the web target's Chromium carries
+ * (`web-browser.ts`), a subagent's conversation opened from the card
  * its parent's chat draws, a tool call held while it runs so its row and the working indicator can be read in flight, and
  * a fixture world started for one test (`world.ts`). The web page never opens Vite's development socket, whose client
  * reloads the page when the gateway restarts, which no installed gateway does. Test files import `test` from here, never
@@ -32,6 +33,7 @@ import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, FrameScreen, WebRoute } from "@e2e-dev/web";
 import { addWorkerOnThisMachine } from "./worker.ts";
 import { advanceClock, installClock } from "./clock.ts";
+import { allowMedia } from "./web-browser.ts";
 import { clearAppStorage, deviceBytes, deviceFiles, onPhone, PHONE_DOWNLOADS } from "./phone.ts";
 import { IPHONE_SCREEN, onWebKitPhone } from "./phone-webkit.ts";
 import { startWorld, type World, type WorldName } from "./world.ts";
@@ -181,6 +183,13 @@ export type Hui = {
   /** Advances the controlled clock by `ms`, running every timer that falls due in order, and answers the time it now
    * reads. Needs `controllableClock()` first. */
   advanceClock(ms: number): Promise<number>;
+  /**
+   * Grants the open page the microphone and the camera, as an operator allowing them in the browser's permission prompt.
+   * The web target's Chromium carries a fake camera and microphone (`web-browser.ts`), so `getUserMedia` then answers with
+   * that device instead of refusing. A page that never asks keeps being refused, which is what a use case about a refused
+   * microphone proves.
+   */
+  allowMedia(): Promise<void>;
   /**
    * Every other tab the page asked for since it loaded: a `window.open` call, or a press on a `target="_blank"` link
    * nothing else handled, in the order the app asked. It answers the address the app asked to open, resolved against
@@ -743,6 +752,7 @@ export const test = base.extend<{ hui: Hui }>({
       },
       scrollTo: (_within, target) => target.scrollIntoView(),
       frame: async (selector) => browser().frameLocator(selector),
+      allowMedia,
       controllableClock: async () => {
         // The page that is open gets it now, and every page after it through an init script, so a reload keeps the clock.
         await browser().addInitScript(installClock);
@@ -881,6 +891,12 @@ export const test = base.extend<{ hui: Hui }>({
           peek: desktopOnly("peek"),
           messageActions: desktopOnly("messageActions"),
           openWorkView: desktopOnly("openWorkView"),
+          // The fake camera and microphone are the web target's Chromium, which this target does not launch: its WebKit
+          // has no device at all, so granting a permission would only prove a refusal. A use case that needs the
+          // microphone open stays off this target's required list.
+          allowMedia: async () => {
+            throw new Error("hui.allowMedia() needs the web target's fake camera and microphone: the webkit-phone target runs Playwright's WebKit, which has no device to grant, so a call here could only prove the refusal. A use case that needs the microphone open stays off the phone's required list.");
+          },
         }
       : onPhone(fixtures.app.baseUrl)
         ? {
@@ -953,6 +969,12 @@ export const test = base.extend<{ hui: Hui }>({
             },
             advanceClock: async () => {
               throw new Error("hui.advanceClock() needs a controllable clock, which the app's WebView cannot take an init script for. A use case that needs a timer to pass keeps to real time on the phone.");
+            },
+            allowMedia: async () => {
+              // The app's WebView answers a page's permission prompt with the app's own Android grant (`RECORD_AUDIO`),
+              // which a Playwright attempt cannot hand to it and a fake device cannot stand in for. A use case that needs
+              // the microphone open stays off the phone's required list until the app grows a step for it.
+              throw new Error("hui.allowMedia() needs the browser's own permission grant: the app's WebView takes its permissions from the Android app, so there is nothing for a test to grant. A use case that needs the microphone stays off the phone's required list until the app has a step for it.");
             },
             clearState: async () => {
               await fixtures.app.open("/");
