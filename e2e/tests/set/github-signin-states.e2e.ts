@@ -20,7 +20,7 @@ type GitHubConnection = {
 
 test("the GitHub section names each state of the gateway's login: connected, not connected, sign-in required, unverified, a refused sign-in, and no gh", { tags: ["SET-025"], platforms: ["web"] }, async ({ screen, hui }) => {
   const world = await hui.world("github");
-  const page = screen.getByTestId("settings-page");
+  const page = screen.getByTestId("settings-github");
   await hui.open(`${world.url}/settings/integrations`);
   await expect(page.getByRole("heading", { name: "GitHub", exact: true })).toBeVisible({ timeout: 60_000 });
 
