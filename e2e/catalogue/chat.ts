@@ -1033,6 +1033,16 @@ const cases: UseCase[] = [
     web: "required",
     phone: "required",
   },
+  {
+    id: "CHAT-086",
+    title: "Jump back to the prompt you scrolled past",
+    behaviour:
+      'Once the row of a prompt scrolls out through the top of the transcript, a one-line pill over that edge names it ("Jump to your prompt:" and the message text) and activating it brings the prompt back to the top with the pill naming the prompt before it. The pill stays hidden while the prompt it would name is still on screen and at the top of the transcript, and it updates in place as another prompt takes over.',
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["position-rail"],
+    web: "required",
+  },
 ];
 
 export default cases;

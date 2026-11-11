@@ -63,11 +63,11 @@ export default function agentToolsExtension(pi) {
     label: "Ask user question",
     description: `Ask the user one or more structured questions in a card in this HUI conversation and wait for the answers, or until the operator's question timeout ends the call. Use it to gather preferences or requirements, clarify ambiguous instructions, get decisions on implementation choices, or offer choices of direction.
 
-Every question also offers a free-text answer the card adds itself, and the user can cancel the whole card. Previews are Markdown shown beside the options of a single-select question while one is focused; use them only when the user needs to compare concrete artifacts (mockups, code, diagrams, configs).`,
+A question takes one of three inputs: options (2-4 choices, radios or checkboxes), a slider over a numeric range (a budget, hours, a percentage) or a long text the user writes. An options question also offers a free-text answer the card adds itself. The user can cancel the whole card. Previews are Markdown shown beside the options of a single-select question while one is focused; use them only when the user needs to compare concrete artifacts (mockups, code, diagrams, configs).`,
     promptSnippet: "Ask the user up to 4 structured questions (2-4 options each) when requirements are ambiguous",
     promptGuidelines: [
       "Use ask_user_question whenever the user's request is underspecified and you cannot proceed without concrete decisions. Group all clarifying questions into one call, up to 4; do not stack calls back-to-back.",
-      "Each question needs a header (≤16 characters), the full question and 2-4 options, each with a concise label and a description of what it means. The card adds a free-text answer to every question: never author \"Other\", \"Type something.\" or \"Next\" options.",
+      "Each question needs a header (≤16 characters), the full question and one input: 2-4 options, each with a concise label and a description of what it means (the default); a slider with min, max and an optional step and unit; or a long text with an optional placeholder. An options question also gets a free-text answer from the card: never author \"Other\", \"Type something.\" or \"Next\" options.",
       "Set multiSelect: true when several answers can apply. If you recommend an option, put it first and end its label with \"(Recommended)\".",
       "If the user declines, do not ask the same questions again in chat; continue with sensible defaults or ask what they want.",
       "If the call times out, the operator may be away: continue with your recommended option, finish the rest of the work, and list the decisions that still need the operator in your final reply.",
@@ -76,8 +76,14 @@ Every question also offers a free-text answer the card adds itself, and the user
       questions: Type.Array(Type.Object({
         question: Type.String({ minLength: 1, maxLength: 500, description: "The complete question, ending with a question mark." }),
         header: Type.String({ minLength: 1, maxLength: 16, description: "MAX 16 CHARACTERS. A very short tag for the question, such as \"Auth method\" or \"Library\"." }),
-        options: Type.Array(questionOption, { minItems: 2, maxItems: 4, description: "2-4 distinct choices. Mutually exclusive unless multiSelect is set." }),
+        input: Type.Optional(Type.Union([Type.Literal("options"), Type.Literal("slider"), Type.Literal("text")], { description: "How the answer is given: options (the default), a numeric slider, or long text." })),
+        options: Type.Optional(Type.Array(questionOption, { minItems: 2, maxItems: 4, description: "For an options question: 2-4 distinct choices. Mutually exclusive unless multiSelect is set." })),
         multiSelect: Type.Optional(Type.Boolean({ description: "Let the user choose several options." })),
+        min: Type.Optional(Type.Number({ description: "For a slider: the lowest value." })),
+        max: Type.Optional(Type.Number({ description: "For a slider: the highest value." })),
+        step: Type.Optional(Type.Number({ description: "For a slider: how far one move goes; 1 by default." })),
+        unit: Type.Optional(Type.String({ maxLength: 16, description: "For a slider: what the value counts in, such as € or hours." })),
+        placeholder: Type.Optional(Type.String({ maxLength: 200, description: "For a long-text question: the field's hint." })),
       }), { minItems: 1, maxItems: 4, description: "1-4 questions, asked together in one card." }),
     }),
     async execute(_toolCallId, params, signal) {

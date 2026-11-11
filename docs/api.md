@@ -5348,11 +5348,18 @@ A session asks the operator structured questions with the HUI
 
 | Tool | Contract |
 |---|---|
-| `ask_user_question { questions }` | 1–4 questions `{ header ≤16, question ≤500, options, multiSelect? }`, each with 2–4 options `{ label ≤60, description ≤500, preview? ≤2500 }` (so four full questions fit the PI child bridge's 64 KiB request). Text is trimmed; header, question and label are required. Question texts and option labels within a question are unique; `Other`, `Type something.` and `Next` are reserved labels; previews are for single-select questions only. A call breaking these fails with a reason and shows nothing. Waits until the operator answers or cancels, the question timeout passes, or the call is aborted (Stop, a PI child that went away, a gateway stop, a transport giving up after 24 hours). Returns `QuestionnaireResult`; the tool text reads `User has answered your questions: "<question>"="<answers>". … You can now continue with the user's answers in mind.`, with `selected preview: <markdown>` after a chosen option that has one, `User declined to answer questions`, or after a timeout `No answer within <N> minutes; the operator may be away. Continue with your recommended option, keep going with the rest of the work, and in your final reply list the decisions that still need the operator.` |
+| `ask_user_question { questions }` | 1–4 questions `{ header ≤16, question ≤500, input?, options?, multiSelect?, min?, max?, step?, unit?, placeholder? }`, each taking one input: `options` (the default) with 2–4 options `{ label ≤60, description ≤500, preview? ≤2500 }` (so four full questions fit the PI child bridge's 64 KiB request); `slider` with `min` and `max`, an optional `step` (positive, at most 1000 positions) and `unit` (≤16); or `text` with an optional `placeholder` (≤200). Text is trimmed; header, question and option labels are required. Question texts and option labels within a question are unique; `Other`, `Type something.` and `Next` are reserved labels; previews are for single-select questions only; a slider or text question takes no options and not `multiSelect`. A call breaking these fails with a reason and shows nothing. Waits until the operator answers or cancels, the question timeout passes, or the call is aborted (Stop, a PI child that went away, a gateway stop, a transport giving up after 24 hours). Returns `QuestionnaireResult`; the tool text reads `User has answered your questions: "<question>"="<answers>". … You can now continue with the user's answers in mind.`, with `selected preview: <markdown>` after a chosen option that has one, `User declined to answer questions`, or after a timeout `No answer within <N> minutes; the operator may be away. Continue with your recommended option, keep going with the rest of the work, and in your final reply list the decisions that still need the operator.` |
 
 ```ts
-type QuestionnaireQuestion = { header: string; question: string; multiSelect: boolean; options: { label: string; description: string; preview?: string }[] };
-// One answered question: chosen labels in option order, then the typed text.
+type QuestionnaireQuestion = {
+  header: string; question: string; multiSelect: boolean;
+  options: { label: string; description: string; preview?: string }[];
+  input: "options" | "slider" | "text";
+  min?: number; max?: number; step?: number; unit?: string; // slider
+  placeholder?: string;                                      // text
+};
+// One answered question: chosen labels in option order, then the typed text; a
+// slider's value as it reads (5,050 €) or a long-text answer.
 type QuestionnaireAnswer = { header: string; question: string; selected: string[]; preview?: string };
 // cancelled: the operator declined, or answered nothing. timedOut: nobody answered
 // within the question timeout, timeoutMinutes; such a result is also cancelled,
@@ -5377,9 +5384,11 @@ after the runtime's questions, making the session report `waiting` like a
 secret request. It is answered through
 [`POST /__hui/sessions/:id/question`](#post-__huisessionsidquestion) with
 `{ id, answers: { selected: string[]; custom?: string }[] }`, index-aligned
-with the questions, or `{ id, cancelled: true }`. `selected` holds option
-labels; `custom` (≤4000) is the operator's own text. A single-select question
-takes one of the two. A blank question is left out of the result. An answer
+with the questions, or `{ id, cancelled: true }`. For an options question
+`selected` holds option labels and `custom` (≤4000) is the operator's own text;
+a single-select question takes one of the two. A slider answer is its number in
+`custom`, within `min`–`max` and on a `step`; a long-text answer is the text in
+`custom`. A blank question is left out of the result. An answer
 the card could not have sent (another length, an unknown label, two answers to
 a single-select question) is refused with a 400 and leaves the card open. A
 bot's chat reports it as `BotQuestion { method: "questionnaire", title,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vitest";
 import * as sessionsApi from "./api/sessions.ts";
-import type { RuntimeCompaction, SessionGroup, SessionView } from "./api/sessions.ts";
+import type { RuntimeCompaction, RuntimeQuestion, SessionGroup, SessionView } from "./api/sessions.ts";
 import type { ComposerController } from "./controllers/composer-controller.ts";
 import type { ConversationController } from "./controllers/conversation-controller.ts";
 import type { SessionsController } from "./controllers/sessions-controller.ts";
@@ -37,6 +37,7 @@ vi.mock("./lib/composer/textarea.ts", async (importOriginal) => ({
 
 type Shell = {
   embeddedPane: boolean;
+  paneVisible: boolean;
   paneSession: SessionView | undefined;
   paneMobileNav: boolean;
   paneActive: boolean;
@@ -365,6 +366,25 @@ test("the thread follows the live compaction divider like new transcript rows", 
   assert.equal(follows, settled + 1);
   app.autoFollow = false;
   app.conversation.compaction = undefined;
+  app.updated(new Map());
+  assert.equal(follows, settled + 1);
+});
+
+test("the thread follows a question that arrives as its last row, unless the operator scrolled away", () => {
+  const app = shell();
+  let follows = 0;
+  app.paneVisible = false;
+  app.embeddedPane = true;
+  app.scrollToBottom = () => { follows += 1; };
+  app.renderRoot = { querySelector: () => null };
+  app.updated(new Map());
+  const settled = follows;
+  app.conversation.question = { id: "q", method: "input", title: "Name?" } as unknown as RuntimeQuestion;
+  app.updated(new Map());
+  assert.equal(follows, settled + 1);
+  // Reading earlier context keeps the reader where they are.
+  app.autoFollow = false;
+  app.conversation.question = { id: "q2", method: "input", title: "Email?" } as unknown as RuntimeQuestion;
   app.updated(new Map());
   assert.equal(follows, settled + 1);
 });

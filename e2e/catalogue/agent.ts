@@ -11,7 +11,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-001",
     title: "Answer an agent's question",
-    behaviour: "One card opens in the question dock above the composer, titled with the question's header and 1/1, with radio rows (label, description, number) and a Type something… row, and the session reads Waiting for your answer. Submit stays disabled until an option is chosen or text is typed; typed text replaces a chosen option. After Submit the card closes, the agent continues with the answer, and the transcript keeps a summary of the answer under the header.",
+    behaviour: "One card opens at the end of the transcript, its last row above the composer, titled with the question's header and 1/1, with radio rows (label, description, number) and a Type something… row, and the session reads Waiting for your answer. The card scrolls with the conversation, so scrolling back for context keeps it where it was asked. Submit stays disabled until an option is chosen or text is typed; typed text replaces a chosen option. After Submit the card closes, the agent continues with the answer, and the transcript keeps a summary of the answer under the header.",
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
@@ -21,7 +21,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-002",
     title: "Answer several questions in one card",
-    behaviour: "A call with up to four questions shows one card titled Questions, with a row of header chips that tick once answered and the progress (1/4). Next, Back and the chips move between questions and keep the picks and typed text; Submit on the last question sends every answered question and leaves blank ones out.",
+    behaviour: "A call with up to four questions shows one card titled Interactive questionnaire with a segmented progress bar and STEP n OF m. One question shows at a time; Next moves on, Back returns, and both keep every pick and typed text. Submit on the last question sends every answered question and leaves blank ones out.",
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
@@ -141,7 +141,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-015",
     title: "Provide a secret without putting it in the chat",
-    behaviour: "The request opens a card above the composer: Secret 1/1, the label, the reason, Kept out of the conversation: the agent gets a temporary file, never the value., a focused masked Value field, Cancel and Submit; the session reads Waiting for your answer and its sidebar row shows the waiting hand. After Submit the card closes, the secret_request row shows only the label, the reason and that the operator provided it in a temporary file until a given time, and the agent goes on to use the file.",
+    behaviour: "The request opens a card at the end of the transcript, its last row above the composer: Secret 1/1, the label, the reason, Kept out of the conversation: the agent gets a temporary file, never the value., a focused masked Value field, Cancel and Submit; the session reads Waiting for your answer and its sidebar row shows the waiting hand. After Submit the card closes, the secret_request row shows only the label, the reason and that the operator provided it in a temporary file until a given time, and the agent goes on to use the file.",
     spec: [...SECRETS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
@@ -399,7 +399,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-063",
     title: "Fold a question card to read the conversation under it",
-    behaviour: "A question card in the dock can cover most of the transcript. Its top line, which shows the title and the progress, is also its fold control: clicking it, or Enter or Space on it, folds the card to one row above the composer that keeps the title, the progress (2/3), how many questions are already answered once one is (1 answered) and an up chevron, so the conversation takes back the room the card covered. Every pick and the current question are kept, and the card stays folded while the operator writes in the composer. The folded row itself, Enter on it or Escape opens the card again where the operator left it, and Escape on the folded row never declines the questions. A new call's card, and a reload, open unfolded.",
+    behaviour: "A question card at the end of the transcript can cover most of the conversation. Its top line, which shows the title and the progress, is also its fold control: clicking it, or Enter or Space on it, folds the card to one row above the composer that keeps the title, the progress (2/3), how many questions are already answered once one is (1 answered) and an up chevron, so the conversation takes back the room the card covered. Every pick and the current question are kept, and the card stays folded while the operator writes in the composer. The folded row itself, Enter on it or Escape opens the card again where the operator left it, and Escape on the folded row never declines the questions. A new call's card, and a reload, open unfolded.",
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
@@ -701,6 +701,15 @@ const cases: UseCase[] = [
     journeys: ["browser-tool"],
     web: "backlog",
     phone: "backlog",
+  },
+  {
+    id: "AGENT-074",
+    title: "Answer with a slider or a long text",
+    behaviour: "ask_user_question can ask for a number with a slider (min, max, optional step and unit) and for a long text. The slider shows its value large with the unit above the range and its bounds beneath it; the text is a multi-line field with the agent's placeholder. Both step through the card like any question, and Submit sends the value the agent reads back as 5,050 € or the text it was given; Cancel declines.",
+    spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
+    surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
+    journeys: ["ask-user-question"],
+    web: "required",
   },
 ];
 

@@ -33,13 +33,18 @@ test("a folded card takes Escape as opening it, never as cancelling the question
 });
 
 test("a folded card counts the questions that already have an answer", () => {
-  assert.equal(answeredCount([]), 0);
-  assert.equal(answeredCount([
-    { selected: ["Postgres"], custom: "", customChosen: false },
-    { selected: [], custom: "   ", customChosen: true },
-    { selected: [], custom: "DynamoDB", customChosen: true },
-    { selected: ["Lint", "Unit tests"], custom: "", customChosen: false },
+  const options = { header: "Pick", question: "Which?", multiSelect: false, options: [], input: "options" as const };
+  const text = { header: "Notes", question: "Anything?", multiSelect: false, options: [], input: "text" as const };
+  const slider = { header: "Hours", question: "How many?", multiSelect: false, options: [], input: "slider" as const, min: 0, max: 10, step: 1 };
+  const draft = (selected: string[], custom = "", customChosen = false, extra = {}) => ({ selected, custom, customChosen, slider: 5, text: "", ...extra });
+  assert.equal(answeredCount([], []), 0);
+  assert.equal(answeredCount([options, options, options, options], [
+    draft(["Postgres"]),
+    draft([], "   ", true),
+    draft([], "DynamoDB", true),
+    draft(["Lint", "Unit tests"]),
   ]), 3);
+  assert.equal(answeredCount([slider, text], [draft([]), draft([], "", false)]), 1, "a slider always has an answer");
 });
 
 test("both fold controls are buttons, and the folded bar stays inside the panel's corners", () => {
