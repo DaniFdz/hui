@@ -1,6 +1,7 @@
 /** A new bot's first conversation: telling it its name renames it everywhere without a reload, and it writes and rewrites its own SOUL.md, which its later turns follow (BOT-005, BOT-006). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { hideBotPanel, hideRoster, roster, showBotPanel } from "./bot-panel.ts";
 
 const NAME_QUESTION = "Hi, I'm new here and I don't have a name yet. What would you like to call me?";
 const EXPECTATIONS_QUESTION = "Hi, I'm new here. What would you like me to look after for you?";
@@ -11,6 +12,8 @@ test("Answering its question with a name makes a new bot rename itself in the he
   const transcript = screen.getByTestId("transcript");
   const header = screen.getByTestId("chat-header");
   await hui.api("POST", "/__hui/bots", { name: "Zeta", soul: "# Who I am\nA fixture bot.\n" });
+  // A phone keeps the roster, and its +, in the navigation drawer; on the wide layout this is nothing.
+  await hui.sessionList();
   await screen.getByRole("tab", "Bots").tap();
   await screen.getByRole("button", "New bot", { visible: true }).first().tap();
   await screen.getByText("New bot", { exact: true, visible: true }).first().tap();
@@ -18,7 +21,10 @@ test("Answering its question with a name makes a new bot rename itself in the he
   await expect(transcript.getByText(NAME_QUESTION)).toBeVisible();
   const id = (await hui.url()).split("/").at(-1)!;
   await expect(header.getByText("New Bot", { exact: true })).toBeVisible();
+  await hideRoster(screen);
+  await roster(screen, hui);
   await expect(screen.getByLabel(/^New Bot,/u)).toBeVisible();
+  await hideRoster(screen);
 
   await screen.getByLabel("Message").fill("E2E_SET_PROFILE Please go by Echo from now on.");
   await screen.getByRole("button", "Send message").tap();
@@ -29,11 +35,16 @@ test("Answering its question with a name makes a new bot rename itself in the he
 
   await expect(header.getByText("Echo", { exact: true })).toBeVisible();
   await expect(header.getByText("Fixture tester · Idle")).toBeVisible();
-  await expect(screen.getByLabel("Echo: bot panel")).toBeVisible();
-  await expect(screen.getByLabel(/^Echo, Fixture tester,/u)).toBeVisible();
+  // The panel is docked beside the chat on the wide layout and a sheet over it on a phone, which the chat is then left
+  // without: `showBotPanel` shows it and asserts it, and `hideBotPanel` puts it away again.
+  await showBotPanel(screen, "Echo");
   await screen.getByRole("button", "Edit Echo").tap();
   await expect(screen.getByRole("textbox", "Name")).toHaveValue("Echo");
   await expect(screen.getByText("@echo")).toBeVisible();
+  await hideBotPanel(screen);
+  await roster(screen, hui);
+  await expect(screen.getByLabel(/^Echo, Fixture tester,/u)).toBeVisible();
+  await hideRoster(screen);
 
   const renamed = `E2E_SET_PROFILE:${json({ name: "Echo Two", title: "Second role", shape: "star" })} Please go by Echo Two, and be a star.`;
   await screen.getByLabel("Message").fill(renamed);
@@ -42,11 +53,14 @@ test("Answering its question with a name makes a new bot rename itself in the he
   await expect(transcript.getByText("Used 1 tool")).toHaveCount(2);
   await expect(header.getByText("Echo Two", { exact: true })).toBeVisible();
   await expect(header.getByText("Second role · Idle")).toBeVisible();
-  await expect(screen.getByLabel("Echo Two: bot panel")).toBeVisible();
-  await expect(screen.getByLabel(/^Echo Two, Second role,/u)).toBeVisible();
+  await showBotPanel(screen, "Echo Two");
   await expect(screen.getByRole("textbox", "Name")).toHaveValue("Echo Two");
   await expect(screen.getByText("@echo-two")).toBeVisible();
   await expect(screen.getByLabel(/^Look: Star/u)).toBeVisible();
+  await hideBotPanel(screen);
+  await roster(screen, hui);
+  await expect(screen.getByLabel(/^Echo Two, Second role,/u)).toBeVisible();
+  await hideRoster(screen);
   await expect.poll(async () => (await hui.api<{ bot: { avatar?: { shape?: string } } }>("GET", `/__hui/bots/${id}`)).bot.avatar?.shape).toBe("star");
 });
 
