@@ -801,7 +801,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#clickable-desktop-notifications"],
     surfaces: ["setting:notifications.tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-078",
