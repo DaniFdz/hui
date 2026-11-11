@@ -2,7 +2,7 @@
  * replay was cut, and offers Reconnect when the connection cannot come back (WORK-030). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { openWork } from "./work-views.ts";
+import { openTerminalView, openWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -38,6 +38,8 @@ test("a terminal reconnects to the same shell across a reload and a dropped conn
 
   // A reload brings the same shell back with its state, and without running the earlier command again.
   await hui.reload();
+  // A phone comes back on the chat and reaches the pane's views from the Active panel selector again.
+  await openTerminalView(screen);
   await expect(status("Connected")).toBeVisible();
   expect((await terminals(hui, session.id)).map((terminal) => terminal.id)).toEqual([id]);
   await run("printf 'AFTER-%s\\n' \"$MARK\"");
@@ -56,6 +58,7 @@ test("a terminal reconnects to the same shell across a reload and a dropped conn
   await run("for i in $(seq 1 6000); do printf 'PAD-%05d-%s\\n' \"$i\" LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL; done");
   await expect.poll(() => replay(hui, session.id, id), { timeout: 60_000 }).toContain("PAD-06000");
   await hui.reload();
+  await openTerminalView(screen);
   await expect(screen.getByText("Older output was trimmed from the replay.")).toBeVisible();
 
   // A connection that cannot come back says so, and Reconnect brings the same shell back.

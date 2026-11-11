@@ -3,7 +3,7 @@
  * of the conversation already shows (WORK-031). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { openWork } from "./work-views.ts";
+import { openWork, resumeWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -57,6 +57,8 @@ test("after a gateway restart the open terminal tab reports its shell is gone by
 
   // A reload still finds that shell and keeps the two names apart.
   await hui.reload();
+  // A phone lands on the chat and reaches the pane's views from the Active panel selector again.
+  await resumeWork(hui, screen, "Terminal 2");
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   await expect(pane.getByRole("tab", "Terminal 2")).toBeVisible();
 });

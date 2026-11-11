@@ -4,7 +4,7 @@
  * terminal the pane is connected to. */
 import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { backToChat, openWork } from "./work-views.ts";
+import { backToChat, leaveWork, openWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -105,8 +105,10 @@ test("typing a command into the terminal runs it in a real shell and its output,
   expect(printed).toContain("\u001b[31mRED\u001b[0m plain");
 
   await hui.prompt(session, "E2E_REPLY:V2hhdCBhIHNoZWxs");
-  await expect(screen.getByText("What a shell")).toBeVisible();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
+  // The reply is the chat's: a phone leaves the full-screen destination to read it, a wide screen shows both.
+  await leaveWork(screen);
+  await expect(screen.getByText("What a shell")).toBeVisible();
   await expect(screen.getByLabel("Message")).toBeVisible();
   await expect(screen.getByTestId("transcript")).toBeVisible();
 });

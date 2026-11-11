@@ -107,6 +107,13 @@ export type Hui = {
   type(text: string): Promise<void>;
   peek(target: Locator): Promise<void>;
   sessionList(): Promise<void>;
+  /**
+   * Whether the app is drawing its narrow layout, which a phone always has: the Work pane is a full-screen destination
+   * there instead of a pane beside the chat, and its controls are the Active panel selector's (WORK-006, WORK-010). It
+   * reads the app's own split breakpoint (`SESSION_SPLIT_MEDIA`, `(max-width: 1099px)`, `lib/session/multiplexer.ts`), so a
+   * test at a narrow viewport and a phone answer the same, and a step that is right for both widths can choose one.
+   */
+  narrowLayout(): Promise<boolean>;
   settingsPages(): Promise<void>;
   appChrome(): Locator;
   sessionMenu(title: string): Promise<Pick<Locator, "getByText" | "getByTestId">>;
@@ -561,6 +568,7 @@ export const test = base.extend<{ hui: Hui }>({
         }, title);
         await browser().keyboard.press("Enter");
       },
+      narrowLayout: () => browser().evaluate(() => matchMedia("(max-width: 1099px)").matches),
       sessionList: async () => {
         const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
         // The drawer is open only when its own toggle says so: the backdrop's close control is on screen in either state,

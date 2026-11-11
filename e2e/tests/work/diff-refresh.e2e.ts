@@ -4,7 +4,7 @@ import { appendFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-import { openWork } from "./work-views.ts";
+import { leaveWork, openWork, resumeWork } from "./work-views.ts";
 
 /** Tool calls the fixture provider asks HUI to run in one answer, the way the model would. */
 const calls = (list: { name: string; input: Record<string, unknown> }[]) => `E2E_CALL:${Buffer.from(JSON.stringify(list)).toString("base64url")}`;
@@ -26,16 +26,19 @@ test("the changed-file list gains what changed at the turn's end, when a hidden 
   await screen.getByRole("tabpanel", "Diff").getByRole("button", "Refresh").tap();
   await expect(row("beta.txt")).toBeVisible();
 
-  // The agent's turn ends on a rewritten file and a new one, and the list follows.
+  // The agent's turn ends on a rewritten file and a new one, and the list follows. The turn's end is the chat's to show:
+  // a phone leaves the full-screen destination for it, a wide screen shows both.
   await appendFile(join(repository.path, "alpha.txt"), "changed by the agent\n");
   await hui.prompt(session, calls([{ name: "write", input: { path: join(repository.path, "gamma.txt"), content: "gamma\n" } }]));
+  await leaveWork(screen);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await resumeWork(hui, screen, "Diff");
   await expect(row("gamma.txt")).toBeVisible();
 
-  // A hidden Diff view re-reads when its rail button shows it again.
-  await screen.getByRole("button", "Hide Work pane").tap();
+  // A hidden Diff view re-reads when it is shown again.
+  await leaveWork(screen);
   await writeFile(join(repository.path, "delta.txt"), "delta\n");
   await expect(row("delta.txt")).toHaveCount(0);
-  await screen.getByRole("button", "Show Diff").tap();
+  await resumeWork(hui, screen, "Diff");
   await expect(row("delta.txt")).toBeVisible();
 });
