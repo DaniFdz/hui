@@ -54,6 +54,10 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- A call is a GPT-Live voice call: the WebView asks for audio capture, and Capacitor's chrome client requests the
+         runtime permission behind these two. Undeclared, the request is refused before the operator sees a prompt. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!--
         The camera and video intents the WebView's file chooser starts for an input with `capture`

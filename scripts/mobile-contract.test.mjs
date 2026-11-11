@@ -81,3 +81,15 @@ test("the plugin's connect refuses an address the app would refuse, and remember
   assert.ok(plugin.includes("GatewayAddress.normalize(call.getString(\"url\"))"), "the plugin normalises with the app's own check");
   assert.ok(plugin.includes("Gateway.remember("), "an accepted address is remembered");
 });
+
+test("both apps declare the microphone a call needs, and iOS explains it", async () => {
+  // A call is the one capability the page cannot grant itself: the WebView asks, the app answers. Capacitor's chrome
+  // client requests RECORD_AUDIO and its iOS delegate grants the capture, so an undeclared permission is a refusal
+  // nobody can answer — and on iOS an app that reaches the microphone without a usage string is terminated.
+  const manifest = await read("mobile/android/app/src/main/AndroidManifest.xml");
+  const plist = await read("mobile/ios/App/App/Info.plist");
+  for (const permission of ["RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"]) {
+    assert.match(manifest, new RegExp(`<uses-permission android:name="android\\.permission\\.${permission}"`), `the Android shell declares ${permission}`);
+  }
+  assert.match(plist, /<key>NSMicrophoneUsageDescription<\/key>\s*<string>[^<]{20,}<\/string>/u, "the iOS shell explains why it wants the microphone");
+});

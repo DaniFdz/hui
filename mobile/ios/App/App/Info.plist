@@ -66,6 +66,10 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- A call is a GPT-Live voice call: the WebView asks for the microphone, and Capacitor's delegate grants it. iOS
+	     shows this sentence in the prompt, and an app that reaches the microphone without one is terminated. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>HUI uses the microphone for voice calls with a bot. Nothing is recorded outside a call.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>
