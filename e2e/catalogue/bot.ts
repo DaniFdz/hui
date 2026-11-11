@@ -344,9 +344,9 @@ const cases: UseCase[] = [
   {
     id: "BOT-035",
     title: "Let a bot recall older parts of its chat",
-    behaviour: "Asked about something said long ago, the bot opens older lines of its memory and when they were said, and its chat shows those zoom and date calls before an answer that quotes them. Its chat is never compacted.",
+    behaviour: "Asked about something said long ago, the bot searches its whole chat and opens the lines it finds, and its chat shows those search_chat, zoom and date calls before an answer.",
     spec: ["SPEC.md#bots", "docs/api.md#bots"],
-    surfaces: ["tool:zoom", "tool:date"],
+    surfaces: ["tool:zoom", "tool:date", "tool:search_chat"],
     journeys: ["bots"],
     web: "required",
     phone: "required",
@@ -740,6 +740,27 @@ const cases: UseCase[] = [
     journeys: ["bots"],
     web: "required",
     phone: "required",
+  },
+
+  {
+    id: "BOT-075",
+    title: "Watch a session and continue it when it stops",
+    behaviour: "A session watches another session in its group; the watched session becomes visible to sessions_list, sessions_history and sessions_send, so HUI's gateway heartbeat can read its state and continue it. A session in another group, an archived session and a bot's chat cannot be watched.",
+    spec: ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"],
+    surfaces: ["tool:watch_session"],
+    journeys: ["bots"],
+    web: "required",
+    phone: "backlog",
+  },
+  {
+    id: "BOT-077",
+    title: "The gateway heartbeat continues a watched session",
+    behaviour: "A session watches another. Running the gateway heartbeat continues an idle watched session with no running watcher, unless its last reply asks for a decision: then the watcher is told instead and the target is not prompted. A waiting or errored target tells the watcher too. No heartbeat turn enters any bot's chat.",
+    spec: ["SPEC.md#a-staff-pack-seeds-one-chief-of-staff-2026-11-06", "docs/api.md#post-__huiheartbeat"],
+    surfaces: ["route:POST /__hui/heartbeat", "tool:watch_session"],
+    journeys: ["bots"],
+    web: "required",
+    phone: "backlog",
   },
 ];
 

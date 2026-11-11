@@ -10,6 +10,7 @@ import { durableHost } from "./runtimes/durable-host.ts";
 import { stopAgentToolBridge } from "./agent-tools/bridge.ts";
 import { terminals } from "./terminals/terminals.ts";
 import { ensureConfigDir } from "./themes.ts";
+import { HEARTBEAT_INTERVAL_MS, removeLegacyHeartbeatRoutines } from "./heartbeat.ts";
 import { readRegistry, type SessionRecord } from "./sessions/sessions.ts";
 import {
   automation,
@@ -17,6 +18,7 @@ import {
   bots,
   datadogOrgs,
   githubCli,
+  heartbeat,
   macPower,
   managedBrowser,
   questionnaires,
@@ -29,6 +31,8 @@ import {
   watchers,
   extensions,
 } from "./services.ts";
+
+let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 
 durableHost().storeFailed = async () => reattachAfterStoreFailure(await readRegistry());
 
@@ -129,6 +133,32 @@ export async function startBackend(): Promise<void> {
     summary: "The staff pack could not be installed; HUI tries again at its next start",
     detail: error instanceof Error ? error.message : String(error),
   }));
+  // The gateway heartbeat replaces the routines #482 put in bot chats: no bot turn, no context.
+  await removeLegacyHeartbeatRoutines(automation).then((removed) => {
+    if (!removed.length) return;
+    recordDiagnosticEvent({
+      area: "session", level: "info", action: "heartbeat_routines_removed",
+      summary: `Removed ${removed.length} heartbeat routine${removed.length === 1 ? "" : "s"} from bot chats`,
+    });
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "heartbeat_cleanup_failed",
+    summary: "The old heartbeat routines could not be removed; HUI tries again at its next start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
+  const scanHeartbeat = () => void heartbeat.scan().then((outcome) => {
+    if (!outcome.continued.length) return;
+    recordDiagnosticEvent({
+      area: "session", level: "info", action: "heartbeat_continued",
+      summary: `Continued ${outcome.continued.length} watched session${outcome.continued.length === 1 ? "" : "s"}`,
+    });
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "heartbeat_failed",
+    summary: "The gateway heartbeat could not check watched sessions",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
+  scanHeartbeat();
+  heartbeatTimer = setInterval(scanHeartbeat, HEARTBEAT_INTERVAL_MS);
+  heartbeatTimer.unref();
   // Auto-star the HUI repo when GitHub is connected.
   void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
 }
@@ -174,6 +204,8 @@ export function recoverInterruptedSessions(
 /** Settles once the Durable store is released, so a backend started next in
  * this process (a development server restart) can open it. */
 export async function stopBackend(): Promise<void> {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = undefined;
   try {
     macPower?.dispose();
     managedBrowser.dispose();

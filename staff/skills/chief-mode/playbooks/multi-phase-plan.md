@@ -15,7 +15,9 @@ evidence. Do not implement here.
    Evidence: the walkthroughs and the commands they name.
 4. Write the plan to `work/<task>.md`, one section per pull request, each with depends on,
    files, build, what the operator sees, verify unit, verify live, verify perf, review gate and
-   merge. Fill every field or delete it with a reason.
+   merge. Fill every field or delete it with a reason. Git ignores `work/`, so the plan is never
+   committed: what ships as a contract goes into `SPEC.md` and `docs/api.md`, and never as a
+   plan document.
    Evidence: the section list.
 5. Draw the dependency graph and the review-gated set. One pull request is one coherent change;
    a stack child targets its parent branch and the root targets `main`.

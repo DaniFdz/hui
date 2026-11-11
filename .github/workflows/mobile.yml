@@ -1,5 +1,5 @@
 name: Mobile
-# The phone shell (docs/mobile-app-plan.md): the Connect page, Capacitor's sync into the Android project, the debug
+# The phone shell (mobile/AGENTS.md): the Connect page, Capacitor's sync into the Android project, the debug
 # APK and its JVM unit tests. It runs on the paths the app is made of, and on every push to a `mobile/**` package
 # branch, so a package gets its CI without a pull request of its own (section 6).
 on:
@@ -81,7 +81,7 @@ jobs:
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-  # The shared e2e suite inside the debug app's WebView (`docs/mobile-app-plan.md`, WP4): the web engine attached over
+  # The shared e2e suite inside the debug app's WebView (`mobile/AGENTS.md`, WP4): the web engine attached over
   # CDP to the WebView the app opened, one emulator per shard, four shards like e2e.yml. The target runs the use cases
   # the catalogue requires on the phone (`e2e/catalogue/phone.ts` prints their tags), because the web engine's platform
   # is `web` on both targets and the runner cannot filter the shared suite by platform.
@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     # A shard's boot, its share of the suite (~100 tests at ~12 s each, each relaunching the app) and the gateway build.
     timeout-minutes: 45
-    # Advisory until the phone backlog closes (docs/mobile-app-plan.md, owner decision O2: required after 20 green runs).
+    # Advisory until the phone backlog closes (mobile/AGENTS.md, owner decision O2: required after 20 green runs).
     # It runs the whole suite so the failures ARE the backlog a WP7 area works from; the traces say which.
     continue-on-error: true
     needs: android-build

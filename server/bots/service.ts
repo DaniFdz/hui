@@ -1,5 +1,5 @@
 /**
- * Bots (HUI-18): create, edit, archive, delete and talk to them.
+ * Bots: create, edit, archive, delete and talk to them.
  *
  * A bot's chat is an ordinary Durable session registered through New
  * Session's code path, and its record carries `bot`; the bot registry
@@ -33,6 +33,7 @@ import { isAbsolute, join, relative } from "node:path";
 
 import {
   agentReplyTo, agentTagPrefix, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, botColorName, botFaceColor, botKickoffName, botKickoffText, botLook,
+  botTagPrefix,
   handleFromName, isBotAccessQuestion, mentionsBot, previewLine, storedTagging,
   type BotAccessRequest, type BotCatalog, type BotFile, type BotSkillRef, type BotSkillSelector,
   type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch,
@@ -141,7 +142,7 @@ type BotPorts = {
 };
 
 /**
- * Remote workers' half of the bots that run on them (HUI-18): each worker's own Durable store holds their conversations
+ * Remote workers' half of the bots that run on them: each worker's own Durable store holds their conversations
  * and memories, and its HUI data directory their home folders with SOUL.md, reached through its host (`remote.ts`),
  * only over a live connection; nothing here connects one.
  */
@@ -1333,7 +1334,7 @@ export class BotService {
     if (recent.length >= this.#messagesPerHour) {
       throw new BotConflictError(`${sender ? `@${sender.handle}` : "This session"} already sent ${this.#messagesPerHour} bot messages in the last hour. Wait before sending more.`);
     }
-    const from = sender ? `[from @${sender.handle}${hop === 1 ? "" : ` · hop ${hop}`}] ` : agentTagPrefix(caller.title, caller.id, hop);
+    const from = sender ? botTagPrefix(sender.handle, hop) : agentTagPrefix(caller.title, caller.id, hop);
     const delivery = await this.#deliver(record, `${from}${message}`, undefined, undefined, undefined, "steer");
     this.#sent.set(key, [...recent, now]);
     return { text: `Queued for ${target ? `@${target.handle}` : to}.`, to: target?.handle ?? to, status: delivery.status };

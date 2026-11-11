@@ -659,7 +659,7 @@ function renderToolsPage(props: SettingsProps) {
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }
 
-/** Settings → Models → Calls: GPT-Live through the ChatGPT login above (HUI-18). */
+/** Settings → Models → Calls: GPT-Live through the ChatGPT login above. */
 function renderCallsSection(props: SettingsProps) {
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }

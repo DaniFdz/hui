@@ -1,5 +1,5 @@
 /**
- * What the web installs once when it runs inside the phone shell (WP3 of `docs/mobile-app-plan.md`): links to other
+ * What the web installs once when it runs inside the phone shell (WP3, `mobile/AGENTS.md`): links to other
  * origins go to the shell's browser instead of a WebView that cannot navigate there, and a resumed shell runs the same
  * reconnect checks the web already runs when the network comes back.
  *

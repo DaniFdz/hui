@@ -1,5 +1,5 @@
 /**
- * Calls with bots (HUI-18), rendering only: the bot header's Call button, the
+ * Calls with bots, rendering only: the bot header's Call button, the
  * call view and its minimized bar. State and actions come from props owned by
  * `hui-app.ts` (src/lib/voice/live-call.ts and src/controllers/voice-controller.ts hold the logic).
  */

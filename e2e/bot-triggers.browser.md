@@ -1,6 +1,6 @@
 # Bot triggers browser verification
 
-Journey for triggers (HUI-18 item 13; SPEC.md, "Listeners are the only
+Journey for triggers (SPEC.md, "Listeners are the only
 triggers"): the Triggers section of a bot's Routines tab, with a listener played
 by `curl` reporting to a trigger's URL, at 1440×900 and 390×844, and
 `hui doctor` on the state older versions' trigger kinds leave.

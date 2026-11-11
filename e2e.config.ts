@@ -23,7 +23,7 @@ const launcher = (target: string, port: string, production: boolean) => ({
 const phoneGateway = `http://127.0.0.1:${PHONE_PORT}`;
 
 /**
- * The same suite against the Android app's WebView, attached over CDP instead of launched (docs/mobile-app-plan.md,
+ * The same suite against the Android app's WebView, attached over CDP instead of launched (mobile/AGENTS.md,
  * WP4). The engine owns one page and one context here, so every attempt relaunches the app; `e2e/fixtures/phone.ts`
  * does that, forwards the DevTools socket and answers the two protocol questions a WebView and a browser disagree on.
  *
@@ -50,7 +50,7 @@ const phone = {
  * Its page is HUI's own web UI, so its steps are the web's except where a phone has no gesture at all (a wide screen, a
  * hover), which the fixture's phone branch refuses instead of proving the desktop's behaviour. It runs the whole suite:
  * which of its failures are real phone bugs is the catalogue's phone backlog, which the target's failure list feeds
- * (docs/mobile-app-plan.md, WP6).
+ * (mobile/AGENTS.md, WP6).
  */
 const webkitPhone = {
   name: "webkit-phone",

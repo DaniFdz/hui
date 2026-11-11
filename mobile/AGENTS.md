@@ -2,7 +2,7 @@
 
 HUI on the phone is one Capacitor 8 shell around the gateway's own web UI: the app bundles a single page, the Connect
 page in `mobile/connect/`, and then loads the UI of the gateway the user connects to, exactly as the Electron app does
-(`desktop/main.cjs`). Every web feature therefore reaches the phone in the PR that builds it. `docs/mobile-app-plan.md`
+(`desktop/main.cjs`). Every web feature therefore reaches the phone in the PR that builds it. `mobile/AGENTS.md`
 is the plan and `SPEC.md` ("The phone apps wrap the web UI", "The iOS app connects to one gateway") the product
 decision; this file is the frozen contract for the packages that work here.
 

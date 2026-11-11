@@ -63,9 +63,12 @@ is not a child.
 **Everything else is a session.** A task with more than one step, a change that writes code, a
 long build, test or e2e, or anything that owns a branch or a pull request gets a new session,
 not a child. Write the brief, name the worktree branch and the worker when one is available,
-and create it with `create_session`. Call `worker_stats` at the start and state the machine plan. `machines` owns the choice: a session
-gets a connected machine with headroom, independent pieces spread across machines, and no worker
-is filled. `local` is this machine. Do not spawn a lead for it. The session owns the work;
+and create it with `create_session`. It is watched by default; HUI's gateway heartbeat continues it,
+and `watch_session` lists it. No heartbeat routine lives in this chat. Call
+`worker_stats` at the start
+and state the machine plan. `machines` owns the choice: a session gets a connected machine with
+headroom, independent pieces spread across machines, and no worker is filled. `local` is this
+machine. Do not spawn a lead for it. The session owns the work;
 this chat keeps the ledger row and reads the evidence it reports.
 It is done when the pull request is merged and, where the change applies, deployed and
 validated in production. A merged PR without that is not done. The operator archives the
@@ -126,7 +129,9 @@ desktop and mobile widths, and its pull request is merged and, where the change 
 deployed and validated in production. The operator archives the session once that is true. Open the reply with the restated goal, then what changed, what
 proved it, what was chosen and why, what stays open, and the proof gaps. Short declarative
 sentences, no emoji, no long dash, and never a claim that an unrun check passed. One line
-per task, never one per child; a lead's rollup is one item.
+per task, never one per child; a lead's rollup is one item. A status request, or a heartbeat
+change, uses `status`: one table row per session with its PR and blockers, then one question
+only if the operator must decide.
 
 ## 9. Keep one lesson
 

@@ -1,5 +1,5 @@
 /**
- * What a bot's chat may use (HUI-18; SPEC decision of 2026-10-06): every tool
+ * What a bot's chat may use (SPEC decision of 2026-10-06): every tool
  * and skill a session in its directory gets, except the ones the operator
  * turned off for that bot. What is off lives in its conversation's `hui.bot`
  * document, and everything here reads that document where the conversation
@@ -61,7 +61,7 @@ const SKILL_READERS: readonly string[] = ["read", "bash"];
  * request in the chat's Secret card or refuses it.
  */
 export const POWERFUL_TOOLS: ReadonlySet<string> = new Set([
-  "write", "edit", "bash", "terminal", "watcher", "browser", "sessions_spawn", "create_session", "sessions_send", "subagents",
+  "write", "edit", "bash", "terminal", "watcher", "browser", "sessions_spawn", "create_session", "watch_session", "sessions_send", "subagents",
 ]);
 
 /** What the catalog shows as always on: a bot's own tools and OptChat's memory tools, which every bot's chat has. */
@@ -74,6 +74,7 @@ export const BOT_ALWAYS_ON: readonly { name: string; description: string }[] = [
   { name: LOAD_SKILL_TOOL, description: "Load its skills when it has neither read nor bash" },
   { name: "zoom", description: "Open older lines of its memory" },
   { name: "date", description: "Tell when a line of its memory was said" },
+  { name: "search_chat", description: "Search its whole memory for what was said about something" },
 ];
 
 /** What a bot's own tools add to HUI's active-tool section; the `bot_access` section explains the rest. */

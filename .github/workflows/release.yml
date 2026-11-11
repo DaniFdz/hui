@@ -74,7 +74,7 @@ jobs:
     if: needs.plan.outputs.changed == 'true'
     uses: ./.github/workflows/nix.yml
   # The phone app's release APK, built from the commit `package` just validated. A release build is signed with the
-  # owner's keystore and never falls back to the debug key or to no signature (docs/mobile-app-plan.md, owner decision
+  # owner's keystore and never falls back to the debug key or to no signature (mobile/AGENTS.md, owner decision
   # O4), so the keystore secrets are required here and their absence fails the job with a message that names them.
   android:
     needs: [plan, package]
@@ -114,7 +114,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::HUI_ANDROID_KEYSTORE_BASE64 is not set, and a release APK is signed with the owner's release keystore (docs/mobile-app-plan.md, owner decision O4). See mobile/AGENTS.md, Distribution, for the four secrets and how to make them."
+            echo "::error::HUI_ANDROID_KEYSTORE_BASE64 is not set, and a release APK is signed with the owner's release keystore (owner decision O4, `mobile/AGENTS.md`). See mobile/AGENTS.md, Distribution, for the four secrets and how to make them."
             exit 1
           fi
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/hui-release.keystore"

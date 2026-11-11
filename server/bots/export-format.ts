@@ -1,5 +1,5 @@
 /**
- * A bot's export as a template someone else imports (HUI-18; SPEC.md, "Bot exports are templates, reviewed for
+ * A bot's export as a template someone else imports (SPEC.md, "Bot exports are templates, reviewed for
  * personal information" and "An export is a setup document"): `BOOTSTRAP.md` (`setupDocument`: the goal, what the new
  * owner gives the bot, what to agree before it acts and what its schedules need), `bot.json` version 2
  * (`BotExportManifest`), the review the gateway answers before a download (`BotExportReview`: the bot's parts after its

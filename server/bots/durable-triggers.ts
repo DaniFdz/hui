@@ -1,5 +1,5 @@
 /**
- * The `triggers` tool (HUI-18) of bots' chats, in the `hui-bots-tools` extension: a bot lists its own triggers, what
+ * The `triggers` tool of bots' chats, in the `hui-bots-tools` extension: a bot lists its own triggers, what
  * wakes it when a listener the operator runs reports something, and removes one. Only the operator adds or changes
  * them. HUI's agent-tool handler does the work (`BotTriggerService.tool`), as the calling chat's session.
  *

@@ -9,8 +9,8 @@ details in the owning directory guide.
 - Inspect `git status --short` before editing. This is a shared checkout: preserve
   unrelated and in-progress changes, never stash/reset/clean them, and coordinate
   overlapping edits with the owning agent.
-- Read `SPEC.md`, `docs/api.md`, and the relevant roadmap item before changing a
-  product contract. Inspect the current implementation before adding an abstraction.
+- Read `SPEC.md` and `docs/api.md` before changing a product contract. Inspect
+  the current implementation before adding an abstraction.
 - [docs/map.md](docs/map.md) maps areas to their owning modules. Every source
   module starts with a header comment saying what it owns; keep it true when you
   change the module, write one for each new module, and name new source
@@ -67,7 +67,7 @@ details in the owning directory guide.
   tests; `screenshot <path>` captures the screen. The loops, ports and the
   two-worker setup are in `mobile/AGENTS.md`.
 - The suite's `android` target is not in `e2e.config.ts` yet: it lands with the
-  phone e2e package of `docs/mobile-app-plan.md` (WP4). Until then the emulator
+  phone e2e package of `mobile/AGENTS.md` (WP4). Until then the emulator
   procedure in
   [hui-visual-verification](.agents/skills/hui-visual-verification/references/android.md)
   is the phone check, and the `mobile / android-build` job covers the app's build
@@ -112,13 +112,18 @@ with `role="tooltip"`), never a native `title`.
 
 ## Change Discipline
 
+- Keep plans and progress out of the tree. A plan, a goal, a status ledger or a
+  roadmap describes one run, goes stale, and conflicts with every other run's
+  copy: it lives in the conversation, or in `work/` for the scratch files a run
+  needs, which Git ignores. The repository holds contracts, user docs and
+  evidence notes. Delete a plan file instead of updating it.
 - Keep behavior changes, tests, and contract documentation aligned in one task.
 - A user-visible change adds or updates its use case in `e2e/catalogue/` and ships with a shared test in
   `e2e/tests/` that passes on the web (`npm run e2e`), unless the use case is excluded there; catching up baseline
   use cases follows `e2e/AGENTS.md`, which has the catalogue and test rules.
 - A user-visible change passes the phone targets too: `android`, the shared suite in the app's WebView, and
   `webkit-phone`, the suite in mobile WebKit. Neither target is in `e2e.config.ts` yet; they land with WP4 and WP6 of
-  `docs/mobile-app-plan.md`, and from then on a use case's phone requirement is part of its catalogue entry. A change
+  `mobile/AGENTS.md`, and from then on a use case's phone requirement is part of its catalogue entry. A change
   under `mobile/` carries emulator screenshots captured through the
   [visual-verification skill](.agents/skills/hui-visual-verification/SKILL.md) and runs the iOS smoke job once WP5
   adds it.
@@ -144,6 +149,12 @@ with `role="tooltip"`), never a native `title`.
   services, people, channels and workflows that only work inside Datadog. They
   belong in local skills or extensions. Features built on Datadog's public product
   and APIs, such as the Datadog embeds, are fine.
+
+## Repository state rules and what enforces them
+
+| Rule | Enforced by |
+| --- | --- |
+| A plan, a goal, a ledger or a roadmap is never committed; a run's scratch files live under the ignored `work/`. | `.gitignore` (`/work/`); `scripts/repository-docs.test.mjs` "a plan, a goal, a ledger or a roadmap is not committed", "the repository root holds only the project's standard documents" and "a run's scratch files under work/ stay out of Git" |
 
 ## Pull requests
 

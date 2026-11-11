@@ -1,4 +1,4 @@
-/** The SideStore source JSON a release publishes beside its unsigned IPA (docs/mobile-app-plan.md, WP8). SideStore is
+/** The SideStore source JSON a release publishes beside its unsigned IPA (mobile/AGENTS.md, WP8). SideStore is
  * an AltStore fork, so the file is AltStore's source format: one app, one version entry pointing at this release's IPA
  * asset, the release's changelog as what SideStore shows for it. The release and nightly workflows write it with this
  * script and attach it to the same release as the IPA; `docs/guide.md` gives the two URLs SideStore subscribes to. */

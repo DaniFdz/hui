@@ -1,5 +1,5 @@
 /**
- * `hui bot`: bots (HUI-18) from a terminal. Everything goes through the running
+ * `hui bot`: bots from a terminal. Everything goes through the running
  * gateway, as in Settings and the Bots tab: the `/__hui/bots` routes, the
  * session API for `chat`, and the Automation routes for routines, which
  * `hui schedule` shares (`schedules.ts`). The CLI never opens the Durable store,
@@ -741,7 +741,7 @@ export function formatSkills(bot: BotView, catalog: BotCatalog): string {
   ].join("\n");
 }
 
-/** One line: the log, the tree, the view, and what the compactor spent since the gateway opened the memory. */
+/** One line: the log, the tree, the view, and what the compactor spent in total, across restarts. */
 function formatHistory(status: NonNullable<BotView["memory"]>): string {
   const size = status.viewBytes < 1024 ? `${status.viewBytes} B` : `${Math.round(status.viewBytes / 1024)} KB`;
   const { usage } = status;

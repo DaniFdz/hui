@@ -1,5 +1,5 @@
 /**
- * The `android` target's device half (docs/mobile-app-plan.md, WP4): the debug app's WebView, driven by the web engine
+ * The `android` target's device half (mobile/AGENTS.md, WP4): the debug app's WebView, driven by the web engine
  * over CDP instead of a browser the engine launches. The page is HUI's own web UI, so the fixture's web steps drive it
  * unchanged; what this module owns is everything a WebView needs that a Chromium browser does not.
  *

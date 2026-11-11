@@ -1,8 +1,8 @@
 # Visual parity Browser run — 2026-09-23/24
 
 **Implemented-capability E2E checkpoint complete; literal whole-app 100% pixel
-parity is not certified.** See the remaining acceptance gate in
-`docs/visual-parity-goal.md`.
+parity is not certified.** See the remaining acceptance gate under
+[Proof limits](#proof-limits--not-hidden-by-the-pass-count).
 
 ## Environment and reproducibility
 

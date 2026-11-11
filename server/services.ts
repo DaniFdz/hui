@@ -14,6 +14,8 @@ import { BotService } from "./bots/service.ts";
 import { remoteBots } from "./bots/remote.ts";
 import { createBotRoutes } from "./routes/bots.ts";
 import { createStaffRoutes } from "./routes/staff.ts";
+import { createHeartbeat } from "./heartbeat.ts";
+import { createHeartbeatRoutes } from "./routes/heartbeat.ts";
 import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
 import { accountFullName, BotExportService } from "./bots/export.ts";
 import { nameFromUsername } from "./bots/templates/cleanup.ts";
@@ -29,7 +31,7 @@ import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
 import { readStaffPack } from "./staff/pack.ts";
 import { ensureStaff } from "./staff/service.ts";
-import { type BotReply, type BotView } from "./bots-format.ts";
+import { botTagPrefix, type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
 import { readHuiSettings, writeHuiSettings, type Settings } from "./hui-settings.ts";
@@ -88,6 +90,7 @@ import { WatcherInputError, WatcherService } from "./agent-tools/watchers.ts";
 import { SecretFiles, SecretRequests } from "./agent-tools/secret-requests.ts";
 import { Questionnaires } from "./agent-tools/questionnaires.ts";
 import { summarizeWorkerStats } from "./agent-tools/worker-stats.ts";
+import { isChiefTitle } from "./bots/chief-title.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";
 import { createSessionListHub } from "./sessions/list.ts";
@@ -160,7 +163,7 @@ function forWorkerSessions(workerId: string, act: (record: SessionRecord) => voi
 workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
 workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
 
-/** Bots (HUI-18): their registry, and the service that runs each one's forever chat as an ordinary Durable session
+/** Bots: their registry, and the service that runs each one's forever chat as an ordinary Durable session
  * whose memory is OptChat's (docs/optchat.md). */
 const botMemory = optChatBotMemory(durableHost());
 export const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosticEvent({
@@ -363,6 +366,23 @@ export const watchers = new WatcherService({
   onChange: (id) => liveSessions.notifySnapshot(id),
 });
 export const watcherRoutes = createWatcherRoutes({ watchers, readRegistry });
+/** HUI's gateway heartbeat: no bot turn, just the watched sessions that stopped. */
+export const heartbeat = createHeartbeat({
+  records: readRegistry,
+  status: (id) => liveSessions.status(id),
+  watchers: (id) => watchers.list(id),
+  prompt: (id, text) => liveSessions.prompt(id, text),
+  lastAssistant: (id) => {
+    const entries = liveSessions.transcript(id);
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (entry?.kind === "message" && entry.role === "assistant") return entry.text;
+    }
+    return undefined;
+  },
+  notify: (id, text) => liveSessions.prompt(id, text),
+});
+export const heartbeatRoutes = createHeartbeatRoutes({ heartbeat });
 /** One managed browser per gateway; its settings are re-read on every call. With mirroring on it seeds itself from
  * what any worker sent, and hands what it captured to every worker's document. State goes through this machine: a
  * worker's document never reaches another worker. */
@@ -463,6 +483,8 @@ liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 async function createSessionFromAgent(callerSessionId: string, params: Record<string, unknown>) {
   const caller = (await readRegistry()).find(({ id }) => id === callerSessionId);
   if (!caller) throw new Error("Conversation no longer exists.");
+  const owner = caller.bot ? (await bots.list({ archived: "all" })).find(({ id }) => id === caller.bot) : undefined;
+  if (!owner || !isChiefTitle(owner.title)) throw new Error("Only a Chief of Staff bot can create an ordinary session. Use sessions_spawn for a fast child.");
   const prompt = typeof params["prompt"] === "string" ? params["prompt"].trim() : "";
   if (!prompt) throw new Error("A new session needs its brief: pass it as prompt.");
   if (prompt.length > 20_000) throw new Error("A session prompt must be at most 20000 characters.");
@@ -472,9 +494,11 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
   };
   const worktree = params["worktree"] === true;
   const requestedWorker = text("worker");
-  const worker = requestedWorker
-    ? (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker
-    : caller.worker;
+  const worker = requestedWorker === "local"
+    ? undefined
+    : requestedWorker
+      ? (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker
+      : caller.worker;
   const model = text("model") ?? caller.model;
   const thinking = text("thinking") ?? caller.thinking;
   const record = await createSession({
@@ -489,9 +513,16 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
   } as Record<string, unknown>);
-  // The session is registered and starts its runtime; the brief is its first prompt, not its title.
+  // A session the caller starts is one it watches: its heartbeat can read it and continue it.
+  if (params["watch"] !== false) {
+    await updateRegistry((records) => records.map((current) => current.id === callerSessionId
+      ? { ...current, watches: [...new Set([...(current.watches ?? []), record.id])].slice(0, WATCH_LIMIT) }
+      : current));
+  }
+  // The session is registered and starts its runtime; the brief is its first prompt, not its title, and it carries the
+  // bot's tag so the new chat shows who asked.
   await waitForSessionReady(record.id, 120_000);
-  await liveSessions.prompt(record.id, prompt);
+  await liveSessions.prompt(record.id, `${botTagPrefix(owner.handle)}${prompt}`);
   return {
     id: record.id,
     title: record.title,
@@ -500,6 +531,50 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
     ...(record.worker ? { worker: record.worker } : {}),
     ...(worktree ? { worktree: true } : {}),
   };
+}
+
+const WATCH_LIMIT = 50;
+
+/** `watch_session`: list the sessions this one watches, add one in its group, or stop watching it. A watched session is
+ * visible to sessions_list, sessions_history and sessions_send, which is what the Heartbeat routine uses to continue it. */
+async function watchSessionFromAgent(callerSessionId: string, params: Record<string, unknown>) {
+  const action = params["action"];
+  if (action !== "list" && action !== "add" && action !== "remove") throw new Error("watch_session action must be list, add or remove.");
+  const records = await readRegistry();
+  const caller = records.find(({ id }) => id === callerSessionId);
+  if (!caller) throw new Error("Conversation no longer exists.");
+  const summarize = () => (caller.watches ?? []).flatMap((id) => {
+    const target = records.find((record) => record.id === id);
+    if (!target) return [];
+    return [{
+      id: target.id,
+      title: target.title,
+      group: target.group,
+      cwd: target.cwd,
+      status: liveSessions.status(target.id),
+      archived: target.archived === true,
+      ...(target.goal ? { goal: target.goal.status } : {}),
+      ...(target.worker ? { worker: target.worker } : {}),
+      watchers: watchers.list(target.id).map((watcher) => ({ id: watcher.id, purpose: watcher.purpose, state: watcher.state, ...(watcher.keepRunning ? { keepRunning: true } : {}) })),
+    }];
+  });
+  if (action === "list") return { sessions: summarize() };
+  const session = params["session"];
+  if (typeof session !== "string" || !session.trim()) throw new Error("watch_session needs the session id.");
+  const target = records.find(({ id }) => id === session.trim());
+  if (!target) throw new Error(`Unknown session: ${session.trim()}`);
+  if (action === "remove") {
+    await updateRegistry((all) => all.map((record) => record.id === callerSessionId ? { ...record, watches: (record.watches ?? []).filter((id) => id !== target.id) } : record));
+    return { sessions: summarize() };
+  }
+  if (target.id === caller.id) throw new Error("A session cannot watch itself.");
+  if (target.archived) throw new Error("An archived session cannot be watched.");
+  if (target.bot) throw new Error("A bot's chat is not watchable; use message_bot.");
+  if (target.group !== caller.group) throw new Error("Only sessions in your group can be watched.");
+  const watches = [...new Set([...(caller.watches ?? []), target.id])];
+  if (watches.length > WATCH_LIMIT) throw new Error(`A session can watch at most ${WATCH_LIMIT} sessions.`);
+  await updateRegistry((all) => all.map((record) => record.id === callerSessionId ? { ...record, watches } : record));
+  return { sessions: summarize() };
 }
 
 /** `worker_stats`: this gateway's machine and every configured worker, for choosing where a session should run. */
@@ -549,6 +624,9 @@ registerAgentToolHandler(async (invocation) => {
   }
   if (invocation.action === "create_session") {
     return createSessionFromAgent(invocation.callerSessionId, invocation.params);
+  }
+  if (invocation.action === "watch_session") {
+    return watchSessionFromAgent(invocation.callerSessionId, invocation.params);
   }
   if (invocation.action === "worker_stats") {
     return workerStatsFromAgent(invocation.callerSessionId);
@@ -601,7 +679,7 @@ registerAgentToolHandler(async (invocation) => {
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
 export const providerRoutes = createProviderRoutes({ providerService });
 
-/** GPT-Live calls with bots over the ChatGPT login (HUI-18): the credential stays here, audio goes browser ↔ ChatGPT.
+/** GPT-Live calls with bots over the ChatGPT login: the credential stays here, audio goes browser ↔ ChatGPT.
  * A call's quick questions go to the bot's helper (its utility model); its record goes to the bot's chat at the end. */
 const callBroker = new CallBroker({
   accounts: providerCallAccounts(providerService.accounts),
@@ -658,7 +736,7 @@ async function browserStatus(): Promise<BrowserStatus> {
  * `gh`; HUI never sees the token. `HUI_GITHUB_CLI` points E2E at a fake executable. */
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 export const githubCli = new GitHubCli({ command: GH_COMMAND });
-/** Bots' triggers (HUI-18): what listeners the operator runs report, with the pull requests it links to read through the
+/** Bots' triggers: what listeners the operator runs report, with the pull requests it links to read through the
  * same `gh`. */
 export const triggers = createGatewayTriggers({
   send: (botId, message) => bots.send(botId, message),

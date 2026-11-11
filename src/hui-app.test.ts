@@ -218,12 +218,8 @@ test("Escape and a back press close the same overlays, and only Escape stops the
   assert.equal(app.handleSystemBack(), true, "back closes Settings, the way Escape does");
   assert.equal(closed, 1);
 
-  app.settingsOpen = false;
-  let sideChat = 0;
-  app.composer.sideChat = { question: "why?", answer: "because", model: "m", loading: false, error: "" };
-  app.composer.closeSideChat = () => { sideChat += 1; };
-  assert.equal(app.handleSystemBack(), true, "and the side chat before it");
-  assert.equal(sideChat, 1);
+  // The side chat used to sit between Settings and the turn; it is a Work view now, and the test after this one proves a
+  // shown Work pane is what a back press closes under Settings.
 });
 
 test("a dialog is the topmost thing either press closes, and only the one on top", () => {

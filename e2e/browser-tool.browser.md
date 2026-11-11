@@ -93,6 +93,198 @@ fixture at 1440×900 and 390×844.
 - The 10-minute expiry is proven by `server/browser/manager.test.ts` with a
   short timeout, not by waiting in the Browser check.
 
+## Annotated screenshots
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_ANNOTATE` opens a page with two buttons and a link, captures it with
+`screenshot { annotate: true, path: "shots/annotated.png" }`, checks that the
+overlay is gone, and then clicks a ref from the snapshot it was numbered from.
+
+- The call read "Screenshot of the viewport (1280×800) … Annotated with 3
+  numbers: a number marks the ref with the same digits (3 is e3). Saved to …"
+- The saved PNG shows numbered red boxes over `Save draft` (1), `Send` (2) and
+  `Open details` (3), which are refs `e1`, `e2` and `e3` of the snapshot `open`
+  returned: the picture and the refs the agent acts on line up.
+- Afterwards `get count` of `[data-hui-annotations]` returned 0 and `get text` of
+  the page's note read `unchanged`, so the page was left as it was; clicking `e1`
+  then changed the note to `clicked`, proving the refs still act.
+- The reply read "The annotated picture drew 3 numbers, its overlay was gone
+  afterwards, and the refs still acted."
+- The first attempt failed for two real reasons, both fixed here: a duplicated
+  `what` property in the tool schema (added for `storage`) had narrowed `get`'s
+  `what` to storage's values, so every `get` failed in the app even though the
+  manager's own tests pass; `server/runtimes/browser-tool-extension.test.ts` now
+  validates a call for every action against the tool schema.
+- `server/browser/manager.test.ts` covers the plain and annotated pictures
+  differing, the overlay removed, the refs still acting, the saved PNG, and a
+  single-element capture refusing `annotate`.
+
+## What a page keeps
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_STORAGE` opens a page that sets two cookies and two storage keys
+with secret-looking values, then reads the cookies and the storage.
+
+- The cookies read "2 cookies for 127.0.0.1:37909, values hidden:" with `sid ·
+  session · 24 B` and `theme · session · 10 B`.
+- The storage read "1 localStorage key on http://127.0.0.1:37909 (20 B), values
+  hidden: draft · 20 B".
+- Neither `cookie-secret-fixture` nor `draft-secret-fixture` nor
+  `tab-secret-fixture` appeared anywhere in the results — the fixture asserts
+  that, so a future change that prints a value fails the journey.
+- Both results end with "Values are never read: a cookie or storage value is
+  usually a session token."
+- The reply read "The page holds 2 cookies (sid, theme) and one localStorage key
+  (draft), and none of their values reached the transcript."
+- At 390×844 both expanded outputs wrapped without sideways scrolling.
+- `server/browser/manager.test.ts` also covers sessionStorage, a name filter, an
+  empty filter result and an unknown `what`; `server/browser/storage.test.ts`
+  covers expiry text, sizes, empty states and filtering.
+
+## The shipped browser skill
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_SKILL` reads the session's own system prompt and the skill file it
+points at.
+
+- The session prompt listed the skill: `described=true`, with
+  `<location>…/skills/browser/SKILL.md</location>`.
+- `sed -n '1,3p'` on that path printed `name: browser` and its description, and
+  the file has the loop section. The reply read "The browser skill is listed in
+  this session's prompt, and its file opens with **name: browser** and the loop
+  section."
+- The first attempt failed exactly as it should have: the skill file existed and
+  packaged (`build/skills/browser/SKILL.md`) but was missing from
+  `server/pi/bundled-skills.ts`, so no prompt listed it. Registering it fixed
+  the prompt, and this journey is the check that keeps it registered.
+
+## Performance
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_PERFORMANCE` opens a page of 250 rows, reads the counters, clicks
+"Add row" so real work happens after the counters were enabled, reads the
+counters again and then the timings.
+
+- After the click the metrics read: "heap 903 KB of 1.3 MB · nodes 532 ·
+  documents 4 · frames 4 · JS listeners 1", "layouts 1 (1 ms) · style recalcs 3
+  (0 ms)", "script 0 ms of 35 ms task time".
+- The first metrics call, before any work, said "Nothing has rendered or run
+  since the counters were enabled. Call performance before the navigation you
+  want to measure, then read it again." — a zero reading is explained instead of
+  printed as "0 ms (0%)".
+- The timings read "Load: first byte 8 ms, DOMContentLoaded 71 ms, load 75 ms ·
+  document 857 B (557 B decoded) · type navigate", "Paints: first-paint 212 ms,
+  first-contentful-paint 212 ms" and "Resources: 1 request, 321 B transferred."
+- The reply read "The page went from 530 to 532 DOM nodes, and after the click
+  the counters show real work instead of zeros."
+- At 390×844 both expanded outputs wrapped without sideways scrolling.
+- `server/browser/performance.test.ts` covers units, missing counters, a page
+  with no timing yet and a zero load mark; `server/browser/manager.test.ts`
+  proves both operations against a page with 300 rows and a real script request.
+
+## Uploading a file
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_UPLOAD` writes a local file with `bash`, opens a page with a file
+input, and uploads it with `act` `kind: "upload"`.
+
+- The action read "Uploaded upload-note.txt to e1 (button \"Attach document\") (1
+  file)."
+- The page's own `change` handler ran: the input shows the chosen file name in
+  the browser pane and a `get text` of `#picked` returned "picked:
+  upload-note.txt", which the reply quoted.
+- At 390×844 the reply and the fixture card wrapped without sideways scrolling.
+- `server/browser/manager.test.ts` also covers a multi-file input, a hidden input
+  addressed by `selector`, a single-file input refusing two files, a missing
+  path, a directory, an empty `files` list, no target at all, and a target that
+  is not a file input.
+
+## Snapshot diffs
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_SNAPSHOT_DIFF` reads a page as a baseline, clicks "Add item" (which
+changes one line and reveals a hidden button), reads only what changed, clicks
+the ref the diff carried, and diffs again.
+
+- The first diff read "Page changed since the previous snapshot: 3 lines added,
+  2 removed." and listed only the changed and surrounding lines, plus the
+  `[focused]` state the click added: `- - paragraph: 2 items`,
+  `+ - paragraph: 3 items`, `+ - button "Add item" [ref=e1] [focused]`,
+  `+ - button "Confirm" [ref=e2]`; the unchanged heading line appeared once as
+  context and the page's other lines were asserted absent.
+- The `Confirm` ref taken from a `+` line clicked, so the loop continues from a
+  diff rather than a full snapshot; the next diff showed
+  `+ - paragraph: confirmed`.
+- The reply read "The diff after Add item showed only the added lines (3 items,
+  Confirm), the ref it carried clicked, and the next diff showed confirmed."
+- At 390×844 the expanded tool output wrapped without sideways scrolling.
+- `server/browser/manager.test.ts` also covers a first diff in a tab being the
+  baseline, a diff with nothing changed, refusing `query`/`selector` alongside
+  `diff`, and a reload resetting the baseline; `server/browser/diff.test.ts`
+  covers context, counts, the 400-line cap and a wholesale change.
+
+## Network capture and HAR
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_NETWORK` starts a capture, reloads a page whose script fetches an
+API with an `Authorization` header and a missing path, lists the requests and
+writes a HAR.
+
+- The reply read "3 requests captured in tab t1. The API request shows
+  token=%5Bredacted%5D, the missing one 404, and Wrote 3 requests to
+  …/net/fixture.har. Credential headers and secret query values are [redacted]".
+- The HAR on disk was JSON 1.2 with three entries: the page (200), the API
+  (200, with `token=%5Bredacted%5D`) and the missing path (404); the string
+  `fixture-secret` appeared nowhere in it, while `[redacted]` did.
+- At 390×844 the same reply wrapped inside the mobile transcript width without
+  sideways scrolling.
+- `server/browser/manager.test.ts` also covers filters (method, type, status
+  family), one request's headers, a missing id, an empty log after `clear`, and
+  a HAR path that is not `.har` being refused.
+
+## Frames
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_FRAME` opens a page with a same-origin frame and a frame on another
+port of the same host, then snapshots and clicks one button in each.
+
+- The first snapshot listed both frames with their content beneath the Iframe
+  node: "Same button" and "Cross button" each carried a ref, and the click
+  results were "Clicked e2 (button "Same button")" and "Clicked e3 (button
+  "Cross button")".
+- The page rendered "Same clicked" inside the first frame and "Cross clicked"
+  inside the second, so both clicks landed on the frame's own control, not on
+  the frame element.
+- The reply read "Both frames were in the snapshot, and a click inside each one
+  landed: **Same clicked** and **Cross clicked**.", the same at 390×844.
+- A frame the browser isolates in its own process is not inlined: the snapshot
+  lists only its Iframe node. `server/browser/manager.test.ts` also proves a
+  stored secret checked against the frame's origin (refused on the host's,
+  typed on the frame's).
+
+## Reading and verifying one thing at a time
+
+Verified on 2026-11-09 in the same fixture at 1440×900 and 390×844. The prompt
+`E2E_BROWSER_LOOP` opens the fixture, snapshots only `main` to depth 3, then
+reads one property per call.
+
+- The reply quoted the boundary line the tools returned:
+  `--- HUI_PAGE_CONTENT nonce=1b445037d68d95c9 origin=http://127.0.0.1:46169 ---`,
+  followed by `Title: HUI browser fixture`, `1 element matches button.`,
+  `button "Greet") is enabled.`, `value of e1 (textbox "Name"): "Loop"` and
+  `Hello, Loop! Rendered by page JavaScript.` The greeting only exists after the
+  agent clicked Greet, so the reading loop and the action both ran.
+- The scoped snapshot listed the page's own controls without leaving the
+  `main` subtree, and its refs worked for the next calls.
+- At 390×844 the same reply wrapped inside the mobile transcript width without
+  scrolling sideways.
+- `server/browser/manager.test.ts` covers the rest with a real headless browser:
+  a fresh nonce per result (and different between results), `get` for title,
+  url, count, attr and value, `is` for visible, enabled, focused and the missing
+  selector cases, a refused password value, a disabled click, a hidden click, a
+  depth-limited snapshot with its note, `wait state`, and a ref re-bound after
+  its element was replaced or refused as ambiguous.
+
 ## Bounded steps
 
 Verified on 2026-11-08 in the same fixture at 1440×900.

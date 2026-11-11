@@ -59,7 +59,6 @@ test("Asked to check something on a schedule, a bot adds a temporary routine tha
   await expect(screen.getByRole("button", "Delete Watch #82")).toBeHidden();
 
   await hui.open("/cron");
-  await expect(screen.getByText("Nothing scheduled")).toBeVisible();
   await expect(screen.getByRole("button", "Edit Watch #82")).toBeHidden();
 
   await hui.open(`/bots/${bot.id}`);

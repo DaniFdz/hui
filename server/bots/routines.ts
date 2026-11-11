@@ -1,5 +1,5 @@
 /**
- * A bot's own routines (HUI-18; SPEC.md, "Schedules are a CLI, and bots schedule their own routines"): what the
+ * A bot's own routines (SPEC.md, "Schedules are a CLI, and bots schedule their own routines"): what the
  * `routines` tool of a bot's chat (`durable-routines.ts`) asks the gateway, as that chat's session,
  * wherever the chat runs. Routines are Automation tasks aimed at the bot's chat, and this is their one gate:
  *

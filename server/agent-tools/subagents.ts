@@ -27,7 +27,8 @@ const MAX_RUNNING_COLLECTED = 32;
 /** …and at most this many are queued, starting or running; more are refused. */
 const MAX_LIVE_COLLECTED = 50;
 const MAX_WAIT_IDS = 100;
-const READY_TIMEOUT_MS = 30_000;
+/** A boot after a restart waits for Durable's resume, which holds every start for up to 30 seconds. */
+const READY_TIMEOUT_MS = 60_000;
 const CARD_SUMMARY_CHARS = 280;
 const DELIVERY_RETRY_MS = 5_000;
 const HISTORY_MAX_BYTES = 80 * 1024;
@@ -50,6 +51,7 @@ type SessionAccess = Pick<
   | "notifySnapshot"
   | "prompt"
   | "release"
+  | "resumesRun"
   | "setSubagentSnapshotProvider"
   | "snapshot"
   | "status"
@@ -97,7 +99,9 @@ function integer(
 
 function visibleTree(records: readonly SessionRecord[], callerId: string): SessionRecord[] {
   const root = rootSessionId(records, callerId);
-  return records.filter((record) => rootSessionId(records, record.id) === root);
+  const caller = records.find((record) => record.id === callerId);
+  const watched = new Set(caller?.watches ?? []);
+  return records.filter((record) => rootSessionId(records, record.id) === root || watched.has(record.id));
 }
 
 /** The session and its ancestors. */
@@ -197,7 +201,7 @@ export class SubagentService {
   async initialize(): Promise<void> {
     const now = this.now().toISOString();
     const records = await this.registryUpdater((current) => current.map((record) =>
-      record.subagent && ACTIVE_STATUSES.has(record.subagent.status)
+      record.subagent && ACTIVE_STATUSES.has(record.subagent.status) && !this.sessions.resumesRun(record)
         ? {
             ...record,
             subagent: {
@@ -212,8 +216,31 @@ export class SubagentService {
         : record,
     ));
     this.#replaceCache(records);
+    this.#resumeChildren(records);
     // Startup must not wait for a parent model/runtime to become available.
     this.#scheduleDelivery();
+  }
+
+  /** A child whose runtime continues its run across a gateway restart stays active, and the end of that run reaches
+   * the parent as any other result. A queued collected child goes back to the queue that saves it as `starting`. */
+  #resumeChildren(records: readonly SessionRecord[]): void {
+    for (const record of records) {
+      const subagent = record.subagent;
+      if (!subagent || !ACTIVE_STATUSES.has(subagent.status) || !this.sessions.resumesRun(record)) continue;
+      // No run marker: the task never reached the runtime, so it starts now, as the spawn would have.
+      if (!record.runStartedAt) {
+        if (subagent.collect) {
+          this.#queue.set(subagent.taskId, { child: record, root: rootSessionId(records, record.id), runTimeoutSeconds: 0 });
+          continue;
+        }
+        if (this.sessions.ensure(record)) void this.#run(record, 0);
+        continue;
+      }
+      if (!this.sessions.ensure(record)) continue;
+      if (subagent.collect) this.#running.set(subagent.taskId, rootSessionId(records, record.id));
+      void this.#resumeRun(record);
+    }
+    this.#pump();
   }
 
   dispose(): void {
@@ -451,7 +478,7 @@ export class SubagentService {
     try {
       await this.#waitUntilReady(child.id);
       const completion = this.#waitForCompletion(child, runTimeoutSeconds);
-      // Only from `starting`: a task cancelled meanwhile stays cancelled.
+      // Only an active task: one cancelled meanwhile stays cancelled.
       if (!(await this.#markRunning(child.id))) {
         completion.cancel();
         return;
@@ -465,12 +492,7 @@ export class SubagentService {
           throw error;
         }
       }
-      const outcome = await completion.promise;
-      if (outcome.status === "cancelled") return; // #cancel records it
-      const summary = outcome.status === "completed"
-        ? truncate(lastAssistant(this.sessions.transcript(child.id)), 20_000)
-        : "";
-      await this.#finishTask(child.id, outcome.status, summary, outcome.error);
+      await this.#settleTask(child, await completion.promise);
     } catch (error) {
       await this.#finishTask(
         child.id,
@@ -484,7 +506,30 @@ export class SubagentService {
     }
   }
 
-  #waitForCompletion(child: SessionRecord, runTimeoutSeconds: number): {
+  /** A child whose runtime resumed its run: wait for that run to end, with no timeout left to honour, and record its
+   * result as this gateway would have. */
+  async #resumeRun(child: SessionRecord): Promise<void> {
+    const taskId = child.subagent!.taskId;
+    try {
+      await this.#settleTask(child, await this.#waitForCompletion(child, 0, true).promise);
+    } catch (error) {
+      await this.#finishTask(child.id, "failed", "", error instanceof Error ? error.message : "The subagent failed.");
+    } finally {
+      this.#controls.delete(taskId);
+      if (this.#running.delete(taskId)) this.#pump();
+    }
+  }
+
+  /** Records how a child's run ended. A cancel recorded itself. */
+  async #settleTask(child: SessionRecord, outcome: { status: SubagentStatus; error?: string }): Promise<void> {
+    if (outcome.status === "cancelled") return;
+    const summary = outcome.status === "completed"
+      ? truncate(lastAssistant(this.sessions.transcript(child.id)), 20_000)
+      : "";
+    await this.#finishTask(child.id, outcome.status, summary, outcome.error);
+  }
+
+  #waitForCompletion(child: SessionRecord, runTimeoutSeconds: number, resumed = false): {
     promise: Promise<{ status: SubagentStatus; error?: string }>;
     cancel: () => void;
   } {
@@ -516,9 +561,13 @@ export class SubagentService {
           settle("failed", "HUI is disconnected from the machine the subagent runs on.");
         } else if (message.kind === "closed") {
           settle("failed", "The subagent runtime exited.");
+        } else if (resumed && message.kind === "status" && message.status === "idle") {
+          settle("completed");
         }
       });
       unsubscribe = watched.unsubscribe;
+      // A run that ended while this gateway was away reports no settle, so the state it left says so.
+      if (resumed && watched.snapshot.status === "idle") settle("completed");
       if (runTimeoutSeconds > 0) {
         timer = setTimeout(() => {
           settle("timed_out", `The subagent exceeded ${runTimeoutSeconds} seconds.`);
@@ -1037,8 +1086,9 @@ export class SubagentService {
     let started = false;
     const now = this.now().toISOString();
     const records = await this.registryUpdater((current) => current.map((record) => {
-      if (record.id !== sessionId || record.subagent?.status !== "starting") return record;
+      if (record.id !== sessionId || !record.subagent || !ACTIVE_STATUSES.has(record.subagent.status)) return record;
       started = true;
+      if (record.subagent.status === "running") return record;
       return { ...record, subagent: { ...record.subagent, status: "running" as const, updatedAt: now }, updatedAt: now };
     }));
     this.#replaceCache(records);

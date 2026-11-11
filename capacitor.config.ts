@@ -1,5 +1,5 @@
 /**
- * The phone shell's Capacitor config (WP1 of docs/mobile-app-plan.md). It bundles one page, the Connect page in
+ * The phone shell's Capacitor config (WP1 of mobile/AGENTS.md). It bundles one page, the Connect page in
  * `mobile/connect`, and the app then loads the gateway the user connects to. The gateway address is not here: it is
  * chosen at runtime, and `mobile/android/app/src/main/java/dev/hui/app/MainActivity.java` builds the bridge with it as
  * the server URL so Capacitor's document-start script and plugins are scoped to the gateway's origin.

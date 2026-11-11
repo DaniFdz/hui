@@ -338,7 +338,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
   panes and shows the Work views of the focused conversation: its terminals and
   its browser view, its Files views (see *Files*), its VS Code view (see
-  *VS Code*) and its Diff views (see *Diff*), each a kind registered through one contract
+  *VS Code*), its Diff views (see *Diff*) and its Side chat (see *Chat* below),
+  each a kind registered through one contract
   (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
   focus to another chat pane or conversation switches the contents. One view is
   visible at a time, chosen from a tab strip (icon, title, close; drag or
@@ -997,9 +998,11 @@ types the value with the same CDP input path `act type` uses. Its result and
 enters PI's transcript, a log or the live view. Once typed the value is in the
 page, where script on that origin can read it: the origin check keeps it away
 from other origins and frames, and is strongest paired with an origin allowlist.
-A field inside an iframe is not addressable at all — a tab's snapshot covers its
-own document, not a frame's — so a sign-in form embedded from elsewhere always
-needs a handoff.
+A frame in the same renderer is part of the tab's snapshot: one level of child
+frames is read by frame id and hung under its Iframe node, and a ref from inside
+a frame carries that frame, so its origin is checked and its field typed into in
+place. A frame the browser runs out of process is not inlined, so an embedded
+sign-in form it holds still needs a handoff.
 
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
@@ -1042,6 +1045,76 @@ Headless tabs each get their own window, so conversations never hide each
 other's pages. A browser on a worker is not streamed here: its tabs stay on that
 machine, no preview or browser view shows them, and what the agent sees arrives
 as tool results, a screenshot included (which `present_media` shows in the chat).
+
+**Page content is marked, and the loop is cheap.** Every result that carries
+something a page said — a snapshot, `text`, console entries, `get text|html` —
+puts it between `--- HUI_PAGE_CONTENT nonce=… origin=… ---` and
+`--- END_HUI_PAGE_CONTENT nonce=… ---`, with a nonce minted for that result, so
+a caller can tell HUI's own words from a page's even when the page imitates the
+format. `get` reads one property (`text`, `html`, `value`, `attr`, `box`,
+`title`, `url`, `count`) and `is` checks one state (`visible`, `hidden`,
+`enabled`, `disabled`, `checked`, `focused`, `editable`, `attached`), so
+verifying an action costs a line rather than a snapshot; a password field's
+`value` is refused rather than read, because the operator's secrets are typed by
+the gateway and must not come back through the transcript. `snapshot` takes
+`selector` to start at one element and `depth` to stop after some levels (marking
+where it stopped); `act wait` takes `state` with the selector. A click fails
+with the reason when its target is disabled, hidden or covered instead of
+reporting success, and a ref whose node was replaced keeps working when exactly
+one laid-out element still has its role and name — otherwise it fails as stale
+or ambiguous rather than acting on the wrong element.
+
+**What a page keeps is listed without its contents.** `storage` reads the
+cookies for the tab's URL (name, flags, SameSite, expiry, size, path) or the
+keys of `localStorage` and `sessionStorage` (name and value size). Values are
+never read or printed, because a cookie or storage value is usually a session
+token and the transcript outlives the tab. A `filter` narrows by name, and an
+empty result says so.
+**What a page costs is measured, not guessed.** `performance` with
+`operation: "metrics"` reads the renderer's own counters (JS heap used and
+total, DOM nodes, documents, frames, JS listeners, layout and style-recalculation
+counts and durations, and script time as a share of task time) and
+`operation: "timings"` reads the document's navigation entry (first byte,
+DOMContentLoaded, load, transferred and decoded bytes, navigation type), its
+paint marks, the number and weight of subresources, and the five slowest ones
+over 500 ms. Counters accumulate from the tab's first performance call, which
+the result says; a page still loading says so instead of reporting zeroes.
+**A form that only accepts a file can be completed.** `act` with `kind: "upload"`
+puts one to ten local files (relative to the session directory or absolute,
+each up to 25 MB) into a page's file input, addressed by the ref of the input
+or its label, or by a `selector` when the page hides it behind a styled button.
+The page's own `change` handler runs, so what the site shows afterwards is the
+proof; a directory, a missing file, a non-file element, a disabled input and
+several files into a single-file input are refused with the reason.
+**A snapshot can say what changed.** `snapshot` with `diff: true` compares the
+tab's current whole snapshot with the last one it took in the same document and
+returns only the changed lines, marked `+` and `-` with two lines of context,
+plus a count (`Page changed since the previous snapshot: 2 lines added, 1
+removed.`). A line that did not change keeps its ref, so the conversation can
+act straight from a diff; a first diff in a tab, a new document, or a change
+too large to match reports that and returns the whole snapshot instead. The
+diff is capped at 400 lines, and a page's own `- ` line prefix is separated
+from the marker by a space so the two never blur.
+**Requests can be watched and kept.** With `network` a conversation can capture
+the tab's requests (`start`, then `requests`, `request`, `clear`, `stop`) and
+write a HAR for a person (`har` with a path, beside the session's files). The
+log keeps method, URL, status, type, size and timing for at most 200 requests,
+and credential headers (`authorization`, `cookie`, `set-cookie`, and the like) and
+secret query values are `[redacted]` in the log and the HAR, because that
+artifact outlives the session. Bodies are not captured.
+**A picture can carry the refs.** `screenshot` with `annotate: true` draws a
+numbered box on each element the latest snapshot bound to a ref, so the image
+and the outline line up: the number is the ref without its `e` (`3` is `e3`).
+Only what the capture can show is numbered (the viewport, or the full page), at
+most 40 elements, and the labels are removed from the page again before the
+call returns, whether or not the capture succeeded. Annotated labels are
+pointers, not a new source of truth: the snapshot's refs are.
+**Frames are part of the page.** A snapshot reads one level of child frames by
+frame id and hangs each under its Iframe node, so a form inside a frame is
+visible and its refs work for `act`, `get`, `is`, screenshots and the secret
+origin check. A frame the browser isolates in its own process is not inlined;
+the snapshot lists the Iframe node and nothing inside it, and that embedded
+sign-in needs a handoff.
 
 **A handoff is the operator's turn.** When only a person can continue — a
 password, 2FA, a passkey, a payment or a bot check — the agent calls `handoff`
@@ -1595,11 +1668,19 @@ rather than forwarding them to the model.
 Skills/templates can use the existing queue; extension commands run when idle.
 An extension that completes without a model turn must also unlock the composer.
 
-`/btw <question>` and its `/side` alias open an ephemeral side rail. HUI sends a
-bounded visible transcript snapshot to the configured utility model with tools and
-thinking disabled. The question and answer never enter PI's durable session or
-the main transcript, so they cannot influence later turns. Examples include
-`/btw which file are we editing?` and `/btw summarize the current task in one sentence`.
+`/btw <question>` and its `/side` alias open the conversation's **Side chat**
+Work view, a single view that `/btw` opens and the pane's launcher does not
+list (the question is typed in the composer, so a launcher would only open a
+placeholder): it resizes, maximizes, collapses and takes a place in the tab strip
+like every other view, instead of pinning a rail of its own beside the chat. The question is typed in the composer; the view keeps focus there for the
+next one. A new question replaces the previous exchange, `/clear` clears it, and
+closing the tab only hides it; the tab is not saved, so a reload never restores a
+Side chat it could not fill. A bot's chat has no Work pane, so it draws the same exchange in an
+inline rail. HUI sends a bounded visible transcript snapshot to the configured
+utility model with tools and thinking disabled. The question and answer never
+enter PI's durable session or the main transcript, so they cannot influence
+later turns. Examples include `/btw which file are we editing?` and
+`/btw summarize the current task in one sentence`.
 
 HUI keeps each conversation's Task progress card itself, not the agent. A
 session's turn settling, and every five minutes while one is still running, send
@@ -1688,7 +1769,10 @@ bundled `visualize` skill.
 
 HUI supplies regular PI sessions with the OpenClaw-style coordination tools
 `create_session`, `sessions_spawn`, `sessions_list`, `sessions_history`,
-`sessions_send` and `subagents` (`list`, `steer`, `kill`). `worker_stats`
+`sessions_send` and `subagents` (`list`, `steer`, `kill`). `watch_session`
+records sessions a session watches, in its group; a watched session becomes
+visible to `sessions_list`, `sessions_history` and `sessions_send`, so a
+gateway heartbeat can read its status and continue it. `worker_stats`
 reports this machine and every configured worker with CPU, memory, disk, GPU,
 connection state and running sessions, and names the least loaded connected
 machine within headroom (CPU 70%, memory 80%, disk 85%, fewer running sessions
@@ -1697,9 +1781,12 @@ than half its cores); when every machine is over a limit it returns a
 machine. `create_session`
 creates an ordinary top-level session instead: a group, a title, its first
 prompt and optionally a fresh worktree, a worker, a model and thinking. The
-caller's cwd, group, worker, model and thinking are defaults. It writes no
+caller's cwd, group, worker, model and thinking are defaults. The brief reaches
+the new chat tagged from the calling bot, like every message a bot sends into a
+chat, so the new session's own chat shows it under that bot's name rather than
+as the operator's words. It writes no
 parent or task metadata, so the caller's subagent tools do not see it and the
-operator opens it from the sidebar. A spawn creates an ordinary HUI session
+operator opens it from the sidebar. Only a Chief of Staff bot may call `create_session`; every other agent is refused and uses `sessions_spawn`. A spawn creates an ordinary HUI session
 with its own PI process and transcript, plus optional parent/task metadata in
 HUI's registry. The child runs independently and its terminal result is sent
 back automatically as a marked, non-user completion event (result wrapped as
@@ -1756,7 +1843,8 @@ spawn collected children. Nothing is lost: a result no wait returned is delivere
 as an ordinary completion event once the parent is no longer busy, and a returned
 result is never delivered again. The operator's Stop on the parent also cancels
 its queued and running collected children, and those cancellations are not
-reported back. A restart interrupts queued ones like any active task.
+reported back. A restart keeps queued ones with the runtimes that resume their
+runs, in spawn order, and interrupts the rest like any active task.
 
 Visibility is the current session tree, not the whole registry: parent, child
 and sibling sessions can exchange bounded messages and history, while unrelated
@@ -1789,8 +1877,11 @@ only when the task ID appears in the parent transcript. Per-parent single-flight
 delivery and transcript IDs suppress ordinary retries and the crash-before-ack
 window; this is at-least-once recovery, not exactly-once processing or proof that
 the parent completed its work. Legacy terminal tasks without a delivery marker
-are not replayed. A gateway restart marks unfinished
-subagents interrupted instead of pretending they are still running. After a
+are not replayed. A subagent on Pi Durable keeps its running status across a gateway
+restart, because Durable resumes the run itself: HUI waits for that run to end and
+reports its answer as any other result, without the run timeout the spawn once
+passed. Any other unfinished subagent, one on PI's SDK worker included, is marked
+interrupted instead of pretending it is still running. After a
 task reaches a terminal state and its result has been delivered, HUI closes the
 child's live runtime (after its current browser reader leaves, if any) while
 retaining its session row and PI transcript; opening that session later resumes
@@ -2024,8 +2115,6 @@ question are kept, and the card stays folded while the operator writes in the
 composer. The folded row, Enter on it or Escape opens the card again where the
 operator left it; Escape on the folded row opens it rather than declining the
 questions. A new call's card, and a reload, open unfolded.
-The fold is the web card's: the iPhone app draws questions in its own card
-(`docs/native-ios-plan.md`).
 
 The agent learns each answer as `"question"="answer"` (several joined by
 commas, a chosen option's preview after it), or that the operator declined:
@@ -2351,7 +2440,7 @@ leaves worker records unchanged.
 
 A **bot** is a named, persistent agent: a role, a persona it writes itself
 (SOUL.md), its own model, a working directory and **one chat that never ends**,
-whose memory is OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
+whose memory is OptChat. Sessions keep everything they have (worktrees, rewind,
 `/compact`); bots are for assistants the operator returns to every day. The
 sidebar splits into **Agents | Bots**, and the `hui bot` CLI can do
 everything the Bots tab can, through the same routes.
@@ -2458,7 +2547,9 @@ everything the Bots tab can, through the same routes.
   kept word for word and condensed into a summary tree a fresh turn reads, so
   the chat is never compacted. Bots reach it only through one interface, so its
   engine stays separate; `hui bot memory` and the memory routes show its
-  status, its view, any line zoomed down to a message, and a browse page.
+  status, its view, any line zoomed down to a message, and a browse page. Its
+  tools are `zoom`, `date` and `search_chat`, which finds the messages that
+  mention a word in the log the view no longer names.
 - **Always on.** Bots have no switch (decision below).
 - **The Bots tab**: an **Agents | Bots** switch fills the sidebar's top
   row after the collapse toggle (arrow keys, Home/End; the browser remembers the
@@ -2841,7 +2932,7 @@ one cannot be built or tested without a Mac.
 - **One UI.** The Android and iOS apps are Capacitor shells that load the connected gateway's own web UI, as the
   Electron app does. They bundle only a Connect page. The native side adds what a browser can't: the remembered
   gateway, the back button, other origins in the system browser, downloads, the status bar, notifications, sharing
-  and permissions. `docs/mobile-app-plan.md` is the plan.
+  and permissions. `mobile/AGENTS.md` is the plan.
 - **Lockstep through the web.** A use case required on the web is required on the phone unless excluded with a
   reason. The suite proves it inside the Android app's WebView and in mobile WebKit, on Linux, in every PR's CI.
   The iOS shell is built and smoke-tested on a macOS runner, so nobody needs a Mac to work on HUI.
@@ -2860,7 +2951,7 @@ implement it for android".
   PR #347 stays unmerged as an archive), and `main` loses the iOS target, the
   iOS status of every use case and the iOS fixture steps.
 - **The native client is a Kotlin and Jetpack Compose Android app**, not a
-  WebView shell around the web UI. `docs/native-android-plan.md` is its plan.
+  WebView shell around the web UI.
 - **Lockstep starts with the Android target.** Until the shared suite has an
   Android target, use cases carry only a web status. The PR that adds the
   target gives every use case an Android status, with existing ones in a
@@ -3098,10 +3189,13 @@ behalf now shows as theirs, in group-chat style:
   the agents write it (routine and trigger prompts stay plain); Copy and Reply
   take that text. Rewind is not offered: the message was never the operator's
   to edit and send again.
-- **The same senders the gateway trusts.** The chat attributes exactly the
-  headers `botTurnOrigin` reads (plus `sessions_send` and a subagent's task),
-  so a message shows as someone else's when the bot's gated tools refuse to
-  treat it as the operator's.
+- **The same senders the gateway trusts, and one it does not.** The chat
+  attributes exactly the headers `botTurnOrigin` reads (plus `sessions_send` and
+  a subagent's task), so a message shows as someone else's when the bot's gated
+  tools refuse to treat it as the operator's. A header a bot wrote itself, when
+  HUI delivered the text untagged (the handle without its `@`, or a
+  `· <note>` after it), shows as that bot's too: presentation only, since the
+  gateway still reads a turn by HUI's own headers, never by one a bot wrote.
 - **What an agent hands a bot stays in sight.** Its `message_bot` call keeps a
   row of its own after the turn folds: *Sent to <bot>* (or to the calling
   agent's session) with the bot's face and the message's first paragraph, the
@@ -3725,6 +3819,7 @@ seeds it once:
   whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
   BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
   `--fix` installs the untouched updates.
+- **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches. An idle watched session with no running watcher gets one continuation; if its last reply asks for a decision, or it is waiting for an answer or errored, the watcher session is told instead and the target is not prompted. The heartbeat itself never starts new work, and the watch is what makes a session a candidate; no routine lives in the bot's context.
 - **Workers carry the pack, nothing else.** A spawn from a bot's chat records
   `botSkills`, written as the `hui.botSkills` document in the child's creating
   commit; `skillDirsFor` loads that bot's skill folder for the child and its
@@ -4300,8 +4395,9 @@ The browser addresses only opaque inventory ids. The server revalidates each id
 against current PI settings, never executes the resource, never accepts a path,
 and limits returned text to 256 KiB.
 
-The ordered implementation tasks and accepted capability matrix are in
-`docs/implementation-roadmap.md`.
+The accepted capability matrix is the use-case catalogue in `e2e/catalogue/`,
+where `backlog` means the capability exists and its shared test does not yet
+pass.
 
 ## Desktop distribution
 

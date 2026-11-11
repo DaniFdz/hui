@@ -4,7 +4,7 @@ iOS proof is CI's. No Mac is needed to review an iPhone change, and none of this
 the shell is built and run on a macOS runner, and its screenshots come back as a job artifact. `mobile/AGENTS.md` owns
 what the iOS shell does; this is where to look and what the pictures cannot say.
 
-**Status at this branch's head: not landed.** WP5 of [`docs/mobile-app-plan.md`](../../../../docs/mobile-app-plan.md)
+**Status at this branch's head: not landed.** WP5 of [`mobile/AGENTS.md`](../../../../mobile/AGENTS.md)
 adds `mobile/ios/` and the `mobile / ios-smoke` job to `.github/workflows/mobile.yml`. Until it merges there is no iOS
 build, no job and no artifact, so an iPhone claim has no evidence behind it and belongs under Proof gaps.
 

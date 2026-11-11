@@ -1,5 +1,5 @@
 name: Mobile WebKit
-# The shared e2e suite in the engine the iPhone runs (docs/mobile-app-plan.md, WP6): Playwright's WebKit at an iPhone's
+# The shared e2e suite in the engine the iPhone runs (mobile/AGENTS.md, WP6): Playwright's WebKit at an iPhone's
 # viewport, with touch, on a Linux runner and with no device. It proves what the iPhone's engine renders and lays out,
 # not that the app's shell works, so its paths are the page's: every UI change runs it in its own pull request, beside
 # `web` (e2e.yml). It is a file of its own rather than a third job of mobile.yml because mobile.yml triggers on
@@ -57,7 +57,7 @@ jobs:
     # failure costs its action timeout instead of its full budget, which is why the run below passes a shorter one:
     # four shards land well inside this.
     timeout-minutes: 60
-    # Advisory while the phone backlog is open (docs/mobile-app-plan.md, owner decision O2). It runs the whole suite so
+    # Advisory while the phone backlog is open (owner decision O2, `mobile/AGENTS.md`). It runs the whole suite so
     # the failures ARE the backlog a WP7 area works from; the traces say which.
     continue-on-error: true
     strategy:

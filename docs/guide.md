@@ -446,8 +446,9 @@ MEMORY.md never leave with an export. Its chat's **history** is
 [OptChat](optchat.md): every message is kept word for word and a cheap model
 condenses it into a tree of one-line summaries, so each turn starts fresh from a
 bounded view of the whole history (64 to 128 KB) and the bot opens a line (`zoom`)
-when it needs the detail. The chat is never compacted or cleared; when a turn has
-to wait for the newest messages to be summarized, `hui bot chat` says
+or searches it (`search_chat`) when it needs the detail. The chat is never
+compacted or cleared; when a turn has to wait for the newest messages to be
+summarized, `hui bot chat` says
 "Summarizing memory…". `hui bot memory` shows MEMORY.md, `hui bot user` USER.md,
 and `hui bot history` the chat's own history (`--zoom`, `--html`).
 
@@ -593,7 +594,7 @@ starts idle: it has a SOUL.md and its skills, and it says nothing until you
 message it. Its home folder holds the pack's skills under `skills/`, and the
 bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
 with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
-`machines`, `learn`, `lessons`,
+`machines`, `status`, `learn`, `lessons`,
 `verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
 `figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
 `principles` reference. No other chat loads them.
@@ -619,6 +620,17 @@ merged and, where the change applies, deployed and validated in production.
 You archive the session then; the chief settles the ledger row and never
 archives it for you. A **lead** is opt-in inside such a session, or when you
 ask for one, not the chief's default.
+
+A status answer uses the `status` skill: one table row per session
+(`[title](/sessions/<id>?open=app)`, PR link, status and blockers), then one
+question only if it waits on you. HUI's heartbeat changes use the same shape.
+
+Each session the chief creates is **watched** by default. HUI runs the
+**heartbeat** itself, every 15 minutes, without a turn in the bot's chat: it
+continues a watched session that is idle and has no running watcher, and leaves
+a running one alone. If the watched session is waiting for a decision, an answer
+or is errored, the heartbeat tells the watching bot instead of prompting it.
+Nothing from the heartbeat enters the bot's context.
 
 After a task that failed, drifted, or needed a step the pack did not know, the chief adds one evidence-backed entry to its own **`lessons`** skill. It never edits the pack's skills: an edited pack file stops taking pack updates. The `lessons` skill is the bot's, and `hui doctor` reports it.
 
@@ -1027,8 +1039,8 @@ hui bot memory ada --html ada.html # the whole memory as one page
 ```
 
 The status line counts the messages, the summaries built and still pending, the
-view's size and lines, and what the compactor spent since the gateway opened the
-memory (calls, tokens, cost). Every view line is `id+n|text`: `n` messages
+view's size and lines, and what the compactor spent in total (calls, tokens,
+cost), across restarts. Every view line is `id+n|text`: `n` messages
 from `id`, in one summary; `--zoom id+n` opens it, down to a single message
 with `n` = 1. The page lists the view, every message and each level of the
 tree; a browser opens it from a link on HUI's own pages, such as the Bots tab
@@ -1506,8 +1518,24 @@ stored value into the field without being able to see it: the gateway refuses
 unless the field's page is exactly that origin, and the value never appears in
 the chat, a tool result or a log. A close-button prompt or one-time code still
 needs a **handoff**, and once filled the page itself can read the field, so keep
-the origin allowlist narrow. A sign-in form inside an embedded frame cannot be
-targeted at all — that needs a handoff too.
+the origin allowlist narrow. A sign-in form inside an embedded frame works when the browser renders that frame
+in the same process; a frame it isolates cannot be reached, and that needs a
+handoff.
+
+## How the agent browses
+
+HUI ships a `browser` skill: a short procedure the agent reads when a task
+needs a real page. It decides whether a page needs a browser at all (a JSON
+API does not), keeps snapshots small, acts only on refs from the latest
+snapshot, and after each action reads `snapshot` with `diff: true` so it sees
+the lines that changed instead of the whole page.
+
+It also says when to use the rest: `get`/`is` for one property, `steps` for
+transient UI, frames, `upload` for a form that takes a file, `console` and
+`network` when the DOM does not explain a failure, `performance` for weight
+and speed, `secret` for a stored password, and `handoff` only when a person
+has to continue. Skills are on unless you turned them off in settings; the
+agent still decides per task.
 
 ## Limiting where the agent's browser goes
 

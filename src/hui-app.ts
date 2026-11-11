@@ -137,6 +137,7 @@ import { loadExtensions } from "./api/extensions.ts";
 import "./components/extension-page.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import "./components/work-pane.ts";
+import "./components/side-chat-view.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
 import { SessionMultiplexer, type PanePresentation } from "./components/session-multiplexer.ts";
@@ -160,7 +161,7 @@ const HUI_UPDATE_SESSION_TITLE = "HUI update";
  * button may keep an older one: capture only the pane/session id and the parent. */
 const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
 
-/** A bot pane's Call button (HUI-18): offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
+/** A bot pane's Call button: offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
 type PaneCall = { botId: string; inCall: boolean };
 const paneCallProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
@@ -358,6 +359,7 @@ export class HuiApp extends HuiElement {
     activePane: () => this.activePaneApp(),
     focusComposer: () => this.focusActiveComposer(),
     paletteOpen: () => this.commandPaletteOpen,
+    chatShown: () => this.view === "home",
     terminalFont: () => this.control.settings.fontTerminal,
     browserEnabled: () => this.control.settings.browser.enabled,
   });
@@ -442,10 +444,6 @@ export class HuiApp extends HuiElement {
   };
 
   private readonly onGlobalKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && this.composer.sideChat) {
-      this.composer.closeSideChat();
-      return;
-    }
     if (this.embeddedPane) return;
     if (event.key === "Escape") {
       this.handleGlobalEscape(event);
@@ -512,11 +510,7 @@ export class HuiApp extends HuiElement {
       if (dialog.dispatchEvent(new Event("cancel", { cancelable: true }))) dialog.close();
       return true;
     }
-    if (this.composer.sideChat) {
-      this.composer.closeSideChat();
-      return true;
-    }
-    if (this.settingsOpen) {
+     if (this.settingsOpen) {
       this.closeSettings();
       return true;
     }
@@ -2335,7 +2329,7 @@ export class HuiApp extends HuiElement {
     return html`${importing ? renderBotImportDialog(importing) : nothing}${exporting ? renderBotExportDialog(exporting) : nothing}`;
   }
 
-  /* ── calls with bots (HUI-18) ─────────────────────────────────────────── */
+  /* ── calls with bots ─────────────────────────────────────────── */
 
   /** Captures only the bot's id: a rendered button may keep an older closure, and the bot is read again when used. */
   private paneCallAction(bot: BotView): () => void {
@@ -2760,6 +2754,9 @@ export class HuiApp extends HuiElement {
       session: this.conversation.selected,
       // File references open in the Work pane, which only multiplexed chat panes have (not a bot's chat).
       fileLinks: this.embeddedPane && this.paneCanAccessFiles(),
+      // A chat without a Work pane (`/btw` in a bot's chat, or a chat rendered without the multiplexer) draws its side
+      // chat in the inline rail; everywhere else it is a Work view (`views/work/side-chat.ts`).
+      sideChatRail: !this.embeddedPane || Boolean(this.paneBot),
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       ...(this.embeddedPane && this.panePanelPicker ? { panelPicker: this.panePanelPicker } : {}),
       controlScope: this.embeddedPane ? this.paneId : undefined,

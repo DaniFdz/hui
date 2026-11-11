@@ -1,5 +1,5 @@
 /**
- * Bots (HUI-18): named, persistent agents, each with one forever chat whose
+ * Bots: named, persistent agents, each with one forever chat whose
  * memory is OptChat, whose persona is the SOUL.md it writes, and whose USER.md
  * and MEMORY.md hold what it knows and keeps (never exported; `home.ts`). The
  * gateway's and the `hui bot` CLI's records, limits, files, faces, kickoff and
@@ -228,6 +228,12 @@ export const AGENT_TAG = /^\[from agent: ([^\]\n]*?)(?: · reply-to (agent:[A-Za
 /** The gateway's return address in an agent's attribution header; never one embedded in a forwarded message. */
 export function agentReplyTo(text: string | undefined): string | undefined {
   return AGENT_TAG.exec(text ?? "")?.[2];
+}
+
+/** How a bot's message starts in the chat it reaches, as `message_bot` tags it and as `create_session` tags the brief
+ * a bot starts a session with: the hop after the first. */
+export function botTagPrefix(handle: string, hop = 1): string {
+  return `[from @${handle}${hop === 1 ? "" : ` · hop ${hop}`}] `;
 }
 
 /** How a session's tag starts in the bot's chat: a sanitized title, its return address and the chain's current hop. */

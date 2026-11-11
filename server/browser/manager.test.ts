@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,12 @@ import type { BrowserSettings } from "../hui-settings.ts";
 import { resolveBrowserExecutable } from "./executable.ts";
 import { browserLaunchArguments, BrowserToolError, ManagedBrowser, normalizeBrowserUrl, type BrowserViewFrame } from "./manager.ts";
 import type { BrowserViewAction, BrowserViewState } from "../api/browser.ts";
+
+/** The page's own text, without the boundary markers a tool result wraps it in. */
+const pageText = (text: string): string => {
+  const match = /--- HUI_PAGE_CONTENT nonce=[0-9a-f]+ origin=\S* ---\n([\s\S]*?)\n--- END_HUI_PAGE_CONTENT nonce=[0-9a-f]+ ---/u.exec(text);
+  return (match?.[1] ?? text).trimEnd();
+};
 
 const noBrowser = { platform: "linux" as const, env: { PATH: "/nowhere" }, home: "/home/nobody", isExecutable: async () => false, readdir: async () => [] as string[] };
 
@@ -74,6 +80,8 @@ const PAGES: Record<string, string> = {
     <button onclick="document.getElementById('out').textContent = confirm('Delete?') ? 'confirmed' : 'cancelled'">Confirm</button>
     <button onclick="window.open('/popup')">Popup</button>
     <select aria-label="Color" onchange="document.getElementById('out').textContent = 'color ' + this.value"><option value="r">Red</option><option value="b">Blue</option></select>
+    <button id="disabled" disabled>Disabled</button>
+    <button id="hidegreet" onclick="document.getElementById('greet').style.display = 'none'">Hide greet</button>
     <a href="/next">Next page</a>
     <p id="out"></p><p id="width"></p>
     <script>
@@ -81,7 +89,17 @@ const PAGES: Record<string, string> = {
       addEventListener('resize', width); width();
       setTimeout(() => { const late = document.createElement('p'); late.textContent = 'Late content'; document.body.append(late); }, 200);
     </script>`,
-  "/next": "<!doctype html><title>Next</title><h1>Second page</h1><script>console.error('boom from next')</script>",
+  "/toggle": `<!doctype html><title>Toggle</title>
+    <p id="banner">Banner</p><button id="hide" onclick="document.getElementById('banner').style.display = 'none'">Hide</button>`,
+  "/replace": `<!doctype html><title>Replace</title>
+    <button id="target" onclick="document.getElementById('out').textContent = 'old target clicked'">Target</button>
+    <button id="swap" onclick="const old = document.getElementById('target'); const next = old.cloneNode(true); next.onclick = () => { document.getElementById('out').textContent = 'new target clicked'; }; old.replaceWith(next)">Swap</button>
+    <p id="out">idle</p>`,
+  "/twins": `<!doctype html><title>Twins</title>
+    <button id="target" onclick="document.getElementById('out').textContent = 'single target clicked'">Target</button>
+    <button id="swap" onclick="const old = document.getElementById('target'); const next = old.cloneNode(true); next.textContent = 'Target'; old.replaceWith(next, next.cloneNode(true))">Swap</button>
+    <p id="out">idle</p>`,
+    "/next": "<!doctype html><title>Next</title><h1>Second page</h1><script>console.error('boom from next')</script>",
   "/popup": "<!doctype html><title>Popup</title><h1>Popup page</h1>",
   "/scroll": `<!doctype html><title>Tall page</title>
     <h1>Tall page</h1><div style="height:4000px"></div><p id="y">0</p>
@@ -163,7 +181,7 @@ test("a real headless browser serves agent tabs end to end", {
   const greet = refIn(opened.text, /button "Greet" \[ref=(e\d+)\]/u);
   assert.match((await call("alpha", { action: "act", kind: "type", ref: name, text: "HUI agent" })).text, /Typed 9 characters/u);
   assert.match((await call("alpha", { action: "act", kind: "click", ref: greet })).text, /^Clicked e\d+ \(button "Greet"\)\./u);
-  assert.match((await call("alpha", { action: "text", selector: "#out" })).text, /\n\nHello, HUI agent!$/u);
+  assert.match(pageText((await call("alpha", { action: "text", selector: "#out" })).text), /Hello, HUI agent!$/u);
   assert.match((await call("alpha", { action: "console" })).text, /\[log\] greeted HUI agent/u);
   assert.match((await call("alpha", { action: "act", kind: "wait", text: "Late content", timeoutMs: 5_000 })).text, /condition was met/u);
   await assert.rejects(call("alpha", { action: "act", kind: "wait", text: "Never shown", timeoutMs: 1_000 }), /Timed out after 1000 ms/u);
@@ -173,11 +191,11 @@ test("a real headless browser serves agent tabs end to end", {
   assert.deepEqual(alert.details["dialogs"], ["alert \"Saved\" accepted"]);
   const confirmRef = refIn(opened.text, /button "Confirm" \[ref=(e\d+)\]/u);
   await call("alpha", { action: "act", kind: "click", ref: confirmRef });
-  assert.match((await call("alpha", { action: "text", selector: "#out" })).text, /cancelled$/u);
+  assert.match(pageText((await call("alpha", { action: "text", selector: "#out" })).text), /cancelled$/u);
   await call("alpha", { action: "act", kind: "click", ref: confirmRef, dialog: "accept" });
-  assert.match((await call("alpha", { action: "text", selector: "#out" })).text, /confirmed$/u);
+  assert.match(pageText((await call("alpha", { action: "text", selector: "#out" })).text), /confirmed$/u);
   await call("alpha", { action: "act", kind: "select", ref: refIn(opened.text, /combobox "Color" \[ref=(e\d+)\]/u), values: ["Blue"] });
-  assert.match((await call("alpha", { action: "text", selector: "#out" })).text, /color b$/u);
+  assert.match(pageText((await call("alpha", { action: "text", selector: "#out" })).text), /color b$/u);
 
   const shot = await call("alpha", { action: "screenshot", path: "shots/form.png" });
   assert.equal(shot.image?.mimeType, "image/png");
@@ -186,9 +204,9 @@ test("a real headless browser serves agent tabs end to end", {
   assert.equal((await readFile(join(dir, "shots", "form.png"))).subarray(1, 4).toString(), "PNG");
   await assert.rejects(call("alpha", { action: "screenshot", path: "form.jpg" }), /must end in \.png/u);
   await call("alpha", { action: "resize", width: 390, height: 844 });
-  assert.match((await call("alpha", { action: "text", selector: "#width" })).text, /width 390$/u);
+  assert.match(pageText((await call("alpha", { action: "text", selector: "#width" })).text), /width 390$/u);
   await call("alpha", { action: "resize" });
-  assert.match((await call("alpha", { action: "text", selector: "#width" })).text, /width 1280$/u);
+  assert.match(pageText((await call("alpha", { action: "text", selector: "#width" })).text), /width 1280$/u);
 
   // Popups join the opener's conversation; other conversations see nothing.
   await call("alpha", { action: "act", kind: "click", ref: refIn(opened.text, /button "Popup" \[ref=(e\d+)\]/u) });
@@ -261,7 +279,7 @@ test("a click passes through a transparent pseudo overlay but not an opaque one"
   // hit test reports that pseudo-element even when it is pointer-transparent.
   const opened = await call({ action: "open", url: `${origin}/overlay` });
   await call({ action: "act", kind: "click", ref: refIn(opened.text, /button "Send" \[ref=(e\d+)\]/u) });
-  assert.match((await call({ action: "text", selector: "#out" })).text, /\n\nsent$/u);
+  assert.match(pageText((await call({ action: "text", selector: "#out" })).text), /sent$/u);
 
   // The same overlay with pointer events enabled owns the hit point, so the
   // guard still refuses to click through it.
@@ -269,7 +287,7 @@ test("a click passes through a transparent pseudo overlay but not an opaque one"
     call({ action: "act", kind: "click", ref: refIn(opened.text, /button "Blocked" \[ref=(e\d+)\]/u) }),
     /covered by div#opaque/u,
   );
-  assert.match((await call({ action: "text", selector: "#out" })).text, /\n\nsent$/u);
+  assert.match(pageText((await call({ action: "text", selector: "#out" })).text), /sent$/u);
 });
 
 test("stopped or idle conversations never leave a headless browser running", {
@@ -580,7 +598,7 @@ test("a handoff hands one tab to the operator and returns a fresh snapshot", {
   const go = /button "Go" \[ref=(e\d+)\]/u.exec(finished.text)?.[1];
   assert.ok(go, finished.text);
   assert.match((await call({ action: "act", kind: "click", ref: go })).text, /^Clicked e\d+ \(button "Go"\)\./u);
-  assert.match((await call({ action: "text", selector: "#out" })).text, /clicked$/u);
+  assert.match(pageText((await call({ action: "text", selector: "#out" })).text), /clicked$/u);
 
   // Nobody comes: the wait ends by itself and says so, and the tab is usable again.
   const timedOut = await call({ action: "handoff", message: "Sign in.", timeoutMs: 5_000 });
@@ -832,8 +850,8 @@ test("the operator's wheel scrolls the handed-over tab, and input waits for no h
   });
   const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
   const scrollY = async () => {
-    const text = (await call({ action: "text", selector: "#y" })).text;
-    return Number(/(\d+)$/u.exec(text.trim())?.[1] ?? NaN);
+    const text = pageText((await call({ action: "text", selector: "#y" })).text);
+    return Number(/(\d+)$/u.exec(text)?.[1] ?? NaN);
   };
 
   assert.match((await call({ action: "open", url: `${origin}/scroll` })).text, /Opened tab t1/u);
@@ -903,68 +921,12 @@ test("a stored site secret is typed only on its own origin and never comes back 
   assert.match(typed.text, /Typed the site secret "fixture" into e\d+ \(textbox "Password"\) on http:\/\/127\.0\.0\.1:\d+ and pressed Enter/u);
   assert.doesNotMatch(typed.text, /s3cret-token/u);
   assert.doesNotMatch(JSON.stringify(typed.details), /s3cret-token/u);
-  assert.match((await call({ action: "text", selector: "#out" })).text, /password=s3cret-token$/u);
+  assert.match(pageText((await call({ action: "text", selector: "#out" })).text), /password=s3cret-token$/u);
 
   // An unknown name lists the stored names, which are not secret.
   await assert.rejects(call({ action: "secret", name: "nope", ref: password }), /No site secret named "nope"\. Stored names: fixture/u);
 });
 
-test("a secret cannot reach a field inside a frame, on any origin", {
-  skip: !detected.executable,
-  timeout: 90_000,
-}, async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), "hui-browser-secret-frame-"));
-  const LOGIN = `<!doctype html><title>Embedded sign in</title>
-    <label for="password">Password</label><input id="password" type="password">`;
-  const login = createServer((_request, response) => {
-    response.writeHead(200, { "content-type": "text/html" });
-    response.end(LOGIN);
-  }).listen(0, "127.0.0.1");
-  await once(login, "listening");
-  const loginAddress = login.address();
-  assert.ok(loginAddress && typeof loginAddress !== "string");
-  const loginOrigin = `http://127.0.0.1:${loginAddress.port}`;
-  let embedded = loginOrigin;
-  const host = createServer((_request, response) => {
-    response.writeHead(200, { "content-type": "text/html" });
-    response.end(`<!doctype html><title>Host page</title><h1>Host page</h1>
-      <iframe src="${embedded}/login" title="Sign in" width="400" height="200"></iframe>`);
-  }).listen(0, "127.0.0.1");
-  await once(host, "listening");
-  const hostAddress = host.address();
-  assert.ok(hostAddress && typeof hostAddress !== "string");
-  const hostOrigin = `http://127.0.0.1:${hostAddress.port}`;
-  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
-  const stored = new Map<string, { name: string; origin: string; value: string; createdAt: string }>();
-  const secrets = {
-    find: async (name: string) => stored.get(name),
-    list: async () => [...stored.values()].map(({ name, origin, createdAt }) => ({ name, origin, createdAt })),
-  };
-  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, secrets });
-  t.onTestFinished(async () => {
-    await browser.stop();
-    host.close();
-    login.close();
-    await rm(dir, { recursive: true, force: true });
-  });
-  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
-  stored.set("fixture", { name: "fixture", origin: hostOrigin, value: "frame-secret", createdAt: "2026-11-08T00:00:00.000Z" });
-
-  // Neither another origin's frame nor the host's own frame puts its fields in the snapshot:
-  // refs only ever name nodes of the tab's own document, so no secret can reach a frame's field.
-  for (const [label, source] of [["another origin", loginOrigin], ["its own origin", ""]] as const) {
-    if (source) embedded = source;
-    const opened = await call({ action: "open", url: `${hostOrigin}/frame` });
-    assert.match(opened.text, /Iframe "Sign in"/u, label);
-    assert.doesNotMatch(opened.text, /textbox "Password"/u, label);
-    // A secret only accepts a ref this tab's own snapshot handed out.
-    const refused = await call({ action: "secret", name: "fixture", ref: "e99" }).then(() => undefined, (error: unknown) => error);
-    assert.ok(refused instanceof BrowserToolError);
-    assert.match(refused.message, /Ref e99 is not in tab t\d+'s latest snapshot/u, label);
-    assert.equal(refused.message.includes("frame-secret"), false, label);
-    await call({ action: "close" });
-  }
-});
 
 test("a steps call runs dependent interactions in one go and reports each one", {
   skip: !detected.executable,
@@ -1006,7 +968,7 @@ test("a steps call runs dependent interactions in one go and reports each one", 
   assert.match(steps.text, /\n1\. type: Typed 8 characters/u);
   assert.match(steps.text, /\n2\. click: Clicked e\d+/u);
   assert.match(steps.text, /\n3\. wait: Waited \d+ ms until the condition was met/u);
-  assert.match((await call({ action: "text", selector: "#out" })).text, /Hello, One call!$/u);
+  assert.match(pageText((await call({ action: "text", selector: "#out" })).text), /Hello, One call!$/u);
 
   // A failing step names itself and everything that already ran.
   const failed = await call({ action: "steps", steps: [{ kind: "type", ref: name, text: "x" }, { kind: "wait", text: "Never shown", timeoutMs: 1_000 }] }).then(() => undefined, (error: unknown) => error);
@@ -1059,4 +1021,626 @@ test("a navigation between steps retires the refs the earlier snapshot handed ou
   assert.match(failed.message, /^Step 2 \(type\) failed: Ref e\d+ is not in tab t1's latest snapshot\./u);
   assert.match(failed.message, /Steps that ran: 1\. click: Clicked e\d+ \(link "Next page"\)\./u);
   assert.match((await call({ action: "tabs" })).text, /Next/u, "the navigation itself still happened");
+});
+
+test("page output is bounded by a fresh nonce, and get/is read one thing at a time", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-loop-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const refIn = (text: string, pattern: RegExp) => {
+    const ref = pattern.exec(text)?.[1];
+    assert.ok(ref, `missing ${pattern} in:\n${text}`);
+    return ref;
+  };
+  const opened = await call({ action: "open", url: `${origin}/form` });
+  const name = refIn(opened.text, /textbox "Name" \[ref=(e\d+)\]/u);
+  const greet = refIn(opened.text, /button "Greet" \[ref=(e\d+)\]/u);
+  const disabled = refIn(opened.text, /button "Disabled" \[ref=(e\d+)\]/u);
+  const hideGreet = refIn(opened.text, /button "Hide greet" \[ref=(e\d+)\]/u);
+
+  // A page-sourced result carries a nonce on both markers, and each result gets its own.
+  const boundary = /--- HUI_PAGE_CONTENT nonce=([0-9a-f]{16}) origin=(http:\/\/127\.0\.0\.1:\d+) ---/u.exec(opened.text);
+  assert.ok(boundary, opened.text);
+  assert.match(opened.text, new RegExp(`--- END_HUI_PAGE_CONTENT nonce=${boundary[1]} ---$`, "u"));
+  const second = await call({ action: "snapshot" });
+  const secondNonce = /nonce=([0-9a-f]{16})/u.exec(second.text)?.[1];
+  assert.ok(secondNonce);
+  assert.notEqual(secondNonce, boundary[1], "each result mints its own nonce");
+  assert.match(second.text, /--- HUI_PAGE_CONTENT nonce=[0-9a-f]{16} origin=http:\/\/127\.0\.0\.1:\d+ ---/u);
+
+  // get reads one property without a snapshot.
+  assert.match((await call({ action: "get", what: "title" })).text, /^Title: Browser form$/u);
+  assert.match((await call({ action: "get", what: "url" })).text, new RegExp(`^URL: ${origin}/form$`, "u"));
+  assert.match((await call({ action: "get", what: "count", selector: "#greet" })).text, /^1 element matches #greet\.$/u);
+  assert.match((await call({ action: "get", what: "attr", ref: greet, attribute: "id" })).text, /^attr of e\d+ \(button "Greet"\): "greet"$/u);
+  await assert.rejects(call({ action: "get", what: "nonsense", ref: greet }), /get needs what:/u);
+  await assert.rejects(call({ action: "get", what: "attr", ref: greet }), /get attr needs attribute/u);
+  await call({ action: "act", kind: "type", ref: name, text: "Loop" });
+  assert.match((await call({ action: "get", what: "value", ref: name })).text, /^value of e\d+ \(textbox "Name"\): "Loop"$/u);
+  assert.equal(pageText((await call({ action: "get", what: "text", selector: "h1" })).text), "Browser form");
+
+  // is answers one state; a missing selector answers hidden/attached rather than failing.
+  assert.match((await call({ action: "is", state: "visible", ref: greet })).text, /^e\d+ \(button "Greet"\) is visible\.$/u);
+  assert.match((await call({ action: "is", state: "enabled", ref: greet })).text, /is enabled\.$/u);
+  assert.match((await call({ action: "is", state: "focused", ref: name })).text, /is focused\.$/u);
+  assert.match((await call({ action: "is", state: "attached", selector: "#nope" })).text, /is not attached/u);
+  assert.match((await call({ action: "is", state: "hidden", selector: "#nope" })).text, /is hidden/u);
+
+  // A click refuses a disabled or hidden target instead of reporting success.
+  await assert.rejects(call({ action: "act", kind: "click", ref: disabled }), /is disabled; nothing was clicked/u);
+  await call({ action: "act", kind: "click", ref: hideGreet });
+  await assert.rejects(call({ action: "act", kind: "click", ref: greet }), /is not visible; scroll it into view/u);
+
+  // A snapshot can be scoped to one element and cut at a depth.
+  const scoped = await call({ action: "snapshot", selector: "h1" });
+  assert.match(scoped.text, /Scoped to h1\./u);
+  assert.match(pageText(scoped.text), /Browser form/u);
+  assert.doesNotMatch(scoped.text, /textbox "Name"/u);
+  const shallow = await call({ action: "snapshot", depth: 1 });
+  assert.match(shallow.text, /\[deeper content omitted by depth\]/u);
+  assert.match(shallow.text, /Deeper content was left out by depth/u);
+
+  // A password field's value is never read back into the transcript.
+  await call({ action: "open", url: `${origin}/secret` });
+  const password = refIn((await call({ action: "snapshot" })).text, /textbox "Password" \[ref=(e\d+)\]/u);
+  await assert.rejects(call({ action: "get", what: "value", ref: password }), /Refusing to read the value of e\d+ \(textbox "Password"\): it is a password field/u);
+
+  // wait state follows an element appearing or disappearing.
+  await call({ action: "navigate", url: `${origin}/toggle` });
+  assert.match((await call({ action: "act", kind: "wait", selector: "#banner", state: "visible" })).text, /condition was met/u);
+  await call({ action: "act", kind: "click", ref: refIn((await call({ action: "snapshot" })).text, /button "Hide" \[ref=(e\d+)\]/u) });
+  assert.match((await call({ action: "act", kind: "wait", selector: "#banner", state: "hidden" })).text, /condition was met/u);
+});
+
+test("a replaced element keeps its ref when its role and name are unique", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-relink-"));
+  const server = createServer((request, response) => {
+    const page = PAGES[request.url ?? ""];
+    response.writeHead(page ? 200 : 404, { "content-type": "text/html" });
+    response.end(page ?? "missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const refIn = (text: string, pattern: RegExp) => {
+    const ref = pattern.exec(text)?.[1];
+    assert.ok(ref, `missing ${pattern} in:\n${text}`);
+    return ref;
+  };
+
+  const opened = await call({ action: "open", url: `${origin}/replace` });
+  const target = refIn(opened.text, /button "Target" \[ref=(e\d+)\]/u);
+  const swap = refIn(opened.text, /button "Swap" \[ref=(e\d+)\]/u);
+  await call({ action: "act", kind: "click", ref: swap });
+  const clicked = await call({ action: "act", kind: "click", ref: target });
+  assert.match(clicked.text, /^Clicked e\d+ \(button "Target"\)\./u);
+  assert.match(clicked.text, /re-bound to the one element with the same role and name/u);
+  assert.match(pageText((await call({ action: "text", selector: "#out" })).text), /new target clicked/u);
+
+  // Two elements with that role and name make the old ref ambiguous instead of a wrong click.
+  const twins = await call({ action: "open", url: `${origin}/twins` });
+  const twinTarget = refIn(twins.text, /button "Target" \[ref=(e\d+)\]/u);
+  const twinSwap = refIn(twins.text, /button "Swap" \[ref=(e\d+)\]/u);
+  await call({ action: "act", kind: "click", ref: twinSwap });
+  await assert.rejects(call({ action: "act", kind: "click", ref: twinTarget }), /share its role and name, so the ref is ambiguous\. Take a new snapshot/u);
+});
+
+test("a form inside a frame is in the snapshot and works through its refs", {
+  skip: !detected.executable,
+  timeout: 120_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-frames-"));
+  const inner = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Cross frame</title><label for="pw">Password</label><input id="pw" type="password"><button onclick="document.getElementById('out').textContent = 'cross clicked'">Cross button</button><p id="out">idle</p>`);
+  }).listen(0, "127.0.0.1");
+  await once(inner, "listening");
+  const innerAddress = inner.address();
+  assert.ok(innerAddress && typeof innerAddress !== "string");
+  const crossOrigin = `http://127.0.0.1:${innerAddress.port}`;
+  const sameFrame = `<!doctype html><title>Same frame</title><button onclick="document.getElementById('out').textContent = 'inner clicked'">Inner button</button><p id="out">idle</p>`;
+  const host = createServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(request.url === "/same"
+      ? sameFrame
+      : `<!doctype html><title>Host</title><h1>Host</h1>
+        <iframe src="/same" title="Same frame"></iframe>
+        <iframe src="${crossOrigin}/cross" title="Cross frame"></iframe>`);
+  }).listen(0, "127.0.0.1");
+  await once(host, "listening");
+  const hostAddress = host.address();
+  assert.ok(hostAddress && typeof hostAddress !== "string");
+  const hostOrigin = `http://127.0.0.1:${hostAddress.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const stored = new Map<string, { name: string; origin: string; value: string; createdAt: string }>();
+  const secrets = {
+    find: async (name: string) => stored.get(name),
+    list: async () => [...stored.values()].map(({ name, origin, createdAt }) => ({ name, origin, createdAt })),
+  };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings, secrets });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    host.close();
+    inner.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+  const refIn = (text: string, pattern: RegExp) => {
+    const ref = pattern.exec(text)?.[1];
+    assert.ok(ref, `missing ${pattern} in:\n${text}`);
+    return ref;
+  };
+  const pageAt = (text: string, url: string) => text.includes(url);
+
+  const opened = await call({ action: "open", url: `${hostOrigin}/` });
+  // Both frames are inlined, one of them from another origin.
+  assert.match(opened.text, /Iframe "Same frame"/u);
+  assert.match(opened.text, /Iframe "Cross frame"/u);
+  assert.match(opened.text, /button "Inner button" \[ref=(e\d+)\]/u);
+  assert.match(opened.text, /textbox "Password" \[ref=(e\d+)\]/u);
+  const innerButton = refIn(opened.text, /button "Inner button" \[ref=(e\d+)\]/u);
+  const password = refIn(opened.text, /textbox "Password" \[ref=(e\d+)\]/u);
+
+  // A click inside a same-origin frame lands on the frame's own button.
+  const clicked = await call({ action: "act", kind: "click", ref: innerButton });
+  assert.match(clicked.text, /Clicked e\d+ \(button "Inner button"\)/u);
+  assert.match((await call({ action: "snapshot" })).text, /inner clicked/u);
+
+  // The secret's origin is the frame's, not the host page's; the field is typed into in place.
+  stored.set("cross", { name: "cross", origin: hostOrigin, value: "frame-secret", createdAt: "2026-11-09T00:00:00.000Z" });
+  const refused = await call({ action: "secret", name: "cross", ref: password }).then(() => undefined, (error: unknown) => error);
+  assert.ok(refused instanceof BrowserToolError);
+  assert.match(refused.message, new RegExp(`belongs to ${hostOrigin.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}, and e\\d+ \\(textbox "Password"\\) is on ${crossOrigin.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`, "u"));
+  stored.set("cross", { name: "cross", origin: crossOrigin, value: "frame-secret", createdAt: "2026-11-09T00:00:00.000Z" });
+  const typed = await call({ action: "secret", name: "cross", ref: password });
+  assert.match(typed.text, new RegExp(`on ${crossOrigin.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`, "u"));
+  assert.doesNotMatch(typed.text, /frame-secret/u);
+  assert.equal(pageAt(typed.text, crossOrigin), true);
+
+  // A click inside the cross-origin frame is shifted onto the page and lands on its button.
+  const crossButton = refIn((await call({ action: "snapshot" })).text, /button "Cross button" \[ref=(e\d+)\]/u);
+  const crossClicked = await call({ action: "act", kind: "click", ref: crossButton });
+  assert.match(crossClicked.text, /Clicked e\d+ \(button "Cross button"\)/u);
+  assert.match((await call({ action: "snapshot" })).text, /cross clicked/u);
+});
+
+test("network captures a tab's requests and writes a HAR with credentials redacted", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-network-"));
+  const server = createServer((request, response) => {
+    const path = (request.url ?? "").split("?")[0];
+    if (path === "/api") {
+      response.writeHead(200, { "content-type": "application/json" });
+      return response.end(JSON.stringify({ ok: true }));
+    }
+    if (path === "/page") {
+      response.writeHead(200, { "content-type": "text/html" });
+      return response.end(`<!doctype html><title>Network page</title><h1>Network page</h1>
+        <script>
+          fetch("/api?token=page-secret", { headers: { authorization: "Bearer api-secret" } });
+          fetch("/missing");
+        </script>`);
+    }
+    response.writeHead(404, { "content-type": "text/html" });
+    response.end("missing");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await call({ action: "open", url: `${origin}/page` });
+  assert.match((await call({ action: "network", operation: "start" })).text, /Capturing requests in tab t1/u);
+  await call({ action: "reload" });
+  const listed = await eventually(() => call({ action: "network", operation: "requests" }), (result) => /\/api/u.test(result.text) && /\/missing/u.test(result.text));
+  assert.match(listed.text, /n\d+ · GET 200 OK · Fetch · \d+ ms/u);
+  assert.match(listed.text, /GET 404 Not Found/u);
+  assert.match(listed.text, /\/api\?token=%5Bredacted%5D/u);
+  assert.doesNotMatch(listed.text, /api-secret|page-secret/u);
+
+  // Filters narrow the list; a request detail carries redacted headers.
+  assert.match((await call({ action: "network", operation: "requests", status: "404" })).text, /\/missing/u);
+  assert.doesNotMatch((await call({ action: "network", operation: "requests", status: "404" })).text, /\/api/u);
+  assert.match((await call({ action: "network", operation: "requests", filter: "api", type: "fetch" })).text, /n\d+ · GET 200 OK · Fetch/u);
+  const id = /n\d+/u.exec((await call({ action: "network", operation: "requests", filter: "api" })).text)?.[0];
+  assert.ok(id);
+  const detail = await call({ action: "network", operation: "request", id });
+  assert.match(detail.text, /authorization: \[redacted\]/u);
+  assert.match(detail.text, /content-type: application\/json/u);
+  await assert.rejects(call({ action: "network", operation: "request", id: "n9999" }), /No captured request n9999/u);
+
+  // The HAR keeps the shape and drops the secret values.
+  const written = await call({ action: "network", operation: "har", path: "artifacts/network.har" });
+  assert.match(written.text, /Wrote \d+ requests to .*artifacts\/network\.har/u);
+  const har = JSON.parse(await readFile(join(dir, "artifacts", "network.har"), "utf8")) as { log: { version: string; entries: Array<{ request: { headers: Array<{ name: string; value: string }>; url: string }; response: { status: number } }> } };
+  assert.equal(har.log.version, "1.2");
+  assert.ok(har.log.entries.length >= 3);
+  assert.equal(JSON.stringify(har).includes("api-secret"), false);
+  assert.equal(JSON.stringify(har).includes("page-secret"), false);
+  assert.ok(har.log.entries.some((entry) => entry.request.headers.some((header) => header.name === "authorization" && header.value === "[redacted]")));
+
+  await call({ action: "network", operation: "stop" });
+  await call({ action: "network", operation: "clear" });
+  assert.match((await call({ action: "network", operation: "requests" })).text, /No request matches/u);
+  await assert.rejects(call({ action: "network", operation: "har", path: "notes.txt" }), /path must end in \.har/u);
+});
+
+test("a snapshot diff reports only what an action changed, with usable refs", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-diff-"));
+  const server = createServer((request, response) => {
+    if ((request.url ?? "").split("?")[0] !== "/diff") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Diff page</title><h1>Diff page</h1>
+      <p id="status">2 items</p>
+      <button id="add">Add item</button>
+      <button id="confirm" hidden>Confirm</button>
+      <script>
+        document.getElementById("add").onclick = () => {
+          document.getElementById("status").textContent = "3 items";
+          document.getElementById("confirm").hidden = false;
+        };
+        document.getElementById("confirm").onclick = () => {
+          document.getElementById("status").textContent = "confirmed";
+        };
+      </script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  // A tab with no snapshot yet has no baseline to compare against.
+  const opened = await call({ action: "open", url: `${origin}/diff` });
+  assert.match(opened.text, /Diff page/u);
+  const first = await call({ action: "snapshot", diff: true });
+  assert.match(first.text, /No previous snapshot in this tab, so this one is the baseline\./u);
+  assert.match(first.text, /- button "Add item" \[ref=e\d+\]/u);
+
+  const unchanged = await call({ action: "snapshot", diff: true });
+  assert.match(unchanged.text, /Nothing changed in the page since the previous snapshot\./u);
+  assert.match(unchanged.text, /\(No lines changed\.\)/u);
+
+  // An action changes one line and reveals a button; only those are reported.
+  const addRef = /button "Add item" \[ref=(e\d+)\]/u.exec(opened.text)?.[1];
+  assert.ok(addRef);
+  await call({ action: "act", ref: addRef, kind: "click" });
+  const changed = await call({ action: "snapshot", diff: true });
+  assert.match(changed.text, /Page changed since the previous snapshot: 3 lines added, 2 removed\./u);
+  assert.match(changed.text, /- - paragraph: 2 items/u);
+  assert.match(changed.text, /\+ - paragraph: 3 items/u);
+  assert.doesNotMatch(changed.text, /\+ - heading "Diff page"/u);
+  const confirmRef = /\+ - button "Confirm" \[ref=(e\d+)\]/u.exec(changed.text)?.[1];
+  assert.ok(confirmRef, changed.text);
+
+  // The ref a diff line carries acts, so the loop can continue from a diff.
+  await call({ action: "act", ref: confirmRef, kind: "click" });
+  const confirmed = await call({ action: "snapshot", diff: true });
+  assert.match(confirmed.text, /\+ - paragraph: confirmed/u);
+  assert.match(confirmed.text, /- - paragraph: 3 items/u);
+
+  // Filtered snapshots are not comparable with a whole one.
+  await assert.rejects(
+    call({ action: "snapshot", diff: true, query: "button" }),
+    /snapshot diff compares whole snapshots; drop query, selector, interactive and depth\./u,
+  );
+
+  // A new document makes the previous lines a poor comparison; say so.
+  await call({ action: "reload" });
+  const navigated = await call({ action: "snapshot", diff: true });
+  assert.match(navigated.text, /The page navigated since the previous snapshot, so this one is the new baseline\./u);
+  assert.match(navigated.text, /- heading "Diff page" \[level=1\]/u);
+});
+
+test("act upload puts local files into a page's file input, visible or hidden", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-upload-"));
+  const server = createServer((request, response) => {
+    if ((request.url ?? "").split("?")[0] !== "/upload") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Upload page</title><h1>Upload page</h1>
+      <input id="one" type="file" aria-label="One file">
+      <input id="many" type="file" multiple aria-label="Many files">
+      <input id="hidden" type="file" hidden>
+      <p id="picked">nothing picked</p>
+      <script>
+        const picked = document.getElementById("picked");
+        for (const id of ["one", "many", "hidden"]) {
+          document.getElementById(id).addEventListener("change", (event) => {
+            picked.textContent = id + ": " + [...event.target.files].map((file) => file.name).join(", ");
+          });
+        }
+      </script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  await writeFile(join(dir, "notes.txt"), "first note\n");
+  await writeFile(join(dir, "second.md"), "# second\n");
+  await mkdir(join(dir, "folder"), { recursive: true });
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  const opened = await call({ action: "open", url: `http://127.0.0.1:${address.port}/upload` });
+  const ref = (name: string) => new RegExp(`button "${name}" \\[ref=(e\\d+)\\]`, "u").exec(opened.text)?.[1];
+  const one = ref("One file");
+  const many = ref("Many files");
+  assert.ok(one && many, opened.text);
+
+  // One file into a single-file input: the page's own change handler runs.
+  const single = await call({ action: "act", kind: "upload", ref: one, files: ["notes.txt"] });
+  assert.match(single.text, /Uploaded notes\.txt to e\d+ \(button "One file"\) \(1 file\)\./u);
+  assert.match((await call({ action: "get", what: "text", selector: "#picked" })).text, /one: notes\.txt/u);
+
+  // Several files need a multiple input.
+  await assert.rejects(
+    call({ action: "act", kind: "upload", ref: one, files: ["notes.txt", "second.md"] }),
+    /button "One file"\) accepts one file, but 2 were given\./u,
+  );
+  const multiple = await call({ action: "act", kind: "upload", ref: many, files: ["notes.txt", "second.md"] });
+  assert.match(multiple.text, /Uploaded notes\.txt, second\.md to e\d+ \(button "Many files"\) \(2 files\)\./u);
+  assert.match((await call({ action: "get", what: "text", selector: "#picked" })).text, /many: notes\.txt, second\.md/u);
+
+  // A hidden input is reachable by selector, which is how pages style their pickers.
+  const hidden = await call({ action: "act", kind: "upload", selector: "#hidden", files: [join(dir, "second.md")] });
+  assert.match(hidden.text, /Uploaded second\.md to #hidden \(1 file\)\./u);
+  assert.match((await call({ action: "get", what: "text", selector: "#picked" })).text, /hidden: second\.md/u);
+
+  // Refusals name the reason instead of letting the browser fail obscurely.
+  await assert.rejects(call({ action: "act", kind: "upload", ref: many, files: ["missing.txt"] }), /.*missing\.txt is not a file that can be uploaded\./u);
+  await assert.rejects(call({ action: "act", kind: "upload", ref: many, files: ["folder"] }), /.*folder is not a file that can be uploaded\./u);
+  await assert.rejects(call({ action: "act", kind: "upload", ref: many, files: [] }), /files must list 1 to 10 file paths\./u);
+  await assert.rejects(call({ action: "act", kind: "upload", files: ["notes.txt"] }), /upload needs ref to the file input, or selector when the page hides it\./u);
+  await assert.rejects(
+    call({ action: "act", kind: "upload", selector: "#picked", files: ["notes.txt"] }),
+    /#picked is not a file input\./u,
+  );
+});
+
+test("performance reports the renderer's counters and the document's own timings", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-performance-"));
+  const server = createServer((request, response) => {
+    const path = (request.url ?? "").split("?")[0];
+    if (path === "/slow.js") {
+      response.writeHead(200, { "content-type": "text/javascript" });
+      return response.end("window.slowLoaded = true;");
+    }
+    if (path !== "/perf") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Performance page</title><h1>Performance page</h1>
+      <div id="rows"></div>
+      <script>
+        const rows = document.getElementById("rows");
+        for (let index = 0; index < 300; index += 1) {
+          const row = document.createElement("div");
+          row.textContent = "row " + index;
+          rows.append(row);
+        }
+        const script = document.createElement("script");
+        script.src = "/slow.js";
+        document.head.append(script);
+      </script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await call({ action: "open", url: `http://127.0.0.1:${address.port}/perf` });
+
+  const metrics = await call({ action: "performance", operation: "metrics" });
+  assert.match(metrics.text, /nodes (\d+)/u);
+  const nodes = Number(/nodes (\d+)/u.exec(metrics.text)?.[1]);
+  assert.ok(nodes >= 300, metrics.text);
+  assert.match(metrics.text, /heap [\d.]+ (B|KB|MB)/u);
+  assert.match(metrics.text, /layouts \d+ \(/u);
+  assert.match(metrics.text, /script \d+( ms|\.\d s)? of /u);
+  assert.match(metrics.text, /Counters accumulate from this tab's first performance call\./u);
+
+  const timings = await call({ action: "performance", operation: "timings" });
+  assert.match(timings.text, /Load: first byte \d+ ms, DOMContentLoaded \d+ ms, load \d+ ms · document \d+ (B|KB|MB)/u);
+  // Headless Chrome reports no paint entries until it composites; both answers are valid.
+  assert.match(timings.text, /Paints: (first-paint \d+(\.\d)? (ms|s)|none reported yet\.)/u);
+  assert.match(timings.text, /Resources: \d+ requests?, [\d.]+ (B|KB|MB) transferred\./u);
+
+  await assert.rejects(call({ action: "performance", operation: "vitals" }), /performance needs operation: metrics or timings\./u);
+  // The counters survive a second call and only grow.
+  const again = await call({ action: "performance" });
+  assert.match(again.text, /nodes (\d+)/u);
+  assert.ok(Number(/nodes (\d+)/u.exec(again.text)?.[1]) >= nodes);
+});
+
+test("storage lists cookie and storage names, flags and sizes but never values", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-storage-"));
+  const server = createServer((request, response) => {
+    if ((request.url ?? "").split("?")[0] !== "/store") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Storage page</title><h1>Storage page</h1>
+      <script>
+        document.cookie = "sid=cookie-secret-value; path=/";
+        document.cookie = "theme=light; path=/";
+        localStorage.setItem("draft", "draft-secret-value");
+        localStorage.setItem("seen", "1");
+        sessionStorage.setItem("tab-token", "tab-secret-value");
+      </script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  await call({ action: "open", url: `http://127.0.0.1:${address.port}/store` });
+
+  const cookies = await call({ action: "storage", what: "cookies" });
+  assert.match(cookies.text, /2 cookies for 127\.0\.0\.1:\d+, values hidden:/u);
+  assert.match(cookies.text, /^ {2}sid · session · \d+ B$/mu);
+  assert.match(cookies.text, /^ {2}theme · session · \d+ B$/mu);
+  assert.match(cookies.text, /Values are never read:/u);
+  assert.doesNotMatch(cookies.text, /cookie-secret-value|light/u);
+
+  const local = await call({ action: "storage", what: "local" });
+  assert.match(local.text, /2 localStorage keys on http:\/\/127\.0\.0\.1:\d+ \(\d+ B\), values hidden:/u);
+  assert.match(local.text, /^ {2}draft · \d+ B$/mu);
+  assert.match(local.text, /^ {2}seen · \d+ B$/mu);
+  assert.doesNotMatch(local.text, /draft-secret-value/u);
+
+  const session = await call({ action: "storage", what: "session" });
+  assert.match(session.text, /1 sessionStorage key on http:\/\/127\.0\.0\.1:\d+ \(\d+ B\), values hidden:/u);
+  assert.match(session.text, /^ {2}tab-token · \d+ B$/mu);
+  assert.doesNotMatch(session.text, /tab-secret-value/u);
+
+  // Filters narrow by name; an empty result is explained, not mistaken for an error.
+  assert.match((await call({ action: "storage", what: "cookies", filter: "THE" })).text, /^ {2}theme/mu);
+  assert.doesNotMatch((await call({ action: "storage", what: "cookies", filter: "THE" })).text, /sid/u);
+  assert.match((await call({ action: "storage", what: "local", filter: "draft" })).text, /Filtered to "draft" from 2\./u);
+  assert.match((await call({ action: "storage", what: "local", filter: "nothing" })).text, /localStorage is empty on/u);
+  await assert.rejects(call({ action: "storage", what: "indexed" }), /storage needs what: cookies, local or session\./u);
+});
+
+test("an annotated screenshot numbers the latest snapshot's refs and leaves the page unchanged", {
+  skip: !detected.executable,
+  timeout: 90_000,
+}, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-browser-annotate-"));
+  const server = createServer((request, response) => {
+    if ((request.url ?? "").split("?")[0] !== "/annotate") {
+      response.writeHead(404, { "content-type": "text/plain" });
+      return response.end("missing");
+    }
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`<!doctype html><title>Annotate page</title><h1>Annotate page</h1>
+      <p id="note">unchanged</p>
+      <button id="one">First action</button>
+      <button id="two">Second action</button>
+      <a href="#later">A link</a>
+      <script>document.getElementById("one").addEventListener("click", () => { document.getElementById("note").textContent = "clicked"; });</script>`);
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
+  const browser = new ManagedBrowser({ profileDir: join(dir, "profile"), readSettings: async () => settings });
+  t.onTestFinished(async () => {
+    await browser.stop();
+    server.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+  const call = (params: Record<string, unknown>) => browser.tool("alpha", params, { cwd: dir });
+
+  // `open` already returns a snapshot, so its refs are what the numbers mark.
+  const opened = await call({ action: "open", url: `http://127.0.0.1:${address.port}/annotate` });
+
+  const plain = await call({ action: "screenshot" });
+  const annotated = await call({ action: "screenshot", annotate: true, path: "shots/annotated.png" });
+  assert.match(annotated.text, /Annotated with (\d+) numbers?: a number marks the ref with the same digits \(3 is e3\)\./u);
+  const labelled = Number(/Annotated with (\d+) numbers?/u.exec(annotated.text)?.[1]);
+  assert.equal(labelled, 3, "the two buttons and the link carry refs");
+  assert.equal(annotated.details["annotated"], 3);
+  assert.match(annotated.text, /Saved to .*shots\/annotated\.png/u);
+  assert.equal((await readFile(join(dir, "shots", "annotated.png"))).subarray(1, 4).toString(), "PNG");
+  // The picture really carries something the plain one did not.
+  assert.notEqual(annotated.image?.data, plain.image?.data);
+
+  // The overlay was removed: the page is exactly as it was, and its refs still act.
+  assert.match((await call({ action: "get", what: "count", selector: "[data-hui-annotations]" })).text, /0 elements match/u);
+  assert.match((await call({ action: "get", what: "text", selector: "#note" })).text, /unchanged/u);
+  const first = /button "First action" \[ref=(e\d+)\]/u.exec(opened.text)?.[1];
+  assert.ok(first);
+  await call({ action: "act", kind: "click", ref: first });
+  assert.match((await call({ action: "get", what: "text", selector: "#note" })).text, /clicked/u);
+
+  await assert.rejects(
+    call({ action: "screenshot", annotate: true, ref: first }),
+    /annotate labels the viewport or a full page; capture one element without it\./u,
+  );
 });

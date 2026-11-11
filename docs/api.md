@@ -16,7 +16,7 @@ it remembers one gateway address and loads that gateway's own web UI at its
 origin, as the Electron renderer uses the desktop gateway's origin ("Desktop
 shell boundary" below), so every route, event and payload here is what a phone
 sends and receives, and no route is phone-specific. The iOS shell keeps to the
-same contract when it lands (WP5 of `docs/mobile-app-plan.md`).
+same contract when it lands (WP5, `mobile/AGENTS.md`).
 
 - **Requests** are the same `/__hui/` routes with `x-hui: 1`. The app's page comes
   from the gateway it calls, so its requests are same-origin and never
@@ -827,7 +827,7 @@ The settings document also holds `questions: { timeoutMinutes }`, the question t
 [Structured questions](#structured-questions), `0` (Off) unless 5, 10, 15, 30
 or 60 is saved.
 
-It also includes `calls: { voice }` (Settings → Models → Calls, HUI-18): the GPT-Live
+It also includes `calls: { voice }` (Settings → Models → Calls): the GPT-Live
 voice of a bot without one of its own ([GPT-Live calls](#gpt-live-calls)).
 Anything else normalizes to the default, `{ "voice": "cove" }`. A file saved while
 HUI also had VoiceStudio may hold `calls.engine` and `voice.sendNotesImmediately`:
@@ -1277,7 +1277,8 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `create_session` | `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker; the caller's directory, group, worker, model and thinking are defaults. The brief is the session's first prompt; it is not a child, so `sessions_list` and `sessions_history` do not show it |
+| `create_session` | Only a Chief of Staff bot may call this; a normal agent is refused and uses `sessions_spawn`. `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker (its id, its name, or `local` for this machine); the caller's directory, group, worker, model and thinking are defaults. The brief is the session's first prompt, tagged from the calling bot like every message a bot sends into a chat; it is not a child, so `sessions_list` and `sessions_history` do not show it |
+| `watch_session` | `{ action: "list" | "add" | "remove", session? }`: list the sessions the caller watches with their status, goal and watchers; add a session in the caller's group; or remove it. A watched session becomes visible to the caller's `sessions_list`, `sessions_history` and `sessions_send`; HUI's gateway heartbeat continues it when it stops. An archived session, a bot's chat and a session in another group cannot be watched |
 | `worker_stats` | `{}`: this machine and every configured worker with CPU, memory, disk, GPU, connection state and running session counts, plus the least loaded connected machine within headroom (CPU under 70%, memory under 80%, disk under 85%, fewer running sessions than half its cores). A disconnected or erroring worker has no metrics and is not recommended; when every machine is over a limit the reply carries `leastLoaded` instead; `local` is the gateway's machine |
 | `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/route or model/thinking, a bounded run timeout and `collect`; a `route` resolves to its model and pinned reasoning level from HUI settings before the child exists, and a route that is unknown, sent together with `model`, or whose model is missing from the caller's available models is rejected before any child is created, naming the route to fix or the configured route names; a raw `model` missing from that catalog names close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
 | `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished, at the timeout (default 600, 1-3600 s), or as soon as a message is steered to the caller (once per change of its steering queue in a tool round), with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId], interrupted?: string }`; `interrupted` says a steered message ended the wait while tasks were pending. An abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
@@ -1310,8 +1311,13 @@ then prompts an idle parent or attempts steering on a running/waiting parent.
 If steering fails or is unsupported, HUI queues the result as a follow-up;
 if the parent settled during that attempt, HUI prompts it directly instead.
 Successful steering does not also enqueue a follow-up or abort the parent.
-Active tasks left by a gateway restart become `interrupted`; HUI never reconstructs a false
-live process from persisted metadata. Once a terminal result has been delivered,
+A gateway restart leaves an active task running when its runtime continues the run
+itself: a Pi Durable child keeps its status, HUI waits for the resumed run to end
+and reports its answer as any other, without the run timeout its spawn passed. Any
+other active task becomes `interrupted`, a PI SDK worker's included, because its
+process is gone with the gateway; HUI never reconstructs a false live process from
+persisted metadata. A queued collected
+child starts again in spawn order. Once a terminal result has been delivered,
 HUI closes the child's runtime process without deleting its registry row or PI
 transcript. Cleanup waits for an active browser reader to leave; later navigation
 reopens the same durable session normally.
@@ -1736,7 +1742,7 @@ other runtime requests to them return 409 with a message saying why.
 
 ## Bots
 
-A bot (HUI-18) is a named, persistent agent with one forever chat. The chat is
+A bot is a named, persistent agent with one forever chat. The chat is
 an ordinary local Durable session (`tool: "durable"`, `group: ""`, title = the
 bot's name) registered through `createSession`, New Session's path; its record
 carries `bot`. The bot routes below never duplicate the session API: the chat's
@@ -1789,7 +1795,7 @@ type BotMemoryStatus = {
   viewBytes: number; viewLines: number; // the current view
   waiting?: boolean;           // a turn waits for the compactor ("Summarizing memory…")
   failing?: { node: string; error: string; since: string }; // a node OptChat keeps retrying
-  usage: BotMemoryUsage;       // the compactor's spend since the gateway (on a worker, its host) opened this memory; not persisted
+  usage: BotMemoryUsage;       // the compactor's spend in this memory, in total across restarts
 };
 
 type BotMemoryUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number }; // tokens; cost in USD as providers report it
@@ -2032,6 +2038,10 @@ Query `id=&n=`.
 
 200 `{ text }`. OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400)
 
+### `POST /__hui/heartbeat`
+
+200 `{ continued: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and continues each idle watched session with no running watcher, at most once per idle span. If the watched session's last reply asks for a decision, or it is waiting for an answer or errored, the heartbeat tells the session that watches it instead of prompting the target. It starts no bot turn and writes nothing into a bot's chat. The same scan runs at gateway start and every 15 minutes; this route lets the operator check without waiting. There is no request body.
+
 ### `POST /__hui/staff/chiefs`
 
 201 `BotResponse`. `{ group, cwd }`, nothing else: the custom session group's label (1-200 characters) and its project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its home, its `group` set, and its chat in `cwd`; the pack's routes are added to Settings when missing. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, cwd or an unknown field
@@ -2267,7 +2277,7 @@ everything on by default: a bot restricted by hand gains newly installed tools.
 - **A bot's own tools** are always on and never offered: `write_soul`,
   `set_profile`, `request_access` (offered while anything is off) and
   `load_skill` (offered while it has a skill and neither `read` nor `bash`), plus
-  OptChat's `zoom` and `date`. Turning one off is a 400.
+  OptChat's `zoom`, `date` and `search_chat`. Turning one off is a 400.
 - **Skills.** The prompt lists only the skills that are on: PI's own `skills`
   section while the chat has `read` or `bash`, otherwise one of HUI's that loads
   them with `load_skill`. `/skill:name` commands expand and list only those
@@ -3975,7 +3985,8 @@ Accepts `{ "question": "which file are we editing?" }` and returns
 `{ "question", "answer", "model" }`. HUI sends at most 12,000 characters of
 visible session context through a separate in-memory utility-model call with
 tools and thinking disabled. Nothing is written to PI's transcript. The browser
-renders the result in an ephemeral side rail; `/side` is an alias for `/btw`.
+renders the result in the conversation's Side chat Work view; `/side` is an alias
+for `/btw`.
 
 ### `GET /__hui/directories?q=<prefix>[&worker=<id>]`
 
@@ -4704,12 +4715,17 @@ comes from the per-conversation token. `action` is one of:
 | `open` | Launch lazily, open a tab, load `url` and return a snapshot |
 | `navigate`, `back`, `forward`, `reload` | Change the current (or `tabId`) tab's document and return a snapshot; with an origin allowlist set, a page outside it is refused with 403 |
 | `focus`, `close` | Select or close one of this conversation's tabs |
-| `snapshot` | Accessibility outline; `interactive`, `query` and `maxChars` (500–40 000, default 12 000; 8 000 for page loads) narrow it |
-| `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`) |
+| `snapshot` | Accessibility outline; `interactive`, `query`, `maxChars` (500–40 000, default 12 000; 8 000 for page loads), `selector` to start at one element and `depth` (1–40) to stop after some levels; one level of child frames is inlined under its Iframe node; `diff: true` returns only what changed since the tab's previous whole snapshot |
+| `act` | `kind`: `click` (`double`), `type` (`text`, `append`, `submit`), `press` (`key`, optional `ref`), `hover`, `select` (`values`), `upload` (`files`, or `selector` for a hidden input), `scroll` (`ref` or `deltaY`), `wait` (`text`, `textGone`, `selector`, `url`, `state` with a selector) |
 | `text` | Visible text of `selector`, else the first article, main or body (default 12 000, at most 40 000 characters) |
-| `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory) |
+| `screenshot` | PNG image content for the model, the viewport, `fullPage` (at most 4096×8192) or one `ref`; `path` also saves the PNG (relative to the session directory); `annotate` numbers each ref of the latest snapshot over the viewport or full page |
 | `console` | The latest 50 of up to 200 recorded console, exception, log and dialog entries; `errorsOnly`, `clear` |
 | `resize` | Viewport `width`/`height` (200–4096) or, without both, the default |
+| `get` | One property of one element (`ref` or `selector`): `text`, `html`, `value`, `attr` with `attribute`, `box`, or page-level `title`, `url` and `count` with `selector`; a password field's value is refused with 409 |
+| `is` | One state of one element (`ref` or `selector`): `visible`, `hidden`, `enabled`, `disabled`, `checked`, `focused`, `editable`, `attached` |
+| `storage` | What the page keeps, by name: `what` `cookies` for the tab's URL (flags, SameSite, expiry, size, path) or `local`/`session` for storage keys and value sizes; `filter` by name; values are never read |
+| `performance` | What the page costs: `operation` `metrics` (renderer counters: heap, nodes, documents, frames, listeners, layouts, style recalcs, script and task time) or `timings` (navigation entry, paints, subresource count and weight, slowest resources) |
+| `network` | Capture the tab's requests: `operation` `start`/`stop`/`clear`, `requests` with `filter`, `type`, `method` and `status` (`2xx`, `400-499` or an exact code), `request` with `id` such as `n3`, and `har` with `path` (must end in `.har`) |
 | `handoff` | Give the current (or `tabId`) tab to the operator and wait: `message` (at most 500 characters) and `timeoutMs` (5000–1 800 000, default 600 000) |
 | `secret` | Type the operator's stored secret `name` into `ref` on the secret's own origin, optionally `submit`; the value never appears in the result |
 | `steps` | 1–20 `act` steps in order on one tab (`kind`, `ref`, and the same fields `act` takes), each with its own `timeoutMs` or the call's; the result lists each step and a failure names the step and what already ran |
@@ -4717,7 +4733,63 @@ comes from the per-conversation token. `action` is one of:
 Tab handles are `t1`, `t2`…; element refs are `e1`, `e2`… from the latest
 snapshot of that tab. A ref stays bound to its DOM node within one document; a
 new document retires every ref and numbering never restarts, so a stale ref
-fails instead of addressing another element. Clicks check that the element is
+fails instead of addressing another element. A ref whose node was replaced
+keeps its number when exactly one laid-out element still has its role and name;
+with none or several it fails and asks for a new snapshot. A ref from an
+inlined frame carries the frame it belongs to: its origin is that frame's, its
+coordinates are shifted by the frame's content box, and the overlay check is
+skipped because the frame element, not the node, sits at that page point. A
+frame the browser isolates in another process is not inlined. A click on a
+disabled or hidden target fails with the reason, and one covered by another
+element fails naming the cover.
+
+A network log holds at most 200 requests (the oldest dropped) with method, URL,
+status, type, bytes and timing; bodies are never captured. Credential headers
+(`authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`,
+`x-auth-token`) and query values named like a secret (`token`, `code`, `key`,
+`password`, `secret`, …) are `[redacted]` in `network requests`,
+`network request` and the HAR. The HAR is JSON 1.2 with one page and its
+entries, written wherever `path` names (relative to the session directory).
+`screenshot` with `annotate: true` asks Chrome for each ref's content quad,
+clips them to what the capture covers, and injects a numbered overlay (a div
+with `pointer-events: none` and inline styles, so no page stylesheet or CSP
+applies) before capturing. The overlay carries a per-call marker and is removed
+in a `finally`, so a failed capture cannot leave it behind; the call reports how
+many numbers it drew. At most 40 refs are labelled, and `annotate` cannot be
+combined with a single-element `ref`.
+`storage` enables the Network domain once per tab and reads `Network.getCookies`
+for the URL, or evaluates one fixed expression that lists `localStorage` or
+`sessionStorage` keys and the length of each value. Cookie `size` is Chrome's,
+so it counts name and value; expiry prints as `session`, `in 3 days` or
+`expired 2 h ago`. No value ever leaves the page: this is the debugging view for
+a lost session or a 401 that must not put a token in the transcript.
+`performance` reads CDP `Performance.getMetrics` after enabling the domain once
+per tab, so the counters accumulate from that first call rather than resetting
+per read; durations arrive in seconds and are printed in ms, s or min. The
+`timings` operation evaluates one fixed expression on the page (navigation,
+paint and resource entries) and prints the document's marks, its paints when
+the browser reports them, and the slowest resources over 500 ms.
+`act` `kind: "upload"` takes `files` (1–10 paths, relative to the session
+directory or absolute, at most 25 MB each) and `ref` to the file input or its
+label, or `selector` for an input the page hides; it sets the input's files
+with CDP `DOM.setFileInputFiles`, which fires the page's `input` and `change`
+events, then reports the names the input kept. A directory, a missing path, a
+non-input target, a disabled input and more files than a single-file input
+accepts are refused before the page is touched.
+
+`snapshot` with `diff: true` compares the tab's current whole snapshot with the
+last whole snapshot it took in the same document: changed lines are prefixed
+`+`/`-` with two context lines, unchanged lines keep their refs, and the result
+starts with a count. Without a baseline, after a navigation, or when more than
+600 lines changed in the middle, it says so and returns the whole snapshot; 400
+diff lines are printed at most. A diff cannot be combined with `query`,
+`selector`, `interactive` or `depth`, because then the two sides would differ in
+what they cover.
+Every result that carries page-sourced text (a snapshot, `text`, console
+entries, `get text|html`) wraps it in
+`--- HUI_PAGE_CONTENT nonce=<16 hex> origin=<origin> ---` …
+`--- END_HUI_PAGE_CONTENT nonce=<same> ---`, with a nonce minted per result; the
+result's `details.boundary` repeats `nonce` and `origin`. Clicks check that the element is
 not covered by an overlay, and an action that starts a same-tab navigation waits
 for the new document (`timeoutMs`, 1000–60 000, default 30 000). Alerts and
 `beforeunload` dialogs are accepted and confirm/prompt dialogs dismissed unless
@@ -5908,7 +5980,7 @@ last line pup printed (ANSI removed, ≤ 300 characters). HUI stops a sign-in af
 
 ### GPT-Live calls
 
-A call with a bot (HUI-18) is a full-duplex WebRTC session between the browser and GPT-Live
+A call with a bot is a full-duplex WebRTC session between the browser and GPT-Live
 (`gpt-live-1-codex`), over the ChatGPT login HUI keeps for the `openai-codex`
 provider. Calls are with bots only. This is the route ChatGPT's own voice mode uses, not a public API: it may
 change. The gateway sets each call up and keeps the credential; the browser

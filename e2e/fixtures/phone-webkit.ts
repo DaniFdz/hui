@@ -1,5 +1,5 @@
 /**
- * The `webkit-phone` target's phone half (docs/mobile-app-plan.md, WP6): Playwright's WebKit inside an iPhone's skin,
+ * The `webkit-phone` target's phone half (mobile/AGENTS.md, WP6): Playwright's WebKit inside an iPhone's skin,
  * on Linux, so every pull request proves the page's rendering and layout at a phone's size without a device. The page
  * is HUI's own web UI, so the fixture's web steps drive it unchanged; this module owns what makes the target a phone
  * and the one reading that lets the fixture tell it apart from `web`.

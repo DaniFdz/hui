@@ -1,5 +1,5 @@
 /**
- * The web UI's only seam to the phone shell (`mobile/AGENTS.md`, WP3 of `docs/mobile-app-plan.md`).
+ * The web UI's only seam to the phone shell (`mobile/AGENTS.md`, WP3 of `mobile/AGENTS.md`).
  *
  * The app in `mobile/` is a Capacitor shell that loads the connected gateway's own web UI, so a plugin call from this
  * page reaches the phone directly. Capacitor injects the bridge as `window.Capacitor` at document start; `src/` never

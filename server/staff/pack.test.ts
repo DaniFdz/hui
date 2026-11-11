@@ -12,7 +12,7 @@ import { packFilePaths, readStaffPack, STAFF_PACK_ROOT, hashText } from "./pack.
 
 test("the shipped pack validates and holds the chief, its routes and its skills", async () => {
   const pack = await readStaffPack();
-  assert.equal(pack.version, 6);
+  assert.equal(pack.version, 10);
   assert.equal(pack.bot.name, "Chief of Staff");
   assert.match(pack.soul, /chief of staff/u);
   assert.deepEqual(pack.routes.map((route) => route.name), ["planner", "explorer", "worker", "reviewer", "verifier"]);
@@ -21,11 +21,12 @@ test("the shipped pack validates and holds the chief, its routes and its skills"
     assert.ok(route.description.length > 20, `${route.name} describes when to use it`);
   }
   const names = pack.skills.map((skill) => skill.name);
-  for (const expected of ["chief-mode", "lead", "learn", "lessons", "machines", "delegate", "plan", "review", "verify", "ship"]) {
+  for (const expected of ["chief-mode", "lead", "learn", "lessons", "machines", "status", "delegate", "plan", "review", "verify", "ship"]) {
     assert.ok(names.includes(expected), `the pack ships ${expected}`);
   }
   const skill = pack.skills.find((entry) => entry.name === "chief-mode")!;
   assert.ok(skill.files.some((file) => file.path.startsWith("playbooks/")), "chief-mode carries its playbooks");
+  assert.match(pack.skills.find((entry) => entry.name === "status")?.text ?? "", /\| Session \| Pull request \| Status \/ blockers \|/u);
   const paths = packFilePaths(pack.skills).map((file) => file.path);
   assert.equal(new Set(paths).size, paths.length, "no two files share a path");
   assert.ok(paths.every((path) => path.startsWith("skills/")));
