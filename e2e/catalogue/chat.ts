@@ -879,7 +879,7 @@ const cases: UseCase[] = [
       "route:GET /__hui/sessions/:id/attachments/:message/files/:file",
     ],
     journeys: ["chat-composer"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
