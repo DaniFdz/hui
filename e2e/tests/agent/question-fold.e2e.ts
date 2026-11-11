@@ -55,7 +55,6 @@ test("the question card folds to one row to show the conversation, and opens aga
   await expect(fold).toHaveAttribute("aria-expanded", "true");
   // The open card covers a good part of the conversation, which is why it folds.
   expect((await box(card)).height).toBeGreaterThan(300);
-  const openTranscript = (await box(transcript)).height;
   await option("API-key tool").tap();
   await expect(option("API-key tool")).toBeChecked();
 
@@ -66,8 +65,13 @@ test("the question card folds to one row to show the conversation, and opens aga
   await expect(card.getByText("1 answered")).toBeVisible();
   await expect(card.getByText("1/3")).toBeVisible();
   await expect.poll(async () => (await box(card)).height).toBeLessThanOrEqual(60);
-  // The conversation takes back the room the card was covering.
-  await expect.poll(async () => (await box(transcript)).height).toBeGreaterThanOrEqual(openTranscript + 200);
+  // The conversation takes back the room the card was covering: the prompt the
+  // card hid now sits fully inside the transcript.
+  const prompt = transcript.getByText(/^E2E_CALL:/u).first();
+  await expect.poll(async () => {
+    const [thread, bubble] = [await box(transcript), await box(prompt)];
+    return bubble.y >= thread.y && bubble.y + bubble.height <= thread.y + thread.height;
+  }).toBe(true);
 
   // It stays folded while the operator writes in the composer.
   await message.fill("a draft waiting for the answer");
