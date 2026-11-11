@@ -47,6 +47,8 @@ jobs:
   # packages edit the same lines. WP6's `webkit-phone` is its own workflow (mobile-webkit-phone.yml): it triggers on the
   # page's paths, which must not wake the Android build here.
   android-build:
+    # An IPA-only dispatch rebuilds the shell for a phone and spends no Linux minutes on it.
+    if: inputs.ios_ipa != 'true'
     runs-on: ubuntu-latest
     # The SDK download, the Gradle distribution and the debug build; a hang fails here, not at GitHub's six hours.
     timeout-minutes: 30
@@ -88,6 +90,7 @@ jobs:
   # emulators on one runner contend (boot +49%), so one emulator per shard. Wait on `sys.boot_completed` AND
   # `pm path android`, never on `init.svc.bootanim`: `-no-boot-anim` never sets it.
   android-e2e:
+    if: inputs.ios_ipa != 'true'
     runs-on: ubuntu-latest
     # A shard's boot, its share of the suite (~100 tests at ~12 s each, each relaunching the app) and the gateway build.
     timeout-minutes: 45

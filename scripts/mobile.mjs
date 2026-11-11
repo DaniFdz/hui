@@ -7,7 +7,7 @@
  * mobile/AGENTS.md; two workers can run at once with HUI_ANDROID_AVD, ANDROID_SERIAL and E2E_PHONE_PORT.
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -158,8 +158,53 @@ const commands = {
     writeFileSync(path, png);
     console.log(path);
   },
+  /**
+   * The iPhone loop's slow half, in one command: dispatch the Mobile workflow asking only for the unsigned IPA, wait for
+   * that run, and put the file where SideStore can import it. Nothing here builds — an iOS archive needs Xcode — so the
+   * waiting is the point: `gh workflow run` plus a poll beats remembering the run id, the artifact name and the folder,
+   * and the dispatch spends no Linux minutes because the Android jobs are gated on this input.
+   */
+  async "ios-ipa"() {
+    const flag = (name, fallback) => {
+      const at = args.indexOf(`--${name}`);
+      return at >= 0 && args[at + 1] !== undefined ? args[at + 1] : fallback;
+    };
+    const gh = process.env.GH ?? "gh";
+    const call = (ghArgs) => execFileSync(gh, ghArgs, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
+    const ref = flag("ref", execFileSync("git", ["branch", "--show-current"], { cwd: root, encoding: "utf8" }).trim() || "HEAD");
+    const out = resolve(flag("out", join(homedir(), "Downloads", "hui-ipa")));
+    const started = Date.now();
+    console.log(`Dispatching the IPA build for ${ref}…`);
+    call(["workflow", "run", "mobile.yml", "--ref", ref, "-f", "ios_ipa=true"]);
+    // The run this dispatch created: the newest one for the branch that started after the call returned.
+    let run;
+    for (;;) {
+      const [newest] = JSON.parse(call(["run", "list", "--workflow", "mobile.yml", "--branch", ref, "--limit", "1", "--json", "databaseId,status,conclusion,createdAt,url"]));
+      if (newest && Date.parse(newest.createdAt) >= started - 60_000) { run = newest; break; }
+      await new Promise((r) => setTimeout(r, 5_000));
+      if (Date.now() - started > 120_000) throw new Error("no Mobile run appeared for this dispatch within two minutes");
+    }
+    console.log(`Run ${run.databaseId}: ${run.url}`);
+    let state = run;
+    for (;;) {
+      if (state.status === "completed") break;
+      await new Promise((r) => setTimeout(r, 15_000));
+      const [nextest] = JSON.parse(call(["run", "list", "--workflow", "mobile.yml", "--branch", ref, "--limit", "1", "--json", "databaseId,status,conclusion,createdAt,url"]));
+      if (nextest?.databaseId === run.databaseId) state = nextest;
+    }
+    const minutes = ((Date.now() - started) / 60_000).toFixed(1);
+    if (state.conclusion !== "success") throw new Error(`the IPA build ${state.conclusion} after ${minutes} min: ${run.url}`);
+    mkdirSync(out, { recursive: true });
+    call(["run", "download", String(run.databaseId), "-n", "ios-ipa", "-D", out]);
+    // The artifact names its files after the version it archived, so the folder is read rather than assumed.
+    const files = readdirSync(out).filter((name) => name.endsWith(".ipa") || name.endsWith(".ipa.sha256")).sort();
+    console.log(`${minutes} min. ${out} holds:`);
+    for (const name of files) console.log(`  ${name}`);
+    const sums = files.find((name) => name.endsWith(".sha256"));
+    if (sums) console.log(`  sha256 ${readFileSync(join(out, sums), "utf8").split(/\s+/u)[0]}`);
+  },
   help() {
-    console.log("npm run mobile -- doctor | avd | emulator | stop | connect | build | test | dev [--gateway <url>] [--fresh] [--no-gateway] | screenshot [path]");
+    console.log("npm run mobile -- doctor | avd | emulator | stop | connect | build | test | dev [--gateway <url>] [--fresh] [--no-gateway] | ios-ipa [--ref <branch>] [--out <dir>] | screenshot [path]");
   },
 };
 
