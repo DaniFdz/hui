@@ -897,6 +897,43 @@ test("continue after a failed answer restates the request the run was handling",
   manager.disposeAll();
 });
 
+test("a run that ends on a dropped connection retries itself, and one that ends on a refusal waits for the operator", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started), undefined, undefined, [0]);
+  manager.ensure(recordFor("auto-resume"));
+  await waitForBoot(manager, "auto-resume");
+  const runtime = started[0]!;
+  await manager.prompt("auto-resume", "Use pup");
+  runtime.history = [
+    { kind: "message", role: "user", text: "Use pup" },
+    { kind: "error", message: "fetch failed" },
+  ];
+  runtime.emit({ type: "settled" });
+  await waitFor("the dropped run to retry itself", () => runtime.prompts.length === 2);
+  assert.equal(
+    runtime.prompts[1],
+    "The previous run was interrupted while handling this request:\n\nUse pup\n\nReview the latest transcript and workspace state, finish the unfinished task, and avoid repeating work that is already complete.",
+  );
+  runtime.history = [...runtime.history, { kind: "message", role: "assistant", text: "done" }];
+  runtime.emit({ type: "settled" });
+  manager.disposeAll();
+
+  const refused: FakeSession[] = [];
+  const other = new LiveSessions(factory(refused), undefined, undefined, [0]);
+  other.ensure(recordFor("no-auto-resume"));
+  await waitForBoot(other, "no-auto-resume");
+  const stuck = refused[0]!;
+  await other.prompt("no-auto-resume", "Use pup");
+  stuck.history = [
+    { kind: "message", role: "user", text: "Use pup" },
+    { kind: "error", message: "API key auth failed for provider keyed: exit 1" },
+  ];
+  stuck.emit({ type: "settled" });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.deepEqual(stuck.prompts, ["Use pup"], "a refused request is not retried");
+  other.disposeAll();
+});
+
 test("continue refuses a session with neither a lost run nor a failed answer", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
