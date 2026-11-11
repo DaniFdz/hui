@@ -9,6 +9,8 @@ test("an extension page opens from the sidebar, calls its route through the brid
   await expect(screen.getByTestId("extension-page-info")).toHaveText("Page · Hello page");
 
   await hui.open("/");
+  // The destinations live in the sidebar navigation, which a phone keeps in its drawer.
+  await hui.sessionList();
   await screen.getByTestId("nav-extension-page").filter({ hasText: "Hello page" }).tap();
   const page = screen.getByTestId("extension-page");
   await expect(page).toHaveAttribute("data-extension-page", "hello");
