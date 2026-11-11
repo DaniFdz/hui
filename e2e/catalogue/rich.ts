@@ -309,7 +309,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#github-link-previews"],
     surfaces: ["route:GET /__hui/github/previews"],
     journeys: ["github-embeds"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -359,7 +359,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#datadog-link-previews", "docs/api.md#get-__huidatadogpreviews"],
     surfaces: ["route:GET /__hui/datadog/previews"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -369,7 +369,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#datadog-link-previews", "docs/api.md#get-__huidatadogpreviews"],
     surfaces: ["route:GET /__hui/datadog/previews"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -379,7 +379,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#datadog-link-previews", "docs/api.md#post-__huidatadoglogin"],
     surfaces: ["route:GET /__hui/datadog/previews", "route:POST /__hui/datadog/login", "route:GET /__hui/datadog"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -399,7 +399,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#datadog-orgs", KEYBOARD_ONLY],
     surfaces: ["settings-page:integrations"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
     phone: { excluded: "Escape needs a hardware keyboard; the dialog's Cancel button closes it (SET-026).", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {

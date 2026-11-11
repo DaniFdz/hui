@@ -391,7 +391,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser"],
     surfaces: ["work-view:browser"],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -401,7 +401,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["route:POST /__hui/sessions/:id/browser/connect", "route:WS /__hui/browser-stream"],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
 

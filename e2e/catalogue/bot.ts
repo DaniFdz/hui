@@ -478,7 +478,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#listeners-are-the-only-triggers-2026-10-09", "SPEC.md#listeners-report-what-hui-doesnt-read-itself-2026-10-08", "docs/api.md#triggers", "docs/api.md#post-__huibotsidtriggers"],
     surfaces: ["route:GET /__hui/bots/:id/triggers", "route:POST /__hui/bots/:id/triggers", "tool:triggers"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -488,7 +488,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#listeners-report-what-hui-doesnt-read-itself-2026-10-08", "SPEC.md#chats-show-who-sent-each-message-2026-10-16", "docs/api.md#triggers"],
     surfaces: ["route:POST /__hui/hooks/<token>", "route:GET /__hui/bots/:id/triggers"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -508,7 +508,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#triggers-wake-bots-on-github-session-and-webhook-events-2026-10-07", "docs/api.md#triggers"],
     surfaces: ["route:POST /__hui/hooks/<token>", "route:GET /__hui/bots/:id/triggers"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
@@ -528,7 +528,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#post-__huibotsidtriggerstriggertoken"],
     surfaces: ["route:POST /__hui/bots/:id/triggers/:trigger/token"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
