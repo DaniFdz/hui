@@ -546,6 +546,20 @@ You archive the session then; the chief settles the ledger row and never
 archives it for you. A **lead** is opt-in inside such a session, or when you
 ask for one, not the chief's default.
 
+The session is the **lead** for one PR. HUI adds the PR-lead phase protocol: one phase at a
+time, an `explorer` for investigation, then after your go a `worker` in a worktree, a fresh
+`verifier`, then a `reviewer`; it never creates a second session for a phase. It ends each phase
+with `Waiting for the go...`; read its evidence and send the next phase. Its own model is the
+orchestrator; set the route models in Settings to change each phase's model. A model-less
+route inherits the lead's model.
+
+| Phase | Route | Model to configure |
+| --- | --- | --- |
+| Investigation | `explorer` | A strong reasoning model |
+| Implementation | `worker` | A coding model |
+| Verification | `verifier` | An independent model |
+| Review | `reviewer` | A different model family from the implementer |
+
 A status answer uses the `status` skill: one table row per session
 (`[title](/sessions/<id>?open=app)`, PR link, status and blockers), then one
 question only if it waits on you. HUI's heartbeat changes use the same shape.

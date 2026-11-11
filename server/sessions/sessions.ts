@@ -65,6 +65,8 @@ export type SessionRecord = {
   archived?: boolean;
   unread?: boolean;
   icon?: string;
+  /** A session created by a chief for one pull request: its prompt carries the PR-lead phase protocol. */
+  lead?: true;
   /** Other sessions this session watches: they become visible to its sessions_list, sessions_history and sessions_send, so a heartbeat can read and continue them. Only HUI's session tools write this field. */
   watches?: string[];
   /** Session that spawned this one through HUI's agent tools. Kept optional so
@@ -262,6 +264,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     : [];
   const source = str(raw["source"]);
   const icon = str(raw["icon"]).trim();
+  const lead = raw["lead"] === true;
   const watches = Array.isArray(raw["watches"])
     ? raw["watches"].filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 200).slice(0, 50)
     : [];
@@ -291,6 +294,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(raw["archived"] === true ? { archived: true } : {}),
     ...(raw["unread"] === true ? { unread: true } : {}),
     ...(icon ? { icon } : {}),
+    ...(lead ? { lead: true } : {}),
     ...(watches.length ? { watches } : {}),
     ...(parentId ? { parentId } : {}),
     ...(progress ? { progress } : {}),

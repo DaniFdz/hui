@@ -31,6 +31,7 @@ import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
 import { readStaffPack } from "./staff/pack.ts";
 import { ensureStaff } from "./staff/service.ts";
+import { LEAD_PROMPT } from "./sessions/lead.ts";
 import { botTagPrefix, type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
@@ -513,16 +514,20 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
   } as Record<string, unknown>);
-  // A session the caller starts is one it watches: its heartbeat can read it and continue it.
-  if (params["watch"] !== false) {
-    await updateRegistry((records) => records.map((current) => current.id === callerSessionId
-      ? { ...current, watches: [...new Set([...(current.watches ?? []), record.id])].slice(0, WATCH_LIMIT) }
-      : current));
-  }
+  // The session is the PR lead, and the caller watches it for the heartbeat.
+  await updateRegistry((records) => records.map((current) => {
+    if (current.id === record.id) return { ...current, lead: true as const };
+    if (current.id === callerSessionId && params["watch"] !== false) {
+      return { ...current, watches: [...new Set([...(current.watches ?? []), record.id])].slice(0, WATCH_LIMIT) };
+    }
+    return current;
+  }));
   // The session is registered and starts its runtime; the brief is its first prompt, not its title, and it carries the
   // bot's tag so the new chat shows who asked.
   await waitForSessionReady(record.id, 120_000);
-  await liveSessions.prompt(record.id, `${botTagPrefix(owner.handle)}${prompt}`);
+  // A worker host has no HUI registry, so carry the phase protocol in the prompt there; a local prompt adds it as a section.
+  const initial = worker ? `${prompt}\n\n${LEAD_PROMPT}` : prompt;
+  await liveSessions.prompt(record.id, `${botTagPrefix(owner.handle)}${initial}`);
   return {
     id: record.id,
     title: record.title,

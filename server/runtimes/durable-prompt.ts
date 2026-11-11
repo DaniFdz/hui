@@ -113,6 +113,8 @@ export class DurablePrompt {
   ultraFor: (conversationId: ConversationId) => boolean = () => false;
   /** The active goal of the conversation's session, as its own prompt section. The Durable host answers. */
   goalFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
+  /** The PR-lead section of a session a chief created, if it is one. The Durable host answers. */
+  leadFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
   /** Gateway extensions' static prompt text for every Durable conversation, capped when they load. */
   gatewayPrompt: () => Promise<string | undefined> = async () => undefined;
   readonly extension;
@@ -231,6 +233,8 @@ export class DurablePrompt {
     const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra);
     const goal = conversationId === undefined ? undefined : await this.goalFor(conversationId);
     if (goal) base.sections = { ...base.sections, hui_goal: goal };
+    const lead = conversationId === undefined ? undefined : await this.leadFor(conversationId);
+    if (lead) base.sections = { ...base.sections, hui_lead: lead };
     const gateway = await this.gatewayPrompt();
     if (gateway) base.sections = { ...base.sections, hui_extensions: gateway };
     const sections = buildSystemPromptSections(run?.options ? {
