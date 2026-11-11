@@ -41,6 +41,19 @@ test("an idle watched session is continued once, and again only after it changes
   assert.deepEqual(await heartbeat.scan(), { continued: ["target"] });
 });
 
+test("waiting for input, an error, a starting runtime and a done stage are never continued", async () => {
+  for (const status of ["waiting", "error", "starting", "reconnecting", "disconnected"] as const) {
+    const f = fixture(status);
+    assert.deepEqual(await createHeartbeat(f.deps).scan(), { continued: [] }, status);
+  }
+  const done = fixture();
+  done.deps.records = async () => [
+    session("watcher", undefined, { watches: ["target"] }),
+    session("target", undefined, { stage: "done" }),
+  ];
+  assert.deepEqual(await createHeartbeat(done.deps).scan(), { continued: [] });
+});
+
 test("a running target or a running watcher is left alone", async () => {
   const running = fixture("running");
   assert.deepEqual(await createHeartbeat(running.deps).scan(), { continued: [] });

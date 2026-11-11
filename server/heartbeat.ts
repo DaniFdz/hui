@@ -40,7 +40,7 @@ export function createHeartbeat(deps: HeartbeatDeps) {
         if (seen.has(id)) continue;
         seen.add(id);
         const target = byId.get(id);
-        if (!target || target.archived || target.bot) continue;
+        if (!target || target.archived || target.bot || target.stage === "done") continue;
         const goal: SessionGoalStatus | undefined = target.goal?.status;
         if (goal !== undefined && goal !== "active") continue;
         if (deps.status(id) !== "idle") continue;
