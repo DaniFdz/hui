@@ -30,12 +30,16 @@ test("the GitHub section names each state of the gateway's login: connected, not
   await expect(page.getByText("github.com · gh 9.9.9 · gist, read:org, repo", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Reconnect", exact: true })).toBeVisible();
 
-  /** Reloads the section on a connection the gateway could have answered, the way it answers its own. */
+  /**
+   * Reloads the section on a connection the gateway could have answered, the way it answers its own. Every read the
+   * section makes is answered, not just the first: it reads once on mount and again when the operator asks or a poll
+   * falls due, and a slower machine (CI) makes a second read likely where a fast one answers only the first.
+   */
+  let answering: { stop(): Promise<void> } | undefined;
   const reading = async (connection: GitHubConnection) => {
-    const read = await hui.intercept("GET", /\/__hui\/github$/u);
+    await answering?.stop();
+    answering = await hui.answerAll("GET", /\/__hui\/github$/u, JSON.stringify(connection));
     await hui.reload();
-    await read.arrived();
-    await read.answer(JSON.stringify(connection));
     await expect(page.getByRole("heading", { name: "GitHub", exact: true })).toBeVisible();
   };
   const gh = { installed: true, version: "9.9.9" } as const;
@@ -72,4 +76,5 @@ test("the GitHub section names each state of the gateway's login: connected, not
   await expect(page.getByRole("link", { name: /^Install gh/u })).toBeVisible();
   await expect(page.getByRole("button", { name: "Check again", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Connect GitHub", exact: true })).toHaveCount(0);
+  await answering?.stop();
 });

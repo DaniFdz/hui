@@ -19,9 +19,13 @@ test("Escape in the Work pane returns focus to the chat composer and leaves the 
   await pane.getByRole("button", { name: /^New terminal/u }).tap();
   const terminal = pane.getByRole("tab", "Terminal 1");
   await expect(terminal).toBeVisible();
-  // Adding the view disables the launcher that had focus, so give the pane's tab the keyboard again.
-  await terminal.tap();
-  await expect(terminal).toBeFocused();
+  // Adding the view disables the launcher that had focus, so give the pane's tab the keyboard again. The strip redraws
+  // while the terminal reports itself, so a press can land on a node the next redraw replaces; focus the tab that is on
+  // screen now, and keep asking until a redraw has settled on one that holds it.
+  await expect.poll(async () => {
+    await terminal.focus();
+    return expect(terminal).toBeFocused({ timeout: 1_000 }).then(() => true, () => false);
+  }).toBe(true);
 
   await hui.keyboard.down("Escape");
   await hui.keyboard.up("Escape");
