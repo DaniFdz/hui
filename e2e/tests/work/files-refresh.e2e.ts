@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-import { openWork, showFiles } from "./work-views.ts";
+import { backToChat, openWork, reopenWork, showFiles } from "./work-views.ts";
 
 /** A tool call the fixture provider runs for real, the way the model would ask HUI to. */
 const calls = (list: { name: string; input: Record<string, unknown> }[]) => `E2E_CALL:${Buffer.from(JSON.stringify(list)).toString("base64url")}`;
@@ -33,7 +33,11 @@ test("an open folder and a clean open file show the disk's current contents when
     { name: "write", input: { path: notes, content: "beta\n" } },
     { name: "write", input: { path: join(repository.path, "docs", "added.md"), content: "# Added\n" } },
   ]));
+  // A phone shows the Work destination instead of the chat, so the reply is read from the chat and the view is then
+  // shown again from the chooser; a wide split shows both and neither step moves.
+  await backToChat(screen);
   await expect(screen.getByTestId("transcript").getByText("Used 2 tools")).toBeVisible();
+  await reopenWork(screen, "notes.txt");
   await expect(editor).toHaveText(/beta/u);
   await expect(navigator.getByRole("button", "added.md")).toBeVisible();
 

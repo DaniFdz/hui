@@ -5,7 +5,9 @@
  * case where a desktop draws the pane beside the chat and where a phone draws it as a destination of its own.
  *
  * Every step waits for whichever of the two the page settles into: `isVisible()` answers at once, so a check that ran
- * before the page had rendered its layout would pick the other width's route.
+ * before the page had rendered its layout would pick the other width's route. `reopenWork` shows a view that is already
+ * open: a phone reloads onto the chat and keeps the view in its Active panel selector, while a wide pane comes back
+ * open on it.
  */
 import { expect, type Locator, type Screen } from "e2e";
 
@@ -27,6 +29,19 @@ export const openWork = async (screen: Screen, name: string): Promise<void> => {
     await screen.getByRole("menuitem").filter({ hasText: name }).tap();
     return;
   }
+  await panelSelector(screen).tap();
+  await screen.getByText(name, { exact: true }).first().tap();
+};
+
+/**
+ * Shows a Work view that is already open. A wide screen keeps its pane open across a reload; a phone leaves it on the
+ * chat, with the conversation's views still listed in the Active panel selector, so the test picks the view there
+ * (WORK-010, WORK-011). A caller that has just opened the view on a phone finds it shown already and this does nothing.
+ */
+export const reopenWork = async (screen: Screen, name: string): Promise<void> => {
+  const tab = screen.getByLabel("Work pane").getByRole("tab", name);
+  await settle(tab, panelSelector(screen));
+  if (await tab.isVisible()) return;
   await panelSelector(screen).tap();
   await screen.getByText(name, { exact: true }).first().tap();
 };
