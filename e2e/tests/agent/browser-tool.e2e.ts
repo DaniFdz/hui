@@ -2,6 +2,7 @@
  * and keeps its last frame, and the one fresh frame a reload draws (AGENT-054, AGENT-055, AGENT-056). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openWork } from "../work/work-views.ts";
 
 const call = (name: string, input: Record<string, unknown>) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
@@ -24,17 +25,19 @@ test("an agent browses in HUI's headless browser with real input and reports wha
   await expect(transcript.getByRole("button", /^Acted on the page Done$/u)).toHaveCount(2);
   await expect(transcript.getByRole("button", /^Used the browser Done$/u)).toHaveCount(2);
 
-  // No window on the host: the view reports the mode the call ran in.
-  await hui.openWorkView("Browser");
+  // No window on the host: the view reports the mode the call ran in, in the pane beside a wide chat and in the
+  // destination a phone shows one view at a time from.
+  await openWork(screen, "Browser");
   await expect(screen.getByText(/^(Live|Idle) · headless$/u)).toBeVisible();
 });
 
 test("the chat's Browser preview follows the browse live, keeps its last frame and moves to the newest turn", { tags: ["AGENT-055"], platforms: ["web"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
+  const pane = screen.getByRole("complementary", "Work pane");
   const session = await hui.createSession({ title: "Browser preview" });
   await hui.open(`/sessions/${session.id}`);
-  // The card is in the chat, and the pane the chat sits beside was never opened by it.
-  await expect(screen.getByRole("button", "Show Work pane")).toBeVisible();
+  // The card is in the chat, and the browse never opened a view in the pane the chat sits beside.
+  await expect(pane.getByRole("tablist", "Work views")).toHaveCount(0);
   await hui.prompt(session, "E2E_BROWSER_SLOW");
 
   // Before the first frame the card says the page is opening, and it is live while the turn runs.
@@ -53,7 +56,7 @@ test("the chat's Browser preview follows the browse live, keeps its last frame a
   await expect(transcript.getByText("Live", { exact: true })).toBeHidden();
   await expect(frame).toBeVisible();
   await expect(transcript.getByText("Took a screenshot")).toBeVisible();
-  await expect(screen.getByRole("button", "Show Work pane")).toBeVisible();
+  await expect(pane.getByRole("tablist", "Work views")).toHaveCount(0);
 
   // A later browser turn moves the one card under the newest activity instead of leaving a second behind.
   await hui.prompt(session, "E2E_BROWSER_SLOW");
