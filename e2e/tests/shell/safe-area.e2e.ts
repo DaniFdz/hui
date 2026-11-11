@@ -62,3 +62,31 @@ test("the phone's status bar and home indicator never cover HUI's header or comp
   expect(gaveBack).toBeLessThanOrEqual(BOTTOM + 2);
   expect(cutoutComposer.y + cutoutComposer.height).toBeLessThanOrEqual(viewport.height - BOTTOM + 1);
 });
+
+test("every route's own chrome starts below the status bar, not only the shell's", { tags: ["SHELL-049"], platforms: ["web"] }, async ({ screen, hui }) => {
+  // Two layout roots: a route renders the shell (home, sessions, kanban, usage, a chat) or the settings shell, which
+  // draws its own mobile top bar. The inset is applied per root, so each route is read where it draws its own chrome.
+  await hui.phoneScreen();
+
+  const starts = [
+    { route: "/", chrome: "Open navigation" },
+    { route: "/sessions", chrome: "Open navigation" },
+    { route: "/kanban", chrome: "Open navigation" },
+    { route: "/usage", chrome: "Open navigation" },
+    { route: "/settings/appearance", chrome: "Open settings navigation" },
+    { route: "/settings/integrations", chrome: "Open settings navigation" },
+  ];
+  for (const { route, chrome } of starts) {
+    // The token is set on the document, so it is stated again after each navigation: a route load is a new document.
+    await hui.open(route);
+    await hui.insets({ top: TOP });
+    const control = screen.getByRole("button", chrome).first();
+    await expect(control).toBeVisible();
+    const top = async () => {
+      const measured = await control.boundingBox();
+      if (!measured) throw new Error(`${route}: the ${chrome} button was not laid out`);
+      return Math.round(measured.y);
+    };
+    await expect.poll(top).toBeGreaterThanOrEqual(TOP);
+  }
+});

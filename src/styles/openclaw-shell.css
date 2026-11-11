@@ -1643,7 +1643,11 @@
      viewport it had. This is the only place a phone's top inset is applied: a browser, a home-screen shortcut and the
      app's WebView all reach it, and the tokens are 0px wherever there is no cutout, while the Android shell zeroes them
      after padding the page's frame itself. */
-  .app-shell {
+  /* The two layout roots: a route renders either the shell or the settings shell, never both. Settings draws its own
+     top bar (`settings-mobile-topbar`), which is how it ended up under the status bar while the shell was already
+     clear. */
+  .app-shell,
+  .settings-shell {
     padding-top: var(--safe-area-top, 0px);
   }
 }
