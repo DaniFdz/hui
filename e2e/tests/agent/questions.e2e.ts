@@ -1,4 +1,4 @@
-/** An agent's ask_user_question call opens one card above the composer, and what the operator picks, types or declines reaches the agent (AGENT-001, AGENT-002, AGENT-003, AGENT-004, AGENT-006, AGENT-009, AGENT-010, AGENT-011). */
+/** An agent's ask_user_question call opens one card at the end of the transcript, and what the operator picks, types or declines reaches the agent (AGENT-001, AGENT-002, AGENT-003, AGENT-004, AGENT-006, AGENT-009, AGENT-010, AGENT-011). */
 import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
@@ -39,6 +39,8 @@ test("one question's card takes a pick or typed text and leaves a summary", { ta
 
   await expect(screen.getByLabel("Session status: Waiting for your answer")).toBeVisible();
   await expect(card).toHaveCount(1);
+  // The card is the transcript's own last row, where it scrolls with the conversation.
+  await expect(transcript.getByTestId("question-card")).toBeVisible();
   expect((await card.boundingBox())!.y + (await card.boundingBox())!.height).toBeLessThanOrEqual((await screen.getByLabel("Message").boundingBox())!.y);
   await expect(card.getByText("Database")).toBeVisible();
   await expect(card.getByText("1/1")).toBeVisible();

@@ -1013,8 +1013,26 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .questionnaire-card__preview .chat-text > :first-child { margin-top: 0; }
 .questionnaire-card__preview .chat-text > :last-child { margin-bottom: 0; }
 
-/* The question card dock is as wide as the composer: a wide card makes room
-   for its preview, a narrow one stacks it under the options. */
+/* The pending question is the transcript's last row, not a dock sharing the
+   composer's frame: it scrolls with the conversation, so scrolling back for
+   context neither hides nor moves it, and the composer stays a free input. */
+.chat-question-dock {
+  display: block;
+  min-width: 0;
+  margin-block-start: 4px;
+  padding-block-end: 6px;
+}
+
+/* The reference card blurs what is behind it, for a dock over the transcript's
+   fade. In the transcript a blurred row left whole rows blank while scrolling a
+   long chat, and the card's own surface is opaque, so the blur only cost paint. */
+.chat-question-dock .chat-question-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* The question card follows the transcript's content width, which leaves room
+   for its preview; a narrow one stacks the preview under the options. */
 @media (max-width: 720px) {
   .questionnaire-card__body--preview {
     grid-template-columns: minmax(0, 1fr);

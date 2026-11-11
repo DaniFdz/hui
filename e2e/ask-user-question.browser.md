@@ -1,7 +1,8 @@
 # Structured questions (`ask_user_question`) browser verification
 
 The shared tests in `e2e/tests/agent/` (`questions.e2e.ts`, `question-keyboard.e2e.ts`,
-`waiting-cards.e2e.ts`) cover the card itself: one card above the composer, several
+`waiting-cards.e2e.ts`) cover the card itself: one card at the end of the transcript,
+several
 questions, multi-select, previews, the keyboard, Cancel, Stop, a reload, parallel calls,
 invalid calls and untrusted text. This journey keeps the checks no shared test makes
 yet: the question timeout (AGENT-013, SET-056), HUI's tool winning over a PI extension
@@ -60,6 +61,16 @@ Date: 2026-10-17, branch `dani.fernandez/question-timeout`.
   questions and their options, the fixture quoted the timeout text back, and
   both survived a reload. 1440×900 and 390×844: see the pull request's
   screenshots.
+
+Date: 2026-11-11, branch `danifdz/center-question-prompt`.
+
+- The card is now the transcript's last row. At 1440×900 and 390×844 a
+  `E2E_CALL` question opened it above a free composer, the whole card in view;
+  scrolling the transcript up left it scrolled away with the conversation and
+  nothing pulled the reader back, and *Scroll to latest* returned to it. A
+  reload showed the same card from its first question and kept the session
+  *Waiting for your answer*. Answering left the summary in the card's place, and
+  a `secret_request` used the same row. Screenshots are in the pull request.
 
 ## Limits and gaps
 

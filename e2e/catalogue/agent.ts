@@ -12,7 +12,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-001",
     title: "Answer an agent's question",
-    behaviour: "One card opens in the question dock above the composer, titled with the question's header and 1/1, with radio rows (label, description, number) and a Type something… row, and the session reads Waiting for your answer. Submit stays disabled until an option is chosen or text is typed; typed text replaces a chosen option. After Submit the card closes, the agent continues with the answer, and the transcript keeps a summary of the answer under the header.",
+    behaviour: "One card opens at the end of the transcript, its last row above the composer, titled with the question's header and 1/1, with radio rows (label, description, number) and a Type something… row, and the session reads Waiting for your answer. The card scrolls with the conversation, so scrolling back for context keeps it where it was asked. Submit stays disabled until an option is chosen or text is typed; typed text replaces a chosen option. After Submit the card closes, the agent continues with the answer, and the transcript keeps a summary of the answer under the header.",
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
@@ -142,7 +142,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-015",
     title: "Provide a secret without putting it in the chat",
-    behaviour: "The request opens a card above the composer: Secret 1/1, the label, the reason, Kept out of the conversation: the agent gets a temporary file, never the value., a focused masked Value field, Cancel and Submit; the session reads Waiting for your answer and its sidebar row shows the waiting hand. After Submit the card closes, the secret_request row shows only the label, the reason and that the operator provided it in a temporary file until a given time, and the agent goes on to use the file.",
+    behaviour: "The request opens a card at the end of the transcript, its last row above the composer: Secret 1/1, the label, the reason, Kept out of the conversation: the agent gets a temporary file, never the value., a focused masked Value field, Cancel and Submit; the session reads Waiting for your answer and its sidebar row shows the waiting hand. After Submit the card closes, the secret_request row shows only the label, the reason and that the operator provided it in a temporary file until a given time, and the agent goes on to use the file.",
     spec: [...SECRETS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],

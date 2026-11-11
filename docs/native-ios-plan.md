@@ -210,7 +210,7 @@ export default [
     spec: ["SPEC.md#live-chat-projection"], journeys: ["e2e/chat-composer.browser.md", "e2e/interrupted-recovery.browser.md"],
     surfaces: ["route:POST /__hui/sessions/:id/connect"], web: "backlog", ios: "backlog" },
   { id: "AGENT-001", title: "Answer the agent's structured question",
-    behaviour: "One card appears above the composer and the session shows it is waiting; Submit sends every answer once and leaves a summary, and Cancel declines.",
+    behaviour: "One card appears at the end of the transcript and the session shows it is waiting; Submit sends every answer once and leaves a summary, and Cancel declines.",
     spec: ["SPEC.md#structured-questions"], journeys: ["e2e/ask-user-question.browser.md"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"], web: "backlog", ios: "backlog" },
   { id: "AGENT-002", title: "Hand the agent a secret without it reaching the transcript",

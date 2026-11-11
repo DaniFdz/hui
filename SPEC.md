@@ -1873,8 +1873,9 @@ terminal. The call names the secret (`label`) and says why it is needed
 (`reason`); both stay in the conversation, so they must not hold the secret.
 The call waits for the operator.
 
-The open conversation shows the request in the question dock above the
-composer, in OpenClaw's question card: *Secret*, the label, the reason, a line
+The open conversation shows the request in the question card at the end of the
+transcript, the conversation's last row above the composer, in OpenClaw's
+question card: *Secret*, the label, the reason, a line
 saying the value stays out of the conversation, a masked field and *Cancel* /
 *Submit*. Escape does not cancel it: password managers close their menus over
 the field with Escape. Meanwhile the session reads *Waiting*, like a session
@@ -1909,8 +1910,10 @@ mockup, a snippet, a config) to compare. HUI's tool takes the place of any PI
 extension tool of the same name, such as `@juicesharp/rpiv-ask-user-question`,
 whose plain select and input dialogs it replaces.
 
-The open conversation shows the questions in one card in the question dock
-above the composer, and the session reads *Waiting*. With several questions a
+The open conversation shows the questions in one card at the end of the
+transcript, the conversation's last row above the composer, and the session
+reads *Waiting*. The card scrolls with the conversation, so reading earlier
+context neither hides nor moves it. With several questions a
 row of header chips leads the card, ticked once answered; one question shows at
 a time with its progress (*2/4*). Options are radio rows, or checkbox rows for
 a multi-select question, each with its label, description and number; every

@@ -1,8 +1,9 @@
 /**
  * The chat view and the New Session form, as render functions of `HomeProps`: launch form, transcript (with who sent
  * each message HUI delivered from a bot, a session, a routine or a trigger, and what the agent handed a bot),
- * composer and its pickers, queue, questions, session header and bot identity. All state arrives in props and changes
- * leave through callbacks; the app element owns that state, and the chat projection decides the transcript's rows.
+ * composer and its pickers, queue, the pending question at the transcript's end, session header and bot identity. All state
+ * arrives in props and changes leave through callbacks; the app element owns that state, and the chat projection decides
+ * the transcript's rows.
  */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
@@ -1761,7 +1762,7 @@ function renderComposer(props: HomeProps) {
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
   return html`
-    <div class="agent-chat__composer-shell ${props.question ? "agent-chat__composer-shell--question-composer" : ""}"
+    <div class="agent-chat__composer-shell"
       @dragenter=${onComposerDragEnter}
       @dragleave=${onComposerDragLeave}
       @dragover=${(event: DragEvent) => {
@@ -1776,7 +1777,6 @@ function renderComposer(props: HomeProps) {
         if (surface instanceof HTMLElement) clearComposerDrag(surface);
         if (!props.sending && event.dataTransfer?.files.length) props.onAddAttachments(Array.from(event.dataTransfer.files));
       }}>
-      ${renderQuestion(props)}
       ${renderRunError(props, booting || disconnected)}
       ${renderSavedNotice(props)}
       ${props.session?.interrupted && !booting ? html`
@@ -2324,7 +2324,7 @@ function renderQuestion(props: HomeProps) {
   if (!question) return nothing;
   if (question.method === "questionnaire") {
     // Its previews' code blocks copy and wrap as the transcript's do.
-    return html`<div class="agent-chat__question-dock" aria-live="polite">
+    return html`<div class="chat-question-dock" aria-live="polite">
       <hui-questionnaire-card .prompt=${question} .onAnswer=${props.onAnswerQuestion} .idPrefix=${sessionControlId(props, "questionnaire")}></hui-questionnaire-card>
     </div>`;
   }
@@ -2354,7 +2354,7 @@ function renderQuestion(props: HomeProps) {
   const secret = question.method === "secret";
   const titleId = sessionControlId(props, "question-title");
   const reasonId = sessionControlId(props, "question-reason");
-  return html`<div class="agent-chat__question-dock" aria-live="polite">
+  return html`<div class="chat-question-dock" aria-live="polite">
     <form class="session-question-card chat-question-panel" data-testid="question-card" aria-labelledby=${titleId} @submit=${submit}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key === "Escape") {
@@ -2616,7 +2616,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                   <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript" data-window-start=${start}
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}>
                     ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
-                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
+                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}${renderQuestion(props)}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>
