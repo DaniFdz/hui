@@ -12,6 +12,12 @@ const uiEntries = async (hui: { api: <T>(method: string, path: string) => Promis
 test("a request that could not reach the gateway reaches Logs as one ui entry with a count of its repeats once the gateway is back", { tags: ["SHELL-025"], platforms: ["web"] }, async ({ screen, hui }) => {
   const nav = (name: string) => screen.getByTestId("nav-item").filter({ hasText: name });
   const title = screen.getByTestId("page-title");
+  // A phone keeps the primary navigation in its drawer, which a choice closes again, so every destination is
+  // reached through it.
+  const goTo = async (name: string) => {
+    await hui.sessionList();
+    await nav(name).tap();
+  };
 
   await hui.clearOffline();
   await hui.open("/");
@@ -19,17 +25,16 @@ test("a request that could not reach the gateway reaches Logs as one ui entry wi
 
   // Two loads of the same page data while the gateway cannot be reached.
   await hui.network("offline");
-  await hui.sessionList();
-  await nav("Contributions").tap();
+  await goTo("Contributions");
   await expect(title).toHaveText("Contributions");
-  await nav("Usage").tap();
+  await goTo("Usage");
   await expect(title).toHaveText("Usage");
-  await nav("Contributions").tap();
+  await goTo("Contributions");
   await expect(title).toHaveText("Contributions");
 
   // Back online, the next HUI request carries the report the page held while it could not reach the gateway.
   await hui.network("online");
-  await nav("Usage").tap();
+  await goTo("Usage");
   await expect(title).toHaveText("Usage");
   await expect.poll(async () => (await uiEntries(hui, "/__hui/github/contributions")).length, { timeout: 60_000 }).toBe(1);
   const [entry] = await uiEntries(hui, "/__hui/github/contributions");
