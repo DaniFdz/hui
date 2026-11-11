@@ -59,6 +59,7 @@ type OriginalSettings = {
     fallback: string;
     utility: string;
     thinking: "" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+    retryAttempts: number;
     routes: readonly {
       name: string;
       description: string;
@@ -75,11 +76,11 @@ type OriginalSettings = {
   labs: {
     denseObservability: boolean;
     detailedDebug: boolean;
-    dashboard: boolean;
   };
 };
 
 type OriginalBrowserSettings = {
+  allowedOrigins: string[];
 
   enabled: boolean;
 

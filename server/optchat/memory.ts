@@ -9,11 +9,13 @@
  * them; only a missing or invalid file folds them again from message 0.
  */
 import { browsePage } from "./html.ts";
-import { Compactor, SYSTEM_TIMERS, type Failing, type Limiter, type Summarize, type SummaryUsage, type Timers } from "./compactor.ts";
+import { Compactor, SYSTEM_TIMERS, type Failing, type Limiter, type OptChatUsage, type Summarize, type SummaryUsage, type Timers } from "./compactor.ts";
 import { compactPrompt } from "./prompts.ts";
+import { searchLog } from "./search.ts";
 import { Store, type JsonValue, type Kind, type MessageLine } from "./store.ts";
 import { bytes, capText, flatten, localDateTime } from "./text.ts";
 import { label, nodeCount, partAt, PLACEHOLDER, Tree, type Part } from "./tree.ts";
+import { NO_USAGE, readUsage, UsageFile } from "./usage-file.ts";
 import { View } from "./view.ts";
 import { checkViews, readViews, ViewFile } from "./view-file.ts";
 
@@ -56,7 +58,7 @@ export type OptChatOptions = {
   readonly report?: (problem: string, error?: unknown) => void;
 };
 
-export type OptChatUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number };
+export type { OptChatUsage };
 
 export type OptChatStatus = {
   readonly messages: number;
@@ -75,11 +77,12 @@ export type OptChatStatus = {
 
 const isIndex = (value: number) => Number.isSafeInteger(value) && value >= 0;
 
-/** What `open` read: the log, the tree's nodes, and `view.json` or why it cannot be used. */
+/** What `open` read: the log, the tree's nodes, `view.json` or why it cannot be used, and the usage kept beside them. */
 type OpenedContents = {
   readonly messages: readonly MessageLine[];
   readonly nodes: readonly { l: number; i: number; text: string }[];
   readonly saved: { readonly value: unknown } | { readonly problem: string };
+  readonly spent: { readonly usage: OptChatUsage; readonly problem?: string; readonly rewrite: boolean };
 };
 
 export class OptChatMemory {
@@ -92,6 +95,7 @@ export class OptChatMemory {
   /** What compactions read: the chat view merged further, with the same new lines. */
   readonly #context: View;
   #file: ViewFile | undefined;
+  #usageFile: UsageFile | undefined;
   readonly #compactor: Compactor;
   readonly #cap: number;
   readonly #now: () => Date;
@@ -99,7 +103,7 @@ export class OptChatMemory {
   #listeners = new Set<() => void>();
   /** Appends run one at a time, so ids follow call order. */
   #appending: Promise<unknown> = Promise.resolve();
-  #usage: OptChatUsage = { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+  #usage: OptChatUsage = { ...NO_USAGE };
   #closed = false;
 
   private constructor(dir: string, store: Store, contents: OpenedContents, options: OptChatOptions) {
@@ -134,6 +138,12 @@ export class OptChatMemory {
     }
     this.#file = new ViewFile(dir, () => ({ chat: this.#view.state(), compaction: this.#context.state() }), report);
     if (typeof saved === "string" ? this.#log.length > 0 : edits > 0) this.#file.changed();
+    this.#usage = { ...contents.spent.usage };
+    this.#usageFile = new UsageFile(dir, () => this.#usage, report);
+    if (contents.spent.problem !== undefined) {
+      report(`OptChat starts the usage of ${dir} again from zero: ${contents.spent.problem}`);
+      if (contents.spent.rewrite) this.#usageFile.changed();
+    }
     const log = this.#log;
     this.#compactor = new Compactor({
       get length() { return log.length; },
@@ -161,7 +171,7 @@ export class OptChatMemory {
   /** Opens (creating) the memory in `dir` and starts summarizing what is not summarized yet. */
   static async open(dir: string, options: OptChatOptions): Promise<OptChatMemory> {
     const { store, messages, nodes } = await Store.open(dir, { now: options.now ?? (() => new Date()), report: (problem) => options.report?.(problem) });
-    return new OptChatMemory(dir, store, { messages, nodes, saved: await readViews(dir) }, options);
+    return new OptChatMemory(dir, store, { messages, nodes, saved: await readViews(dir), spent: await readUsage(dir) }, options);
   }
 
   get length(): number { return this.#log.length; }
@@ -214,6 +224,8 @@ export class OptChatMemory {
       calls: total.calls + 1, input: total.input + usage.input, output: total.output + usage.output,
       cacheRead: total.cacheRead + usage.cacheRead, cacheWrite: total.cacheWrite + usage.cacheWrite, cost: total.cost + (usage.cost ?? 0),
     };
+    this.#usageFile?.changed();
+    this.#changed();
   }
 
   /**
@@ -235,6 +247,14 @@ export class OptChatMemory {
   date(id: number): string {
     const message = isIndex(id) ? this.#log[id] : undefined;
     return message ? localDateTime(new Date(message.date)) : `No message ${id}.`;
+  }
+
+  /**
+   * The search tool: the messages mentioning `query`, newest first, each as the view's line `id+1` that
+   * `zoom(id, 1)` opens whole. It reads the log, which append-only means it changes nothing.
+   */
+  search(query: string, limit?: number): string {
+    return searchLog(this.#log, query, limit);
   }
 
   /** The current view, rendered. */
@@ -297,5 +317,6 @@ export class OptChatMemory {
     await this.#appending;
     await this.#store.close();
     await this.#file?.flush();
+    await this.#usageFile?.flush();
   }
 }

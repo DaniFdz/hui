@@ -677,6 +677,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
     { kind: "message", id: "s", role: "user", text: "[from agent: Implement retry fix · reply-to agent:s-fix] Please babysit PR #7." },
     { kind: "message", id: "h", role: "user", text: "[Inter-session message from Context lane (s-helper)]\nAlert history attached." },
     { kind: "message", id: "r", role: "user", text: "[routine: Daily standup] Summarize yesterday." },
+    { kind: "message", id: "w", role: "user", text: "[from grace · relayed from Dani's Slack instruction] PR #167221 is mine." },
   ] });
   const row = (id: string) => html.slice(html.indexOf(`data-chat-row-key=${id}`), html.indexOf("data-chat-row-key=", html.indexOf(`data-chat-row-key=${id}`) + 1));
 
@@ -699,6 +700,9 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
   assert.match(child, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u, "a bot subagent's parent is its bot's chat in the Bots tab");
   assert.match(row("r"), /<div class="chat-text chat-text--plain">Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
   assert.match(row("u"), /<span class="chat-sender-name">You<\/span>/u);
+  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-chat-row-key=w /u, "a header a bot wrote before HUI tagged the brief still reads as its message");
+  assert.match(row("w"), /<p>PR #167221 is mine\.<\/p>.*>Grace<\/a>/u);
+  assert.doesNotMatch(row("w"), /\[from grace|>You</u);
 
   const handoff = row("m");
   assert.match(handoff, /<details class="chat-tool-msg-collapse chat-handoff" data-status=succeeded style=--chat-sender-color: #2fc49a/u);

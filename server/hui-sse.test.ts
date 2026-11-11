@@ -259,6 +259,18 @@ test("new sessions reject unsupported tools instead of silently running PI", asy
   );
 });
 
+test("a session asked for the local machine runs here, with no worker recorded", async () => {
+  let stored: SessionRecord[] = [];
+  const registry = async (mutate: (records: readonly SessionRecord[]) => readonly SessionRecord[]) => {
+    stored = [...mutate(stored)];
+    return stored;
+  };
+  const sessions = { accept: () => undefined, ensure: () => true };
+  const created = await createSession({ cwd: tmpdir(), title: "On this machine", worker: "local" }, sessions, registry);
+  assert.equal(created.worker, undefined);
+  assert.equal(stored[0]?.worker, undefined);
+});
+
 test("the events route returns 404 for a stale record after DELETE", () => {
   let starts = 0;
   const sessions = new LiveSessions({

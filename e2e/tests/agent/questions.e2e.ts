@@ -1,4 +1,4 @@
-/** An agent's ask_user_question call opens one card at the end of the transcript, and what the operator picks, types, slides or declines reaches the agent (AGENT-001, AGENT-002, AGENT-003, AGENT-004, AGENT-006, AGENT-009, AGENT-010, AGENT-011, AGENT-063). */
+/** An agent's ask_user_question call opens one card at the end of the transcript, and what the operator picks, types, slides or declines reaches the agent (AGENT-001, AGENT-002, AGENT-003, AGENT-004, AGENT-006, AGENT-009, AGENT-010, AGENT-011, AGENT-074). */
 import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
@@ -140,7 +140,7 @@ test("four questions step through one card whose progress, Next and Back keep th
   await expect(summary.getByText("Notes")).toBeHidden();
 });
 
-test("a slider and a long text take the operator's number and words", { tags: ["AGENT-063"] }, async ({ screen, hui }) => {
+test("a slider and a long text take the operator's number and words", { tags: ["AGENT-074"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   const slider = card.getByLabel("Available budget?");

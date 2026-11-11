@@ -4,7 +4,8 @@ import { html } from "lit";
 import { navigationPath } from "../lib/navigation.ts";
 import { activeSessionPane, SESSION_LAYOUT_KEY, sessionPanes, singleSessionLayout, splitSessionPane, visibleSessionPanes } from "../lib/session/multiplexer.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
-import { registerWorkViewKind, sessionWorkPane, WORK_PANE_KEY } from "../lib/work-pane.ts";
+import { registerWorkViewKind, sessionWorkPane, setWorkPaneOpen, WORK_PANE_KEY } from "../lib/work-pane.ts";
+import { settleSideChat, startSideChat } from "../lib/session/side-chat-store.ts";
 import { WORK_SHORTCUTS } from "../lib/work-shortcuts.ts";
 import { WorkLayoutController } from "./work-layout-controller.ts";
 
@@ -53,6 +54,7 @@ function setup({ followed = "s1" as string | undefined, palette = false } = {}) 
     activePane: () => ({ querySelector: (selector: string) => selector === ".chat-pane__header" ? header : null }) as unknown as HTMLElement,
     focusComposer: () => { shell.composerFocus += 1; },
     paletteOpen: () => shell.palette,
+    chatShown: () => true,
     terminalFont: () => "mono",
     browserEnabled: () => true,
   });
@@ -76,6 +78,28 @@ test("launching shows the view and saves the record; a reason or a failure opens
   assert.equal(work.launchedKey, "browser");
   assert.equal(sessionWorkPane(work.panes, "s1").active, "browser");
   assert.match(localStorage.getItem(WORK_PANE_KEY) ?? "", /"s1"/u);
+});
+
+test("a new side question brings its Work view forward, and only that brings it back", async () => {
+  const { work, shell } = setup();
+  work.start();
+  work.layout = singleSessionLayout("s1");
+  startSideChat("s1", "which file are we editing?");
+  assert.deepEqual(sessionWorkPane(work.panes, "s1").views, [{ kind: "side-chat" }]);
+  assert.equal(sessionWorkPane(work.panes, "s1").open, true, "the question is drawn in the pane, so the pane shows");
+  assert.equal(sessionWorkPane(work.panes, "s1").active, "side-chat");
+  await settle();
+  assert.equal(shell.composerFocus, 1, "the next question is typed in the composer, which keeps focus");
+
+  work.commit(setWorkPaneOpen(work.panes, "s1", false));
+  settleSideChat("s1", { answer: "`home.ts`", model: "utility-fixture" });
+  await settle();
+  assert.equal(sessionWorkPane(work.panes, "s1").open, false, "an answer never reopens a pane the operator hid");
+
+  shell.followed = "s2";
+  startSideChat("s2", "and on this one?");
+  assert.deepEqual(sessionWorkPane(work.panes, "s2").views, [], "a chat pane this layout does not show gets no work view");
+  work.stop();
 });
 
 test("shortcuts act only while a conversation is shown and nothing modal is open", async () => {

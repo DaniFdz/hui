@@ -48,7 +48,7 @@ Browser probe resolves the same DOM under both cascades and copies native
 focus/hover/popover state. This detects divergent declarations; it is **not**
 independent proof of original DOM equivalence or a screenshot pixel diff.
 Pair it with source anatomy review, real PI journeys and inspected screenshots;
-see [the visual goal](../../../docs/visual-parity-goal.md) and the E2E report.
+see the [E2E report](../../../e2e/visual-parity-2026-09-24.browser.md).
 
 `e2e/probes/original-component-probe.js` additionally renders the actual pinned composer,
 Effort and textarea controller with the original Lit/WA runtime in a disposable

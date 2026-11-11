@@ -1,7 +1,7 @@
 /**
  * What the chat's read, command and codemode tool cards show, worked out from a tool call: the file a read names, the
  * command a shell call runs, a codemode script's calls and outcome. Pure, so the web's cards
- * (`src/views/chat/*-tool-card.ts`) and the iOS core read tool calls the same way.
+ * (`src/views/chat/*-tool-card.ts`) and `chat-rows.ts` read tool calls the same way.
  */
 import type { TranscriptItem } from "../api/sessions.ts";
 import { stripShellPreamble } from "./tool-shell-display.ts";

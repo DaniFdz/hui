@@ -70,6 +70,11 @@ class CoordinatedSession implements RuntimeSession {
     return this.#streaming;
   }
 
+  /** The run its runtime resumed after a restart: going, with no prompt of this gateway's own. */
+  resume(): void {
+    this.#streaming = true;
+  }
+
   async prompt(value: string): Promise<void> {
     this.prompts.push(value);
     this.history.push({ kind: "message", role: "user", text: value });
@@ -152,6 +157,10 @@ function harness(
   options: {
     manualSessionId?: string; manual?: (id: string) => boolean; ids?: string[];
     routes?: Settings["models"]["routes"];
+    /** The adapter resumes every interrupted run itself, as Durable does. */
+    resuming?: boolean;
+    /** Sessions whose runtime boots mid-run, the way a resumed run is found. */
+    resumed?: string[];
   } = {},
 ) {
   let records = [...initial];
@@ -160,12 +169,14 @@ function harness(
   const starts: StartOptions[] = [];
   const runtime: AgentRuntime = {
     id: "pi",
+    ...(options.resuming ? { resumesInterruptedRuns: true } : {}),
     start: async (startOptions) => {
       starts.push(startOptions);
       const id = startOptions.huiSessionId ?? `unknown-${starts.length}`;
       const history = histories.get(id) ?? [];
       histories.set(id, history);
       const session = new CoordinatedSession(id, id !== options.manualSessionId && !options.manual?.(id), history);
+      if (options.resumed?.includes(id)) session.resume();
       sessions.set(id, session);
       return session;
     },
@@ -293,6 +304,7 @@ test("spawn resolves live routes for ordinary and collected children without cha
     routes: [
       { name: "fast", description: "Quick lookups.", model: "gateway/cheap", thinking: "low" },
       { name: "deep", description: "Hard work.", model: "gateway/opus" },
+      { name: "inherit", description: "Runs on its caller's model.", model: "" },
     ],
     ids: Array.from({ length: 12 }, (_, index) => `route-${index}`),
   };
@@ -312,6 +324,7 @@ test("spawn resolves live routes for ordinary and collected children without cha
   await spawn({ route: "fast", thinking: "xhigh" });
   await spawn({});
   await spawn({ model: "gateway/opus" });
+  await spawn({ route: "inherit" });
   options.routes = [{ name: "deep", description: "Changed live.", model: "gateway/cheap", thinking: "max" }];
   await spawn({ route: "deep", collect: true });
   const children = state.records().filter((item) => item.parentId === parent.id);
@@ -321,6 +334,7 @@ test("spawn resolves live routes for ordinary and collected children without cha
     ["gateway/cheap", "xhigh"],
     ["gateway/parent", "medium"],
     ["gateway/opus", "medium"],
+    ["gateway/parent", "medium"],
     ["gateway/cheap", "max"],
   ]);
   assert.equal(children.at(-1)?.subagent?.collect, true);
@@ -330,6 +344,39 @@ test("spawn resolves live routes for ordinary and collected children without cha
   options.routes = [{ name: "deep", description: "Unavailable model.", model: "gateway/missing" }];
   await assert.rejects(() => spawn({ route: "deep" }), /Route deep names an unavailable model; update it in HUI's Settings/);
   assert.equal(state.records().filter((item) => item.parentId === parent.id).length, children.length);
+});
+
+test("a bot's subagent carries the bot whose skills it loads, and so does a worker's child", async (t) => {
+  const bot = record("bot", { bot: "bot-1" });
+  const chained = record("chained", { botSkills: "bot-2" });
+  const state = harness([bot, chained]);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  for (const parent of [bot, chained]) {
+    state.manager.ensure(parent);
+    await waitForStatus(state.manager, parent.id, "idle");
+  }
+  await state.service.initialize();
+  await state.service.handle(bot.id, "sessions_spawn", { task: "Work" });
+  await state.service.handle(chained.id, "sessions_spawn", { task: "Work" });
+  const children = state.records().filter((item) => item.parentId);
+  assert.deepEqual(children.map((child) => [child.parentId, child.botSkills]), [[bot.id, "bot-1"], [chained.id, "bot-2"]]);
+});
+
+test("a spawn with worktree runs the child in the checkout the sessions layer made", async (t) => {
+  const parent = record("parent");
+  const state = harness([parent]);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  await state.service.initialize();
+  const made: { cwd: string; title: string }[] = [];
+  state.manager.subagentWorktree = async (caller, title) => {
+    made.push({ cwd: caller.cwd, title });
+    return { cwd: "/tmp/child-worktree", branch: "hui/child-worktree", rollback: async () => undefined };
+  };
+  await state.service.handle(parent.id, "sessions_spawn", { task: "Work", label: "Worker", worktree: true });
+  assert.deepEqual(made, [{ cwd: parent.cwd, title: "Worker" }]);
+  assert.equal(state.records().find((record) => record.parentId === parent.id)?.cwd, "/tmp/child-worktree");
 });
 
 test("a route name with no configured routes points at the setting", async () => {
@@ -593,6 +640,85 @@ test("startup marks abandoned active tasks interrupted", async () => {
 
   state.service.dispose();
   state.manager.disposeAll();
+});
+
+test("startup carries a running child on when its runtime resumes the run itself, and its result reaches the parent", async (t) => {
+  const parent = record("parent", { title: "Parent" });
+  const child = record("child", {
+    parentId: parent.id,
+    runStartedAt: timestamp,
+    subagent: {
+      taskId: "task-1",
+      task: "Long work",
+      status: "running",
+      startedAt: timestamp,
+      updatedAt: timestamp,
+    },
+  });
+  const state = harness([parent, child], { resuming: true, resumed: [child.id] });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+
+  await state.service.initialize();
+
+  assert.equal(state.records().find((item) => item.id === child.id)?.subagent?.status, "running", "a resumed run keeps its child active");
+  assert.equal(state.manager.snapshot(parent.id).subagents[0]?.status, "running");
+  await waitForStatus(state.manager, child.id, "running");
+  state.sessions.get(child.id)!.finish("Resumed answer");
+  await waitForTask(state.manager, parent.id, "completed");
+  await state.sessions.get(parent.id)!.waitForPrompt((prompt) => prompt.startsWith("[HUI subagent completion event]"));
+
+  const finished = state.records().find((item) => item.id === child.id)?.subagent;
+  assert.equal(finished?.status, "completed");
+  assert.equal(finished?.summary, "Resumed answer");
+  assert.equal(finished?.error, undefined);
+  assert.match(state.sessions.get(parent.id)!.prompts.at(-1) ?? "", /Resumed answer/u);
+});
+
+test("startup records a child whose run ended while the gateway was away", async (t) => {
+  const parent = record("parent");
+  const child = record("child", {
+    parentId: parent.id,
+    runStartedAt: timestamp,
+    subagent: { taskId: "task-1", task: "Long work", status: "running", startedAt: timestamp, updatedAt: timestamp },
+  });
+  const state = harness([parent, child], { resuming: true });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+
+  await state.service.initialize();
+
+  await waitForTask(state.manager, parent.id, "completed");
+  assert.equal(state.records().find((item) => item.id === child.id)?.subagent?.status, "completed");
+});
+
+test("startup starts a collected child whose task never reached its runtime", async (t) => {
+  const parent = record("parent");
+  const child = record("child", {
+    parentId: parent.id,
+    subagent: {
+      taskId: "task-1",
+      task: "Queued work",
+      status: "starting",
+      collect: true,
+      startedAt: timestamp,
+      updatedAt: timestamp,
+    },
+  });
+  const state = harness([parent, child], { resuming: true, manual: () => true });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+
+  await state.service.initialize();
+
+  await waitForStatus(state.manager, child.id, "running");
+  const runtime = state.sessions.get(child.id)!;
+  await runtime.waitForPrompt(() => true);
+  assert.deepEqual(runtime.prompts, ["[Subagent Task]\nQueued work"]);
+  await waitForTask(state.manager, parent.id, "running");
 });
 
 test("completions are batched until every active sibling finishes", async () => {

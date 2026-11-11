@@ -62,6 +62,18 @@ Date: 2026-10-17, branch `dani.fernandez/question-timeout`.
   both survived a reload. 1440×900 and 390×844: see the pull request's
   screenshots.
 
+Date: 2026-11-08, branch `danifdz/reduce-selection-ui-space`.
+
+- Folded card on Durable, Browser tool, from the committed HEAD with a clean
+  checkout: a three-question `E2E_ASK_USER` card (four described options on the
+  first question) folded from its own top line to one row reading *Questions
+  1/3*, which put the reply above it back on screen. Escape on the folded row
+  opened the card at the same question, and a reload opened the card unfolded.
+  1440×900 and 390×844: see the pull request's screenshots. The shared test
+  `question-fold.e2e.ts` (AGENT-063) covers the fold, its tally of answered
+  questions, the room the transcript gains, the composer draft, Escape and
+  Enter, and that every answer still reaches the agent after folding.
+
 Date: 2026-11-11, branch `danifdz/center-question-prompt`.
 
 - The card is now the transcript's last row. At 1440×900 and 390×844 a
@@ -84,9 +96,10 @@ Date: 2026-11-11, branch `danifdz/center-question-prompt` (card format).
   stayed clear; the notes field took a multi-line note under the agent's
   placeholder; *Back* stepped back and kept every answer. Checked at 1440×900 and
   390×844, and the screenshots in the pull request are this run. Submitting is
-  covered by the shared AGENT-063 test and an earlier run on this branch, which
+  covered by the shared AGENT-074 test and an earlier run on this branch, which
   returned the value and text to the agent and left the per-header summary in the
   card's place.
+
 
 ## Limits and gaps
 

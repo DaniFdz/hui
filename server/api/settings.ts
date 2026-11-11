@@ -9,6 +9,8 @@ export type VscodeProviderPreference = Static<typeof VscodeProviderPreference>;
 
 export const BrowserSettings = Type.Object({
   enabled: Type.Boolean(), headless: Type.Boolean(), executablePath: Type.String(), mirrorState: Type.Boolean(),
+  /** Pages agents may reach; empty is anywhere. */
+  allowedOrigins: Type.Array(Type.String()),
 }, { $id: "BrowserSettings" });
 export type BrowserSettings = Static<typeof BrowserSettings>;
 
@@ -46,6 +48,7 @@ export const Settings = Type.Object({
     primary: Type.String(), fallback: Type.String(), utility: Type.String(),
     // Empty follows PI's own defaultThinkingLevel.
     thinking: Type.Union([Type.Literal(""), SavedReasoningLevel]),
+    retryAttempts: Type.Number(),
     routes: Type.Immutable(Type.Array(Type.Object({
       name: Type.String(), description: Type.String(), model: Type.String(),
       thinking: Type.Optional(SavedReasoningLevel),
@@ -59,7 +62,7 @@ export const Settings = Type.Object({
   disabledPlugins: Type.Immutable(Type.Array(Type.Object({
     id: Type.String(), name: Type.String(), kind: Type.Union([Type.Literal("package"), Type.Literal("extension")]),
   }))),
-  labs: Type.Object({ denseObservability: Type.Boolean(), detailedDebug: Type.Boolean(), dashboard: Type.Boolean() }),
+  labs: Type.Object({ denseObservability: Type.Boolean(), detailedDebug: Type.Boolean() }),
 }, { $id: "Settings" });
 export type Settings = Static<typeof Settings>;
 

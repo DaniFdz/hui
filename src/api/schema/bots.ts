@@ -11,7 +11,7 @@ export type BotBootstrapRequest = { "text": string; };
 
 export type BotCatalog = { "tools": Array<BotCatalogTool>; "skills": Array<BotCatalogSkill>; "alwaysOn": Array<{ "name": string; "description": string; }>; "disabledTools": Array<string>; "disabledSkills": Array<BotSkillRef>; "live": boolean; "request"?: BotAccessRequest; };
 
-export type BotCatalogSkill = { "name": string; "path": string; "description": string; "source": string; "enabled": boolean; };
+export type BotCatalogSkill = { "name": string; "path": string; "description": string; "source": string; "enabled": boolean; "own"?: boolean; };
 
 export type BotCatalogTool = { "name": string; "label": string; "description": string; "group": BotToolGroup; "source": string; "powerful": boolean; "enabled": boolean; };
 
@@ -39,7 +39,7 @@ export type BotFileName = "soul" | "user" | "memory" | "bootstrap";
 
 export type BotFileText = { "file": BotFileName; "text": (string) | (null); };
 
-export type BotInput = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "soul"?: string; "user"?: string; "memory"?: string; "bootstrap"?: string; "worker"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; };
+export type BotInput = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "group"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "soul"?: string; "user"?: string; "memory"?: string; "bootstrap"?: string; "worker"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; };
 
 export type BotLastMessage = { "role": ("user") | ("assistant"); "text": string; "at": string; };
 
@@ -55,7 +55,11 @@ export type BotMessageRequest = { "text"?: string; "attachments"?: Array<unknown
 
 export type BotMessageResult = (BotDelivery) | (BotReply);
 
-export type BotPatch = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "avatar"?: (BotAvatarPatch) | (null); "voice"?: (BotVoicePatch) | (null); "split"?: true; };
+export type BotOwnSkill = { "name": string; "text": string; };
+
+export type BotOwnSkillRequest = { "text": string; };
+
+export type BotPatch = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "group"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "avatar"?: (BotAvatarPatch) | (null); "voice"?: (BotVoicePatch) | (null); "split"?: true; };
 
 export type BotQuestion = { "id": string; "method": "select" | "confirm" | "input" | "editor" | "secret" | "questionnaire"; "title": string; "message"?: string; "options"?: Array<string>; "placeholder"?: string; "prefill"?: string; };
 
@@ -79,7 +83,7 @@ export type BotToolGroup = "files" | "shell" | "hui" | "extension" | "bots";
 
 export type BotUsageResponse = { "usage": UsageTotals; };
 
-export type BotView = { "id": string; "handle": string; "name": string; "title"?: string; "description"?: string; "tagging"?: "mention" | "nobody"; "cwd": string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; "hidden"?: boolean; "archived"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillRef>; "sessionId": string; "createdAt": string; "updatedAt": string; "worker"?: { "id": string; "name": string; }; "status": BotSessionStatus; "soul": boolean; "lastMessage"?: BotLastMessage; "unread": boolean; "memory"?: BotMemoryStatus; "routines": number; };
+export type BotView = { "id": string; "handle": string; "name": string; "title"?: string; "description"?: string; "group"?: string; "tagging"?: "mention" | "nobody"; "cwd": string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; "hidden"?: boolean; "archived"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillRef>; "sessionId": string; "createdAt": string; "updatedAt": string; "worker"?: { "id": string; "name": string; }; "status": BotSessionStatus; "soul": boolean; "lastMessage"?: BotLastMessage; "unread": boolean; "memory"?: BotMemoryStatus; "routines": number; };
 
 export type BotVoice = { "language"?: VoiceLanguage; "live"?: GptLiveVoice; };
 

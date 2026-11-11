@@ -9,8 +9,8 @@ details in the owning directory guide.
 - Inspect `git status --short` before editing. This is a shared checkout: preserve
   unrelated and in-progress changes, never stash/reset/clean them, and coordinate
   overlapping edits with the owning agent.
-- Read `SPEC.md`, `docs/api.md`, and the relevant roadmap item before changing a
-  product contract. Inspect the current implementation before adding an abstraction.
+- Read `SPEC.md` and `docs/api.md` before changing a product contract. Inspect
+  the current implementation before adding an abstraction.
 - [docs/map.md](docs/map.md) maps areas to their owning modules. Every source
   module starts with a header comment saying what it owns; keep it true when you
   change the module, write one for each new module, and name new source
@@ -101,6 +101,11 @@ with `role="tooltip"`), never a native `title`.
 
 ## Change Discipline
 
+- Keep plans and progress out of the tree. A plan, a goal, a status ledger or a
+  roadmap describes one run, goes stale, and conflicts with every other run's
+  copy: it lives in the conversation, or in `work/` for the scratch files a run
+  needs, which Git ignores. The repository holds contracts, user docs and
+  evidence notes. Delete a plan file instead of updating it.
 - Keep behavior changes, tests, and contract documentation aligned in one task.
 - A user-visible change adds or updates its use case in `e2e/catalogue/` and ships with a shared test in
   `e2e/tests/` that passes on the web (`npm run e2e`), unless the use case is excluded there; catching up baseline
@@ -127,6 +132,12 @@ with `role="tooltip"`), never a native `title`.
   services, people, channels and workflows that only work inside Datadog. They
   belong in local skills or extensions. Features built on Datadog's public product
   and APIs, such as the Datadog embeds, are fine.
+
+## Repository state rules and what enforces them
+
+| Rule | Enforced by |
+| --- | --- |
+| A plan, a goal, a ledger or a roadmap is never committed; a run's scratch files live under the ignored `work/`. | `.gitignore` (`/work/`); `scripts/repository-docs.test.mjs` "a plan, a goal, a ledger or a roadmap is not committed", "the repository root holds only the project's standard documents" and "a run's scratch files under work/ stay out of Git" |
 
 ## Pull requests
 

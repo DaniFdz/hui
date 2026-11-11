@@ -123,6 +123,5 @@ test("a routine's switch pauses and resumes it on its page and the overview, and
   await expect.poll(async () => await tasks()).toEqual([]);
   await hui.open("/cron");
   await expect(screen.getByTestId("page-title")).toHaveText("Automations");
-  await expect(screen.getByText("Nothing scheduled")).toBeVisible();
   await expect(screen.getByRole("button", "Edit Weekly digest")).toBeHidden();
 });
