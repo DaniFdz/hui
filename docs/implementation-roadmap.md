@@ -1203,7 +1203,7 @@ theme, with fitted height, full screen, error notices and click-only links.
 
 Done 2026-10-06. Agents ask the operator for a secret (an API key, a token, a
 password, a one-time code) with the HUI `secret_request` tool instead of the
-chat. The request is a masked *Secret* card in the question dock that leaves
+chat. The request is a masked *Secret* card at the end of the transcript that leaves
 the session waiting; the gateway writes the answer to a private temporary file
 (`0600` in its own `0700` directory, deleted after 10 minutes or at gateway
 stop, a crashed gateway's at the next start) and the agent receives only its

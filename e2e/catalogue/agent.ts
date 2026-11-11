@@ -22,7 +22,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-002",
     title: "Answer several questions in one card",
-    behaviour: "A call with up to four questions shows one card titled Questions, with a row of header chips that tick once answered and the progress (1/4). Next, Back and the chips move between questions and keep the picks and typed text; Submit on the last question sends every answered question and leaves blank ones out.",
+    behaviour: "A call with up to four questions shows one card titled Interactive questionnaire with a segmented progress bar and STEP n OF m. One question shows at a time; Next moves on, Back returns, and both keep every pick and typed text. Submit on the last question sends every answered question and leaves blank ones out.",
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
@@ -591,6 +591,16 @@ const cases: UseCase[] = [
     surfaces: ["tool:notify_user"],
     web: "required",
     ios: "backlog",
+  },
+  {
+    id: "AGENT-063",
+    title: "Answer with a slider or a long text",
+    behaviour: "ask_user_question can ask for a number with a slider (min, max, optional step and unit) and for a long text. The slider shows its value large with the unit above the range and its bounds beneath it; the text is a multi-line field with the agent's placeholder. Both step through the card like any question, and Submit sends the value the agent reads back as 5,050 € or the text it was given; Cancel declines.",
+    spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
+    surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
+    journeys: ["ask-user-question"],
+    web: "required",
+    ios: "required",
   },
 ];
 

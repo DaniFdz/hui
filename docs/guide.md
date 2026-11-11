@@ -1218,8 +1218,10 @@ older PI worker (before `hui doctor --fix` moved them) never get it.
 
 An agent that needs decisions from you asks them in a card at the end of the
 transcript, above the composer, where it scrolls with the conversation: up to
-four questions, each with its options and a *Type something…* row for
-your own answer. Pick or type, then **Submit**; **Cancel** or Escape declines.
+four questions, one at a time, with a progress bar and **Back** / **Next**.
+A question offers choices (plus a *Type something…* row for your own answer), a
+slider for a number such as a budget, or a long text field. Pick, slide or
+type, then **Submit**; **Cancel** or Escape declines.
 The session shows *Waiting* until you answer, and once you do, the transcript
 keeps a short summary of your answers.
 

@@ -7816,6 +7816,22 @@
         }
       }
     },
+    "QuestionnaireInput": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "options"
+        },
+        {
+          "type": "string",
+          "const": "slider"
+        },
+        {
+          "type": "string",
+          "const": "text"
+        }
+      ]
+    },
     "QuestionnaireOption": {
       "type": "object",
       "required": [
@@ -7840,7 +7856,8 @@
         "header",
         "question",
         "multiSelect",
-        "options"
+        "options",
+        "input"
       ],
       "properties": {
         "header": {
@@ -7857,6 +7874,24 @@
           "items": {
             "$ref": "#/$defs/QuestionnaireOption"
           }
+        },
+        "input": {
+          "$ref": "#/$defs/QuestionnaireInput"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "placeholder": {
+          "type": "string"
         }
       }
     },
@@ -14048,6 +14083,7 @@
       "ProgressCard",
       "ProgressStep",
       "QuestionnaireAnswer",
+      "QuestionnaireInput",
       "QuestionnaireOption",
       "QuestionnaireQuestion",
       "QuestionnaireResult",

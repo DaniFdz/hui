@@ -72,6 +72,18 @@ Date: 2026-11-11, branch `danifdz/center-question-prompt`.
   *Waiting for your answer*. Answering left the summary in the card's place, and
   a `secret_request` used the same row. Screenshots are in the pull request.
 
+Date: 2026-11-11, branch `danifdz/center-question-prompt` (card format).
+
+- A three-step questionnaire (options, slider, long text) on the same fixture:
+  the card read *Interactive questionnaire*, *STEP 1 OF 3* with a segmented
+  progress bar, one question per step, and Back on the second step; the slider
+  showed *5,050 €* large above its track and *100 €* / *10,000 €* beneath it,
+  and Home/PageUp/→ moved the readout to *1,550 €*; the text field carried the
+  agent's placeholder and accepted the answer. Submit sent `1,550 €` and the
+  typed text, the transcript showed the per-header summary in the card's place,
+  and the fixture quoted the tool result back. Checked at 1440×900 and 390×844;
+  screenshots are in the pull request.
+
 ## Limits and gaps
 
 - The shortest question timeout is five minutes and the gateway's timer runs
