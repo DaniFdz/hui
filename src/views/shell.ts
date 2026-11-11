@@ -355,13 +355,16 @@ function renderPullRequestBadges(session: SessionView) {
 }
 
 /** The newest linked Jira work item, left of the title. It lives inside the
- * session link, so it is a span: hover previews it, clicking opens Jira. */
+ * session link, so it is a span: hover previews it, clicking opens Jira. The
+ * test id names the mark itself, which is the only element carrying the status
+ * colour a shared test reads and the pointer its preview opens from. */
 function renderJiraBadge(session: SessionView) {
   const primary = primaryJiraIssue(session.jiraIssues);
   if (!primary) return nothing;
   const data: JiraBadgeData = primary;
   return html`<span
     class="session-jira-badge"
+    data-testid="jira-mark"
     data-state=${primary.issue.statusCategory ?? "unknown"}
     data-jira-key=${primary.issue.key}
     .jira=${data}
