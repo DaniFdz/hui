@@ -803,8 +803,12 @@ neither is read, and the next `PUT` leaves them out.
 
 ### `GET /__hui/health`
 
-Returns gateway uptime, `HTTP + SSE`, the fixed `Full Access` product mode and
-registered/live PI runtime counts per session status. This endpoint is diagnostic and read-only.
+Returns the gateway's `name`, its uptime, `HTTP + SSE`, the fixed `Full Access`
+product mode and registered/live PI runtime counts per session status. `name` is
+the operator's name for this gateway (`name` in `Settings`), or the hostname of
+the machine it runs on when none is saved; a machine that reports no hostname
+falls back to `HUI`. The saved setting is never filled in with that fallback.
+This endpoint is diagnostic and read-only.
 
 ### macOS power
 
@@ -4410,7 +4414,9 @@ catalogue, a `fontTerminal` local family name (1–128 characters, default
 OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
 [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
-Profile presentation fields and reversible Labs flags (`labs`:
+Profile presentation fields, the gateway's own `name` (trimmed, at most 60
+characters, `""` by default; empty means this machine's hostname, which is what
+`GET /__hui/health` and the browser show) and reversible Labs flags (`labs`:
 `denseObservability` and `detailedDebug`, each off unless explicitly `true`).
 These values affect HUI only. They never change PI configuration, provider
 identity, runtime permissions or transcripts.

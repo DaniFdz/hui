@@ -6090,6 +6090,7 @@
         "transport",
         "uptimeSeconds",
         "access",
+        "name",
         "sessions"
       ],
       "properties": {
@@ -6107,6 +6108,9 @@
         "access": {
           "type": "string",
           "const": "Full Access"
+        },
+        "name": {
+          "type": "string"
         },
         "sessions": {
           "type": "object",
@@ -10631,6 +10635,7 @@
         "chat",
         "profileName",
         "profileHandle",
+        "name",
         "branchPrefix",
         "browser",
         "codemode",
@@ -10853,6 +10858,9 @@
           "type": "string"
         },
         "profileHandle": {
+          "type": "string"
+        },
+        "name": {
           "type": "string"
         },
         "branchPrefix": {

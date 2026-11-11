@@ -118,7 +118,7 @@ const cases: UseCase[] = [
   {
     id: "PAGE-025",
     title: "See what HUI is running on About",
-    behaviour: "About shows HUI's description and a Runtime list: Gateway status, Transport, Access mode (*Full Access*) and PI ownership. Gateway reads *Unavailable* when health could not be read.",
+    behaviour: "About shows HUI's description and a Runtime list: the gateway's Name, Gateway status, Transport, Access mode (*Full Access*) and PI ownership. Gateway reads *Unavailable* when health could not be read.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth"],
     surfaces: ["page:about", "route:GET /__hui/health"],
     web: "required",

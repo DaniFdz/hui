@@ -1,6 +1,8 @@
 /**
  * HUI's own settings file in its config directory: reading and writing it, always normalized.
- * A missing or malformed file reads as the defaults instead of an error.
+ * A missing or malformed file reads as the defaults instead of an error. The gateway's own name
+ * lives here beside the operator's profile (`name`); what a client sees when it is empty is
+ * `control-surfaces.ts`'s effective name.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -100,6 +102,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   profileName: "HUI Operator",
   profileHandle: "",
+  name: "",
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
   codemode: { enabled: true },
@@ -130,6 +133,8 @@ export function normalizeSettings(raw: unknown): Settings {
     chat: normalizeChat(source["chat"]),
     profileName: boundedText(source["profileName"], DEFAULT_SETTINGS.profileName, 80),
     profileHandle: boundedText(source["profileHandle"], "", 80),
+    // Empty is not a name: the gateway reports this machine's hostname until the operator sets one.
+    name: boundedText(source["name"], "", 60),
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
     codemode: { enabled: !isRecord(source["codemode"]) || source["codemode"]["enabled"] !== false },

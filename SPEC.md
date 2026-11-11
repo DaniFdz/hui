@@ -766,6 +766,21 @@ is added, and source-development servers do not query GitHub automatically.
 There is no npm publication or boot-service registration in this iteration.
 Browser and package proof is in `e2e/package.browser.md` and `e2e/update.browser.md`.
 
+### A gateway carries a name (2026-11-11)
+
+A gateway can be named, and every client sees that name. It is the operator's
+label for one gateway, saved as `name` in HUI's own settings beside the profile
+fields (Settings → Gateway → Gateway name) and reported on
+`GET /__hui/health`, so a client that keeps several gateways can tell them
+apart without knowing each machine's path, port or hostname. Empty is the
+normal state of a fresh install and means the hostname of the machine the
+gateway runs on, falling back to `HUI` when the machine reports none; the
+effective name is computed per read and never written into the saved setting,
+so renaming the machine renames an unnamed gateway. The name is presentation
+only: it changes no PI configuration, credential, session or transcript, and
+About shows it beside the runtime facts it already lists. Choosing among saved
+gateways is not part of this change.
+
 ## Ownership
 
 Two stores, with one writer each:
