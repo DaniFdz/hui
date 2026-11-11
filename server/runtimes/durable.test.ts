@@ -298,6 +298,25 @@ test("a switch to a model without the chosen thinking level lowers it for that m
   assert.equal(created.currentThinking(), "max");
 });
 
+test("autonomous mode asks the agent to decide routine steps itself and drops the guidance when it is off", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { models: ["fixture"] });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-autonomous", model: "hui-e2e/fixture" }, f.host());
+  const system = async () => JSON.stringify((await providerRequests(f.log)).filter((request) => !summarizing(request)).at(-1)?.system);
+
+  assert.equal(session.currentAutonomous(), false);
+  await turns(session, ["hello default"]);
+  assert.doesNotMatch(await system(), /Decide routine steps yourself/u);
+
+  await session.setAutonomous(true);
+  assert.equal(session.currentAutonomous(), true);
+  await turns(session, ["hello autonomy"]);
+  assert.match(await system(), /## Autonomous mode[^"]*Decide routine steps yourself[^"]*instead of stopping to ask/u);
+
+  await session.setAutonomous(false);
+  await turns(session, ["hello supervised"]);
+  assert.doesNotMatch(await system(), /Decide routine steps yourself/u);
+});
+
 test("Ultra sends the model its highest level and asks the agent to plan, decide, delegate and verify, until it is turned off", { timeout: 45_000 }, async (t) => {
   const max = { low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" };
   const f = await fixture(t, { models: ["claude-opus-5-5"], thinkingLevelMaps: { "claude-opus-5-5": max } });

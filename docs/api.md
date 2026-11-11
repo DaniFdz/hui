@@ -1223,7 +1223,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `title`, `group`, `pinned`, `archived`, `unread`, `icon` | HUI | Writable organizer metadata; changing it never renames or rewrites a PI file. Sidebar drag/drop and **Move to group** both update `group` through the session PATCH route. |
 | `cwd`, `tool`, `createdAt`, `source` | HUI | Fixed when registered |
 | `updatedAt` | HUI | Advanced when PI accepts a prompt; drives recency ordering |
-| `model`, `thinking`, `fast` | HUI | Session preference passed back to the runtime on reopen; `fast` is optional and only `true` is stored, so no registry version bump |
+| `model`, `thinking`, `fast`, `autonomous` | HUI | Session preference passed back to the runtime on reopen; `fast` and `autonomous` are optional and only `true` is stored, so no registry version bump |
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
@@ -3642,6 +3642,41 @@ fast-mode premium. 400 when the runtime cannot change speed (PI SDK sessions)
 or the session is not running; 500 when the registry write fails, after the
 session went back to its previous speed.
 
+### `POST /__hui/sessions/:id/autonomous`
+
+Accepts `{ "autonomous": boolean }`, applies it live, persists it with the
+session (`autonomous: true` in the registry) and answers
+`{ "autonomous": boolean }`; every viewer gets `event: autonomous` with
+`{ "autonomous": boolean }`. While it is on, that session runs the software
+lifecycle itself and hands the work back as a pull request:
+
+- The prompt asks it to decide routine steps itself, take the recommended option
+  where the request leaves a choice open, keep the session's board stage honest
+  (investigation, implementation, testing — `done` stays the operator's), and
+  count the work finished only once the repository's own checks have run, the
+  full diff has been read, and it has been compared with what was asked: intent,
+  logic and failure paths.
+- A pull request needs evidence: the session declares the command that proves its work with `declare_check`, and
+  HUI refuses `gh pr create` until that exact command has run successfully since the session's last `edit` or
+  `write`. A new edit throws the evidence away. The declared command lives in the gateway's memory for the session's
+  lifetime, so a restart asks the session to declare and run it again rather than trusting an old pass.
+- It stops at the pull request and reports the link, what ran and what did not.
+- The tool-call hook refuses, as a `bash` command, `gh pr merge`, `gh pr ready`
+  and `gh api … /merge`, plus a `git push` whose refspec names the default
+  branch (`main` or `master`, including `HEAD:main` and `+main`). The refusal
+  reaches the model as the reason its call did not run, and says the operator
+  owns the merge and the draft-readiness decision. A feature branch, a
+  force-with-lease push and every read-only command stay the session's own.
+- A command a script performs on its behalf, a `codemode` script, and a hand-off
+  made outside the shell are not covered by that check; the prompt asks for the
+  same restraint there.
+
+It changes instruction and that one refusal only: full local access, every
+other tool and every other guard stay exactly as they are, and there is no
+approval or permission surface behind the switch. 400 when the runtime cannot
+carry it (PI SDK sessions) or the session is not running; 500 when the registry
+write fails, after the session went back to its previous mode.
+
 ### `POST /__hui/sessions/:id/question`
 
 Answers or cancels a pending PI extension-UI request:
@@ -3733,6 +3768,9 @@ data: { "level": "high" }
 
 event: fast
 data: { "fast": true }
+
+event: autonomous
+data: { "autonomous": true }
 ```
 
 While a turn is live, HUI keeps a replay projection of user messages, thinking,

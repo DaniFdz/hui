@@ -659,6 +659,16 @@ const cases: UseCase[] = [
     web: "backlog",
   },
   {
+    id: "CHAT-087",
+    title: "Let a session decide routine steps on its own",
+    behaviour:
+      'The thinking picker adds an Autonomy choice of Ask me or Autonomous, for Durable sessions. Autonomous asks the session\'s agent to decide routine steps itself, take the recommended option where the request leaves a choice open and say what it decided and why, while still asking when the operator\'s own decision is required. The choice applies live and stays with the session.',
+    spec: ["docs/api.md#post-__huisessionsidautonomous"],
+    surfaces: ["route:POST /__hui/sessions/:id/autonomous", "tool:declare_check"],
+    journeys: ["chat-composer"],
+    web: "required",
+  },
+  {
     id: "CHAT-056",
     title: "See who sent a bot's message",
     behaviour:

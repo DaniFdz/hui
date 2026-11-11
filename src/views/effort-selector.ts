@@ -36,6 +36,8 @@ export type EffortSelectorOptions = {
   /** What the accessible name names after the colon; defaults to the raw level (Thinking: low). */
   ariaValue?: string;
   fast?: { on: boolean; onSelect: (fast: boolean) => void };
+  /** Autonomous mode: the session's agent decides routine steps itself instead of parking on a question. */
+  autonomy?: { on: boolean; onSelect: (on: boolean) => void };
   /** The panel is light-dismissed (Settings), or stays until its trigger closes it (composer). */
   dismissable?: boolean;
   /** Close the panel after a selection (Settings) or leave it open for another adjustment (composer). */
@@ -138,8 +140,8 @@ export function renderEffortSelector(options: EffortSelectorOptions) {
   const levels: readonly ThinkingLevel[] = known.length ? known : PI_THINKING_LEVELS;
   const angle = -120 + state.fraction * 240;
   const fast = options.fast;
-  const disabled = options.disabled || (levels.length < 2 && !fast);
-  const label = `${options.label}: ${ariaValue}${fast?.on ? ", fast" : ""}`;
+  const disabled = options.disabled || (levels.length < 2 && !fast && !options.autonomy);
+  const label = `${options.label}: ${ariaValue}${fast?.on ? ", fast" : ""}${options.autonomy?.on ? ", autonomous" : ""}`;
   const setValue = (at: number, element: Element) => {
     const next = levels[at] ?? state.level;
     options.onSelect(next);
@@ -213,6 +215,14 @@ export function renderEffortSelector(options: EffortSelectorOptions) {
             options.onSelect("");
           }}>${options.unset.action}</button>
         </div>` : nothing}
+      </div>` : nothing}
+      ${options.autonomy ? html`<div class="chat-controls__speed-panel">
+        <span class="chat-controls__effort-heading">Autonomy</span>
+        <div class="chat-controls__speed-options" role="radiogroup" aria-label="Autonomy">
+          ${([[false, "Ask me"], [true, "Autonomous"]] as const).map(([value, text]) => html`<button type="button" role="radio"
+            class="chat-controls__speed-option" aria-checked=${String(options.autonomy!.on === value)} ?disabled=${options.disabled}
+            @click=${() => { if (options.autonomy!.on !== value) options.autonomy!.onSelect(value); }}>${text}</button>`)}
+        </div>
       </div>` : nothing}
       ${fast ? html`<div class="chat-controls__speed-panel">
         <span class="chat-controls__effort-heading">Speed</span>

@@ -549,6 +549,20 @@ test("Effort offers the model's own levels up to Maximum, and Speed only where f
   assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: { ...opus, fast: undefined }, thinking: "high", fast: false }), /chat-controls__speed-panel/u);
 });
 
+test("Autonomy offers Ask me or Autonomous, and only while the runtime can carry the mode", async () => {
+  const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max"], fast: true };
+  const html = await renderWorkerSession("idle", { currentModel: opus, thinking: "high", autonomous: true });
+  assert.match(html, /<span class="chat-controls__effort-heading">Autonomy<\/span>/u);
+  assert.match(html, /aria-label="Autonomy"/u);
+  assert.match(html, /aria-checked=false[^>]*>Ask me<\/button>.*aria-checked=true[^>]*>Autonomous<\/button>/u);
+
+  const off = await renderWorkerSession("idle", { currentModel: opus, thinking: "high", autonomous: false });
+  assert.match(off, /aria-checked=true[^>]*>Ask me<\/button>.*aria-checked=false[^>]*>Autonomous<\/button>/u);
+
+  // A runtime that cannot carry the mode shows no Autonomy panel at all.
+  assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: opus, thinking: "high" }), /Autonomy/u);
+});
+
 test("Ultra is the stop above Maximum where the runtime offers it, and both glow", async () => {
   const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] };
   const ultra = await renderWorkerSession("idle", { currentModel: opus, thinking: "ultra" });

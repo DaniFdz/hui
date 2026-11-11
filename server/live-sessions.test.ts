@@ -2351,6 +2351,36 @@ test("fast mode is saved with the session and turned back on when it boots again
   restarted.disposeAll();
 });
 
+test("autonomous mode is saved with the session and turned back on when it boots again", async () => {
+  class AutonomousSession extends FakeSession {
+    autonomous = false;
+    currentAutonomous(): boolean { return this.autonomous; }
+    async setAutonomous(on: boolean): Promise<void> { this.autonomous = on; }
+  }
+  const started: AutonomousSession[] = [];
+  const runtime: AgentRuntime = { id: "pi", start: async () => { const session = new AutonomousSession(); started.push(session); return session; } };
+  const manager = new LiveSessions(runtime);
+  manager.ensure(recordFor("autonomous"));
+  await waitForBoot(manager, "autonomous");
+  const messages: SessionStreamMessage[] = [];
+  manager.subscribe("autonomous", (message) => messages.push(message));
+  assert.equal(manager.snapshot("autonomous").autonomous, false);
+
+  assert.equal(await manager.setAutonomous("autonomous", true), true);
+  assert.equal((await stored("autonomous"))?.autonomous, true);
+  assert.ok(messages.some((message) => message.kind === "autonomous" && message.autonomous));
+  manager.disposeAll();
+
+  const restarted = new LiveSessions(runtime);
+  restarted.ensure((await stored("autonomous"))!);
+  await waitForBoot(restarted, "autonomous");
+  assert.equal(started[1]?.autonomous, true);
+  assert.equal(restarted.snapshot("autonomous").autonomous, true);
+  await restarted.setAutonomous("autonomous", false);
+  assert.equal((await stored("autonomous"))?.autonomous, undefined);
+  restarted.disposeAll();
+});
+
 test("queue, thinking and questions share the reconnect snapshot and delegate commands", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

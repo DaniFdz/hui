@@ -135,6 +135,8 @@ export type SessionSnapshot = {
   thinking?: string;
   /** Fast mode; absent when the runtime cannot change speed. */
   fast?: boolean;
+  /** Autonomous mode; absent when the runtime cannot carry it. */
+  autonomous?: boolean;
   queue: QueueSnapshot;
   questions: RuntimeQuestion[];
   subagents: SubagentTaskView[];
@@ -221,6 +223,7 @@ export async function createSession(input: {
   model?: string;
   thinking?: string;
   fast?: boolean;
+  autonomous?: boolean;
   worktree?: boolean;
   branchName?: string;
   baseRef?: string;
@@ -435,6 +438,15 @@ export async function setSessionThinking(id: string, level: string): Promise<str
   return body.level ?? level;
 }
 
+export async function setSessionAutonomous(id: string, autonomous: boolean): Promise<boolean> {
+  const body = await fetchJson<{ autonomous?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/autonomous`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ autonomous }),
+  });
+  return body.autonomous ?? autonomous;
+}
+
 export async function setSessionFast(id: string, fast: boolean): Promise<boolean> {
   const body = await fetchJson<{ fast?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/fast`, {
     method: "POST",
@@ -555,6 +567,7 @@ export type SessionStreamHandlers = {
   onModel: (model: RuntimeModel) => void;
   onThinking: (level: string) => void;
   onFast?: (fast: boolean) => void;
+  onAutonomous?: (autonomous: boolean) => void;
   /**
    * Called on every connect and reconnect. `live` means the stream delivered,
    * `reconnecting` means a retry is scheduled, `stopped` means no more retries
@@ -787,7 +800,7 @@ async function connectOnce(
       if (settled) return;
       try {
         const frame = JSON.parse(String(message.data)) as { event: string; data: unknown };
-        const stateFrame = ["snapshot", "transcript", "event", "status", "model", "thinking_level", "fast"].includes(frame.event);
+        const stateFrame = ["snapshot", "transcript", "event", "status", "model", "thinking_level", "fast", "autonomous"].includes(frame.event);
         if (!admitted && (!stateFrame || (heldRevision === undefined && frame.event !== "snapshot"))) {
           if (frame.event === "closed") finish({ kind: "ended" });
           else if (frame.event === "heartbeat" && !awaitingState) {
@@ -912,6 +925,9 @@ function dispatch(name: string, payload: unknown, handlers: SessionStreamHandler
       break;
     case "fast":
       handlers.onFast?.((payload as { fast: boolean }).fast);
+      break;
+    case "autonomous":
+      handlers.onAutonomous?.((payload as { autonomous: boolean }).autonomous);
       break;
     case "closed":
       return true;

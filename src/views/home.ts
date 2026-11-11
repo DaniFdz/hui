@@ -250,6 +250,8 @@ export type HomeProps = {
   thinking: string;
   /** Fast mode; absent while the runtime cannot change speed. */
   fast?: boolean;
+  /** Autonomous mode; absent while the runtime cannot carry it. */
+  autonomous?: boolean;
   question: RuntimeQuestion | undefined;
   connection: SessionConnection;
   copiedId: string;
@@ -334,6 +336,7 @@ export type HomeProps = {
   onSelectModel: (provider: string, modelId: string) => void;
   onSelectThinking: (level: string) => void;
   onSelectFast: (fast: boolean) => void;
+  onSelectAutonomous: (autonomous: boolean) => void;
   onAbort: () => void;
   onContinue: () => void;
   /** Rewind to before a user message, restoring its text and attachments to the composer. */
@@ -1856,6 +1859,7 @@ function renderComposer(props: HomeProps) {
             disabled: disconnected || props.streaming || props.opening,
             onSelect: props.onSelectThinking,
             ...(props.fast !== undefined && props.currentModel?.fast ? { fast: { on: props.fast, onSelect: props.onSelectFast } } : {}),
+            ...(props.autonomous === undefined ? {} : { autonomy: { on: props.autonomous, onSelect: props.onSelectAutonomous } }),
             onToggle: positionComposerPicker,
             onKeydown: closeComposerPicker,
             onOpen: prepareComposerPicker,

@@ -416,7 +416,7 @@ test("a bot has every tool and skill a session in its directory has until the op
   const { id, session } = await f.bot(NONE);
   assert.equal(plainTools.at(-1), "message_bot", "a session tags bots too");
   assert.deepEqual(names((await session.inspect()).tools), [...plainTools, "write_soul", "update_user", "update_memory", "set_profile", "triggers", "routines"], "every tool, message_bot, its soul and profile tools, its triggers and its routines");
-  assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["notify_user", "request_access", "load_skill"] },
+  assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["notify_user", "declare_check", "request_access", "load_skill"] },
     "its own tools wait until it has a use for them, and the notification tool until Settings turns it on");
   assert.deepEqual(names(session.botOffer()), [...plainTools, "triggers", "routines"], "the operator can turn off any of them but its essentials");
   assert.deepEqual(session.botOffer().find((tool) => tool.name === "triggers"), {
@@ -441,7 +441,7 @@ test("what the operator turns off leaves a bot's offer, extension tools included
   const tools = names((await session.inspect()).tools);
   for (const name of ["bash", "fixture_other", "terminal", "load_skill"]) assert.ok(!tools.includes(name), name);
   for (const name of ["read", "write", "fixture_echo", "sessions_spawn", "message_bot", "request_access"]) assert.ok(tools.includes(name), name);
-  assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["notify_user", "bash", "terminal", "fixture_other", "load_skill"] }, "removed by name");
+  assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["notify_user", "declare_check", "bash", "terminal", "fixture_other", "load_skill"] }, "removed by name");
   await session.prompt("plain turn");
   await settledWith(session, answered("Fixture response"));
   const [first] = await requests(f.log);

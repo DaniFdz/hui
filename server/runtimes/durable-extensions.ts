@@ -11,6 +11,8 @@
  * runs in the gateway process.
  */
 import { randomUUID } from "node:crypto";
+import { bashHandoffRefusal, createsPullRequest, prCreateRefusal } from "./pr-handoff.ts";
+import type { CheckEvidence } from "./check-evidence.ts";
 import { basename } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Context, JsonValue } from "@earendil-works/chord";
@@ -105,6 +107,8 @@ export interface ExtensionSession {
   rows(): readonly EntryRecord[];
   pendingCount(): number;
   currentModel(): { provider: string; id: string } | undefined;
+  /** The verification evidence an autonomous session must earn before a pull request. */
+  checkEvidence?(): CheckEvidence;
   /** The level the model is sent (HUI's `ultra` is its highest). */
   modelThinking(): string | undefined;
   currentUsage(): RuntimeUsage | undefined;
@@ -140,6 +144,8 @@ export interface ExtensionHost {
   promptOptions(cwd: string, selectedTools: readonly string[], contributions: Record<string, Contribution>): Promise<BuildSystemPromptOptions>;
   /** The prompt the conversation's latest request carried. */
   lastPrompt(conversation: Conversation): string;
+  /** Whether the session decides routine steps itself; the tool-call hook refuses its pull-request hand-offs. */
+  isAutonomous?(huiSessionId: string): boolean;
 }
 
 export type LoadOptions = {
@@ -601,10 +607,12 @@ export class DurableExtensions {
     return all.filter(([name, byDefault]) => this.#active ? this.#active.has(name) : byDefault).map(([name]) => name);
   }
 
-  /** The tools to leave out of the conversation's offer. */
+  /** The tools to leave out of the conversation's offer; declaring a check command only matters in autonomous mode. */
   inactiveTools(): readonly ToolRegistration[] {
     const active = new Set(this.#activeNames());
-    return [...this.#host.codingTools, ...(this.#extension.tools ?? []), ...this.#host.huiTools].filter((tool) => !active.has(tool.name));
+    const autonomous = this.#host.isAutonomous?.(this.#huiSessionId) === true;
+    return [...this.#host.codingTools, ...(this.#extension.tools ?? []), ...this.#host.huiTools]
+      .filter((tool) => !active.has(tool.name) || (tool.name === "declare_check" && !autonomous));
   }
 
   #applyTools(): void {
@@ -642,6 +650,18 @@ export class DurableExtensions {
     return [
       hook(ToolTask, {
         beforeTool: async (call) => {
+          const autonomous = this.#host.isAutonomous?.(this.#huiSessionId) === true;
+          if (autonomous) {
+            const evidence = this.#session.checkEvidence?.();
+            if (call.name === "edit" || call.name === "write") evidence?.edited();
+            const command = (call.arguments as { command?: unknown }).command;
+            if (typeof command === "string" && createsPullRequest(command)) {
+              const latch = prCreateRefusal(evidence?.state() ?? {});
+              if (latch) return { block: latch };
+            }
+            const refusal = bashHandoffRefusal(call.name, call.arguments, true);
+            if (refusal) return { block: refusal };
+          }
           if (!this.#runner.hasHandlers("tool_call")) return undefined;
           const input = structuredClone(call.arguments);
           // Handlers edit `input` in place; a throw blocks the call, as in PI.
@@ -650,6 +670,10 @@ export class DurableExtensions {
           return isDeepStrictEqual(input, call.arguments) ? undefined : { arguments: input as never };
         },
         afterTool: async (call, result) => {
+          if (this.#host.isAutonomous?.(this.#huiSessionId) === true) {
+            const command = (call.arguments as { command?: unknown }).command;
+            if (typeof command === "string") this.#session.checkEvidence?.().ran(command, result.isError !== true);
+          }
           if (!this.#runner.hasHandlers("tool_result")) return undefined;
           const replaced = await this.#runner.emitToolResult({
             type: "tool_result", toolName: call.name, toolCallId: call.id, input: call.arguments,

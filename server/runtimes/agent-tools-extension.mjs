@@ -417,6 +417,24 @@ A question takes one of three inputs: options (2-4 choices, radios or checkboxes
   });
 
   pi.registerTool({
+    name: "declare_check",
+    label: "Declare the check command",
+    description: "Declare the one command that proves this session's work: a test, lint, typecheck or build command. HUI requires it to pass after the last edit before a pull request may open in autonomous mode, and refuses the pull request otherwise.",
+    promptSnippet: "Declare the command that proves this session's work",
+    promptGuidelines: [
+      "Declare it once, early, with the command the repository itself uses (npm test, pytest -q, go test ./..., and so on). Never invent a command that trivially passes.",
+      "Run the declared command after your last change; a pull request in autonomous mode is refused until it passes. Declare it again only when the project's check command changes.",
+    ],
+    parameters: Type.Object({
+      command: Type.String({ minLength: 1, maxLength: 500, description: "The single command that proves the work, one line." }),
+    }),
+    async execute(_toolCallId, params) {
+      const result = await invoke("declare_check", params);
+      return { content: [{ type: "text", text: result?.message ?? "Check command declared." }], details: result };
+    },
+  });
+
+  pi.registerTool({
     name: "update_goal",
     label: "Update goal",
     description: "Report this conversation's goal as complete or blocked. Only valid while the operator's goal is active; HUI refuses and tells you to carry on when there is none.",

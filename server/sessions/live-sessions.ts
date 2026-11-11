@@ -102,6 +102,8 @@ export type SessionSnapshot = {
   thinking?: string;
   /** Fast mode; absent when the runtime cannot change speed. */
   fast?: boolean;
+  /** Autonomous mode; absent when the runtime cannot carry it. */
+  autonomous?: boolean;
   queue: RuntimeQueue;
   /** The runtime's questions, then HUI's own pending ones. */
   questions: readonly (RuntimeQuestion | HuiQuestion)[];
@@ -124,6 +126,7 @@ export type SessionStreamMessage =
   | { kind: "model"; model: RuntimeModel }
   | { kind: "thinking"; level: string }
   | { kind: "fast"; fast: boolean }
+  | { kind: "autonomous"; autonomous: boolean }
   | { kind: "closed" };
 
 /** Lightweight gateway-wide lifecycle update. Detailed transcript/runtime
@@ -197,6 +200,7 @@ type Live = {
   transcript: TranscriptEntry[];
   thinking?: string;
   fast?: boolean;
+  autonomous?: boolean;
   queue: RuntimeQueue;
   /** Follow-ups not yet handed to the runtime. Keeping them here is what makes
    * OpenClaw-style edit, remove, and reorder operations truthful. */
@@ -579,6 +583,7 @@ export class LiveSessions {
       ...(usage ? { usage } : {}),
       ...(live.thinking ? { thinking: live.thinking } : {}),
       ...(live.fast === undefined ? {} : { fast: live.fast }),
+      ...(live.autonomous === undefined ? {} : { autonomous: live.autonomous }),
       queue: this.#queueSnapshot(live),
       questions: [...live.questions.values(), ...this.#huiQuestions(id)],
       subagents: [...this.#subagentSnapshot(id)],
@@ -1299,6 +1304,30 @@ export class LiveSessions {
     return live.fast === true;
   }
 
+  /** The agent declared the command that proves its work; only the runtime's tool-call hooks read it. */
+  setCheckCommand(id: string, command: string): void {
+    const live = this.#ready(id);
+    if (!live.runtime?.setCheckCommand) throw new Error(`${live.record.tool} cannot verify work in this build.`);
+    live.runtime.setCheckCommand(command);
+  }
+
+  async setAutonomous(id: string, on: boolean): Promise<boolean> {
+    const live = this.#ready(id);
+    if (!live.runtime?.setAutonomous) throw new Error(`${live.record.tool} cannot change autonomy in this build.`);
+    const previous = live.runtime.currentAutonomous?.() === true;
+    await live.runtime.setAutonomous(on);
+    try {
+      await this.#save(live, { autonomous: on || undefined });
+    } catch (persistenceError) {
+      await live.runtime.setAutonomous(previous).catch(() => undefined);
+      throw new SessionRegistryError("HUI could not save the mode, so the session keeps its previous one.", { cause: persistenceError });
+    } finally {
+      live.autonomous = live.runtime.currentAutonomous?.() ?? live.autonomous;
+      this.#broadcast(live, { kind: "autonomous", autonomous: live.autonomous === true });
+    }
+    return live.autonomous === true;
+  }
+
   async respondQuestion(id: string, questionId: string, response: RuntimeQuestionResponse): Promise<void> {
     const live = this.#ready(id);
     const question = live.questions.get(questionId);
@@ -1485,6 +1514,7 @@ export class LiveSessions {
         huiSessionId: live.record.id,
       });
       if (live.record.fast) await runtime.setFast?.(true);
+      if (live.record.autonomous) await runtime.setAutonomous?.(true);
       // Deletion or gateway shutdown can happen while a runtime takes several
       // seconds to boot. Never attach or persist a process nobody owns.
       if (live.closed || this.#live.get(live.record.id) !== live) {
@@ -1498,6 +1528,7 @@ export class LiveSessions {
       live.thinking = runtime.currentThinking?.();
       // Only a runtime that can change speed reports one.
       live.fast = runtime.setFast ? runtime.currentFast?.() === true : undefined;
+      live.autonomous = runtime.setAutonomous ? runtime.currentAutonomous?.() === true : undefined;
       live.queue = runtime.pendingQueue?.() ?? { steering: [], followUp: [] };
       live.questions = new Map((runtime.pendingQuestions?.() ?? []).map((question) => [question.id, question]));
       live.unsubscribe = runtime.subscribe((event) => this.#onEvent(live, runtime!, event));

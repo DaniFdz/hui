@@ -139,6 +139,11 @@ export type RuntimeSession = {
   /** Fast mode: the session's requests to a model with one (`RuntimeModel.fast`) ask for it. */
   currentFast?(): boolean;
   setFast?(on: boolean): Promise<void>;
+  /** Autonomous mode: the session's prompt asks the agent to decide routine steps itself. */
+  currentAutonomous?(): boolean;
+  setAutonomous?(on: boolean): Promise<void>;
+  /** The command whose success proves an autonomous session's work, declared by the agent itself. */
+  setCheckCommand?(command: string): void;
   pendingQueue?(): RuntimeQueue;
   pendingQuestions?(): readonly RuntimeQuestion[];
   respondQuestion?(id: string, response: RuntimeQuestionResponse): Promise<void>;

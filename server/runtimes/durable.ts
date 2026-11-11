@@ -26,6 +26,7 @@ import { durableContext as context, durableHost, modelCallable, type DurableHost
 import { CallEntry } from "./turn-origins.ts";
 import { skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-offer.ts";
 import { QuestionBox, type QuestionDraft } from "./question-box.ts";
+import { CheckEvidence } from "./check-evidence.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, reportedSessionCost, sessionCostOf, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import { fitThinking, modelControls, piThinking } from "./model-controls.ts";
@@ -1326,6 +1327,28 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   async setFast(on: boolean): Promise<void> {
     if (this.#huiSessionId === undefined) throw new Error("Fast mode needs a HUI session.");
     this.#host.setFast(this.#huiSessionId, on);
+  }
+
+  readonly #checks = new CheckEvidence();
+
+  /** The evidence the tool-call hooks record and the pull-request latch reads. */
+  checkEvidence(): CheckEvidence {
+    return this.#checks;
+  }
+
+  /** The agent declared the command that proves its work; the tool-call hooks require it to pass after each edit. */
+  setCheckCommand(command: string): void {
+    this.#checks.declare(command);
+  }
+
+  currentAutonomous(): boolean {
+    return this.#huiSessionId !== undefined && this.#host.isAutonomous(this.#huiSessionId);
+  }
+
+  /** Kept per HUI session by the host, whose prompt carries the mode for that session. */
+  async setAutonomous(on: boolean): Promise<void> {
+    if (this.#huiSessionId === undefined) throw new Error("Autonomous mode needs a HUI session.");
+    this.#host.setAutonomous(this.#huiSessionId, on);
   }
 
   pendingQueue(): RuntimeQueue {

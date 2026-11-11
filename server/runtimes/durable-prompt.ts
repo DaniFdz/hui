@@ -51,7 +51,7 @@ const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
  * `before_agent_start` follow PI's, already tagged, in `extension_sections`. */
 const SECTION_KEYS = [
   "preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd", "extension_sections",
-  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_goal", "hui_extensions", "hui_ultra",
+  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_goal", "hui_autonomy", "hui_extensions", "hui_ultra",
 ] as const;
 const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
@@ -75,6 +75,18 @@ export function huiToolSections(
       : "No callable tools are active for this turn.",
     ...(guidance ? { hui_tool_guidelines: guidance } : {}),
   };
+}
+
+/** Autonomous mode: the session decides routine steps itself and hands the work back as a pull request for review. */
+export function autonomySection(): string {
+  return `## Autonomous mode
+Autonomous mode is on for this session. Decide routine steps yourself: when the request leaves a choice open, take the option you would recommend and keep going instead of stopping to ask.
+Run the lifecycle yourself, and keep the session's board stage honest: investigation while you read and plan, implementation while you change code, testing while you run the checks. Leave done for the operator.
+Call the work finished only when it is genuinely reviewable: the repository's own checks have run, you have read the full diff, and you have compared it with what was asked — the intent, the logic, and the failure paths. Report exactly what ran and what did not.
+Declare the command that proves the work with declare_check, and run it after your last change: HUI refuses a pull request until that command has passed since your last edit.
+Open or update the pull request with what changed, why, the checks that ran and any gap. Stop at the pull request and report its link.
+Never merge a pull request, never mark one ready for review, and never push to the default branch: those are the operator's, and HUI refuses the shell command in this mode.
+Still ask when the operator's own decision is required: a change to the requested outcome or its constraints, credentials or another protected action, destructive or external actions, or a decision that affects other people.`;
 }
 
 /** OpenClaw's Ultra guidance (`ultra-orchestration.ts`): delegation only where the request offers `sessions_spawn`. */
@@ -111,6 +123,8 @@ export class DurablePrompt {
   skillDirsFor: (conversationId: ConversationId) => Promise<readonly string[]> = async () => [];
   /** Whether the conversation's session is on Ultra. The Durable host answers. */
   ultraFor: (conversationId: ConversationId) => boolean = () => false;
+  /** Whether the conversation's session is in Autonomous mode. The Durable host answers. */
+  autonomousFor: (conversationId: ConversationId) => boolean = () => false;
   /** The active goal of the conversation's session, as its own prompt section. The Durable host answers. */
   goalFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
   /** The PR-lead section of a session a chief created, if it is one. The Durable host answers. */
@@ -193,7 +207,7 @@ export class DurablePrompt {
   /** PI's builder input for a request offering these tools. A bot's chat (`bot` given) lists only the skills the operator
    * left on: in PI's own section while it has read or bash, otherwise in one of HUI's that loads them with `load_skill`,
    * which such a chat is offered. */
-  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, bot?: BotSkills, skillDirs: readonly string[] = [], ultra = false): Promise<BuildSystemPromptOptions> {
+  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, bot?: BotSkills, skillDirs: readonly string[] = [], ultra = false, autonomous = false): Promise<BuildSystemPromptOptions> {
     const loader = await this.loader(cwd, skillDirs);
     const skills = bot ? bot.skills(loader.getSkills().skills) : loader.getSkills().skills;
     const own = bot?.section(skills, selectedTools);
@@ -215,6 +229,7 @@ export class DurablePrompt {
       sections: {
         ...huiToolSections(selectedTools, contributions, (await this.#readSettings()).models.routes), ...(own ? { skills: own } : {}),
         ...(ultra ? { hui_ultra: ultraSection(selectedTools.includes("sessions_spawn")) } : {}),
+        ...(autonomous ? { hui_autonomy: autonomySection() } : {}),
       },
       cwd,
       contextFiles: loader.getAgentsFiles().agentsFiles,
@@ -230,7 +245,8 @@ export class DurablePrompt {
     const bot = conversationId === undefined ? undefined : await this.botSkillsFor(conversationId);
     const skillDirs = conversationId === undefined ? [] : await this.skillDirsFor(conversationId);
     const ultra = conversationId !== undefined && this.ultraFor(conversationId);
-    const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra);
+    const autonomous = conversationId !== undefined && this.autonomousFor(conversationId);
+    const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra, autonomous);
     const goal = conversationId === undefined ? undefined : await this.goalFor(conversationId);
     if (goal) base.sections = { ...base.sections, hui_goal: goal };
     const lead = conversationId === undefined ? undefined : await this.leadFor(conversationId);

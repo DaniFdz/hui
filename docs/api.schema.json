@@ -8933,6 +8933,17 @@
         }
       }
     },
+    "SessionAutonomousResponse": {
+      "type": "object",
+      "required": [
+        "autonomous"
+      ],
+      "properties": {
+        "autonomous": {
+          "type": "boolean"
+        }
+      }
+    },
     "SessionBtwRequest": {
       "type": "object",
       "required": [
@@ -14674,6 +14685,7 @@
       "QuestionnaireOption",
       "QuestionnaireQuestion",
       "QuestionnaireResult",
+      "SessionAutonomousResponse",
       "SessionConnectResponse",
       "SessionError",
       "SessionFastResponse",
@@ -16030,6 +16042,13 @@
       "path": "/__hui/sessions/:id/abort",
       "response": {
         "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/autonomous",
+      "response": {
+        "$ref": "#/$defs/SessionAutonomousResponse"
       }
     },
     {

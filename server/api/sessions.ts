@@ -214,6 +214,9 @@ export type SessionPromptResponse = Static<typeof SessionPromptResponse>;
 export const SessionFastResponse = Type.Object({ fast: Type.Boolean() }, { $id: "SessionFastResponse" });
 export type SessionFastResponse = Static<typeof SessionFastResponse>;
 
+export const SessionAutonomousResponse = Type.Object({ autonomous: Type.Boolean() }, { $id: "SessionAutonomousResponse" });
+export type SessionAutonomousResponse = Static<typeof SessionAutonomousResponse>;
+
 export const SessionConnectResponse = Type.Object({ url: Type.String() }, { $id: "SessionConnectResponse" });
 export type SessionConnectResponse = Static<typeof SessionConnectResponse>;
 
@@ -257,6 +260,7 @@ export const sessionActionRouteSchemas = [
   { method: "DELETE", path: "/__hui/sessions/:id/compact", response: SessionOk },
   { method: "POST", path: "/__hui/sessions/:id/fork", response: SessionResponse },
   { method: "POST", path: "/__hui/sessions/:id/fast", response: SessionFastResponse },
+  { method: "POST", path: "/__hui/sessions/:id/autonomous", response: SessionAutonomousResponse },
   { method: "POST", path: "/__hui/sessions/:id/queue", request: SessionQueueRequest, response: SessionOk },
   { method: "POST", path: "/__hui/sessions/:id/goal", request: SessionGoalRequest, response: SessionResponse },
 ];

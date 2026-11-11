@@ -64,5 +64,5 @@ test("a tool whose name is too long or already taken is refused once", () => {
 
 test("the gateway prompt section sits between the goal and Ultra", () => {
   const source = readFileSync(new URL("../runtimes/durable-prompt.ts", import.meta.url), "utf8");
-  assert.match(source, /"hui_goal", "hui_extensions", "hui_ultra"/u);
+  assert.match(source, /"hui_goal", "hui_autonomy", "hui_extensions", "hui_ultra"/u);
 });

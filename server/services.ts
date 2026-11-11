@@ -649,6 +649,17 @@ registerAgentToolHandler(async (invocation) => {
   if (invocation.action === "worker_stats") {
     return workerStatsFromAgent(invocation.callerSessionId);
   }
+  if (invocation.action === "declare_check") {
+    const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
+    if (!caller) throw new Error("Conversation no longer exists.");
+    const raw = invocation.params["command"];
+    const command = typeof raw === "string" ? raw.trim() : "";
+    if (!command || command.length > 500 || command.includes("\n")) {
+      throw new Error("The check command must be one line, up to 500 characters.");
+    }
+    liveSessions.setCheckCommand(caller.id, command);
+    return { command, message: `Check command declared: ${command}. Run it after your last edit; HUI requires it to pass before a pull request opens.` };
+  }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
   }
