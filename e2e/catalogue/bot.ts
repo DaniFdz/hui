@@ -644,7 +644,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-065",
     title: "Manage a worker bot's tools",
-    behaviour: "A bot on a worker lists its tools and skills from that worker, without the terminal, the browser or watchers, and its switches and access requests act there. While the worker is offline the page says \"<worker>, where this bot runs, is offline: HUI is not connected to it. Connect it in Settings → Workers, then try again.\" with Retry.",
+    behaviour: "A bot on a worker lists its tools and skills from that worker, without the watchers, whose processes live where the gateway runs: it browses in its own browser there, and its terminal is a shell there. Its switches and access requests act there. While the worker is offline the page says \"<worker>, where this bot runs, is offline: HUI is not connected to it. Connect it in Settings → Workers, then try again.\" with Retry.",
     spec: ["SPEC.md#a-bot-has-every-tool-and-skill-until-the-operator-turns-some-off-2026-10-06", "SPEC.md#bots-run-on-remote-workers-2026-10-06", "docs/api.md#bots-on-a-worker"],
     surfaces: ["route:GET /__hui/bots/:id/catalog", "route:PATCH /__hui/bots/:id"],
     journeys: ["bots"],
