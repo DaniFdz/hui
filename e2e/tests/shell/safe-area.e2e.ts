@@ -48,7 +48,8 @@ test("the phone's status bar and home indicator never cover HUI's header or comp
   const cutoutMenu = await box(menu);
   expect(Math.round(cutoutHeader.y)).toBeGreaterThanOrEqual(TOP);
   expect(cutoutMenu.y).toBeGreaterThanOrEqual(TOP);
-  expect(cutoutMenu.y - plain.menu.y).toBeGreaterThanOrEqual(TOP - 2);
+  // It really moved: the button used to sit inside the band the status bar draws over.
+  expect(plain.menu.y).toBeLessThan(TOP);
 
   // The composer ends above the home indicator rather than under it. The room it gives back is the inset plus or minus a
   // pixel of layout rounding, so the promise is that it cleared the inset, not that it cleared it exactly.
