@@ -31,7 +31,7 @@ import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
 import { readStaffPack } from "./staff/pack.ts";
 import { ensureStaff } from "./staff/service.ts";
-import { type BotReply, type BotView } from "./bots-format.ts";
+import { botTagPrefix, type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
 import { readHuiSettings, writeHuiSettings, type Settings } from "./hui-settings.ts";
@@ -484,7 +484,7 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
   const caller = (await readRegistry()).find(({ id }) => id === callerSessionId);
   if (!caller) throw new Error("Conversation no longer exists.");
   const owner = caller.bot ? (await bots.list({ archived: "all" })).find(({ id }) => id === caller.bot) : undefined;
-  if (!isChiefTitle(owner?.title)) throw new Error("Only a Chief of Staff bot can create an ordinary session. Use sessions_spawn for a fast child.");
+  if (!owner || !isChiefTitle(owner.title)) throw new Error("Only a Chief of Staff bot can create an ordinary session. Use sessions_spawn for a fast child.");
   const prompt = typeof params["prompt"] === "string" ? params["prompt"].trim() : "";
   if (!prompt) throw new Error("A new session needs its brief: pass it as prompt.");
   if (prompt.length > 20_000) throw new Error("A session prompt must be at most 20000 characters.");
@@ -519,9 +519,10 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
       ? { ...current, watches: [...new Set([...(current.watches ?? []), record.id])].slice(0, WATCH_LIMIT) }
       : current));
   }
-  // The session is registered and starts its runtime; the brief is its first prompt, not its title.
+  // The session is registered and starts its runtime; the brief is its first prompt, not its title, and it carries the
+  // bot's tag so the new chat shows who asked.
   await waitForSessionReady(record.id, 120_000);
-  await liveSessions.prompt(record.id, prompt);
+  await liveSessions.prompt(record.id, `${botTagPrefix(owner.handle)}${prompt}`);
   return {
     id: record.id,
     title: record.title,

@@ -662,11 +662,11 @@ const cases: UseCase[] = [
     id: "CHAT-056",
     title: "See who sent a bot's message",
     behaviour:
-      "A message a bot delivers shows on the left with the bot's face, a bubble in its color and its name, which opens the bot's chat; a bot HUI no longer knows shows its @handle. The bubble shows the rendered Markdown without the [from @…] header, Copy and Reply take that text, no Rewind is offered, the position rail labels it \"From @<handle>\" and a color change to the bot shows without a reload.",
+      "A message a bot delivers shows on the left with the bot's face, a bubble in its color and its name, which opens the bot's chat; a bot HUI no longer knows shows its @handle. The bubble shows the rendered Markdown without the [from @…] header, Copy and Reply take that text, no Rewind is offered, the position rail labels it \"From @<handle>\" and a color change to the bot shows without a reload. A header a bot wrote itself, the handle without its @ or a note after it, reads as that bot's message too.",
     spec: ["SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
     surfaces: ["row:messages"],
     journeys: ["chat-senders"],
-    web: "backlog",
+    web: "required",
   },
   {
     id: "CHAT-057",
