@@ -33,8 +33,11 @@ test("a terminal comes back on the same shell after a reload, says when its repl
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);
 
-  // A shell variable and a marker with output of their own.
-  await run(hui, screen, "MARK=kept; printf 'MARK-one\\n'");
+  // A shell variable and a marker with output of their own. The echo of the typing carries MARK-%s, so the line
+  // `MARK-one` the replay counts is the output alone: typing both in one line made the count depend on whether the echo
+  // had been written when it was read.
+  await run(hui, screen, "MARK=kept");
+  await run(hui, screen, "printf 'MARK-%s\\n' one");
   await expect.poll(async () => (await replay(hui, session.id, id)).data).toContain("MARK-one");
   const printed = (await replay(hui, session.id, id)).data.split("MARK-one").length - 1;
 
