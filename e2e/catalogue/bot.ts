@@ -676,6 +676,15 @@ const cases: UseCase[] = [
     journeys: ["bots"],
     web: "required",
   },
+  {
+    id: "BOT-076",
+    title: "Every Chief of Staff gets a Heartbeat routine",
+    behaviour: "HUI adds one routine named Heartbeat to every Chief of Staff's chat, the seeded chief and a group chief alike. It runs every 15 minutes, continues a watched session that stopped, and never starts new work. Asking for the group chief again does not add a second.",
+    spec: ["SPEC.md#a-staff-pack-seeds-one-chief-of-staff-2026-11-06", "docs/api.md#pi-session-coordination-tools"],
+    surfaces: ["route:POST /__hui/staff/chiefs", "route:GET /__hui/bots"],
+    journeys: ["bots"],
+    web: "required",
+  },
 ];
 
 export default cases;

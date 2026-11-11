@@ -29,6 +29,7 @@ import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
 import { readStaffPack } from "./staff/pack.ts";
 import { ensureStaff } from "./staff/service.ts";
+import { ensureChiefHeartbeats } from "./staff/heartbeat.ts";
 import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
@@ -257,6 +258,7 @@ export const staffRoutes = createStaffRoutes({
   skills: localBotSkills(),
   readSettings: readHuiSettings,
   writeSettings: writeHuiSettings,
+  ensureHeartbeat: () => ensureChiefHeartbeats({ bots, automation }),
 });
 export const botRoutes = createBotRoutes({
   service: bots,

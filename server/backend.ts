@@ -10,6 +10,7 @@ import { durableHost } from "./runtimes/durable-host.ts";
 import { stopAgentToolBridge } from "./agent-tools/bridge.ts";
 import { terminals } from "./terminals/terminals.ts";
 import { ensureConfigDir } from "./themes.ts";
+import { ensureChiefHeartbeats } from "./staff/heartbeat.ts";
 import { readRegistry, type SessionRecord } from "./sessions/sessions.ts";
 import {
   automation,
@@ -127,6 +128,22 @@ export async function startBackend(): Promise<void> {
   }, (error: unknown) => recordDiagnosticEvent({
     area: "session", level: "warning", action: "staff_pack_failed",
     summary: "The staff pack could not be installed; HUI tries again at its next start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
+  // Every live chief, including a group chief the pack does not re-seed, gets the heartbeat routine once.
+  await ensureChiefHeartbeats({ bots, automation }).then((outcome) => {
+    if (!outcome.created.length) return;
+    recordDiagnosticEvent({
+      area: "session",
+      level: "info",
+      action: "staff_heartbeats_installed",
+      summary: `Added the Heartbeat routine to ${outcome.created.length} chief${outcome.created.length === 1 ? "" : "s"}`,
+    });
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session",
+    level: "warning",
+    action: "staff_heartbeats_failed",
+    summary: "The Chief of Staff heartbeats could not be installed; HUI tries again at its next start",
     detail: error instanceof Error ? error.message : String(error),
   }));
   // Auto-star the HUI repo when GitHub is connected.

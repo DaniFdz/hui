@@ -549,8 +549,8 @@ ask for one, not the chief's default.
 Each session the chief creates is **watched** by default. A `Heartbeat` routine
 in its chat, every 15 minutes, lists the watched sessions and continues one that
 is idle with an open task; it leaves a running session, or one with a running
-watcher, alone, and never starts new work. The routine is created in the chief's
-first operator turn.
+watcher, alone, and never starts new work. HUI gives every Chief of Staff,
+including a group chief, one at gateway start or when that chief is created.
 
 After a task that failed, drifted, or needed a step the pack did not know, the chief adds one evidence-backed entry to its own **`lessons`** skill. It never edits the pack's skills: an edited pack file stops taking pack updates. The `lessons` skill is the bot's, and `hui doctor` reports it.
 
