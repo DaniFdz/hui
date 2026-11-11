@@ -1,6 +1,7 @@
 /** New bot makes a bot at once and opens its chat on its own first question, and a bot's chat shows its face, name, title and status, its panel and its menu, invites you when empty and marks the bot read (BOT-004, BOT-010). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { hideBotPanel, showBotPanel } from "./bot-panel.ts";
 
 const NAME_QUESTION = "Hi, I'm new here and I don't have a name yet. What would you like to call me?";
 
@@ -50,12 +51,14 @@ test("New bot creates a bot at once and opens its chat on its centered note and 
 test("opening a bot's chat shows its name, status, panel and menu, an empty chat invites you, and opening it marks the bot read", { tags: ["BOT-010"], platforms: ["web"] }, async ({ screen, hui }) => {
   const bot = (await hui.api<{ bot: { id: string; sessionId: string } }>("POST", "/__hui/bots", { name: "Solo", title: "Fixture helper", soul: "# Who I am\nA terse fixture bot.\n" })).bot;
   const row = screen.getByLabel(/^Solo,/u);
+  // A phone keeps the roster in the navigation drawer; on the wide layout this is nothing.
+  await hui.sessionList();
   await screen.getByRole("tab", "Bots").tap();
   await expect(row).toBeVisible();
   await row.tap();
   await expect.poll(() => hui.url()).toMatch(new RegExp(`/bots/${bot.id}$`, "u"));
-  await expect(screen.getByLabel("Solo: bot panel")).toBeVisible();
-  await screen.getByRole("button", "Hide the bot panel").tap();
+  await showBotPanel(screen, "Solo");
+  await hideBotPanel(screen);
   await expect(screen.getByLabel("Solo: bot panel")).toBeHidden();
   await expect.poll(() => screen.getByText("Solo", { exact: true }).count()).toBe(2);
   await expect.poll(async () => (await hui.faces()).map((face) => face.size)).toEqual(["sm", "sm", "md", "lg"]);
@@ -75,11 +78,12 @@ test("opening a bot's chat shows its name, status, panel and menu, an empty chat
   await hui.keyboard.down("Escape");
   await hui.keyboard.up("Escape");
 
-  await screen.getByRole("button", "Show the bot panel").tap();
-  await expect(screen.getByLabel("Solo: bot panel")).toBeVisible();
+  await showBotPanel(screen, "Solo");
+  await hideBotPanel(screen);
 
   await hui.open("/");
   await hui.api("POST", `/__hui/bots/${bot.id}/messages`, { text: "E2E_REPLY:UmVhZHkgd2hlbiB5b3UgYXJlLg" });
+  await hui.sessionList();
   await expect(screen.getByLabel(/^Solo,.*unread$/u)).toBeVisible();
   await screen.getByLabel(/^Solo,.*unread$/u).tap();
   await expect(screen.getByTestId("transcript").getByText("Ready when you are.")).toBeVisible();
