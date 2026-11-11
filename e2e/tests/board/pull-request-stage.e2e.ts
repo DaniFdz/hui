@@ -5,7 +5,7 @@
 import { writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { expect } from "e2e";
-import { test, type Hui } from "../../fixtures/hui.ts";
+import { test } from "../../fixtures/hui.ts";
 import type { World } from "../../fixtures/world.ts";
 
 const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
