@@ -1,7 +1,8 @@
 /**
  * Call on a bot, and what the chat, its overview and its Settings say about it (CALL-001): with a ChatGPT login a bot's
- * chat header and its overview profile offer `Call <bot>`; without one, or when the login cannot be read, neither does,
- * and the bot's Settings tab says *Needs a ChatGPT login* beside its Calls heading.
+ * chat header and its overview profile offer `Call <bot>`; without one, neither does and the bot's Settings tab says
+ * *Needs a ChatGPT login* beside its Calls heading, while a login status that could not be read leaves Call out with no
+ * such note, since no login was reported missing.
  *
  * The shared gateway holds no ChatGPT login (the launcher seeds one only for the quota checks), so the signed-in half
  * answers `/__hui/calls` from the page: whether a call can run is the gateway's to say, and the button's rule is the
@@ -44,11 +45,14 @@ test("a bot's chat header and overview profile offer Call with a ChatGPT login a
   await expect(panel.getByText("Needs a ChatGPT login")).toHaveCount(0);
   await signedIn.stop();
 
-  // A login status that cannot be read offers no call either.
+  // A login status that cannot be read offers no call either, and no note claims a login is missing.
   const unreadable = await hui.answerAll("GET", /\/__hui\/calls$/u, JSON.stringify({ error: "The ChatGPT login could not be read." }), 500);
   await hui.reload();
   await expect(panel.getByLabel("About Juno")).toBeVisible();
   await expect(header.getByRole("button", "Call Juno")).toHaveCount(0);
   await expect(panel.getByRole("button", "Call Juno")).toHaveCount(0);
+  await screen.getByRole("button", /^Calls /u).tap();
+  await expect(panel.getByLabel("Settings")).toBeVisible();
+  await expect(panel.getByText("Needs a ChatGPT login")).toHaveCount(0);
   await unreadable.stop();
 });

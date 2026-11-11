@@ -280,7 +280,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-030",
     title: "Have subagent trees follow the open session",
-    behaviour: "With nothing open, parents show folded. Opening a parent or one of its children, or loading a child's address directly, expands that tree and highlights the row; opening an unrelated session folds it again. A disclosure still expands any tree by hand without changing the open chat.",
+    behaviour: "With nothing open, parents show folded. Opening a subagent — from a card that opens its transcript, or by loading its address — shows the path down to it and highlights its row, while opening a parent or anything outside a tree leaves that tree folded. A disclosure folds or expands a whole subtree by hand without changing the open chat, and opening another session folds it again.",
     spec: SUBAGENTS,
     surfaces: [],
     journeys: ["subagent-tree-collapse"],

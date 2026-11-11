@@ -65,7 +65,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-007",
     title: "Keep routines, triggers and other bots from rewriting a bot",
-    behaviour: "In a turn that took a message from a routine, a trigger, another bot or an agent, the bot's attempt to rename itself, rewrite its SOUL.md or add a routine is refused, and the chat shows the refusal in its tool call. Its name, title and persona stay as they were.",
+    behaviour: "In a turn that took a message from a routine, a trigger, another bot or an agent, the bot's attempt to rename itself or rewrite its SOUL.md is refused, and the chat shows the refusal in its tool call; only the operator's turns, its routines' own turns and HUI's kickoff may add or change a routine, so a routine's turn still adds one. Its name, title and persona stay as they were.",
     spec: ["SPEC.md#bots", "SPEC.md#agents-and-bots-tag-bots-by-handle-2026-10-16", "SPEC.md#schedules-are-a-cli-and-bots-schedule-their-own-routines-2026-10-07"],
     surfaces: ["tool:set_profile", "tool:write_soul"],
     journeys: ["bot-triggers"],
@@ -464,7 +464,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-047",
     title: "Follow or cancel a routine's automatic retry",
-    behaviour: "Run now on a routine whose worker is disconnected shows \"Retry scheduled\", \"Attempt 1/3\", the next retry's time and the connection error. Cancel in Automations before that time makes the run Cancelled with no further retry promised.",
+    behaviour: "Run now on a routine whose worker is disconnected shows \"Retry scheduled\", \"Attempt 1 · Next retry <time>\" and the connection error, and HUI keeps the run to try again instead of losing it. Cancel in Automations before that time makes the run Cancelled with no further retry promised.",
     spec: ["SPEC.md#bots", "docs/api.md#routines", "docs/api.md#post-__huiautomationrunsidcancel"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run", "route:POST /__hui/automation/runs/:id/cancel"],
     journeys: ["bot-routine-recovery"],
@@ -644,7 +644,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-065",
     title: "Manage a worker bot's tools",
-    behaviour: "A bot on a worker lists its tools and skills from that worker, without the terminal, the browser or watchers, and its switches and access requests act there. While the worker is offline the page says \"<worker>, where this bot runs, is offline: HUI is not connected to it. Connect it in Settings → Workers, then try again.\" with Retry.",
+    behaviour: "A bot on a worker lists its tools and skills from that worker, without the watchers, whose processes live where the gateway runs: it browses in its own browser there, and its terminal is a shell there. Its switches and access requests act there. While the worker is offline the page says \"<worker>, where this bot runs, is offline: HUI is not connected to it. Connect it in Settings → Workers, then try again.\" with Retry.",
     spec: ["SPEC.md#a-bot-has-every-tool-and-skill-until-the-operator-turns-some-off-2026-10-06", "SPEC.md#bots-run-on-remote-workers-2026-10-06", "docs/api.md#bots-on-a-worker"],
     surfaces: ["route:GET /__hui/bots/:id/catalog", "route:PATCH /__hui/bots/:id"],
     journeys: ["bots"],
