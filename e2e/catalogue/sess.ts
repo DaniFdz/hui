@@ -10,7 +10,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions", "nav:session"],
     journeys: ["session-lifecycle", "session-launch", "session-groups"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-002",
@@ -20,7 +20,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions"],
     journeys: ["session-launch"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-003",
@@ -30,7 +30,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:GET /__hui/directories"],
     journeys: ["session-launch", "checkout-selector"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-004",
@@ -50,7 +50,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["session-groups", "session-registry"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-006",
@@ -79,7 +79,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/git-checkout", "route:POST /__hui/sessions"],
     journeys: ["checkout-selector"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-010",
@@ -89,7 +89,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/git-checkout", "setting:branchPrefix"],
     journeys: ["checkout-selector", "worktree-progress"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-011",
@@ -99,7 +99,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:worktrees", "setting:branchPrefix"],
     journeys: ["checkout-selector"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-012",
@@ -127,7 +127,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkersidconnect"],
     surfaces: ["route:POST /__hui/workers/:id/connect"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-015",
@@ -266,7 +266,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/session-groups/:name", "route:GET /__hui/git-checkout", "route:GET /__hui/directories"],
     journeys: ["session-groups", "session-registry"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-029",
@@ -276,7 +276,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions", "route:GET /__hui/git-checkout"],
     journeys: ["session-groups"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-030",
@@ -286,7 +286,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-move", "session-menu-parity", "kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-031",
@@ -316,7 +316,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-parity"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-034",
@@ -366,7 +366,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-menu-parity"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-039",
@@ -556,7 +556,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/connect", "route:GET /__hui/sessions/events"],
     journeys: ["session-registry"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-058",
@@ -575,7 +575,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:sessions", "route:GET /__hui/sessions"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-060",
@@ -584,7 +584,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huisessionssearch"],
     surfaces: ["page:sessions", "route:GET /__hui/sessions/search"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-061",
@@ -593,7 +593,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#worktrees", "docs/api.md#delete-__huisessionsid"],
     surfaces: ["page:sessions", "route:DELETE /__hui/sessions/:id", "route:GET /__hui/worktrees", "route:POST /__hui/worktrees/remove"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-062",
@@ -603,7 +603,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["session-lifecycle"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-063",
@@ -623,7 +623,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/git-checkout", "page:new-session"],
     journeys: ["checkout-selector", "worktree-progress", "session-launch"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-065",
@@ -702,7 +702,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-move", "session-menu-parity"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-073",
@@ -711,7 +711,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-074",
