@@ -88,6 +88,7 @@ import { WatcherInputError, WatcherService } from "./agent-tools/watchers.ts";
 import { SecretFiles, SecretRequests } from "./agent-tools/secret-requests.ts";
 import { Questionnaires } from "./agent-tools/questionnaires.ts";
 import { summarizeWorkerStats } from "./agent-tools/worker-stats.ts";
+import { isChiefTitle } from "./bots/chief-title.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";
 import { createSessionListHub } from "./sessions/list.ts";
@@ -464,7 +465,7 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
   const caller = (await readRegistry()).find(({ id }) => id === callerSessionId);
   if (!caller) throw new Error("Conversation no longer exists.");
   const owner = caller.bot ? (await bots.list({ archived: "all" })).find(({ id }) => id === caller.bot) : undefined;
-  if (owner?.title !== "Chief of Staff") throw new Error("Only a Chief of Staff bot can create an ordinary session. Use sessions_spawn for a fast child.");
+  if (!isChiefTitle(owner?.title)) throw new Error("Only a Chief of Staff bot can create an ordinary session. Use sessions_spawn for a fast child.");
   const prompt = typeof params["prompt"] === "string" ? params["prompt"].trim() : "";
   if (!prompt) throw new Error("A new session needs its brief: pass it as prompt.");
   if (prompt.length > 20_000) throw new Error("A session prompt must be at most 20000 characters.");
