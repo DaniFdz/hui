@@ -17,6 +17,7 @@ import {
   SESSION_SPLIT_MEDIA, sessionPanes, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection,
 } from "../lib/session/multiplexer.ts";
 import { matchesShortcut } from "../lib/shortcut-binding.ts";
+import { subscribeSideChat } from "../lib/session/side-chat-store.ts";
 import {
   activateWorkView, closeWorkView, closingLastWorkView, openWorkView, parseWorkPaneStore, registerWorkViewKind, serializeWorkPaneStore, sessionWorkPane,
   setWorkPaneMaximized, setWorkPaneOpen, setWorkPaneWidth, workPaneMaximized, workViewKey, workViewKind, workViewKinds,
@@ -26,6 +27,7 @@ import { browserWorkViewKind } from "../views/work/browser.ts";
 import { diffWorkViewKind } from "../views/work/diff.ts";
 import { extensionWorkViewKind } from "../views/work/extension.ts";
 import { filesViewToReveal, filesWorkViewKind, type FilesWorkViewRef } from "../views/work/files.ts";
+import { sideChatWorkViewKind } from "../views/work/side-chat.ts";
 import { terminalWorkViewKind } from "../views/work/terminal.ts";
 import { vscodeWorkViewKind } from "../views/work/vscode.ts";
 
@@ -37,6 +39,8 @@ type WorkLayoutDeps = {
   activePane: () => HTMLElement | undefined;
   focusComposer: () => void;
   paletteOpen: () => boolean;
+  /** The chat is on screen, so starting a side chat may bring its Work view forward. */
+  chatShown: () => boolean;
   terminalFont: () => string;
   browserEnabled: () => boolean;
 };
@@ -59,6 +63,8 @@ export class WorkLayoutController {
   #media: MediaQueryList | undefined;
   /** Unsubscribes the narrow chooser from the Work view kinds' availability changes. */
   #stopAvailability: (() => void)[] = [];
+  /** Unsubscribes the side chat's Work view from new questions. */
+  #stopSideChat: (() => void) | undefined;
 
   constructor(host: WorkLayoutHost, deps: WorkLayoutDeps) {
     this.#host = host;
@@ -141,6 +147,15 @@ export class WorkLayoutController {
     registerWorkViewKind(vscodeWorkViewKind);
     registerWorkViewKind(diffWorkViewKind);
     registerWorkViewKind(extensionWorkViewKind);
+    registerWorkViewKind(sideChatWorkViewKind);
+    // `/btw` is typed in a chat pane, but its exchange is a Work view: a new question brings that view forward.
+    this.#stopSideChat?.();
+    this.#stopSideChat = subscribeSideChat(({ sessionId, opened }) => {
+      if (!opened || !this.#deps.chatShown() || !this.#chatPaneShown(sessionId)) return;
+      this.showView(sessionId, { kind: "side-chat" });
+      // The question was typed in the composer, and the next one will be too.
+      if (!this.narrow) void this.#host.updateComplete.then(() => this.#deps.focusComposer());
+    });
     // A launcher's reason can change outside this app's state (VS Code's gateway status): redraw the narrow chooser.
     for (const stop of this.#stopAvailability) stop();
     this.#stopAvailability = workViewKinds().flatMap((kind) => kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.#host.requestUpdate())] : []);
@@ -159,6 +174,8 @@ export class WorkLayoutController {
     this.#media = undefined;
     for (const stop of this.#stopAvailability) stop();
     this.#stopAvailability = [];
+    this.#stopSideChat?.();
+    this.#stopSideChat = undefined;
   }
 
   readonly #onMediaChange = (event: MediaQueryListEvent) => {
@@ -391,5 +408,11 @@ export class WorkLayoutController {
 
   #element(): WorkPane | null {
     return this.#host.renderRoot.querySelector<WorkPane>("hui-work-pane");
+  }
+
+  /** `sessionId` is one of the layout's chat panes, so its side chat has a chat pane to belong to. */
+  #chatPaneShown(sessionId: string): boolean {
+    const layout = this.layout;
+    return layout !== undefined && sessionPanes(layout).some((pane) => isChatPane(pane) && pane.sessionId === sessionId);
   }
 }

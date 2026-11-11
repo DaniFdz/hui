@@ -63,6 +63,25 @@ hui-work-pane { display: flex; flex: none; min-height: 0; max-width: 100%; }
 .work-pane__view { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; min-width: 0; visibility: hidden; }
 .work-pane__session--focused .work-pane__view--active { visibility: visible; }
 
+/* The Side chat view (`components/side-chat-view.ts`): the /btw exchange, in the Work pane and (with `rail`, where a
+ * chat has no Work pane) as the inline panel beside it. The host is the panel; the header exists only in the rail. */
+hui-side-chat-view { display: flex; flex: 1; min-height: 0; min-width: 0; flex-direction: column; }
+hui-side-chat-view[hidden] { display: none; }
+.side-chat__rail-header { display: flex; flex: none; min-height: 52px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border); }
+.side-chat__rail-header > div { display: grid; gap: 2px; min-width: 0; }
+.side-chat__rail-header strong { color: var(--text-strong); font-size: 13px; }
+.side-chat__rail-header span { color: var(--muted); font-size: 11px; }
+.side-chat__meta { margin: 0; padding: 10px 14px 0; color: var(--muted); font-size: 11px; }
+.side-chat__thread { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 16px; overflow: auto; padding: 18px 14px; }
+.side-chat__question { align-self: flex-end; max-width: 92%; padding: 9px 12px; border-radius: 14px 14px 4px 14px; background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: var(--text-strong); font-size: 13px; }
+.side-chat__answer { color: var(--chat-text); font: var(--chat-text-size)/1.55 var(--font-chat); }
+.side-chat__answer > :first-child { margin-top: 0; }
+.side-chat__answer > :last-child { margin-bottom: 0; }
+.side-chat__error { color: var(--danger); font-size: 13px; }
+.side-chat__note { margin: 0; padding: 10px 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+.side-chat--empty { display: flex; flex: 1; align-items: center; justify-content: center; padding: 24px; color: var(--muted); font-size: 13px; line-height: 1.5; text-align: center; }
+.side-chat--empty p { max-width: 36ch; margin: 0; }
+
 .work-pane__empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; overflow: auto; }
 .work-pane__empty-lead { margin: 0; color: var(--muted); font-size: 13px; }
 .work-pane__empty-launchers { display: flex; flex-direction: column; gap: 6px; width: min(100%, 320px); margin: 0; padding: 0; list-style: none; }

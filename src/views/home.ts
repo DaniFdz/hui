@@ -267,14 +267,8 @@ export type HomeProps = {
   launching: boolean;
   note: string;
   noteLevel: NoteLevel;
-  sideChat?: {
-    question: string;
-    answer: string;
-    model: string;
-    loading: boolean;
-    error: string;
-  };
-  onCloseSideChat: () => void;
+  /** The chat draws the inline side chat rail: it has no Work pane to put the Side chat view in (a bot's chat). */
+  sideChatRail?: boolean;
   onDismissNote: () => void;
   /** The composer status line under the editor: why the stream stopped, when it is not simply reconnecting. */
   connectionNote: string;
@@ -2624,23 +2618,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                 ${renderComposer(props)}
               </div>
             </div>
-            ${props.sideChat ? html`
-              <aside class="chat-session-rail" aria-label="Side chat">
-                <header class="chat-session-rail__header">
-                  <div><strong>Side chat</strong><span>Ephemeral · ${props.sideChat.model || "utility model"}</span></div>
-                  <button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Close side chat" @click=${props.onCloseSideChat}>${icons.close}</button>
-                </header>
-                <div class="chat-session-rail__thread" role="status" aria-live="polite">
-                  <div class="chat-session-rail__question">${props.sideChat.question}</div>
-                  ${props.sideChat.loading
-                    ? html`<div class="chat-working-indicator"><span class="chat-working-indicator__mark" aria-hidden="true"><i></i><i></i><i></i></span><span>Asking utility model…</span></div>`
-                    : props.sideChat.error
-                      ? html`<div class="chat-session-rail__error" role="alert">${props.sideChat.error}</div>`
-                      : html`<div class="chat-session-rail__answer">${renderMarkdown(props.sideChat.answer)}</div>`}
-                </div>
-                <p class="chat-session-rail__note">This exchange is not added to the main transcript.</p>
-              </aside>
-            ` : nothing}
+            ${props.sideChatRail ? html`<hui-side-chat-view class="chat-session-rail" rail role="complementary" aria-label="Side chat" .sessionId=${session.id}></hui-side-chat-view>` : nothing}
           </div>
         </div>
       </div>

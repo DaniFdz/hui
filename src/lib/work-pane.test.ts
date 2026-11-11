@@ -203,6 +203,17 @@ test("the stored shape round-trips and leaves untouched conversations out", () =
   assert.deepEqual(parseWorkPaneStore(JSON.parse(JSON.stringify(saved))), { s1: store.s1, s2: store.s2 });
 });
 
+test("an ephemeral view is not saved, so a reload never restores a tab it cannot fill", () => {
+  registerWorkViewKind({ ...fakeKind<{ kind: "side-chat" }>("side-chat", () => "side-chat"), ephemeral: true });
+  const alone = openWorkView({}, "s1", { kind: "side-chat" }, true);
+  assert.deepEqual(serializeWorkPaneStore(alone).sessions, {}, "only the side chat: no record at all, so no open pane");
+
+  const mixed = openWorkView(openWorkView({}, "s1", { kind: "terminal", terminalId: T1 }, false), "s1", { kind: "side-chat" }, true);
+  const saved = serializeWorkPaneStore(mixed);
+  assert.deepEqual(saved.sessions.s1, { open: true, width: WORK_PANE_DEFAULT_WIDTH, views: [{ kind: "terminal", terminalId: T1 }] });
+  assert.equal(parseWorkPaneStore(JSON.parse(JSON.stringify(saved))).s1?.active, `terminal:${T1}`, "the dropped tab cannot stay active");
+});
+
 test("maximizing expands the pane over the chat; restoring keeps it open; hiding it also restores", () => {
   let store: WorkPaneStore = openWorkView({}, "s1", { kind: "terminal", terminalId: T1 }, false);
   store = setWorkPaneMaximized(store, "s1", true);

@@ -338,7 +338,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
   panes and shows the Work views of the focused conversation: its terminals and
   its browser view, its Files views (see *Files*), its VS Code view (see
-  *VS Code*) and its Diff views (see *Diff*), each a kind registered through one contract
+  *VS Code*), its Diff views (see *Diff*) and its Side chat (see *Chat* below),
+  each a kind registered through one contract
   (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
   focus to another chat pane or conversation switches the contents. One view is
   visible at a time, chosen from a tab strip (icon, title, close; drag or
@@ -1667,11 +1668,19 @@ rather than forwarding them to the model.
 Skills/templates can use the existing queue; extension commands run when idle.
 An extension that completes without a model turn must also unlock the composer.
 
-`/btw <question>` and its `/side` alias open an ephemeral side rail. HUI sends a
-bounded visible transcript snapshot to the configured utility model with tools and
-thinking disabled. The question and answer never enter PI's durable session or
-the main transcript, so they cannot influence later turns. Examples include
-`/btw which file are we editing?` and `/btw summarize the current task in one sentence`.
+`/btw <question>` and its `/side` alias open the conversation's **Side chat**
+Work view, a single view that `/btw` opens and the pane's launcher does not
+list (the question is typed in the composer, so a launcher would only open a
+placeholder): it resizes, maximizes, collapses and takes a place in the tab strip
+like every other view, instead of pinning a rail of its own beside the chat. The question is typed in the composer; the view keeps focus there for the
+next one. A new question replaces the previous exchange, `/clear` clears it, and
+closing the tab only hides it; the tab is not saved, so a reload never restores a
+Side chat it could not fill. A bot's chat has no Work pane, so it draws the same exchange in an
+inline rail. HUI sends a bounded visible transcript snapshot to the configured
+utility model with tools and thinking disabled. The question and answer never
+enter PI's durable session or the main transcript, so they cannot influence
+later turns. Examples include `/btw which file are we editing?` and
+`/btw summarize the current task in one sentence`.
 
 HUI keeps each conversation's Task progress card itself, not the agent. A
 session's turn settling, and every five minutes while one is still running, send
