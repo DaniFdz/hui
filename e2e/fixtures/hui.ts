@@ -7,8 +7,9 @@
  * and clearing the app, taps, holds, drags held mid-way, context menus, a message's actions (a hover reveals its
  * footer), switches (a Web Awesome switch draws its track over its input, so the web taps the point), attachments,
  * sideways scrolling, downloads, the clipboard, the Work pane's launcher (the + menu writes each shortcut on its entry
- * and opens the pane beside the chat), a Files row's delete, the phone screen's size, the session list (on the drawer
- * layout, the shell's drawer media, the navigation drawer), the Settings page list (the drawer on a phone), the app's
+ * and opens the pane beside the chat), a Files row's delete, the phone screen's size, whether the app is drawing its
+ * narrow layout (the Work pane's own split breakpoint), the session list (on the drawer layout, the shell's drawer media,
+ * the navigation drawer), the Settings page list (the drawer on a phone), the app's
  * chrome outside Settings (the primary navigation), the chosen button of a group (aria-pressed), the app's and the
  * device's colour scheme, the session menu, status glyphs, how a piece of the screen looks, the window's size, Back and
  * Forward, sideways overflow, whether a tap reaches a control, the command palette's chord and a frame's own document
