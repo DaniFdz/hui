@@ -652,7 +652,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-073",
     title: "Create an ordinary session from an agent",
-    behaviour: "An agent calls create_session with a brief, a group and optionally a worker (its id, its name, or local for this machine), a worktree, a model and thinking. A top-level session appears in that group with the brief as its first prompt; it is not a child, so sessions_list and sessions_history do not show it to the caller.",
+    behaviour: "An agent calls create_session with a brief, a group and optionally a worker (its id, its name, or local for this machine), a worktree, a model and thinking. A top-level session appears in that group with the brief as its first prompt, tagged from the calling bot so its chat shows the brief under that bot's name rather than as the operator's own words; it is not a child, so sessions_list and sessions_history do not show it to the caller.",
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"],
     surfaces: ["tool:create_session"],
     journeys: ["bots"],
