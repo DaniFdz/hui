@@ -1,6 +1,7 @@
 /** Run now queues a bot's routine behind a busy turn and sends it into the chat as the routine, and the run shows as Completed with its summary or with its error in Latest runs and the overview's Activity (BOT-041). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { hideBotPanel, panelOverview, showBotPanel } from "./bot-panel.ts";
 
 test("Run now queues the routine's prompt behind a busy bot, sends it into the chat as the routine and records the run's summary or its error", { tags: ["BOT-041"], platforms: ["web"] }, async ({ screen, hui }) => {
   const bot = (await hui.api<{ bot: { id: string; sessionId: string } }>("POST", "/__hui/bots", { name: "Runner", soul: "# Who I am\nA terse fixture bot.\n" })).bot;
@@ -9,13 +10,19 @@ test("Run now queues the routine's prompt behind a busy bot, sends it into the c
     schedule: { kind: "cron", expression: "0 8 * * *", timezone: "UTC" },
   });
   await hui.open(`/bots/${bot.id}`);
+  // The panel is docked beside the chat on a wide screen and a sheet over it on a phone, so a step that reads or taps
+  // it shows it first and puts it away again before reaching the chat.
+  await panelOverview(screen, "Runner");
   await screen.getByRole("button", "Add routine").tap();
   await expect(screen.getByText("Runs appear here with their outcome.")).toBeVisible();
 
+  await hideBotPanel(screen);
   await screen.getByLabel("Message").fill("E2E_REPLAY");
   await screen.getByRole("button", "Send message").tap();
   await hui.provider.held();
+  await showBotPanel(screen, "Runner");
   await screen.getByRole("button", "Run now: Morning check").tap();
+  await hideBotPanel(screen);
   await expect(screen.getByLabel("Queued messages").getByText("[routine: Morning check] Check the build.")).toBeVisible();
   await hui.provider.release();
 
@@ -25,6 +32,7 @@ test("Run now queues the routine's prompt behind a busy bot, sends it into the c
   await expect(transcript.getByText("Morning check")).toBeVisible();
   await expect(transcript.getByText("Routine")).toBeVisible();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
+  await showBotPanel(screen, "Runner");
   const latestRuns = screen.getByLabel("Latest runs");
   await expect(latestRuns.getByText("Morning check")).toBeVisible();
   await expect(latestRuns.getByText("Completed")).toBeVisible();
