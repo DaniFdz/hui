@@ -211,6 +211,8 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   const pane = screen.getByLabel("Work pane");
   const message = screen.getByLabel("Message");
   const selector = screen.getByRole("button", { name: /^Active panel/u });
+  // The chooser's own list, so what else the screen says "Open" or "Work" about is not counted as one of its options.
+  const chooser = () => screen.getByRole("listbox");
   const settings = await hui.api<Record<string, unknown>>("GET", "/__hui/settings");
 
   await hui.phoneScreen();
@@ -219,7 +221,7 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await expect(selector).toHaveAttribute("aria-label", /Chat/u);
   await selector.tap();
   await expect(screen.getByText("Chat").last()).toBeVisible();
-  await expect(screen.getByText(/^Open$/u)).toHaveCount(5);
+  await expect(chooser().getByText(/^Open$/u)).toHaveCount(5);
   for (const name of launchers) await expect(screen.getByText(name).first()).toBeVisible();
   await screen.getByText("New terminal").first().tap();
 
@@ -231,8 +233,8 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await expect(selector).toHaveAttribute("aria-label", /Chat/u);
 
   await selector.tap();
-  await expect(screen.getByText(/^Work$/u)).toHaveCount(1);
-  await expect(screen.getByText(/^Open$/u)).toHaveCount(5);
+  await expect(chooser().getByText(/^Work$/u)).toHaveCount(1);
+  await expect(chooser().getByText(/^Open$/u)).toHaveCount(5);
   await screen.getByText("Terminal 1").first().tap();
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
   await screen.getByRole("button", "Back to chat").tap();
@@ -243,14 +245,14 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await screen.getByRole("button", "Back to chat").tap();
   await selector.tap();
   // The Browser's view is open, so its launcher is gone and four launchers remain.
-  await expect(screen.getByText(/^Work$/u)).toHaveCount(2);
-  await expect(screen.getByText(/^Open$/u)).toHaveCount(4);
+  await expect(chooser().getByText(/^Work$/u)).toHaveCount(2);
+  await expect(chooser().getByText(/^Open$/u)).toHaveCount(4);
   await screen.getByText("VS Code").first().tap();
   await expect(pane.getByRole("tab", "VS Code")).toBeVisible();
   await screen.getByRole("button", "Back to chat").tap();
   await selector.tap();
-  await expect(screen.getByText(/^Work$/u)).toHaveCount(3);
-  await expect(screen.getByText(/^Open$/u)).toHaveCount(3);
+  await expect(chooser().getByText(/^Work$/u)).toHaveCount(3);
+  await expect(chooser().getByText(/^Open$/u)).toHaveCount(3);
   await screen.getByText("Browser").last().tap();
   await pane.getByRole("button", "Close Browser").tap();
   await expect(pane.getByRole("tab", "VS Code")).toBeVisible();
