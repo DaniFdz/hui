@@ -3,6 +3,7 @@
 import { basename } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { expectChatTitle } from "../sess/chat-header.ts";
 
 const SUGGESTION = {
   title: "Replace the native terminal switcher select",
@@ -54,7 +55,7 @@ test("Start in a new worktree creates a checkout on a branch with the configured
   await screen.getByRole("menuitem", { name: "Start in a new worktree" }).tap();
 
   // The new conversation opens on the card's prompt, in a checkout of its own.
-  await expect(screen.getByTestId("session-title").filter({ hasText: SUGGESTION.title })).toBeVisible();
+  await expectChatTitle(screen, SUGGESTION.title);
   await expect.poll(() => hui.url()).not.toContain(`/sessions/${session.id}`);
   await expect(transcript.getByText("# Replace the native terminal switcher select ## Problem", { exact: false })).toBeVisible();
   await expect(transcript.getByText("## Proposed fix Render the switcher with `renderPicker` from `src/views/settings-picker.ts`.", { exact: false })).toBeVisible();
