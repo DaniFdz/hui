@@ -10,7 +10,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/bots", "route:GET /__hui/bots/events"],
     journeys: ["bots"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOT-002",

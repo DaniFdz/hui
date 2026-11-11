@@ -315,7 +315,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort", "tool:agents_wait"],
     journeys: ["swarm"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-034",
@@ -325,7 +325,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:agents_wait"],
     journeys: ["swarm"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-035",
@@ -483,7 +483,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/start"],
     journeys: ["task-suggestions"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-049",
@@ -513,7 +513,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/suggestions/:sid/backlog"],
     journeys: ["task-suggestions", "kanban"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-052",
@@ -572,7 +572,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:browser", "route:WS /__hui/browser-stream", "work-view:browser"],
     journeys: ["browser-tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-064",
@@ -582,7 +582,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:browser"],
     journeys: ["browser-tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-058",

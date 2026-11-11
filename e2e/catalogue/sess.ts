@@ -137,7 +137,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/sessions/events"],
     journeys: ["session-title-generation"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-016",

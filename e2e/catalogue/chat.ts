@@ -273,7 +273,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["continue-error-toast"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-022",
@@ -701,7 +701,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/thinking"],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-055",
@@ -988,7 +988,7 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/goal",
     ],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-074",

@@ -251,7 +251,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:terminal", "route:POST /__hui/sessions/:owner/terminals/:id/connect"],
     journeys: ["shared-terminal", "work-pane"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-026",
@@ -311,7 +311,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["shared-terminal"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-032",
@@ -382,7 +382,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:browser", "route:POST /__hui/sessions/:id/browser/connect", "route:WS /__hui/browser-stream"],
     journeys: ["work-pane", "browser-tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-040",
@@ -392,7 +392,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:browser"],
     journeys: ["work-pane"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-041",
@@ -453,7 +453,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["files-view", "work-pane"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-047",
@@ -695,7 +695,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:id/diff/changes"],
     journeys: ["diff-view"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-071",
@@ -715,7 +715,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["diff-view"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-073",
