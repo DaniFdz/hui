@@ -69,7 +69,7 @@ test("a link printed in the terminal opens in a new browser tab, and a destinati
 
   // Each row is one link, two columns short of the terminal's width, so every visible row holds a link that also covers
   // the middle column the press lands on. Their addresses stay on this gateway instead of reaching the network.
-  const link = (path: string) => `${hui.gateway}${path}${`a`.repeat(Math.max(4, cols - 2 - `${hui.gateway}${path}`.length))}`;
+  const link = (path: string) => `${hui.gateway}${path}${"a".repeat(Math.max(4, cols - 2 - `${hui.gateway}${path}`.length))}`;
   const plain = link("/__hui/terminal-link/");
   const linked = link("/__hui/terminal-link/hyperlink/");
   const scheme = `file:///tmp/${"b".repeat(Math.max(4, cols - 2 - "file:///tmp/".length))}`;
