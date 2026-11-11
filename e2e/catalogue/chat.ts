@@ -18,7 +18,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "message-metadata"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-002",
@@ -39,7 +39,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-004",
@@ -53,7 +53,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-005",
@@ -67,7 +67,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/steer"],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-006",
@@ -81,7 +81,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/follow-up"],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-007",
@@ -94,7 +94,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-008",
@@ -107,7 +107,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-009",
@@ -130,7 +130,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-011",
@@ -195,7 +195,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "position-rail"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-016",
@@ -212,7 +212,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["interrupted-recovery", "message-metadata"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-017",
@@ -262,7 +262,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/continue", "item:error"],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-021",
@@ -284,7 +284,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/resume"],
     journeys: ["rewind-continue", "continue-error-toast"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-023",
@@ -304,7 +304,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "message-metadata"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-024",
@@ -314,7 +314,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#every-assistant-message-stays-in-sight-2026-10-19"],
     surfaces: ["row:messages", "row:activity"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-025",
@@ -325,7 +325,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:read", "item:tool"],
     journeys: ["chat-composer", "durable-extensions", "sdk-backend"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-026",
@@ -345,7 +345,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:codemode", "item:tool"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-028",
@@ -564,7 +564,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions"],
     journeys: ["slash-commands", "command-references"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-045",
@@ -642,7 +642,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/local-paths"],
     journeys: ["command-references", "local-path-autocomplete"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-051",
@@ -661,7 +661,7 @@ const cases: UseCase[] = [
       "sdk-backend",
     ],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-052",
@@ -777,7 +777,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["position-rail"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-063",
@@ -788,7 +788,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["durable-extensions"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-064",
@@ -799,7 +799,7 @@ const cases: UseCase[] = [
     surfaces: ["row:compaction"],
     journeys: ["durable-extensions"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-065",
@@ -824,7 +824,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-067",
@@ -835,7 +835,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:read", "item:tool"],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-068",
@@ -910,7 +910,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-075",
@@ -963,7 +963,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-072",
@@ -1031,7 +1031,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/steer-now"],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
 ];
 

@@ -275,7 +275,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_list", "tool:sessions_history", "tool:sessions_send", "tool:subagents"],
     journeys: ["subagents"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-030",
@@ -334,7 +334,7 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: ["row:subagentEvent", "tool:sessions_spawn"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-036",

@@ -157,7 +157,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions", "route:GET /__hui/sessions/events"],
     journeys: ["session-lifecycle", "session-registry"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-018",
@@ -167,7 +167,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-parity", "session-menu-shortcuts"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-019",
@@ -356,7 +356,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-lifecycle", "session-registry", "session-tree-lifecycle", "session-menu-shortcuts"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-038",
@@ -663,7 +663,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-tree-lifecycle"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-069",
@@ -682,7 +682,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-071",
