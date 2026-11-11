@@ -121,7 +121,7 @@ const cases: UseCase[] = [
     behaviour: "When the call cannot start (the ChatGPT login is gone or every account waits for its quota, ChatGPT refuses the account or the voice, the voice limit is reached, or ChatGPT cannot be reached) the call view shows *Call failed* with the gateway's message saying what to do, such as signing in again under Settings → Models. **Back to the chat** returns to the chat and no call card is added.",
     spec: [CALLS, "docs/api.md#post-__huibotsidcalls"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
-    web: "backlog",
+    web: "required",
     phone: "backlog",
   },
   {
