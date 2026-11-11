@@ -13,10 +13,11 @@ test("a dependent browser flow runs as one steps call that lists every step and 
   const session = await hui.createSession({ title: "Browser steps" });
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, "E2E_BROWSER_STEPS");
+  // The chat is Idle before the prompt's run starts, so the flow's own card is what says it ran and ended.
+  await expect(transcript.getByText(/^The flow ran in one call:/u)).toBeVisible({ timeout: 120_000 });
   await expect(idle).toBeVisible({ timeout: 120_000 });
 
   // The one call reports every step in order with what it did, and the card says a sequence ran.
-  await expect(transcript.getByText(/^The flow ran in one call:/u)).toBeVisible();
   const steps = [
     transcript.getByText(/^type: Typed 12 characters into e\d+ \(textbox "Name"\)\.$/u),
     transcript.getByText(/^click: Clicked e\d+ \(button "Greet"\)\.$/u),

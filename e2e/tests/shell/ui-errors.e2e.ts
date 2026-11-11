@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-type Activity = { activity: { area: string; action: string; summary: string; detail?: string }[] };
+type Activity = { activity: { area: string; action: string; level: string; summary: string; detail?: string }[] };
 
 /** The `ui` entries the gateway recorded for a request path. */
 const uiEntries = async (hui: { api: <T>(method: string, path: string) => Promise<T> }, path: string) =>
@@ -42,7 +42,10 @@ test("a request that could not reach the gateway reaches Logs as one ui entry wi
   // Logs shows it as a ui warning with the request it names.
   await hui.open("/logs");
   const logs = screen.getByLabel("logs");
-  await expect(logs.getByText(new RegExp(`^request_failed: UI request could not reach the gateway \\(${repeats}×\\)`, "u"))).toBeVisible();
-  await expect(logs.getByText("ui", { exact: true }).first()).toBeVisible();
-  await expect(logs.getByText(/^GET \/__hui\/github\/contributions: Failed to fetch on \/contributions/u)).toBeVisible();
+  // The stream holds every entry the gateway recorded, other tests' included: the row this test made is the one that
+  // shows exactly what the gateway stored for it, so its repeats stay one count on that single row.
+  const row = logs.getByText(`request_failed: UI request could not reach the gateway (${repeats}×)${entry!.detail}`, { exact: true });
+  await expect(row).toHaveCount(1);
+  await expect(row).toBeVisible();
+  expect(entry!.level).toBe("warning");
 });

@@ -4,7 +4,9 @@
  * `--datadog-fixture` for the fake `pup`, `--quota-fixture` for provider usage),
  * because a world is set on the gateway's *process environment* and the suite's own launcher starts once per target
  * without those flags (`e2e.config.ts` passes `--fast-fixture` and nothing else). A world therefore never replaces or
- * reconfigures that launcher: it is another gateway on another port, which a test opens like the app.
+ * reconfigures that launcher: it is another gateway on another port, which a test opens like the app. `plain` seeds
+ * nothing: it is a gateway a test may empty or reshape, as a fresh install's, without touching the one the suite shares
+ * — the state a deleted Chief of Staff cannot be handed back from.
  *
  * What each world is comes from `e2e/visual-verification.mjs`; this module only starts it, reads the receipt it prints
  * on stdout, answers with the handful of gateway calls a board, contribution or calendar test needs, and stops it again
@@ -24,8 +26,8 @@ import { expect } from "e2e";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
-/** The worlds the launcher can seed, and the flag it takes for each. */
-export type WorldName = "jira" | "github" | "activity" | "datadog" | "quota";
+/** The worlds the launcher can seed, and the flag it takes for each. `plain` takes none: a gateway of its own. */
+export type WorldName = "jira" | "github" | "activity" | "datadog" | "quota" | "plain";
 
 /** A receipt the launcher printed: the public half of `receipt.json`, plus the path of the private one. */
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; artifacts: string; jiraUrl?: string };
@@ -95,7 +97,8 @@ function ready(child: ChildProcess, timeoutMs = 180_000): { receipt: Promise<Rec
 /** Starts one world and answers with the gateway a test drives, or fails saying why it could not start. */
 export async function startWorld(name: WorldName): Promise<World> {
   const child = spawn(process.execPath, [
-    join(repoRoot, "e2e", "visual-verification.mjs"), "launch", "--branch", branch(), `--${name}-fixture`,
+    join(repoRoot, "e2e", "visual-verification.mjs"), "launch", "--branch", branch(),
+    ...(name === "plain" ? [] : [`--${name}-fixture`]),
   ], { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] });
   const { receipt: printed } = ready(child);
   let receipt: Receipt;
