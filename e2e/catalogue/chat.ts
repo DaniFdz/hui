@@ -141,7 +141,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["message-metadata", "slash-commands"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-012",
@@ -152,7 +152,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-013",
@@ -167,7 +167,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-014",
@@ -178,7 +178,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-composer"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-015",
@@ -411,7 +411,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["message-metadata"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-034",
@@ -422,7 +422,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/rewind"],
     journeys: ["rewind-continue", "compaction-rewind"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-035",
@@ -455,7 +455,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["compaction-rewind"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-037",
@@ -473,7 +473,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["compaction-rewind"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-038",
@@ -488,7 +488,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["compaction-rewind"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-039",
@@ -499,7 +499,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/compact"],
     journeys: ["compaction-rewind"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-040",
@@ -510,7 +510,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/rewind", "row:compaction"],
     journeys: ["compaction-rewind"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-041",
@@ -523,7 +523,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["command:clear", "route:POST /__hui/sessions/:id/clear"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-042",
@@ -536,7 +536,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["command:reload", "route:POST /__hui/sessions/:id/reload"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-043",
@@ -553,7 +553,7 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/btw",
     ],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-044",
@@ -578,7 +578,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:id/commands"],
     journeys: ["slash-commands", "command-references", "durable-extensions"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-046",
@@ -600,7 +600,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:id/commands"],
     journeys: ["slash-commands"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-048",
@@ -614,7 +614,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["slash-commands", "command-references", "sdk-backend"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-049",
@@ -628,7 +628,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["slash-commands", "command-references", "durable-extensions"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-050",
@@ -711,7 +711,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessionsidfast"],
     surfaces: ["route:POST /__hui/sessions/:id/fast"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-056",
@@ -810,7 +810,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["sdk-backend", "rewind-continue", "compaction-rewind"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-066",
@@ -867,7 +867,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["rewind-continue"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-071",
@@ -974,7 +974,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["position-rail", "remote-loading"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-073",
@@ -1021,7 +1021,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-085",

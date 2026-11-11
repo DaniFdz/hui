@@ -10,7 +10,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huiautomation"],
     surfaces: ["page:cron", "page:tasks", "route:GET /__hui/automation"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "PAGE-003",
@@ -73,7 +73,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huiobservability"],
     surfaces: ["page:activity", "page:logs", "page:debug", "page:usage", "route:GET /__hui/observability"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "PAGE-020",
@@ -82,7 +82,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huiobservability", "docs/api.md#get-__huihealth"],
     surfaces: ["page:debug", "route:GET /__hui/observability", "route:GET /__hui/health"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "PAGE-021",
@@ -91,7 +91,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#usage-reporting", "docs/api.md#get-__huiusage"],
     surfaces: ["page:usage", "route:GET /__hui/usage"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "PAGE-046",
@@ -109,7 +109,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#put-__huisettings"],
     surfaces: ["page:labs", "setting:labs.denseObservability", "route:PUT /__hui/settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "PAGE-023",
@@ -118,7 +118,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#put-__huisettings"],
     surfaces: ["page:labs", "page:debug", "setting:labs.detailedDebug", "route:PUT /__hui/settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "PAGE-024",
@@ -127,7 +127,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#put-__huisettings"],
     surfaces: ["page:profile", "setting:profileName", "setting:profileHandle", "route:PUT /__hui/settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "PAGE-025",
@@ -136,7 +136,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth"],
     surfaces: ["page:about", "route:GET /__hui/health"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "PAGE-027",
