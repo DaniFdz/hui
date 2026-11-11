@@ -3,6 +3,7 @@
  * stopping underneath it (AGENT-064, AGENT-065). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { backToChat, openWork } from "../work/work-views.ts";
 
 const browserCall = (input: Record<string, unknown>) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name: "browser", input })).toString("base64url")}`;
@@ -47,6 +48,7 @@ test("a dependent browser flow runs as one steps call that lists every step and 
 test("an agent hands its tab to the operator, and the wait ends on Continue, on its timeout or when the browser stops", { tags: ["AGENT-065"], platforms: ["web"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const idle = screen.getByLabel("Session status: Idle");
+  const pane = screen.getByRole("complementary", "Work pane");
   const session = await hui.createSession({ title: "Browser handoff" });
   await hui.open(`/sessions/${session.id}`);
   const instruction = "Type your name into the Name field and click Greet, then press I'm done — continue.";
@@ -59,7 +61,7 @@ test("an agent hands its tab to the operator, and the wait ends on Continue, on 
   const takeOver = transcript.getByRole("button", "Take over");
   await expect(takeOver).toBeVisible();
   await takeOver.tap();
-  const pane = screen.getByRole("complementary", "Work pane");
+  // On a phone Take over opens the browser view as the screen's one destination, where the web opens it beside the chat.
   await expect(pane.getByText("You have control; the agent waits.")).toBeVisible();
   await expect(pane.getByText(waiting)).toContainText(instruction);
   await expect(pane.getByText("Your turn", { exact: true })).toBeVisible();
@@ -74,11 +76,14 @@ test("an agent hands its tab to the operator, and the wait ends on Continue, on 
   await hui.keyboard.up("Enter");
   await screen.getByRole("button", "I'm done — continue").tap();
 
+  // The tab stays open and the agent has it back.
+  await expect(screen.getByText(/^(Live|Idle) · headless$/u)).toBeVisible();
+  // A phone shows the chat or the browser view, never both, so the chat comes back before its transcript is read.
+  await backToChat(screen);
+
   // Continue returns the page as the operator left it, which is what the agent reports next.
   await expect(transcript.getByText(/^The operator finished in the browser:/u)).toContainText("Hello, Operator! Typed by the operator.", { timeout: 120_000 });
   await expect(idle).toBeVisible();
-  // The tab stays open and the agent has it back.
-  await expect(screen.getByText(/^(Live|Idle) · headless$/u)).toBeVisible();
   await expect(transcript.getByText(waiting)).toBeHidden();
 
   // A wait nobody answers ends after its own timeout.
@@ -90,7 +95,8 @@ test("an agent hands its tab to the operator, and the wait ends on Continue, on 
 
   // The browser stopping under the wait ends it too.
   await hui.prompt(session, browserCall({ action: "handoff", message: "Finish the page yourself.", timeoutMs: 300_000 }));
-  await expect(screen.getByRole("complementary", "Work pane").getByText(second)).toBeVisible();
+  await openWork(screen, "Browser");
+  await expect(pane.getByText(second)).toBeVisible();
   await hui.open("/settings/tools");
   await screen.getByRole("button", "Stop").tap();
   await hui.open(`/sessions/${session.id}`);
