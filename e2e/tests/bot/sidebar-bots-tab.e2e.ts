@@ -6,6 +6,8 @@ import { test } from "../../fixtures/hui.ts";
 test("Agents and Bots are always offered, Bots shows only the roster with Search bots and its +, and the choice survives a reload and a bot's page, in the drawer too", { tags: ["BOT-001"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.api("POST", "/__hui/bots", { name: "Scout", soul: "# Who I am\nA terse fixture bot.\n" });
   await hui.open("/");
+  // A phone keeps the sidebar in the navigation drawer; on the wide layout this is nothing.
+  await hui.sessionList();
   const agents = screen.getByRole("tab", "Agents");
   const bots = screen.getByRole("tab", "Bots");
   const navigation = screen.getByLabel("Primary navigation");
@@ -24,12 +26,16 @@ test("Agents and Bots are always offered, Bots shows only the roster with Search
   await expect(screen.getByLabel(/^Scout,/u)).toBeVisible();
 
   await hui.reload();
+  await hui.sessionList();
   await expect(screen.getByRole("tab", "Bots")).toHaveAttribute("aria-selected", "true");
   await expect(screen.getByPlaceholder("Search bots")).toBeVisible();
   await expect(screen.getByLabel("Primary navigation")).toBeHidden();
 
   await screen.getByLabel(/^Scout,/u).tap();
   await expect.poll(() => hui.url()).toMatch(/\/bots\//u);
+  await expect(screen.getByTestId("chat-header").getByText("Scout", { exact: true })).toBeVisible();
+  await expect(screen.getByRole("button", "Close navigation").first()).toBeHidden();
+  await hui.sessionList();
   await expect(screen.getByRole("tab", "Bots")).toHaveAttribute("aria-selected", "true");
   await expect(screen.getByLabel("Primary navigation")).toBeHidden();
 
