@@ -1042,6 +1042,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["position-rail"],
     web: "required",
+    phone: "backlog",
   },
 ];
 
