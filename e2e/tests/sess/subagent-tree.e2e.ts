@@ -4,12 +4,14 @@
  * drawer stays open while folding, folds last for the page, and a child's header offers Open parent (SESS-046). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { expectChatTitle } from "./chat-header.ts";
 
 test("a subagent tree nests under its parent, folds without moving the open session, keeps a nested fold, shows folded children under a filter and in the phone drawer, and offers Open parent in a child's header", { tags: ["SESS-046"] }, async ({ screen, hui }) => {
   const rows = screen.getByTestId("session-row");
   const row = (title: string) => rows.filter({ hasText: title });
   const link = (title: string) => row(title).getByRole("link", { name: new RegExp(`^${title}, status `, "u") });
-  const heading = screen.getByTestId("session-title", { visible: true });
+  // Every header read goes through chat-header.ts: a phone draws the Active panel selector where a wide screen draws the
+  // pane's heading.
   const search = screen.getByPlaceholder("Search sessions");
   const closeDrawer = screen.getByRole("button", "Close navigation", { visible: true }).first();
   const parent = await hui.createSession({ title: "Tree parent" });
@@ -40,7 +42,7 @@ test("a subagent tree nests under its parent, folds without moving the open sess
   await expect(row("Inner helper")).toBeHidden();
   await hui.open(`/sessions/${parent.id}`);
   await hui.sessionList();
-  await expect(heading).toHaveText("Tree parent");
+  await expectChatTitle(screen, "Tree parent");
   await expect(screen.getByRole("button", "Expand subagents of Tree parent")).toBeVisible();
   await expect(row("Inner helper")).toBeHidden();
 
@@ -53,7 +55,7 @@ test("a subagent tree nests under its parent, folds without moving the open sess
   await screen.getByRole("button", "Collapse subagents of Tree parent").tap();
   await expect(row("Inner helper")).toBeHidden();
   await expect.poll(async () => new URL(await hui.url()).pathname).toBe(address);
-  await expect(heading).toHaveText("Tree parent");
+  await expectChatTitle(screen, "Tree parent");
 
   // A search or a status filter reveals the folded child, and clearing it restores the fold.
   await search.fill("Grand helper");
@@ -82,10 +84,10 @@ test("a subagent tree nests under its parent, folds without moving the open sess
 
   // A child's header offers the way back up.
   await link("Inner helper").tap();
-  await expect(heading).toHaveText("Inner helper");
+  await expectChatTitle(screen, "Inner helper");
   await expect(screen.getByRole("button", "Open parent")).toBeVisible();
   await screen.getByRole("button", "Open parent").tap();
-  await expect(heading).toHaveText("Tree parent");
+  await expectChatTitle(screen, "Tree parent");
 
   // In the phone's drawer a fold leaves the drawer open, and the folds last for the page only.
   await hui.phoneScreen();
