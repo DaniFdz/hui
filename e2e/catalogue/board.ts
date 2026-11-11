@@ -305,7 +305,7 @@ const cases: UseCase[] = [
   {
     id: "BOARD-036",
     title: "Link a session to an existing Jira work item",
-    behaviour: "Link Jira work item… opens a search (\"Key, URL or summary text\") that lists Recently viewed items, then Results as you type a key, a pasted /browse/ URL or words from the summary. Choosing one shows \"Linked Jira work item <key>.\" and the row's mark becomes that item; items already linked to a session are not offered, and no match reads \"No matching work items. Try a key such as CI-123 or paste its URL.\"",
+    behaviour: "Link Jira work item… opens a search (\"Key, URL or summary text\") that lists Recently viewed items, then Results as you type a key, a pasted /browse/ URL or words from the summary. Choosing one shows \"Linked Jira work item <key>.\" and the row's mark becomes that item, and a search that finds nothing reads \"No matching work items. Try a key such as CI-123 or paste its URL.\"",
     spec: ["SPEC.md#behaviour", "SPEC.md#kanban", "docs/api.md#get-__huijiraissues", "docs/api.md#post-__huisessionsidjiralink"],
     surfaces: ["route:GET /__hui/jira/issues", "route:POST /__hui/sessions/:id/jira/link"],
     journeys: ["jira-integration"],
