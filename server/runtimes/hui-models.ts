@@ -37,6 +37,24 @@ export async function writeProviderSelections(selections: ProviderSelections, di
 const execAsync = promisify(exec);
 type AuthTarget = string | Parameters<ModelRuntime["getAuth"]>[0];
 
+/** A key command can wait on a login or a slow credential store, so PI's ten
+ * second ceiling killed commands that finish a few seconds later and the run
+ * died as an auth error. Give it room for one slow answer, and one more try: a
+ * second attempt is what tells a stalled lookup apart from a missing key. */
+const KEY_COMMAND_TIMEOUT_MS = 30_000;
+const KEY_COMMAND_ATTEMPTS = 2;
+
+async function resolveKeyCommand(command: string, signal?: AbortSignal): Promise<string> {
+  for (let attempt = 1; attempt <= KEY_COMMAND_ATTEMPTS; attempt += 1) {
+    const run = execAsync(command, { timeout: KEY_COMMAND_TIMEOUT_MS, signal });
+    run.child.stdin?.end();
+    const apiKey = await run.then(({ stdout }) => stdout.trim(), () => "");
+    if (apiKey) return apiKey;
+    signal?.throwIfAborted();
+  }
+  return "";
+}
+
 async function keyCommands(agentDir: string, selections: ProviderSelections): Promise<Map<string, string>> {
   let providers: unknown;
   try { providers = (JSON.parse(await readFile(join(agentDir, "models.json"), "utf8")) as { providers?: unknown }).providers; }
@@ -60,9 +78,7 @@ function runKeyCommandsAsync(runtime: ModelRuntime, commands: ReadonlyMap<string
     const provider = typeof target === "string" ? target : target.provider;
     const command = commands.get(provider);
     if (command === undefined || overrides.apiKey !== undefined || runtime.getProviderAuthStatus(provider).source === "stored") return getAuth(target, overrides);
-    const run = execAsync(command, { timeout: 10_000, signal: overrides.signal });
-    run.child.stdin?.end();
-    const apiKey = await run.then(({ stdout }) => stdout.trim(), () => "");
+    const apiKey = await resolveKeyCommand(command, overrides.signal);
     if (apiKey) return getAuth(target, { ...overrides, apiKey });
     overrides.signal?.throwIfAborted();
     throw new KeyCommandError("auth", `API key auth failed for provider ${provider}`, { cause: new Error(`Failed to resolve API key for provider "${provider}" from shell command: ${command}`) });

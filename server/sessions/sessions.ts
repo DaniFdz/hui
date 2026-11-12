@@ -57,6 +57,10 @@ export type SessionRecord = {
   /** Failed automatic restart admissions for the current interrupted run.
    * Cleared once a replacement backend turn starts or the run settles. */
   runRecoveryAttempts?: number;
+  /** When the last run ended on a failure HUI retries by itself. It outlives
+   * the gateway, so a run a shutdown or a slept Mac cut off is retried on the
+   * next start instead of waiting for the operator to continue each session. */
+  runFailedAt?: string;
   /** Pinned sessions sort to the top of their group. Persisted like the rest,
    * so a pin survives a gateway restart. */
   pinned?: boolean;
@@ -249,6 +253,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     && raw["runRecoveryAttempts"] >= 0
       ? raw["runRecoveryAttempts"]
       : undefined;
+  const runFailedAt = str(raw["runFailedAt"]).trim();
   const parentId = str(raw["parentId"]).trim();
   const bot = str(raw["bot"]).trim();
   const botSkills = str(raw["botSkills"]).trim();
@@ -290,6 +295,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(runStartedAt ? { runStartedAt } : {}),
     ...(runPrompt ? { runPrompt } : {}),
     ...(runRecoveryAttempts !== undefined ? { runRecoveryAttempts } : {}),
+    ...(runFailedAt ? { runFailedAt } : {}),
     ...(raw["pinned"] === true ? { pinned: true } : {}),
     ...(raw["archived"] === true ? { archived: true } : {}),
     ...(raw["unread"] === true ? { unread: true } : {}),
