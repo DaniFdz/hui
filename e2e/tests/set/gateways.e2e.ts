@@ -13,7 +13,7 @@ test("a gateway is added from a dialog with a name and an address, and an unreac
   await hui.open("/settings/connection");
   const page = screen.getByTestId("settings-page");
   const add = page.getByRole("button", "Add gateway");
-  const dialog = page.getByLabel("Add gateway", { exact: true });
+  const dialog = screen.getByLabel("Add gateway", { exact: true });
   const name = dialog.getByLabel("Name", { exact: true });
   const address = dialog.getByLabel("Address", { exact: true });
 
@@ -81,7 +81,7 @@ test("Edit changes a saved gateway's name and address, and only the current gate
 
   await hui.open("/settings/connection");
   const page = screen.getByTestId("settings-page");
-  const addDialog = page.getByLabel("Add gateway", { exact: true });
+  const addDialog = screen.getByLabel("Add gateway", { exact: true });
   await page.getByRole("button", "Add gateway").tap();
   await addDialog.getByLabel("Name", { exact: true }).fill("Loft");
   await addDialog.getByLabel("Address", { exact: true }).fill(loft.url);
@@ -95,7 +95,7 @@ test("Edit changes a saved gateway's name and address, and only the current gate
 
   // A rename that does not move the address saves in place, and the row keeps its sighting.
   await page.getByRole("button", "Edit Loft").tap();
-  const edit = page.getByLabel("Edit gateway", { exact: true });
+  const edit = screen.getByLabel("Edit gateway", { exact: true });
   await expect(edit).toBeVisible();
   await expect(edit.getByLabel("Name", { exact: true })).toHaveValue("Loft");
   await expect(edit.getByLabel("Address", { exact: true })).toHaveValue(loft.url);
@@ -107,8 +107,9 @@ test("Edit changes a saved gateway's name and address, and only the current gate
 
   // The chosen name is this device's own: reaching the gateway again refreshes its sighting, not its label.
   await hui.reload();
-  await expect(page.getByText("Loft studio", { exact: true })).toBeVisible();
-  await expect(page.getByText("last seen just now", { exact: true })).toBeVisible();
+  const loftRow = page.getByRole("listitem").filter({ hasText: "Loft studio" });
+  await expect(loftRow.getByText("Loft studio", { exact: true })).toBeVisible();
+  await expect(loftRow.getByText("last seen just now", { exact: true })).toBeVisible();
 
   // Moving to another address probes it first and moves the one row there.
   await page.getByRole("button", "Edit Loft studio").tap();
@@ -134,7 +135,7 @@ test("Edit changes a saved gateway's name and address, and only the current gate
 
   // The gateway serving this page keeps its address; Edit saves the name every client sees.
   await page.getByRole("button", `Edit ${current}`).tap();
-  const currentDialog = page.getByLabel("Edit gateway", { exact: true });
+  const currentDialog = screen.getByLabel("Edit gateway", { exact: true });
   await expect(currentDialog.getByLabel("Address", { exact: true })).toHaveValue(here.origin);
   await expect(currentDialog.getByLabel("Address", { exact: true })).toBeDisabled();
   await currentDialog.getByLabel("Name", { exact: true }).fill("Studio Mac");
@@ -142,6 +143,10 @@ test("Edit changes a saved gateway's name and address, and only the current gate
   await expect(currentDialog).toBeHidden();
   await expect(page.getByText("Studio Mac", { exact: true })).toBeVisible();
   await expect(page.getByText(here.origin, { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Gateway name", { exact: true })).toHaveValue("Studio Mac");
+
+  // Every surface that names this gateway shows the saved name, including the sidebar footer.
+  await screen.getByRole("button", "Exit Settings").tap();
   await expect(screen.getByTestId("sidebar-gateway")).toContainText("Studio Mac");
 });
 
@@ -153,7 +158,7 @@ test("switching opens the chosen gateway in this page", { tags: ["SET-094"], pla
 
   await hui.open("/settings/connection");
   const page = screen.getByTestId("settings-page");
-  const dialog = page.getByLabel("Add gateway", { exact: true });
+  const dialog = screen.getByLabel("Add gateway", { exact: true });
   await page.getByRole("button", "Add gateway").tap();
   await dialog.getByLabel("Address", { exact: true }).fill(there);
   await dialog.getByRole("button", "Add gateway").tap();
