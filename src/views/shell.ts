@@ -19,7 +19,7 @@ import type { ExtensionPageLink } from "../lib/extensions/pages.ts";
 import { extensionPanelIcon } from "../lib/extensions/panel-icons.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { writeSessionDrag } from "../lib/session/pane-layout.ts";
-import { applySidebarWidth, sidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from "../lib/sidebar-width.ts";
+import { resizeSidebarWithKeys, sidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, startSidebarResize } from "../lib/sidebar-width.ts";
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
 import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
 import { primaryJiraIssue } from "../lib/jira.ts";
@@ -119,8 +119,8 @@ export type SessionOpenAction = "tab" | "window" | "editor" | "jira";
 export type GroupDropTarget = { group: string; position: "before" | "after" };
 
 /** The Agents | Bots switch fills the sidebar's top row, right after the
- * collapse toggle, because each tab has a sidebar of its own: Agents is the
- * sidebar as before, and Bots shows only the roster. */
+ * collapse toggle. Both tabs keep the same navigation and swap only the list
+ * below it: Agents lists sessions, Bots the roster. */
 export type ShellBotsProps = {
   tab: SidebarTab;
   onTab: (tab: SidebarTab) => void;
@@ -180,8 +180,8 @@ export type ShellProps = {
   /** This device's gateways, the one serving this page first (SPEC.md "A device keeps a list of gateways"). */
   gateways: readonly GatewayView[];
   onSwitchGateway: (url: string) => void;
-  /** Opens Settings → Gateway, where an address is added and the saved ones are managed. */
-  onOpenGatewaySettings: () => void;
+  /** Opens the Add gateway dialog; Settings → Gateway also opens it and edits the saved ones. */
+  onAddGateway: () => void;
   onSearch: (value: string) => void;
   onToggleMenu: (sessionId: string) => void;
   /** Idempotent close, kept separate from toggle for document-level dismissal. */
@@ -795,8 +795,8 @@ function renderSidebarTabs(bots: ShellBotsProps) {
 }
 
 /** The sidebar footer: this page's gateway, with the others this device knows behind it. Choosing one navigates to
- * it; Add a gateway… opens Settings → Gateway, where the list is managed. Escape closes the menu and returns focus to
- * the button, exactly as the session menus do. */
+ * it; Add a gateway… opens the Add gateway dialog in place. Escape closes the menu and returns focus to the button,
+ * exactly as the session menus do. */
 function renderGatewayPicker(props: ShellProps) {
   const current = props.gateways.find((gateway) => gateway.state === "current");
   return html`<wa-dropdown class="session-menu sidebar-gateway-menu" placement="top-start" distance="8"
@@ -806,7 +806,7 @@ function renderGatewayPicker(props: ShellProps) {
       const value = event.detail.item.value;
       if (value === "add") {
         closeContainingDrawer(event);
-        props.onOpenGatewaySettings();
+        props.onAddGateway();
         return;
       }
       if (value.startsWith("switch:")) props.onSwitchGateway(value.slice("switch:".length));
@@ -837,8 +837,8 @@ export function renderSidebar(props: ShellProps) {
   const query = props.search.trim().toLocaleLowerCase();
   const filtering = Boolean(query) || props.sessionOptions.status !== "all";
   const visibleGroups = sidebarSessionGroups(props.groups, props.search, props.sessionOptions);
-  // On the Bots tab the sidebar is the roster alone, as in Hermes: the primary
-  // navigation and New session stay under Agents.
+  // The Agents and Bots lists keep the same destinations: the tab only swaps
+  // the session list for the bot roster and the search's name.
   const botsTab = props.bots.tab === "bots" ? props.bots : undefined;
   const searchLabel = botsTab ? "Search bots" : "Search sessions";
   return html`<hui-session-hovercard-provider .sessions=${props.groups.flatMap((group) => group.sessions)}>
@@ -903,19 +903,6 @@ export function renderSidebar(props: ShellProps) {
           <div class="sidebar-brand" data-testid="sidebar-header">
             <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__collapse" aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true" @click=${toggleDesktopSidebar}>${icons.panelLeftClose}</button>
             <div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>
-            <a
-              href="/settings/appearance"
-              data-testid="nav-settings"
-              class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__settings"
-              aria-label="Settings"
-              title="Settings"
-              @click=${(event: MouseEvent) => {
-                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-                event.preventDefault();
-                closeContainingDrawer(event, false, true);
-                props.onOpenSettings();
-              }}
-            >${icons.settings}</a>
           </div>
 
           <label class="sidebar-search ${(botsTab ? botsTab.search.trim() : query) ? "sidebar-search--active" : ""}">
@@ -931,7 +918,7 @@ export function renderSidebar(props: ShellProps) {
 
           <div class="sidebar-shell__content">
           <div class="sidebar-shell__body" id="sidebar-tabpanel" role="tabpanel" aria-labelledby="sidebar-tab-${props.bots.tab}">
-          ${botsTab ? nothing : html`<nav class="sidebar-nav" aria-label="Primary navigation" data-testid="primary-navigation">
+          <nav class="sidebar-nav" aria-label="Primary navigation" data-testid="primary-navigation">
             ${PRIMARY_NAV.map((item) => {
               const page = props.pages.find((candidate) => candidate.id === item.id);
               return page ? html`
@@ -966,7 +953,22 @@ export function renderSidebar(props: ShellProps) {
               <span class="nav-item__icon" aria-hidden="true">${extensionPanelIcon(page.icon)}</span>
               <span class="nav-item__text">${page.title}</span>
             </a>`)}
-          </nav>`}
+            <a
+              href="/settings/appearance"
+              data-testid="nav-settings"
+              class="nav-item sidebar-nav__item sidebar-nav__settings"
+              aria-current="false"
+              @click=${(event: MouseEvent) => {
+                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                closeContainingDrawer(event, false, true);
+                props.onOpenSettings();
+              }}
+            >
+              <span class="nav-item__icon" aria-hidden="true">${icons.settings}</span>
+              <span class="nav-item__text">Settings</span>
+            </a>
+          </nav>
 
           <div class=${botsTab ? "sidebar-sessions sidebar-sessions--bots" : "sidebar-sessions"}>
           <div class="sidebar-recent-sessions__toolbar sidebar-session-toolbar">
@@ -1064,63 +1066,6 @@ function toggleDesktopSidebar(event: Event) {
   // whichever is now shown: a second click or Enter in place undoes the first.
   const next = collapsed ? ".shell-chrome-controls" : ".sidebar-brand__collapse";
   requestAnimationFrame(() => shell.querySelector<HTMLElement>(next)?.focus());
-}
-
-/** One drag at a time, so a second finger cannot compete with the one that started it. */
-let sidebarResizing = false;
-
-/** The sidebar's right edge. A drag writes `--hui-sidebar-width` straight to the
- * document, so resizing never re-renders the shell; the choice is stored once
- * the pointer is released. */
-function startSidebarResize(event: PointerEvent) {
-  const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-  const nav = handle?.closest<HTMLElement>(".shell-nav");
-  const startWidth = nav?.getBoundingClientRect().width ?? 0;
-  if (!handle || !nav || event.button !== 0 || startWidth <= 0 || sidebarResizing) return;
-  const shell = nav.closest<HTMLElement>(".app-shell");
-  const { pointerId } = event;
-  const startX = event.clientX;
-  let width = startWidth;
-  let done = false;
-  const resize = (value: number) => {
-    width = applySidebarWidth(value);
-    handle.setAttribute("aria-valuenow", String(width));
-  };
-  const move = (moveEvent: PointerEvent) => {
-    if (moveEvent.pointerId === pointerId) resize(startWidth + moveEvent.clientX - startX);
-  };
-  const finish = (endEvent?: Event) => {
-    if (done || (endEvent instanceof PointerEvent && endEvent.pointerId !== pointerId)) return;
-    done = true;
-    sidebarResizing = false;
-    handle.removeEventListener("pointermove", move);
-    handle.removeEventListener("pointerup", finish);
-    handle.removeEventListener("pointercancel", finish);
-    handle.removeEventListener("lostpointercapture", finish);
-    window.removeEventListener("blur", finish);
-    shell?.classList.remove("shell--sidebar-resizing");
-    if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
-    applySidebarWidth(width, true);
-  };
-  event.preventDefault();
-  sidebarResizing = true;
-  handle.focus({ preventScroll: true });
-  handle.setPointerCapture(pointerId);
-  shell?.classList.add("shell--sidebar-resizing");
-  handle.addEventListener("pointermove", move);
-  handle.addEventListener("pointerup", finish);
-  handle.addEventListener("pointercancel", finish);
-  handle.addEventListener("lostpointercapture", finish);
-  window.addEventListener("blur", finish);
-}
-
-function resizeSidebarWithKeys(event: KeyboardEvent) {
-  const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-  const step = event.shiftKey ? 48 : 16;
-  const delta = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
-  if (!handle || delta === 0) return;
-  event.preventDefault();
-  handle.setAttribute("aria-valuenow", String(applySidebarWidth(sidebarWidth() + delta, true)));
 }
 
 export function closeDrawerOnEscape(event: KeyboardEvent) {

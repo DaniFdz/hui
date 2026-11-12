@@ -1,5 +1,6 @@
 /**
- * The Settings shell: its page list, drawer and search, and the render functions for the built-in pages. Edits leave
+ * The Settings shell: its page list, drawer and search, and the render functions for the built-in pages. Its rail is
+ * the same sidebar at the shared stored width (lib/sidebar-width.ts), drag handle included. Edits leave
  * through prop callbacks to the app; the pi-backed pages only report pi's configuration, and self-contained sections
  * (providers, model routes, integrations, tools, browser, workers, calls) are their own elements.
  */
@@ -17,10 +18,11 @@ import type { ThemePreview } from "../lib/theme/theme-store.ts";
 import type { ThemeSwatches } from "../lib/theme/shadcn-theme.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import type { GatewayHealth, WorkspaceInspection } from "../api/control-surfaces.ts";
-import { lastSeenLabel, type GatewayAddState, type GatewayView } from "../lib/gateways/gateway-list.ts";
+import { lastSeenLabel, type GatewayView } from "../lib/gateways/gateway-list.ts";
 import { formatGatewayUptime } from "../lib/gateway-presentation.ts";
 import type { ObservabilitySnapshot } from "../api/observability.ts";
 import { icons } from "../lib/icons.ts";
+import { resizeSidebarWithKeys, sidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, startSidebarResize } from "../lib/sidebar-width.ts";
 import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { renderPicker, renderSettingsPicker } from "./settings-picker.ts";
 import { renderListFilter } from "../components/list-filter.ts";
@@ -71,10 +73,10 @@ export type SettingsProps = AutomationProps & {
   canOpenExtensionPanel: boolean;
   /** This device's gateways: the one serving this page first, then the saved ones. */
   gateways: readonly GatewayView[];
-  /** The add field's address, its running probe and the refusal to show. */
-  gatewayAdd: GatewayAddState;
-  onGatewayAddress: (address: string) => void;
+  /** Opens the Add gateway dialog, also reachable from the sidebar's gateway menu. */
   onAddGateway: () => void;
+  /** Opens the Edit gateway dialog on one row. */
+  onEditGateway: (gateway: GatewayView) => void;
   onSwitchGateway: (url: string) => void;
   onRemoveGateway: (url: string) => void;
   onRetryGateway: (url: string) => void;
@@ -97,7 +99,6 @@ export type SettingsProps = AutomationProps & {
   onSelectMode: (mode: ThemeMode) => void;
   onSelectAccent: (accent: string) => void;
   onChangeBranchPrefix: (prefix: string) => void;
-  onChangeGatewayName: (name: string) => void;
   onChangeAppearance: (next: Partial<DeviceAppearance>) => void;
   onChangeChat: (next: ChatAppearance) => void;
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
@@ -152,7 +153,7 @@ function renderThemeCard(
 }
 
 /** Heading and description sit outside the card, so rows own their inset. */
-function renderSection(heading: string, description: string, body: TemplateResult, section?: string) {
+function renderSection(heading: string, description: string, body: TemplateResult, section?: string, actions?: TemplateResult) {
   return html`
     <section class="settings-section" data-settings-section=${section ?? nothing}>
       <div class="settings-section__header">
@@ -160,6 +161,7 @@ function renderSection(heading: string, description: string, body: TemplateResul
           <h2 class="settings-section__heading">${heading}</h2>
           ${description ? html`<p class="settings-section__desc">${description}</p>` : nothing}
         </div>
+        ${actions ? html`<div class="settings-section__actions">${actions}</div>` : nothing}
       </div>
       <div class="settings-group">${body}</div>
     </section>
@@ -816,8 +818,9 @@ function renderPowerSection(props: SettingsProps, status: PowerStatus) {
   `);
 }
 
-/** The gateways this device keeps: the one serving this page, the ones added here, and the add field with the probe's
- * refusals. Switching opens that gateway in this page; the current one is never offered a Remove. */
+/** The gateways this device keeps: the one serving this page, the ones added here, and the dialog that adds or edits
+ * one. Switching opens that gateway in this page; the current one is never offered a Remove, and its Edit changes only
+ * its own name. */
 function renderGatewaysSection(props: SettingsProps) {
   const now = Date.now();
   return renderSection(
@@ -836,6 +839,8 @@ function renderGatewaysSection(props: SettingsProps) {
               <span class="settings-status__dot" aria-hidden="true"></span>
               ${gateway.state === "current" ? "Current" : gateway.state === "offline" ? "Offline" : `last seen ${lastSeenLabel(gateway.lastSeen ?? now, now)}`}
             </span>
+            <button type="button" class="btn" aria-label=${`Edit ${gateway.name}`}
+              @click=${() => props.onEditGateway(gateway)}>Edit</button>
             ${gateway.state === "current" ? nothing : html`<button type="button" class="btn" aria-label=${`Switch to ${gateway.name}`}
               @click=${() => props.onSwitchGateway(gateway.url)}>Switch</button>`}
             ${gateway.state === "offline" ? html`<button type="button" class="btn" aria-label=${`Retry ${gateway.name}`}
@@ -845,56 +850,14 @@ function renderGatewaysSection(props: SettingsProps) {
           </div>
         </div>`)}
       </div>
-      <form class="settings-row settings-gateway-add" @submit=${(event: SubmitEvent) => {
-        event.preventDefault();
-        props.onAddGateway();
-      }}>
-        <div class="settings-row__text">
-          <label class="settings-row__title" for="gateway-address">Add a gateway</label>
-          <span class="settings-row__desc">Its address, such as <code>http://192.168.1.4:8787</code>. HUI asks it to identify itself before adding it.</span>
-          ${props.gatewayAdd.error ? html`<span class="settings-gateway__error" role="alert">${props.gatewayAdd.error}</span>` : nothing}
-        </div>
-        <div class="settings-row__control">
-          <input id="gateway-address" class="settings-input" name="gatewayAddress" maxlength="300" spellcheck="false"
-            autocomplete="off" aria-label="Gateway address" placeholder="http://192.168.1.4:8787"
-            .value=${props.gatewayAdd.address}
-            @input=${(event: Event) => props.onGatewayAddress((event.target as HTMLInputElement).value)} />
-          <button type="submit" class="btn" ?disabled=${props.gatewayAdd.busy}>${props.gatewayAdd.busy ? "Checking…" : "Add"}</button>
-        </div>
-      </form>
     `,
+    undefined,
+    html`<button type="button" class="btn btn--sm" @click=${props.onAddGateway}>Add gateway</button>`,
   );
 }
 
-/** The gateway's own name: saved here, reported on `/__hui/health`, and shown on About. Empty means the
- * machine's hostname, which health already reports as the effective name, so it is the field's placeholder. */
-function renderGatewayNameSection(props: SettingsProps) {
-  const saved = props.settings.name;
-  const fallback = saved ? "" : props.health?.name ?? "";
-  return renderSection(
-    "Gateway name",
-    "What this gateway calls itself in a client that keeps more than one.",
-    html`<form class="settings-row" @submit=${(event: SubmitEvent) => {
-      event.preventDefault();
-      const form = event.currentTarget;
-      if (!(form instanceof HTMLFormElement)) return;
-      const field = form.elements.namedItem("gatewayName");
-      if (field instanceof HTMLInputElement) props.onChangeGatewayName(field.value);
-    }}>
-      <div class="settings-row__text">
-        <label class="settings-row__title" for="gateway-name">Gateway name</label>
-        <span class="settings-row__desc">${saved
-          ? "Shown to every client that connects, and on About."
-          : `Leave it empty to use this machine's hostname${fallback ? `, ${fallback}` : ""}.`}</span>
-      </div>
-      <div class="settings-row__control">
-        <input id="gateway-name" class="settings-input" name="gatewayName" maxlength="60" spellcheck="false" autocomplete="off" placeholder=${fallback} .value=${saved} />
-        <button type="submit" class="btn">Save</button>
-      </div>
-    </form>`,
-  );
-}
-
+/** The gateway's own name is saved by the current gateway's Edit dialog, reported on `/__hui/health`, and shown on
+ * About and in every client that keeps more than one gateway. */
 export function renderConnectionPage(props: SettingsProps) {
   const health = props.health;
   const failed = Boolean(props.healthError);
@@ -903,7 +866,6 @@ export function renderConnectionPage(props: SettingsProps) {
   return html`
     <p class="settings-page__intro">${SETTINGS_COPY.intros.connection}</p>
     ${renderGatewaysSection(props)}
-    ${renderGatewayNameSection(props)}
     ${renderSection(
       "Access",
       "Connection checked every 3 seconds while this page is visible.",
@@ -1085,7 +1047,7 @@ function renderPendingSettingsPage(page: keyof typeof SETTINGS_SUMMARIES) {
 
 export function renderSettingsPage(props: SettingsProps) {
   return html`
-    <aside class="shell-nav settings-sidebar settings-nav" data-open=${String(SETTINGS_DRAWER_DEFAULT_OPEN)} @keydown=${(event: KeyboardEvent) => handleSettingsEscape(event, props)}>
+    <aside class="shell-nav settings-sidebar settings-nav" data-open=${String(SETTINGS_DRAWER_DEFAULT_OPEN)} data-testid="settings-sidebar" @keydown=${(event: KeyboardEvent) => handleSettingsEscape(event, props)}>
       <button
         type="button"
         class="settings-mobile-topbar"
@@ -1170,6 +1132,18 @@ export function renderSettingsPage(props: SettingsProps) {
         <span class="sidebar-footer-build">HUI</span>
       </footer>
       </div>
+      <div
+        class="sidebar-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-valuemin=${SIDEBAR_WIDTH_MIN}
+        aria-valuemax=${SIDEBAR_WIDTH_MAX}
+        aria-valuenow=${sidebarWidth()}
+        tabindex="0"
+        @pointerdown=${startSidebarResize}
+        @keydown=${resizeSidebarWithKeys}
+      ></div>
     </aside>
     <main class="content settings-main" @keydown=${(event: KeyboardEvent) => handleSettingsEscape(event, props)}>
       <header class="content-header content-header--settings">

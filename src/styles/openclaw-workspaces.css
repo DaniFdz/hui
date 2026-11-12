@@ -26,7 +26,9 @@
 /* Settings takeover ----------------------------------------------------- */
 
 .settings-shell {
-  grid-template-columns: 288px minmax(0, 1fr);
+  /* The Settings rail is the same sidebar at the same width (lib/sidebar-width.ts):
+     resizing it here changes the main shell's column too. */
+  grid-template-columns: var(--hui-sidebar-width, 258px) minmax(0, 1fr);
   grid-template-rows: 0 minmax(0, 1fr);
   grid-template-areas: "nav topbar" "nav content";
 }
@@ -230,6 +232,11 @@
     grid-template-areas: "nav" "content";
   }
 
+  /* Settings' drawer, like the main shell's, has its own width and no boundary. */
+  .settings-shell .sidebar-resize-handle {
+    display: none;
+  }
+
   .settings-shell .settings-mobile-topbar {
     position: relative;
     z-index: 52;
@@ -425,24 +432,6 @@ wa-switch::part(base) { min-width: inherit; min-height: inherit; }
   background: var(--danger);
 }
 
-.settings-gateway-add .settings-row__control {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.settings-gateway-add .settings-input {
-  width: min(46vw, 260px);
-  min-width: 0;
-}
-
-.settings-gateway__error {
-  margin-top: 2px;
-  color: var(--danger);
-  font-size: var(--control-ui-text-sm);
-  overflow-wrap: anywhere;
-}
-
 @media (max-width: 640px) {
   .settings-gateway {
     flex-wrap: wrap;
@@ -451,14 +440,6 @@ wa-switch::part(base) { min-width: inherit; min-height: inherit; }
   .settings-gateway .settings-row__control {
     width: 100%;
     justify-content: flex-start;
-  }
-
-  .settings-gateway-add {
-    flex-wrap: wrap;
-  }
-
-  .settings-gateway-add .settings-input {
-    width: 100%;
   }
 }
 

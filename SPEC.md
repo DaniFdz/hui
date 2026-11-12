@@ -14,9 +14,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 |---|---|
 | `sidebar-agent-card` — identity card at the top | removed; HUI has no agent identity selector |
 | `sidebar-brand` — brand line with actions | the collapse toggle at the top-left (wide layout), then the Agents and Bots switch; session search is the field below it |
-| `sidebar-nav` — page destinations | Contributions, Kanban, Sessions, then Settings; no Home entry. Automations, Plugins and Skills live in Settings. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
+| `sidebar-nav` — page destinations | Contributions, Kanban, Sessions, Usage, then Settings; no Home entry. Both the Agents and Bots lists show it. Automations, Plugins and Skills live in Settings. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
 | `sidebar-online` / session sections — collapsible groups of rows | groups, flattened, with session rows |
-| `sidebar-footer-bar` — identity + connection state | removed; Settings is the last sidebar destination |
+| `sidebar-footer-bar` — identity + connection state | keeps the gateway serving this page, whose menu lists the others; Settings is the last sidebar destination |
 | main region — header, body, composer | session header, transcript, composer |
 
 ## Behaviour
@@ -39,11 +39,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the restore control appears while the sidebar is collapsed, so toggling needs
   no mouse travel, and then the Agents and Bots switch (the owner dropped the
   header's New session and Search buttons on 2026-10-06; new sessions start from
-  a group's +). Settings is the last primary-navigation destination, not a
-  header button.
+  a group's +). Settings is the last primary-navigation destination, below
+  Usage, not a header button, and both the Agents and Bots lists show it.
 - The wide layout's sidebar can be widened or narrowed by dragging the boundary
   at its right edge, between 200px and 460px, and the browser keeps that width
-  for the next visit. The boundary is a separator named *Resize sidebar* that
+  for the next visit. Settings' rail is the same sidebar at the same width, with
+  the same boundary, so moving between the two never changes the column. The
+  boundary is a separator named *Resize sidebar* that
   the arrow keys also move, 16px a press and 48px with Shift. Narrow screens
   show the drawer at its own width, with no boundary.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
@@ -775,7 +777,7 @@ Browser and package proof is in `e2e/package.browser.md` and `e2e/update.browser
 
 A gateway can be named, and every client sees that name. It is the operator's
 label for one gateway, saved as `name` in HUI's own settings beside the profile
-fields (Settings → Gateway → Gateway name) and reported on
+fields (the current gateway's Edit dialog in Settings → Gateways) and reported on
 `GET /__hui/health`, so a client that keeps several gateways can tell them
 apart without knowing each machine's path, port or hostname. Empty is the
 normal state of a fresh install and means the hostname of the machine the
@@ -789,17 +791,30 @@ gateways is not part of this change.
 ### A device keeps a list of gateways (2026-11-11)
 
 A client remembers the gateways it has used. The browser keeps a list under one
-`localStorage` key: an address and the name the gateway gave for itself when it
-was added, plus when this device last reached it. The gateway that served the
+`localStorage` key: an address and the name this device shows for it — the one
+typed when it was added, else the name the gateway gives for itself — plus when
+this device last reached it. The gateway that served the
 page is the current one: it is named by its own `GET /__hui/health`, and it is
 never stored, renamed or removed, because the list is about the others. Adding a
 gateway asks that address for `GET /__hui/update` with `x-hui: 1` — the one route
 a gateway answers cross-origin, carrying a version, a job id and its own name,
-never user data. An address that answers that handshake is stored with the name
-in the answer; one that refuses, hangs or answers with something else shows HUI's
-own wording and is not stored. An address with no scheme means `http`, a query,
-fragment or credentials are refused rather than dropped, and duplicate addresses
-collapse into one row. Corrupt or absent storage reads as an empty list.
+never user data. An address that answers that handshake is stored under the name
+typed in the dialog, or the name in the answer when that field is empty; one
+that refuses, hangs or answers with something else shows HUI's own wording in
+the dialog and is not stored. The stored name is this device's own label: a later
+reach refreshes when the gateway was last seen, never what it calls itself today.
+An address with no scheme means `http`, a query, fragment or credentials are
+refused rather than dropped, and duplicate addresses collapse into one row.
+Corrupt or absent storage reads as an empty list.
+
+Adding and editing use one dialog with a name and an address. **Add gateway**
+opens it empty. Every row has **Edit**: a saved gateway's name and address are
+both editable, and a rename that does not move the address needs no handshake,
+so a gateway that is down today can still be renamed. Moving a saved gateway
+to another address probes it first and refuses one already in the list. The
+gateway serving the page is the current one, so its Edit fixes the address to
+where the page came from and saves only the name, which every client that
+connects sees.
 
 Switching navigates: the page opens the chosen gateway's own address, so
 everything on screen afterwards belongs to that gateway, with that gateway's
@@ -808,8 +823,7 @@ offline, with Retry, and it is kept rather than dropped: a gateway that is down
 today may be the one this device wants tomorrow. The list is presentation only —
 a per-device shortcut — and changes no PI configuration, credential, session or
 transcript. The sidebar footer shows the current gateway's name and opens the
-list, with Add a gateway… leading to Settings → Gateway, where the addresses are
-managed.
+list, whose **Add a gateway…** opens that same dialog in place.
 
 ### Appearance belongs to the device that shows it (2026-11-16)
 
@@ -2648,8 +2662,8 @@ everything the Bots tab can, through the same routes.
 - **Always on.** Bots have no switch (decision below).
 - **The Bots tab**: an **Agents | Bots** switch fills the sidebar's top
   row after the collapse toggle (arrow keys, Home/End; the browser remembers the
-  tab): Agents is the sidebar as before, and Bots shows only the roster, without
-  the navigation. Bot
+  tab): Agents is the sidebar as before, and Bots swaps the session list for the
+  roster. Both lists keep the primary navigation, ending with Settings. Bot
   chats, the subagents a bot spawns and their own subagents never appear in the Sessions list, its search, Kanban, the Sessions page, the command palette or session
   pickers; a message from one still names and links it; Automations labels their routines
   *Bot · name* and words
@@ -3979,13 +3993,25 @@ gateway only (remote workers are a later follow-up).
 
 On 2026-10-06 the owner asked for Hermes's layout: the switch moved to the top
 of the sidebar and its first tab is named **Agents**. Agents is the same session
-sidebar, not an Agents page or agent selector; Bots shows only the roster.
+sidebar, not an Agents page or agent selector; Bots swaps the session list for
+the roster (both lists have kept the navigation since 2026-11-12).
 Later that day he asked for it above everything else, the header buttons
 included, because the two tabs work differently: it is now a full-width tab bar
 over a divider in the sidebar's top row. He then dropped the header's New
 session and Search buttons, which he never used, and asked for the collapse
 toggle to stay put: it now starts that top row, and the restore control appears
 on the same spot while the sidebar is collapsed.
+
+### The sidebar's destinations and width hold in both shells (2026-11-12)
+
+The owner asked for Settings to sit under Usage instead of in the sidebar's
+header, for the primary navigation to stay visible on the Bots tab, and for the
+Settings shell to keep the sidebar's width. Contributions, Kanban, Sessions,
+Usage and Settings are one scrolling list, and the Agents and Bots lists both
+draw it; the footer below them keeps this page's gateway. The Settings rail and
+the main sidebar are one column at one stored width, each with the same *Resize
+sidebar* boundary, so choosing a width anywhere applies everywhere the wide
+layout shows a sidebar.
 
 ### Bots have animated faces (2026-10-06)
 
