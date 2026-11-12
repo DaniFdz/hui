@@ -32,6 +32,9 @@ test("a Chief of Staff creates an ordinary session in a group, not a child", { t
   expect(created?.cwd).not.toBe(repo.path);
   await hui.open("/");
   await expect(screen.getByLabel(/^Created by an agent, status/)).toBeVisible();
+  const tools = await hui.api<{ prompt: string }>("GET", `/__hui/sessions/${created!.id}/tools`);
+  expect(tools.prompt).toContain("## PR lead");
+  expect(tools.prompt).toContain("Waiting for the go to start");
   // The brief is the bot's message in the new chat, never the operator's own words.
   await hui.open(`/sessions/${created!.id}`);
   const transcript = screen.getByTestId("transcript");

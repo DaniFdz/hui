@@ -1286,7 +1286,7 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `create_session` | Only a Chief of Staff bot may call this; a normal agent is refused and uses `sessions_spawn`. `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker (its id, its name, or `local` for this machine); the caller's directory, group, worker, model and thinking are defaults. The brief is the session's first prompt, tagged from the calling bot like every message a bot sends into a chat; it is not a child, so `sessions_list` and `sessions_history` do not show it |
+| `create_session` | Only a Chief of Staff bot may call this; a normal agent is refused and uses `sessions_spawn`. `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker (its id, its name, or `local` for this machine); the caller's directory, group, worker, model and thinking are defaults. The brief is the session's first prompt, tagged from the calling bot like every message a bot sends into a chat; it becomes the PR lead, with HUI's phase protocol, and is not a child, so `sessions_list` and `sessions_history` do not show it |
 | `watch_session` | `{ action: "list" | "add" | "remove", session? }`: list the sessions the caller watches with their status, goal and watchers; add a session in the caller's group; or remove it. A watched session becomes visible to the caller's `sessions_list`, `sessions_history` and `sessions_send`; HUI's gateway heartbeat continues it when it stops. An archived session, a bot's chat and a session in another group cannot be watched |
 | `worker_stats` | `{}`: this machine and every configured worker with CPU, memory, disk, GPU, connection state and running session counts, plus the least loaded connected machine within headroom (CPU under 70%, memory under 80%, disk under 85%, fewer running sessions than half its cores). A disconnected or erroring worker has no metrics and is not recommended; when every machine is over a limit the reply carries `leastLoaded` instead; `local` is the gateway's machine |
 | `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/route or model/thinking, a bounded run timeout and `collect`; a `route` resolves to its model and pinned reasoning level from HUI settings before the child exists, and a route that is unknown, sent together with `model`, or whose model is missing from the caller's available models is rejected before any child is created, naming the route to fix or the configured route names; a raw `model` missing from that catalog names close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
@@ -3131,8 +3131,12 @@ arrive turned off), the previous owner's own onboarding body when there was one,
 that its memory never travels, and the instructions the imported bot follows in its
 first conversation (`## How to run this`: greet, go through the points one or two at
 a time, ask rather than answer for them, write the answers to USER.md, MEMORY.md and
-SOUL.md). It is bounded (`BOT_SETUP_CHARACTERS`, 8,000): over it items are left out
-and counted, never cut. Then `bot.json`, `SOUL.md` and `skills/<name>/…`, scripts
+SOUL.md). It is bounded (`BOT_SETUP_CHARACTERS`, the bot's own `BOOTSTRAP.md`
+limit, 6,000): over it items are left out
+and counted, never cut, and the previous owner's own onboarding body goes
+first, so the points, needs and schedules stay. The build says how full it is
+and what it left out (`setup: { characters, limit, dropped }`), which the dialog
+shows. Then `bot.json`, `SOUL.md` and `skills/<name>/…`, scripts
 picked `remove` left out. No export date: every entry is
 dated 1980-01-01 (a local date would tell the time zone), and the file is named
 from the bot's final name (`botExportFileName`, `{{user}}` left out).

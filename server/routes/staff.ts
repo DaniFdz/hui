@@ -5,8 +5,9 @@
  * it was archived, so the group's menu cannot create a second one.
  *
  * The pack is installed at creation: SOUL.md is the seed, and its skills are written into the new bot's own folder. The
- * routes are merged by name. A later pack update does not touch this bot yet (its per-bot manifest is the next step);
- * the operator can edit its skills in Tools & skills, and the pack never overwrites them.
+ * routes are merged by name. HUI records what it installed the next time the gateway starts (server/staff/service.ts),
+ * so the chief follows later pack updates; the operator can edit its skills in Tools & skills, and the pack never
+ * overwrites an edited one.
  */
 import { BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError } from "../bots/bots.ts";
 import { localBotSkills, type BotSkillFiles } from "../bots/skills.ts";
@@ -31,6 +32,8 @@ export type StaffRouteDeps = {
   skills?: BotSkillFiles;
   readSettings: () => Promise<Settings>;
   writeSettings: (settings: Settings) => Promise<Settings>;
+  /** Records the pack as installed in the new chief, so a later start can tell its files from the operator's. */
+  recordChief: (botId: string) => Promise<void>;
 };
 
 function statusOf(error: unknown): number {
@@ -72,6 +75,7 @@ export function createStaffRoutes(deps: StaffRouteDeps) {
       });
       const skills = deps.skills ?? localBotSkills();
       await skills.write(bot.id, pack.skills.map((skill) => ({ name: skill.name, text: skill.text, ...(skill.files.length ? { files: skill.files } : {}) })));
+      await deps.recordChief(bot.id);
 
       // The routes are shared settings, so a group chief adds only what the installation does not have yet.
       const settings = await deps.readSettings();

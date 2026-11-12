@@ -46,6 +46,11 @@ test("the export dialog shows the gateway's review and the files Download saves,
   const source = read("./bot-import.ts");
   const review = between(source, "function renderReview(", "export function renderBotExportDialog(");
   assert.match(review, /const build = buildExport\(review, picks\);/u, "the files shown are the gateway's own build of the review and the picks");
+  assert.match(review, /HUI already decided each change/u, "the review reads as a report: HUI's picks are already applied");
+  assert.match(review, /Open a section to override one; Download saves the template as it stands\./u);
+  assert.doesNotMatch(review, /\{ name: `export-\$\{group\}`, open: true \}/u, "a group's pickers stay folded until the operator opens it");
+  assert.match(review, /\{ name: "export-scripts" \}/u, "and so do the scripts'");
+  assert.match(review, /\{ name: "export-needs" \}/u, "and what it needs");
   assert.match(review, /section\("Files as they will be saved"/u);
   assert.match(review, /textBlock\(change\.quote\)/u, "every passage as plain text");
   assert.match(between(source, "export function renderBotExportDialog(", "\n}\n"), /props\.pending \? "Reviewing…" : "Review again"/u);
