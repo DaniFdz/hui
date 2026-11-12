@@ -260,8 +260,8 @@ const cases: UseCase[] = [
   },
   {
     id: "AGENT-027",
-    title: "See unfinished subagents marked interrupted after a restart",
-    behaviour: "A child still running when the gateway restarts is no longer shown as running: its parent's card marks it failed with The HUI gateway restarted before this subagent finished., and its result is delivered to the parent like any finished child's.",
+    title: "Carry a running subagent through a restart",
+    behaviour: "A child still running when the gateway restarts carries on where it was: it stays running, and its parent's card shows Subagent finished: <title> with the child's own answer, not The HUI gateway restarted before this subagent finished. A child on PI's SDK worker, whose process is gone with the gateway, is marked failed with that message instead, and its result is delivered to the parent like any finished child's.",
     spec: SUBAGENTS,
     surfaces: [],
     web: "required",

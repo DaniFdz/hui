@@ -1,6 +1,6 @@
-/** A parent's collected helpers as the Parallel tasks card, and what a gateway restart leaves of a child that was still
- * running: the card's counts and Child details, a helper that got no sidebar row or completion card while its parent
- * waited, and a child marked failed with the reason before its result reaches the parent (AGENT-031, AGENT-027). */
+/** A parent's collected helpers as the Parallel tasks card: the card's counts and Child details, and a helper that got no
+ * sidebar row or completion card while its parent waited (AGENT-031). A child a gateway restart interrupted is
+ * `subagent-restart.e2e.ts`, which proves the run its own runtime carries on (AGENT-027). */
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
@@ -66,25 +66,3 @@ test("helpers wait in one Parallel tasks card that counts them and details them,
   await expect(timedOut).toContainText("The subagent exceeded 1 seconds.");
 });
 
-test("a child still running when the gateway restarts is marked failed with the reason and its result reaches the parent", { tags: ["AGENT-027"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const swarm = screen.getByLabel("Parallel tasks");
-  const transcript = screen.getByTestId("transcript");
-  const session = await hui.createSession({ title: "Interrupted subagent" });
-  await hui.open(`/sessions/${session.id}`);
-  // A browsing child runs for several seconds, so it is still running when the gateway stops underneath it.
-  await hui.prompt(session, calls(call("sessions_spawn", { task: "E2E_BROWSER_SLOW", label: "Browsing helper" })));
-  await expect.poll(async () => (await children(hui, session.id)).length).toBe(1);
-  await expect(swarm.getByText("1 running · 0 queued · 0 failed or stopped")).toBeVisible({ timeout: 90_000 });
-
-  await hui.restartGateway();
-  await hui.reload();
-  await hui.open(`/sessions/${session.id}`);
-
-  // The child is no longer running: its row says why, and the batch counts it as failed.
-  await expect.poll(async () => hui.textOf(swarm), { timeout: 90_000 }).toContain("0 completed · 1 failed or stopped");
-  await swarm.getByText("0 completed · 1 failed or stopped").tap();
-  const row = swarm.getByRole("button", { name: /^Open subagent Browsing helper(, .+)?$/u });
-  await expect(row).toContainText("The HUI gateway restarted before this subagent finished.");
-  // Its result still reaches the parent, the way any finished child's does.
-  await expect(transcript.getByLabel("Subagent finished: Browsing helper")).toBeVisible({ timeout: 90_000 });
-});
