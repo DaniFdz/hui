@@ -222,7 +222,6 @@ export class ComposerController {
     if (!session || session.status === "starting" || session.status === "error" || this.commandsLoading) return;
     const request = ++this.#commandsRequest;
     const current = () => this.#conversation.selected?.id === session.id && request === this.#commandsRequest;
-    const returnFocus = document.activeElement?.closest(".slash-menu") !== null;
     this.commandsLoading = true;
     this.commandsError = "";
     this.#host.requestUpdate();
@@ -231,9 +230,6 @@ export class ComposerController {
       this.commands = commands;
       this.#commandsLoaded = true;
       this.slashActiveIndex = 0;
-      if (returnFocus) void this.#host.updateComplete.then(() => {
-        if (current() && this.slashQuery !== null) this.#deps.textarea()?.focus();
-      });
     }).catch((error: unknown) => {
       if (current()) this.commandsError = error instanceof Error ? error.message : "Could not load commands.";
     }).finally(() => {
@@ -241,6 +237,17 @@ export class ComposerController {
       this.commandsLoading = false;
       this.#host.requestUpdate();
     });
+  };
+
+  #retryCommands = () => {
+    const textarea = this.#deps.textarea();
+    if (textarea) {
+      // Touch can blur the editor without focusing Retry. Restore its query and
+      // focus before loading replaces that button, not after the reply arrives.
+      textarea.focus();
+      this.#setCommandQuery(slashCommandQuery(this.draft, textarea.selectionStart, textarea.selectionEnd));
+    }
+    this.#requestCommands();
   };
 
   #runtimeCommands(): readonly RuntimeCommand[] {
@@ -979,7 +986,7 @@ export class ComposerController {
         error: this.commandsError,
         streaming: conversation.streaming,
         onSelect: this.#selectSlashCommand,
-        onRetry: this.#requestCommands,
+        onRetry: this.#retryCommands,
       },
       onCommandQuery: this.#setCommandQuery,
       onCommandKeydown: this.#commandKeydown,
