@@ -157,8 +157,12 @@ export class WorkLayoutController {
       if (!this.narrow) void this.#host.updateComplete.then(() => this.#deps.focusComposer());
     });
     // A launcher's reason can change outside this app's state (VS Code's gateway status): redraw the narrow chooser.
+    // A view's caption can too, when the gateway names a terminal whose tab a reload restored.
     for (const stop of this.#stopAvailability) stop();
-    this.#stopAvailability = workViewKinds().flatMap((kind) => kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.#host.requestUpdate())] : []);
+    this.#stopAvailability = workViewKinds().flatMap((kind) => [
+      ...(kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.#host.requestUpdate())] : []),
+      ...(kind.onTitleChange ? [kind.onTitleChange(() => this.#host.requestUpdate())] : []),
+    ]);
     try { this.panes = parseWorkPaneStore(JSON.parse(localStorage.getItem(WORK_PANE_KEY) ?? "null")); } catch { this.panes = {}; }
     this.#media = window.matchMedia(SESSION_SPLIT_MEDIA);
     this.narrow = this.#media.matches;

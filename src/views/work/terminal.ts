@@ -41,17 +41,26 @@ export function terminalWorkViewKind(env: TerminalWorkViewEnvironment): WorkView
   // its conversation already shows, the ones whose shell a restart took away included.
   const titles = new Map<string, string>();
   const shown = new Map<string, Set<string>>();
+  /** Told when a ref's caption changes, so a tab and the narrow destination chooser can be redrawn: a reload keeps a
+   * tab's ref and not its terminal's name, which only `existing` reads back. */
+  const listeners = new Set<() => void>();
   const remember = (view: TerminalView) => {
+    const renamed = titles.get(view.id) !== view.title;
     titles.set(view.id, view.title);
     const names = shown.get(view.ownerSessionId) ?? new Set<string>();
     names.add(view.title);
     shown.set(view.ownerSessionId, names);
+    if (renamed) for (const listener of listeners) listener();
   };
   return {
     kind: "terminal",
     label: "New terminal",
     icon: terminalWorkViewIcon,
     shortcut: TERMINAL_WORK_VIEW_SHORTCUT,
+    onTitleChange(listener) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
     async create(sessionId) {
       const view = await createTerminal(sessionId, nextTerminalTitle(shown.get(sessionId) ?? []));
       remember(view);
