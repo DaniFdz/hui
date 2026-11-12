@@ -3788,12 +3788,12 @@ question when only its chief can settle something, and ends on a report to the c
 
 Its chief is the Chief of Staff of the session's group, else the Chief of Staff of no group (not an archived bot); a
 chief that already watches the session keeps it. Each time a run of the session ends, HUI makes the chief watch the
-session if none does and runs the gateway heartbeat at once,
-so the stop reaches the chief's chat as `[routine: Heartbeat] Autonomous session "<title>" is …` with the last reply
-and a line telling the chief to accept or correct the plan, answer the question or settle the report, queued behind a
-running turn; the chief answers with `sessions_send`. A stop while the session's subagents or
-watchers still work is not reported: they wake it. Without a chief nothing is reported and the operator answers in
-the session. Turning the mode off removes the section; the chief keeps its watch until it removes it.
+session if none does and runs the gateway heartbeat at once, so the stop reaches the chief's chat as
+`[routine: Heartbeat] Autonomous session "<title>" is …` with the last reply and a line telling the chief to accept
+or correct the plan, answer the question or settle the report with `sessions_send` and `timeoutSeconds` 0, queued
+behind a running turn. A stop while the session's subagents or watchers still work is not reported: they wake it.
+Without a chief nothing is reported and the operator answers in the session. Turning the mode off removes the
+section; the chief keeps its watch until it removes it.
 
 400 when the session cannot carry the mode (a bot's chat, a PI SDK session, a worker on an older release) or is not
 running; 500 when the registry write fails, after the session went back to its previous mode.
