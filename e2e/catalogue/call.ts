@@ -162,8 +162,8 @@ const cases: UseCase[] = [
   },
   {
     id: "CALL-018",
-    title: "Reach the call's limits",
-    behaviour: "After six quick questions every request is handed to the chat, and after six hand-offs the bot says it cannot take more on this call; a question the helper cannot answer within 25 s makes the bot offer to hand it off. A call ends by itself after 15 minutes and leaves its card like any hang-up.",
+    title: "See a call's time limits",
+    behaviour: "A call keeps no per-call count of questions or hand-offs: every question is answered by the helper or handed to the chat. A question the helper cannot answer within 25 s makes the bot offer to hand it off, a call ends by itself after 15 minutes, and at most two calls run on the gateway at once (a third is refused). A call that ends leaves its card like any hang-up.",
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscalliddelegations"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/delegations"],
     web: "backlog",

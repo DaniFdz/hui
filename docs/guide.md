@@ -954,9 +954,10 @@ The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):
   page vanishes is summarized after 90 seconds without news from it; if the
   summary fails, the card keeps the transcript and says so.
 
-A call ends after 15 minutes. The helper answers six questions per call (then
-everything goes to the chat), a call hands off at most six tasks, and two calls
-can run at once on the gateway. The route is the one ChatGPT's own voice mode
+A call ends after 15 minutes. Every question is answered or handed to the chat
+(there is no per-call count: the helper has 25 seconds per question, and the
+call's own limit ends the talk), and two calls can run at once on the gateway.
+The route is the one ChatGPT's own voice mode
 uses, not a public API: it may change, and calls count against your ChatGPT
 plan's voice usage.
 

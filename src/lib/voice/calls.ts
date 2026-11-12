@@ -44,10 +44,6 @@ export const CALL_LIMITS = {
   taskSeconds: 600,
   /** The helper's time budget per question; past it, the call offers to hand the question off. */
   helperSeconds: 25,
-  /** Questions the helper answers per call; past them every request is handed off. */
-  helperQuestions: 6,
-  /** Tasks one call may hand to the bot's chat. */
-  handoffs: 6,
   /** A call ends after this long. */
   maxMinutes: 15,
   /** Lines a call keeps for its record. */

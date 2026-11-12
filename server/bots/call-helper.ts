@@ -239,15 +239,12 @@ export type CallDelegateDeps = {
 
 /**
  * The delegation seam's implementation: the bot's quick helper answers within `CALL_LIMITS.helperSeconds`, from its
- * utility model, or hands the request to the bot's chat. It never waits for or queues behind the bot's own turn.
- * Past `CALL_LIMITS.helperQuestions` questions, every request is handed off; past `CALL_LIMITS.handoffs`, none is.
+ * utility model, or hands the request to the bot's chat. It never waits for or queues behind the bot's own turn, and a
+ * call counts nothing: every question is answered or handed off, and the call's own time limit ends the talk.
  */
 export function createCallDelegate(deps: CallDelegateDeps) {
   const now = () => (deps.now ?? Date.now)();
   const handOff = (bot: BotRecord, call: ActiveCall, task: string): CallDelegationResult => {
-    if (call.tasks.size >= CALL_LIMITS.handoffs) {
-      return { status: "limit", speak: `This call already gave ${bot.name} ${CALL_LIMITS.handoffs} tasks, so ask for more in ${bot.name}'s chat.` };
-    }
     const id = randomUUID();
     const reply = deps.handOff(bot.id, `${CALL_TASK_PREFIX}${task}`);
     reply.catch(() => {});
@@ -261,8 +258,6 @@ export function createCallDelegate(deps: CallDelegateDeps) {
   };
   return async (input: { bot: BotRecord; call: ActiveCall; request: string }, signal?: AbortSignal): Promise<CallDelegationResult> => {
     const { bot, call, request } = input;
-    if (call.questions >= CALL_LIMITS.helperQuestions) return handOff(bot, call, request);
-    call.questions += 1;
     // Missing current knowledge is not an empty memory: an older chat summary may contain a corrected fact.
     let facts: BotFact[] | undefined;
     try { facts = await deps.facts?.(bot.id); }

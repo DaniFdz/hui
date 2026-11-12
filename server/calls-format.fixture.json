@@ -12,8 +12,6 @@
     "personaBytes": 6000,
     "taskSeconds": 600,
     "helperSeconds": 25,
-    "helperQuestions": 6,
-    "handoffs": 6,
     "maxMinutes": 15,
     "recordLines": 400,
     "helperMemoryBytes": 16000,

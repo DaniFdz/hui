@@ -383,8 +383,6 @@ export type ActiveCall = {
   seenAt: number;
   /** What was said, the helper's answers and the hand-offs, in order: the call's record. */
   readonly lines: CallRecordLine[];
-  /** Questions the helper answered. */
-  questions: number;
   /** Tasks handed to the bot's chat, by id: the run answering each. */
   readonly tasks: Map<string, Promise<BotReply>>;
 };
@@ -459,7 +457,7 @@ export class CallBroker {
           const now = this.#now();
           const call: ActiveCall = {
             id: randomUUID(), botId: input.botId, startedAt: now, seenAt: now, account: account.id, providerCallId: upstream.providerCallId,
-            lines: [], questions: 0, tasks: new Map(),
+            lines: [], tasks: new Map(),
           };
           this.#calls.set(call.id, call);
           this.#watch();

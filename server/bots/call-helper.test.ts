@@ -13,7 +13,7 @@ const bot = (extra: Partial<BotRecord> = {}): BotRecord => ({
   id: "b1", handle: "juno", name: "Juno", cwd: "/tmp", sessionId: "s1", createdAt: "x", updatedAt: "x", ...extra,
 });
 const activeCall = (lines: CallRecordLine[] = []): ActiveCall => ({
-  id: "call-1", botId: "b1", startedAt: 1_000, seenAt: 1_000, account: "a2", providerCallId: "rtc_1", lines, questions: 0, tasks: new Map(),
+  id: "call-1", botId: "b1", startedAt: 1_000, seenAt: 1_000, account: "a2", providerCallId: "rtc_1", lines, tasks: new Map(),
 });
 const VIEW = "<chat>\n0+1|user: My favourite colour is teal.\n1+1|talk: Noted: teal.\n</chat>";
 
@@ -122,10 +122,9 @@ test("the helper answers within its budget, never through the bot's chat, and th
   assert.deepEqual(models, ["openai-codex/gpt-6-luna"], "Settings' utility model for a bot without its own");
   assert.deepEqual(h.handed, [], "nothing reaches the bot's chat");
   assert.deepEqual(call.lines, [{ role: "helper", request: "What's Dani's favourite colour?", text: "Dani's favourite colour is teal.", at: 5_000 }]);
-  assert.equal(call.questions, 1);
 });
 
-test("real work goes to the bot's chat as a call task, followed by its id; the call caps questions and tasks", async () => {
+test("real work goes to the bot's chat as a call task, followed by its id; a call counts nothing", async () => {
   const h = delegateHarness(async () => "HANDOFF: list the files in the workspace folder");
   const call = activeCall();
   const result = await h.delegate({ bot: bot(), call, request: "Which files are in your workspace?" });
@@ -138,18 +137,13 @@ test("real work goes to the bot's chat as a call task, followed by its id; the c
   h.finish({ status: "answered", reply: "Three files." });
   assert.deepEqual(await call.tasks.get(result.task!), { status: "answered", reply: "Three files." }, "the task resolves with its own reply");
 
+  // No per-call count: every question is asked of the helper and every unknown goes to the chat, as often as the call needs.
+  const many = delegateHarness(async () => "HANDOFF: look it up");
   const busy = activeCall();
-  busy.questions = CALL_LIMITS.helperQuestions;
-  const asked: string[] = [];
-  const capped = delegateHarness(async (model) => { asked.push(model); return "x"; });
-  const past = await capped.delegate({ bot: bot(), call: busy, request: "Plan my week" });
-  assert.equal(past.status, "handed-off", "past the helper's questions, every request goes to the chat");
-  assert.deepEqual(asked, []);
-  for (let index = 1; index < CALL_LIMITS.handoffs; index++) await capped.delegate({ bot: bot(), call: busy, request: `task ${index}` });
-  const refused = await capped.delegate({ bot: bot(), call: busy, request: "one more" });
-  assert.equal(refused.status, "limit");
-  assert.match(refused.speak, new RegExp(`already gave Juno ${CALL_LIMITS.handoffs} tasks`, "u"));
-  assert.equal(busy.tasks.size, CALL_LIMITS.handoffs);
+  for (let index = 0; index < 12; index += 1) {
+    assert.equal((await many.delegate({ bot: bot(), call: busy, request: `task ${index}` })).status, "handed-off");
+  }
+  assert.equal(busy.tasks.size, 12, "each hand-off is kept for its own run");
 });
 
 test("a delegation while a turn runs: the helper answers a new question at once, and the handed-off task still answers with its own reply", async () => {

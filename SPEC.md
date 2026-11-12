@@ -3551,11 +3551,11 @@ faster."
   bot's own turn. What needs tools, or is not in those, goes to the bot's chat as
   a `[call task]` message on the bot's own model: the helper is told never to
   answer that it does not know, an unknown being a hand-off. Its reply is spoken
-  if the call is still up and stays in the chat either way. The limits follow
-  OpenDots': 25 s per question (then GPT-Live offers to hand it off), six
-  questions and six hand-offs per call, and calls of at most 15 minutes. The
-  helper has no tools yet: a restricted tool set would need new runtime
-  plumbing, so it hands off anything that needs one.
+  if the call is still up and stays in the chat either way. A call keeps no
+  per-call count: 25 s per question (then GPT-Live offers to hand it off), every
+  question answered or handed off, and calls of at most 15 minutes. The helper
+  has no tools yet: a restricted tool set would need new runtime plumbing, so it
+  hands off anything that needs one.
 - **What happened, at hang-up.** No chat message per utterance. When a call
   ends (hang-up, 90 s without a heartbeat, or 15 minutes), the utility model
   writes a summary in the bot's language: what was discussed, confirmed
