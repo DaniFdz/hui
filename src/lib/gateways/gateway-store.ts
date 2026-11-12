@@ -1,13 +1,15 @@
 /**
  * The device's gateway list in `localStorage`, under one key, as the thin adapter around `gateway-list.ts`: reading the
- * saved list, adding, marking seen and removing through its rules, and telling the page when the list changed. The
+ * saved list, adding, editing, marking seen and removing through its rules, and telling the page when the list changed. The
  * gateway serving the page is the current one, so it is never stored, renamed or removed here, and storage that
  * refuses to be read (private browsing) reads as an empty list instead of throwing.
  */
 import {
   addGateway,
+  editGateway,
   GATEWAY_LIST_KEY,
   markGatewaySeen,
+  normalizeGatewayAddress,
   readGatewayList,
   removeGateway,
   writeGatewayList,
@@ -57,6 +59,15 @@ export class GatewayStore {
   /** Records another sighting of a gateway and what it calls itself now. */
   markSeen(url: string, name?: string): readonly GatewayEntry[] {
     return this.#commit(markGatewaySeen(this.#entries, url, { name, lastSeen: this.#now() }, this.#current));
+  }
+
+  /** Renames a saved gateway and/or moves it to another address. A move records a fresh sighting; a rename keeps it. */
+  edit(originalUrl: string, change: { url: string; name: string }): readonly GatewayEntry[] {
+    const url = normalizeGatewayAddress(change.url);
+    if (!url) return this.list();
+    const original = this.#entries.find((entry) => entry.url === originalUrl);
+    const lastSeen = original && original.url === url ? original.lastSeen : this.#now();
+    return this.#commit(editGateway(this.#entries, originalUrl, { url, name: change.name, lastSeen }, this.#current));
   }
 
   /** Forgets a gateway. The current gateway stays, whatever asked. */
