@@ -3,6 +3,11 @@
  * A missing or malformed file reads as the defaults instead of an error. The gateway's own name
  * lives here beside the operator's profile (`name`); what a client sees when it is empty is
  * `control-surfaces.ts`'s effective name.
+ *
+ * Appearance is not here. A theme, colour mode, accent, typeface, text size or conversation
+ * preference belongs to the screen that shows it, kept in that device's own storage
+ * (`src/lib/appearance/store.ts`), because one gateway serves many screens and people.
+ * `cli/doctor-appearance.ts` reports and clears the keys an older file still carries.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -45,37 +50,6 @@ export async function writeHuiSettings(raw: unknown): Promise<Settings> {
   return settings;
 }
 
-type TypefaceId = "instrument-sans" | "geist" | "dm-sans" | "ibm-plex-sans" | "space-grotesk" | "atkinson-hyperlegible" | "fraunces" | "lora" | "jetbrains-mono" | "system";
-type Appearance = { fontUi: TypefaceId; fontChat: TypefaceId; textScale: 90 | 100 | 110 | 125 | 140 };
-type ThemeMode = "system" | "light" | "dark";
-const TYPEFACES: readonly TypefaceId[] = ["instrument-sans", "geist", "dm-sans", "ibm-plex-sans", "space-grotesk", "atkinson-hyperlegible", "fraunces", "lora", "jetbrains-mono", "system"];
-const DEFAULT_APPEARANCE: Appearance = { fontUi: "instrument-sans", fontChat: "instrument-sans", textScale: 100 };
-const TEXT_SCALE_STOPS = [90, 100, 110, 125, 140] as const;
-const THEME_MODES = ["system", "light", "dark"] as const;
-const DEFAULT_TERMINAL_FONT = "JetBrains Mono";
-function normalizeTypeface(value: unknown): TypefaceId {
-  const candidate = typeof value === "string" ? value : "";
-  return TYPEFACES.find((id) => id === candidate) ?? DEFAULT_APPEARANCE.fontUi;
-}
-function normalizeAppearance(fontUi: unknown, fontChat: unknown, textScale: unknown): Appearance {
-  const normalizedUi = normalizeTypeface(fontUi);
-  const scale = Number(textScale);
-  return {
-    fontUi: normalizedUi,
-    fontChat: fontChat === undefined ? normalizedUi : normalizeTypeface(fontChat),
-    textScale: TEXT_SCALE_STOPS.find((stop) => stop === scale) ?? DEFAULT_APPEARANCE.textScale,
-  };
-}
-function normalizeTerminalFont(value: unknown): string {
-  if (typeof value !== "string") return DEFAULT_TERMINAL_FONT;
-  const name = value.trim();
-  return name.length > 0 && name.length <= 128 && !/[\p{Cc}"'\\;,{}<>]/u.test(name)
-    ? name : DEFAULT_TERMINAL_FONT;
-}
-function normalizeThemeMode(value: unknown): ThemeMode {
-  return THEME_MODES.find((mode) => mode === value) ?? "system";
-}
-
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 
 export const DEFAULT_BRANCH_PREFIX = "feature/";
@@ -84,22 +58,9 @@ export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executa
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "claw",
-  themeMode: "system",
-  accent: "",
-  fontUi: DEFAULT_APPEARANCE.fontUi,
-  fontChat: DEFAULT_APPEARANCE.fontChat,
-  fontTerminal: DEFAULT_TERMINAL_FONT,
-  textScale: DEFAULT_APPEARANCE.textScale,
-  chat: {
-    messageWidth: "comfortable",
-    collapseTaskProgress: false,
-    sendShortcut: "enter",
-    githubEmbeds: true,
-    datadogEmbeds: true,
-    toolMarks: {},
-    toolIcons: {},
-  },
+  // A tool's own mark and icon file stay here: the files live in the gateway's config directory, so every device
+  // that draws a tool call reads them from the gateway that serves it.
+  chat: { toolMarks: {}, toolIcons: {} },
   profileName: "HUI Operator",
   profileHandle: "",
   name: "",
@@ -119,17 +80,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export function normalizeSettings(raw: unknown): Settings {
   const source = isRecord(raw) ? raw : {};
-  const appearance = normalizeAppearance(source["fontUi"], source["fontChat"], source["textScale"]);
-  const theme = source["theme"];
-  const normalizedTheme = typeof theme === "string" ? theme.trim() : "";
   return {
-    theme: normalizedTheme || DEFAULT_SETTINGS.theme,
-    themeMode: normalizeThemeMode(source["themeMode"]),
-    accent: normalizeAccent(source["accent"]),
-    fontUi: appearance.fontUi,
-    fontChat: appearance.fontChat,
-    fontTerminal: normalizeTerminalFont(source["fontTerminal"]),
-    textScale: appearance.textScale,
     chat: normalizeChat(source["chat"]),
     profileName: boundedText(source["profileName"], DEFAULT_SETTINGS.profileName, 80),
     profileHandle: boundedText(source["profileHandle"], "", 80),
@@ -307,17 +258,11 @@ function normalizeToolIcons(value: unknown): Settings["chat"]["toolIcons"] {
   return icons;
 }
 
+/** A file saved before appearance moved to the device still carries the chat preferences that went with it: they
+ * are not read, so the next save leaves them out and `hui doctor` offers to clear them now. */
 function normalizeChat(value: unknown): Settings["chat"] {
   const source = isRecord(value) ? value : {};
-  const width = source["messageWidth"];
-  const shortcut = source["sendShortcut"];
   return {
-    messageWidth: width === "compact" || width === "wide" ? width : "comfortable",
-    collapseTaskProgress: source["collapseTaskProgress"] === true,
-    sendShortcut: shortcut === "modifierEnter" ? shortcut : "enter",
-
-    githubEmbeds: source["githubEmbeds"] !== false,
-    datadogEmbeds: source["datadogEmbeds"] !== false,
     toolMarks: normalizeToolMarks(source["toolMarks"]),
     toolIcons: normalizeToolIcons(source["toolIcons"]),
   };
@@ -341,12 +286,6 @@ export function normalizeBranchPrefix(value: unknown): string {
     return DEFAULT_BRANCH_PREFIX;
   }
   return prefix;
-}
-
-function normalizeAccent(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const normalized = value.trim().toLowerCase();
-  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : "";
 }
 
 function boundedText(value: unknown, fallback: string, maximum: number): string {

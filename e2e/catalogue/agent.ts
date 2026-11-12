@@ -478,7 +478,7 @@ const cases: UseCase[] = [
     title: "Follow a session's task progress",
     behaviour: "HUI's utility model reads the conversation after every turn and every five minutes of a running one, and writes a Task progress card above the composer: folded, the current step and done/total; open, Task progress with N of M, a one-line summary and each step marked pending, in progress or done. It starts open unless every step is done or Collapse task progress is on, a new turn rewrites it, and it is stored with the session so it returns after a reload. Without a utility model, or when the model cannot answer, the previous card stays and nothing blocks the turn.",
     spec: ["docs/api.md#task-progress"],
-    surfaces: ["setting:chat.collapseTaskProgress", "setting:models.utility"],
+    surfaces: ["appearance:chat.collapseTaskProgress", "setting:models.utility"],
     web: "required",
   },
   {

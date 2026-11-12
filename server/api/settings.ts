@@ -19,24 +19,14 @@ export const VscodeSettings = Type.Object({
 }, { $id: "VscodeSettings" });
 export type VscodeSettings = Static<typeof VscodeSettings>;
 
-const TypefaceId = Type.Union([
-  Type.Literal("instrument-sans"), Type.Literal("geist"), Type.Literal("dm-sans"), Type.Literal("ibm-plex-sans"),
-  Type.Literal("space-grotesk"), Type.Literal("atkinson-hyperlegible"), Type.Literal("fraunces"), Type.Literal("lora"),
-  Type.Literal("jetbrains-mono"), Type.Literal("system"),
-]);
-
 /** HUI's default reasoning is one of PI's levels: Ultra is the orchestrating session's own choice. */
 const SavedReasoningLevel = Type.Exclude(ThinkingLevel, Type.Literal("ultra"));
 
 export const Settings = Type.Object({
-  theme: Type.String(),
-  themeMode: Type.Union([Type.Literal("system"), Type.Literal("light"), Type.Literal("dark")]),
-  accent: Type.String(), fontUi: TypefaceId, fontChat: TypefaceId, fontTerminal: Type.String(),
-  textScale: Type.Union([Type.Literal(90), Type.Literal(100), Type.Literal(110), Type.Literal(125), Type.Literal(140)]),
+  // A tool's own mark and icon stay on the gateway: the icon files live in its config directory, so every device
+  // that draws a tool call reads them from the gateway that serves it. Appearance is not here: a theme, colour
+  // mode, accent, typeface, text size or chat preference belongs to the device that shows it.
   chat: Type.Object({
-    messageWidth: Type.Union([Type.Literal("compact"), Type.Literal("comfortable"), Type.Literal("wide")]),
-    collapseTaskProgress: Type.Boolean(), sendShortcut: Type.Union([Type.Literal("enter"), Type.Literal("modifierEnter")]),
-    githubEmbeds: Type.Boolean(), datadogEmbeds: Type.Boolean(),
     toolMarks: Type.Record(Type.String(), Type.String()),
     toolIcons: Type.Record(Type.String(), Type.String()),
   }),

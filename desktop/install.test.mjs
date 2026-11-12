@@ -36,6 +36,7 @@ test('macOS install creates a discoverable bundle and updates only owned apps', 
   const main = await readFile(join(installed, 'Contents/Resources/app/main.cjs'), 'utf8');
   assert.equal(main, await readFile(new URL('./main.cjs', import.meta.url), 'utf8'));
   assert.equal(await readFile(join(installed, 'Contents/Resources/app/policy.cjs'), 'utf8'), await readFile(new URL('./policy.cjs', import.meta.url), 'utf8'));
+  assert.equal(await readFile(join(installed, 'Contents/Resources/app/preload.cjs'), 'utf8'), await readFile(new URL('./preload.cjs', import.meta.url), 'utf8'));
   await assert.rejects(readFile(join(installed, 'Contents/Resources/default_app.asar')), { code: 'ENOENT' });
   await installMacApp({ ...options, version: '1.2.3' });
   assert.match(await readFile(join(installed, 'Contents/Info.plist'), 'utf8'), /<string>1.2.3<\/string>/);

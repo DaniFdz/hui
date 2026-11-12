@@ -25,6 +25,7 @@ import {
 } from "./settings.ts";
 import { ACCENTS } from "../lib/theme/appearance.ts";
 import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
+import { DEFAULT_DEVICE_APPEARANCE } from "../lib/appearance/store.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
 import { DEFAULT_SIDEBAR_SESSION_OPTIONS } from "../lib/session/sidebar-sessions.ts";
 import { HUI_PAGES } from "../lib/pages.ts";
@@ -649,7 +650,8 @@ test("appearance exposes OpenClaw accent presets and a custom color", () => {
   const result = renderedText(
     renderSettingsPage({
       page: "appearance",
-      settings: { ...DEFAULT_SETTINGS, accent: "#ff8066" },
+      settings: DEFAULT_SETTINGS,
+      appearance: { ...DEFAULT_DEVICE_APPEARANCE, accent: "#ff8066" },
       previews: [],
       variant: "dark",
       themeId: "claw",

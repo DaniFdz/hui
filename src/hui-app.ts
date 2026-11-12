@@ -363,7 +363,7 @@ export class HuiApp extends HuiElement {
     focusComposer: () => this.focusActiveComposer(),
     paletteOpen: () => this.commandPaletteOpen,
     chatShown: () => this.view === "home",
-    terminalFont: () => this.control.settings.fontTerminal,
+    terminalFont: () => this.control.appearance.fontTerminal,
     browserEnabled: () => this.control.settings.browser.enabled,
   });
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
@@ -2725,7 +2725,11 @@ export class HuiApp extends HuiElement {
       streaming: this.conversation.streaming,
       stopping: this.conversation.stopping,
       continuing: this.continuing,
-      chatPreferences: this.control.settings.chat,
+      chatPreferences: {
+        ...this.control.appearance.chat,
+        toolMarks: this.control.settings.chat.toolMarks,
+        toolIcons: this.control.settings.chat.toolIcons,
+      },
       question: this.conversation.question,
       connection: this.conversation.connection,
       copiedId: this.conversation.copiedId,

@@ -88,6 +88,12 @@ export type Hui = {
   providerRequests(): Promise<number>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
+  /** This device's appearance record, as its own storage holds it, or null when it stored nothing. */
+  storedAppearance(): Promise<Record<string, unknown> | null>;
+  /** Writes this device's appearance as the page would, for a starting state a test sets up without clicking. */
+  saveAppearance(patch: Record<string, unknown>): Promise<void>;
+  /** Makes the page's storage refuse every write, as a full quota or a private window does, until the next load. */
+  refuseStorage(): Promise<void>;
   pressed(within: Screen | Locator, name: string, on?: boolean): Locator;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
   overflowX(): Promise<number>;
@@ -480,6 +486,30 @@ export const test = base.extend<{ hui: Hui }>({
       overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
       pressed: (within, name, on = true) => within.getByRole("button", { name, pressed: on }),
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
+      storedAppearance: async () => {
+        const raw = await browser().evaluate(() => localStorage.getItem("hui.appearance.v1"));
+        try {
+          const parsed: unknown = raw ? JSON.parse(raw) : null;
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+        } catch { return null; }
+      },
+      saveAppearance: async (patch) => {
+        const raw = await browser().evaluate(() => localStorage.getItem("hui.appearance.v1"));
+        const current: unknown = raw ? JSON.parse(raw) : {};
+        const next = { ...(current && typeof current === "object" ? current as Record<string, unknown> : {}), ...patch, version: 1 };
+        await browser().evaluate((json: string) => {
+          localStorage.setItem("hui.appearance.v1", json);
+          return null;
+        }, JSON.stringify(next));
+      },
+      refuseStorage: async () => {
+        await browser().evaluate(() => {
+          Storage.prototype.setItem = function refuse() {
+            throw new DOMException("The storage is full", "QuotaExceededError");
+          };
+          return null;
+        });
+      },
       appChrome: () => fixtures.screen.getByLabel("Primary navigation"),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
       look: async (target) => {

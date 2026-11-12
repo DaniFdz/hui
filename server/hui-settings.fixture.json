@@ -2,19 +2,7 @@
   {
     "input": null,
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -72,19 +60,7 @@
   {
     "input": "nope",
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -142,19 +118,7 @@
   {
     "input": [],
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -212,95 +176,7 @@
   {
     "input": {},
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "theme": "catppuccin",
-      "themeMode": "dark",
-      "fontUi": "geist",
-      "fontChat": "lora",
-      "textScale": 125
-    },
-    "expected": {
-      "theme": "catppuccin",
-      "themeMode": "dark",
-      "accent": "",
-      "fontUi": "geist",
-      "fontChat": "lora",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 125,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -360,91 +236,7 @@
       "typeface": "serif"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "themeMode": "light"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "light",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -510,19 +302,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -582,19 +362,7 @@
       "labs": null
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -654,19 +422,7 @@
       "labs": "yes"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -726,19 +482,7 @@
       "labs": []
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -798,19 +542,7 @@
       "labs": {}
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -873,19 +605,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -950,19 +670,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1022,19 +730,7 @@
       "codemode": "off"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1096,19 +792,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1170,19 +854,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1242,19 +914,7 @@
       "questions": null
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1314,19 +974,7 @@
       "questions": 10
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1386,19 +1034,7 @@
       "questions": []
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1460,19 +1096,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1534,19 +1158,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1608,19 +1220,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1682,19 +1282,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1756,19 +1344,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1830,19 +1406,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1904,19 +1468,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -1978,19 +1530,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2052,19 +1592,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2126,19 +1654,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2203,19 +1719,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2280,19 +1784,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2355,19 +1847,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2430,19 +1910,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2507,19 +1975,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2581,19 +2037,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2655,19 +2099,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2729,19 +2161,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2803,19 +2223,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2877,19 +2285,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -2951,19 +2347,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -3025,19 +2409,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -3102,19 +2474,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -3176,19 +2536,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -3251,19 +2599,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -3331,97 +2667,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "wide",
-        "collapseTaskProgress": true,
-        "sendShortcut": "modifierEnter",
-        "githubEmbeds": false,
-        "datadogEmbeds": false,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "chat": {
-        "messageWidth": "huge",
-        "collapseTaskProgress": "yes",
-        "sendShortcut": "space",
-        "githubEmbeds": "no",
-        "datadogEmbeds": 0
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -3484,671 +2730,7 @@
       ]
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "theme": 42,
-      "themeMode": "chartreuse",
-      "fontUi": {},
-      "fontChat": [],
-      "textScale": "big"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "theme": "not-installed"
-    },
-    "expected": {
-      "theme": "not-installed",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "theme": "  spaced  "
-    },
-    "expected": {
-      "theme": "spaced",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "accent": " #A78BFA "
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "#a78bfa",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "accent": "red"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "accent": "#fff"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "accent": "#gg55cc"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "accent": "var(--accent)"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "accent": 42
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4226,19 +2808,7 @@
       ]
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4324,19 +2894,7 @@
       ]
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4402,19 +2960,7 @@
       "branchPrefix": "developer"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4474,19 +3020,7 @@
       "branchPrefix": " team/feature/ "
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4546,19 +3080,7 @@
       "branchPrefix": ""
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4618,19 +3140,7 @@
       "branchPrefix": "/feature"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4690,19 +3200,7 @@
       "branchPrefix": "feature//nested"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4762,19 +3260,7 @@
       "branchPrefix": "../escape"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4834,19 +3320,7 @@
       "branchPrefix": "bad prefix"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4906,19 +3380,7 @@
       "branchPrefix": "topic.lock/"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -4985,19 +3447,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5059,19 +3509,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5133,19 +3571,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5207,19 +3633,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5281,19 +3695,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5355,19 +3757,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5429,19 +3819,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5503,19 +3881,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5577,19 +3943,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5651,19 +4005,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5725,19 +4067,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5799,19 +4129,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5873,19 +4191,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -5947,19 +4253,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -6023,19 +4317,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -6092,1662 +4374,6 @@
   },
   {
     "input": {
-      "fontUi": "instrument-sans"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontUi": "geist"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "geist",
-      "fontChat": "geist",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontUi": "dm-sans"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "dm-sans",
-      "fontChat": "dm-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontUi": "ibm-plex-sans"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "ibm-plex-sans",
-      "fontChat": "ibm-plex-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontUi": "space-grotesk"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "space-grotesk",
-      "fontChat": "space-grotesk",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontUi": "atkinson-hyperlegible"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "atkinson-hyperlegible",
-      "fontChat": "atkinson-hyperlegible",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontUi": "fraunces"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "fraunces",
-      "fontChat": "fraunces",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontUi": "lora"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "lora",
-      "fontChat": "lora",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontUi": "jetbrains-mono"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "jetbrains-mono",
-      "fontChat": "jetbrains-mono",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontUi": "system"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "system",
-      "fontChat": "system",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontUi": "bad"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "textScale": 90
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 90,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "textScale": 100
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "textScale": 110
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 110,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "textScale": 125
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 125,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "textScale": 140
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 140,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "textScale": "125"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 125,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "textScale": 1
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontTerminal": " MesloLGS NF "
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "MesloLGS NF",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontTerminal": "bad;name"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontTerminal": "bad\nname"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontTerminal": ""
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
-      "fontTerminal": 3
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
-        "toolMarks": {},
-        "toolIcons": {}
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "name": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": "",
-        "mirrorState": false,
-        "allowedOrigins": []
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "notifications": {
-        "tool": false,
-        "runFinished": false,
-        "runFailed": true,
-        "needsInput": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": "",
-        "thinking": "",
-        "retryAttempts": 3,
-        "routes": []
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false
-      }
-    }
-  },
-  {
-    "input": {
       "notifications": {
         "tool": true,
         "runFinished": true,
@@ -7756,19 +4382,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -7833,19 +4447,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -7905,19 +4507,7 @@
       "notifications": "nope"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -8033,19 +4623,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -8148,19 +4726,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -8226,19 +4792,7 @@
       }
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -8298,19 +4852,7 @@
       "name": "  build-box  "
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -8370,19 +4912,7 @@
       "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -8442,19 +4972,7 @@
       "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -8514,19 +5032,7 @@
       "name": "   "
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -8586,19 +5092,7 @@
       "name": 42
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -8660,19 +5154,7 @@
       ]
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },
@@ -8732,19 +5214,7 @@
       "name": null
     },
     "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
       "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true,
         "toolMarks": {},
         "toolIcons": {}
       },

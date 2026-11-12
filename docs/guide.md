@@ -130,9 +130,12 @@ HUI** to restore the window; use `hui gateway stop` for normal gateway shutdown.
 `hui desktop` opens the registered `HUI.app` on macOS (otherwise Electron
 directly) and exits immediately. Without `HUI.app`, the window runs Electron from
 the release that was active when it opened. Updates can delete that release
-later, so restart the window after updating. The window follows HUI's
-Appearance color mode; with **System** (the default) both the page and the
-native title bar track the OS live.
+later, so restart the window after updating. The window follows the Appearance
+color mode this device stored in the page; with **System** (the default) both the
+page and the native title bar track the OS live. The page reports the mode to the
+shell, which keeps the last one it heard in Electron's `userData` so the next
+launch paints its window in that mode before the page exists. The shell never
+asks the gateway.
 External web and mail links open in the default browser. The renderer is
 sandboxed without Node integration. Browser-local drafts have a separate Electron
 profile; HUI/PI storage remains shared through the existing gateway.
@@ -1247,14 +1250,17 @@ never reaches it.
 To draw a widget, HUI asks Datadog for a snapshot of it, which Datadog keeps at a
 long, unguessable link, as it does for its own sharing and its Slack app. HUI
 never shows that link. **Settings → Appearance → Chat → Datadog link
-previews** turns the cards off. [docs/api.md](api.md#datadog-link-previews) has
+previews** turns the cards off, on that device. [docs/api.md](api.md#datadog-link-previews) has
 the full contract.
 
 ## Custom marks for tool calls
 
 A turn's tool calls show a mark per row. HUI picks it in this order: your icon file, your emoji, the built-in emoji for that CLI or tool, then the tinted SVG mark.
 
-Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`):
+Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`),
+and stay on the gateway: the icon files are there, so every device that draws a
+tool call reads the same maps. Everything else on the Appearance page is the
+device's own.
 
 ```json
 {
@@ -1618,6 +1624,21 @@ session in its own directory, and signing in again in Settings → Integrations 
 Datadog fixes it. There is no `--fix` for it, since the sign-in runs in a
 browser. Until each org is signed in again, the check fails and `hui doctor`
 exits with status 1.
+
+### Appearance in `settings.json`
+
+Appearance belongs to the device that shows it, so
+`settings.json` should not hold a theme, color mode, accent, typeface, text size
+or chat preference. One an older HUI wrote still does: `hui doctor` lists each of
+those keys and exits 1, and `--fix` rewrites the file without them, keeping every
+setting the gateway still owns. The look alone — theme, color mode, accent, the
+two typefaces, the terminal font and the text size — is first written to
+`~/.config/hui/desktop-appearance.json` for HUI's desktop app, which applies it
+to a device that never stored an appearance of its own and then marks it
+consumed; the chat preferences stay behind, since they are habits rather than how
+a screen looks. Nothing is written when the look is only HUI's defaults. The
+seed is written on the gateway's machine, so a desktop app running on another
+machine needs that file carried over by hand.
 
 ### HUI desktop app
 

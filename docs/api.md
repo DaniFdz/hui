@@ -76,7 +76,15 @@ running gateway address only after the existing CLI identity checks. It uses
 that gateway's origin rather than exposing control credentials to the renderer.
 Window close and application quit do not stop the shared gateway. Existing
 stop/restart/update busy-work checks remain unchanged; no desktop HTTP endpoints
-or alternate persisted gateway state are introduced.
+or alternate persisted gateway state are introduced. The window's native color
+mode is the device's own: a sandboxed preload exposes only
+`huiDesktop.reportThemeMode(mode)`, `huiDesktop.appearanceSeed()` and
+`huiDesktop.markAppearanceSeedConsumed()`. The page reports the mode it stored in
+its `hui.appearance.v1` storage, and the shell keeps the last one in its
+`userData` so the next launch paints its window before the page loads. The shell
+never asks the gateway what appearance to use: the one look it hands over is the
+seed `hui doctor --fix` writes (see [HUI-owned presentation
+state](#hui-owned-presentation-state)).
 
 ### Desktop notifications
 
@@ -4335,14 +4343,17 @@ fields unchanged. Mapping and contrast adjustment happen when HUI applies the th
 ### `GET /__hui/settings`
 
 Returns the normalized HUI `Settings` document, including `BrowserSettings`
-and `VscodeSettings`. Missing or malformed saved settings use the defaults.
+and `VscodeSettings`. Missing or malformed saved settings use the defaults. The
+document holds only what the gateway owns: it carries no theme, color mode,
+accent, typeface, text size or chat preference, because those belong to the
+device that shows them (see [HUI-owned presentation state](#hui-owned-presentation-state)).
 
 ### `PUT /__hui/settings`
 
 Normalizes and saves the supplied settings, then returns the saved `Settings`.
 Missing or invalid fields use their defaults rather than the previous values.
 The gateway applies the settings to its running services. Neither route changes
-PI's configuration.
+PI's configuration, and neither carries this device's appearance.
 
 ### `GET /__hui/ext`
 
@@ -4436,17 +4447,35 @@ overrides one. Extensions the operator installs start disabled.
 
 ### HUI-owned presentation state
 
-`PUT /__hui/settings` also persists the validated `#rrggbb` accent override,
-independent `fontUi` and `fontChat` choices from HUI's bounded OpenClaw font
-catalogue, a `fontTerminal` local family name (1–128 characters, default
-`JetBrains Mono`; blank or invalid values reset to default), the shared `textScale`,
-OpenClaw-compatible HUI chat preferences (`messageWidth`,
-`collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
-[`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
-Profile presentation fields, the gateway's own `name` (trimmed, at most 60
+The gateway's `settings.json` keeps what a gateway owns, not what a screen owns.
+It holds [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by
+default), Profile presentation fields, the gateway's own `name` (trimmed, at most 60
 characters, `""` by default; empty means this machine's hostname, which is what
-`GET /__hui/health` and the browser show) and reversible Labs flags (`labs`:
-`denseObservability` and `detailedDebug`, each off unless explicitly `true`).
+`GET /__hui/health` and the browser show), reversible Labs flags (`labs`:
+`denseObservability` and `detailedDebug`, each off unless explicitly `true`) and
+one `chat` object holding a tool's own mark and icon file per CLI or tool name
+(`toolMarks`, `toolIcons`; the icon files live in the gateway's config directory,
+so every device reads the same maps).
+
+Appearance is not there. A theme, color mode, accent, interface, chat-prose or
+terminal typeface, text size and the chat preferences (`messageWidth`,
+`collapseTaskProgress`, `sendShortcut`, `githubEmbeds`, `datadogEmbeds`) belong to
+the client that shows them, and are kept in that client's own storage under the
+versioned `hui.appearance.v1` key: one gateway serves many screens and people, so
+two clients must be able to disagree, and a phone's WebView keeps its own copy per
+app install. A device that stored nothing starts from HUI's defaults rather than
+from the gateway's old values, and corrupt or absent storage reads as those
+defaults. The desktop app's native window chrome follows the mode the page reports
+to it over a preload bridge and keeps the last one in its own `userData`.
+`hui doctor` reports a `settings.json` that still carries the moved keys and
+rewrites it without them under `--fix`, after writing the look alone (no chat
+preference: those are habits, not a screen) to `desktop-appearance.json` in the
+gateway's config directory as `{ format: 1, gateway, exportedAt, appearance }`.
+HUI's desktop app hands that seed to its page, which applies it only to a device
+that stored no appearance of its own and then marks it consumed; nothing is
+written when the look is only HUI's defaults. The seed is written on the
+gateway's machine, so a desktop app running elsewhere takes the file by hand.
+
 These values affect HUI only. They never change PI configuration, provider
 identity, runtime permissions or transcripts.
 
