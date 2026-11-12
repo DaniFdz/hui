@@ -25,6 +25,7 @@
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+import { attachmentInitScripts, type InitScript } from "../../scripts/phone-init-scripts.ts";
 
 /** The debug app the plan's launch line names (`mobile/AGENTS.md`, "Launch, ports and target names"). */
 export const PACKAGE = "dev.hui.app.debug";
@@ -178,7 +179,7 @@ let attempts = 0;
 let owningPid = 0;
 let lastTargetId = "";
 let recovering = false;
-let initScripts: { script: unknown; argument: unknown }[] = [];
+let initScripts: InitScript[] = [];
 
 /**
  * Prepares the app for one CDP attach and resolves the endpoint to attach to. `relaunch` is what a fresh attempt needs
@@ -265,15 +266,11 @@ function webViewProtocol(): Promise<void> {
       recovering = false;
       const target = (await nativeTargets()).find((page) => page.type === "page" && /^https?:\/\//u.test(page.url));
       for (const context of browser.contexts()) {
-        const addInitScript = context.addInitScript.bind(context);
-        context.addInitScript = async (script, argument) => {
-          if (!initScripts.some((entry) => entry.script === script && entry.argument === argument)) initScripts.push({ script, argument });
-          await addInitScript(script, argument);
-        };
+        context.addInitScript = attachmentInitScripts(context.addInitScript.bind(context), initScripts);
         if (resume && target && target.id !== lastTargetId) {
           // A replacement document did not run the engine's closed-shadow tracking or this attempt's init scripts.
           // Install those real scripts and reload it before recovery verifies tracking; never manufacture its marker.
-          for (const entry of [...initScripts]) await addInitScript(entry.script, entry.argument);
+          for (const entry of [...initScripts]) await context.addInitScript(entry.script, entry.argument);
           const page = context.pages()[0] ?? await context.waitForEvent("page", { predicate: (page) => !page.isClosed(), timeout: 30_000 });
           if (context.pages().length !== 1) throw new Error(`the replacement Android window must have one live page, found ${context.pages().length}`);
           await page.reload({ waitUntil: "domcontentloaded" });
