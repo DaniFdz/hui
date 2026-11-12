@@ -544,11 +544,11 @@ const cases: UseCase[] = [
   {
     id: "BOT-061",
     title: "Export a bot as a template",
-    behaviour: "A row's ⋯ → Export… reviews the bot and lists every change by group (kept, removed, asked, confirmed) with its reason and a picker, what was cleaned automatically, what it needs, what stays behind and every file as it will be saved, all following the picks. Download saves the zip; a bot without SOUL.md yet, or one that changed since the review, is refused with the reason.",
+    behaviour: "A row's ⋯ → Export… reviews the bot and lists every change by group (kept, removed, asked, confirmed) with its reason and a picker, what was cleaned automatically, what it needs, what stays behind and every file as it will be saved, all following the picks. Its setup (BOOTSTRAP.md) is shown against the 6,000 characters a bot's own file holds, and what didn't fit is listed under \"Left out of its setup\". Download saves the zip; a bot without SOUL.md yet, or one that changed since the review, is refused with the reason.",
     spec: ["SPEC.md#bots", "SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#post-__huibotsidexportreview", "docs/api.md#exporting-a-bot-as-a-template"],
     surfaces: ["route:POST /__hui/bots/:id/export/review", "route:POST /__hui/bots/:id/export"],
     journeys: ["bot-templates"],
-    web: "backlog",
+    web: "required",
   },
   {
     id: "BOT-062",

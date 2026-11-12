@@ -1,15 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { DEFAULT_SETTINGS, normalizeSettings } from "../settings/settings.ts";
 import { readFileSync } from "node:fs";
 import { DEFAULT_TERMINAL_FONT, loadTerminalFont, NERD_FONT_SYMBOLS, normalizeTerminalFont, terminalFontFaces, terminalFontStack, type FontRule, type FontSheet } from "./font.ts";
 
-test("terminal fonts migrate independently and round-trip custom local families", () => {
-  assert.equal(normalizeSettings({ fontUi: "geist" }).fontTerminal, DEFAULT_TERMINAL_FONT);
-  const settings = normalizeSettings({ ...DEFAULT_SETTINGS, fontTerminal: "  MesloLGS NF  " });
-  assert.equal(settings.fontTerminal, "MesloLGS NF");
-  assert.equal(settings.fontUi, DEFAULT_SETTINGS.fontUi);
-  assert.deepEqual(normalizeSettings(JSON.parse(JSON.stringify(settings))), settings);
+test("a custom local family is trimmed and round-trips", () => {
+  assert.equal(normalizeTerminalFont("  MesloLGS NF  "), "MesloLGS NF");
   assert.equal(normalizeTerminalFont("字体 Mono"), "字体 Mono");
   assert.equal(terminalFontStack("MesloLGS NF"), '"MesloLGS NF", "HUI Nerd Font Symbols", "JetBrains Mono", ui-monospace, monospace');
 });

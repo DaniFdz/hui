@@ -24,9 +24,11 @@ export function nextBootLook(previous: unknown, preference: string, mode: string
 
 /**
  * Remembers the theme on screen, so the next boot screen on this device paints
- * in it rather than in HUI's default palette. A cache: losing it costs nothing.
+ * in it rather than in HUI's default palette. `preference` is this device's own
+ * colour mode (`appearance/store.ts`), not the gateway's; a caller that leaves it
+ * out reads the mode the document already follows. A cache: losing it costs nothing.
  */
-export function rememberBootLook(root: HTMLElement = document.documentElement): void {
+export function rememberBootLook(preference?: string, root: HTMLElement = document.documentElement): void {
   const mode = root.dataset["themeMode"];
   if (mode !== "light" && mode !== "dark") return;
   // Tokens can be expressions (`light-dark(…)`, `color-mix(…)`) a browser
@@ -42,7 +44,7 @@ export function rememberBootLook(root: HTMLElement = document.documentElement): 
   probe.remove();
   try {
     const previous: unknown = JSON.parse(localStorage.getItem(BOOT_LOOK_KEY) ?? "null");
-    localStorage.setItem(BOOT_LOOK_KEY, JSON.stringify(nextBootLook(previous, root.dataset["themePreference"] ?? "system", mode, colors)));
+    localStorage.setItem(BOOT_LOOK_KEY, JSON.stringify(nextBootLook(previous, preference ?? root.dataset["themePreference"] ?? "system", mode, colors)));
   } catch {
     // Private mode or a full quota: the default palette will do.
   }

@@ -1,16 +1,18 @@
 /**
- * Read-only inspection behind the gateway health and workspace views: session counts by live status, the
- * context and memory files in each local session's workspace, and the Git worktrees of their repositories. It
- * never writes; symlinked memory files and anything under OpenClaw's own ~/.openclaw directory are left out.
+ * Read-only inspection behind the gateway health and workspace views: the name a gateway reports, session
+ * counts by live status, the context and memory files in each local session's workspace, and the Git worktrees
+ * of their repositories. It never writes; symlinked memory files and anything under OpenClaw's own
+ * ~/.openclaw directory are left out.
  */
 import { execFile } from "node:child_process";
 import { lstat, readdir, realpath, stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 import { liveSessions } from "./sessions/live-sessions.ts";
 import type { MemorySource, WorktreeView, WorkspaceInspection } from "./api/worktrees.ts";
+import { readHuiSettings } from "./hui-settings.ts";
 import { readRegistry, type SessionRecord } from "./sessions/sessions.ts";
 import type { GatewayHealth } from "./api/diagnostics.ts";
 export type { GatewayHealth } from "./api/diagnostics.ts";
@@ -204,7 +206,7 @@ export async function readWorkspaceInspection(): Promise<WorkspaceInspection> {
   return inspectWorkspaces(await readRegistry());
 }
 
-export async function readGatewayHealth(): Promise<GatewayHealth> {
+export async function readGatewayHealth(machineHostname: string = hostname()): Promise<GatewayHealth> {
   const records = await readRegistry();
   const sessions: GatewayHealth["sessions"] = {
     registered: records.length,
@@ -226,6 +228,13 @@ export async function readGatewayHealth(): Promise<GatewayHealth> {
     transport: "HTTP + SSE",
     uptimeSeconds: Math.floor(process.uptime()),
     access: "Full Access",
+    name: effectiveGatewayName((await readHuiSettings()).name, machineHostname),
     sessions,
   };
+}
+
+/** The name every client sees: the operator's name for this gateway, or the machine it runs on when none is saved.
+ * The saved setting is never filled in with the fallback, so a machine that is renamed later reports the new name. */
+export function effectiveGatewayName(saved: string, machineHostname: string): string {
+  return saved.trim() || machineHostname.trim() || "HUI";
 }

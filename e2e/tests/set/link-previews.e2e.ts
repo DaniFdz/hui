@@ -1,8 +1,10 @@
-/** Turning GitHub or Datadog link previews off persists and leaves the other switch alone (SET-015, SET-016). */
+/** Turning GitHub or Datadog link previews off persists on this device and leaves the other switch alone (SET-015, SET-016). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-type Chat = { chat: { githubEmbeds: boolean; datadogEmbeds: boolean } };
+type Chat = { githubEmbeds: boolean; datadogEmbeds: boolean };
+
+const chat = async (hui: { storedAppearance(): Promise<Record<string, unknown> | null> }) => (await hui.storedAppearance())?.chat as Chat;
 
 test("GitHub link previews can be turned off and the choice persists", { tags: ["SET-015"], platforms: ["web"] }, async ({ screen, hui }) => {
   const toggle = screen.getByRole("switch", "GitHub link previews");
@@ -11,9 +13,9 @@ test("GitHub link previews can be turned off and the choice persists", { tags: [
   await expect(toggle).toBeChecked();
   await toggle.press("Space");
   await expect(toggle).not.toBeChecked();
-  const settings = await hui.api<Chat>("GET", "/__hui/settings");
-  expect(settings.chat.githubEmbeds).toBe(false);
-  expect(settings.chat.datadogEmbeds).toBe(true);
+  expect(await chat(hui)).toEqual({ githubEmbeds: false, collapseTaskProgress: false, datadogEmbeds: true, messageWidth: "comfortable", sendShortcut: "enter" });
+  // The gateway keeps no preview switch: it belongs to the device that draws the cards.
+  expect(((await hui.api<{ chat: Record<string, unknown> }>("GET", "/__hui/settings")).chat as Record<string, unknown>).githubEmbeds).toBeUndefined();
 
   await hui.reload();
   await expect(toggle).not.toBeChecked();
@@ -26,9 +28,8 @@ test("Datadog link previews can be turned off and the choice persists", { tags: 
   await expect(toggle).toBeChecked();
   await toggle.press("Space");
   await expect(toggle).not.toBeChecked();
-  const settings = await hui.api<Chat>("GET", "/__hui/settings");
-  expect(settings.chat.datadogEmbeds).toBe(false);
-  expect(settings.chat.githubEmbeds).toBe(true);
+  expect(await chat(hui)).toEqual({ githubEmbeds: true, collapseTaskProgress: false, datadogEmbeds: false, messageWidth: "comfortable", sendShortcut: "enter" });
+  expect(((await hui.api<{ chat: Record<string, unknown> }>("GET", "/__hui/settings")).chat as Record<string, unknown>).datadogEmbeds).toBeUndefined();
 
   await hui.reload();
   await expect(toggle).not.toBeChecked();

@@ -217,9 +217,10 @@ function holdsPack(installed: Map<string, string>, pack: StaffPack): boolean {
   return packFilePaths(pack.skills).some((file) => installed.get(file.path) === file.text);
 }
 
-/** Skills a bot holds whole from a pack that no longer ships them at all: every file of the folder is recorded and still
- * matches. A file the pack dropped from a skill it still ships is not one, and neither is a folder with a file anybody
- * touched or added, because deleting that folder would take text the pack never owned. Reported, never deleted. */
+/** Skills a bot still holds whole from a pack that no longer ships them at all: the folder is there, every file of it is
+ * recorded and still matches. A file the pack dropped from a skill it still ships is not one, a folder already deleted
+ * is not one, and neither is a folder with a file anybody touched or added, because deleting that folder would take text
+ * the pack never owned. Reported, never deleted. */
 function staleSkills(botState: StaffBotState, installed: Map<string, string>, pack: StaffPack): string[] {
   const shipped = new Set(packFilePaths(pack.skills).map((file) => file.path));
   const names = new Set<string>();
@@ -227,7 +228,8 @@ function staleSkills(botState: StaffBotState, installed: Map<string, string>, pa
     if (shipped.has(path) || !/^skills\/[^/]+\/SKILL\.md$/u.test(path)) continue;
     names.add(path.split("/")[1]!);
   }
-  return [...names].filter((name) => [...installed].every(([path, text]) => !path.startsWith(`skills/${name}/`) || botState.files[path] === hashText(text))).sort();
+  return [...names].filter((name) => installed.has(`skills/${name}/SKILL.md`)
+    && [...installed].every(([path, text]) => !path.startsWith(`skills/${name}/`) || botState.files[path] === hashText(text))).sort();
 }
 
 /** Whether a kept skill is provably one HUI wrote and somebody then changed: a file of it carries a recorded hash and no

@@ -218,6 +218,7 @@ test.each([
   ["src/lib/voice/calls.fixture.json", "server/calls-format.fixture.json"],
   ["src/lib/voice/languages.fixture.json", "server/bots/voice-languages.fixture.json"],
   ["src/lib/widgets.fixture.json", "server/agent-tools/widget-sandbox.fixture.json"],
+  ["src/lib/appearance/look.fixture.json", "cli/desktop-appearance-seed.fixture.json"],
 ])("runtime fixtures stay byte-identical: %s and %s", async (browser, server) => {
   assert.equal(await readFile(join(root, browser), "utf8"), await readFile(join(root, server), "utf8"));
 });
