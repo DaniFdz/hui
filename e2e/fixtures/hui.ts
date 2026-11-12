@@ -3,53 +3,33 @@
  * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
  * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, cleanup
  * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
- * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, a message's actions (on the
- * web a hover reveals its footer, on iOS its long press), switches (a Web Awesome
- * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
- * clipboard, the Work pane's launcher (the web's + menu writes each shortcut on its entry and opens the pane beside the
- * chat; on iOS the pane opens over it and names the view alone), a Files row's delete (a button on the web, the row's
- * menu on iOS), the phone screen's size (on iOS the app's own), the session list (on the web's drawer layout, the
- * shell's drawer media, the navigation drawer; on iOS, Back), the Settings page list (the drawer on a phone, on iOS
- * its sheet), the app's chrome outside Settings (the web's primary navigation, on iOS the app's own screen), the
- * chosen button of a group (aria-pressed; on iOS the selected trait), the app's colour scheme (on iOS read from a
- * screenshot) and the device's (on iOS set through `simctl ui` and restored after the test), the session menu (on iOS
- * the open chat's toolbar menu, else a long press on the row), status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how
- * a piece of the screen looks (on iOS its colours from a screenshot and its type from the value the app's typeface
- * reports), and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
- * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
- * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at a proxy in front
- * of the gateway, which holds the requests a test intercepts and passes everything else through, WebSocket upgrades
- * included, with the app's own `Origin` and `Host`; it follows `hui://open` links, reads the address the app shows
- * from its app-route marker, scrolls a container by swiping it once (which puts a screen's keyboard away, so a row it
- * clipped can be read) and then until the target is on screen (the device reports only
- * on-screen nodes), and checks a link's address through its accessibility identifier, which the platform sets to the
- * link's URL; each test starts by deleting only the app's preferences through `defaults`, and
- * `clearState` deletes them too before the engine empties the data container, because `cfprefsd` would otherwise hand
- * the relaunched app the deleted values; it reads a container's text as its texts and labels in order, since a device
- * reports no text for a container, and what the app copied from the simulator's pasteboard; steps only the web has
- * throw there. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
+ * gesture or reading would differ per platform, kept in one table per target that the web fills: opening, reloading
+ * and clearing the app, taps, holds, drags held mid-way, context menus, a message's actions (a hover reveals its
+ * footer), switches (a Web Awesome switch draws its track over its input, so the web taps the point), attachments,
+ * sideways scrolling, downloads, the clipboard, the Work pane's launcher (the + menu writes each shortcut on its entry
+ * and opens the pane beside the chat), a Files row's delete, the phone screen's size, the session list (on the drawer
+ * layout, the shell's drawer media, the navigation drawer), the Settings page list (the drawer on a phone), the app's
+ * chrome outside Settings (the primary navigation), the chosen button of a group (aria-pressed), the app's and the
+ * device's colour scheme, the session menu, status glyphs, how a piece of the screen looks, the window's size, Back and
+ * Forward, sideways overflow, whether a tap reaches a control and the command palette's chord. The web page never
+ * opens Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway
+ * does. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
  * themselves.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { createServer, request, type IncomingMessage, type ServerResponse } from "node:http";
-import { connect, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
-import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
-import { IOS_DEVICE, IOS_PORT } from "../../e2e.config.ts";
-import { navigationPath, resolveNavigation } from "../../src/lib/navigation.ts";
 import { addWorkerOnThisMachine } from "./worker.ts";
+import { startGatewayStub, type GatewayStub } from "./gateway-stub.ts";
 
-const MAX_SCROLL_SWIPES = 20;
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; runtime?: { active: true }; subagent?: { status: string; completionDelivery?: string } };
-type GatewayRequest = { incoming: IncomingMessage; body: Buffer; response: ServerResponse };
 type Intercepted = {
   arrived(): Promise<void>;
   deliver(): Promise<void>;
@@ -108,6 +88,12 @@ export type Hui = {
   providerRequests(): Promise<number>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
+  /** This device's appearance record, as its own storage holds it, or null when it stored nothing. */
+  storedAppearance(): Promise<Record<string, unknown> | null>;
+  /** Writes this device's appearance as the page would, for a starting state a test sets up without clicking. */
+  saveAppearance(patch: Record<string, unknown>): Promise<void>;
+  /** Makes the page's storage refuse every write, as a full quota or a private window does, until the next load. */
+  refuseStorage(): Promise<void>;
   pressed(within: Screen | Locator, name: string, on?: boolean): Locator;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
   overflowX(): Promise<number>;
@@ -117,12 +103,14 @@ export type Hui = {
   download(target: Locator): Promise<{ name: string; text: string }>;
   /** A worker on this machine: its own home, this checkout pre-installed as its release. */
   addWorker(name: string): Promise<{ id: string; home: string }>;
+  /** A second, disposable gateway that answers the identity handshake with \`name\` and nothing else. */
+  gatewayStub(name: string): Promise<GatewayStub>;
   /** Records, from now on, the text the page copies to the clipboard. */
   clipboardSpy(): Promise<void>;
   clipboardWrites(): Promise<string[]>;
   hold(target: Locator, until: Locator): Promise<void>;
   textOf(target: Locator): Promise<string>;
-  /** A task progress step's state: the web's `data-status`, and on the phone the row's accessibility value. */
+  /** A task progress step's state, its `data-status`. */
   stepState(step: Locator, state: string): Promise<void>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
   /** Drags the pointer from a target's centre by a pixel offset, holding it there for `whileOver` before letting go. */
@@ -143,10 +131,9 @@ export type Hui = {
   contextMenu(target: Locator): Promise<void>;
   messageActions(target: Locator): Promise<void>;
   /** Shows the open conversation's Work pane and adds the view it names. The web's launcher menu writes a keyboard
-   * shortcut on each entry and opens the pane beside the chat; the phone's opens it over the chat and names the
-   * view alone. */
+   * shortcut on each entry and opens the pane beside the chat. */
   openWorkView(name: string): Promise<void>;
-  /** Asks to delete a named file or folder row of a Files navigator, which the phone keeps in the row's menu. */
+  /** Asks to delete a named file or folder row of a Files navigator. */
   deleteEntry(within: Locator, name: string): Promise<void>;
   flip(target: Locator): Promise<void>;
   /** Replaces the user agent the next page sees, for the macOS-only app hand-off. */
@@ -162,6 +149,9 @@ export type Hui = {
   stored(text: string): Promise<string[]>;
   secretDirectories(): Promise<string[]>;
 };
+
+/** The steps whose gesture or reading differs per platform; each target fills its own table of them. */
+type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "gatewayStub">;
 
 /** A tap at the middle of where a target is at the moment of the press. */
 const tapAt = async (target: Locator) => {
@@ -201,83 +191,6 @@ const holding = <R>() => {
 const deliverBehind = async (method: string, url: string, body: string | undefined) => {
   const response = await fetch(url, { method, headers: { "x-hui": "1", "content-type": "application/json" }, body });
   if (!response.ok) throw new Error(`${method} ${url} answered ${response.status}: ${await response.text()}`);
-};
-
-const gatewayProxy = async (gateway: string) => {
-  const upstream = new URL(gateway);
-  const holds = new Set<{ method: string; path: RegExp; hold(route: GatewayRequest): Promise<void> }>();
-  const upgraded = new Set<Socket>();
-  const forward = ({ incoming, body, response }: GatewayRequest) => new Promise<void>((resolve, reject) => {
-    const outgoing = request({ host: upstream.hostname, port: upstream.port, method: incoming.method, path: incoming.url, headers: incoming.headers }, (answer) => {
-      response.writeHead(answer.statusCode ?? 502, answer.headers);
-      answer.on("error", () => response.destroy()).pipe(response);
-      resolve();
-    });
-    outgoing.on("error", reject);
-    response.on("close", () => outgoing.destroy());
-    outgoing.end(body);
-  });
-  const server = createServer(async (incoming, response) => {
-    try {
-      const route = { incoming, body: Buffer.concat(await incoming.toArray()), response };
-      const href = new URL(incoming.url ?? "/", gateway).href;
-      const held = [...holds].find((hold) => hold.method === incoming.method && hold.path.test(href));
-      await (held ? held.hold(route) : forward(route));
-    } catch {
-      response.destroy();
-    }
-  });
-  server.on("upgrade", (incoming: IncomingMessage, socket: Socket, head: Buffer) => {
-    const target = connect(Number(upstream.port), upstream.hostname, () => {
-      const headers = incoming.rawHeaders.flatMap((value, index) => (index % 2 ? [] : [`${value}: ${incoming.rawHeaders[index + 1]}`]));
-      target.write([`${incoming.method} ${incoming.url} HTTP/1.1`, ...headers, "", ""].join("\r\n"));
-      target.write(head);
-      socket.pipe(target).pipe(socket);
-    });
-    const close = () => {
-      socket.destroy();
-      target.destroy();
-    };
-    for (const end of [socket, target]) {
-      upgraded.add(end);
-      end.on("error", close).on("close", () => {
-        upgraded.delete(end);
-        close();
-      });
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return {
-    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    intercept: (method: string, path: RegExp): Intercepted => {
-      const { arrival, hold, settle } = holding<GatewayRequest>();
-      const held = { method, path, hold };
-      holds.add(held);
-      const decide = (handle: (route: GatewayRequest) => Promise<void>) => settle(handle).finally(() => holds.delete(held));
-      const answer = (status: number, json: string) => decide(async ({ response }) => {
-        response.writeHead(status, { "content-type": "application/json" }).end(json);
-      });
-      return {
-        arrived: () => arrival,
-        deliver: () => decide(forward),
-        reject: (status, error) => answer(status, JSON.stringify({ error })),
-        answer: (json) => answer(200, json),
-        deliverAndDrop: () => decide(async ({ incoming, body, response }) => {
-          await deliverBehind(method, new URL(incoming.url ?? "/", gateway).href, body.toString() || undefined);
-          response.destroy();
-        }),
-      };
-    },
-    dropStreams: () => {
-      for (const socket of upgraded) socket.destroy();
-    },
-    close: async () => {
-      const closed = new Promise((resolve) => server.close(resolve));
-      server.closeAllConnections();
-      for (const socket of upgraded) socket.destroy();
-      await closed;
-    },
-  };
 };
 
 const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "pointerup" }) => {
@@ -363,8 +276,7 @@ const trackSockets = () => {
 
 export const test = base.extend<{ hui: Hui }>({
   hui: async (fixtures, use) => {
-    const web = fixtures.platform === "web";
-    const port = web ? new URL(fixtures.app.baseUrl!).port : IOS_PORT;
+    const port = new URL(fixtures.app.baseUrl!).port;
     const file = new URL(`../../.e2e/hui/receipt-${port}.json`, import.meta.url);
     await expect.poll(() => readFile(file).then(() => true, () => false), { timeout: 60_000 }).toBe(true);
     const readReceipt = async () => JSON.parse(await readFile(file, "utf8")) as Receipt;
@@ -403,8 +315,6 @@ export const test = base.extend<{ hui: Hui }>({
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
     };
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
-    const device = () => (fixtures as unknown as { device: Device }).device;
-    const proxy = web ? undefined : await gatewayProxy(receipt.url);
     // The shared receipt is safe to print, so the harness token stays in the private one it names.
     const token = (async () => (JSON.parse(await readFile(receipt.receipt, "utf8")) as { token: string }).token)();
     const network = async (mode: "online" | "offline" | "silent") => {
@@ -415,714 +325,545 @@ export const test = base.extend<{ hui: Hui }>({
       });
       if (!response.ok) throw new Error(`network control answered ${response.status}: ${await response.text()}`);
     };
-    try {
-      const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", proxy!.url, "-HUILooks", "YES"] });
-      const forgetPreferences = async () => {
-        await device().closeApp();
-        const container = execFileSync("xcrun", ["simctl", "get_app_container", IOS_DEVICE, "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
-        const forget = spawnSync("xcrun", ["simctl", "spawn", IOS_DEVICE, "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
-        if (forget.status !== 0 && !forget.stderr.includes("not found")) throw new Error(`defaults delete dev.hui.ios answered ${forget.status}: ${forget.stderr}`);
-      };
-      const clearState = async () => {
-        if (!web) await forgetPreferences();
-        await fixtures.app.clearState();
-      };
-      const notOnIos = (step: string) => () => {
-        throw new Error(`hui.${step} is not on iOS yet; keep the test on platforms: ['web']`);
-      };
+    const existing = new Set(await sessionIds());
+    const existingGroups = new Set((await groups()).map((group) => group.label));
+    const existingTasks = new Set(await taskIds());
+    const existingBots = new Set(await botIds());
+    const existingBacklogTasks = new Set(await backlogTaskIds());
+    const workerIds = async () => (await api<{ workers: { id: string }[] }>("GET", "/__hui/workers")).workers.map((worker) => worker.id);
+    const existingWorkers = new Set(await workerIds());
+    const workerHomes: string[] = [];
+    const gatewayStubs: GatewayStub[] = [];
+    const settings = await api<unknown>("GET", "/__hui/settings");
+    const directories: string[] = [];
 
-      const existing = new Set(await sessionIds());
-      const existingGroups = new Set((await groups()).map((group) => group.label));
-      const existingTasks = new Set(await taskIds());
-      const existingBots = new Set(await botIds());
-      const existingBacklogTasks = new Set(await backlogTaskIds());
-      const workerIds = async () => (await api<{ workers: { id: string }[] }>("GET", "/__hui/workers")).workers.map((worker) => worker.id);
-      const existingWorkers = new Set(await workerIds());
-      const workerHomes: string[] = [];
-      const settings = await api<unknown>("GET", "/__hui/settings");
-      if (web) await browser().addInitScript(trackSockets);
-      if (web) await clearState();
-      else {
-        await forgetPreferences();
-        await launch();
-      }
-      const directories: string[] = [];
-
-      const webSteps: Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
-        url: () => browser().url(),
-        clipboard: ({ refuse = false, legacyCopy = false } = {}) => browser().addInitScript(({ refused, legacy }: { refused: boolean; legacy: boolean }) => {
-          const page = window as unknown as { huiCopied: string };
-          page.huiCopied = "";
-          navigator.clipboard.writeText = async (text) => {
-            if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
-            page.huiCopied = text;
-          };
-          navigator.clipboard.write = async (items) => {
-            if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
-            const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
-            const sizes = await Promise.all(blobs.map(async (blob) => blob.type === "image/png" ? createImageBitmap(blob).then((bitmap) => ` ${bitmap.width}x${bitmap.height}`, () => "") : ""));
-            page.huiCopied = blobs.map((blob, index) => `${blob.type}${sizes[index]}`).join(",");
-          };
-          if (refused) {
-            document.execCommand = ((command: string) => {
-              if (command === "copy" && legacy) {
-                const active = document.activeElement;
-                page.huiCopied = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
-                  ? active.value
-                  : String(document.getSelection() ?? "");
-              }
-              return legacy;
-            }) as typeof document.execCommand;
-          }
-        }, { refused: refuse, legacy: legacyCopy }),
-        copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
-        keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
-        type: (text) => browser().keyboard.type(text),
-        phoneScreen: async (orientation = "portrait") => {
-          const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
-          await browser().setViewport(phone);
-          return phone;
-        },
-        overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
-          .some((element) => element.scrollWidth > element.clientWidth)),
-        reachable: async (target) => {
-          await target.scrollIntoView();
-          const box = await target.boundingBox();
-          if (!box) throw new Error("reachable: the target lays out no box");
-          return browser().evaluate(({ x, y, width, height }) => {
-            const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
-            const [cx, cy] = [x + width / 2, y + height / 2];
-            let hit = document.elementFromPoint(cx, cy);
-            for (let inner = hit?.shadowRoot?.elementFromPoint(cx, cy); inner && inner !== hit; inner = hit.shadowRoot?.elementFromPoint(cx, cy)) hit = inner;
-            let matched = false;
-            for (let element = hit; element; element = element.parentElement ?? (element.getRootNode() as ShadowRoot).host ?? null) {
-              if (element.hasAttribute("inert")) return false;
-              const rect = element.getBoundingClientRect();
-              matched ||= same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
-            }
-            return matched;
-          }, box);
-        },
-        wideScreen: (width = 1440) => browser().setViewport({ width, height: 900 }),
-        paletteChord: async () => {
-          const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
-          await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
-        },
-        settingsChord: async () => {
-          const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
-          await browser().keyboard.press(apple ? "Meta+Shift+Comma" : "Control+Shift+Comma");
-        },
-        workChord: async (code) => {
-          const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
-          await browser().keyboard.press([apple ? "Meta" : "Control", "Alt", "Shift", code].join("+"));
-        },
-        back: () => browser().back(),
-        forward: () => browser().forward(),
-        peek: (target) => target.hover(),
-        faces: () => browser().evaluate(() => [...document.querySelectorAll(".bot-avatar")].map((node) => ({
-          size: [...node.classList].find((name) => name.startsWith("bot-avatar--") && !["bot-avatar--emoji", "bot-avatar--face"].includes(name))?.slice("bot-avatar--".length) ?? "",
-          shape: node.querySelector("hui-bot-face")?.getAttribute("shape") ?? "",
-          ears: node.querySelector("hui-bot-face")?.getAttribute("ears") ?? "",
-          emoji: node.querySelector(".bot-avatar__glyph")?.textContent ?? "",
-          color: (node.querySelector("hui-bot-face") as unknown as { color?: string } | null)?.color ?? "",
-        }))),
-        zone: () => browser().evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
-        providerRequests: async () => (await readFile(join(dirname(receipt.workspace), "artifacts/provider.jsonl"), "utf8").catch(() => "")).split("\n").filter((line) => line.trim()).length,
-        network,
-        offlineFilesReady: () => browser().evaluate(async () => {
-          if (!("serviceWorker" in navigator)) return false;
-          const registration = await navigator.serviceWorker.getRegistration();
-          return registration?.active?.state === "activated";
-        }),
-        activateSidebarRow: async (title) => {
-          await browser().evaluate((name) => {
-            const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
-            const link = row?.querySelector("a");
-            if (!(link instanceof HTMLElement)) throw new Error(`activateSidebarRow: no link in the row for ${name}`);
-            link.focus();
-            return null;
-          }, title);
-          await browser().keyboard.press("Enter");
-        },
-        sessionList: async () => {
-          const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
-          if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
-            await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
-            // A row is tappable only once a drawer has taken the screen. A split renders one per pane, so wait for
-            // any of them instead of making a two-match locator an error.
-            await expect.poll(() => fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count()).toBeGreaterThan(0);
-          }
-        },
-        settingsPages: async () => {
-          const close = fixtures.screen.getByRole("button", "Close settings navigation", { visible: true });
-          const open = fixtures.screen.getByRole("button", "Open settings navigation", { visible: true });
-          if (await close.count() === 0 && await open.count() > 0) await open.tap();
-        },
-        sessionMenu: async (title) => {
-          const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
-          await row.hover();
-          await row.getByRole("button", `Actions for ${title}`).tap();
-          return row;
-        },
-        glyph: (title) => browser().evaluate((name) => {
-          const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
-          const indicator = row?.querySelector(".sidebar-session-indicator");
-          if (!indicator) throw new Error(`glyph: no sidebar row shows ${name}`);
-          return { label: indicator.getAttribute("title") ?? "", animated: indicator.getAnimations({ subtree: true }).length > 0 };
-        }, title),
-        streamOpen: () => expect.poll(() => browser().evaluate(() => {
-          const sockets = (window as unknown as { huiSockets?: Set<WebSocket> }).huiSockets;
-          return sockets ? [...sockets].filter((socket) => socket.readyState === WebSocket.OPEN).length : 0;
-        })).toBeGreaterThan(0),
-        dropStreams: async () => {
-          await browser().evaluate(() => {
-            for (const socket of (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets) socket.close();
-            return null;
-          });
-        },
-        accentDot: (title) => browser().evaluate((name) => {
-          const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
-          const dot = row?.querySelector(".sidebar-session-unread-dot");
-          if (!dot) return false;
-          const accent = document.createElement("span");
-          accent.style.color = "var(--accent)";
-          dot.append(accent);
-          const shown = getComputedStyle(dot).backgroundColor === getComputedStyle(accent).color;
-          accent.remove();
-          return shown;
-        }, title),
-        overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
-        pressed: (within, name, on = true) => within.getByRole("button", { name, pressed: on }),
-        appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
-        appChrome: () => fixtures.screen.getByLabel("Primary navigation"),
-        deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
-        look: async (target) => {
-          await target.scrollIntoView();
-          const box = await target.boundingBox();
-          if (!box) throw new Error("look: the target lays out no box");
-          return browser().evaluate(({ x, y, width, height }) => {
-            const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
-            const element = document.elementsFromPoint(x + width / 2, y + height / 2).find((candidate) => {
-              const rect = candidate.getBoundingClientRect();
-              return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
-            });
-            if (!element) throw new Error("look: no element has the target's box");
-            const rgb = (color: string) => {
-              const channels = /^(?:rgba?\(|color\(srgb )([\d.e-]+),? ([\d.e-]+),? ([\d.e-]+)/u.exec(color);
-              if (!channels) throw new Error(`look: ${color} is not an sRGB colour`);
-              const scale = color.startsWith("color(") ? 255 : 1;
-              return channels.slice(1).map((value) => Math.round(Number(value) * scale)) as [number, number, number];
-            };
-            let behind: Element | null = element;
-            while (behind && /^rgba\(.*, 0\)$|^color\(.* \/ 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
-            if (!behind) throw new Error("look: nothing opaque is behind the target");
-            const style = getComputedStyle(element);
-            let opacity = 1;
-            for (let node: Element | null = element; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
-            const fonts = style.fontFamily.split(",").map((family) => family.trim().replace(/^"(.*)"$/u, "$1"));
-            const faces = [...document.fonts];
-            const outerShadow = style.boxShadow.split(/,(?![^(]*\))/u).at(-1)!.trim();
-            return {
-              color: rgb(style.color),
-              background: rgb(getComputedStyle(behind).backgroundColor),
-              opacity,
-              fonts,
-              loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
-                && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
-              size: Number.parseFloat(style.fontSize),
-              weight: Number(style.fontWeight),
-              align: style.textAlign,
-              ring: !element.matches(":focus-visible") ? null
-                : style.outlineStyle !== "none" ? rgb(style.outlineColor)
-                : outerShadow === "none" ? null : rgb(outerShadow),
-            };
-          }, box);
-        },
-        attach: async (target, files) => {
-          const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";
-          if (made) directories.push(made);
-          await target.setInputFiles(await Promise.all(files.map(async (file) => {
-            if (typeof file === "string") return fileURLToPath(new URL(`files/${file}`, import.meta.url));
-            await writeFile(join(made, file.name), Buffer.alloc(file.bytes, "x"));
-            return join(made, file.name);
-          })));
-        },
-        download: async (target) => {
-          const file = await browser().waitForDownload(() => target.tap());
-          return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };
-        },
-        addWorker: (name) => addWorkerOnThisMachine(api, workerHomes, name),
-        clipboardSpy: async () => {
-          await browser().evaluate(() => {
-            const writes: string[] = [];
-            Object.assign(window, { huiClipboardWrites: writes });
-            const writeText = navigator.clipboard.writeText.bind(navigator.clipboard);
-            navigator.clipboard.writeText = (text) => {
-              writes.push(text);
-              return writeText(text);
-            };
-            return null;
-          });
-        },
-        clipboardWrites: () => browser().evaluate(() => (window as unknown as { huiClipboardWrites?: string[] }).huiClipboardWrites ?? []),
-        newSessionDraft: () => browser().evaluate(async () => {
-          if (!(await indexedDB.databases()).some(({ name }) => name === "hui-control-ui")) return "";
-          const db = await new Promise<IDBDatabase>((resolve, reject) => {
-            const open = indexedDB.open("hui-control-ui");
-            open.onsuccess = () => resolve(open.result);
-            open.onerror = () => reject(open.error);
-          });
-          try {
-            if (!db.objectStoreNames.contains("composerDrafts")) return "";
-            const record = await new Promise<{ text?: string } | undefined>((resolve, reject) => {
-              const get = db.transaction("composerDrafts").objectStore("composerDrafts").get("new-session");
-              get.onsuccess = () => resolve(get.result);
-              get.onerror = () => reject(get.error);
-            });
-            return record?.text ?? "";
-          } finally {
-            db.close();
-          }
-        }),
-        hold: async (target, until) => {
-          const box = await target.boundingBox();
-          if (!box) throw new Error("hold: the target is not on screen");
-          const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-          await browser().evaluate(touch, { ...point, type: "pointerdown" });
-          await expect(until).toBeVisible();
-          await browser().evaluate(touch, { ...point, type: "pointerup" });
-        },
-        drag: async (target, onto, whileOver) => {
-          const centre = async (locator: Locator) => {
-            const box = await locator.boundingBox();
-            if (!box) throw new Error("drag: a target is not on screen");
-            return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-          };
-          const from = await centre(target);
-          const to = await centre(onto);
-          await browser().mouse.move(from.x, from.y);
-          await browser().mouse.down();
-          await browser().mouse.move(to.x, to.y);
-          await whileOver();
-          await browser().mouse.up();
-        },
-        dragBy: async (target, { dx, dy }, whileOver) => {
-          const box = await target.boundingBox();
-          if (!box) throw new Error("dragBy: the target is not on screen");
-          const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-          await browser().mouse.move(from.x, from.y);
-          await browser().mouse.down();
-          await browser().mouse.move(from.x + dx, from.y + dy);
-          await whileOver();
-          await browser().mouse.up();
-        },
-        touchTap: async (target) => {
-          await target.scrollIntoView();
-          const box = await target.boundingBox();
-          if (!box) throw new Error("touchTap: the target is not on screen");
-          const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-          await browser().evaluate(touch, { ...point, type: "pointerdown" });
-          await browser().evaluate(touch, { ...point, type: "pointerup" });
-        },
-        touch: async (target, { drag = 0 } = {}) => {
-          const box = await target.boundingBox();
-          if (!box) throw new Error("touch: the target is not on screen");
-          await browser().evaluate(swipe, { x: box.x + box.width / 2, y: box.y + box.height / 2, drag });
-        },
-        pinch: async (target, { from, to }) => {
-          const box = await target.boundingBox();
-          if (!box) throw new Error("pinch: the target is not on screen");
-          await browser().evaluate(pinch, { x: box.x + box.width / 2, y: box.y + box.height / 2, from, to });
-        },
-        fingerDrag: async ({ dx, dy }) => {
-          await browser().evaluate(fingerDrag, { dx, dy });
-        },
-        contextMenu: (target) => target.secondaryTap(),
-        messageActions: (target) => target.hover(),
-        openWorkView: async (name) => {
-          await browser().setViewport({ width: 1440, height: 900 });
-          await fixtures.screen.getByRole("button", "Show Work pane").tap();
-          await fixtures.screen.getByRole("button", "Open Work view").tap();
-          await fixtures.screen.getByRole("menuitem").filter({ hasText: name }).tap();
-        },
-        deleteEntry: async (within, name) => {
-          await within.getByRole("button", `Delete ${name}`).tap();
-        },
-        scrollTo: (_within, target) => target.scrollIntoView(),
-        expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
-        textOf: async (target) => (await target.textContent()) ?? "",
-        stepState: (step, state) => expect(step).toHaveAttribute("data-status", state),
-        tapAt,
-        scrollSideways: async (target) => {
-          const box = await target.boundingBox();
-          if (!box) throw new Error("scrollSideways: the target is not on screen");
-          await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
-          await browser().mouse.wheel(240, 0);
-        },
-        wheel: async (target, deltaY) => {
-          const box = await target.boundingBox();
-          if (!box) throw new Error("wheel: the target is not on screen");
-          await browser().mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-          await browser().mouse.wheel(0, deltaY);
-        },
-        stored: async (text) => {
-          const root = dirname(receipt.workspace);
-          const files = (await readdir(root, { recursive: true, withFileTypes: true }))
-            .filter((entry) => entry.isFile())
-            .map((entry) => relative(root, join(entry.parentPath, entry.name)))
-            .filter((file) => !file.startsWith("vite-cache/"));
-          const read = (file: string) => readFile(join(root, file), "latin1").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error));
-          const holding = await Promise.all(files.map(async (file) => ((await read(file)).includes(text) ? [file] : [])));
-          return holding.flat();
-        },
-        secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
-        spoofUserAgent: (userAgent) => browser().addInitScript((agent: string) => {
-          Object.defineProperty(navigator, "userAgent", { configurable: true, get: () => agent });
-        }, userAgent),
-        answerAll: async (method, path, body, status = 200) => {
-          await browser().route(path, (route) => (route.request.method === method
-            ? route.fulfill({ status, contentType: "application/json", body })
-            : route.fallback()));
-          return { stop: () => browser().unroute(path) };
-        },
-        flip: async (target) => {
-          const box = await target.boundingBox();
-          if (!box) throw new Error("flip: the switch is not on screen");
-          await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
-        },
-        clearOffline: async () => {
-          // A worker installed by an earlier test can answer this navigation (and its app chunk) before an init
-          // script runs, so drop it in the page that is already open as well; the script covers later pages.
-          const clear = async () => {
-            try {
-              const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
-              await Promise.all(registrations.map((registration) => registration.unregister()));
-              if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
-            } catch { /* the page may not have these APIs */ }
-            return null;
-          };
-          await browser().evaluate(clear);
-          await browser().addInitScript(clear);
-        },
-        holdAppChunks: async () => {
-          // The production build may preload the app chunk and import it again; hold every copy, not the entry
-          // module, so the page still reaches `load` and the boot screen can be read.
-          let release!: () => void;
-          const gate = new Promise<void>((resolve) => { release = resolve; });
-          let arrive!: () => void;
-          const arrival = new Promise<void>((resolve) => { arrive = resolve; });
-          let rejectWith: { status: number; error: string } | undefined;
-          const pending = new Set<Promise<void>>();
-          const appChunk = /\/assets\/hui-app-[^/]+\.js$/u;
-          await browser().route(appChunk, (route) => {
-            if (route.request.method !== "GET") return route.fallback();
-            arrive();
-            const work = (async () => {
-              await gate;
-              try {
-                if (rejectWith) await route.fulfill({ status: rejectWith.status, json: { error: rejectWith.error } });
-                else await route.continue();
-              } catch { /* the page may have navigated away */ }
-            })();
-            pending.add(work);
-            void work.finally(() => pending.delete(work));
-            return work;
-          });
-          const drain = async () => { while (pending.size) await Promise.all([...pending]); };
-          return {
-            arrived: () => arrival,
-            deliver: async () => { release(); await drain(); await browser().unroute(appChunk); },
-            reject: async (status, error) => {
-              rejectWith = { status, error };
-              release();
-              await drain();
-              await browser().unroute(appChunk);
-            },
-          };
-        },
-        intercept: async (method, path) => {
-          const { arrival, hold, settle } = holding<WebRoute>();
-          await browser().route(path, (route) => (route.request.method === method ? hold(route) : route.fallback()));
-          const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
-          return {
-            arrived: () => arrival,
-            deliver: () => decide((route) => route.continue()),
-            reject: (status, error) => decide((route) => route.fulfill({ status, json: { error } })),
-            answer: (json) => decide((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
-            deliverAndDrop: () => decide(async (route) => {
-              await deliverBehind(method, route.request.url, route.request.postData);
-              await route.abort();
-            }),
-          };
-        },
-      };
-
-      let appArea: { x: number; y: number; width: number; height: number } | undefined;
-      const screenshot = async () => {
-        const marker = fixtures.screen.getByTestId("app-route");
-        if (await marker.count() > 0) appArea = await marker.boundingBox() ?? appArea;
-        const route = appArea;
-        if (!route) throw new Error("screenshot: the app shows no screen");
-        const shot = join(await mkdtemp(join(tmpdir(), "hui-e2e-shot-")), "screen.bmp");
-        directories.push(dirname(shot));
-        execFileSync("xcrun", ["simctl", "io", IOS_DEVICE, "screenshot", "--type=bmp", shot], { stdio: "ignore" });
-        const bmp = await readFile(shot);
-        const width = bmp.readInt32LE(18), height = Math.abs(bmp.readInt32LE(22)), bytes = bmp.readUInt16LE(28) / 8;
-        const scale = width / (route.x + route.width);
-        const pixel = (x: number, y: number): Rgb => {
-          const top = Math.min(height - 1, Math.floor(y * scale));
-          const row = bmp.readInt32LE(22) > 0 ? height - 1 - top : top;
-          const at = bmp.readUInt32LE(10) + row * Math.ceil((width * bytes) / 4) * 4 + Math.min(width - 1, Math.floor(x * scale)) * bytes;
-          return [bmp[at + 2]!, bmp[at + 1]!, bmp[at]!];
+    const webSteps: PlatformSteps = {
+      open: (path) => fixtures.app.open(path),
+      reload: () => browser().reload(),
+      clearState: () => fixtures.app.clearState(),
+      url: () => browser().url(),
+      clipboard: ({ refuse = false, legacyCopy = false } = {}) => browser().addInitScript(({ refused, legacy }: { refused: boolean; legacy: boolean }) => {
+        const page = window as unknown as { huiCopied: string };
+        page.huiCopied = "";
+        navigator.clipboard.writeText = async (text) => {
+          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
+          page.huiCopied = text;
         };
-        return { scale, pixel };
-      };
-      const deviceScheme = () => execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance"], { encoding: "utf8" }).trim();
-      const startScheme = web ? "" : deviceScheme();
-      const appChrome = () => fixtures.screen.getByTestId("app-route");
-      const onScreen = async (within: Locator, target: Locator) => {
-        const box = await target.count() > 0 ? await target.boundingBox() : null;
-        if (!box) return false;
-        const area = await within.count() > 0 ? await within.boundingBox() : appArea;
-        if (!area) return false;
-        const middle = box.y + box.height / 2;
-        return middle >= area.y && middle <= area.y + area.height;
-      };
-      const iosSteps: Partial<typeof webSteps> = {
-        pressed: (within, name, on = true) => within.getByRole("button", { name, selected: on }),
-        deviceAppearance: async (scheme) => {
-          execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance", scheme]);
-          await expect.poll(() => fixtures.screen.getByTestId("app-route").inputValue(), { timeout: 60_000 }).not.toBe("");
-        },
-        appearance: async () => {
-          const box = await fixtures.screen.getByTestId("app-route").boundingBox();
-          if (!box) throw new Error("appearance: the app shows no screen");
-          const [r, g, b] = (await screenshot()).pixel(box.x + 2, box.y + box.height / 2);
-          return (r + g + b) / 3 < 128 ? "dark" : "light";
-        },
-        look: async (target) => {
-          if (!await onScreen(appChrome(), target)) await iosSteps.scrollTo!(appChrome(), target);
-          const box = await target.boundingBox();
-          if (!box) throw new Error("look: the target lays out no box");
-          const shot = await screenshot();
-          const counts = new Map<string, number>();
-          for (let y = box.y; y < box.y + box.height; y += 1 / shot.scale) {
-            for (let x = box.x; x < box.x + box.width; x += 1 / shot.scale) {
-              const key = shot.pixel(x, y).join(",");
-              counts.set(key, (counts.get(key) ?? 0) + 1);
+        navigator.clipboard.write = async (items) => {
+          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
+          const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
+          const sizes = await Promise.all(blobs.map(async (blob) => blob.type === "image/png" ? createImageBitmap(blob).then((bitmap) => ` ${bitmap.width}x${bitmap.height}`, () => "") : ""));
+          page.huiCopied = blobs.map((blob, index) => `${blob.type}${sizes[index]}`).join(",");
+        };
+        if (refused) {
+          document.execCommand = ((command: string) => {
+            if (command === "copy" && legacy) {
+              const active = document.activeElement;
+              page.huiCopied = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
+                ? active.value
+                : String(document.getSelection() ?? "");
             }
+            return legacy;
+          }) as typeof document.execCommand;
+        }
+      }, { refused: refuse, legacy: legacyCopy }),
+      copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
+      keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+      type: (text) => browser().keyboard.type(text),
+      phoneScreen: async (orientation = "portrait") => {
+        const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
+        await browser().setViewport(phone);
+        return phone;
+      },
+      overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
+        .some((element) => element.scrollWidth > element.clientWidth)),
+      reachable: async (target) => {
+        await target.scrollIntoView();
+        const box = await target.boundingBox();
+        if (!box) throw new Error("reachable: the target lays out no box");
+        return browser().evaluate(({ x, y, width, height }) => {
+          const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+          const [cx, cy] = [x + width / 2, y + height / 2];
+          let hit = document.elementFromPoint(cx, cy);
+          for (let inner = hit?.shadowRoot?.elementFromPoint(cx, cy); inner && inner !== hit; inner = hit.shadowRoot?.elementFromPoint(cx, cy)) hit = inner;
+          let matched = false;
+          for (let element = hit; element; element = element.parentElement ?? (element.getRootNode() as ShadowRoot).host ?? null) {
+            if (element.hasAttribute("inert")) return false;
+            const rect = element.getBoundingClientRect();
+            matched ||= same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
           }
-          const inside = [...counts].sort((a, b) => b[1] - a[1]).map(([key]) => key.split(",").map(Number) as Rgb);
-          const background = inside[0]!;
-          const distance = (rgb: Rgb) => Math.max(...rgb.map((channel, index) => Math.abs(channel - background[index]!)));
-          const farthest = Math.max(...inside.map(distance));
-          const color = inside.find((rgb) => farthest > 0 && distance(rgb) >= farthest / 2) ?? background;
-          const reading = Object.fromEntries((await target.inputValue()).split(";").map((pair) => pair.split("=") as [string, string]));
-          const typed = (field: string) => {
-            if (reading[field] === undefined) throw new Error(`look: on iOS the target reports no ${field}; give its Text a typeface`);
-            return reading[field];
+          return matched;
+        }, box);
+      },
+      wideScreen: (width = 1440) => browser().setViewport({ width, height: 900 }),
+      paletteChord: async () => {
+        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+        await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
+      },
+      settingsChord: async () => {
+        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+        await browser().keyboard.press(apple ? "Meta+Shift+Comma" : "Control+Shift+Comma");
+      },
+      workChord: async (code) => {
+        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+        await browser().keyboard.press([apple ? "Meta" : "Control", "Alt", "Shift", code].join("+"));
+      },
+      back: () => browser().back(),
+      forward: () => browser().forward(),
+      peek: (target) => target.hover(),
+      faces: () => browser().evaluate(() => [...document.querySelectorAll(".bot-avatar")].map((node) => ({
+        size: [...node.classList].find((name) => name.startsWith("bot-avatar--") && !["bot-avatar--emoji", "bot-avatar--face"].includes(name))?.slice("bot-avatar--".length) ?? "",
+        shape: node.querySelector("hui-bot-face")?.getAttribute("shape") ?? "",
+        ears: node.querySelector("hui-bot-face")?.getAttribute("ears") ?? "",
+        emoji: node.querySelector(".bot-avatar__glyph")?.textContent ?? "",
+        color: (node.querySelector("hui-bot-face") as unknown as { color?: string } | null)?.color ?? "",
+      }))),
+      zone: () => browser().evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
+      providerRequests: async () => (await readFile(join(dirname(receipt.workspace), "artifacts/provider.jsonl"), "utf8").catch(() => "")).split("\n").filter((line) => line.trim()).length,
+      network,
+      offlineFilesReady: () => browser().evaluate(async () => {
+        if (!("serviceWorker" in navigator)) return false;
+        const registration = await navigator.serviceWorker.getRegistration();
+        return registration?.active?.state === "activated";
+      }),
+      activateSidebarRow: async (title) => {
+        await browser().evaluate((name) => {
+          const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
+          const link = row?.querySelector("a");
+          if (!(link instanceof HTMLElement)) throw new Error(`activateSidebarRow: no link in the row for ${name}`);
+          link.focus();
+          return null;
+        }, title);
+        await browser().keyboard.press("Enter");
+      },
+      sessionList: async () => {
+        const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
+        if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
+          await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
+          // A row is tappable only once a drawer has taken the screen. A split renders one per pane, so wait for
+          // any of them instead of making a two-match locator an error.
+          await expect.poll(() => fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count()).toBeGreaterThan(0);
+        }
+      },
+      settingsPages: async () => {
+        const close = fixtures.screen.getByRole("button", "Close settings navigation", { visible: true });
+        const open = fixtures.screen.getByRole("button", "Open settings navigation", { visible: true });
+        if (await close.count() === 0 && await open.count() > 0) await open.tap();
+      },
+      sessionMenu: async (title) => {
+        const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
+        await row.hover();
+        await row.getByRole("button", `Actions for ${title}`).tap();
+        return row;
+      },
+      glyph: (title) => browser().evaluate((name) => {
+        const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
+        const indicator = row?.querySelector(".sidebar-session-indicator");
+        if (!indicator) throw new Error(`glyph: no sidebar row shows ${name}`);
+        return { label: indicator.getAttribute("title") ?? "", animated: indicator.getAnimations({ subtree: true }).length > 0 };
+      }, title),
+      streamOpen: () => expect.poll(() => browser().evaluate(() => {
+        const sockets = (window as unknown as { huiSockets?: Set<WebSocket> }).huiSockets;
+        return sockets ? [...sockets].filter((socket) => socket.readyState === WebSocket.OPEN).length : 0;
+      })).toBeGreaterThan(0),
+      dropStreams: async () => {
+        await browser().evaluate(() => {
+          for (const socket of (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets) socket.close();
+          return null;
+        });
+      },
+      accentDot: (title) => browser().evaluate((name) => {
+        const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
+        const dot = row?.querySelector(".sidebar-session-unread-dot");
+        if (!dot) return false;
+        const accent = document.createElement("span");
+        accent.style.color = "var(--accent)";
+        dot.append(accent);
+        const shown = getComputedStyle(dot).backgroundColor === getComputedStyle(accent).color;
+        accent.remove();
+        return shown;
+      }, title),
+      overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+      pressed: (within, name, on = true) => within.getByRole("button", { name, pressed: on }),
+      appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
+      storedAppearance: async () => {
+        const raw = await browser().evaluate(() => localStorage.getItem("hui.appearance.v1"));
+        try {
+          const parsed: unknown = raw ? JSON.parse(raw) : null;
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+        } catch { return null; }
+      },
+      saveAppearance: async (patch) => {
+        const raw = await browser().evaluate(() => localStorage.getItem("hui.appearance.v1"));
+        const current: unknown = raw ? JSON.parse(raw) : {};
+        const next = { ...(current && typeof current === "object" ? current as Record<string, unknown> : {}), ...patch, version: 1 };
+        await browser().evaluate((json: string) => {
+          localStorage.setItem("hui.appearance.v1", json);
+          return null;
+        }, JSON.stringify(next));
+      },
+      refuseStorage: async () => {
+        await browser().evaluate(() => {
+          Storage.prototype.setItem = function refuse() {
+            throw new DOMException("The storage is full", "QuotaExceededError");
           };
-          const unread = (field: string) => () => { throw new Error(`look: iOS can't read ${field} yet`); };
-          return Object.defineProperties({ color, background }, {
-            size: { get: () => Number(typed("size")) },
-            fonts: { get: () => typed("fonts").split(",") },
-            weight: { get: unread("weight") },
-            opacity: { get: unread("opacity") },
-            loaded: { get: () => typed("loaded").split(",").filter(Boolean) },
-            align: { get: unread("align") },
-            ring: { get: unread("ring") },
-          }) as Awaited<ReturnType<typeof webSteps.look>>;
-        },
-        stored: webSteps.stored,
-        secretDirectories: webSteps.secretDirectories,
-        phoneScreen: async (orientation = "portrait") => {
-          if (orientation !== "portrait") throw new Error("phoneScreen: the iPhone app runs in portrait");
-          const box = await fixtures.screen.getByTestId("app-route").boundingBox();
-          if (!box) throw new Error("phoneScreen: the app shows no screen");
-          return { width: box.x + box.width, height: box.y + box.height };
-        },
-        sessionList: async () => {
-          for (let address = await iosSteps.url!(); new URL(address).pathname !== "/";) {
-            const shown = address;
-            await fixtures.screen.getByTestId("BackButton").tap();
-            await expect.poll(async () => (address = await iosSteps.url!())).not.toBe(shown);
-          }
-        },
-        sessionMenu: async (title) => {
-          const open = (await sessions()).find((session) => session.title === title);
-          if (open && (await iosSteps.url!()).endsWith(`/sessions/${encodeURIComponent(open.id)}`)) {
-            await fixtures.screen.getByRole("button", `Actions for ${title}`).tap();
-          } else {
-            await fixtures.screen.getByTestId("session-row").filter({ hasText: title }).getByRole("button", title).longPress();
-          }
-          return fixtures.screen;
-        },
-        glyph: async (title) => {
-          const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
-          await expect(row).toHaveCount(1);
-          const glyph = row.getByTestId("session-glyph");
-          if (await glyph.count() === 0) return { label: "", animated: false };
-          return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
-        },
-        appChrome: () => fixtures.screen.getByTestId("app-route"),
-        settingsPages: async () => {
-          if (await fixtures.screen.getByRole("button", "Close settings navigation").count() > 0) return;
-          await fixtures.screen.getByRole("button", "Open settings navigation").tap();
-          await expect(fixtures.screen.getByRole("button", "Close settings navigation")).toBeVisible();
-        },
-        keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
-        workChord: notOnIos("workChord"),
-        hold: async (target, until) => {
-          await target.longPress();
-          await expect(until).toBeVisible();
-        },
-        textOf: async (target) => (await target.getByText(/\S/u).allTextContents()).join(" "),
-        stepState: (step, state) => expect.poll(async () => step.inputValue()).toBe(state),
-        flip: async (target) => {
-          const control = target.getByRole("switch");
-          const toggle = await control.count() > 0 ? control.last() : target;
-          const area = await fixtures.screen.getByTestId("app-route").boundingBox();
-          const box = await toggle.boundingBox();
-          // A settings page's saved footer is a safe-area inset the tree doesn't show, so it swallows a press on a row
-          // scrolled to the bottom edge; one more swipe lifts the control clear of it.
-          if (area && box && box.y + box.height / 2 > area.y + area.height * 0.85) {
-            await fixtures.screen.getByTestId("app-route").swipe({ direction: "down", momentum: "slow" });
-          }
-          await toggle.tap();
-        },
-        contextMenu: (target) => target.longPress(),
-        messageActions: (target) => target.longPress(),
-        openWorkView: async (name) => {
-          await fixtures.screen.getByRole("button", "Show Work pane").tap();
-          await fixtures.screen.getByLabel("Open Work view").tap();
-          await fixtures.screen.getByText(name, { exact: true, visible: true }).tap();
-        },
-        deleteEntry: async (within, name) => {
-          await within.getByRole("button", name).longPress();
-          await fixtures.screen.getByText(`Delete ${name}`, { exact: true, visible: true }).tap();
-        },
-        clipboard: async ({ refuse = false } = {}) => {
-          if (refuse) notOnIos("clipboard({ refuse: true })")();
-          execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
-        },
-        copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
-        intercept: async (method, path) => proxy!.intercept(method, path),
-        dropStreams: async () => proxy!.dropStreams(),
-        url: async () => proxy!.url + await fixtures.screen.getByTestId("app-route").inputValue(),
-        tapAt,
-        scrollTo: async (within, target) => {
-          await within.swipe({ direction: "down", momentum: "slow" });
-          const bar = within.getByLabel(/^Vertical scroll bar/u).first();
-          const shown = async () => [...await within.getByText(/\S/u).allTextContents(), await bar.count() > 0 ? await bar.inputValue() : ""].join("\n");
-          for (const direction of ["down", "up"] as const) {
-            for (let swipes = 0, before = "", now = await shown(); now !== before && swipes < MAX_SCROLL_SWIPES; swipes++, before = now, now = await shown()) {
-              if (await onScreen(within, target)) return;
-              await within.swipe({ direction, momentum: "slow" });
-            }
-          }
-          await expect.poll(() => onScreen(within, target)).toBe(true);
-        },
-        expectLinkTo: async (within, name, href) => {
-          if (!name.trim()) throw new Error("expectLinkTo: the link needs a name");
-          await expect(within.getByRole("link", name)).toHaveCount(1);
-          await expect(within.getByTestId(href).filter({ hasText: name })).toHaveCount(1);
-        },
-      };
+          return null;
+        });
+      },
+      appChrome: () => fixtures.screen.getByLabel("Primary navigation"),
+      deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
+      look: async (target) => {
+        await target.scrollIntoView();
+        const box = await target.boundingBox();
+        if (!box) throw new Error("look: the target lays out no box");
+        return browser().evaluate(({ x, y, width, height }) => {
+          const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+          const element = document.elementsFromPoint(x + width / 2, y + height / 2).find((candidate) => {
+            const rect = candidate.getBoundingClientRect();
+            return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
+          });
+          if (!element) throw new Error("look: no element has the target's box");
+          const rgb = (color: string) => {
+            const channels = /^(?:rgba?\(|color\(srgb )([\d.e-]+),? ([\d.e-]+),? ([\d.e-]+)/u.exec(color);
+            if (!channels) throw new Error(`look: ${color} is not an sRGB colour`);
+            const scale = color.startsWith("color(") ? 255 : 1;
+            return channels.slice(1).map((value) => Math.round(Number(value) * scale)) as [number, number, number];
+          };
+          let behind: Element | null = element;
+          while (behind && /^rgba\(.*, 0\)$|^color\(.* \/ 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
+          if (!behind) throw new Error("look: nothing opaque is behind the target");
+          const style = getComputedStyle(element);
+          let opacity = 1;
+          for (let node: Element | null = element; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
+          const fonts = style.fontFamily.split(",").map((family) => family.trim().replace(/^"(.*)"$/u, "$1"));
+          const faces = [...document.fonts];
+          const outerShadow = style.boxShadow.split(/,(?![^(]*\))/u).at(-1)!.trim();
+          return {
+            color: rgb(style.color),
+            background: rgb(getComputedStyle(behind).backgroundColor),
+            opacity,
+            fonts,
+            loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
+              && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
+            size: Number.parseFloat(style.fontSize),
+            weight: Number(style.fontWeight),
+            align: style.textAlign,
+            ring: !element.matches(":focus-visible") ? null
+              : style.outlineStyle !== "none" ? rgb(style.outlineColor)
+              : outerShadow === "none" ? null : rgb(outerShadow),
+          };
+        }, box);
+      },
+      attach: async (target, files) => {
+        const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";
+        if (made) directories.push(made);
+        await target.setInputFiles(await Promise.all(files.map(async (file) => {
+          if (typeof file === "string") return fileURLToPath(new URL(`files/${file}`, import.meta.url));
+          await writeFile(join(made, file.name), Buffer.alloc(file.bytes, "x"));
+          return join(made, file.name);
+        })));
+      },
+      download: async (target) => {
+        const file = await browser().waitForDownload(() => target.tap());
+        return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };
+      },
+      addWorker: (name) => addWorkerOnThisMachine(api, workerHomes, name),
+      clipboardSpy: async () => {
+        await browser().evaluate(() => {
+          const writes: string[] = [];
+          Object.assign(window, { huiClipboardWrites: writes });
+          const writeText = navigator.clipboard.writeText.bind(navigator.clipboard);
+          navigator.clipboard.writeText = (text) => {
+            writes.push(text);
+            return writeText(text);
+          };
+          return null;
+        });
+      },
+      clipboardWrites: () => browser().evaluate(() => (window as unknown as { huiClipboardWrites?: string[] }).huiClipboardWrites ?? []),
+      newSessionDraft: () => browser().evaluate(async () => {
+        if (!(await indexedDB.databases()).some(({ name }) => name === "hui-control-ui")) return "";
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          const open = indexedDB.open("hui-control-ui");
+          open.onsuccess = () => resolve(open.result);
+          open.onerror = () => reject(open.error);
+        });
+        try {
+          if (!db.objectStoreNames.contains("composerDrafts")) return "";
+          const record = await new Promise<{ text?: string } | undefined>((resolve, reject) => {
+            const get = db.transaction("composerDrafts").objectStore("composerDrafts").get("new-session");
+            get.onsuccess = () => resolve(get.result);
+            get.onerror = () => reject(get.error);
+          });
+          return record?.text ?? "";
+        } finally {
+          db.close();
+        }
+      }),
+      hold: async (target, until) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("hold: the target is not on screen");
+        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        await browser().evaluate(touch, { ...point, type: "pointerdown" });
+        await expect(until).toBeVisible();
+        await browser().evaluate(touch, { ...point, type: "pointerup" });
+      },
+      drag: async (target, onto, whileOver) => {
+        const centre = async (locator: Locator) => {
+          const box = await locator.boundingBox();
+          if (!box) throw new Error("drag: a target is not on screen");
+          return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        };
+        const from = await centre(target);
+        const to = await centre(onto);
+        await browser().mouse.move(from.x, from.y);
+        await browser().mouse.down();
+        await browser().mouse.move(to.x, to.y);
+        await whileOver();
+        await browser().mouse.up();
+      },
+      dragBy: async (target, { dx, dy }, whileOver) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("dragBy: the target is not on screen");
+        const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        await browser().mouse.move(from.x, from.y);
+        await browser().mouse.down();
+        await browser().mouse.move(from.x + dx, from.y + dy);
+        await whileOver();
+        await browser().mouse.up();
+      },
+      touchTap: async (target) => {
+        await target.scrollIntoView();
+        const box = await target.boundingBox();
+        if (!box) throw new Error("touchTap: the target is not on screen");
+        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        await browser().evaluate(touch, { ...point, type: "pointerdown" });
+        await browser().evaluate(touch, { ...point, type: "pointerup" });
+      },
+      touch: async (target, { drag = 0 } = {}) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("touch: the target is not on screen");
+        await browser().evaluate(swipe, { x: box.x + box.width / 2, y: box.y + box.height / 2, drag });
+      },
+      pinch: async (target, { from, to }) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("pinch: the target is not on screen");
+        await browser().evaluate(pinch, { x: box.x + box.width / 2, y: box.y + box.height / 2, from, to });
+      },
+      fingerDrag: async ({ dx, dy }) => {
+        await browser().evaluate(fingerDrag, { dx, dy });
+      },
+      contextMenu: (target) => target.secondaryTap(),
+      messageActions: (target) => target.hover(),
+      openWorkView: async (name) => {
+        await browser().setViewport({ width: 1440, height: 900 });
+        await fixtures.screen.getByRole("button", "Show Work pane").tap();
+        await fixtures.screen.getByRole("button", "Open Work view").tap();
+        await fixtures.screen.getByRole("menuitem").filter({ hasText: name }).tap();
+      },
+      deleteEntry: async (within, name) => {
+        await within.getByRole("button", `Delete ${name}`).tap();
+      },
+      scrollTo: (_within, target) => target.scrollIntoView(),
+      expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
+      textOf: async (target) => (await target.textContent()) ?? "",
+      stepState: (step, state) => expect(step).toHaveAttribute("data-status", state),
+      tapAt,
+      scrollSideways: async (target) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("scrollSideways: the target is not on screen");
+        await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
+        await browser().mouse.wheel(240, 0);
+      },
+      wheel: async (target, deltaY) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("wheel: the target is not on screen");
+        await browser().mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await browser().mouse.wheel(0, deltaY);
+      },
+      stored: async (text) => {
+        const root = dirname(receipt.workspace);
+        const files = (await readdir(root, { recursive: true, withFileTypes: true }))
+          .filter((entry) => entry.isFile())
+          .map((entry) => relative(root, join(entry.parentPath, entry.name)))
+          .filter((file) => !file.startsWith("vite-cache/"));
+        const read = (file: string) => readFile(join(root, file), "latin1").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error));
+        const holding = await Promise.all(files.map(async (file) => ((await read(file)).includes(text) ? [file] : [])));
+        return holding.flat();
+      },
+      secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
+      spoofUserAgent: (userAgent) => browser().addInitScript((agent: string) => {
+        Object.defineProperty(navigator, "userAgent", { configurable: true, get: () => agent });
+      }, userAgent),
+      answerAll: async (method, path, body, status = 200) => {
+        await browser().route(path, (route) => (route.request.method === method
+          ? route.fulfill({ status, contentType: "application/json", body })
+          : route.fallback()));
+        return { stop: () => browser().unroute(path) };
+      },
+      flip: async (target) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("flip: the switch is not on screen");
+        await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
+      },
+      clearOffline: async () => {
+        // A worker installed by an earlier test can answer this navigation (and its app chunk) before an init
+        // script runs, so drop it in the page that is already open as well; the script covers later pages.
+        const clear = async () => {
+          try {
+            const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+            await Promise.all(registrations.map((registration) => registration.unregister()));
+            if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
+          } catch { /* the page may not have these APIs */ }
+          return null;
+        };
+        await browser().evaluate(clear);
+        await browser().addInitScript(clear);
+      },
+      holdAppChunks: async () => {
+        // The production build may preload the app chunk and import it again; hold every copy, not the entry
+        // module, so the page still reaches `load` and the boot screen can be read.
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => { release = resolve; });
+        let arrive!: () => void;
+        const arrival = new Promise<void>((resolve) => { arrive = resolve; });
+        let rejectWith: { status: number; error: string } | undefined;
+        const pending = new Set<Promise<void>>();
+        const appChunk = /\/assets\/hui-app-[^/]+\.js$/u;
+        await browser().route(appChunk, (route) => {
+          if (route.request.method !== "GET") return route.fallback();
+          arrive();
+          const work = (async () => {
+            await gate;
+            try {
+              if (rejectWith) await route.fulfill({ status: rejectWith.status, json: { error: rejectWith.error } });
+              else await route.continue();
+            } catch { /* the page may have navigated away */ }
+          })();
+          pending.add(work);
+          void work.finally(() => pending.delete(work));
+          return work;
+        });
+        const drain = async () => { while (pending.size) await Promise.all([...pending]); };
+        return {
+          arrived: () => arrival,
+          deliver: async () => { release(); await drain(); await browser().unroute(appChunk); },
+          reject: async (status, error) => {
+            rejectWith = { status, error };
+            release();
+            await drain();
+            await browser().unroute(appChunk);
+          },
+        };
+      },
+      intercept: async (method, path) => {
+        const { arrival, hold, settle } = holding<WebRoute>();
+        await browser().route(path, (route) => (route.request.method === method ? hold(route) : route.fallback()));
+        const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
+        return {
+          arrived: () => arrival,
+          deliver: () => decide((route) => route.continue()),
+          reject: (status, error) => decide((route) => route.fulfill({ status, json: { error } })),
+          answer: (json) => decide((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
+          deliverAndDrop: () => decide(async (route) => {
+            await deliverBehind(method, route.request.url, route.request.postData);
+            await route.abort();
+          }),
+        };
+      },
+    };
 
-      await use({
-        ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
-        ...(web ? {} : iosSteps),
-        workspace: receipt.workspace,
-        configDir: receipt.huiConfig,
-        gateway: receipt.url,
-        api,
-        createSession: async (input) =>
-          (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
-        prompt,
-        createSubagent: async (parent) => {
-          await prompt(parent, "E2E_SUBAGENTS_START");
-          let child: ListedSession | undefined;
-          await expect.poll(async () => {
-            const all = await sessions();
-            child = all.find((session) => session.parentId === parent.id);
-            return child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
-              && all.find((session) => session.id === parent.id)?.status === "idle";
-          }, { timeout: 30_000 }).toBe(true);
-          return { id: child!.id, title: child!.title };
-        },
-        provider: {
-          url: receipt.providerUrl,
-          held: () => control("GET", "/control/wait-replay-ready"),
-          release: () => control("POST", "/control/release-replay"),
-        },
-        restartGateway: async () => {
-          const stopped = receipt.serverPid;
-          process.kill(receipt.runnerPid, "SIGUSR2");
-          await expect.poll(async () => (receipt.serverPid = (await readReceipt()).serverPid) !== stopped, { timeout: 60_000 }).toBe(true);
-        },
-        exitRuntimes: async () => {
-          execFileSync("pkill", ["-P", String(receipt.serverPid), "-f", "pi-sdk-worker"]);
-        },
-        open: async (path) => {
-          if (web) return fixtures.app.open(path);
-          await launch();
-          await device().openLink(`hui://open?path=${encodeURIComponent(path)}`);
-          const { target } = resolveNavigation(new URL(path, receipt.url).pathname);
-          const shown = target.kind === "session" || target.kind === "settings" ? navigationPath(target) : target.kind === "page" && target.page.id === "sessions" ? "/sessions" : undefined;
-          if (shown) await expect.poll(async () => new URL(await iosSteps.url!()).pathname).toBe(shown);
-        },
-        reload: () => (web ? browser().reload() : fixtures.app.restart()),
-        clearState,
-        repository: async () => {
-          const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
-          directories.push(path);
-          const git = (...args: string[]) => execFileSync("git", ["-C", path, "-c", "user.name=e2e", "-c", "user.email=e2e@example.com",
-            "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
-          git("init", "--quiet", "--initial-branch=main");
-          await mkdir(join(path, "sub"));
-          await writeFile(join(path, "sub", "keep.txt"), "sub\n");
-          git("add", ".");
-          git("commit", "--quiet", "-m", "main");
-          git("switch", "--quiet", "-c", "release/1.0");
-          git("commit", "--quiet", "--allow-empty", "-m", "release");
-          git("switch", "--quiet", "-c", "feature/current", "main");
-          git("commit", "--quiet", "--allow-empty", "-m", "feature");
-          return { path, git };
-        },
-      });
+    // Each target's steps: the web fills its table, and a platform the suite gains adds its own beside it.
+    const steps = ({ web: webSteps } as Record<string, PlatformSteps | undefined>)[fixtures.platform];
+    if (!steps) throw new Error(`hui: the fixture has no steps for the ${fixtures.platform} target`);
+    if (fixtures.platform === "web") await browser().addInitScript(trackSockets);
+    await steps.clearState();
 
-      // A test that failed while offline must not leave the fixture unreachable.
-      if (web) await network("online");
-      await control("POST", "/control/release-replay");
-      if (!web && deviceScheme() !== startScheme) execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance", startScheme]);
-      for (const id of await taskIds()) {
-        if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
-      }
-      for (const id of await botIds()) {
-        if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
-      }
-      for (const id of await backlogTaskIds()) {
-        if (!existingBacklogTasks.has(id)) await api("DELETE", `/__hui/backlog/items/${encodeURIComponent(id)}`);
-      }
-      for (const id of await sessionIds()) {
-        if (existing.has(id)) continue;
-        const response = await fetch(`${receipt.url}/__hui/sessions/${id}`, { method: "DELETE", headers: { "x-hui": "1" } });
-        if (!response.ok && response.status !== 404) throw new Error(`DELETE /__hui/sessions/${id} answered ${response.status}`);
-      }
-      for (const id of await workerIds()) {
-        if (!existingWorkers.has(id)) await api("DELETE", `/__hui/workers/${id}`);
-      }
-      // A worker host is a daemon by design; stop the ones this test started.
-      for (const home of workerHomes) {
-        try { execFileSync("pkill", ["-f", home]); } catch { /* already gone */ }
-      }
-      for (const { label } of await groups()) {
-        if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
-      }
-      await api("PUT", "/__hui/settings", settings);
-      for (const path of directories) await rm(path, { recursive: true, force: true });
-    } finally {
-      await proxy?.close();
+    await use({
+      ...steps,
+      workspace: receipt.workspace,
+      configDir: receipt.huiConfig,
+      gateway: receipt.url,
+      api,
+      createSession: async (input) =>
+        (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
+      prompt,
+      createSubagent: async (parent) => {
+        await prompt(parent, "E2E_SUBAGENTS_START");
+        let child: ListedSession | undefined;
+        await expect.poll(async () => {
+          const all = await sessions();
+          child = all.find((session) => session.parentId === parent.id);
+          return child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
+            && all.find((session) => session.id === parent.id)?.status === "idle";
+        }, { timeout: 30_000 }).toBe(true);
+        return { id: child!.id, title: child!.title };
+      },
+      provider: {
+        url: receipt.providerUrl,
+        held: () => control("GET", "/control/wait-replay-ready"),
+        release: () => control("POST", "/control/release-replay"),
+      },
+      gatewayStub: async (name) => {
+        const stub = await startGatewayStub(name);
+        gatewayStubs.push(stub);
+        return stub;
+      },
+      restartGateway: async () => {
+        const stopped = receipt.serverPid;
+        process.kill(receipt.runnerPid, "SIGUSR2");
+        await expect.poll(async () => (receipt.serverPid = (await readReceipt()).serverPid) !== stopped, { timeout: 60_000 }).toBe(true);
+      },
+      exitRuntimes: async () => {
+        execFileSync("pkill", ["-P", String(receipt.serverPid), "-f", "pi-sdk-worker"]);
+      },
+      repository: async () => {
+        const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
+        directories.push(path);
+        const git = (...args: string[]) => execFileSync("git", ["-C", path, "-c", "user.name=e2e", "-c", "user.email=e2e@example.com",
+          "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
+        git("init", "--quiet", "--initial-branch=main");
+        await mkdir(join(path, "sub"));
+        await writeFile(join(path, "sub", "keep.txt"), "sub\n");
+        git("add", ".");
+        git("commit", "--quiet", "-m", "main");
+        git("switch", "--quiet", "-c", "release/1.0");
+        git("commit", "--quiet", "--allow-empty", "-m", "release");
+        git("switch", "--quiet", "-c", "feature/current", "main");
+        git("commit", "--quiet", "--allow-empty", "-m", "feature");
+        return { path, git };
+      },
+    });
+
+    // A test that failed while offline must not leave the fixture unreachable.
+    await network("online");
+    await control("POST", "/control/release-replay");
+    for (const id of await taskIds()) {
+      if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
     }
+    for (const id of await botIds()) {
+      if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
+    }
+    for (const id of await backlogTaskIds()) {
+      if (!existingBacklogTasks.has(id)) await api("DELETE", `/__hui/backlog/items/${encodeURIComponent(id)}`);
+    }
+    for (const id of await sessionIds()) {
+      if (existing.has(id)) continue;
+      const response = await fetch(`${receipt.url}/__hui/sessions/${id}`, { method: "DELETE", headers: { "x-hui": "1" } });
+      if (!response.ok && response.status !== 404) throw new Error(`DELETE /__hui/sessions/${id} answered ${response.status}`);
+    }
+    for (const id of await workerIds()) {
+      if (!existingWorkers.has(id)) await api("DELETE", `/__hui/workers/${id}`);
+    }
+    for (const stub of gatewayStubs) await stub.stop();
+    // A worker host is a daemon by design; stop the ones this test started.
+    for (const home of workerHomes) {
+      try { execFileSync("pkill", ["-f", home]); } catch { /* already gone */ }
+    }
+    for (const { label } of await groups()) {
+      if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
+    }
+    await api("PUT", "/__hui/settings", settings);
+    for (const path of directories) await rm(path, { recursive: true, force: true });
   },
 });

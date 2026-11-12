@@ -82,6 +82,8 @@ export type StartOptions = {
   huiSessionId?: string;
   /** Remote worker that hosts the session; absent means this machine. */
   worker?: string;
+  /** The bot whose own skills this subagent's prompt loads (a bot's workers carry the staff pack). */
+  botSkills?: string;
 };
 
 /** A caller-owned input identity, deduplicated by runtimes that expose tracked prompt receipts. */
@@ -217,6 +219,9 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
 export type AgentRuntime = {
   /** Runtime adapter ID, such as `pi`. */
   readonly id: string;
+  /** Every session this adapter starts continues an interrupted run itself when it reopens. A worker's sessions say
+   * so only once it answers, so a remote adapter leaves this out. */
+  readonly resumesInterruptedRuns?: boolean;
   start(options: StartOptions): Promise<RuntimeSession>;
 };
 

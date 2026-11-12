@@ -10,7 +10,6 @@ const cases: UseCase[] = [
     surfaces: ["nav:settings"],
     journeys: ["gateway-settings", "shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-002",
@@ -20,7 +19,6 @@ const cases: UseCase[] = [
     surfaces: ["nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "required",
   },
   {
     id: "SET-003",
@@ -30,62 +28,72 @@ const cases: UseCase[] = [
     surfaces: ["nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24", "webawesome-controls"],
     web: "required",
-    ios: { excluded: "Escape is a keyboard chord; the visible “Exit Settings” and “Clear settings search” buttons do the same on iOS.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
+  },
+  {
+    id: "SET-095",
+    title: "Keep appearance on this device",
+    behaviour: "A theme, color mode, accent, typeface, text size and chat preference are this device's: Appearance's note says so, and the choice is kept in the page's own storage and read back after a reload. The gateway's settings document holds no theme, color mode, accent, typeface, text size or chat preference, so a client that stored nothing starts from HUI's defaults — Claw in System mode — rather than the choices another client made on the same gateway.",
+    spec: ["SPEC.md#appearance-belongs-to-the-device-that-shows-it-2026-11-16", "docs/api.md#hui-owned-presentation-state"],
+    surfaces: ["appearance:theme", "settings-page:appearance"],
+    web: "required",
   },
   {
     id: "SET-004",
     title: "See whether a settings change was saved",
-    behaviour: "After a change the Settings footer reads “Settings saved locally” and Appearance notes “Saved to ~/.config/hui/settings.json”. When the write fails the footer turns red with “Settings not saved” and Appearance says settings.json could not be written, so changes apply now but will not be remembered after a reload.",
+    behaviour: "After a change to a gateway setting the Settings footer reads “Settings saved locally”; when that write fails it turns red with “Settings not saved” and the change is forgotten after a reload. Appearance is another matter: it is saved on this device, its note reads “Saved on this device. Another browser, app or phone keeps its own appearance.”, and no settings write leaves the page. A device whose storage refuses the write still applies the change, says “Could not save on this device — the change applies now and is gone after a reload.”, and forgets it on the next load.",
     spec: ["docs/api.md#get-__huisettings", "docs/api.md#put-__huisettings"],
     surfaces: ["route:GET /__hui/settings", "route:PUT /__hui/settings"],
     web: "required",
-    ios: "required",
   },
   {
     id: "SET-005",
     title: "Choose a theme",
-    behaviour: "Appearance → Theme shows a card per built-in theme, including OpenClaw's Miami (an imported theme's card is SET-008); choosing one marks it pressed, recolours the whole app at once and stays chosen after a reload. A theme whose file fails to load is not applied and the previous card stays selected; with no theme list the section says “No themes could be loaded; the built-in defaults are in use.”.",
+    behaviour: "Appearance → Theme shows a card per built-in theme, including OpenClaw's Miami (an imported theme's card is SET-008); choosing one marks it pressed, recolours the whole app at once and stays chosen after a reload, in this device's own storage. A theme whose file fails to load is not applied and the previous card stays selected; with no theme list the section says “No themes could be loaded; the built-in defaults are in use.”.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huithemes", "docs/api.md#get-__huithemesfilekey"],
-    surfaces: ["settings-page:appearance", "setting:theme", "route:GET /__hui/themes", "route:GET /__hui/themes/file/:key", "route:PUT /__hui/settings"],
+    surfaces: ["settings-page:appearance", "appearance:theme", "route:GET /__hui/themes", "route:GET /__hui/themes/file/:key", "route:PUT /__hui/settings"],
     web: "required",
-    ios: "required",
   },
   {
     id: "SET-006",
     title: "Choose light, dark or system colour mode",
-    behaviour: "“Color mode” offers System, Light and Dark: Light and Dark switch the current theme's variant at once and persist across reloads, and System follows the device's appearance as it changes. For a theme with only one variant the buttons are disabled and the row says the mode follows the theme.",
+    behaviour: "“Color mode” offers System, Light and Dark: Light and Dark switch the current theme's variant at once and persist across reloads on this device, and System follows the device's appearance as it changes. For a theme with only one variant the buttons are disabled and the row says the mode follows the theme.",
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
-    surfaces: ["setting:themeMode"],
+    surfaces: ["appearance:themeMode"],
     web: "required",
-    ios: "required",
   },
   {
     id: "SET-007",
     title: "Choose an accent colour",
-    behaviour: "Accent offers preset swatches, a custom colour picker and “Theme default”; the chosen colour recolours buttons and highlights over any theme (focus rings are SET-083) and “Current accent” names it. Switching theme keeps the chosen accent, “Theme default” restores the theme's own, and a colour too faint for the mode is darkened or lightened just enough to stay readable.",
+    behaviour: "Accent offers preset swatches, a custom colour picker and “Theme default”; the chosen colour recolours buttons and highlights over any theme (focus rings are SET-083), “Current accent” names it, and the device keeps it. Switching theme keeps the chosen accent, “Theme default” restores the theme's own, and a colour too faint for the mode is darkened or lightened just enough to stay readable.",
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
-    surfaces: ["setting:accent"],
+    surfaces: ["appearance:accent"],
     web: "required",
-    ios: "required",
   },
   {
     id: "SET-083",
     title: "See the accent colour in focus rings",
     behaviour: "With an accent chosen in Appearance → Accent, the focus ring a control shows when reached from the keyboard is drawn in that accent over any theme, and in the theme's own ring colour again after “Theme default”.",
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state", "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21"],
-    surfaces: ["setting:accent"],
+    surfaces: ["appearance:accent"],
     web: "required",
-    ios: { excluded: "A focus ring shows only for a control reached with Tab, a keyboard path; the accent on buttons and highlights (SET-007) is what iOS shows.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SET-084",
-    title: "See shared terminals switch to the terminal font",
-    behaviour: "Choosing another “Terminal font” redraws every open shared terminal in it without restarting its shell: the same terminal stays connected and keeps what it showed.",
+    title: "Keep shared terminals on their shells through a font change",
+    behaviour: "Choosing another “Terminal font” leaves every open shared terminal attached to the same shell: the same terminals, the same shell processes and the output each printed, without ending or restarting one.",
     spec: ["docs/api.md#hui-owned-presentation-state", "SPEC.md#shared-terminals"],
-    surfaces: ["setting:fontTerminal"],
+    surfaces: ["appearance:fontTerminal"],
+    journeys: ["terminal-font"],
+    web: "required",
+  },
+  {
+    id: "SET-096",
+    title: "See a shared terminal's rows redraw in the new font",
+    behaviour: "With another “Terminal font” chosen, the rows an open shared terminal already showed are drawn again in that font: the canvas redraws them in the new face instead of leaving the previous one on screen, and the shell keeps running.",
+    spec: ["SPEC.md#shared-terminals"],
+    surfaces: ["work-view:terminal"],
     journeys: ["terminal-font"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-085",
@@ -94,7 +102,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["settings-page:appearance"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-008",
@@ -103,82 +110,73 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huithemesimport"],
     surfaces: ["route:POST /__hui/themes/import"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-009",
     title: "Choose the interface and chat prose fonts",
-    behaviour: "Typography's “Interface font” and “Chat prose font” pickers each offer the same ten faces independently: the interface font restyles navigation, settings and controls, the chat font restyles conversation messages, and code keeps its monospace face. The preview shows both, and both choices persist across reloads.",
+    behaviour: "Typography's “Interface font” and “Chat prose font” pickers each offer the same ten faces independently: the interface font restyles navigation, settings and controls, the chat font restyles conversation messages, and code keeps its monospace face. The preview shows both, and both choices persist across reloads on this device.",
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
-    surfaces: ["setting:fontUi", "setting:fontChat"],
+    surfaces: ["appearance:fontUi", "appearance:fontChat"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-010",
     title: "Choose the terminal font",
-    behaviour: "The “Terminal font” picker lists monospace and Nerd Fonts and accepts any typed family name as “Use this local font”; the choice survives a reload and the terminal preview line switches to it (shared terminals are SET-077). HUI's bundled Nerd Font symbols follow the chosen family, so its icons render whether or not that font has them, and a blank or invalid name falls back to JetBrains Mono.",
+    behaviour: "The “Terminal font” picker lists monospace and Nerd Fonts and accepts any typed family name as “Use this local font”; the choice survives a reload on this device and the terminal preview line switches to it (shared terminals are SET-077). HUI's bundled Nerd Font symbols follow the chosen family, so its icons render whether or not that font has them, and a blank or invalid name falls back to JetBrains Mono.",
     spec: ["docs/api.md#hui-owned-presentation-state", "SPEC.md#shared-terminals"],
-    surfaces: ["setting:fontTerminal"],
+    surfaces: ["appearance:fontTerminal"],
     journeys: ["terminal-font"],
     web: "required",
-    ios: "required",
   },
   {
     id: "SET-011",
     title: "Change the text size",
-    behaviour: "“Text size” offers Small (90%), Default (100%), Large (110%), XL (125%) and XXL (140%); the chosen stop scales every text size in the interface together and persists across reloads.",
+    behaviour: "“Text size” offers Small (90%), Default (100%), Large (110%), XL (125%) and XXL (140%); the chosen stop scales every text size in the interface together and persists across reloads on this device.",
     spec: ["docs/api.md#hui-owned-presentation-state"],
-    surfaces: ["setting:textScale"],
+    surfaces: ["appearance:textScale"],
     web: "required",
-    ios: { excluded: "The iPhone app draws at the phone's own text size and has no in-app Text size option.", decision: "SPEC.md#the-iphone-app-follows-the-phones-text-size-2026-10-26" },
   },
   {
     id: "SET-012",
     title: "Set the message width",
     behaviour: "“Message width” offers Compact, Comfortable and Wide; the conversation and composer narrow or widen to match in every open session.",
     spec: ["docs/api.md#hui-owned-presentation-state"],
-    surfaces: ["setting:chat.messageWidth"],
+    surfaces: ["appearance:chat.messageWidth"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-013",
     title: "Start task progress cards collapsed",
     behaviour: "With “Collapse task progress” on, an agent's active task progress card appears collapsed in the conversation and can still be expanded; off, it appears expanded.",
     spec: ["docs/api.md#hui-owned-presentation-state", "docs/api.md#task-progress"],
-    surfaces: ["setting:chat.collapseTaskProgress"],
+    surfaces: ["appearance:chat.collapseTaskProgress"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-014",
     title: "Choose whether Enter sends",
     behaviour: "“Send shortcut” set to Enter makes Enter send the composer's message; set to “⌘/Ctrl + Enter”, Enter inserts a new line and only the chord or the send button sends.",
     spec: ["docs/api.md#hui-owned-presentation-state"],
-    surfaces: ["setting:chat.sendShortcut"],
+    surfaces: ["appearance:chat.sendShortcut"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-015",
     title: "Turn GitHub link previews off",
     behaviour: "With “GitHub link previews” off in Appearance → Chat, GitHub repository, pull request and issue links in chat stay plain links with no cards after the message and no preview is requested, while session pull request marks keep their state. The choice survives a reload, and turning it on again brings the cards back.",
     spec: ["SPEC.md#behaviour", "docs/api.md#github-link-previews"],
-    surfaces: ["setting:chat.githubEmbeds", "settings-page:appearance"],
+    surfaces: ["appearance:chat.githubEmbeds", "settings-page:appearance"],
     journeys: ["github-embeds"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-016",
     title: "Turn Datadog link previews off",
     behaviour: "With “Datadog link previews” off in Appearance → Chat, Datadog share and dashboard links in chat show no cards or graphs and no preview is requested. The choice survives a reload, and turning it on again brings them back.",
     spec: ["SPEC.md#behaviour", "docs/api.md#datadog-link-previews"],
-    surfaces: ["setting:chat.datadogEmbeds", "settings-page:appearance"],
+    surfaces: ["appearance:chat.datadogEmbeds", "settings-page:appearance"],
     journeys: ["datadog-embeds"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-017",
@@ -188,7 +186,6 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:connection", "route:GET /__hui/health", "page:connection", "route:GET /__hui/pi"],
     journeys: ["gateway-settings"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-018",
@@ -198,7 +195,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/health"],
     journeys: ["gateway-settings"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-019",
@@ -208,7 +204,6 @@ const cases: UseCase[] = [
     surfaces: ["setting:power.keepAwake", "route:GET /__hui/power", "route:PUT /__hui/settings"],
     journeys: ["power-settings"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-020",
@@ -218,7 +213,6 @@ const cases: UseCase[] = [
     surfaces: ["route:PUT /__hui/power", "route:GET /__hui/power"],
     journeys: ["power-settings"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-021",
@@ -228,7 +222,6 @@ const cases: UseCase[] = [
     surfaces: ["route:PUT /__hui/power", "route:GET /__hui/power"],
     journeys: ["power-settings"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-022",
@@ -238,7 +231,6 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:integrations", "route:GET /__hui/jira", "route:PUT /__hui/jira"],
     journeys: ["jira-integration"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-023",
@@ -248,7 +240,6 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/jira", "route:GET /__hui/jira/projects", "settings-page:integrations"],
     journeys: ["jira-integration"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-024",
@@ -258,7 +249,6 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/jira", "settings-page:integrations", "route:PUT /__hui/jira"],
     journeys: ["jira-integration"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-025",
@@ -268,7 +258,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/github", "route:POST /__hui/github/login", "route:DELETE /__hui/github/login", "settings-page:integrations"],
     journeys: ["github-integration"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-026",
@@ -278,7 +267,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/datadog", "route:POST /__hui/datadog/orgs", "route:POST /__hui/datadog/login", "route:DELETE /__hui/datadog/login", "settings-page:integrations"],
     journeys: ["datadog-embeds"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-027",
@@ -288,7 +276,6 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/datadog/orgs", "route:GET /__hui/datadog", "route:POST /__hui/datadog/login", "settings-page:integrations", "route:POST /__hui/datadog/orgs", "route:DELETE /__hui/datadog/login"],
     journeys: ["datadog-embeds"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-028",
@@ -297,7 +284,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkers", "docs/api.md#post-__huiworkersidconnect", "docs/api.md#get-__huiworkers"],
     surfaces: ["settings-page:workers", "route:GET /__hui/workers", "route:POST /__hui/workers", "route:POST /__hui/workers/:id/connect"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-029",
@@ -306,7 +292,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkersidconnect", "docs/api.md#post-__huiworkersiddisconnect", "docs/api.md#post-__huiworkersidsync"],
     surfaces: ["route:POST /__hui/workers/:id/connect", "route:POST /__hui/workers/:id/disconnect", "route:POST /__hui/workers/:id/sync", "route:GET /__hui/workers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-030",
@@ -315,7 +300,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#patch-__huiworkersid"],
     surfaces: ["route:PATCH /__hui/workers/:id"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-031",
@@ -324,7 +308,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#delete-__huiworkersid"],
     surfaces: ["route:DELETE /__hui/workers/:id"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-032",
@@ -333,7 +316,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#git-workspace-sessions", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["settings-page:worktrees", "setting:branchPrefix"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-033",
@@ -343,7 +325,6 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:models", "route:GET /__hui/providers", "route:POST /__hui/providers/:provider/login", "route:POST /__hui/providers/login/:id", "route:PUT /__hui/providers/:provider"],
     journeys: ["providers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-086",
@@ -353,7 +334,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login", "route:DELETE /__hui/providers/login/:id"],
     journeys: ["providers"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-034",
@@ -363,7 +343,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login", "route:POST /__hui/providers/login/:id", "route:GET /__hui/providers"],
     journeys: ["providers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-035",
@@ -373,7 +352,6 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/providers/login/:id"],
     journeys: ["providers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-036",
@@ -383,7 +361,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["providers"],
     web: "required",
-    ios: { excluded: "Escape is a keyboard chord; the dialog's close button and “Cancel sign-in” do the same on iOS.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SET-037",
@@ -393,7 +370,6 @@ const cases: UseCase[] = [
     surfaces: ["route:PUT /__hui/providers/:provider"],
     journeys: ["providers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-038",
@@ -403,7 +379,6 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/providers/:provider"],
     journeys: ["providers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-039",
@@ -413,7 +388,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login"],
     journeys: ["providers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-040",
@@ -423,7 +397,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login", "route:GET /__hui/providers"],
     journeys: ["providers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-041",
@@ -433,7 +406,6 @@ const cases: UseCase[] = [
     surfaces: ["route:PUT /__hui/providers/:provider/accounts"],
     journeys: ["providers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-042",
@@ -443,7 +415,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["providers"],
     web: "backlog",
-    ios: { excluded: "Arrow, Home and End keys are a keyboard affordance; dragging the grip does the same on iOS.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SET-043",
@@ -453,7 +424,6 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/providers/:provider/accounts/:account"],
     journeys: ["providers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-044",
@@ -463,17 +433,33 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/providers/:provider/accounts/:account/quota"],
     journeys: ["providers"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-045",
-    title: "Choose the models and default reasoning new sessions use",
-    behaviour: "“HUI model routing” has Primary, Fallback and Utility model pickers listing the available catalog plus “Use PI default”, each explaining when it runs, then a “Default reasoning” effort selector: its slider moves through PI's levels from Off to Maximum and “Use PI default” clears it. The choices persist across reloads.",
+    title: "Choose the models, retries and default reasoning new sessions use",
+    behaviour: "“HUI model routing” has Primary, Fallback and Utility model pickers listing the available catalog plus “Use PI default”, each explaining when it runs, then a “Provider retries” picker from Off to 5 and a “Default reasoning” effort selector: its slider moves through PI's levels from Off to Maximum and “Use PI default” clears it. The choices persist across reloads.",
     spec: ["docs/api.md#pi-package-and-skill-mutations", "docs/api.md#put-__huisettings"],
-    surfaces: ["setting:models.primary", "setting:models.fallback", "setting:models.utility", "setting:models.thinking", "route:PUT /__hui/settings"],
+    surfaces: ["setting:models.primary", "setting:models.fallback", "setting:models.utility", "setting:models.thinking", "setting:models.retryAttempts", "route:PUT /__hui/settings"],
     journeys: ["model-routing"],
     web: "required",
-    ios: "required",
+  },
+  {
+    id: "SET-091",
+    title: "Store a site secret an agent can type without seeing it",
+    behaviour: "Settings → Tools → Browser → Site secrets stores a value under a name and an exact http(s) origin, lists each name with its origin (never the value), and Delete <name> removes it; the value field is empty again afterwards and loading the page never renders a stored value. The agent's browser secret action types that value only into a field whose page is the same origin, and neither its result nor its details carry the value; an unknown name is refused with the stored names.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["settings-page:tools", "route:GET /__hui/browser/secrets", "route:POST /__hui/browser/secrets", "route:POST /__hui/browser/secrets/remove", "tool:browser"],
+    journeys: ["browser-tool"],
+    web: "required",
+  },
+  {
+    id: "SET-090",
+    title: "Limit the managed browser to named origins",
+    behaviour: "Settings → Tools → Browser's “Allowed origins” takes one pattern per line (example.com, example.com:8443, https://app.example.com, or *.example.com for subdomains only) and saves them with the rest of the browser settings; empty, which is the default, lets agents browse anywhere. With a list set, the agent's browser opens and navigates only to those pages, a link, redirect or popup that leaves them is stopped and its tab left on about:blank with the reason in the tool result, and a local file is refused; a private or loopback address needs its exact host, never a wildcard.",
+    spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
+    surfaces: ["settings-page:tools", "setting:browser.allowedOrigins"],
+    journeys: ["browser-tool"],
+    web: "required",
   },
   {
     id: "SET-087",
@@ -483,7 +469,6 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["model-routing"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-046",
@@ -493,17 +478,15 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.primary", "setting:models.fallback"],
     journeys: ["model-routing"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-047",
     title: "Run quick work on the utility model",
-    behaviour: "A new session's title is generated by the utility model from its first prompt, and “/btw <question>” opens the side rail with an answer from the utility model while the main transcript stays unchanged.",
+    behaviour: "A new session's title is generated by the utility model from its first prompt, and “/btw <question>” is answered by the utility model in the Side chat Work view's “Ephemeral · <model>” line while the main transcript stays unchanged.",
     spec: ["docs/api.md#pi-package-and-skill-mutations", "docs/api.md#post-__huisessionsidbtw"],
     surfaces: ["setting:models.utility", "command:btw", "route:POST /__hui/sessions/:id/btw"],
     journeys: ["model-routing"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-048",
@@ -513,7 +496,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/sessions/:id/models"],
     journeys: ["configured-models"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-050",
@@ -523,7 +505,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi"],
     journeys: ["configured-models"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-051",
@@ -533,7 +514,6 @@ const cases: UseCase[] = [
     surfaces: ["setting:calls.voice", "route:GET /__hui/calls", "settings-page:models", "route:PUT /__hui/settings"],
     journeys: ["bot-setup"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-052",
@@ -543,7 +523,6 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:tools", "setting:browser.enabled"],
     journeys: ["browser-tool"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-053",
@@ -553,7 +532,6 @@ const cases: UseCase[] = [
     surfaces: ["setting:browser.headless", "setting:browser.executablePath", "route:GET /__hui/browser"],
     journeys: ["browser-tool"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-054",
@@ -563,7 +541,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/browser", "route:POST /__hui/browser", "route:GET /__hui/browser/tabs/:tab/preview"],
     journeys: ["browser-tool"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-055",
@@ -572,7 +549,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["setting:codemode.enabled"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-056",
@@ -582,7 +558,6 @@ const cases: UseCase[] = [
     surfaces: ["setting:questions.timeoutMinutes"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-057",
@@ -592,7 +567,6 @@ const cases: UseCase[] = [
     surfaces: ["setting:vscode.provider", "setting:vscode.executable", "route:GET /__hui/vscode-server"],
     journeys: ["vscode-view", "work-pane"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-058",
@@ -602,7 +576,6 @@ const cases: UseCase[] = [
     surfaces: ["setting:vscode.licenseAcceptedAt", "route:POST /__hui/vscode-server", "route:GET /__hui/vscode-server"],
     journeys: ["vscode-view"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-059",
@@ -612,7 +585,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/tools", "route:GET /__hui/sessions/:id/tools", "settings-page:tools"],
     journeys: ["sdk-backend"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-060",
@@ -622,7 +594,6 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:skills", "setting:disabledSkills", "route:PUT /__hui/settings", "route:GET /__hui/sessions/:id/commands", "page:skills"],
     journeys: ["skill-disable"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-061",
@@ -632,7 +603,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/pi/resources/:kind/:id", "page:skills", "page:plugins"],
     journeys: ["resource-reader"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-062",
@@ -642,7 +612,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/pi/skills/install", "page:skills", "settings-page:skills"],
     journeys: ["pi-control-surfaces"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-063",
@@ -652,7 +621,6 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:plugins", "setting:disabledPlugins", "route:PUT /__hui/settings", "route:GET /__hui/sessions/:id/commands", "page:plugins"],
     journeys: ["plugin-disable-sdk"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-064",
@@ -662,7 +630,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi", "route:GET /__hui/pi/resources/:kind/:id", "page:plugins", "page:plugin", "page:skills"],
     journeys: ["plugin-disable-sdk", "resource-reader"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-065",
@@ -672,7 +639,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/pi/packages/install", "page:plugins", "settings-page:plugins", "route:POST /__hui/pi/packages/remove"],
     journeys: ["pi-control-surfaces"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-066",
@@ -682,7 +648,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/pi/packages/remove", "page:plugins", "settings-page:plugins", "route:POST /__hui/pi/packages/install"],
     journeys: ["pi-control-surfaces"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SET-067",
@@ -691,7 +656,6 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiautomation", "docs/api.md#post-__huiautomationtasks", "SPEC.md#behaviour"],
     surfaces: ["settings-page:automation", "route:GET /__hui/automation", "route:POST /__hui/automation/tasks", "page:cron"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-068",
@@ -700,7 +664,6 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-069",
@@ -709,7 +672,6 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-070",
@@ -718,7 +680,6 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huiautomationtasksidrun", "docs/api.md#post-__huiautomationrunsidcancel", "SPEC.md#behaviour"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run", "route:POST /__hui/automation/runs/:id/cancel", "page:cron", "route:GET /__hui/automation"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-071",
@@ -727,7 +688,6 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#delete-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:DELETE /__hui/automation/tasks/:id", "page:cron"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-072",
@@ -736,7 +696,6 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiworkspaces", "SPEC.md#behaviour"],
     surfaces: ["settings-page:memory", "route:GET /__hui/workspaces", "page:memory-import"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-073",
@@ -745,7 +704,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth"],
     surfaces: ["settings-page:security", "route:GET /__hui/health", "route:GET /__hui/pi"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-074",
@@ -754,7 +712,6 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiobservability"],
     surfaces: ["settings-page:diagnostics", "route:GET /__hui/observability"],
     web: "required",
-    ios: "required",
   },
   {
     id: "SET-075",
@@ -763,7 +720,6 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huidiagnosticsexport", "SPEC.md#behaviour"],
     surfaces: ["route:GET /__hui/diagnostics/export", "page:logs", "page:debug"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-076",
@@ -772,7 +728,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#notification-settings"],
     surfaces: ["settings-page:notifications", "setting:notifications.runFinished", "setting:notifications.runFailed", "setting:notifications.needsInput"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-077",
@@ -781,27 +736,24 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#clickable-desktop-notifications"],
     surfaces: ["setting:notifications.tool"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-078",
     title: "Name the models a subagent can be spawned on",
-    behaviour: "“Subagent routes” lists compact summaries with name, description, model and thinking level. “Add route” opens a modal with an empty focused Name, Description, the primary Model and optional Thinking. Edit opens that modal prefilled; Save changes updates only that route and a rename replaces its row. Cancel or Escape discards the draft and returns focus without saving. A repeated, blank or internally spaced name is refused, keeping the original name is valid, edits survive reload, and Remove removes the row. At 50 routes adding is disabled but editing still works, including preserving an unavailable stored model.",
+    behaviour: "“Subagent routes” lists compact summaries with name, description, model and thinking level. “Add route” opens a modal with an empty focused Name, Description, a Model that starts at “Inherit the caller's model” and optional Thinking. Edit opens that modal prefilled; Save changes updates only that route and a rename replaces its row. Cancel or Escape discards the draft and returns focus without saving. A repeated, blank or internally spaced name is refused, keeping the original name is valid, edits survive reload, and Remove removes the row. A route saved without a model inherits the caller's model and thinking, and can be added without a provider. At 50 routes adding is disabled but editing still works, including preserving an unavailable stored model.",
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#put-__huisettings"],
     surfaces: ["setting:models.routes", "route:PUT /__hui/settings"],
     journeys: ["subagent-routes"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-079",
     title: "Spawn a subagent on a route",
-    behaviour: "A session spawned with `route` names the route only: the child runs on that route's model and pinned thinking level, so its own header shows them while its parent runs on the parent's model. A route sent together with `model` is refused, and an unknown route is refused before any child exists, naming the configured routes.",
+    behaviour: "A session spawned with `route` names the route only: the child runs on that route's model and pinned thinking level, so its own header shows them while its parent runs on the parent's model. A route without a model runs the child on its parent's model and thinking. A route sent together with `model` is refused, and an unknown route is refused before any child exists, naming the configured routes.",
     spec: ["SPEC.md#session-born-subagents"],
     surfaces: ["tool:sessions_spawn"],
     journeys: ["subagent-routes"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-080",
@@ -811,7 +763,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/pi"],
     journeys: ["configured-models"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-081",
@@ -821,7 +772,6 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:models", "route:GET /__hui/providers"],
     journeys: ["providers"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SET-082",
@@ -831,7 +781,51 @@ const cases: UseCase[] = [
     surfaces: ["setting:browser.mirrorState", "settings-page:tools"],
     journeys: ["browser-tool"],
     web: "required",
-    ios: { excluded: "The iPhone has no Settings → Tools and no worker browsers to mirror with.", decision: "SPEC.md#managed-browser" },
+  },
+  {
+    id: "SET-088",
+    title: "Enable and disable a gateway extension",
+    behaviour: "Settings → Extensions lists every installed gateway extension with its state (“Loaded”, “Disabled”, “Failed”, “Missing”), the routes it declares, its version and required HUI range, and any error, and says “No gateway extensions installed.” when there are none. Its switch loads a disabled extension immediately — the row reads Loaded and the extension's routes answer — and turning it off withdraws them; the choice survives a reload. Reload re-imports a loaded extension and shows when it last did. The page keeps a note that extensions run with the gateway's access to this machine.",
+    spec: ["SPEC.md#gateway-extensions"],
+    surfaces: ["settings-page:extensions", "route:GET /__hui/ext", "route:PUT /__hui/ext/:id", "route:POST /__hui/ext/:id/reload"],
+    web: "required",
+  },
+  {
+    id: "SET-089",
+    title: "Read an extension's prompt and tools",
+    behaviour: "Settings → Extensions shows “Prompt and tools” for an extension that declares prompt sections or agent tools. Opening it lists each section with its title and character count, the text behind a second disclosure, and each tool by its runtime name and description; an extension with neither shows nothing.",
+    spec: ["SPEC.md#gateway-extensions"],
+    surfaces: ["settings-page:extensions"],
+    web: "required",
+  },
+  {
+    id: "SET-092",
+    title: "Name a gateway and see its name",
+    behaviour: "Settings → Gateway has “Gateway name”, empty on a fresh gateway, which shows this machine's hostname as the name it reports until it is named. Typing a name and pressing **Save** keeps it after a reload, and About's Runtime list shows it as “Name” in place of the hostname; clearing the field and saving goes back to the hostname.",
+    spec: ["SPEC.md#a-gateway-carries-a-name-2026-11-11", "docs/api.md#get-__huihealth", "docs/api.md#hui-owned-presentation-state"],
+    surfaces: ["settings-page:connection", "setting:name", "page:about", "route:GET /__hui/health", "route:GET /__hui/settings", "route:PUT /__hui/settings"],
+    journeys: ["gateway-settings"],
+    web: "required",
+  },
+  {
+    id: "SET-093",
+    title: "Add a gateway by its address",
+    behaviour:
+      "Settings → Gateway lists **Gateways** above the gateway's own name: the gateway serving this page first, marked *Current*, then each gateway this device added with its name, its address and when it was last reached, or *Offline* with **Retry** when this page cannot reach it. Below them, **Add a gateway** takes an address and **Add** probes it; a gateway that answers the handshake is added under the name it gives, and an address that is not one shows *This address doesn't answer as a HUI gateway.*, an address with no scheme means http, and nothing is added. **Remove** forgets a saved gateway, never the current one.",
+    spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "docs/api.md#adding-a-gateway", "SPEC.md#installed-gateway"],
+    surfaces: ["settings-page:connection", "route:GET /__hui/update", "route:GET /__hui/health"],
+    journeys: ["gateway-settings"],
+    web: "required",
+  },
+  {
+    id: "SET-094",
+    title: "Switch this page to another gateway",
+    behaviour:
+      "**Switch** on a saved gateway, or choosing it in the sidebar footer's list, opens that address: this page becomes that gateway's own UI, and its footer names the gateway serving it as *Current*. The list belongs to the address it was saved from, so each gateway opened this way keeps its own.",
+    spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "SPEC.md#installed-gateway"],
+    surfaces: ["settings-page:connection", "route:GET /__hui/update"],
+    journeys: ["gateway-settings"],
+    web: "required",
   },
 ];
 

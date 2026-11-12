@@ -4,15 +4,17 @@
  * Same capability model as shared terminals: WebSocket cannot carry x-hui, so
  * a guarded POST mints a short-lived, single-use ticket bound to one
  * conversation, and the upgrade also enforces same-origin and Host checks.
- * The stream is view-only; the only client message picks which tab to watch.
- * Frames go out in the binary layout `encodeBrowserFrame` writes.
+ * The stream is view-only except for a tab the agent handed to the operator:
+ * there the socket also carries their pointer, wheel and key input, and the
+ * Continue that ends the wait. Frames go out in the binary layout
+ * `encodeBrowserFrame` writes.
  */
 import { randomBytes } from "node:crypto";
 import type { EventEmitter } from "node:events";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
-import type { BrowserViewMessage } from "../api/browser.ts";
+import type { BrowserViewControl, BrowserViewMessage } from "../api/browser.ts";
 import { BrowserToolError, type BrowserViewFrame, type BrowserViewHandle, type BrowserViewListener } from "./manager.ts";
 import { validTerminalOrigin } from "../terminals/transport.ts";
 
@@ -24,7 +26,48 @@ const CATCH_UP_MS = 100;
 const MAX_CLIENTS = 32;
 const TICKET_MS = 15_000;
 
-export type BrowserViewSource = { watch(owner: string, listener: BrowserViewListener): BrowserViewHandle };
+export type BrowserViewSource = {
+  watch(owner: string, listener: BrowserViewListener): BrowserViewHandle;
+  /** Operator input for a tab its agent handed over; ignored for every other tab. */
+  operator(owner: string, control: BrowserViewControl): void;
+};
+
+const TAB_ID = /^t\d{1,6}$/u;
+const MAX_COORDINATE = 100_000;
+
+/** Untrusted client frame → the control it may be. Anything else is ignored. */
+export function parseBrowserViewControl(value: unknown): BrowserViewControl | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const action = record["action"];
+  if (action === "select") {
+    const tabId = record["tabId"];
+    return tabId === null || (typeof tabId === "string" && TAB_ID.test(tabId)) ? { action: "select", tabId: tabId as string | null } : undefined;
+  }
+  const tabId = record["tabId"];
+  if (typeof tabId !== "string" || !TAB_ID.test(tabId)) return undefined;
+  const coordinate = (raw: unknown): number | undefined =>
+    typeof raw === "number" && Number.isFinite(raw) && Math.abs(raw) <= MAX_COORDINATE ? raw : undefined;
+  if (action === "continue") return { action: "continue", tabId };
+  if (action === "key") {
+    const key = record["key"];
+    return typeof key === "string" && key.length >= 1 && key.length <= 40 ? { action: "key", tabId, key } : undefined;
+  }
+  const x = coordinate(record["x"]);
+  const y = coordinate(record["y"]);
+  if (x === undefined || y === undefined) return undefined;
+  if (action === "wheel") {
+    const deltaX = coordinate(record["deltaX"]);
+    const deltaY = coordinate(record["deltaY"]);
+    return deltaX === undefined || deltaY === undefined ? undefined : { action: "wheel", tabId, x, y, deltaX, deltaY };
+  }
+  if (action !== "pointer") return undefined;
+  const kind = record["kind"];
+  if (kind !== "move" && kind !== "down" && kind !== "up") return undefined;
+  const button = record["button"];
+  if (button !== "left" && button !== "right") return undefined;
+  return { action: "pointer", tabId, kind, x, y, button };
+}
 
 const tickets = new Map<string, { owner: string; expires: number }>();
 
@@ -78,11 +121,10 @@ export function attachBrowserTransport(server: EventEmitter, source: BrowserView
       ws.on("message", (data, binary) => {
         if (binary) return;
         try {
-          const message = JSON.parse(data.toString()) as unknown;
-          if (typeof message === "object" && message !== null && (message as Record<string, unknown>)["action"] === "select") {
-            const tabId = (message as Record<string, unknown>)["tabId"];
-            view.select(typeof tabId === "string" ? tabId : null);
-          }
+          const control = parseBrowserViewControl(JSON.parse(data.toString()) as unknown);
+          if (!control) return;
+          if (control.action === "select") view.select(control.tabId);
+          else source.operator(ticket.owner, control);
         } catch {
           // Malformed control messages are ignored; the view stays as it is.
         }

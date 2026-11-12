@@ -3,6 +3,7 @@ import { beforeEach, test, vi } from "vitest";
 import type { QueueSnapshot, SessionConnection, SessionSnapshot, SessionView } from "../api/sessions.ts";
 import type { ComposerDraft } from "../lib/composer/drafts.ts";
 import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "../lib/composer/drafts.ts";
+import { clearSideChat, sideChatFor } from "../lib/session/side-chat-store.ts";
 import { ComposerController } from "./composer-controller.ts";
 import type { ConversationController } from "./conversation-controller.ts";
 
@@ -15,11 +16,13 @@ const fake = vi.hoisted(() => ({
   rewinds: [] as unknown[][],
   aborts: [] as string[],
   steerNows: [] as { id: string; resolve: () => void; reject: (error: Error) => void }[],
+  sideQuestions: [] as { id: string; question: string; resolve: (result: { question: string; answer: string; model: string }) => void; reject: (error: Error) => void }[],
 }));
 vi.mock("../api/sessions.ts", () => ({
   mutateQueuedMessage: (id: string, mutation: unknown) => new Promise<void>((resolve, reject) => fake.mutations.push({ id, mutation, resolve, reject })),
   sendQueuedSteersNow: (id: string) => new Promise<void>((resolve, reject) => fake.steerNows.push({ id, resolve, reject })),
   sendPrompt: (id: string, text: string) => new Promise((resolve, reject) => fake.prompts.push({ id, text, resolve: () => resolve({ duplicate: false }), reject })),
+  askSideQuestion: (id: string, question: string) => new Promise((resolve, reject) => fake.sideQuestions.push({ id, question, resolve, reject })),
   rewindSession: async (...args: unknown[]) => { fake.rewinds.push(args); },
   abortSession: async (id: string) => { fake.aborts.push(id); },
   setSessionGoal: (id: string, action: string, objective?: string) => new Promise((resolve, reject) => {
@@ -51,6 +54,7 @@ beforeEach(() => {
   fake.rewinds = [];
   fake.aborts = [];
   fake.steerNows = [];
+  fake.sideQuestions = [];
 });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -83,6 +87,43 @@ function composer(selected: { current: SessionView | undefined }, options: { emb
   });
   return { controller, conversation, notes, reported, updates: () => updates };
 }
+
+test("/btw asks the utility model and leaves the answer in the side chat, not the transcript", async () => {
+  const { controller, notes } = composer({ current: { id: "s1" } as SessionView });
+  controller.sending = false;
+  controller.send("/btw which file are we editing?");
+  assert.deepEqual(sideChatFor("s1"), {
+    question: "which file are we editing?", answer: "", model: "", loading: true, error: "",
+  });
+  assert.deepEqual(fake.prompts, [], "the question never becomes a prompt");
+  assert.equal(controller.sending, false, "the composer is free again while the answer comes");
+  assert.equal(controller.draft, "");
+
+  fake.sideQuestions[0]?.resolve({ question: "which file are we editing?", answer: "`src/views/home.ts`", model: "utility-fixture" });
+  await settle();
+  assert.equal(sideChatFor("s1")?.answer, "`src/views/home.ts`");
+  assert.equal(sideChatFor("s1")?.loading, false);
+  assert.equal(sideChatFor("s1")?.model, "utility-fixture");
+
+  controller.send("/btw and the branch?");
+  fake.sideQuestions[1]?.reject(new Error("The utility model is unavailable."));
+  await settle();
+  assert.equal(sideChatFor("s1")?.error, "The utility model is unavailable.");
+  assert.deepEqual(notes, []);
+
+  clearSideChat("s1");
+});
+
+test("a bare /btw or one with attachments is refused before it asks anything", () => {
+  const { controller, notes } = composer({ current: { id: "s1" } as SessionView });
+  controller.send("/btw");
+  controller.send("/btw what is in the screenshot?", [{ name: "shot.png", kind: "image", mimeType: "image/png", dataBase64: "" }]);
+  assert.deepEqual(fake.sideQuestions, []);
+  assert.deepEqual(notes, [
+    "error:Add a question after /btw. Example: /btw which file are we editing?",
+    "error:/btw does not support attachments in this build.",
+  ]);
+});
 
 test("a draft follows its session's key, reports its presence and marks the session's row", async () => {
   const { controller, reported } = composer({ current: { id: "s1" } as SessionView });

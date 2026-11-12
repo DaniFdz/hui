@@ -17,6 +17,7 @@ import type { OptChatTuning } from "./durable-optchat.ts";
 import type { DurableSession } from "./durable.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
+import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 
 // HUI's configuration directory is resolved at import time, and PI finds skills in ~/.agents/skills: never read the operator's own.
 const root = await mkdtemp(join(tmpdir(), "hui-optchat-home-"));
@@ -27,7 +28,7 @@ const { DurableHost, durableContext, modelCallable } = await import("./durable-h
 const { createDurableBots } = await import("../bots/durable-access.ts");
 const { durableReference, startDurable } = await import("./durable.ts");
 const {
-  configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry, thinkingAtMost,
+  configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, optChatSessionId, projectEntry, thinkingAtMost,
 } = await import("./durable-optchat.ts");
 const { readObservability } = await import("../observability.ts");
 const { durableBotConversations } = await import("../bots/conversations.ts");
@@ -43,6 +44,9 @@ test("Durable entries project to log lines: words, replies, calls and results, n
   assert.deepEqual(projectEntry(entry("pi.user", [{ role: "user", content: [{ type: "text", text: "look" }, { type: "image", data: "x", mimeType: "image/png" }], timestamp: 1 }])),
     [{ kind: "user", text: "look\n[image]" }]);
   assert.deepEqual(projectEntry(entry("pi.user", [{ role: "user", content: "plain", timestamp: 1 }])), [{ kind: "user", text: "plain" }]);
+  // A subagent's report is not the operator's words: the entry id marks it as a report for OptChat's compactor.
+  assert.deepEqual(projectEntry(entry("pi.user", [{ role: "user", content: `${SUBAGENT_COMPLETION_MARKER}\ncount: 1`, timestamp: 1 }])),
+    [{ kind: "user", text: `[7] ${SUBAGENT_COMPLETION_MARKER}\ncount: 1` }]);
   assert.deepEqual(projectEntry(entry("pi.assistant", [assistant([
     { type: "thinking", thinking: "secret plan", thinkingSignature: "sig" },
     { type: "text", text: "Reading it." },
@@ -155,7 +159,9 @@ test("the compactor thinks at most at the level asked: a model without it gets t
 
 // ── Pi Durable integration ───────────────────────────────────────────────────
 
-async function fixture(t: TestContext, options: { contextWindow?: number; settings?: Record<string, unknown>; optchat?: OptChatTuning } = {}) {
+/** `provider` names the fixture's provider in models.json; `opencode` makes it reject requests without OpenCode's session header. */
+async function fixture(t: TestContext, options: { contextWindow?: number; settings?: Record<string, unknown>; optchat?: OptChatTuning; provider?: string; opencode?: boolean } = {}) {
+  const provider = options.provider ?? "hui-e2e";
   const dir = await mkdtemp(join(tmpdir(), "hui-optchat-test-"));
   const agentDir = join(dir, "agent");
   const cwd = join(dir, "workspace");
@@ -163,26 +169,26 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
   await mkdir(agentDir); await mkdir(cwd);
   await writeFile(join(cwd, "fixture.txt"), "Durable fixture content\n");
   const log = join(dir, "requests.jsonl");
-  const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/fixtures/pi-provider-fixture.mjs", import.meta.url))], {
+  const server = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/fixtures/pi-provider-fixture.mjs", import.meta.url))], {
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log },
+    env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log, ...(options.opencode ? { HUI_E2E_PROVIDER_OPENCODE: "1" } : {}) },
   });
   const hosts: DurableHost[] = [];
   t.onTestFinished(async () => {
     for (const host of hosts) await host.close().catch(() => {});
-    const exit = once(provider, "exit"); provider.kill(); await exit;
+    const exit = once(server, "exit"); server.kill(); await exit;
     await rm(dir, { recursive: true, force: true });
   });
-  const [ready] = await once(provider.stdout!, "data");
+  const [ready] = await once(server.stdout!, "data");
   const baseUrl = String(ready).match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0];
   assert(baseUrl, String(ready));
-  await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
+  await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { [provider]: {
     baseUrl, api: "anthropic-messages", apiKey: "fixture-key", models: [{
       id: "fixture", name: "fixture", reasoning: true, input: ["text", "image"], contextWindow: options.contextWindow ?? 32000, maxTokens: 4096,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     }],
   } } }));
-  await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high", ...options.settings }));
+  await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: provider, defaultModel: "fixture", defaultThinkingLevel: "high", ...options.settings }));
   const host = (tuning = options.optchat) => {
     const created = new DurableHost({
       dir: store, agentDir, invokeTool: async () => ({ ok: true }), lookupCaller: async () => undefined,
@@ -193,7 +199,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
     return created;
   };
   const control = (path: string, method = "GET") => fetch(`${baseUrl}${path}`, { method });
-  return { dir, cwd, agentDir, store, log, host, control };
+  return { dir, cwd, agentDir, store, log, host, control, provider };
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
@@ -201,7 +207,7 @@ type Fixture = Awaited<ReturnType<typeof fixture>>;
 async function botSession(f: Fixture, host: DurableHost, huiSessionId: string) {
   const conversation = await (await host.open()).createConversation({
     ownership: { kind: "ownerless" },
-    agent: { cwd: f.cwd, model: { provider: "hui-e2e", modelId: "fixture" } },
+    agent: { cwd: f.cwd, model: { provider: f.provider, modelId: "fixture" } },
     init: (tx, id) => enableOptChat(tx, id, { name: "Grok" }),
   }, durableContext);
   const session = await startDurable({ cwd: f.cwd, sessionFile: durableReference(conversation.id), huiSessionId }, host);
@@ -267,7 +273,7 @@ const breakpoints = (request: ProviderRequest) => [...request.system ?? [], ...r
 /** Each block's text and whether it carries a cache mark. */
 const marks = (pieces: readonly Block[]) => pieces.map((piece) => [piece.text, piece.cache_control !== undefined]);
 
-test("a conversation without OptChat sends Durable's requests unchanged and is never offered zoom or date", { timeout: 45_000 }, async (t) => {
+test("a conversation without OptChat sends Durable's requests unchanged and is never offered zoom, date or search_chat", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   const host = f.host();
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, host);
@@ -278,6 +284,7 @@ test("a conversation without OptChat sends Durable's requests unchanged and is n
   assert.deepEqual(second.messages.map((message) => message.role), ["user", "assistant", "user"], "the history goes as it is");
   assert.equal(blocks(second.messages[0]!)[0]!.text, "PLAIN_ONE first");
   assert.doesNotMatch(JSON.stringify(requests), /<chat>|You keep no memory between turns/u);
+  assert(!toolNames(second).includes("search_chat"), "no search over a chat without a memory");
   const offered = [...[...host.codingTools, ...host.huiTools, ...modelCallable(host.codemode)].map((tool) => tool.name).filter((name) => name !== "notify_user"), "message_bot"];
   assert.deepEqual([toolNames(first), toolNames(second)], [offered, offered], "the coding and HUI tools but the notification tool Settings leaves off, codemode and message_bot, as before OptChat");
   assert.deepEqual((await session.inspect()).tools.map((tool) => tool.name), offered);
@@ -307,7 +314,7 @@ test("an OptChat turn starts fresh from the view: system messages, then the view
   assert.doesNotMatch(JSON.stringify(second), /kept kept/u);
   assert.match(JSON.stringify(second.system), /You are Grok, an AI agent that works for one user in a single chat/u);
   assert.match(JSON.stringify(second.system), /zoom\(id, 1\) gives message id in full/u);
-  assert(toolNames(second).includes("zoom") && toolNames(second).includes("date"), JSON.stringify(toolNames(second)));
+  assert(toolNames(second).includes("zoom") && toolNames(second).includes("date") && toolNames(second).includes("search_chat"), JSON.stringify(toolNames(second)));
   // The view goes in blocks, its last whole one marked (the first turn's view was empty: nothing more to find).
   assert.deepEqual(marks(pieces), [["<chat>\n0+1|user: FIXTURE_MEMORY OPT_ONE", false], ["\n1+1|talk: Fixture response.", true], ["\n</chat>", false]]);
   assert.equal(rest[0]!.cache_control !== undefined, true, "pi-ai's own breakpoint at the request end");
@@ -334,6 +341,22 @@ test("an OptChat turn starts fresh from the view: system messages, then the view
   assert.match(String(later.at(-1)!.text), /\nuser: OPT_THREE kept/u);
   const status = await statusWhere(host, id, (current) => current.messages === 6);
   assert.equal(status.usage.calls, 2);
+});
+
+test("the compactor sends its memory's own provider session, so OpenCode routes it instead of the turn waiting forever", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { provider: "opencode-go", opencode: true });
+  const host = f.host();
+  const { session, id } = await botSession(f, host, "bot-opencode");
+  await turns(session, [`OPT_ROUTED${" kept".repeat(150)}`, "OPT_ROUTED_NEXT waits on the first summary"]);
+  const status = await statusWhere(host, id, (current) => current.messages === 4 && current.pending === 0);
+  assert.equal(status.failing, undefined);
+  const requests = (await providerRequests(f.log)) as (ProviderRequest & { opencodeSession?: string })[];
+  const compactor = requests.filter(compacting);
+  const [turn] = await turnRequests(f.log, "OPT_ROUTED_NEXT");
+  const routed = (turn as (ProviderRequest & { opencodeSession?: string }) | undefined)?.opencodeSession;
+  assert(compactor.length > 0 && routed, JSON.stringify(requests.map((request) => request.opencodeSession)));
+  assert.deepEqual([...new Set(compactor.map((request) => request.opencodeSession))], [optChatSessionId(id)], "every summary goes as the memory's one session");
+  assert.notEqual(routed, optChatSessionId(id), "apart from the turns' session");
 });
 
 test("the compactor's size loop runs through the provider and keeps the shortest line", { timeout: 45_000 }, async (t) => {
@@ -395,6 +418,30 @@ test("zoom and date answer from the memory in the spec's formats", { timeout: 45
   assert.equal(await host.optchat.zoom(id, 0, 1), "0+0|user: OPT_ZOOM_SOURCE first line\nsecond line");
   const page = await host.optchat.html(id);
   assert(page?.includes("OPT_ZOOM_SOURCE first line"), "the browse page holds the log");
+});
+
+test("search_chat answers from the log: hits newest first as id+1 lines, no hit, and the limits it applied", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const { session, id } = await botSession(f, host, "bot-search");
+  await turns(session, ["OPT_SEARCH_TARGET first, the deploy window", "E2E_SEARCH please"]);
+  const output = (callId: string): string => {
+    const tool = session.transcript().find((item) => item.kind === "tool" && item.id === callId);
+    assert(tool?.kind === "tool" && tool.failed === false && tool.output !== undefined, JSON.stringify(tool));
+    return tool.output;
+  };
+  const [header, ...lines] = output("tool-e2e-search-hits").split("\n");
+  assert.match(String(header), /^\d+ lines? mentions? "OPT_SEARCH_TARGET", newest first:$/u, String(header));
+  assert(lines.length > 0 && lines.every((line) => /^\d+\+1\|(?:user|talk|tool|echo): /u.test(line)), JSON.stringify(lines));
+  const ids = lines.map((line) => Number(/^(\d+)\+1\|/u.exec(line)![1]));
+  assert.deepEqual(ids, [...ids].sort((a, b) => b - a), "newest first");
+  assert(lines.some((line) => line.startsWith("0+1|user: OPT_SEARCH_TARGET first")), "the message that said it is a hit");
+  assert.equal(output("tool-e2e-search-none"), `No line mentions "nothing here mentions this phrase" in the chat.`);
+  assert.equal(output("tool-e2e-search-empty"), "No word to search for.");
+  const limited = output("tool-e2e-search-limited").split("\n");
+  assert.deepEqual(limited.slice(1), [`0+1|user: OPT_SEARCH_TARGET first, the deploy window`], "the only match is the oldest message: a limit of one skipped nothing, so it says nothing");
+  assert.equal(limited[0], `1 line mentions "OPT_SEARCH_TARGET", newest first:`);
+  assert.match(String(await host.optchat.search(id, "nothing here mentions this phrase")), /^1 line mentions "nothing here mentions this phrase", newest first:\n\d+\+1\|echo: No line mentions "nothing here mentions this phrase" in the chat\.$/u, "the host answers from the same log, where the earlier answer is itself a line");
 });
 
 test("OptChat declines Durable's compactions; other conversations still compact", { timeout: 60_000 }, async (t) => {
@@ -467,6 +514,24 @@ test("a restart catches the log up from Durable without duplicates, and a resent
   assert.equal(runs.length, 3, "one frozen view per run, written once: two turns and the resent run");
   await f.control("/control/release-replay", "POST");
   await (await (await third.open()).conversation(id, durableContext))!.waitForIdle(durableContext);
+});
+
+test("what the compactor spent survives a gateway restart", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const first = f.host();
+  const { session, id } = await botSession(f, first, "bot-usage");
+  await turns(session, [`OPT_U1${" kept".repeat(200)}`]);
+  const before = await statusWhere(first, id, (status) => status.usage.calls > 0 && status.pending === 0);
+  assert(before.usage.calls > 0, JSON.stringify(before.usage));
+  session.dispose();
+  await first.close();
+
+  const second = f.host();
+  await second.open();
+  const after = await statusWhere(second, id, (status) => status.pending === 0);
+  assert.deepEqual(after.usage, before.usage, "the totals are read back from usage.json, not reset with the process");
+  assert(existsSync(join(f.store, "optchat", String(id), "usage.json")), "beside the log and the tree");
+  await second.close();
 });
 
 test("a turn waits while the view has a line to summarize, says so, and goes on once it is built; Stop ends the wait", { timeout: 60_000 }, async (t) => {

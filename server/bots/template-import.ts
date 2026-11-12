@@ -1,5 +1,5 @@
 /**
- * Importing bots from other platforms' templates and HUI's own (HUI-18; docs/api.md#importing-and-exporting-bots).
+ * Importing bots from other platforms' templates and HUI's own (docs/api.md#importing-and-exporting-bots).
  *
  * An import reads its source (`bot-templates/`) into a `BotTemplate`, then plans it against this gateway: the handle it
  * gets, SOUL.md (its persona only), MEMORY.md (what the source bot knew: reference data, never exported), the model it
@@ -335,7 +335,11 @@ export class BotTemplateService {
     // SOUL.md stays the persona alone and the first turn hands the bot the setup. Without one (another platform's
     // template, an older export), the points close SOUL.md under "Not agreed yet", their room taken first: the persona
     // is cut, never the points (they take at most half of it; any beyond are listed as left out).
-    const setup = template.bootstrap?.trim() ? template.bootstrap.trim() : undefined;
+    const written = template.bootstrap?.trim() ? template.bootstrap.trim() : undefined;
+    // A bot's own BOOTSTRAP.md holds `BOT_FILE_LIMITS.bootstrap` characters, and `{{user}}` filled in with the new
+    // owner's name can push an export's setup past it: it is cut here, with a note, never refused at Create.
+    const setup = written && written.length > BOT_FILE_LIMITS.bootstrap ? written.slice(0, BOT_FILE_LIMITS.bootstrap) : written;
+    if (written && written.length > BOT_FILE_LIMITS.bootstrap) notes.push(`Its setup (BOOTSTRAP.md) has ${written.length.toLocaleString("en-US")} characters and a bot's holds ${BOT_FILE_LIMITS.bootstrap.toLocaleString("en-US")}: the first ${BOT_FILE_LIMITS.bootstrap.toLocaleString("en-US")} travel.`);
     const open = persona.trim() ? template.open ?? [] : [];
     if (template.open?.length && !open.length) dropped.push(`Its ${plural(template.open.length, "open point")}: without a persona the bot writes its own soul in its first conversation.`);
     const toClose = setup ? [] : [...open];
@@ -354,7 +358,7 @@ export class BotTemplateService {
     const left = memories.length - remembered.included;
     if (left) dropped.push(`${plural(left, "memory", "memories")} that didn't fit in MEMORY.md's ${BOT_FILE_LIMITS.memory.toLocaleString("en-US")} characters.`);
     if (remembered.memory) notes.push(`${remembered.included === 1 ? "Its memory is" : `Its ${remembered.included} memories are`} saved in MEMORY.md, which never leaves with an export.`);
-    if (template.bootstrap) input["bootstrap"] = template.bootstrap;
+    if (setup) input["bootstrap"] = setup;
     if (composed.soul) input["soul"] = composed.soul;
     else notes.push("It has no persona, so it starts with its first conversation: it asks what you expect and writes its SOUL.md.");
     const opener = composed.soul ? template.opener : undefined;
@@ -425,7 +429,7 @@ export class BotTemplateService {
         },
         soul: composed.soul,
         memory: remembered.memory,
-        ...(template.bootstrap ? { bootstrap: template.bootstrap } : {}),
+        ...(setup ? { bootstrap: setup } : {}),
         ...(opener ? { opener } : {}),
         ...(model ? { model } : {}),
         ...(thinking ? { thinking } : {}),

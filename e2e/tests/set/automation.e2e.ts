@@ -34,7 +34,7 @@ test("run now shows the run settle in Run history, refuses a second run and a de
   await runNow.tap();
   await aboveTheList("This task is already running.");
   await screen.getByRole("button", "Actions for Held").tap();
-  await screen.getByText("Delete", { exact: true }).tap();
+  await screen.getByText("Delete", { exact: true, visible: true }).tap();
   await aboveTheList("Stop the active run before deleting this task.");
 
   await hui.provider.release();
@@ -52,7 +52,7 @@ test("run now shows the run settle in Run history, refuses a second run and a de
   await expect(screen.getByRole("button", "Cancel")).toBeHidden();
 
   await screen.getByRole("button", "Actions for Held").tap();
-  await screen.getByText("Delete", { exact: true }).tap();
-  await expect(screen.getByText("Nothing scheduled")).toBeVisible();
+  await screen.getByText("Delete", { exact: true, visible: true }).tap();
+  await expect(screen.getByRole("button", "Edit Held")).toBeHidden();
   await expect(manual).toHaveCount(runs + 2);
 });

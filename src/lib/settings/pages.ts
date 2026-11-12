@@ -1,6 +1,7 @@
-/** The Settings pages in their list order, with the group each sits under, the search that keeps the pages whose name or group matches, and the words Settings shows (page introductions, the empty search, Color mode and Text size names); shared by the web's Settings shell and the iOS app. */
+/** The Settings pages in their list order, with the group each sits under, the search that keeps the pages whose name or group matches, and the words Settings shows (page introductions, the empty search, Color mode, Text size, Message width and Send shortcut names), read by the web's Settings shell. */
 import type { TextScaleStop } from "../theme/appearance.ts";
 import type { ThemeMode } from "../theme/theme.ts";
+import type { MessageWidth, SendShortcut } from "../appearance/store.ts";
 
 export const SETTINGS_PAGES = [
   { id: "appearance", label: "Appearance", group: "", icon: "palette" },
@@ -10,6 +11,7 @@ export const SETTINGS_PAGES = [
   { id: "workers", label: "Workers", group: "Connections", icon: "globe" },
   { id: "models", label: "Models", group: "Agents & Tools", icon: "box" },
   { id: "plugins", label: "Plugins", group: "Agents & Tools", icon: "plug" },
+  { id: "extensions", label: "Extensions", group: "Agents & Tools", icon: "package" },
   { id: "skills", label: "Skills", group: "Agents & Tools", icon: "zap" },
   { id: "tools", label: "Tools", group: "Agents & Tools", icon: "wrench" },
   { id: "memory", label: "Memory", group: "Agents & Tools", icon: "book" },
@@ -34,12 +36,15 @@ export const SETTINGS_COPY = {
   noMatch: "No settings match.",
   modes: { system: "System", light: "Light", dark: "Dark" },
   scales: { 90: "Small", 100: "Default", 110: "Large", 125: "XL", 140: "XXL" },
+  messageWidths: { compact: "Compact", comfortable: "Comfortable", wide: "Wide" },
+  sendShortcuts: { enter: "Enter", modifierEnter: "⌘/Ctrl + Enter" },
   intros: {
-    appearance: "Theme, chat, and sidebar preferences for this Control UI client.",
+    appearance: "Theme, chat, and sidebar preferences for this device. Each browser, app and phone keeps its own.",
     notifications: "Agents can send you a desktop notification that opens their chat, through the HUI app on macOS.",
     connection: "Gateway access and live PI runtime state.",
     integrations: "Connect HUI to external services. Credentials stay on this machine and are never sent to the browser.",
     plugins: "PI packages and extension sources. Disable one to exclude it from new HUI SDK runtimes without uninstalling it or changing PI settings.",
+    extensions: "Local gateway modules: their routes, their state and the switch that loads one for this gateway.",
     memory: "Workspace-local context and memory inventory. Nothing is copied into PI or OpenClaw.",
     automation: "Scheduled tasks, manual runs and run history owned by HUI.",
     security: "Local exposure, credential boundaries and diagnostic privacy.",
@@ -50,5 +55,7 @@ export const SETTINGS_COPY = {
   noMatch: string;
   modes: Record<ThemeMode, string>;
   scales: Record<TextScaleStop, string>;
+  messageWidths: Record<MessageWidth, string>;
+  sendShortcuts: Record<SendShortcut, string>;
   intros: Partial<Record<SettingsPage, string>>;
 };

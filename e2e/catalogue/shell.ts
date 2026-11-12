@@ -7,20 +7,17 @@ const GATEWAY = "SPEC.md#installed-gateway";
 const OFFLINE = "SPEC.md#offline-reading-and-connection-recovery";
 const UPDATES = "docs/api.md#browser-updates";
 const KEYBOARD = "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21";
-const ESCAPE_ONLY =
-  "Escape is a key press with no touch equivalent; the visible control that does the same is its own use case.";
 
 const cases: UseCase[] = [
   {
     id: "SHELL-001",
     title: "Open Home",
     behaviour:
-      "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs.",
+      "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings sits in the sidebar's header row beside **Collapse sidebar** and the Agents and Bots tabs, so both lists reach it, and the footer below both lists is this page's gateway.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-002",
@@ -31,7 +28,6 @@ const cases: UseCase[] = [
     surfaces: ["nav:page", "nav:kanban", "nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-003",
@@ -46,7 +42,6 @@ const cases: UseCase[] = [
       "webawesome-controls",
     ],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-004",
@@ -57,7 +52,6 @@ const cases: UseCase[] = [
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-005",
@@ -68,7 +62,6 @@ const cases: UseCase[] = [
     surfaces: ["nav:session", "nav:bot", "route:POST /__hui/sessions/:id/open"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-006",
@@ -79,7 +72,6 @@ const cases: UseCase[] = [
     surfaces: ["nav:home", "nav:page", "nav:settings", "nav:session"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-007",
@@ -94,7 +86,6 @@ const cases: UseCase[] = [
       "visual-parity-2026-09-24",
     ],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-011",
@@ -110,7 +101,6 @@ const cases: UseCase[] = [
       "visual-parity-2026-09-24",
     ],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-012",
@@ -126,7 +116,6 @@ const cases: UseCase[] = [
       "sidebar-toolbar",
     ],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-013",
@@ -143,7 +132,6 @@ const cases: UseCase[] = [
       "openclaw-primary-ui-parity",
     ],
     web: "required",
-    ios: { excluded: ESCAPE_ONLY, decision: KEYBOARD },
   },
   {
     id: "SHELL-014",
@@ -154,11 +142,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: {
-      excluded: "Resizing a browser window; the iPhone app is always narrow.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
   },
   {
     id: "SHELL-015",
@@ -174,12 +157,6 @@ const cases: UseCase[] = [
       "update-notice",
     ],
     web: "required",
-    ios: {
-      excluded:
-        "The collapse toggle exists only in the wide layout; the iPhone app is always narrow.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
   },
   {
     id: "SHELL-018",
@@ -190,10 +167,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["visual-parity-2026-09-24", "shell-navigation"],
     web: "required",
-    ios: {
-      excluded: "A keyboard chord, which an iPhone cannot press.",
-      decision: KEYBOARD,
-    },
   },
   {
     id: "SHELL-019",
@@ -204,7 +177,6 @@ const cases: UseCase[] = [
     surfaces: ["nav:page", "nav:settings", "nav:session"],
     journeys: ["visual-parity-2026-09-24", "webawesome-controls"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-020",
@@ -215,12 +187,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    ios: {
-      excluded:
-        "The boot screen shows while the page's code downloads; the iOS app ships its code.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
   },
   {
     id: "SHELL-021",
@@ -231,12 +197,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    ios: {
-      excluded:
-        "The boot screen shows while the page's code downloads; the iOS app ships its code.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
   },
   {
     id: "SHELL-022",
@@ -247,12 +207,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["remote-loading"],
     web: "required",
-    ios: {
-      excluded:
-        "The boot screen shows while the page's code downloads; the iOS app ships its code.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
   },
   {
     id: "SHELL-023",
@@ -263,7 +217,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-024",
@@ -274,7 +227,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
     web: "required",
-    ios: "required",
   },
   {
     id: "SHELL-025",
@@ -284,7 +236,6 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huidiagnosticsui-errors"],
     surfaces: ["route:POST /__hui/diagnostics/ui-errors"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SHELL-026",
@@ -295,7 +246,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-notifications"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-027",
@@ -306,7 +256,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-notifications"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-028",
@@ -316,7 +265,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-029",
@@ -327,7 +275,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["clipboard-fallback"],
     web: "required",
-    ios: { excluded: "A fallback for pages without the Clipboard API; the iOS app uses the system clipboard.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SHELL-031",
@@ -338,7 +285,6 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/update/check"],
     journeys: ["update-notice"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SHELL-032",
@@ -349,7 +295,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["update-notice"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-033",
@@ -369,7 +314,6 @@ const cases: UseCase[] = [
     ],
     journeys: ["update-notice"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-034",
@@ -380,7 +324,6 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["update-notice"],
     web: "required",
-    ios: { excluded: ESCAPE_ONLY, decision: KEYBOARD },
   },
   {
     id: "SHELL-035",
@@ -396,7 +339,6 @@ const cases: UseCase[] = [
     ],
     journeys: ["update"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-036",
@@ -407,7 +349,6 @@ const cases: UseCase[] = [
     surfaces: ["command:update", "route:POST /__hui/update/check"],
     journeys: ["update"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-037",
@@ -418,7 +359,6 @@ const cases: UseCase[] = [
     surfaces: ["command:update"],
     journeys: ["update"],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-038",
@@ -429,7 +369,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/update/check"],
     journeys: ["update", "update-notice"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SHELL-039",
@@ -440,7 +379,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/update"],
     journeys: ["update"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SHELL-040",
@@ -451,7 +389,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/update", "route:GET /__hui/update"],
     journeys: ["update", "update-notice"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SHELL-041",
@@ -462,7 +399,6 @@ const cases: UseCase[] = [
     surfaces: ["command:update", "route:GET /__hui/update"],
     journeys: ["update"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SHELL-042",
@@ -473,7 +409,6 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/update/check"],
     journeys: ["update", "update-notice"],
     web: "backlog",
-    ios: "backlog",
   },
   {
     id: "SHELL-043",
@@ -487,11 +422,6 @@ const cases: UseCase[] = [
         "The browser saves downloads itself, and the save dialog belongs to HUI's Electron desktop app, which the web runner cannot drive; desktop/main.test.mjs covers the chosen path, the cancel and one dialog per download.",
       decision: "SPEC.md#desktop-downloads-ask-where-to-save-them",
     },
-    ios: {
-      excluded:
-        "The save dialog is a macOS desktop app behaviour; the iPhone app has no file save dialog.",
-      decision: "SPEC.md#desktop-downloads-ask-where-to-save-them",
-    },
   },
   {
     id: "SHELL-044",
@@ -501,7 +431,6 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-045",
@@ -511,7 +440,6 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-046",
@@ -521,7 +449,6 @@ const cases: UseCase[] = [
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
-    ios: "backlog",
   },
   {
     id: "SHELL-047",
@@ -531,12 +458,6 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "required",
-    ios: {
-      excluded:
-        "The iPhone app draws its own chat header and does not use the web's narrow layout or its header chooser.",
-      decision:
-        "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
-    },
   },
   {
     id: "SHELL-048",
@@ -546,7 +467,16 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["sidebar-toolbar", "shell-navigation"],
     web: "required",
-    ios: { excluded: "The iPhone app is always narrow, so its sidebar is the drawer, which has no boundary.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
+  },
+  {
+    id: "SHELL-049",
+    title: "See this page's gateway and switch from the sidebar footer",
+    behaviour:
+      "The sidebar's footer is one button named after the gateway serving this page, with a state dot. Opening it lists **Gateways**: that one marked *Current*, then every other gateway this device added by its own name, then **Add a gateway…**. Choosing another gateway opens that address in this page, and **Add a gateway…** opens Settings → Gateway. Escape closes the list and returns focus to the button.",
+    spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", GATEWAY, "docs/api.md#adding-a-gateway"],
+    surfaces: ["route:GET /__hui/update", "route:GET /__hui/health", "nav:settings"],
+    journeys: ["gateway-settings"],
+    web: "required",
   },
 ];
 

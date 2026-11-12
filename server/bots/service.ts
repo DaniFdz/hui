@@ -1,5 +1,5 @@
 /**
- * Bots (HUI-18): create, edit, archive, delete and talk to them.
+ * Bots: create, edit, archive, delete and talk to them.
  *
  * A bot's chat is an ordinary Durable session registered through New
  * Session's code path, and its record carries `bot`; the bot registry
@@ -33,6 +33,7 @@ import { isAbsolute, join, relative } from "node:path";
 
 import {
   agentReplyTo, agentTagPrefix, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, botColorName, botFaceColor, botKickoffName, botKickoffText, botLook,
+  botTagPrefix,
   handleFromName, isBotAccessQuestion, mentionsBot, previewLine, storedTagging,
   type BotAccessRequest, type BotCatalog, type BotFile, type BotSkillRef, type BotSkillSelector,
   type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch,
@@ -58,6 +59,8 @@ import { aggregateUsage } from "../observability.ts";
 import type { UsageTotals } from "../api/diagnostics.ts";
 import { resolveWorkingDirectory } from "../git/working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
+import { BOT_SKILL_NAME, type BotSkillFiles } from "./skills.ts";
+import type { BotOwnSkill } from "../api/bots.ts";
 
 /** `message_bot` messages one bot may send per hour: a backstop behind the hop guard. */
 const MESSAGES_PER_HOUR = 30;
@@ -140,7 +143,7 @@ type BotPorts = {
 };
 
 /**
- * Remote workers' half of the bots that run on them (HUI-18): each worker's own Durable store holds their conversations
+ * Remote workers' half of the bots that run on them: each worker's own Durable store holds their conversations
  * and memories, and its HUI data directory their home folders with SOUL.md, reached through its host (`remote.ts`),
  * only over a live connection; nothing here connects one.
  */
@@ -231,6 +234,8 @@ export type BotServiceDeps = {
   conversations: BotConversations;
   memory: BotMemory;
   files: BotFiles;
+  /** A local bot's own skill files (`skills/` in its home); absent on a host that keeps none. */
+  skills?: BotSkillFiles;
   routines: BotRoutines;
   /** Bots on remote workers; absent, a bot can only run here. */
   workers?: BotWorkers;
@@ -440,6 +445,7 @@ export class BotService {
           name: input.name,
           ...(input.title ? { title: input.title } : {}),
           ...(input.description ? { description: input.description } : {}),
+          ...(input.group ? { group: input.group } : {}),
           ...(tagging ? { tagging } : {}),
           cwd,
           ...(worker ? { worker: worker.id } : {}),
@@ -602,6 +608,38 @@ export class BotService {
     };
   }
 
+  /** One of a bot's own skills: the SKILL.md the operator edits in Tools & skills. Local bots only; a worker's
+   * files are edited on that worker. */
+  async ownSkill(target: string, name: string): Promise<BotOwnSkill> {
+    const bot = await this.resolve(target);
+    if (bot.worker) throw new BotConflictError("This bot runs on a worker; edit its skills in that worker's Files view.");
+    const skills = this.#deps.skills;
+    if (!skills) throw new BotConflictError("This gateway cannot read bots' own skills.");
+    if (!BOT_SKILL_NAME.test(name)) throw new BotInputError("That is not a skill name.");
+    const skill = (await skills.read(bot.id)).find((entry) => entry.name === name);
+    if (!skill) throw new BotNotFoundError(`No skill named ${name} in ${bot.name}'s own skills.`);
+    return { name, text: skill.text };
+  }
+
+  /** Replaces one own skill's SKILL.md; the files beside it stay. The folder name and the frontmatter name stay equal, so
+   * the skill keeps loading. */
+  async setOwnSkill(target: string, name: string, text: unknown): Promise<BotOwnSkill> {
+    const bot = await this.resolve(target);
+    if (bot.worker) throw new BotConflictError("This bot runs on a worker; edit its skills in that worker's Files view.");
+    const skills = this.#deps.skills;
+    if (!skills) throw new BotConflictError("This gateway cannot change bots' own skills.");
+    if (!BOT_SKILL_NAME.test(name)) throw new BotInputError("That is not a skill name.");
+    if (typeof text !== "string") throw new BotInputError("The skill text must be text.");
+    if (!text.trim()) throw new BotInputError("The skill text cannot be empty.");
+    if (Buffer.byteLength(text, "utf8") > 256 * 1024) throw new BotInputError("The skill text is larger than 256 KB.");
+    const frontmatter = /^---\n([\s\S]*?)\n---/u.exec(text)?.[1] ?? "";
+    const declared = /^name:\s*(.+)$/mu.exec(frontmatter)?.[1]?.trim().replace(/^["']|["']$/gu, "");
+    if (!declared) throw new BotInputError(`A SKILL.md needs frontmatter with a name, and the name must be ${name}.`);
+    if (declared !== name) throw new BotInputError(`The frontmatter name is ${declared}; keep it ${name}, the folder's name.`);
+    await skills.write(bot.id, [{ name, text }]);
+    return { name, text };
+  }
+
   /** The access request the bot's chat is waiting on, if any. */
   #accessRequest(bot: BotRecord): BotAccessRequest | undefined {
     const question = this.#sessions.snapshot(bot.sessionId).questions.find(isBotAccessQuestion);
@@ -693,7 +731,7 @@ export class BotService {
     if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
     const origins = runTurnOrigins((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt, runOrigins);
     if (origins.some((origin) => origin.kind !== "operator" && origin.kind !== "kickoff")) {
-      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a session or your import. Ask the operator instead.");
+      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a subagent's report, a session or your import. Ask the operator instead.");
     }
     const unknown = Object.keys(params).filter((key) => !PROFILE_KEYS.includes(key));
     if (unknown.length) throw new BotInputError(`set_profile takes ${PROFILE_KEYS.join(", ")} only, not ${unknown.join(", ")}.`);
@@ -1299,7 +1337,7 @@ export class BotService {
     if (recent.length >= this.#messagesPerHour) {
       throw new BotConflictError(`${sender ? `@${sender.handle}` : "This session"} already sent ${this.#messagesPerHour} bot messages in the last hour. Wait before sending more.`);
     }
-    const from = sender ? `[from @${sender.handle}${hop === 1 ? "" : ` · hop ${hop}`}] ` : agentTagPrefix(caller.title, caller.id, hop);
+    const from = sender ? botTagPrefix(sender.handle, hop) : agentTagPrefix(caller.title, caller.id, hop);
     const delivery = await this.#deliver(record, `${from}${message}`, undefined, undefined, undefined, "steer");
     this.#sent.set(key, [...recent, now]);
     return { text: `Queued for ${target ? `@${target.handle}` : to}.`, to: target?.handle ?? to, status: delivery.status };

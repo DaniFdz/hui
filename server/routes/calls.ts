@@ -1,5 +1,5 @@
 /**
- * GPT-Live call routes (HUI-18); see docs/api.md#calls. `:id` is a bot's id or
+ * GPT-Live call routes; see docs/api.md#calls. `:id` is a bot's id or
  * handle; `:callId` is HUI's id for the call (never the provider's). The
  * gateway sets each call up with the bot's identity and memory, keeps the
  * ChatGPT credential to itself, writes what is said into the bot's chat and

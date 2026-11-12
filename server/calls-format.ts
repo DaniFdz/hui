@@ -1,5 +1,5 @@
 /**
- * Realtime calls with bots (HUI-18) through GPT-Live, over the operator's
+ * Realtime calls with bots through GPT-Live, over the operator's
  * ChatGPT subscription: the route ChatGPT's own voice mode uses. The gateway's
  * and the CLI's limits, voices and call records; the browser keeps its own copy
  * of what it calls in src/lib/voice/calls.ts and the payloads are in

@@ -1,6 +1,6 @@
 /**
  * Realtime calls with bots through GPT-Live over the operator's ChatGPT
- * subscription (HUI-18; docs/api.md#calls). The gateway owns everything secret:
+ * subscription (docs/api.md#calls). The gateway owns everything secret:
  * it picks the ChatGPT account as model turns do, builds the call's session
  * (the bot's identity, instructions, language and a slice of its OptChat
  * memory), exchanges the browser's SDP offer with ChatGPT's realtime route and

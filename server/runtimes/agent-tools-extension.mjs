@@ -1,6 +1,6 @@
 /**
- * HUI's agent tools for PI conversations: shared terminals, sibling sessions and subagents, media, secret
- * requests, desktop notifications, task suggestions, the stage and watchers. Each tool only declares its schema and forwards the call
+ * HUI's agent tools for PI conversations: shared terminals, ordinary session creation, sibling sessions and
+ * subagents, media, secret requests, desktop notifications, task suggestions, the stage and watchers. Each tool only declares its schema and forwards the call
  * over HUI's agent bridge; the gateway owns the state and decides what the bound caller may do.
  */
 import { Type } from "typebox";
@@ -63,11 +63,11 @@ export default function agentToolsExtension(pi) {
     label: "Ask user question",
     description: `Ask the user one or more structured questions in a card in this HUI conversation and wait for the answers, or until the operator's question timeout ends the call. Use it to gather preferences or requirements, clarify ambiguous instructions, get decisions on implementation choices, or offer choices of direction.
 
-Every question also offers a free-text answer the card adds itself, and the user can cancel the whole card. Previews are Markdown shown beside the options of a single-select question while one is focused; use them only when the user needs to compare concrete artifacts (mockups, code, diagrams, configs).`,
+A question takes one of three inputs: options (2-4 choices, radios or checkboxes), a slider over a numeric range (a budget, hours, a percentage) or a long text the user writes. An options question also offers a free-text answer the card adds itself. The user can cancel the whole card. Previews are Markdown shown beside the options of a single-select question while one is focused; use them only when the user needs to compare concrete artifacts (mockups, code, diagrams, configs).`,
     promptSnippet: "Ask the user up to 4 structured questions (2-4 options each) when requirements are ambiguous",
     promptGuidelines: [
       "Use ask_user_question whenever the user's request is underspecified and you cannot proceed without concrete decisions. Group all clarifying questions into one call, up to 4; do not stack calls back-to-back.",
-      "Each question needs a header (≤16 characters), the full question and 2-4 options, each with a concise label and a description of what it means. The card adds a free-text answer to every question: never author \"Other\", \"Type something.\" or \"Next\" options.",
+      "Each question needs a header (≤16 characters), the full question and one input: 2-4 options, each with a concise label and a description of what it means (the default); a slider with min, max and an optional step and unit; or a long text with an optional placeholder. An options question also gets a free-text answer from the card: never author \"Other\", \"Type something.\" or \"Next\" options.",
       "Set multiSelect: true when several answers can apply. If you recommend an option, put it first and end its label with \"(Recommended)\".",
       "If the user declines, do not ask the same questions again in chat; continue with sensible defaults or ask what they want.",
       "If the call times out, the operator may be away: continue with your recommended option, finish the rest of the work, and list the decisions that still need the operator in your final reply.",
@@ -76,8 +76,14 @@ Every question also offers a free-text answer the card adds itself, and the user
       questions: Type.Array(Type.Object({
         question: Type.String({ minLength: 1, maxLength: 500, description: "The complete question, ending with a question mark." }),
         header: Type.String({ minLength: 1, maxLength: 16, description: "MAX 16 CHARACTERS. A very short tag for the question, such as \"Auth method\" or \"Library\"." }),
-        options: Type.Array(questionOption, { minItems: 2, maxItems: 4, description: "2-4 distinct choices. Mutually exclusive unless multiSelect is set." }),
+        input: Type.Optional(Type.Union([Type.Literal("options"), Type.Literal("slider"), Type.Literal("text")], { description: "How the answer is given: options (the default), a numeric slider, or long text." })),
+        options: Type.Optional(Type.Array(questionOption, { minItems: 2, maxItems: 4, description: "For an options question: 2-4 distinct choices. Mutually exclusive unless multiSelect is set." })),
         multiSelect: Type.Optional(Type.Boolean({ description: "Let the user choose several options." })),
+        min: Type.Optional(Type.Number({ description: "For a slider: the lowest value." })),
+        max: Type.Optional(Type.Number({ description: "For a slider: the highest value." })),
+        step: Type.Optional(Type.Number({ description: "For a slider: how far one move goes; 1 by default." })),
+        unit: Type.Optional(Type.String({ maxLength: 16, description: "For a slider: what the value counts in, such as € or hours." })),
+        placeholder: Type.Optional(Type.String({ maxLength: 200, description: "For a long-text question: the field's hint." })),
       }), { minItems: 1, maxItems: 4, description: "1-4 questions, asked together in one card." }),
     }),
     async execute(_toolCallId, params, signal) {
@@ -124,7 +130,7 @@ Every question also offers a free-text answer the card adds itself, and the user
       route: Type.Optional(Type.String({
         minLength: 1,
         maxLength: 40,
-        description: "Name of a model route the prompt lists; the route already names the provider and model.",
+        description: "Name of a model route the prompt lists; a route without a model inherits the caller's model and thinking, and one with a model already names the provider and model.",
       })),
       model: Type.Optional(Type.String({ minLength: 3, maxLength: 200, description: "A raw `provider/id` model, only when no route fits." })),
       thinking: Type.Optional(Type.Union([
@@ -133,9 +139,97 @@ Every question also offers a free-text answer the card adds itself, and the user
       ])),
       runTimeoutSeconds: Type.Optional(Type.Number({ minimum: 0, maximum: 3_600 })),
       collect: Type.Optional(Type.Boolean({ description: "Collect the result with agents_wait instead of having it reported back to this conversation. Queues when 32 are already running." })),
+      worktree: Type.Optional(Type.Boolean({ description: "Start the child in a fresh Git worktree off the caller's checkout, so parallel workers never share one working tree. Its cwd is the new worktree; a spawn that cannot make one is refused before a child exists." })),
     }),
     async execute(_toolCallId, params) {
       return output(await invoke("sessions_spawn", params));
+    },
+  });
+
+  pi.registerTool({
+    name: "create_session",
+    label: "Create session",
+    description: "Create an ordinary top-level session: its own chat in the sidebar, in a group, optionally in a new Git worktree and on a worker. It becomes the PR lead: HUI gives it the phase protocol, and it delegates investigation, implementation, verification and review to subagents rather than doing them itself. Only a Chief of Staff bot may call this; every other agent is refused and uses sessions_spawn for a fast child.",
+    promptSnippet: "Create a new session for a task that will take more than a quick reply",
+    promptGuidelines: [
+      "Only a Chief of Staff bot may create a session. A normal agent must use sessions_spawn for a fast child; a writing task it cannot delegate is reported to the operator instead.",
+      "Use sessions_spawn only for fast iteration: a read-only probe, one command, one small check, one reply.",
+      "Pass the whole brief as prompt. HUI marks it as coming from you, so write the brief itself, with no header of your own. Name the group; pass worktree true for code, with a branchName or let HUI name it. Pass a worker id when the session should run on a worker.",
+      "The session is top-level and owns its work. It is not in your subagent tree, so sessions_list and sessions_history do not show it; the operator can open it in the sidebar.",
+      "The session is the PR lead, not a worker. It gets HUI's phase protocol and must spawn explorer, worker, verifier and reviewer subagents; choose its model for orchestration, and never create another session for a phase.",
+    ],
+    parameters: Type.Object({
+      prompt: Type.String({ minLength: 1, maxLength: 20_000, description: "The session's brief and first message: goal, scope, evidence, paths, forbidden actions and when it is done." }),
+      cwd: Type.Optional(Type.String({ minLength: 1, maxLength: 4_096, description: "Project directory. Defaults to the caller's." })),
+      title: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+      group: Type.Optional(Type.String({ maxLength: 200, description: "Sidebar group. Defaults to the caller's." })),
+      worker: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "Worker id or name, or local for this machine. Defaults to the caller's worker, or this machine." })),
+      worktree: Type.Optional(Type.Boolean({ description: "Create a fresh Git worktree and branch for the session." })),
+      watch: Type.Optional(Type.Boolean({ description: "Watch the new session so you can list, read and continue it; true unless false." })),
+      branchName: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "Worktree branch; HUI generates one when omitted." })),
+      baseRef: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "Base branch or commit." })),
+      model: Type.Optional(Type.String({ minLength: 3, maxLength: 200, description: "A `provider/id` model. Defaults to the caller's." })),
+      thinking: Type.Optional(Type.Union(["off", "minimal", "low", "medium", "high", "xhigh", "max"].map((level) => Type.Literal(level)))),
+    }),
+    async execute(_toolCallId, params) {
+      const result = await invoke("create_session", params);
+      return {
+        content: [{ type: "text", text: `Created session ${JSON.stringify(result?.title ?? "Untitled")} (${result?.id}). It is a separate chat${result?.worktree ? " in a new Git worktree" : ""}; its work continues there.` }],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "watch_session",
+    label: "Watch session",
+    description: "Watch other sessions in your group: list them with their status and watchers, add one, or remove it. A watched session becomes visible to sessions_list, sessions_history and sessions_send, so a heartbeat can read it and continue it when it stops.",
+    promptSnippet: "Watch another session and continue it when it stops",
+    promptGuidelines: [
+      "Use watch_session add for a session you want a heartbeat to supervise; create_session watches the sessions it starts unless watch is false.",
+      "The watched session must be in your group, not archived and not a bot's chat. A bot's chat is reached with message_bot instead.",
+      "A running session or one with a running watcher is not stopped: leave it. A dead or failed watcher, or an idle session with an open task and no watcher, is the case to continue.",
+    ],
+    parameters: Type.Object({
+      action: Type.Union(["list", "add", "remove"].map((action) => Type.Literal(action))),
+      session: Type.Optional(Type.String({ minLength: 1, maxLength: 200, description: "add and remove: the session id. list needs none." })),
+    }),
+    async execute(_toolCallId, params) {
+      const result = await invoke("watch_session", params);
+      const sessions = Array.isArray(result?.sessions) ? result.sessions : [];
+      return {
+        content: [{ type: "text", text: `Watching ${sessions.length} session${sessions.length === 1 ? "" : "s"}: ${sessions.map((entry) => `${entry.title} (${entry.status})`).join(", ") || "none"}.` }],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "worker_stats",
+    label: "Worker stats",
+    description: "Show this machine and every configured worker with CPU, memory, disk, GPU, connection state and running sessions, plus the least loaded connected choice. Use it before create_session to choose where the work runs.",
+    promptSnippet: "See this machine and every worker's load before choosing where to run",
+    promptGuidelines: [
+      "Call worker_stats before create_session when more than one machine is available. Prefer a connected machine with low CPU, memory and disk use and few running sessions.",
+      "The local machine is id local; a worker's id or name is what create_session accepts as worker.",
+      "A disconnected or erroring worker has no metrics; do not send it work until it connects. The recommended entry uses the samples from this call.",
+    ],
+    parameters: Type.Object({}),
+    async execute() {
+      const result = await invoke("worker_stats", {});
+      const machines = Array.isArray(result?.machines) ? result.machines : [];
+      const summary = machines.map((machine) => {
+        const parts = [machine.name + (machine.current ? " (current)" : ""), machine.state];
+        if (typeof machine.cpuPercent === "number") parts.push(`CPU ${machine.cpuPercent}%`);
+        if (machine.memory?.percent !== undefined) parts.push(`memory ${machine.memory.percent}%`);
+        if (machine.disk?.percent !== undefined) parts.push(`disk ${machine.disk.percent}%`);
+        if (machine.sessions) parts.push(`${machine.sessions.running} running of ${machine.sessions.total}`);
+        return parts.join(", ");
+      }).join("; ");
+      const pick = result?.recommended
+        ? ` Recommended: ${result.recommended.name} (${result.recommended.reason}).`
+        : result?.leastLoaded ? ` No machine is within headroom; least loaded is ${result.leastLoaded.name}.` : "";
+      return { content: [{ type: "text", text: `${summary || "No machines reported."}.${pick}` }], details: result };
     },
   });
 

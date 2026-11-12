@@ -4,7 +4,7 @@
  * modes, so there is nothing to pair here. A user accent is applied over the
  * active theme, its lightness solved per mode so it reads on that theme's page.
  */
-import { currentSettings } from "../settings/settings-store.ts";
+import { readAppearance } from "../appearance/store.ts";
 import { fetchThemeFile, fetchThemeList, postThemeImport, type ThemeRef } from "../../api/themes.ts";
 import { applyThemeMode, type ThemeMode, type ThemeVariant } from "./theme.ts";
 import { accentSurfaces, mapTheme, swatchesFor, type AccentSurfaces, type ShadcnTheme, type ThemeSwatches } from "./shadcn-theme.ts";
@@ -150,7 +150,7 @@ export async function applyTheme(id: string): Promise<ThemeVariant | undefined> 
   applyTokens(tokens);
   selectedTokens = tokens;
   selectedSurfaces = accentSurfaces(mapped.modes);
-  applyAccent(currentSettings().accent);
+  applyAccent(readAppearance().accent);
   document.documentElement.dataset["themeFamily"] = theme.id;
   document.documentElement.dataset["themePalette"] = palette ?? "custom";
   selectedId = theme.id;
@@ -158,7 +158,7 @@ export async function applyTheme(id: string): Promise<ThemeVariant | undefined> 
   // The variant is what decides the forced color-scheme, so it is re-applied
   // here rather than left to each caller. Forgetting it is how a dark-only
   // theme ends up under light native controls.
-  applyThemeMode(currentSettings().themeMode, selectedVariant);
+  applyThemeMode(readAppearance().themeMode, selectedVariant);
   return selectedVariant;
 }
 

@@ -2,10 +2,11 @@
  * The catalogue job's check of a pull request against its base: the baseline grows only for a use case the base
  * already had the surfaces, journeys and SPEC text for (one the first inventory missed); a use case the pull request
  * changes, in its catalogue entry, a shared test tagged with it or the code that test's file shares between its tests
- * (its header comment aside), leaves the web and iOS backlogs; and a static accessible name new in `src/` appears in a
- * shared test that runs on both targets. A use case whose test alone changed, and a new name, may instead be listed on
- * the description's `Unchanged behaviour:` line, which it reads from the pull request event. It prints what moved to
- * the job summary. Run it as `node scripts/e2e-baseline-check.ts <base-commit>`.
+ * (its header comment aside), leaves the web backlog; and a static accessible name new in `src/` appears in a shared
+ * test that runs on the web. A use case whose test alone changed, and a new name, may instead be listed on the
+ * description's `Unchanged behaviour:` line, which it reads from the pull request event. It reads only the web status
+ * and backlog of both sides, so a base that still records another platform's is read the same way. It prints what
+ * moved to the job summary. Run it as `node scripts/e2e-baseline-check.ts <base-commit>`.
  */
 import { execFileSync } from "node:child_process";
 import { appendFile, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
@@ -15,7 +16,7 @@ import { list } from "e2e/runner";
 import { githubAnchors } from "../e2e/catalogue/anchors.ts";
 import type { UseCase } from "../e2e/catalogue/types.ts";
 
-type Tree = { cases: Map<string, UseCase>; backlog: { web: string[]; ios: string[] }; surfaces: Set<string>; anchors: Set<string>; journeys: Set<string>; labels: Set<string> };
+type Tree = { cases: Map<string, UseCase>; backlog: { web: string[] }; surfaces: Set<string>; anchors: Set<string>; journeys: Set<string>; labels: Set<string> };
 
 const base = process.argv[2];
 if (!base) throw new Error("Usage: node scripts/e2e-baseline-check.ts <base-commit>");
@@ -98,43 +99,40 @@ const listedUnchanged: string[] = [];
 const problems: string[] = [];
 const foundLater: string[] = [];
 const unexcluded: string[] = [];
-for (const platform of ["web", "ios"] as const) {
-  for (const id of after.backlog[platform].filter((id) => !before.backlog[platform].includes(id))) {
-    const entry = after.cases.get(id)!;
-    const previous = before.cases.get(id);
-    if (previous && previous[platform] === "required") problems.push(`${id} went back to ${platform} backlog after it was required.`);
-    else if (previous) unexcluded.push(`${id} (${platform})`);
-    else if (!previous && documentedOnBase(entry)) foundLater.push(`${id} (${platform})`);
-    else if (!previous) problems.push(`${id} is new, so it can't be ${platform} backlog: the base has no surfaces, journeys or SPEC text for it. Make it required with a shared test.`);
-  }
+for (const id of after.backlog.web.filter((id) => !before.backlog.web.includes(id))) {
+  const entry = after.cases.get(id)!;
+  const previous = before.cases.get(id);
+  if (previous && previous.web === "required") problems.push(`${id} went back to web backlog after it was required.`);
+  else if (previous) unexcluded.push(id);
+  else if (documentedOnBase(entry)) foundLater.push(id);
+  else problems.push(`${id} is new, so it can't be web backlog: the base has no surfaces, journeys or SPEC text for it. Make it required with a shared test.`);
 }
 const edited = (entry: UseCase) => {
   const previous = before.cases.get(entry.id);
   return previous !== undefined && !sameEntry(previous, entry);
 };
-const graduated = (entry: UseCase) => (["web", "ios"] as const).some((platform) => before.cases.get(entry.id)?.[platform] === "backlog" && entry[platform] === "required");
+const graduated = (entry: UseCase) => before.cases.get(entry.id)?.web === "backlog" && entry.web === "required";
 const changed = [...after.cases.values()].filter((entry) => edited(entry) || (testedChanges.has(entry.id) && before.cases.has(entry.id) && !graduated(entry)));
 for (const entry of changed) {
-  const backlog = (["web", "ios"] as const).filter((platform) => entry[platform] === "backlog");
-  if (!backlog.length) continue;
+  if (entry.web !== "backlog") continue;
   if (!edited(entry) && unchanged.has(entry.id)) listedUnchanged.push(entry.id);
-  else problems.push(`${entry.id} changed but is still ${backlog.join(" and ")} backlog. Make it required there with its shared test in this pull request${edited(entry) ? "" : ", or list it on the description's Unchanged behaviour: line if only its test changed"}.`);
+  else problems.push(`${entry.id} changed but is still web backlog. Make it required there with its shared test in this pull request${edited(entry) ? "" : ", or list it on the description's Unchanged behaviour: line if only its test changed"}.`);
 }
 
-const onBothTargets = testBodies.filter((test) => test.targets.has("web") && test.targets.has("ios")).map((test) => test.body);
+const onWeb = testBodies.filter((test) => test.targets.has("web")).map((test) => test.body);
 const newNames = [...after.labels].filter((label) => !before.labels.has(label));
-for (const name of newNames.filter((label) => !onBothTargets.some((body) => ["\"", "'", "`"].some((quote) => body.includes(`${quote}${label}${quote}`))))) {
+for (const name of newNames.filter((label) => !onWeb.some((body) => ["\"", "'", "`"].some((quote) => body.includes(`${quote}${label}${quote}`))))) {
   if (unchanged.has(name)) listedUnchanged.push(`"${name}"`);
-  else problems.push(`"${name}" is a new accessible name, so a shared test that runs on the web and on iOS must use it. If it names an existing control, list it on the description's Unchanged behaviour: line.`);
+  else problems.push(`"${name}" is a new accessible name, so a shared test that runs on the web must use it. If it names an existing control, list it on the description's Unchanged behaviour: line.`);
 }
-const excluded = [...after.cases.values()].flatMap((entry) => (["web", "ios"] as const)
-  .filter((platform) => typeof entry[platform] === "object" && typeof before.cases.get(entry.id)?.[platform] !== "object")
-  .map((platform) => `${entry.id} (${platform})`));
+const excluded = [...after.cases.values()]
+  .filter((entry) => typeof entry.web === "object" && typeof before.cases.get(entry.id)?.web !== "object")
+  .map((entry) => entry.id);
 
 const summary = [
   "## Use-case catalogue",
   "",
-  `Web backlog: ${before.backlog.web.length} → ${after.backlog.web.length}. iOS backlog: ${before.backlog.ios.length} → ${after.backlog.ios.length}.`,
+  `Web backlog: ${before.backlog.web.length} → ${after.backlog.web.length}.`,
   "",
   `Found later, added to the baseline: ${foundLater.join(", ") || "none"}.`,
   `Newly excluded: ${excluded.join(", ") || "none"}.`,

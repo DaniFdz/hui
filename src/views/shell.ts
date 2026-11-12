@@ -15,6 +15,8 @@ import { kanbanIcon } from "./kanban.ts";
 import { isSessionStage } from "../lib/kanban.ts";
 export { filterSessionGroups } from "../lib/session/sidebar-sessions.ts";
 import type { HuiPage } from "../lib/pages.ts";
+import type { ExtensionPageLink } from "../lib/extensions/pages.ts";
+import { extensionPanelIcon } from "../lib/extensions/panel-icons.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { writeSessionDrag } from "../lib/session/pane-layout.ts";
 import { applySidebarWidth, sidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from "../lib/sidebar-width.ts";
@@ -27,6 +29,7 @@ import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
 import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bots/roster.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
+import type { GatewayView } from "../lib/gateways/gateway-list.ts";
 
 // The real browser entry loads these before this view can render.
 loadViewAssets(
@@ -41,9 +44,9 @@ loadViewAssets(
 /**
  * The app shell, following OpenClaw's Control UI regions:
  *
- *   header         new session and search on the left, collapse on the right
- *   nav            page destinations, ending with Settings
- *   session list   collapsible groups of session rows
+ *   header         collapse, the Agents | Bots switch and Settings on one row
+ *   nav            page destinations, then the session list
+ *   footer         the gateway this page came from, and this device's other gateways
  */
 
 /** Sidebar destinations. Sessions are opened from the list below and New
@@ -110,7 +113,7 @@ export function unbindDrawerMedia(drawer: HTMLElement) {
 }
 
 export type NavId = "home" | "surface" | "kanban" | "bot";
-export type GroupMenuAction = "defaults" | "rename" | "new" | "delete";
+export type GroupMenuAction = "defaults" | "rename" | "new" | "delete" | "chief";
 export type SessionCopyAction = "link" | "markdown" | "id" | "jira";
 export type SessionOpenAction = "tab" | "window" | "editor" | "jira";
 export type GroupDropTarget = { group: string; position: "before" | "after" };
@@ -143,6 +146,10 @@ export type ShellProps = {
   view: NavId;
   activePage?: HuiPage;
   pages: readonly HuiPage[];
+  /** Sidebar entries from enabled extension pages, after the built-in destinations. */
+  extensionPages: readonly ExtensionPageLink[];
+  activeExtensionPageId: string;
+  onOpenExtensionPage: (id: string) => void;
   selectedSessionId: string;
   splitSessionId: string;
   openSessionIds?: ReadonlySet<string>;
@@ -170,6 +177,11 @@ export type ShellProps = {
   onSplitSession: (session: SessionView) => void;
   onToggleGroup: (label: string) => void;
   onOpenSettings: () => void;
+  /** This device's gateways, the one serving this page first (SPEC.md "A device keeps a list of gateways"). */
+  gateways: readonly GatewayView[];
+  onSwitchGateway: (url: string) => void;
+  /** Opens Settings → Gateway, where an address is added and the saved ones are managed. */
+  onOpenGatewaySettings: () => void;
   onSearch: (value: string) => void;
   onToggleMenu: (sessionId: string) => void;
   /** Idempotent close, kept separate from toggle for document-level dismissal. */
@@ -685,7 +697,7 @@ function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: 
                   (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]')?.focus();
                   return;
                 }
-                if (action !== "defaults" && action !== "rename" && action !== "new" && action !== "delete") return;
+                if (action !== "defaults" && action !== "rename" && action !== "new" && action !== "delete" && action !== "chief") return;
                 (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]')?.focus();
                 props.onCloseGroupMenu();
                 props.onGroupAction(action, group);
@@ -696,6 +708,7 @@ function groupSection(group: SidebarSessionGroup, props: ShellProps, filtering: 
                 ["defaults", "New session defaults", icons.settings],
                 ["rename", "Rename group", icons.edit],
                 ["new", "New group", icons.folder],
+                ["chief", "Create Chief of Staff", icons.zap],
               ] as const).map(([action, label, icon]) => html`
                 <wa-dropdown-item value=${action} class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icon}</span><span class="session-menu__text">${label}</span></wa-dropdown-item>
               `)}
@@ -781,6 +794,45 @@ function renderSidebarTabs(bots: ShellBotsProps) {
   </div>`;
 }
 
+/** The sidebar footer: this page's gateway, with the others this device knows behind it. Choosing one navigates to
+ * it; Add a gateway… opens Settings → Gateway, where the list is managed. Escape closes the menu and returns focus to
+ * the button, exactly as the session menus do. */
+function renderGatewayPicker(props: ShellProps) {
+  const current = props.gateways.find((gateway) => gateway.state === "current");
+  return html`<wa-dropdown class="session-menu sidebar-gateway-menu" placement="top-start" distance="8"
+    aria-label="Gateways" @wa-show=${labelDropdown} @keydown=${closeDropdownOnEscape}
+    @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
+      (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]')?.focus();
+      const value = event.detail.item.value;
+      if (value === "add") {
+        closeContainingDrawer(event);
+        props.onOpenGatewaySettings();
+        return;
+      }
+      if (value.startsWith("switch:")) props.onSwitchGateway(value.slice("switch:".length));
+    }}>
+    <button slot="trigger" type="button" class="sidebar-gateway" data-testid="sidebar-gateway"
+      aria-label=${`Gateway: ${current?.name ?? "HUI"}`} aria-haspopup="menu">
+      <span class="sidebar-gateway__dot sidebar-gateway__dot--current" aria-hidden="true"></span>
+      <span class="sidebar-gateway__name">${current?.name ?? "HUI"}</span>
+      <span class="sidebar-gateway__chevron" aria-hidden="true">${icons.chevronDown}</span>
+    </button>
+    <div class="sidebar-session-sort-menu__label">Gateways</div>
+    ${props.gateways.map((gateway) => html`<wa-dropdown-item class="session-menu__item sidebar-gateway-menu__item"
+      value=${`switch:${gateway.url}`} data-url=${gateway.url} data-state=${gateway.state}
+      ?disabled=${gateway.state === "current"}>
+      <span slot="icon" class="sidebar-gateway__dot sidebar-gateway__dot--${gateway.state}" aria-hidden="true"></span>
+      <span class="session-menu__text sidebar-gateway-menu__name">${gateway.name}</span>
+      <span slot="details" class="sidebar-gateway-menu__state">${gateway.state === "current" ? "Current" : gateway.state === "offline" ? "Offline" : nothing}</span>
+    </wa-dropdown-item>`)}
+    <div class="session-menu__separator" role="separator"></div>
+    <wa-dropdown-item class="session-menu__item sidebar-gateway-menu__add" value="add">
+      <span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.plus}</span>
+      <span class="session-menu__text">Add a gateway…</span>
+    </wa-dropdown-item>
+  </wa-dropdown>`;
+}
+
 export function renderSidebar(props: ShellProps) {
   const query = props.search.trim().toLocaleLowerCase();
   const filtering = Boolean(query) || props.sessionOptions.status !== "all";
@@ -851,6 +903,19 @@ export function renderSidebar(props: ShellProps) {
           <div class="sidebar-brand" data-testid="sidebar-header">
             <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__collapse" aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true" @click=${toggleDesktopSidebar}>${icons.panelLeftClose}</button>
             <div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>
+            <a
+              href="/settings/appearance"
+              data-testid="nav-settings"
+              class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__settings"
+              aria-label="Settings"
+              title="Settings"
+              @click=${(event: MouseEvent) => {
+                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                closeContainingDrawer(event, false, true);
+                props.onOpenSettings();
+              }}
+            >${icons.settings}</a>
           </div>
 
           <label class="sidebar-search ${(botsTab ? botsTab.search.trim() : query) ? "sidebar-search--active" : ""}">
@@ -886,6 +951,21 @@ export function renderSidebar(props: ShellProps) {
                   <span class="nav-item__text">${item.label}</span>
                 </a>${item.id === "contributions" ? kanbanNavItem(props) : nothing}` : nothing;
             })}
+            ${props.extensionPages.map((page) => html`<a
+              href=${navigationPath({ kind: "extension-page", id: page.id })}
+              class="nav-item sidebar-nav__item ${props.activeExtensionPageId === page.id ? "nav-item--active" : ""}"
+              data-testid="nav-extension-page"
+              aria-current=${props.activeExtensionPageId === page.id ? "page" : "false"}
+              @click=${(event: MouseEvent) => {
+                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                closeContainingDrawer(event, false, true);
+                props.onOpenExtensionPage(page.id);
+              }}
+            >
+              <span class="nav-item__icon" aria-hidden="true">${extensionPanelIcon(page.icon)}</span>
+              <span class="nav-item__text">${page.title}</span>
+            </a>`)}
           </nav>`}
 
           <div class=${botsTab ? "sidebar-sessions sidebar-sessions--bots" : "sidebar-sessions"}>
@@ -931,21 +1011,7 @@ export function renderSidebar(props: ShellProps) {
 
           </div>
           <div class="sidebar-footer">
-            <a
-              href="/settings/appearance"
-              data-testid="nav-settings"
-              class="nav-item sidebar-nav__item sidebar-nav__settings"
-              aria-current="false"
-              @click=${(event: MouseEvent) => {
-                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-                event.preventDefault();
-                closeContainingDrawer(event, false, true);
-                props.onOpenSettings();
-              }}
-            >
-              <span class="nav-item__icon" aria-hidden="true">${icons.settings}</span>
-              <span class="nav-item__text">Settings</span>
-            </a>
+            ${renderGatewayPicker(props)}
           </div>
         </div>
     </aside>

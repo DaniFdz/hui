@@ -45,6 +45,7 @@ import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { parseUpdateCommand, skillCommands } from "./lib/composer/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
 import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
+import { createStaffChief } from "./api/staff.ts";
 import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
 import { BacklogController } from "./controllers/backlog-controller.ts";
 import { LaunchController } from "./controllers/launch-controller.ts";
@@ -87,6 +88,7 @@ import { DashboardController, GATEWAY_MACHINE } from "./controllers/dashboard-co
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
+import { GatewaysController } from "./controllers/gateways-controller.ts";
 import { QUESTION_FOCUS_SELECTOR, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import "./components/contributions.ts";
 import "./components/usage.ts";
@@ -118,7 +120,7 @@ import { isPiSurface, renderPiSurface } from "./views/pi-surfaces.ts";
 import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
-import { HUI_PAGES, availablePages, isPageAvailable, type HuiPage } from "./lib/pages.ts";
+import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
 import { activeSessionPane, closeSessionPane, focusSessionPane, isChatPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
@@ -128,8 +130,14 @@ import {
 import { PANE_COLUMN_MIN_WIDTH } from "./lib/session/pane-geometry.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/files/file-link-store.ts";
 import { OPEN_SETTINGS_EVENT, requestOpenSettings, type OpenSettingsDetail } from "./lib/open-settings.ts";
+import { OPEN_EXTENSION_PANEL_EVENT, type OpenExtensionPanelDetail } from "./lib/extensions/open-panel.ts";
+import { EXTENSION_NAVIGATE_EVENT } from "./lib/extensions/bridge.ts";
+import { extensionPageLinks, type ExtensionPageLink } from "./lib/extensions/pages.ts";
+import { loadExtensions } from "./api/extensions.ts";
+import "./components/extension-page.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import "./components/work-pane.ts";
+import "./components/side-chat-view.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
 import { SessionMultiplexer, type PanePresentation } from "./components/session-multiplexer.ts";
@@ -153,7 +161,7 @@ const HUI_UPDATE_SESSION_TITLE = "HUI update";
  * button may keep an older one: capture only the pane/session id and the parent. */
 const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unknown) => !value !== !old };
 
-/** A bot pane's Call button (HUI-18): offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
+/** A bot pane's Call button: offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
 type PaneCall = { botId: string; inCall: boolean };
 const paneCallProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
@@ -172,6 +180,8 @@ const paneBotsProperty = { attribute: false, hasChanged: (value: unknown, old: u
 export class HuiApp extends HuiElement {
   @state() private view: NavId = "home";
   @state() private activePage: HuiPage | undefined;
+  @state() private extensionPages: readonly ExtensionPageLink[] = [];
+  @state() private activeExtensionPageId = "";
   @state() private search = "";
   private readonly sessions = new SessionsController(this, {
     presented: (id) => this.isSessionPresented(id),
@@ -290,6 +300,8 @@ export class HuiApp extends HuiElement {
   private renderedDraftRevision = 0;
   private renderedFilesConnection = "";
   private groupActionReturnFocus: HTMLElement | undefined;
+  /** One group chief creation at a time; the route is idempotent, but two clicks need one request. */
+  private chiefPending = false;
 
   @state() private settingsOpen = false;
   @state() private settingsPage: SettingsPage = "appearance";
@@ -298,6 +310,9 @@ export class HuiApp extends HuiElement {
   @state() private deletingFor = "";
   @state() private updateSessionCreating = false;
   private readonly updates = new UpdateController(this, () => this.composerTextarea?.focus());
+  /** This device's gateway list, shared by Settings → Gateway and the sidebar's footer (SPEC.md "A device keeps a list
+   * of gateways"). */
+  private readonly gateways = new GatewaysController(this);
   /** Which sidebar row menu is open. Only one at a time. */
   @state() private menuFor = "";
   @state() private commandPaletteOpen = false;
@@ -347,7 +362,8 @@ export class HuiApp extends HuiElement {
     activePane: () => this.activePaneApp(),
     focusComposer: () => this.focusActiveComposer(),
     paletteOpen: () => this.commandPaletteOpen,
-    terminalFont: () => this.control.settings.fontTerminal,
+    chatShown: () => this.view === "home",
+    terminalFont: () => this.control.appearance.fontTerminal,
     browserEnabled: () => this.control.settings.browser.enabled,
   });
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
@@ -429,10 +445,6 @@ export class HuiApp extends HuiElement {
   };
 
   private readonly onGlobalKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && this.composer.sideChat) {
-      this.composer.closeSideChat();
-      return;
-    }
     if (this.embeddedPane) return;
     if (event.key === "Escape") {
       this.handleGlobalEscape(event);
@@ -466,11 +478,6 @@ export class HuiApp extends HuiElement {
   private handleGlobalEscape(event: KeyboardEvent) {
     if (event.defaultPrevented || event.isComposing || this.commandPaletteOpen) return;
     if (hasOpenWebAwesomePopup(event) || document.querySelector("dialog[open]")) return;
-    if (this.composer.sideChat) {
-      event.preventDefault();
-      this.composer.closeSideChat();
-      return;
-    }
     if (this.settingsOpen) {
       event.preventDefault();
       this.closeSettings();
@@ -523,6 +530,10 @@ export class HuiApp extends HuiElement {
       this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
       this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
       this.addEventListener("hui-files-connection", this.onFilesConnection);
+      this.addEventListener(OPEN_EXTENSION_PANEL_EVENT, this.onOpenExtensionPanelRequest);
+      this.addEventListener(EXTENSION_NAVIGATE_EVENT, this.onExtensionNavigate);
+      this.addEventListener("hui-extensions-changed", this.onExtensionsChanged);
+      void this.loadExtensionPages();
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -545,6 +556,9 @@ export class HuiApp extends HuiElement {
     this.removeEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
     this.removeEventListener("hui-files-connection", this.onFilesConnection);
+    this.removeEventListener(OPEN_EXTENSION_PANEL_EVENT, this.onOpenExtensionPanelRequest);
+    this.removeEventListener(EXTENSION_NAVIGATE_EVENT, this.onExtensionNavigate);
+    this.removeEventListener("hui-extensions-changed", this.onExtensionsChanged);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
     this.work.stop();
@@ -786,7 +800,8 @@ export class HuiApp extends HuiElement {
     this.renderedCompaction = this.conversation.compaction;
     const transcriptChanged = this.renderedTranscript !== this.conversation.transcript;
     this.renderedTranscript = this.conversation.transcript;
-    if ((transcriptChanged || compactionChanged || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
+    // A pending question is the transcript's last row now, so it follows the live edge with it.
+    if ((transcriptChanged || compactionChanged || questionChanged || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
     if (!this.renamingFor) {
       return;
     }
@@ -867,14 +882,12 @@ export class HuiApp extends HuiElement {
   }
 
   private applyNavigation(target: NavigationTarget) {
-    if (target.kind === "page" && !isPageAvailable(target.page, this.control.settings.labs)) {
-      this.navigate({ kind: "home" }, true);
-      return;
-    }
+    if (target.kind !== "extension-page") this.activeExtensionPageId = "";
     if (target.kind === "settings") {
       this.settingsPage = target.page;
       this.settingsOpen = true;
       this.loadSettingsData();
+      if (target.page === "connection") void this.gateways.checkKnown();
       if (target.page === "appearance") this.control.loadPreviews();
       if (target.page === "diagnostics") this.loadOperationalData();
       if (target.page === "worktrees") this.sessions.openWorktrees();
@@ -916,6 +929,15 @@ export class HuiApp extends HuiElement {
       this.view = "kanban";
       void this.refreshSessions(true);
       void this.backlog.refresh();
+      return;
+    }
+    if (target.kind === "extension-page") {
+      this.conversation.suspend();
+      this.resetSessionEphemeral();
+      this.pendingSessionId = "";
+      this.activePage = undefined;
+      this.activeExtensionPageId = target.id;
+      this.view = "surface";
       return;
     }
     if (target.kind === "page") {
@@ -1036,7 +1058,7 @@ export class HuiApp extends HuiElement {
       open: this.commandPaletteOpen,
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
-      pages: availablePages(this.control.settings.labs),
+      pages: HUI_PAGES,
       groups: this.listedGroups,
       bots: this.bots.list,
       onQuery: (query) => {
@@ -2256,7 +2278,7 @@ export class HuiApp extends HuiElement {
     return html`${importing ? renderBotImportDialog(importing) : nothing}${exporting ? renderBotExportDialog(exporting) : nothing}`;
   }
 
-  /* ── calls with bots (HUI-18) ─────────────────────────────────────────── */
+  /* ── calls with bots ─────────────────────────────────────────── */
 
   /** Captures only the bot's id: a rendered button may keep an older closure, and the bot is read again when used. */
   private paneCallAction(bot: BotView): () => void {
@@ -2376,6 +2398,40 @@ export class HuiApp extends HuiElement {
    * and optionally the section to scroll to. Cancelling the event tells it the app navigated, so its link does not
    * load the page. The section is scrolled to once it renders and kept there while sections above it load. */
   private stopSettingsScroll: (() => void) | undefined;
+  private onExtensionsChanged = () => { void this.loadExtensionPages(); };
+
+  private async loadExtensionPages() {
+    try {
+      const { extensions } = await loadExtensions();
+      // A page that was open when its extension was disabled stays on screen; its component reports the state.
+      this.extensionPages = extensionPageLinks(extensions);
+    } catch {
+      this.extensionPages = [];
+    }
+    this.requestUpdate();
+  }
+
+  private onExtensionNavigate = (event: Event) => {
+    const path = (event as CustomEvent<{ path?: unknown }>).detail?.path;
+    if (typeof path !== "string") return;
+    const resolved = resolveNavigation(path);
+    if (resolved.target.kind !== "session") return;
+    event.preventDefault();
+    this.navigate(resolved.target);
+  };
+
+  private onOpenExtensionPanelRequest = (event: Event) => {
+    const layout = this.work.layout;
+    const sessionId = layout ? activeSessionPane(layout).sessionId : undefined;
+    if (!sessionId) return;
+    event.preventDefault();
+    const detail = (event as CustomEvent<OpenExtensionPanelDetail>).detail;
+    const id = detail?.id;
+    const icon = detail?.icon;
+    this.closeSettings();
+    this.work.showView(sessionId, { kind: "extension", ...(id ? { id } : {}), ...(icon ? { icon } : {}) }, true);
+  };
+
   private onOpenSettingsRequest = (event: Event) => {
     const detail = (event as CustomEvent<Partial<Record<keyof OpenSettingsDetail, unknown>> | undefined>).detail;
     const page = SETTINGS_PAGES.find((entry) => entry.id === detail?.page)?.id;
@@ -2432,6 +2488,10 @@ export class HuiApp extends HuiElement {
   };
 
   private openGroupAction = (action: GroupMenuAction, group?: SessionGroup) => {
+    if (action === "chief" && group) {
+      void this.createChiefForGroup(group);
+      return;
+    }
     const next: typeof this.groupAction = action === "new" ? { action } : group ? { action, group } : undefined;
     if (!next) return;
     this.groupMutationError = "";
@@ -2447,6 +2507,29 @@ export class HuiApp extends HuiElement {
       this.groupCheckoutDirectory = "";
       this.launcher.loadWorkers();
       this.requestGroupCheckout(this.groupDefaultCwd, true);
+    }
+  };
+
+  /** The project group's own chief: one bot, its own memory, working in that project. Asking twice opens the one it
+   * already has. */
+  private createChiefForGroup = async (group: SessionGroup): Promise<void> => {
+    if (this.chiefPending) return;
+    const cwd = group.cwd ?? group.sessions[0]?.cwd;
+    if (!cwd) {
+      this.sessions.notify(`Add a session to “${group.label}” first: its chief needs the project folder.`, true);
+      return;
+    }
+    this.chiefPending = true;
+    try {
+      const bot = await createStaffChief({ group: group.label, cwd });
+      this.bots.selectTab("bots");
+      this.ensureBots();
+      void this.bots.refresh();
+      this.openBot(bot.id);
+    } catch (error) {
+      this.sessions.notify(error instanceof Error ? error.message : "The chief could not be created.", true);
+    } finally {
+      this.chiefPending = false;
     }
   };
 
@@ -2620,6 +2703,9 @@ export class HuiApp extends HuiElement {
       session: this.conversation.selected,
       // File references open in the Work pane, which only multiplexed chat panes have (not a bot's chat).
       fileLinks: this.embeddedPane && this.paneCanAccessFiles(),
+      // A chat without a Work pane (`/btw` in a bot's chat, or a chat rendered without the multiplexer) draws its side
+      // chat in the inline rail; everywhere else it is a Work view (`views/work/side-chat.ts`).
+      sideChatRail: !this.embeddedPane || Boolean(this.paneBot),
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       ...(this.embeddedPane && this.panePanelPicker ? { panelPicker: this.panePanelPicker } : {}),
       controlScope: this.embeddedPane ? this.paneId : undefined,
@@ -2639,7 +2725,11 @@ export class HuiApp extends HuiElement {
       streaming: this.conversation.streaming,
       stopping: this.conversation.stopping,
       continuing: this.continuing,
-      chatPreferences: this.control.settings.chat,
+      chatPreferences: {
+        ...this.control.appearance.chat,
+        toolMarks: this.control.settings.chat.toolMarks,
+        toolIcons: this.control.settings.chat.toolIcons,
+      },
       question: this.conversation.question,
       connection: this.conversation.connection,
       copiedId: this.conversation.copiedId,
@@ -2964,6 +3054,11 @@ export class HuiApp extends HuiElement {
     };
   }
 
+  /** The name this page's gateway reports: its Settings health poll once it ran, else the name read at boot. */
+  private get gatewayName(): string {
+    return this.control.health?.name || this.gateways.currentName;
+  }
+
   private renderWorkspace() {
     if (this.embeddedPane) {
       return html`<div class="hui-embedded-session">${this.conversation.selected ? renderHome(this.homeProps()) : html`<p role="status">Opening session…</p>`}${this.renderJiraCreateDialog()}${this.renderForkDialog()}</div>`;
@@ -2979,8 +3074,16 @@ export class HuiApp extends HuiElement {
             onCopyPath: this.copyPath,
           },
           ...this.control.props(),
+          gateways: this.gateways.views(this.gatewayName),
+          gatewayAdd: this.gateways.addState,
+          onGatewayAddress: (address: string) => this.gateways.setAddress(address),
+          onAddGateway: () => void this.gateways.addGateway(),
+          onSwitchGateway: (url: string) => this.gateways.switchTo(url),
+          onRemoveGateway: (url: string) => this.gateways.remove(url),
+          onRetryGateway: (url: string) => void this.gateways.retry(url),
           onRefreshObservability: () => this.loadOperationalData(true),
           onSelectPage: this.selectSettingsPage,
+          canOpenExtensionPanel: Boolean(this.work.layout),
           onChangeModels: (models) => {
             this.launcher.selectModel(models.primary);
             this.launcher.selectDefaultThinking(models.thinking);
@@ -2999,7 +3102,10 @@ export class HuiApp extends HuiElement {
     const props = {
       view: this.view,
       activePage: this.activePage,
-      pages: availablePages(this.control.settings.labs),
+      pages: HUI_PAGES,
+      extensionPages: this.extensionPages,
+      activeExtensionPageId: this.activeExtensionPageId,
+      onOpenExtensionPage: (id: string) => this.navigate({ kind: "extension-page", id }),
       selectedSessionId: this.view === "bot" ? "" : this.conversation.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.work.layout && sessionPanes(this.work.layout).length > 1 ? sessionPanes(this.work.layout).map(({ sessionId }) => sessionId) : []),
@@ -3080,6 +3186,9 @@ export class HuiApp extends HuiElement {
       onOpenSettings: () => {
         this.openSettings();
       },
+      gateways: this.gateways.views(this.gatewayName),
+      onSwitchGateway: (url: string) => this.gateways.switchTo(url),
+      onOpenGatewaySettings: () => this.openSurfaceSettings("connection"),
       onSearch: this.updateSearch,
     };
 
@@ -3110,6 +3219,8 @@ export class HuiApp extends HuiElement {
           ? this.renderSessionMultiplex()
           : this.view === "bot"
             ? this.renderBotWorkspace()
+          : this.view === "surface" && this.activeExtensionPageId
+            ? html`<hui-extension-page .extensionId=${this.activeExtensionPageId}></hui-extension-page>`
           : this.view === "kanban"
             ? renderKanbanPage({
                 groups: this.listedGroups,

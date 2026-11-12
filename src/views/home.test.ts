@@ -167,7 +167,7 @@ test("the primary chat uses the OpenClaw transcript and composer hierarchy", () 
   assert.match(source, /class="chat-tool-card__block-content"/);
   assert.doesNotMatch(styles, /\.chat-tool-msg-body pre\s*\{/);
   assert.match(source, /class="chat-group \$\{row\.role\} chat-group--with-footer \$\{row\.id === latestAssistantRowId/);
-  assert.match(source, /<div class="agent-chat__composer-shell \$\{props\.question \? "agent-chat__composer-shell--question-composer" : ""\}"/);
+  assert.match(source, /<div class="agent-chat__composer-shell"/);
   assert.match(source, /<form class="agent-chat__input agent-chat__input--chat/);
   assert.match(source, /agent-chat__input--chat agent-chat__input--mobile-toolbar/);
   assert.match(source, /chat-send-control chat-mobile-primary-action chat-desktop-primary-action/);
@@ -347,6 +347,25 @@ test("PI questions use the inline OpenClaw card instead of a modal", () => {
   assert.doesNotMatch(source, /class="question-dialog"/);
   assert.match(styles, /\.chat-question-panel\s*\{[^}]*gap: 12px;[^}]*padding: 14px;/s);
   assert.match(styles, /\.chat-question-panel__option\s*\{[^}]*padding: 10px 11px;/s);
+});
+
+test("a pending question is the transcript's last row, not a dock in the composer", async () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const styles = readStyles("../styles/openclaw-chat.css");
+  const waiting = await renderWorkerSession("waiting", { question: { id: "q", method: "input", title: "Name?" } });
+  const thread = waiting.indexOf('class="chat-thread-inner"');
+  const dock = waiting.indexOf('class="chat-question-dock"');
+  const composer = waiting.indexOf('class="agent-chat__composer-shell"');
+  assert.ok(thread >= 0 && dock > thread && composer > dock, "the card is the transcript's last content, above the composer");
+  assert.match(styles, /\.chat-question-dock\s*\{[^}]*min-width: 0;/s);
+  assert.doesNotMatch(source, /agent-chat__composer-shell--question-composer/u);
+});
+
+test("the pending question card blurs nothing behind it, in the transcript", () => {
+  const styles = readStyles("../styles/openclaw-chat.css").replace(/\/\*[\s\S]*?\*\//gu, "");
+  const rules = styles.match(/(?<=^|[{}])[^{}]*\.chat-question-dock[^{}]*\{[^}]*\}/gu) ?? [];
+  assert.ok(rules.length > 0);
+  assert.ok(rules.some((rule) => /\.chat-question-dock \.chat-question-panel\s*\{[^}]*backdrop-filter: none;/su.test(rule)), "the transcript card cancels the dock's blur");
 });
 
 test("New Session uses the dedicated PI mascot", () => {
@@ -658,6 +677,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
     { kind: "message", id: "s", role: "user", text: "[from agent: Implement retry fix · reply-to agent:s-fix] Please babysit PR #7." },
     { kind: "message", id: "h", role: "user", text: "[Inter-session message from Context lane (s-helper)]\nAlert history attached." },
     { kind: "message", id: "r", role: "user", text: "[routine: Daily standup] Summarize yesterday." },
+    { kind: "message", id: "w", role: "user", text: "[from grace · relayed from Dani's Slack instruction] PR #167221 is mine." },
   ] });
   const row = (id: string) => html.slice(html.indexOf(`data-chat-row-key=${id}`), html.indexOf("data-chat-row-key=", html.indexOf(`data-chat-row-key=${id}`) + 1));
 
@@ -680,6 +700,9 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
   assert.match(child, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u, "a bot subagent's parent is its bot's chat in the Bots tab");
   assert.match(row("r"), /<div class="chat-text chat-text--plain">Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
   assert.match(row("u"), /<span class="chat-sender-name">You<\/span>/u);
+  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-chat-row-key=w /u, "a header a bot wrote before HUI tagged the brief still reads as its message");
+  assert.match(row("w"), /<p>PR #167221 is mine\.<\/p>.*>Grace<\/a>/u);
+  assert.doesNotMatch(row("w"), /\[from grace|>You</u);
 
   const handoff = row("m");
   assert.match(handoff, /<details class="chat-tool-msg-collapse chat-handoff" data-status=succeeded style=--chat-sender-color: #2fc49a/u);
