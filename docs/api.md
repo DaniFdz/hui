@@ -2049,7 +2049,7 @@ Query `id=&n=`.
 
 ### `POST /__hui/heartbeat`
 
-200 `{ continued: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and continues each idle watched session with no running watcher, at most once per idle span. If the watched session's last reply asks for a decision, or it is waiting for an answer or errored, the heartbeat tells the session that watches it instead of prompting the target. It starts no bot turn and writes nothing into a bot's chat. The same scan runs at gateway start and every 15 minutes; this route lets the operator check without waiting. There is no request body.
+200 `{ notified: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and reports each idle, waiting, errored or done watched session to the session that watches it, at most once per state change. It never prompts the watched session itself; the chief reads the last reply and decides whether to send a specific followup or remove the watch. The same scan runs at gateway start and every 15 minutes; this route lets the operator check without waiting. There is no request body. The same scan runs at gateway start and every 15 minutes; this route lets the operator check without waiting. There is no request body.
 
 ### `POST /__hui/staff/chiefs`
 

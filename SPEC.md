@@ -3891,7 +3891,7 @@ seeds it once:
   whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
   BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
   `--fix` installs the untouched updates.
-- **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches. An idle watched session with no running watcher gets one continuation; if its last reply asks for a decision, or it is waiting for an answer or errored, the watcher session is told instead and the target is not prompted. The heartbeat itself never starts new work, and the watch is what makes a session a candidate; no routine lives in the bot's context.
+- **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches. An idle, waiting, errored or done watched session is reported to the watcher session; the target is never prompted. The chief reads the last reply and decides whether to send one specific followup or remove the watch, so the gateway never sends a generic continue. The heartbeat itself never starts new work, and the watch is what makes a session a candidate; no routine lives in the bot's context.
 - **Workers carry the pack, nothing else.** A spawn from a bot's chat records
   `botSkills`, written as the `hui.botSkills` document in the child's creating
   commit; `skillDirsFor` loads that bot's skill folder for the child and its

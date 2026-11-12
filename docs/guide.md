@@ -522,7 +522,7 @@ starts idle: it has a SOUL.md and its skills, and it says nothing until you
 message it. Its home folder holds the pack's skills under `skills/`, and the
 bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
 with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
-`machines`, `status`, `learn`, `lessons`,
+`machines`, `status`, `decision`, `learn`, `lessons`,
 `verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
 `figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
 `principles` reference. No other chat loads them.
@@ -549,10 +549,11 @@ You archive the session then; the chief settles the ledger row and never
 archives it for you. A **lead** is opt-in inside such a session, or when you
 ask for one, not the chief's default.
 
-The session is the **lead** for one PR. HUI adds the PR-lead phase protocol: one phase at a
-time, an `explorer` for investigation, then after your go a `worker` in a worktree, a fresh
-`verifier`, then a `reviewer`; it never creates a second session for a phase. It ends each phase
-with `Waiting for the go...`; read its evidence and send the next phase. Its own model is the
+The session is the **lead** for one PR. HUI adds the PR-lead phase protocol: it runs the phases
+end to end, an `explorer` for investigation, a `worker` in a worktree, a fresh `verifier`, then a
+`reviewer`; it never creates a second session for a phase. It makes technical choices itself and
+stops only for an irreversible action, missing access, an owner-only approval or a material
+preference evidence cannot settle. It reports its final evidence; there is no go between phases. Its own model is the
 orchestrator; set the route models in Settings to change each phase's model. A model-less
 route inherits the lead's model.
 
@@ -563,16 +564,21 @@ route inherits the lead's model.
 | Verification | `verifier` | An independent model |
 | Review | `reviewer` | A different model family from the implementer |
 
+The chief asks you almost never: implementation, scope, test choice, design, retries and model
+routes are decided with a reversible default and recorded. Only an irreversible action, missing
+access, an explicit owner-only approval or a material preference evidence cannot settle uses the
+`decision` skill: one line, a compact table or diagram, a recommendation and one question.
+
 A status answer uses the `status` skill: one table row per session
 (`[title](/sessions/<id>?open=app)`, PR link, status and blockers), then one
 question only if it waits on you. HUI's heartbeat changes use the same shape.
 
 Each session the chief creates is **watched** by default. HUI runs the
-**heartbeat** itself, every 15 minutes, without a turn in the bot's chat: it
-continues a watched session that is idle and has no running watcher, and leaves
-a running one alone. If the watched session is waiting for a decision, an answer
-or is errored, the heartbeat tells the watching bot instead of prompting it.
-Nothing from the heartbeat enters the bot's context.
+**heartbeat** itself, every 15 minutes, without a turn in a bot's chat. It reports
+a watched session that is idle, waiting, errored or done to the chief; it never
+prompts the watched session. The chief reads the last reply and decides: send
+one specific followup with `sessions_send`, or remove the watch if nothing is
+left. A generic continue is never sent.
 
 After a task that failed, drifted, or needed a step the pack did not know, the chief adds one evidence-backed entry to its own **`lessons`** skill. It never edits the pack's skills: an edited pack file stops taking pack updates. The `lessons` skill is the bot's, and `hui doctor` reports it.
 

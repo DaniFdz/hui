@@ -6645,10 +6645,10 @@
     "HeartbeatRun": {
       "type": "object",
       "required": [
-        "continued"
+        "notified"
       ],
       "properties": {
-        "continued": {
+        "notified": {
           "type": "array",
           "items": {
             "type": "string"
