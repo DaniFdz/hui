@@ -30,7 +30,7 @@ import { buildCallRecord, callCompletion, callSettings, createCallDelegate, repo
 import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
 import { readStaffPack } from "./staff/pack.ts";
-import { ensureStaff } from "./staff/service.ts";
+import { ensureStaff, recordChief, type StaffDeps } from "./staff/service.ts";
 import { LEAD_PROMPT } from "./sessions/lead.ts";
 import { botTagPrefix, type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
@@ -252,6 +252,27 @@ export const bots = new BotService({
   },
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
+/** The staff pack on disk, this gateway's bots and their own skills, and Settings' routes: what the installer needs to
+ * seed the Chief of Staff, keep every group chief current, and record a chief the route just created. */
+async function staffDeps(): Promise<StaffDeps> {
+  return {
+    pack: await readStaffPack(),
+    createBot: async (body) => {
+      const view = await bots.create(body);
+      return { id: view.id };
+    },
+    bots: async () => (await botRegistry.list()).map((bot) => ({
+      id: bot.id,
+      name: bot.name,
+      ...(bot.title ? { title: bot.title } : {}),
+      ...(bot.group ? { group: bot.group } : {}),
+      ...(bot.worker ? { worker: bot.worker } : {}),
+    })),
+    skills: localBotSkills(),
+    readSettings: readHuiSettings,
+    writeSettings: writeHuiSettings,
+  };
+}
 export const staffRoutes = createStaffRoutes({
   bots: () => botRegistry.list(),
   getBot: (id) => bots.get(id),
@@ -260,6 +281,7 @@ export const staffRoutes = createStaffRoutes({
   skills: localBotSkills(),
   readSettings: readHuiSettings,
   writeSettings: writeHuiSettings,
+  recordChief: async (botId) => recordChief(await staffDeps(), botId),
 });
 export const botRoutes = createBotRoutes({
   service: bots,
@@ -274,20 +296,11 @@ export const botRoutes = createBotRoutes({
 /** Bots imported from other platforms' templates (`bots/template-import.ts`), and exported as templates reviewed for
  * personal information (`bots/export.ts`), under `/__hui/bots`. */
 const localSkills = localBotSkills();
-/** The staff pack: seeds the Chief of Staff once, then installs the pack's skills and routes into it (staff/,
- * server/staff/service.ts). Deleting the bot opts out; the record keeps HUI from seeding it again. */
+/** The staff pack: seeds the Chief of Staff once, then keeps the pack's skills and routes current in it and in every
+ * group chief (staff/, server/staff/service.ts). Deleting the seeded bot opts out; the record keeps HUI from seeding
+ * it again. */
 export const staff = {
-  ensure: async () => ensureStaff({
-    pack: await readStaffPack(),
-    createBot: async (body) => {
-      const view = await bots.create(body);
-      return { id: view.id };
-    },
-    botIds: async () => (await botRegistry.list()).map((bot) => bot.id),
-    skills: localSkills,
-    readSettings: readHuiSettings,
-    writeSettings: writeHuiSettings,
-  }),
+  ensure: async () => ensureStaff(await staffDeps()),
 };
 // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
 const newBotOffer = (worker?: string) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR);
