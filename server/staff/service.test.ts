@@ -253,6 +253,10 @@ test("a skill the pack no longer ships is reported, never deleted", async () => 
   const heartbeat = h.own.get("bot-1")!.find((skill) => skill.name === "heartbeat")!;
   heartbeat.files = [{ path: "notes.md", text: "Mine.\n" }];
   assert.deepEqual((await staffPlan(h.deps)).bots.find((bot) => bot.botId === "bot-1")?.stale, []);
+
+  // And once the folder is gone there is nothing left to report.
+  h.own.set("bot-1", h.own.get("bot-1")!.filter((skill) => skill.name !== "heartbeat"));
+  assert.deepEqual((await staffPlan(h.deps)).bots.find((bot) => bot.botId === "bot-1")?.stale, []);
 });
 
 test("a pack that adds a file to a skill still updates it", async () => {
