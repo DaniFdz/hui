@@ -167,7 +167,8 @@ export function sendJson(response: ServerResponse, status: number, body: unknown
     response.end(text);
     return;
   }
-  response.setHeader("vary", "accept-encoding");
+  const varied = response.getHeader("vary");
+  response.setHeader("vary", varied ? `${varied}, accept-encoding` : "accept-encoding");
   compressing.add(response);
   const raw = Buffer.from(text);
   void compressBody(raw, encoding, "fast").then((compressed) => {

@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { addWorkerOnThisMachine } from "./worker.ts";
+import { startGatewayStub, type GatewayStub } from "./gateway-stub.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
@@ -96,6 +97,8 @@ export type Hui = {
   download(target: Locator): Promise<{ name: string; text: string }>;
   /** A worker on this machine: its own home, this checkout pre-installed as its release. */
   addWorker(name: string): Promise<{ id: string; home: string }>;
+  /** A second, disposable gateway that answers the identity handshake with \`name\` and nothing else. */
+  gatewayStub(name: string): Promise<GatewayStub>;
   /** Records, from now on, the text the page copies to the clipboard. */
   clipboardSpy(): Promise<void>;
   clipboardWrites(): Promise<string[]>;
@@ -142,7 +145,7 @@ export type Hui = {
 };
 
 /** The steps whose gesture or reading differs per platform; each target fills its own table of them. */
-type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository">;
+type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "gatewayStub">;
 
 /** A tap at the middle of where a target is at the moment of the press. */
 const tapAt = async (target: Locator) => {
@@ -324,6 +327,7 @@ export const test = base.extend<{ hui: Hui }>({
     const workerIds = async () => (await api<{ workers: { id: string }[] }>("GET", "/__hui/workers")).workers.map((worker) => worker.id);
     const existingWorkers = new Set(await workerIds());
     const workerHomes: string[] = [];
+    const gatewayStubs: GatewayStub[] = [];
     const settings = await api<unknown>("GET", "/__hui/settings");
     const directories: string[] = [];
 
@@ -770,6 +774,11 @@ export const test = base.extend<{ hui: Hui }>({
         held: () => control("GET", "/control/wait-replay-ready"),
         release: () => control("POST", "/control/release-replay"),
       },
+      gatewayStub: async (name) => {
+        const stub = await startGatewayStub(name);
+        gatewayStubs.push(stub);
+        return stub;
+      },
       restartGateway: async () => {
         const stopped = receipt.serverPid;
         process.kill(receipt.runnerPid, "SIGUSR2");
@@ -816,6 +825,7 @@ export const test = base.extend<{ hui: Hui }>({
     for (const id of await workerIds()) {
       if (!existingWorkers.has(id)) await api("DELETE", `/__hui/workers/${id}`);
     }
+    for (const stub of gatewayStubs) await stub.stop();
     // A worker host is a daemon by design; stop the ones this test started.
     for (const home of workerHomes) {
       try { execFileSync("pkill", ["-f", home]); } catch { /* already gone */ }

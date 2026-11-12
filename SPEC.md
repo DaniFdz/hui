@@ -781,6 +781,31 @@ only: it changes no PI configuration, credential, session or transcript, and
 About shows it beside the runtime facts it already lists. Choosing among saved
 gateways is not part of this change.
 
+### A device keeps a list of gateways (2026-11-11)
+
+A client remembers the gateways it has used. The browser keeps a list under one
+`localStorage` key: an address and the name the gateway gave for itself when it
+was added, plus when this device last reached it. The gateway that served the
+page is the current one: it is named by its own `GET /__hui/health`, and it is
+never stored, renamed or removed, because the list is about the others. Adding a
+gateway asks that address for `GET /__hui/update` with `x-hui: 1` — the one route
+a gateway answers cross-origin, carrying a version, a job id and its own name,
+never user data. An address that answers that handshake is stored with the name
+in the answer; one that refuses, hangs or answers with something else shows HUI's
+own wording and is not stored. An address with no scheme means `http`, a query,
+fragment or credentials are refused rather than dropped, and duplicate addresses
+collapse into one row. Corrupt or absent storage reads as an empty list.
+
+Switching navigates: the page opens the chosen gateway's own address, so
+everything on screen afterwards belongs to that gateway, with that gateway's
+sessions, settings and name. A saved gateway this page cannot reach reads as
+offline, with Retry, and it is kept rather than dropped: a gateway that is down
+today may be the one this device wants tomorrow. The list is presentation only —
+a per-device shortcut — and changes no PI configuration, credential, session or
+transcript. The sidebar footer shows the current gateway's name and opens the
+list, with Add a gateway… leading to Settings → Gateway, where the addresses are
+managed.
+
 ## Ownership
 
 Two stores, with one writer each:

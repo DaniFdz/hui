@@ -790,6 +790,26 @@ const cases: UseCase[] = [
     journeys: ["gateway-settings"],
     web: "required",
   },
+  {
+    id: "SET-093",
+    title: "Add a gateway by its address",
+    behaviour:
+      "Settings → Gateway lists **Gateways** above the gateway's own name: the gateway serving this page first, marked *Current*, then each gateway this device added with its name, its address and when it was last reached, or *Offline* with **Retry** when this page cannot reach it. Below them, **Add a gateway** takes an address and **Add** probes it; a gateway that answers the handshake is added under the name it gives, and an address that is not one shows *This address doesn't answer as a HUI gateway.*, an address with no scheme means http, and nothing is added. **Remove** forgets a saved gateway, never the current one.",
+    spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "docs/api.md#adding-a-gateway", "SPEC.md#installed-gateway"],
+    surfaces: ["settings-page:connection", "route:GET /__hui/update", "route:GET /__hui/health"],
+    journeys: ["gateway-settings"],
+    web: "required",
+  },
+  {
+    id: "SET-094",
+    title: "Switch this page to another gateway",
+    behaviour:
+      "**Switch** on a saved gateway, or choosing it in the sidebar footer's list, opens that address: this page becomes that gateway's own UI, and its footer names the gateway serving it as *Current*. The list belongs to the address it was saved from, so each gateway opened this way keeps its own.",
+    spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "SPEC.md#installed-gateway"],
+    surfaces: ["settings-page:connection", "route:GET /__hui/update"],
+    journeys: ["gateway-settings"],
+    web: "required",
+  },
 ];
 
 export default cases;

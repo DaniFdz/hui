@@ -19,8 +19,14 @@ const health: SettingsProps["health"] = {
 };
 const settings = { power: { keepAwake: true }, name: "" } as SettingsProps["settings"];
 const named = (name: string) => ({ ...settings, name });
+const gateways: NonNullable<SettingsProps["gateways"]> = [
+  { url: "http://127.0.0.1:8787", name: "build-box", state: "current" },
+  { url: "http://loft.local:8787", name: "Loft", state: "known", lastSeen: Date.now() - 3 * 60_000 },
+  { url: "http://attic.local:8787", name: "Attic", state: "offline", lastSeen: Date.now() - 86_400_000 },
+];
+const idleAdd: NonNullable<SettingsProps["gatewayAdd"]> = { address: "", busy: false, error: "" };
 const render = (overrides: Partial<SettingsProps>) => text(renderConnectionPage({
-  healthError: "", settings, ...overrides,
+  healthError: "", settings, gateways, gatewayAdd: idleAdd, ...overrides,
 } as SettingsProps));
 
 test("gateway health renders independently of PI configuration", () => {
@@ -59,15 +65,34 @@ test("the Gateway page names the gateway, and shows the hostname it falls back t
   assert.match(unnamed, /Gateway name/);
   assert.match(unnamed, /Leave it empty to use this machine's hostname, build-box\./);
 
-  const saved = render({ health, settings: named("Studio Mac") });
+  const saved = render({ health, settings: named("Studio Mac"), gateways: [{ url: "http://127.0.0.1:8787", name: "Studio Mac", state: "current" }] });
   assert.match(saved, /Shown to every client that connects, and on About\./);
   assert.match(saved, /Studio Mac/);
   assert.doesNotMatch(saved, /build-box/);
 
   // Health has not answered yet: the section is still there, without a fallback to show.
-  const loading = render({});
+  const loading = render({ gateways: [] });
   assert.match(loading, /Gateway name/);
   assert.doesNotMatch(loading, /build-box/);
+});
+
+test("the Gateways list marks the current gateway and shows when the others were last seen", () => {
+  const result = render({ health });
+  // The gateway serving this page leads, and is never offered a Switch or a Remove.
+  assert.match(result, /data-state=current[\s\S]{0,900}?>\s*Current\s*</u);
+  assert.match(result, /data-state=known[\s\S]{0,900}?>\s*last seen 3 min ago\s*</u);
+  assert.match(result, /data-state=offline[\s\S]{0,900}?>\s*Offline\s*</u);
+  assert.match(result, /aria-label=Switch to Loft/u);
+  assert.match(result, /aria-label=Retry Attic/u);
+  assert.match(result, /aria-label=Remove Attic/u);
+  assert.doesNotMatch(result, /aria-label=Remove build-box|aria-label=Switch to build-box/u);
+  // The add field sits under the list, with the refusal HUI words itself.
+  assert.match(result, /Gateway address/);
+  assert.match(result, /HUI asks it to identify itself before adding it\./u);
+  const refused = render({ gatewayAdd: { address: "http://nope.local:8787", busy: false, error: "This address doesn't answer as a HUI gateway." } });
+  assert.match(refused, /role="alert"[^>]*>This address doesn't answer as a HUI gateway\./u);
+  assert.match(refused, /This address doesn't answer as a HUI gateway\./u);
+  assert.match(refused, /value=http:\/\/nope\.local:8787/u, "a refusal leaves the address in the field");
 });
 
 test("macOS power shows each choice beside what the gateway holds", () => {

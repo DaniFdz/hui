@@ -12527,11 +12527,15 @@
     "UpdateSnapshot": {
       "type": "object",
       "required": [
+        "name",
         "currentVersion",
         "check",
         "job"
       ],
       "properties": {
+        "name": {
+          "type": "string"
+        },
         "currentVersion": {
           "anyOf": [
             {

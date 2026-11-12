@@ -26,8 +26,10 @@ test("naming the gateway in Settings reaches About and survives a reload", { tag
   await expect(field).toHaveValue("Studio Mac");
   await hui.open("/about");
   await expect(screen.getByTestId("page-title")).toHaveText("About");
-  await expect(screen.getByText("Name", { exact: true, visible: true })).toBeVisible();
-  await expect(screen.getByText("Studio Mac", { exact: true })).toBeVisible();
+  // Scoped to About's Runtime rows: the sidebar footer names the gateway too.
+  const runtime = screen.getByTestId("about-runtime");
+  await expect(runtime.getByText("Name", { exact: true, visible: true })).toBeVisible();
+  await expect(runtime.getByText("Studio Mac", { exact: true })).toBeVisible();
 
   await hui.open("/settings/connection");
   await field.fill("");
@@ -36,6 +38,6 @@ test("naming the gateway in Settings reaches About and survives a reload", { tag
   await expect(page.getByText(`Leave it empty to use this machine's hostname, ${machine}.`, { exact: true })).toBeVisible();
   await expect.poll(reportedName).toBe(machine);
   await hui.open("/about");
-  await expect(screen.getByText(machine, { exact: true })).toBeVisible();
-  await expect(screen.getByText("Studio Mac", { exact: true })).toBeHidden();
+  await expect(runtime.getByText(machine, { exact: true })).toBeVisible();
+  await expect(runtime.getByText("Studio Mac", { exact: true })).toBeHidden();
 });

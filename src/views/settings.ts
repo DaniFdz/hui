@@ -16,6 +16,7 @@ import type { ThemePreview } from "../lib/theme/theme-store.ts";
 import type { ThemeSwatches } from "../lib/theme/shadcn-theme.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import type { GatewayHealth, WorkspaceInspection } from "../api/control-surfaces.ts";
+import { lastSeenLabel, type GatewayAddState, type GatewayView } from "../lib/gateways/gateway-list.ts";
 import { formatGatewayUptime } from "../lib/gateway-presentation.ts";
 import type { ObservabilitySnapshot } from "../api/observability.ts";
 import { icons } from "../lib/icons.ts";
@@ -67,6 +68,15 @@ export type SettingsProps = AutomationProps & {
   observabilityError: string;
   /** A Work pane exists to show an extension panel in. */
   canOpenExtensionPanel: boolean;
+  /** This device's gateways: the one serving this page first, then the saved ones. */
+  gateways: readonly GatewayView[];
+  /** The add field's address, its running probe and the refusal to show. */
+  gatewayAdd: GatewayAddState;
+  onGatewayAddress: (address: string) => void;
+  onAddGateway: () => void;
+  onSwitchGateway: (url: string) => void;
+  onRemoveGateway: (url: string) => void;
+  onRetryGateway: (url: string) => void;
   onRefreshObservability: () => void;
   onExportDiagnostics: () => void;
   onRetryPi: () => void;
@@ -816,6 +826,56 @@ function renderPowerSection(props: SettingsProps, status: PowerStatus) {
   `);
 }
 
+/** The gateways this device keeps: the one serving this page, the ones added here, and the add field with the probe's
+ * refusals. Switching opens that gateway in this page; the current one is never offered a Remove. */
+function renderGatewaysSection(props: SettingsProps) {
+  const now = Date.now();
+  return renderSection(
+    "Gateways",
+    "This page's gateway, and the others this device knows. Switching opens that gateway here.",
+    html`
+      <div class="settings-gateway-list" role="list">
+        ${props.gateways.map((gateway) => html`<div class="settings-row settings-gateway" role="listitem"
+          data-state=${gateway.state} data-url=${gateway.url} title=${gateway.url}>
+          <div class="settings-row__text">
+            <span class="settings-row__title settings-gateway__name">${gateway.name}</span>
+            <span class="settings-row__desc settings-gateway__address">${gateway.url}</span>
+          </div>
+          <div class="settings-row__control">
+            <span class="settings-status settings-gateway__state settings-gateway__state--${gateway.state}" role="status">
+              <span class="settings-status__dot" aria-hidden="true"></span>
+              ${gateway.state === "current" ? "Current" : gateway.state === "offline" ? "Offline" : `last seen ${lastSeenLabel(gateway.lastSeen ?? now, now)}`}
+            </span>
+            ${gateway.state === "current" ? nothing : html`<button type="button" class="btn" aria-label=${`Switch to ${gateway.name}`}
+              @click=${() => props.onSwitchGateway(gateway.url)}>Switch</button>`}
+            ${gateway.state === "offline" ? html`<button type="button" class="btn" aria-label=${`Retry ${gateway.name}`}
+              @click=${() => props.onRetryGateway(gateway.url)}>Retry</button>` : nothing}
+            ${gateway.state === "current" ? nothing : html`<button type="button" class="btn danger" aria-label=${`Remove ${gateway.name}`}
+              @click=${() => props.onRemoveGateway(gateway.url)}>Remove</button>`}
+          </div>
+        </div>`)}
+      </div>
+      <form class="settings-row settings-gateway-add" @submit=${(event: SubmitEvent) => {
+        event.preventDefault();
+        props.onAddGateway();
+      }}>
+        <div class="settings-row__text">
+          <label class="settings-row__title" for="gateway-address">Add a gateway</label>
+          <span class="settings-row__desc">Its address, such as <code>http://192.168.1.4:8787</code>. HUI asks it to identify itself before adding it.</span>
+          ${props.gatewayAdd.error ? html`<span class="settings-gateway__error" role="alert">${props.gatewayAdd.error}</span>` : nothing}
+        </div>
+        <div class="settings-row__control">
+          <input id="gateway-address" class="settings-input" name="gatewayAddress" maxlength="300" spellcheck="false"
+            autocomplete="off" aria-label="Gateway address" placeholder="http://192.168.1.4:8787"
+            .value=${props.gatewayAdd.address}
+            @input=${(event: Event) => props.onGatewayAddress((event.target as HTMLInputElement).value)} />
+          <button type="submit" class="btn" ?disabled=${props.gatewayAdd.busy}>${props.gatewayAdd.busy ? "Checking…" : "Add"}</button>
+        </div>
+      </form>
+    `,
+  );
+}
+
 /** The gateway's own name: saved here, reported on `/__hui/health`, and shown on About. Empty means the
  * machine's hostname, which health already reports as the effective name, so it is the field's placeholder. */
 function renderGatewayNameSection(props: SettingsProps) {
@@ -852,6 +912,7 @@ export function renderConnectionPage(props: SettingsProps) {
   const label = failed ? "Disconnected" : health ? "Connected" : "Connecting…";
   return html`
     <p class="settings-page__intro">${SETTINGS_COPY.intros.connection}</p>
+    ${renderGatewaysSection(props)}
     ${renderGatewayNameSection(props)}
     ${renderSection(
       "Access",

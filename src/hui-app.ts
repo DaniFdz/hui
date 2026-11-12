@@ -88,6 +88,7 @@ import { DashboardController, GATEWAY_MACHINE } from "./controllers/dashboard-co
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
+import { GatewaysController } from "./controllers/gateways-controller.ts";
 import { QUESTION_FOCUS_SELECTOR, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import "./components/contributions.ts";
 import "./components/usage.ts";
@@ -309,6 +310,9 @@ export class HuiApp extends HuiElement {
   @state() private deletingFor = "";
   @state() private updateSessionCreating = false;
   private readonly updates = new UpdateController(this, () => this.composerTextarea?.focus());
+  /** This device's gateway list, shared by Settings → Gateway and the sidebar's footer (SPEC.md "A device keeps a list
+   * of gateways"). */
+  private readonly gateways = new GatewaysController(this);
   /** Which sidebar row menu is open. Only one at a time. */
   @state() private menuFor = "";
   @state() private commandPaletteOpen = false;
@@ -883,6 +887,7 @@ export class HuiApp extends HuiElement {
       this.settingsPage = target.page;
       this.settingsOpen = true;
       this.loadSettingsData();
+      if (target.page === "connection") void this.gateways.checkKnown();
       if (target.page === "appearance") this.control.loadPreviews();
       if (target.page === "diagnostics") this.loadOperationalData();
       if (target.page === "worktrees") this.sessions.openWorktrees();
@@ -3045,6 +3050,11 @@ export class HuiApp extends HuiElement {
     };
   }
 
+  /** The name this page's gateway reports: its Settings health poll once it ran, else the name read at boot. */
+  private get gatewayName(): string {
+    return this.control.health?.name || this.gateways.currentName;
+  }
+
   private renderWorkspace() {
     if (this.embeddedPane) {
       return html`<div class="hui-embedded-session">${this.conversation.selected ? renderHome(this.homeProps()) : html`<p role="status">Opening session…</p>`}${this.renderJiraCreateDialog()}${this.renderForkDialog()}</div>`;
@@ -3060,6 +3070,13 @@ export class HuiApp extends HuiElement {
             onCopyPath: this.copyPath,
           },
           ...this.control.props(),
+          gateways: this.gateways.views(this.gatewayName),
+          gatewayAdd: this.gateways.addState,
+          onGatewayAddress: (address: string) => this.gateways.setAddress(address),
+          onAddGateway: () => void this.gateways.addGateway(),
+          onSwitchGateway: (url: string) => this.gateways.switchTo(url),
+          onRemoveGateway: (url: string) => this.gateways.remove(url),
+          onRetryGateway: (url: string) => void this.gateways.retry(url),
           onRefreshObservability: () => this.loadOperationalData(true),
           onSelectPage: this.selectSettingsPage,
           canOpenExtensionPanel: Boolean(this.work.layout),
@@ -3165,6 +3182,9 @@ export class HuiApp extends HuiElement {
       onOpenSettings: () => {
         this.openSettings();
       },
+      gateways: this.gateways.views(this.gatewayName),
+      onSwitchGateway: (url: string) => this.gateways.switchTo(url),
+      onOpenGatewaySettings: () => this.openSurfaceSettings("connection"),
       onSearch: this.updateSearch,
     };
 
