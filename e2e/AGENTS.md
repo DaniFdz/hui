@@ -57,9 +57,9 @@ layout, the drawer, the touch targets, the fonts — in every pull request, so a
 caught before a phone sees it. It is not the app: there is no WebView, no Capacitor bridge, no plugin, no status bar, no
 back button of its own, no soft keyboard and no notification, so a shell behaviour stays on `android`. Its platform is
 `web` too, so the fixture tells it from `web` by its gateway's fixed port (`E2E_WEBKIT_PHONE_PORT`, 47500 by default). A
-phone has no wide screen and no hover, so `hui.wideScreen()`, `hui.peek()`, `hui.messageActions()` and
-`hui.openWorkView()` refuse there instead of proving the desktop's behaviour on a phone: a test that needs one stays on
-`web`, or gets a phone step and a catalogue entry that says what the phone shows. The target runs the whole suite
+phone has no wide screen and no hover, so `hui.wideScreen()` and `hui.peek()` refuse there instead of proving desktop
+behavior on a phone. Shared message actions scroll to the message whose actions the touch layout draws outright, and
+`hui.openWorkView()` opens the narrow panel chooser or the wide pane's menu, whichever the real UI offers. The target runs the whole suite
 unfiltered, and its failures are the phone backlog: a use case is phone-required only once it passes on both `android`
 and `webkit-phone`.
 

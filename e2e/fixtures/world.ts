@@ -14,9 +14,9 @@
  * a production launch builds the app first, which costs more per world than the tests around it, and none of these
  * worlds' use cases read the shipped service worker or offline files.
  *
- * A world is the web target's business only. The Android app loads the gateway it was launched with (`phone.ts` passes
- * it as the `huiGatewayUrl` extra and the WebView has one page and one context), so `hui.world()` refuses there and a
- * test that needs a world stays off the phone's required list until the target starts it too.
+ * On Android, `hui.open(world.url)` reverse-forwards the world's port and sends the debug activity its gateway extra.
+ * The activity rebuilds its real bridge on that origin; the CDP adapter reuses the app's replacement page in the same
+ * persistent context. A world therefore runs the same isolated gateway journey in the app, not a browser stand-in.
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";

@@ -40,8 +40,9 @@ test("Delete… asks first and names what leaves HUI and what stays, Cancel keep
   const shelved = await makeBot(hui, "Unwanted");
   await expect(screen.getByLabel(/^Unwanted,/u)).toBeVisible();
   const row = screen.getByLabel(/^Unwanted,/u);
-  await hui.peek(row);
-  await screen.getByRole("button", "Actions for Unwanted").tap();
+  const actions = screen.getByRole("button", "Actions for Unwanted");
+  await actions.focus();
+  await actions.tap();
   await screen.getByText("Delete…", { exact: true, visible: true }).tap();
   await screen.getByRole("dialog", { name: "Delete Unwanted?" }).getByRole("button", "Delete").tap();
   await expect(screen.getByText("Deleted Unwanted.")).toBeVisible();

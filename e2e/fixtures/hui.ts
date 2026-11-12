@@ -28,7 +28,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Browser, FrameScreen, WebRoute } from "@e2e-dev/web";
@@ -36,9 +36,10 @@ import { addWorkerOnThisMachine } from "./worker.ts";
 import { startGatewayStub, type GatewayStub } from "./gateway-stub.ts";
 import { advanceClock, installClock } from "./clock.ts";
 import { allowMedia } from "./web-browser.ts";
-import { clearAppStorage, deviceBytes, deviceFiles, onPhone, PHONE_DOWNLOADS } from "./phone.ts";
-import { IPHONE_SCREEN, onWebKitPhone, webkitServiceWorkers } from "./phone-webkit.ts";
+import { clearAppStorage, deviceBytes, deviceFiles, onPhone, openPhoneGateway, PHONE_DOWNLOADS } from "./phone.ts";
+import { onWebKitPhone, webkitServiceWorkers } from "./phone-webkit.ts";
 import { startWorld, type World, type WorldName } from "./world.ts";
+import { storedContent } from "./stored-content.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
@@ -170,8 +171,8 @@ export type Hui = {
    * Starts a fixture world for this test: its own disposable gateway, seeded by the launcher's `--jira-fixture`,
    * `--github-fixture`, `--activity-fixture`, `--datadog-fixture` or `--quota-fixture` (`world.ts`), or by none of them
    * with `plain`, which is a gateway of this test's own. The world is another gateway on another port, so a test
-   * opens its pages with `hui.open(`${world.url}/...`)` and calls it with `world.api`. The Android app loads the gateway
-   * it was launched with and cannot follow a test to another origin, so this refuses there.
+   * opens its pages with `hui.open(`${world.url}/...`)` and calls it with `world.api`. On Android, opening that origin
+   * rebuilds the real native bridge on it, with its port reverse-forwarded to this isolated host.
    */
   world(name: WorldName): Promise<World>;
   textOf(target: Locator): Promise<string>;
@@ -306,6 +307,25 @@ const statusRecorder = () => {
       }
     }
   }).observe(document, { childList: true, subtree: true });
+  return null;
+};
+
+/** Mobile WebKit cannot emit a protocol mouse wheel. Canvas controls consume the same wheel path their touch adapter
+ * uses; otherwise scroll the browser-owned container, producing its real scroll events without changing its layout. */
+const scrollPhone = ({ x, y, dx, dy }: { x: number; y: number; dx: number; dy: number }) => {
+  let target = document.elementFromPoint(x, y);
+  if (!target) throw new Error(`scroll: nothing is at ${x}, ${y}`);
+  for (let inner = target.shadowRoot?.elementFromPoint(x, y); inner && inner !== target; inner = target.shadowRoot?.elementFromPoint(x, y)) target = inner;
+  const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, deltaX: dx, deltaY: dy });
+  if (!target.dispatchEvent(wheel)) return null;
+  for (let node: Element | null = target; node; node = node.parentElement ?? (node.getRootNode() as ShadowRoot).host ?? null) {
+    const style = getComputedStyle(node);
+    const scrolls = dx !== 0
+      ? node.scrollWidth > node.clientWidth && /auto|scroll|overlay/u.test(style.overflowX)
+      : node.scrollHeight > node.clientHeight && /auto|scroll|overlay/u.test(style.overflowY);
+    if (scrolls) { node.scrollBy({ left: dx, top: dy, behavior: "instant" }); return null; }
+  }
+  window.scrollBy({ left: dx, top: dy, behavior: "instant" });
   return null;
 };
 
@@ -626,17 +646,19 @@ function huiTest(offline: boolean) {
       },
       sessionList: async () => {
         const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
-        if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
-          await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
+        // A closing backdrop remains visible during its fade. The trigger's label changes with the drawer state,
+        // so it, not that fading backdrop, decides whether the next destination needs the drawer opened again.
+        const open = fixtures.screen.getByRole("button", "Open navigation", { visible: true });
+        if (phone && await open.count() > 0) {
+          await open.first().tap();
           // A row is tappable only once a drawer has taken the screen. A split renders one per pane, so wait for
           // any of them instead of making a two-match locator an error.
           await expect.poll(() => fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count()).toBeGreaterThan(0);
         }
       },
       settingsPages: async () => {
-        const close = fixtures.screen.getByRole("button", "Close settings navigation", { visible: true });
         const open = fixtures.screen.getByRole("button", "Open settings navigation", { visible: true });
-        if (await close.count() === 0 && await open.count() > 0) await open.tap();
+        if (await open.count() > 0) await open.first().tap();
       },
       sessionMenu: async (title) => {
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
@@ -842,12 +864,26 @@ function huiTest(offline: boolean) {
         await browser().evaluate(fingerDrag, { dx, dy });
       },
       contextMenu: (target) => target.secondaryTap(),
-      messageActions: (target) => target.hover(),
+      messageActions: async (target) => {
+        if (onPhone(fixtures.app.baseUrl) || onWebKitPhone(fixtures.app.baseUrl)) {
+          // Touch layouts draw the actions outright. Bring the message into view rather than pretending to hover it.
+          await target.scrollIntoView();
+          await expect(target).toBeVisible();
+        } else await target.hover();
+      },
       openWorkView: async (name) => {
-        await browser().setViewport({ width: 1440, height: 900 });
-        await fixtures.screen.getByRole("button", "Show Work pane").tap();
-        await fixtures.screen.getByRole("button", "Open Work view").tap();
-        await fixtures.screen.getByRole("menuitem").filter({ hasText: name }).tap();
+        const show = fixtures.screen.getByRole("button", "Show Work pane");
+        const plus = fixtures.screen.getByRole("button", "Open Work view");
+        const panel = fixtures.screen.getByRole("button", { name: /^Active panel/u });
+        await expect.poll(async () => (await show.isVisible()) || (await plus.isVisible()) || (await panel.isVisible())).toBe(true);
+        if (await show.isVisible()) await show.tap();
+        if (await plus.isVisible()) {
+          await plus.tap();
+          await fixtures.screen.getByRole("menuitem").filter({ hasText: name }).tap();
+        } else {
+          await panel.tap();
+          await fixtures.screen.getByRole("listbox", "Active panel").getByText(name, { exact: true }).first().tap();
+        }
       },
       deleteEntry: async (within, name) => {
         await within.getByRole("button", `Delete ${name}`).tap();
@@ -871,25 +907,24 @@ function huiTest(offline: boolean) {
       scrollSideways: async (target) => {
         const box = await target.boundingBox();
         if (!box) throw new Error("scrollSideways: the target is not on screen");
-        await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
-        await browser().mouse.wheel(240, 0);
+        const point = { x: box.x + Math.min(24, box.width / 2), y: box.y + box.height / 2 };
+        if (onWebKitPhone(fixtures.app.baseUrl)) await browser().evaluate(scrollPhone, { ...point, dx: 240, dy: 0 });
+        else {
+          await browser().mouse.move(point.x, point.y);
+          await browser().mouse.wheel(240, 0);
+        }
       },
       wheel: async (target, deltaY) => {
         const box = await target.boundingBox();
         if (!box) throw new Error("wheel: the target is not on screen");
-        await browser().mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-        await browser().mouse.wheel(0, deltaY);
+        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        if (onWebKitPhone(fixtures.app.baseUrl)) await browser().evaluate(scrollPhone, { ...point, dx: 0, dy: deltaY });
+        else {
+          await browser().mouse.move(point.x, point.y);
+          await browser().mouse.wheel(0, deltaY);
+        }
       },
-      stored: async (text) => {
-        const root = dirname(receipt.workspace);
-        const files = (await readdir(root, { recursive: true, withFileTypes: true }))
-          .filter((entry) => entry.isFile())
-          .map((entry) => relative(root, join(entry.parentPath, entry.name)))
-          .filter((file) => !file.startsWith("vite-cache/"));
-        const read = (file: string) => readFile(join(root, file), "latin1").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error));
-        const holding = await Promise.all(files.map(async (file) => ((await read(file)).includes(text) ? [file] : [])));
-        return holding.flat();
-      },
+      stored: (text) => storedContent(dirname(receipt.workspace), text),
       secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
       spoofUserAgent: (userAgent) => browser().addInitScript((agent: string) => {
         Object.defineProperty(navigator, "userAgent", { configurable: true, get: () => agent });
@@ -984,15 +1019,13 @@ function huiTest(offline: boolean) {
     // unprovable. WP7's area owners take the failures to a phone step or a catalogue exclusion. `sessionMenu` stays the
     // web's: its hover only reveals the row's button there, and the phone draws that button at phone widths anyway.
     const desktopOnly = (step: string) => (): never => {
-      throw new Error(`hui.${step}() needs a desktop: the webkit-phone target is a phone at ${IPHONE_SCREEN.width}x${IPHONE_SCREEN.height} with touch and no hover, so this step would prove the desktop's behaviour on a phone instead of failing where the phone cannot show it`);
+      throw new Error(`hui.${step}() needs a desktop: phone targets keep their narrow touch layout and cannot prove a desktop-only gesture`);
     };
     const steps: PlatformSteps = onWebKitPhone(fixtures.app.baseUrl)
       ? {
           ...web,
           wideScreen: desktopOnly("wideScreen"),
           peek: desktopOnly("peek"),
-          messageActions: desktopOnly("messageActions"),
-          openWorkView: desktopOnly("openWorkView"),
           // The fake camera and microphone are the web target's Chromium, which this target does not launch: its WebKit
           // has no device at all, so granting a permission would only prove a refusal. A use case that needs the
           // microphone open stays off this target's required list.
@@ -1003,12 +1036,13 @@ function huiTest(offline: boolean) {
       : onPhone(fixtures.app.baseUrl)
         ? {
             ...web,
-            // The phone target rides the app's own WebView over CDP: the browser-only harness steps below reach for a
-            // request interception or a live context the WebView refuses, and they failed with "Cannot read properties of
-            // undefined (reading 'triggerEvent')" before anyone could read the reason. They refuse here instead, so a test
-            // that needs one fails where the phone cannot do it. An attempt-scoped page script (`addInitScript`) is not
-            // one of those: it lands in the WebView's page like a browser's, so `clipboard` and `recordStatuses` are the
-            // web's steps unchanged.
+            open: async (path) => {
+              const destination = new URL(path, receipt.url);
+              await openPhoneGateway(destination.origin);
+              await fixtures.app.open(destination.href);
+            },
+            // CDP routes and attempt-scoped page scripts work in the app's persistent context just as in Chromium.
+            // Only context replacement, native downloads and genuinely unavailable desktop gestures need overrides.
             clearOffline: async () => {
               // The web's own reason holds here too: a worker an earlier test left can answer this navigation (and its app
               // chunk) before an init script runs, so it is dropped in the page that is open as well.
@@ -1021,43 +1055,8 @@ function huiTest(offline: boolean) {
               await browser().evaluate(clear);
               await browser().addInitScript(clear);
             },
-            holdAppChunks: async () => ({
-              // Holding the app's chunk needs request interception, which the WebView's single context cannot take. A phone
-              // therefore never sees the held boot screen; the three methods return at once so a test that holds chunks
-              // only to keep the page still keeps running, and a use case that asserts the held state stays off the
-              // phone's required list (SHELL-020 to SHELL-022 are excluded or backlog for exactly that reason).
-              arrived: async () => {},
-              deliver: async () => {},
-              reject: async () => {},
-            }),
-            spoofUserAgent: async () => {
-              // The app's WebView already sends the phone's own user agent, so there is nothing to spoof and no init script
-              // to install; the web version exists to make a desktop browser answer as a phone.
-            },
-            answerAll: async () => ({
-              // A stubbed route needs Playwright's interception, which the WebView's single context cannot take: the phone
-              // makes the real request and the gateway answers it. A use case that asserts the stubbed answer therefore
-              // fails on the phone rather than passing falsely, and stays off its required list.
-              stop: async () => {},
-            }),
-            wideScreen: async () => {
-              // A phone cannot become a wide screen, and the shared setup calls this to reset a viewport between tests, so
-              // refusing it would fail every file. It returns at once: a test that then relies on the wide layout fails
-              // its own assertion, and its use case stays off the phone's required list.
-            },
-            peek: async () => {
-              // A peek is a pointer moving over a control to reveal something a phone draws outright (or cannot show at all),
-              // and the shared setup calls it to settle the page, so refusing it fails every file. It returns at once: a
-              // test whose assertion needs the revealed state fails there, and its use case stays off the required list.
-            },
-            messageActions: async () => {
-              // A message's actions are the footer a hover reveals on the web; a phone draws them on the row, so there is
-              // no hover to make. Tests that read them through this step stay off the phone's required list.
-            },
-            openWorkView: async () => {
-              // The Work pane's launcher is web furniture: on a phone the pane is a destination the Active panel selector
-              // opens (WORK-010), so this returns at once and a test that needs the launcher fails on the phone.
-            },
+            wideScreen: desktopOnly("wideScreen"),
+            peek: desktopOnly("peek"),
             tabs: async () => {
               // The app never asks its page for a tab in the app: `installNativeShell` hands an external address to the
               // shell's own browser (`openExternal`), so a WebView has no `window.open` request to read and no second page
@@ -1126,9 +1125,6 @@ function huiTest(offline: boolean) {
         (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
       prompt,
       world: async (name) => {
-        if (onPhone(fixtures.app.baseUrl)) {
-          throw new Error("hui.world() needs a gateway the Android app was not launched with: the WebView holds one page on one origin, which `phone.ts` gives it as `huiGatewayUrl`, so a world's own gateway cannot be opened there. A use case that needs one stays off the phone's required list.");
-        }
         const world = await startWorld(name);
         worlds.push(world);
         return world;

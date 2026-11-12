@@ -45,7 +45,10 @@ test("the sidebar lists its work destinations, ending with Settings, above this 
   const gatewayBox = await gateway.boundingBox();
   assert(gatewayBox);
   expect(gatewayBox.y).toBeGreaterThan(settingsBox.y);
-  await expect(screen.getByLabel("Collapse sidebar")).toBeVisible();
+  // A wide sidebar collapses in place; a phone's open drawer closes instead.
+  const close = screen.getByRole("button", "Close navigation", { visible: true });
+  if (await close.count() > 0) await expect(close.first()).toBeVisible();
+  else await expect(screen.getByLabel("Collapse sidebar")).toBeVisible();
 
   // The Bots list keeps the same destinations, Settings included, and the gateway.
   await screen.getByRole("tab", "Bots").tap();

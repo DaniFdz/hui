@@ -99,6 +99,19 @@ function appPid(): number {
 }
 
 const launch = (gateway: string) => adb("shell", "am", "start", "-S", "-W", "-n", `${PACKAGE}/${ACTIVITY}`, "--es", "huiGatewayUrl", gateway);
+let activeGateway: string | undefined;
+
+/** A fixture world is another real gateway. Let the debug activity rebuild its bridge on that origin, as a Connect
+ * handoff does, without force-stopping the app's process or replacing its persistent browser context. */
+export async function openPhoneGateway(gateway: string): Promise<void> {
+  if (activeGateway === gateway) return;
+  const port = new URL(gateway).port;
+  adb("reverse", `tcp:${port}`, `tcp:${port}`);
+  adb("shell", "am", "start", "-W", "-n", `${PACKAGE}/${ACTIVITY}`, "--es", "huiGatewayUrl", gateway);
+  activeGateway = gateway;
+  forwardDevTools();
+  await waitForGatewayPage(gateway);
+}
 
 /** Points the forwarded DevTools port at the running app's own socket; the process changes with every relaunch. */
 function forwardDevTools(): void {
@@ -158,7 +171,9 @@ let attempts = 0;
  * (a new process, and so a new WebView and default context); a transport drop reattaches to the same app instead.
  */
 async function prepare({ relaunch, gateway }: { relaunch: boolean; gateway: string }): Promise<string> {
-  adb("reverse", `tcp:${PHONE_PORT}`, `tcp:${PHONE_PORT}`);
+  gateway = relaunch ? gateway : activeGateway ?? gateway;
+  activeGateway = gateway;
+  adb("reverse", `tcp:${new URL(gateway).port}`, `tcp:${new URL(gateway).port}`);
   if (first) {
     // Nothing is attached yet, so the app may be cleared: it is the only moment a WebView's storage can be reset from
     // outside. After this, a test's clearState() clears it in the page.
@@ -177,9 +192,8 @@ async function prepare({ relaunch, gateway }: { relaunch: boolean; gateway: stri
       attempts += 1;
       contextId = `webview-${appPid()}`;
     }
-  } else {
-    contextId = `webview-${appPid()}-${attempts}`;
   }
+  // A transport reconnect resumes this attempt's context; its identity must not change merely because it reattaches.
   forwardDevTools();
   await waitForGatewayPage(gateway);
   await webViewProtocol();
@@ -227,6 +241,15 @@ function webViewProtocol(): Promise<void> {
     const connectOverCDP = chromium.connectOverCDP.bind(chromium);
     chromium.connectOverCDP = async (endpoint: string, options: Record<string, unknown> = {}) => {
       const browser = await connectOverCDP(endpoint, { ...options, noDefaults: true, isWebView: true });
+      for (const context of browser.contexts()) {
+        // Rebuilding the bridge closes the old page and creates the app's next one. The engine asks newPage after its
+        // current page closes; a WebView cannot create a tab, so reuse that next live page instead.
+        context.newPage = async () => {
+          const pages = context.pages().filter((page) => !page.isClosed());
+          if (pages.length !== 1) throw new Error(`the Android app must have one live WebView page, found ${pages.length}`);
+          return pages[0]!;
+        };
+      }
       const openBrowserSession = browser.newBrowserCDPSession.bind(browser);
       browser.newBrowserCDPSession = async () => {
         const session = await openBrowserSession();
@@ -242,7 +265,9 @@ function webViewProtocol(): Promise<void> {
   return patched;
 }
 
-type Browser = { newBrowserCDPSession(): Promise<CdpSession> };
+type Page = { isClosed(): boolean };
+type Context = { pages(): Page[]; newPage(): Promise<Page> };
+type Browser = { newBrowserCDPSession(): Promise<CdpSession>; contexts(): Context[] };
 type CdpSession = { send(method: string, params?: Record<string, unknown>): Promise<unknown> };
 type Chromium = { connectOverCDP(endpoint: string, options?: Record<string, unknown>): Promise<Browser> };
 
