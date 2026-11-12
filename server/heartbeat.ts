@@ -1,15 +1,17 @@
 /**
  * HUI's gateway heartbeat: a gateway-side check of the sessions a bot watches. It never prompts a watched session
  * itself. An idle or blocked watched session is reported to the session that watches it, and the chief decides the
- * next step; the heartbeat costs no turn in a bot's chat and cannot send a generic "continue". A session in Autonomous
- * mode is reported as one, so its chief reads the stop as its plan, a question or its report. Scans run one at a time,
- * so the 15-minute tick and the scan an Autonomous session's stop asks for never report one change twice. Also removes
- * the Heartbeat routines a previous build provisioned in bot chats.
+ * next step; the scan itself costs no turn in a bot's chat and cannot send a generic "continue". When a session in
+ * Autonomous mode stops, its chief (`chiefToWatch`) starts watching it and a scan runs at once; its reports say it is
+ * Autonomous, so the chief reads the stop as its plan, a question or its report, and the operator who takes it back
+ * takes it off its chiefs' watches. Scans run one at a time, so the 15-minute tick and that scan never report one
+ * change twice. Also removes the Heartbeat routines a previous build provisioned in bot chats.
  */
 import type { AutomationService, AutomationTask } from "./automation.ts";
 import type { SessionGoalStatus, SessionStatus } from "./api/sessions.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
 import type { WatcherState } from "./api/watchers.ts";
+import { chiefToWatch, isChiefTitle } from "./bots/chief-title.ts";
 
 export const HEARTBEAT_INTERVAL_MS = 15 * 60_000;
 
@@ -19,6 +21,8 @@ export const LEGACY_HEARTBEAT_DESCRIPTION = "HUI's check of the sessions this ch
 export type HeartbeatDeps = {
   records(): Promise<readonly SessionRecord[]>;
   status(id: string): SessionStatus;
+  /** Whether it is open in this gateway: a session nobody opened since the gateway started has not changed since. */
+  isLive(id: string): boolean;
   watchers(id: string): readonly { state: WatcherState }[];
   /** Its subagents: one still at work wakes it when it reports, as a running watcher does. */
   subagents(id: string): readonly { status: string }[];
@@ -26,6 +30,12 @@ export type HeartbeatDeps = {
   lastAssistant(id: string): string | undefined;
   /** Deliver the status to the session that watches a target. The watcher decides; this never prompts the target. */
   notify(id: string, text: string): Promise<void>;
+  /** The bots, among which an Autonomous session's chief is chosen. */
+  bots(): Promise<readonly { title?: string; group?: string; archived?: boolean; sessionId: string }[]>;
+  /** Adds `id` to the watches of the session `watcherId` (`on`), or takes it off them. */
+  watch(watcherId: string, id: string, on: boolean): Promise<void>;
+  /** How many sessions one session may watch. */
+  watchLimit: number;
   now?(): number;
 };
 
@@ -59,8 +69,11 @@ function table(title: string, id: string, status: string): string[] {
   ];
 }
 
+/** The reply, its start and its end when it is long, so a long plan keeps the question it ends on. */
 function detail(last: string | undefined): string[] {
-  return last?.trim() ? ["", last.trim().slice(0, 1_000)] : [];
+  const text = last?.trim() ?? "";
+  if (!text) return [];
+  return ["", text.length <= 1_000 ? text : `${text.slice(0, 600)}\n…\n${text.slice(-400)}`];
 }
 
 function idleMessage(title: string, id: string, last: string | undefined, done: boolean, autonomous: boolean): string {
@@ -86,9 +99,10 @@ function blockedMessage(title: string, id: string, state: HeartbeatState, last: 
   ].join("\n");
 }
 
-/** A watched session is due when it is live, not archived, its goal is not paused/complete, and its status is idle,
- * waiting or error. Each state change is sent once; an idle session is a request for the chief's judgment, never a
- * command to continue, and one whose watcher or subagents still work is not due until they wake it. */
+/** A watched session is due when it is live, not archived, its goal is not paused/complete (an Autonomous session's
+ * goal never holds it back), and its status is idle, waiting or error. Each state change is sent once; an idle session
+ * is a request for the chief's judgment, never a command to continue, and one whose watcher or subagents still work is
+ * not due until they wake it, unless it asks something. */
 export function createHeartbeat(deps: HeartbeatDeps) {
   const notifiedAt = new Map<string, number>();
   let previousScan: Promise<unknown> = Promise.resolve();
@@ -110,26 +124,27 @@ export function createHeartbeat(deps: HeartbeatDeps) {
     const notified: string[] = [];
     for (const [id, watcherIds] of watchedBy) {
       const target = byId.get(id);
-      if (!target || target.archived || target.bot) continue;
+      if (!target || target.archived || target.bot || !deps.isLive(id)) continue;
       const status = deps.status(id);
       const at = deps.now?.() ?? Date.now();
       if (status !== "idle" && status !== "waiting" && status !== "error") continue;
-      if (target.stage !== "done") {
+      const autonomous = target.autonomous === true;
+      if (target.stage !== "done" && !autonomous) {
         const goal: SessionGoalStatus | undefined = target.goal?.status;
         if (goal !== undefined && goal !== "active") continue;
       }
-      if (status === "idle" && target.stage !== "done" && (
+      const last = deps.lastAssistant(id);
+      const decision = looksLikeDecision(last);
+      if (status === "idle" && target.stage !== "done" && !decision && (
         deps.watchers(id).some((watcher) => watcher.state === "running") || deps.subagents(id).some((child) => WORKING.has(child.status))
       )) continue;
       const previous = notifiedAt.get(id);
       if (previous !== undefined && Date.parse(target.updatedAt) <= previous) continue;
-      const last = deps.lastAssistant(id);
-      const autonomous = target.autonomous === true;
       const message = target.stage === "done"
         ? idleMessage(target.title, id, last, true, autonomous)
         : status === "waiting" || status === "error"
           ? blockedMessage(target.title, id, status, last, autonomous)
-          : looksLikeDecision(last)
+          : decision
             ? blockedMessage(target.title, id, "decision", last, autonomous)
             : idleMessage(target.title, id, last, false, autonomous);
       let sent = false;
@@ -149,7 +164,29 @@ export function createHeartbeat(deps: HeartbeatDeps) {
     return { notified };
   }
 
-  return { scan };
+  /** An Autonomous session stopped: the chief `chiefToWatch` picks starts watching it, and a scan runs at once. Answers
+   * false when that chief's watch list is full, so the stop reaches no chief. */
+  async function supervise(id: string): Promise<boolean> {
+    const records = await deps.records();
+    const session = records.find((record) => record.id === id);
+    const chief = session && chiefToWatch(await deps.bots(), records, session);
+    const full = chief !== undefined && (records.find((record) => record.id === chief.sessionId)?.watches?.length ?? 0) >= deps.watchLimit;
+    if (chief && !full) await deps.watch(chief.sessionId, id, true);
+    await scan();
+    return !full;
+  }
+
+  /** An Autonomous session the operator took back: it leaves its chiefs' watches, unless a chief created it as a lead. */
+  async function release(id: string): Promise<void> {
+    const records = await deps.records();
+    if (records.find((record) => record.id === id)?.lead) return;
+    const chiefChats = new Set((await deps.bots()).filter((bot) => !bot.archived && isChiefTitle(bot.title)).map((bot) => bot.sessionId));
+    for (const record of records) {
+      if (chiefChats.has(record.id) && record.watches?.includes(id)) await deps.watch(record.id, id, false);
+    }
+  }
+
+  return { scan, supervise, release };
 }
 
 /** Removes only the routines HUI itself provisioned in #482; a routine with any other description is untouched. */

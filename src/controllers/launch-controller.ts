@@ -70,6 +70,7 @@ export class LaunchController {
     this.branch = "";
     this.worktree = false;
     this.baseRef = "";
+    this.autonomous = false;
     this.#host.requestUpdate();
   }
 

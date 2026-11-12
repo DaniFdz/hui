@@ -3987,17 +3987,20 @@ Session, never in a bot's chat, and persists as `autonomous: true`.
   fresh `verifier`, a `reviewer` of another model family, the pull request through its gates and no merge or deploy
   that needs the operator. It decides technical details, stops on one question only for its chief, and ends on a
   report to the chief. The operator's own messages always come first.
-- **HUI carries every stop to the chief.** The session never names or messages its chief. When one of its runs ends,
-  the chief of its group, else the Chief of Staff of no group, starts watching it unless a chief already does, and the
-  gateway heartbeat runs at once, so the stop reaches the chief's chat marked `Autonomous session`, queued behind a
-  running turn and opening a sleeping chat. The chief answers with `sessions_send`, which starts the session's next
-  turn; no bot hop or hourly limit applies, and a session on a worker works the same way. A stop while the session's
-  subagents or watchers still work is not reported, since they wake it; scans run one at a time so a stop is reported
-  once.
+- **HUI carries the stops the chief must act on.** The session never names or messages its chief. When one of its
+  runs ends, the chief of its group, else the Chief of Staff of no group, starts watching it unless a chief already
+  does, and the gateway heartbeat runs at once, so the stop reaches the chief's chat marked `Autonomous session`,
+  queued behind a running turn and opening a sleeping chat. The chief answers with `sessions_send`, which starts the
+  session's next turn; no bot hop or hourly limit applies, and a session on a worker works the same way. Not reported:
+  a stop while the session's subagents or watchers still work and its reply asks nothing (they wake it), a run the
+  operator stopped and a failed run. Scans run one at a time so a stop is reported once, and the heartbeat skips a
+  session not open in this gateway, so a restart does not report every watched session again. An active goal does
+  not continue by itself in this mode: the chief takes the next step.
 - **The chief's method is in the pack.** `chief-mode` (pack 14) tells a chief to accept or correct the plan, answer
   questions, use `decision` only for its four cases and settle the report like a lead's.
-- Turning the mode off removes the section; the chief keeps its watch until it removes it. HUI does not refuse a
-  merge command in this mode: the stop before a merge is the prompt's and the repository's rule.
+- Turning the mode off removes the section and takes the session off its chiefs' watches, unless a chief created it
+  as a lead, so the operator has it back. HUI does not refuse a merge command in this mode: the stop before a merge is
+  the prompt's and the repository's rule.
 
 ### A custom group's chief is its own bot (2026-11-08)
 

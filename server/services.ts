@@ -92,7 +92,7 @@ import { WatcherInputError, WatcherService } from "./agent-tools/watchers.ts";
 import { SecretFiles, SecretRequests } from "./agent-tools/secret-requests.ts";
 import { Questionnaires } from "./agent-tools/questionnaires.ts";
 import { summarizeWorkerStats } from "./agent-tools/worker-stats.ts";
-import { chiefToWatch, isChiefTitle } from "./bots/chief-title.ts";
+import { isChiefTitle } from "./bots/chief-title.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";
 import { createSessionListHub } from "./sessions/list.ts";
@@ -385,10 +385,13 @@ export const watchers = new WatcherService({
   onChange: (id) => liveSessions.notifySnapshot(id),
 });
 export const watcherRoutes = createWatcherRoutes({ watchers, readRegistry });
+const WATCH_LIMIT = 50;
+
 /** HUI's gateway heartbeat: it reports a watched session that needs judgment; the chief decides, not the gateway. */
 export const heartbeat = createHeartbeat({
   records: readRegistry,
   status: (id) => liveSessions.status(id),
+  isLive: (id) => liveSessions.isLive(id),
   watchers: (id) => watchers.list(id),
   subagents: (id) => liveSessions.subagents(id),
   lastAssistant: (id) => {
@@ -405,29 +408,33 @@ export const heartbeat = createHeartbeat({
     if (chief) await bots.send(chief.id, { text });
     else await liveSessions.prompt(id, text);
   },
+  bots: () => botRegistry.list(),
+  watch: async (watcherId, id, on) => {
+    await updateRegistry((records) => records.map((record) => record.id !== watcherId ? record : {
+      ...record, watches: on ? [...new Set([...(record.watches ?? []), id])] : (record.watches ?? []).filter((each) => each !== id),
+    }));
+  },
+  watchLimit: WATCH_LIMIT,
 });
 export const heartbeatRoutes = createHeartbeatRoutes({ heartbeat });
-/** Autonomous mode: when a session in it stops, the chief of its group (else the Chief of Staff) watches it from then
- * on, unless a chief already does, and the heartbeat reports the stop at once instead of at its next tick. */
-liveSessions.watchRunEnds(({ id }) => {
-  if (!liveSessions.isAutonomous(id)) return;
-  void superviseAutonomous(id).catch((error: unknown) => recordDiagnosticEvent({
+/** Autonomous mode: a session in it that stops is reported to its chief at once (`heartbeat.supervise`), except a run
+ * that failed, which retries or shows its error. Taken back with Ask me, it leaves the chief's watch unless a chief
+ * created it as a lead. */
+liveSessions.watchRunEnds(({ id, failed }) => {
+  if (failed || !liveSessions.isAutonomous(id)) return;
+  void heartbeat.supervise(id).then((watching) => {
+    if (!watching) recordDiagnosticEvent({ area: "session", level: "warning", action: "autonomous_chief_full", summary: `The chief already watches ${WATCH_LIMIT} sessions, so this autonomous session reports to no one`, sessionId: id });
+  }, (error: unknown) => recordDiagnosticEvent({
     area: "session", level: "warning", action: "autonomous_report_failed", summary: "HUI could not report an autonomous session to its chief",
     detail: error instanceof Error ? error.message : String(error), sessionId: id,
   }));
 });
-
-async function superviseAutonomous(id: string): Promise<void> {
-  const [records, roster] = await Promise.all([readRegistry(), bots.list()]);
-  const session = records.find((record) => record.id === id);
-  const chief = session && chiefToWatch(roster, records, session);
-  if (chief) {
-    await updateRegistry((all) => all.map((record) => record.id === chief.sessionId
-      ? { ...record, watches: [...new Set([...(record.watches ?? []), id])].slice(0, WATCH_LIMIT) }
-      : record));
-  }
-  await heartbeat.scan();
-}
+liveSessions.watchAutonomy((id, on) => {
+  if (!on) void heartbeat.release(id).catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "autonomous_release_failed", summary: "HUI could not take an autonomous session off its chief's watch",
+    detail: error instanceof Error ? error.message : String(error), sessionId: id,
+  }));
+});
 /** One managed browser per gateway; its settings are re-read on every call. With mirroring on it seeds itself from
  * what any worker sent, and hands what it captured to every worker's document. State goes through this machine: a
  * worker's document never reaches another worker. */
@@ -594,8 +601,6 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
     ...(defaults.worktree ? { worktree: true } : {}),
   };
 }
-
-const WATCH_LIMIT = 50;
 
 /** `watch_session`: list the sessions this one watches, add one in its group, or stop watching it. A watched session is
  * visible to sessions_list, sessions_history and sessions_send, which is what the Heartbeat routine uses to continue it. */

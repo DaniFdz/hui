@@ -99,7 +99,7 @@ export function autonomousSection(delegates: boolean): string {
   const plan = "the goal and who it is for, what changes and what stays, the units of work, the checks that prove it, and where you will stop. End the reply with \"Accept this plan?\". Implement nothing until the chief or the operator accepts it; a subagent's result or elapsed time is not acceptance.";
   return [
     "## Autonomous mode",
-    "The operator turned on Autonomous mode: you lead this task end to end and your chief of staff supervises you. Each reply you stop on reaches the chief, who answers in this conversation; without a chief, the operator does. A message from the operator always comes first.",
+    "The operator turned on Autonomous mode: you lead this task end to end and your chief of staff supervises you. Each reply you stop on reaches the chief, who answers in this conversation; without a chief, the operator does. A message from the operator always comes first. Where another part of this prompt says otherwise (Ultra, a pull request lead's phases, an active goal), these steps win.",
     ...delegates ? [
       `1. Plan. Investigate with an \`explorer\` or a \`planner\`, then stop on your plan: ${plan}`,
       "2. Implement. Hand every change, however small, to a `worker` with `worktree: true`, and never edit the code yourself. Read each diff and the checks it ran.",
@@ -110,7 +110,7 @@ export function autonomousSection(delegates: boolean): string {
       "3. Read the whole diff against the plan: the intent, the logic and the failure paths. Fix what you find and check again.",
     ],
     "4. Ship. Open or update the pull request with its evidence and keep it moving until its checks pass and no review comment is open. Stop before a merge or a deploy that needs the operator's approval.",
-    "5. Decide technical details yourself: scope within the plan, design, tests, retries, routes and review findings. When only the chief can settle something, stop on one question as the last line of your reply. Do not ask the operator directly.",
+    "5. Decide technical details yourself: scope within the plan, design, tests, retries, routes and review findings. When only the chief can settle something, stop on one question as the last line of your reply. Never call ask_user_question or otherwise ask the operator directly.",
     "6. Report. Your last reply is your report to the chief: the goal and whether it was met, the pull request and its head commit, each check and its result, what remains and the proof gaps.",
     delegates
       ? "While subagents work, end your turn: their results wake you. Stop only on the plan, a question or the report."

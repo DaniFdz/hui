@@ -314,6 +314,7 @@ export class LiveSessions {
   #revisions = Date.now() * 1000;
   #statusSubscribers = new Set<StatusSubscriber>();
   #runEnds = new Set<(end: RunEnd) => void>();
+  #autonomy = new Set<(id: string, on: boolean) => void>();
   /** Deleted ids stay tombstoned for this gateway lifetime so a request that
    * read the old row before DELETE committed cannot start it afterwards. */
   #deletions = new Map<string, DeletionState>();
@@ -659,6 +660,11 @@ export class LiveSessions {
 
   watchRunEnds(listener: (end: RunEnd) => void): void {
     this.#runEnds.add(listener);
+  }
+
+  /** Told after a session's Autonomous mode was turned on or off and saved. */
+  watchAutonomy(listener: (id: string, on: boolean) => void): void {
+    this.#autonomy.add(listener);
   }
 
   /** Listeners are held even before the runtime exists, so a stream opened
@@ -1320,7 +1326,7 @@ export class LiveSessions {
 
   async setAutonomous(id: string, on: boolean): Promise<boolean> {
     const live = this.#ready(id);
-    if (live.record.bot) throw new Error("A bot's chat has no Autonomous mode.");
+    if (live.record.bot || live.record.subagent) throw new Error("A bot's chat or a subagent has no Autonomous mode.");
     if (!live.runtime?.setAutonomous) throw new Error(`${live.record.tool} cannot run autonomously in this build.`);
     const previous = live.runtime.currentAutonomous?.() === true;
     await live.runtime.setAutonomous(on);
@@ -1333,6 +1339,7 @@ export class LiveSessions {
       live.autonomous = live.runtime.currentAutonomous?.() ?? live.autonomous;
       this.#broadcast(live, { kind: "autonomous", autonomous: live.autonomous === true });
     }
+    for (const listener of this.#autonomy) listener(id, on);
     return live.autonomous === true;
   }
 
@@ -1522,7 +1529,7 @@ export class LiveSessions {
         huiSessionId: live.record.id,
       });
       if (live.record.fast) await runtime.setFast?.(true);
-      if (live.record.autonomous) await runtime.setAutonomous?.(true);
+      if (live.record.autonomous && !live.record.bot && !live.record.subagent) await runtime.setAutonomous?.(true);
       // Deletion or gateway shutdown can happen while a runtime takes several
       // seconds to boot. Never attach or persist a process nobody owns.
       if (live.closed || this.#live.get(live.record.id) !== live) {
@@ -1536,7 +1543,7 @@ export class LiveSessions {
       live.thinking = runtime.currentThinking?.();
       // Only a runtime that can change speed reports one.
       live.fast = runtime.setFast ? runtime.currentFast?.() === true : undefined;
-      live.autonomous = runtime.setAutonomous && !live.record.bot ? runtime.currentAutonomous?.() === true : undefined;
+      live.autonomous = runtime.setAutonomous && !live.record.bot && !live.record.subagent ? runtime.currentAutonomous?.() === true : undefined;
       live.queue = runtime.pendingQueue?.() ?? { steering: [], followUp: [] };
       live.questions = new Map((runtime.pendingQuestions?.() ?? []).map((question) => [question.id, question]));
       live.unsubscribe = runtime.subscribe((event) => this.#onEvent(live, runtime!, event));
@@ -1802,9 +1809,10 @@ export class LiveSessions {
   }
 
   /** An active goal whose turn ended cleanly gets the next one from the queue. A stop, a failed run, an open
-   * question or input already waiting ends the pursuit here: the operator's next message picks it up. */
+   * question or input already waiting ends the pursuit here: the operator's next message picks it up. An Autonomous
+   * session's chief takes its next step instead. */
   async #queueGoalContinuation(live: Live): Promise<void> {
-    if (live.runFailed || live.stopped || live.questions.size || live.followUps.length || live.record.worker) return;
+    if (live.runFailed || live.stopped || live.questions.size || live.followUps.length || live.record.worker || live.autonomous) return;
     const text = await this.#goalContinuation(live.record.id).catch(() => undefined);
     if (!text || live.closed) return;
     live.followUps.push({ id: crypto.randomUUID(), text, mode: "followUp" });

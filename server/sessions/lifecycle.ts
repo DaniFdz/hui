@@ -179,9 +179,9 @@ async function createSession(
   if (body["autonomous"] !== undefined && typeof body["autonomous"] !== "boolean") {
     throw new Error("Autonomous mode must be true or false.");
   }
-  const autonomous = body["autonomous"] === true;
   // A worker runs the same runtime a local session would.
   const runtimeTool = tool || defaultSessionTool();
+  const autonomous = body["autonomous"] === true && runtimeTool === "durable";
   const settings = await readHuiSettings();
   // Sessions started without a choice (suggestions, backlog items) use the
   // primary route rather than whatever PI currently treats as its default.

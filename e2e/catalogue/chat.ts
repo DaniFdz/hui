@@ -717,7 +717,7 @@ const cases: UseCase[] = [
     id: "CHAT-087",
     title: "Hand a session to its Chief of Staff with Autonomous mode",
     behaviour:
-      'The thinking picker adds an Autonomy choice under Speed, Ask me or Autonomous, in the composer of a Durable session, one on a worker included, and on New Session. Autonomous reads "Thinking: <level>, autonomous", applies live and stays with the session across a reload, and New Session starts the session in it. Each time the session stops, the Chief of Staff of its group gets the stop in its chat as "Autonomous session \"<title>\" is …" with its last reply and a line saying it reports to that chief. Ask me turns it off.',
+      'The thinking picker adds an Autonomy choice under Speed, Ask me or Autonomous, in the composer of a Durable session, one on a worker included, and on New Session. Autonomous reads "Thinking: <level>, autonomous", applies live and stays with the session across a reload, and New Session starts the session in it. When the session stops on its plan or after its first turn, the Chief of Staff of its group gets the stop in its chat as "Autonomous session \"<title>\" is …" with its last reply and a line saying it reports to that chief. Ask me turns it off.',
     spec: ["docs/api.md#post-__huisessionsidautonomous", "SPEC.md#autonomous-mode-makes-any-session-a-lead-its-chief-supervises-2026-11-12"],
     surfaces: ["route:POST /__hui/sessions/:id/autonomous"],
     journeys: ["chat-composer"],

@@ -20,10 +20,14 @@ function fixture(targetStatus: SessionStatus = "idle", watcherStates: WatcherSta
       session("target"),
     ],
     status: () => targetStatus,
+    isLive: () => true,
     watchers: () => watcherStates.map((state) => ({ state })),
     subagents: (): readonly { status: string }[] => [],
-    lastAssistant: () => "Done.",
+    lastAssistant: (): string | undefined => "Done.",
     notify: async (id: string, text: string) => { notifications.push({ id, text }); },
+    bots: async (): Promise<readonly { title?: string; group?: string; archived?: boolean; sessionId: string }[]> => [],
+    watch: async (_watcherId: string, _id: string, _on: boolean) => {},
+    watchLimit: 50,
     now: () => now,
   };
   return { deps, notifications };
@@ -103,7 +107,7 @@ test("an Autonomous session's stop is reported as one, its plan as a decision", 
   assert.match(f.notifications[0]?.text ?? "", /It runs in Autonomous mode and reports to you: accept or correct its plan/u);
 });
 
-test("an idle session whose subagents still work waits for them, and is reported once they finish", async () => {
+test("an idle session whose subagents still work waits for them, unless it asks something", async () => {
   const f = fixture();
   let children = [{ status: "running" }, { status: "completed" }];
   f.deps.subagents = () => children;
@@ -113,18 +117,98 @@ test("an idle session whose subagents still work waits for them, and is reported
   assert.deepEqual(await heartbeat.scan(), { notified: [] });
   children = [{ status: "completed" }];
   assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+
+  const asking = fixture();
+  asking.deps.subagents = () => [{ status: "running" }];
+  asking.deps.lastAssistant = () => "The worker is still running. Should the plan keep the old route?";
+  assert.deepEqual(await createHeartbeat(asking.deps).scan(), { notified: ["target"] });
+});
+
+test("a session not open in this gateway is not reported, so a restart reports nothing again", async () => {
+  const f = fixture();
+  f.deps.isLive = () => false;
+  assert.deepEqual(await createHeartbeat(f.deps).scan(), { notified: [] });
+  assert.equal(f.notifications.length, 0);
+});
+
+test("an Autonomous session is reported whatever its goal's status, with the end of a long plan", async () => {
+  const f = fixture();
+  f.deps.records = async () => [
+    session("watcher", undefined, { watches: ["target"] }),
+    session("target", undefined, { autonomous: true, goal: { objective: "x", status: "complete", createdAt: "", updatedAt: "", continuations: 0 } }),
+  ];
+  f.deps.lastAssistant = () => `## Plan\n${"A unit of work.\n".repeat(120)}\nAccept this plan?`;
+  assert.deepEqual(await createHeartbeat(f.deps).scan(), { notified: ["target"] });
+  assert.match(f.notifications[0]?.text ?? "", /is idle and waiting for a decision\..*## Plan.*…\n.*Accept this plan\?/su);
 });
 
 test("scans asked for at once run one after the other and report a change once", async () => {
   const f = fixture();
+  let deliver!: () => void;
+  const delivered = new Promise<void>((resolve) => { deliver = resolve; });
   f.deps.notify = async (id, text) => {
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await delivered;
     f.notifications.push({ id, text });
   };
   const heartbeat = createHeartbeat(f.deps);
-  const [first, second] = await Promise.all([heartbeat.scan(), heartbeat.scan()]);
-  assert.deepEqual([first, second], [{ notified: ["target"] }, { notified: [] }]);
+  const scans = Promise.all([heartbeat.scan(), heartbeat.scan()]);
+  deliver();
+  assert.deepEqual(await scans, [{ notified: ["target"] }, { notified: [] }]);
   assert.equal(f.notifications.length, 1);
+});
+
+test("an Autonomous session that stops gets its chief as watcher, and the stop reaches that chief at once", async () => {
+  const f = fixture();
+  let records = [session("seeded-chat"), session("payments-chat"), session("target", undefined, { group: "Payments", autonomous: true })];
+  const watched: Array<[string, string]> = [];
+  f.deps.records = async () => records;
+  f.deps.bots = async () => [{ title: "Chief of Staff", sessionId: "seeded-chat" }, { title: "Chief of Staff · Payments", group: "Payments", sessionId: "payments-chat" }];
+  f.deps.watch = async (watcherId, id) => {
+    watched.push([watcherId, id]);
+    records = records.map((record) => record.id === watcherId ? { ...record, watches: [id] } : record);
+  };
+  const heartbeat = createHeartbeat(f.deps);
+  assert.equal(await heartbeat.supervise("target"), true);
+  assert.deepEqual(watched, [["payments-chat", "target"]]);
+  assert.equal(f.notifications[0]?.id, "payments-chat");
+  assert.match(f.notifications[0]?.text ?? "", /^\[routine: Heartbeat\] Autonomous session "target" is idle; decide the next step\./u);
+
+  assert.equal(await heartbeat.supervise("target"), true);
+  assert.deepEqual(watched, [["payments-chat", "target"]]);
+});
+
+test("a chief whose watch list is full is not given the session, and the stop reaches no one", async () => {
+  const f = fixture();
+  const full = Array.from({ length: 2 }, (_, index) => `other-${index}`);
+  f.deps.records = async () => [session("seeded-chat", undefined, { watches: full }), session("target", undefined, { autonomous: true })];
+  f.deps.bots = async () => [{ title: "Chief of Staff", sessionId: "seeded-chat" }];
+  let watches = 0;
+  f.deps.watch = async () => { watches += 1; };
+  f.deps.watchLimit = 2;
+  assert.equal(await createHeartbeat(f.deps).supervise("target"), false);
+  assert.equal(watches, 0);
+  assert.equal(f.notifications.length, 0);
+});
+
+test("an Autonomous session the operator takes back leaves its chiefs' watches, unless a chief created it as a lead", async () => {
+  const f = fixture();
+  const chiefs = [{ title: "Chief of Staff", sessionId: "seeded-chat" }, { title: "Chief of Staff · Payments", group: "Payments", sessionId: "payments-chat" }];
+  const unwatched: Array<[string, string]> = [];
+  f.deps.bots = async () => chiefs;
+  f.deps.watch = async (watcherId, id, on) => { if (!on) unwatched.push([watcherId, id]); };
+  f.deps.records = async () => [
+    session("seeded-chat", undefined, { watches: ["target", "other"] }),
+    session("payments-chat", undefined, { watches: ["target"] }),
+    session("operator-watcher", undefined, { watches: ["target"] }),
+    session("target"),
+  ];
+  await createHeartbeat(f.deps).release("target");
+  assert.deepEqual(unwatched, [["seeded-chat", "target"], ["payments-chat", "target"]]);
+
+  unwatched.length = 0;
+  f.deps.records = async () => [session("seeded-chat", undefined, { watches: ["target"] }), session("target", undefined, { lead: true })];
+  await createHeartbeat(f.deps).release("target");
+  assert.deepEqual(unwatched, []);
 });
 
 test("running, starting, reconnecting and disconnected targets are left alone", async () => {
@@ -148,8 +232,9 @@ test("a paused goal, an archived target, a bot chat and an archived watcher are 
   for (const records of cases) {
     const notifications: string[] = [];
     const heartbeat = createHeartbeat({
-      records: async () => records, status: () => "idle", watchers: () => [], subagents: () => [],
+      records: async () => records, status: () => "idle", isLive: () => true, watchers: () => [], subagents: () => [],
       lastAssistant: () => "Done.", notify: async (id) => { notifications.push(id); },
+      bots: async () => [], watch: async () => {}, watchLimit: 50,
     });
     assert.deepEqual(await heartbeat.scan(), { notified: [] });
     assert.deepEqual(notifications, []);
