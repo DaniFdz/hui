@@ -257,7 +257,7 @@ function openExternal(target) {
 /**
  * Follows a link this window cannot show by itself. A `hui://` chat link opens its chat here, a page of a gateway this
  * device knows opens here at once, a gateway this device has not met yet is asked first, and everything else — a web
- * page, mail, a file — goes to the system browser. HUI's own pages therefore have priority over the browser.
+ * page, mail — goes to the system browser. HUI's own pages therefore have priority over the browser.
  */
 async function follow(target) {
   const chat = appChatPath(target);
@@ -283,9 +283,13 @@ function showWindow(destination) {
   const target = typeof destination === 'string' ? destination : undefined;
   if (window && !window.isDestroyed()) {
     if (target) {
+      const previous = currentGateway;
       currentGateway = knownGateway(target) ?? currentGateway;
       void window.loadURL(target).catch((error) => {
-        if (error.code !== 'ERR_ABORTED') dialog.showErrorBox('HUI could not open the chat', error.message);
+        if (error.code === 'ERR_ABORTED') return;
+        // The window still shows the page it had, so it still belongs to the gateway it had.
+        currentGateway = previous;
+        dialog.showErrorBox('HUI could not open the chat', error.message);
       });
     }
     if (window.isMinimized()) window.restore();

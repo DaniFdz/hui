@@ -629,6 +629,26 @@ test('a switch to a page under a gateway keeps that gateway, not the page, as th
   assert.equal(state.follow('http://192.168.1.4:8787/settings'), false, 'a sibling page is its own gateway\'s');
 });
 
+test('a chat or banner whose page never loads leaves the window on the gateway it was showing', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  const window = state.windows[0];
+  state.reportGateways(['http://studio.local:8787']);
+  state.failNextLoad(new Error('ERR_NAME_NOT_RESOLVED'));
+  state.openUrl(notificationUrl({ title: 'Ready', message: 'Open.', url: 'http://studio.local:8787/sessions/a', replyTo: receipt }));
+  assert.equal(state.notifications.length, 1);
+  state.notifications[0].emit('click');
+  await state.settle();
+  assert.equal(window.url, 'http://127.0.0.1:5174/', 'the window still shows the gateway it had');
+  assert.equal(state.errors.length, 1);
+
+  // The gateway it still shows is the one it belongs to.
+  let granted;
+  window.webContents.session.permission(window.webContents, 'clipboard-sanitized-write', (value) => { granted = value; });
+  assert.equal(granted, true);
+});
+
 test('a switch whose page never loads leaves the window on the gateway it was showing', async (t) => {
   const state = await shell(t);
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
