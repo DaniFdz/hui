@@ -4,14 +4,14 @@
  * next step; the scan itself costs no turn in a bot's chat and cannot send a generic "continue". When a session in
  * Autonomous mode stops, its chief (`chiefToWatch`) starts watching it and a scan runs at once; its reports say it is
  * Autonomous, so the chief reads the stop as its plan, a question or its report, and the operator who takes it back
- * takes it off its chiefs' watches. Scans run one at a time, so the 15-minute tick and that scan never report one
+ * takes back the watch the heartbeat gave. Scans run one at a time, so the 15-minute tick and that scan never report one
  * change twice. Also removes the Heartbeat routines a previous build provisioned in bot chats.
  */
 import type { AutomationService, AutomationTask } from "./automation.ts";
 import type { SessionGoalStatus, SessionStatus } from "./api/sessions.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
 import type { WatcherState } from "./api/watchers.ts";
-import { chiefToWatch, isChiefTitle } from "./bots/chief-title.ts";
+import { chiefToWatch } from "./bots/chief-title.ts";
 
 export const HEARTBEAT_INTERVAL_MS = 15 * 60_000;
 
@@ -43,12 +43,18 @@ export type HeartbeatOutcome = { notified: string[] };
 
 const DECISION = /\?\s*$|\b(should i|do you want|would you like|which|choose|decide|let me know|need (your|a)|waiting for|confirm|approve|shall i|your call|blocked|permission)\b/iu;
 
+const lastParagraph = (text: string | undefined) => text?.trim().split(/\n\s*\n/u).at(-1)?.trim() ?? "";
+
 /** A conservative read of the newest reply: a question mark at the end or a decision phrase means the session is
  * waiting for someone, so the chief must judge it rather than send another task. */
 export function looksLikeDecision(text: string | undefined): boolean {
-  const last = text?.trim().split(/\n\s*\n/u).at(-1)?.trim() ?? "";
+  const last = lastParagraph(text);
   return last.length > 0 && DECISION.test(last);
 }
+
+/** Whether the newest reply ends on a question: only that brings a session forward while its subagents still work,
+ * since a status such as "waiting for the verifier" reads like a decision. */
+const asks = (text: string | undefined) => /\?\s*$/u.test(lastParagraph(text));
 
 type HeartbeatState = "decision" | "waiting" | "error";
 
@@ -95,6 +101,7 @@ function blockedMessage(title: string, id: string, state: HeartbeatState, last: 
     ...table(title, id, status),
     ...detail(last),
     "Read it with sessions_history; decide or escalate to the operator, then send the answer with sessions_send. Do not start unrelated work.",
+    ...state === "waiting" ? ["A question card in the session is answered only there: ask the operator to answer it."] : [],
     ...note(autonomous),
   ].join("\n");
 }
@@ -134,8 +141,7 @@ export function createHeartbeat(deps: HeartbeatDeps) {
         if (goal !== undefined && goal !== "active") continue;
       }
       const last = deps.lastAssistant(id);
-      const decision = looksLikeDecision(last);
-      if (status === "idle" && target.stage !== "done" && !decision && (
+      if (status === "idle" && target.stage !== "done" && !asks(last) && (
         deps.watchers(id).some((watcher) => watcher.state === "running") || deps.subagents(id).some((child) => WORKING.has(child.status))
       )) continue;
       const previous = notifiedAt.get(id);
@@ -144,7 +150,7 @@ export function createHeartbeat(deps: HeartbeatDeps) {
         ? idleMessage(target.title, id, last, true, autonomous)
         : status === "waiting" || status === "error"
           ? blockedMessage(target.title, id, status, last, autonomous)
-          : decision
+          : looksLikeDecision(last)
             ? blockedMessage(target.title, id, "decision", last, autonomous)
             : idleMessage(target.title, id, last, false, autonomous);
       let sent = false;
@@ -164,26 +170,40 @@ export function createHeartbeat(deps: HeartbeatDeps) {
     return { notified };
   }
 
-  /** An Autonomous session stopped: the chief `chiefToWatch` picks starts watching it, and a scan runs at once. Answers
-   * false when that chief's watch list is full, so the stop reaches no chief. */
-  async function supervise(id: string): Promise<boolean> {
-    const records = await deps.records();
-    const session = records.find((record) => record.id === id);
-    const chief = session && chiefToWatch(await deps.bots(), records, session);
-    const full = chief !== undefined && (records.find((record) => record.id === chief.sessionId)?.watches?.length ?? 0) >= deps.watchLimit;
-    if (chief && !full) await deps.watch(chief.sessionId, id, true);
-    await scan();
-    return !full;
+  /** The chief's chat each Autonomous session was given by `supervise`, the only watch `release` takes back. */
+  const given = new Map<string, string>();
+  let previousChange: Promise<unknown> = Promise.resolve();
+  /** Supervision and release run one at a time, so Ask me right after a stop takes back the watch that stop gave. */
+  function inTurn<T>(change: () => Promise<T>): Promise<T> {
+    const run = previousChange.then(change, change);
+    previousChange = run.catch(() => undefined);
+    return run;
   }
 
-  /** An Autonomous session the operator took back: it leaves its chiefs' watches, unless a chief created it as a lead. */
-  async function release(id: string): Promise<void> {
-    const records = await deps.records();
-    if (records.find((record) => record.id === id)?.lead) return;
-    const chiefChats = new Set((await deps.bots()).filter((bot) => !bot.archived && isChiefTitle(bot.title)).map((bot) => bot.sessionId));
-    for (const record of records) {
-      if (chiefChats.has(record.id) && record.watches?.includes(id)) await deps.watch(record.id, id, false);
-    }
+  /** An Autonomous session stopped: the chief `chiefToWatch` picks starts watching it, and a scan runs at once. Answers
+   * false when that chief's watch list is full, so the stop reaches no chief. */
+  function supervise(id: string): Promise<boolean> {
+    return inTurn(async () => {
+      const records = await deps.records();
+      const session = records.find((record) => record.id === id);
+      const chief = session?.autonomous ? chiefToWatch(await deps.bots(), records, session) : undefined;
+      const full = chief !== undefined && (records.find((record) => record.id === chief.sessionId)?.watches?.length ?? 0) >= deps.watchLimit;
+      if (chief && !full) {
+        await deps.watch(chief.sessionId, id, true);
+        given.set(id, chief.sessionId);
+      }
+      await scan();
+      return !full;
+    });
+  }
+
+  /** An Autonomous session the operator took back leaves the watch `supervise` gave it; a chief's own watch stays. */
+  function release(id: string): Promise<void> {
+    return inTurn(async () => {
+      const chat = given.get(id);
+      given.delete(id);
+      if (chat) await deps.watch(chat, id, false);
+    });
   }
 
   return { scan, supervise, release };

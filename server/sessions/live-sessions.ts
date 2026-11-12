@@ -662,7 +662,7 @@ export class LiveSessions {
     this.#runEnds.add(listener);
   }
 
-  /** Told after a session's Autonomous mode was turned on or off and saved. */
+  /** Told after a session's Autonomous mode changed and was saved. */
   watchAutonomy(listener: (id: string, on: boolean) => void): void {
     this.#autonomy.add(listener);
   }
@@ -1339,7 +1339,7 @@ export class LiveSessions {
       live.autonomous = live.runtime.currentAutonomous?.() ?? live.autonomous;
       this.#broadcast(live, { kind: "autonomous", autonomous: live.autonomous === true });
     }
-    for (const listener of this.#autonomy) listener(id, on);
+    if (previous !== (live.autonomous === true)) for (const listener of this.#autonomy) listener(id, live.autonomous === true);
     return live.autonomous === true;
   }
 

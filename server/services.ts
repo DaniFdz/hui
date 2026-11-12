@@ -418,8 +418,7 @@ export const heartbeat = createHeartbeat({
 });
 export const heartbeatRoutes = createHeartbeatRoutes({ heartbeat });
 /** Autonomous mode: a session in it that stops is reported to its chief at once (`heartbeat.supervise`), except a run
- * that failed, which retries or shows its error. Taken back with Ask me, it leaves the chief's watch unless a chief
- * created it as a lead. */
+ * that failed, which retries or shows its error. Taken back with Ask me, it leaves the watch that gave it. */
 liveSessions.watchRunEnds(({ id, failed }) => {
   if (failed || !liveSessions.isAutonomous(id)) return;
   void heartbeat.supervise(id).then((watching) => {

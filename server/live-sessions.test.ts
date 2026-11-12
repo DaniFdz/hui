@@ -2370,7 +2370,8 @@ test("Autonomous mode is saved with the session, turned back on when it boots ag
 
   assert.equal(await manager.setAutonomous("autonomous", true), true);
   assert.equal(manager.isAutonomous("autonomous"), true);
-  assert.deepEqual(changes, [["autonomous", true]]);
+  assert.equal(await manager.setAutonomous("autonomous", true), true);
+  assert.deepEqual(changes, [["autonomous", true]], "only a change is told");
   assert.equal((await stored("autonomous"))?.autonomous, true);
   assert.ok(messages.some((message) => message.kind === "autonomous" && message.autonomous));
   manager.disposeAll();

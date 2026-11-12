@@ -74,6 +74,7 @@ test("waiting and error states tell the watcher and never prompt the target", as
     assert.equal(f.notifications.length, 1);
     assert.match(f.notifications[0]?.text ?? "", new RegExp(status === "error" ? "is in error" : "is waiting for an answer", "u"));
     assert.match(f.notifications[0]?.text ?? "", new RegExp(status === "error" ? "Blocked: error" : "Waiting on you: an answer", "u"));
+    assert.equal(/A question card in the session is answered only there/u.test(f.notifications[0]?.text ?? ""), status === "waiting");
   }
 });
 
@@ -122,6 +123,11 @@ test("an idle session whose subagents still work waits for them, unless it asks 
   asking.deps.subagents = () => [{ status: "running" }];
   asking.deps.lastAssistant = () => "The worker is still running. Should the plan keep the old route?";
   assert.deepEqual(await createHeartbeat(asking.deps).scan(), { notified: ["target"] });
+
+  const reporting = fixture();
+  reporting.deps.subagents = () => [{ status: "running" }];
+  reporting.deps.lastAssistant = () => "Spawned the verifier, which runs the suite; waiting for it to finish.";
+  assert.deepEqual(await createHeartbeat(reporting.deps).scan(), { notified: [] });
 });
 
 test("a session not open in this gateway is not reported, so a restart reports nothing again", async () => {
@@ -190,25 +196,29 @@ test("a chief whose watch list is full is not given the session, and the stop re
   assert.equal(f.notifications.length, 0);
 });
 
-test("an Autonomous session the operator takes back leaves its chiefs' watches, unless a chief created it as a lead", async () => {
+test("Ask me takes back only the watch an Autonomous stop gave, even when it comes right after that stop", async () => {
   const f = fixture();
-  const chiefs = [{ title: "Chief of Staff", sessionId: "seeded-chat" }, { title: "Chief of Staff · Payments", group: "Payments", sessionId: "payments-chat" }];
-  const unwatched: Array<[string, string]> = [];
-  f.deps.bots = async () => chiefs;
-  f.deps.watch = async (watcherId, id, on) => { if (!on) unwatched.push([watcherId, id]); };
-  f.deps.records = async () => [
-    session("seeded-chat", undefined, { watches: ["target", "other"] }),
-    session("payments-chat", undefined, { watches: ["target"] }),
-    session("operator-watcher", undefined, { watches: ["target"] }),
-    session("target"),
-  ];
-  await createHeartbeat(f.deps).release("target");
-  assert.deepEqual(unwatched, [["seeded-chat", "target"], ["payments-chat", "target"]]);
+  let records = [session("seeded-chat"), session("target", undefined, { autonomous: true })];
+  const changes: Array<[string, string, boolean]> = [];
+  f.deps.records = async () => records;
+  f.deps.bots = async () => [{ title: "Chief of Staff", sessionId: "seeded-chat" }];
+  f.deps.watch = async (watcherId, id, on) => {
+    changes.push([watcherId, id, on]);
+    records = records.map((record) => record.id === watcherId ? { ...record, watches: on ? [id] : [] } : record);
+  };
+  const heartbeat = createHeartbeat(f.deps);
+  await Promise.all([heartbeat.supervise("target"), heartbeat.release("target")]);
+  assert.deepEqual(changes, [["seeded-chat", "target", true], ["seeded-chat", "target", false]]);
 
-  unwatched.length = 0;
-  f.deps.records = async () => [session("seeded-chat", undefined, { watches: ["target"] }), session("target", undefined, { lead: true })];
-  await createHeartbeat(f.deps).release("target");
-  assert.deepEqual(unwatched, []);
+  changes.length = 0;
+  records = [session("seeded-chat", undefined, { watches: ["target"] }), session("target", undefined, { autonomous: true })];
+  await heartbeat.supervise("target");
+  await heartbeat.release("target");
+  assert.deepEqual(changes, [], "a chief's own watch stays");
+
+  records = [session("seeded-chat"), session("target")];
+  assert.equal(await heartbeat.supervise("target"), true);
+  assert.deepEqual(changes, [], "a session no longer Autonomous gets no chief");
 });
 
 test("running, starting, reconnecting and disconnected targets are left alone", async () => {
