@@ -29,12 +29,13 @@ const fillsTheTurn = async (drawn: Locator, transcript: Locator) =>
 
 test("A mermaid fence shows Rendering diagram…, then the diagram within the transcript on a phone, drawn again after a reload", { tags: ["RICH-010"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.phoneScreen();
-  const renderer = await hui.intercept("GET", /mermaid/u);
+  // The rendering state lasts as long as the mermaid chunk takes to arrive, which the device decides: the recorder keeps
+  // the state the page showed, so the test proves it was shown without racing it.
+  await hui.recordStatuses();
   const transcript = await reply(screen, hui, `Before the diagram.\n\n\`\`\`mermaid\n${FLOWCHART}\`\`\`\n\nAfter the diagram.`);
-  await expect(transcript.getByText("Rendering diagram…")).toBeVisible();
-  await renderer.deliver();
   const diagram = transcript.getByLabel("Mermaid diagram");
   await expect(diagram.getByText("Useful model")).toBeVisible();
+  expect(await hui.statuses()).toContain("Rendering diagram…");
   await expect(transcript.getByText("Rendering diagram…")).toBeHidden();
   expect(await within(diagram, transcript)).toBe(true);
   expect(await fillsTheTurn(diagram, transcript)).toBe(true);
@@ -54,13 +55,13 @@ test("Mermaid source that cannot parse shows Diagram could not be rendered with 
 });
 
 test("chart, vega-lite and vegalite fences show Rendering chart…, then charts within the transcript with no editor or actions menu", { tags: ["RICH-011"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const renderer = await hui.intercept("GET", /vega/u);
+  // Each chart's rendering state lasts only until its chunk arrives, so the recorder is what proves it was shown.
+  await hui.recordStatuses();
   const fences = ["chart", "vega-lite", "vegalite"];
   const transcript = await reply(screen, hui, fences.map((fence) => `\`\`\`${fence}\n${chart(`The ${fence} fence`)}\n\`\`\``).join("\n\n"));
-  await expect(transcript.getByText("Rendering chart…")).toHaveCount(3);
-  await renderer.deliver();
   const charts = transcript.getByLabel("Data chart");
   await expect(charts.getByRole("button", "Open chart viewer")).toHaveCount(3);
+  expect((await hui.statuses()).filter((status) => status === "Rendering chart…").length, "all three charts showed their rendering state").toBeGreaterThanOrEqual(3);
   for (const drawn of await charts.all()) {
     expect(await within(drawn, transcript)).toBe(true);
     expect(await fillsTheTurn(drawn, transcript)).toBe(true);

@@ -6,7 +6,8 @@
  * gesture or reading would differ per platform, kept in one table per target that the web fills: opening, reloading
  * and clearing the app, taps, holds, drags held mid-way, context menus, a message's actions (a hover reveals its
  * footer), switches (a Web Awesome switch draws its track over its input, so the web taps the point), attachments,
- * sideways scrolling, downloads, the clipboard, the Work pane's launcher (the + menu writes each shortcut on its entry
+ * sideways scrolling, downloads, the clipboard, the statuses a page shows and replaces within one render (a rich embed's
+ * "Rendering diagram…"), the Work pane's launcher (the + menu writes each shortcut on its entry
  * and opens the pane beside the chat), a Files row's delete, the phone screen's size, the session list (on the drawer
  * layout, the shell's drawer media, the navigation drawer), the Settings page list (the drawer on a phone), the app's
  * chrome outside Settings (the primary navigation), the chosen button of a group (aria-pressed), the app's and the
@@ -109,6 +110,10 @@ export type Hui = {
   reachable(target: Locator): Promise<boolean>;
   clipboard(options?: { refuse?: boolean; legacyCopy?: boolean }): Promise<void>;
   copied(): Promise<string>;
+  /** Starts recording the statuses a page shows and replaces within one render, from every page after this call. */
+  recordStatuses(): Promise<void>;
+  /** The statuses recorded since `recordStatuses()`, in the order the page added them. */
+  statuses(): Promise<string[]>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   type(text: string): Promise<void>;
   peek(target: Locator): Promise<void>;
@@ -244,10 +249,11 @@ const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$
 
 /**
  * The clipboard a test reads and refuses: `navigator.clipboard`'s writes recorded on `window.huiCopied`, and a refused
- * write throwing the way a browser refuses one. It runs in the page, so it closes over nothing, and it is installed
- * twice where a browser can: as an init script for every page after it and in the page that is open, so a test may
- * install it before or after its last navigation. The app's WebView has no init script to take (`clipboard` in the
- * phone branch), so a phone test installs it once its page is the one it means.
+ * write throwing the way a browser refuses one. It runs in the page, so it closes over nothing, and every target
+ * installs it twice: as an init script for every page after it and in the page that is open, so a test may install it
+ * before or after its last navigation. A page stub that only reached the open page would be gone at the next one —
+ * `hui.clipboard()` followed by `hui.open(...)` is the ordinary order — and the copy would go to the device's own
+ * clipboard, which no test can read.
  */
 const clipboardStub = ({ refuse = false, legacyCopy = false }: { refuse?: boolean; legacyCopy?: boolean } = {}) => {
   const page = window as unknown as { huiCopied: string };
@@ -273,6 +279,24 @@ const clipboardStub = ({ refuse = false, legacyCopy = false }: { refuse?: boolea
       return legacyCopy;
     }) as typeof document.execCommand;
   }
+  return null;
+};
+
+/**
+ * Records the state a page shows and then replaces within one render: a rich embed's "Rendering diagram…" lives only
+ * until its chunk arrives, and how long that takes is the device's, so a test that watched only the live DOM would race
+ * it. Every element a page adds with `role="status"` is kept with the text it carried, on `window.huiStatuses`.
+ */
+const statusRecorder = () => {
+  const page = window as unknown as { huiStatuses: string[] };
+  const seen: string[] = page.huiStatuses = [];
+  new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node instanceof Element && node.getAttribute("role") === "status") seen.push(node.textContent ?? "");
+      }
+    }
+  }).observe(document, { childList: true, subtree: true });
   return null;
 };
 
@@ -501,6 +525,11 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(clipboardStub, options);
       },
       copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
+      recordStatuses: async () => {
+        await browser().addInitScript(statusRecorder);
+        await browser().evaluate(statusRecorder);
+      },
+      statuses: () => browser().evaluate(() => (window as unknown as { huiStatuses?: string[] }).huiStatuses ?? []),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
       type: (text) => browser().keyboard.type(text),
       phoneScreen: async (orientation = "portrait") => {
@@ -939,19 +968,22 @@ export const test = base.extend<{ hui: Hui }>({
         ? {
             ...web,
             // The phone target rides the app's own WebView over CDP: the browser-only harness steps below reach for a
-            // Playwright init script, a request interception or a live context the WebView refuses, and they failed with
-            // "Cannot read properties of undefined (reading 'triggerEvent')" before anyone could read the reason. They
-            // refuse here instead, so a test that needs one fails where the phone cannot do it.
+            // request interception or a live context the WebView refuses, and they failed with "Cannot read properties of
+            // undefined (reading 'triggerEvent')" before anyone could read the reason. They refuse here instead, so a test
+            // that needs one fails where the phone cannot do it. An attempt-scoped page script (`addInitScript`) is not
+            // one of those: it lands in the WebView's page like a browser's, so `clipboard` and `recordStatuses` are the
+            // web's steps unchanged.
             clearOffline: async () => {
-              // The web version also installs an init script so a later page cannot be answered by an old worker. The phone
-              // relaunches the app for every test, so the page that matters is the open one: clearing it here is the whole
-              // job, and an init script is the one thing the WebView's single context cannot take.
-              await browser().evaluate(async () => {
+              // The web's own reason holds here too: a worker an earlier test left can answer this navigation (and its app
+              // chunk) before an init script runs, so it is dropped in the page that is open as well.
+              const clear = async () => {
                 const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
                 await Promise.all(registrations.map((registration) => registration.unregister()));
                 if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
                 return null;
-              });
+              };
+              await browser().evaluate(clear);
+              await browser().addInitScript(clear);
             },
             holdAppChunks: async () => ({
               // Holding the app's chunk needs request interception, which the WebView's single context cannot take. A phone
@@ -1000,15 +1032,12 @@ export const test = base.extend<{ hui: Hui }>({
               throw new Error("hui.tab() needs a browser: the app's WebView hands an external address to the shell's own browser, so the page never asks for a tab there and there is nothing to read. A use case that reads one stays off the phone's required list.");
             },
             controllableClock: async () => {
-              // The WebView has one context the engine cannot replace, so no init script reaches a later page: the clock
-              // goes into the page that is open. A test that installs it keeps that page — a reload would drop it, and a
-              // use case whose timer has to pass across a reload waits on the real clock instead.
+              // The clock is advanced in the page that holds it (`advanceClock` evaluates here), so it goes into the open
+              // page and a reload starts a new one: a use case whose timer has to pass across a reload waits on the real
+              // clock instead.
               return browser().evaluate(installClock);
             },
             advanceClock: (ms) => browser().evaluate(advanceClock, ms),
-            clipboard: async ({ refuse = false, legacyCopy = false } = {}) => {
-              await browser().evaluate(clipboardStub, { refuse, legacyCopy });
-            },
             allowMedia: async () => {
               // The app's WebView answers a page's permission prompt with the app's own Android grant (`RECORD_AUDIO`),
               // which a Playwright attempt cannot hand to it and a fake device cannot stand in for. A use case that needs
