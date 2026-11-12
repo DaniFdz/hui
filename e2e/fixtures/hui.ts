@@ -40,6 +40,7 @@ import { clearAppStorage, deviceBytes, deviceFiles, onPhone, openPhoneGateway, P
 import { onWebKitPhone, webkitServiceWorkers } from "./phone-webkit.ts";
 import { startWorld, type World, type WorldName } from "./world.ts";
 import { storedContent } from "./stored-content.ts";
+import { androidDisplay, type DisplayArea, type Insets } from "./display-area.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
@@ -95,11 +96,12 @@ export type Hui = {
   url(): Promise<string>;
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
   /**
-   * States the insets a device reports but an emulator never does — the notch's, the status bar's, the home indicator's —
-   * by writing the same \`--safe-area-*\` tokens the installed app's shell writes, so a page laid out for a phone can be
-   * read as a cutout phone draws it. Refuses in the app, where the shell owns those tokens and zeroes them.
+   * States synthetic browser insets through the page's \`--safe-area-*\` tokens. Refuses in the native app, where
+   * the shell fits the physical WebView frame and zeroes page tokens. Use safeDisplay for positive native evidence.
    */
   insets(insets: { top?: number; right?: number; bottom?: number; left?: number }): Promise<void>;
+  /** Measures safe display bounds and control boxes in one coordinate space. Browser insets are synthetic; Android uses real system overlays and its physical WebView frame. */
+  safeDisplay(insets?: Insets): Promise<DisplayArea>;
   wideScreen(width?: number): Promise<void>;
   paletteChord(): Promise<void>;
   /** A bot's Settings chord: ⇧⌘, on Apple platforms and Ctrl+Shift+, elsewhere. */
@@ -544,6 +546,7 @@ function huiTest(offline: boolean) {
     const gatewayStubs: GatewayStub[] = [];
     const settings = await api<unknown>("GET", "/__hui/settings");
     const directories: string[] = [];
+    const nativeDisplay = onPhone(fixtures.app.baseUrl) ? androidDisplay() : undefined;
 
     const webSteps: PlatformSteps = {
       open: (path) => fixtures.app.open(path),
@@ -574,6 +577,20 @@ function huiTest(offline: boolean) {
           for (const [side, value] of Object.entries(insets)) document.documentElement.style.setProperty(`--safe-area-${side}`, `${value}px`);
           return null;
         }, { top, right, bottom, left });
+      },
+      safeDisplay: async (insets = {}) => {
+        await webSteps.insets(insets);
+        await browser().evaluate(async () => {
+          await Promise.all(document.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity).map((animation) => animation.finished.catch(() => undefined)));
+          return null;
+        });
+        const size = await browser().evaluate(() => ({ width: innerWidth, height: innerHeight }));
+        return { ...size, top: insets.top ?? 0, left: insets.left ?? 0, right: size.width - (insets.right ?? 0),
+          bottom: size.height - (insets.bottom ?? 0), box: async (target) => {
+            const box = await target.boundingBox();
+            if (!box) throw new Error("display measurement: the target is not laid out");
+            return box;
+          } };
       },
       overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
         .some((element) => element.scrollWidth > element.clientWidth)),
@@ -1036,6 +1053,32 @@ function huiTest(offline: boolean) {
       : onPhone(fixtures.app.baseUrl)
         ? {
             ...web,
+            phoneScreen: async (orientation = "portrait") => {
+              nativeDisplay!.rotate(orientation);
+              const size = () => browser().evaluate(() => ({ width: innerWidth, height: innerHeight }));
+              await expect.poll(async () => {
+                const { width, height } = await size();
+                return orientation === "portrait" ? height > width : width > height;
+              }, { message: "the physical display must reach the requested orientation" }).toBe(true);
+              return size();
+            },
+            insets: async () => { throw new Error("Android owns its frame insets; use safeDisplay for real native measurements"); },
+            safeDisplay: async (insets) => {
+              nativeDisplay!.prepare();
+              if (insets) {
+                const path = await browser().url();
+                const previous = await nativeDisplay!.target();
+                if (nativeDisplay!.cutout()) {
+                  // Applying Android resources recreates the Activity. Wait for its new real target before binding it.
+                  await expect.poll(() => nativeDisplay!.target()).not.toBe(previous);
+                  await fixtures.app.open(path);
+                  nativeDisplay!.prepare();
+                }
+              }
+              const metrics = () => browser().evaluate(() => ({ width: innerWidth, height: innerHeight, ratio: devicePixelRatio, scale: visualViewport?.scale ?? 1 }));
+              await expect.poll(async () => nativeDisplay!.ready(await metrics()), { message: "native inset resize must reach the real CSS viewport" }).toBe(true);
+              return nativeDisplay!.measure(await metrics());
+            },
             open: async (path) => {
               const destination = new URL(path, receipt.url);
               await openPhoneGateway(destination.origin);
@@ -1115,6 +1158,7 @@ function huiTest(offline: boolean) {
     if (fixtures.platform === "web") await browser().addInitScript(recordTabs);
     await steps.clearState();
 
+    try {
     await use({
       ...steps,
       workspace: receipt.workspace,
@@ -1196,6 +1240,10 @@ function huiTest(offline: boolean) {
         return { path, git };
       },
     });
+    } finally {
+      try {
+        nativeDisplay?.restore();
+      } finally {
 
     // A test that failed while offline must not leave the fixture unreachable.
     await network("online");
@@ -1229,6 +1277,8 @@ function huiTest(offline: boolean) {
     for (const path of directories) await rm(path, { recursive: true, force: true });
     // A world is another gateway and its own fake services: stop each one the test started, gateway and all.
     for (const world of worlds.reverse()) await world.stop();
+      }
+    }
   },
   });
 }

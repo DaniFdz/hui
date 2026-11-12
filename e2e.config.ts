@@ -35,9 +35,9 @@ const phone = {
   engine: web({
     // A WebView has no context to create, so the attempt rides the app's own; that is the engine's persistent mode.
     connect: { cdpEndpoint: phoneCdpEndpoint(phoneGateway), reconnectEndpoint: phoneReconnectEndpoint(phoneGateway) },
-    // The Pixel AVD's CSS pixels (1080x2400 at 2.625). The WebView reports this size itself; the engine would otherwise
-    // size a recovered page to its 1280x720 default and hide the phone layout the target exists to check.
-    viewport: { width: 412, height: 867 },
+    // Keep the WebView's actual device metrics, including its native frame's resize for system bars/cutouts.
+    // A fixed viewport emulates CSS dimensions AND DPR (1), hiding whether the physical frame fits the display.
+    viewport: null,
   }),
   app: { url: phoneGateway, command: launcher("android", PHONE_PORT, true) },
 };
