@@ -262,6 +262,97 @@
   border-top: 1px solid var(--border);
 }
 
+/* Settings sits on the sidebar's top row beside the collapse toggle and the Agents | Bots switch, so it is reachable
+   from both lists. The footer is the gateway picker alone. */
+.app-shell .sidebar-brand__settings {
+  flex: none;
+  margin-inline-start: auto;
+}
+
+.app-shell .sidebar-gateway {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--control-ui-text-sm);
+  text-align: start;
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.app-shell .sidebar-gateway:hover,
+.app-shell .sidebar-gateway:focus-visible {
+  background: color-mix(in srgb, var(--bg-hover) 84%, transparent);
+  color: var(--text);
+}
+
+.app-shell .sidebar-gateway:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.app-shell .sidebar-gateway__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.app-shell .sidebar-gateway__chevron {
+  flex: none;
+  display: inline-flex;
+}
+
+.app-shell .sidebar-gateway__chevron svg {
+  width: 12px;
+  height: 12px;
+  opacity: .6;
+}
+
+/* One dot for a gateway's state, in the footer and in the menu: the gateway serving this page, one this device reached
+   before, or one it cannot reach now. */
+.app-shell .sidebar-gateway__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.app-shell .sidebar-gateway__dot--current {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 14%, transparent);
+}
+
+.app-shell .sidebar-gateway__dot--offline { background: var(--danger); }
+
+.app-shell .sidebar-gateway-menu { width: 100%; }
+
+.app-shell .sidebar-gateway-menu__state {
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+}
+
+.app-shell .sidebar-gateway-menu__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .app-shell .sidebar-gateway {
+    min-height: 44px;
+  }
+}
+
 /* The sidebar's top row: the collapse toggle, its only header control, then the
    Agents | Bots tabs while the Bots tab is on (bots.css). */
 .app-shell .sidebar-brand {

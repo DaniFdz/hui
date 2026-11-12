@@ -8,29 +8,11 @@ import type { RouteRequest } from "../http/route.ts";
 
 type OriginalVscodeProviderPreference = "auto" | "configured" | "desktop" | "managed" | "path";
 type GptLiveVoice = "cove" | "arbor" | "breeze" | "ember" | "juniper" | "maple" | "sol" | "spruce" | "vale";
-type TypefaceId = "instrument-sans" | "geist" | "dm-sans" | "ibm-plex-sans" | "space-grotesk" | "atkinson-hyperlegible" | "fraunces" | "lora" | "jetbrains-mono" | "system";
-type Appearance = { fontUi: TypefaceId; fontChat: TypefaceId; textScale: 90 | 100 | 110 | 125 | 140 };
-type ThemeMode = "system" | "light" | "dark";
 
 type OriginalSettings = {
-
-  theme: string;
-  themeMode: ThemeMode;
-
-  accent: string;
-  fontUi: Appearance["fontUi"];
-  fontChat: Appearance["fontChat"];
-  fontTerminal: string;
-  textScale: Appearance["textScale"];
+  // Appearance (theme, colour mode, accent, typefaces, text size and chat preferences) is not in this payload: it
+  // belongs to the device that shows it. A tool's marks stay, because their files live on the gateway.
   chat: {
-    messageWidth: "compact" | "comfortable" | "wide";
-    collapseTaskProgress: boolean;
-    sendShortcut: "enter" | "modifierEnter";
-
-    githubEmbeds: boolean;
-
-    datadogEmbeds: boolean;
-
     toolMarks: Record<string, string>;
 
     toolIcons: Record<string, string>;

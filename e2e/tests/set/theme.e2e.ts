@@ -1,4 +1,4 @@
-/** A theme card recolours the whole app at once and stays chosen after a reload; a theme that fails to load leaves the previous one, and without a theme list Settings says the defaults are in use (SET-005). */
+/** A theme card recolours the whole app at once and stays chosen after a reload, in this device's own storage; a theme that fails to load leaves the previous one, and without a theme list Settings says the defaults are in use (SET-005). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -22,7 +22,8 @@ test("a theme card recolours the app at once in dark and light mode, stays chose
   await expect(card("Miami")).toBeVisible();
   await expect(card("Claw", false)).toBeVisible();
   await expect.poll(async () => (await hui.look(title)).background).toEqual(MIAMI_DARK);
-  await expect.poll(async () => (await hui.api<{ theme: string }>("GET", "/__hui/settings")).theme).toBe("miami");
+  await expect.poll(async () => (await hui.storedAppearance())?.theme).toBe("miami");
+  expect((await hui.api<Record<string, unknown>>("GET", "/__hui/settings")).theme).toBeUndefined();
   await hui.deviceAppearance("light");
   await expect.poll(async () => (await hui.look(title)).background).toEqual([247, 243, 246]);
   await hui.deviceAppearance("dark");
@@ -42,7 +43,7 @@ test("a theme card recolours the app at once in dark and light mode, stays chose
   await expect(card("Miami")).toBeVisible();
   await expect(card("Dracula", false)).toBeVisible();
   expect((await hui.look(title)).background).toEqual(MIAMI_DARK);
-  expect((await hui.api<{ theme: string }>("GET", "/__hui/settings")).theme).toBe("miami");
+  expect((await hui.storedAppearance())?.theme).toBe("miami");
   await hui.settingsPages();
   expect((await hui.look(pages)).color).not.toEqual(claw.color);
 });

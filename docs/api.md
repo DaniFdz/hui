@@ -3,9 +3,13 @@
 The interface between the backend and the browser. Change it deliberately: it is
 the seam the whole app is built across.
 
-Gateway API routes live under `/__hui/` and require the `x-hui: 1` header. Expected
-client errors use `{ "error": "message worth showing the user" }` with a 4xx
-status; storage/backend failures use the same shape with 500.
+Gateway API routes live under `/__hui/` and require the `x-hui: 1` header. A page
+on any site can reach localhost, but it cannot set a custom header without a
+preflight, and only one route answers one: `GET /__hui/update` (see [Adding a
+gateway](#adding-a-gateway)). Every other route refuses a preflight with 403 and
+carries no CORS header. Expected client errors use `{ "error": "message worth
+showing the user" }` with a 4xx status; storage/backend failures use the same
+shape with 500.
 
 ## Published schema
 
@@ -72,7 +76,15 @@ running gateway address only after the existing CLI identity checks. It uses
 that gateway's origin rather than exposing control credentials to the renderer.
 Window close and application quit do not stop the shared gateway. Existing
 stop/restart/update busy-work checks remain unchanged; no desktop HTTP endpoints
-or alternate persisted gateway state are introduced.
+or alternate persisted gateway state are introduced. The window's native color
+mode is the device's own: a sandboxed preload exposes only
+`huiDesktop.reportThemeMode(mode)`, `huiDesktop.appearanceSeed()` and
+`huiDesktop.markAppearanceSeedConsumed()`. The page reports the mode it stored in
+its `hui.appearance.v1` storage, and the shell keeps the last one in its
+`userData` so the next launch paints its window before the page loads. The shell
+never asks the gateway what appearance to use: the one look it hands over is the
+seed `hui doctor --fix` writes (see [HUI-owned presentation
+state](#hui-owned-presentation-state)).
 
 ### Desktop notifications
 
@@ -181,7 +193,7 @@ routes expose `UpdateSnapshot` from `server/api/updates.ts`:
 
 | Route | Behavior |
 | --- | --- |
-| `GET /__hui/update` | Running package version, last in-process check and latest updater receipt; no remote request |
+| `GET /__hui/update` | The gateway's own name, running package version, last in-process check and latest updater receipt; no remote request. The one route another origin may read |
 | `GET /__hui/update/check` | Background discovery; use the gateway's one-hour in-memory check cache, shared across browsers |
 | `POST /__hui/update/check` | Check latest stable GitHub release; never install or restart |
 | `POST /__hui/update` | Accept only `{ version: "x.y.z" }` matching an installable check; return 202 after detached updater starts |
@@ -192,6 +204,8 @@ routes expose `UpdateSnapshot` from `server/api/updates.ts`:
 ### `POST /__hui/update`
 
 The table above describes these routes. Their response is `UpdateSnapshot`; the install request is `UpdateRequest`.
+`name` is the name `GET /__hui/health` reports, so a client can add a gateway by
+address without opening health to another origin.
 
 Malformed input returns 400; absent/stale checks, active sessions a restart
 would interrupt, or concurrent operations return 409. Pi Durable runs do not
@@ -809,6 +823,29 @@ the operator's name for this gateway (`name` in `Settings`), or the hostname of
 the machine it runs on when none is saved; a machine that reports no hostname
 falls back to `HUI`. The saved setting is never filled in with that fallback.
 This endpoint is diagnostic and read-only.
+
+### Adding a gateway
+
+A client that keeps several gateways probes one before it adds it
+(SPEC.md "A device keeps a list of gateways"). The probe is `GET /__hui/update`
+with `x-hui: 1`: it needs the header, so a browser sends a preflight first, and
+this route — and only this route — answers one.
+
+- `OPTIONS /__hui/update` answers 204 with `access-control-allow-origin: *`,
+  `access-control-allow-methods: GET`, `access-control-allow-headers: x-hui`,
+  `access-control-max-age: 600` and `vary: origin`. No other route answers a
+  preflight; they all keep the 403 the `x-hui` gate gives them.
+- `GET /__hui/update` carries `access-control-allow-origin: *` and
+  `vary: origin` as well, so the answer is readable from another origin.
+
+The wildcard is deliberate and narrow: `UpdateSnapshot` there carries the
+gateway's name, its package version and an updater receipt with a job id — no
+session, setting, credential or transcript. The name comes from the same rule
+`GET /__hui/health` uses, so the two agree, and health stays same-origin. A
+gateway older than this handshake cannot be added from the page: it answers the
+preflight with 403, so the probe fails and nothing is stored. The route takes no
+credentials and sends no cookies; `*` is refused by a browser for a request made
+with them, which is why it is safe here.
 
 ### macOS power
 
@@ -4310,14 +4347,17 @@ fields unchanged. Mapping and contrast adjustment happen when HUI applies the th
 ### `GET /__hui/settings`
 
 Returns the normalized HUI `Settings` document, including `BrowserSettings`
-and `VscodeSettings`. Missing or malformed saved settings use the defaults.
+and `VscodeSettings`. Missing or malformed saved settings use the defaults. The
+document holds only what the gateway owns: it carries no theme, color mode,
+accent, typeface, text size or chat preference, because those belong to the
+device that shows them (see [HUI-owned presentation state](#hui-owned-presentation-state)).
 
 ### `PUT /__hui/settings`
 
 Normalizes and saves the supplied settings, then returns the saved `Settings`.
 Missing or invalid fields use their defaults rather than the previous values.
 The gateway applies the settings to its running services. Neither route changes
-PI's configuration.
+PI's configuration, and neither carries this device's appearance.
 
 ### `GET /__hui/ext`
 
@@ -4411,17 +4451,35 @@ overrides one. Extensions the operator installs start disabled.
 
 ### HUI-owned presentation state
 
-`PUT /__hui/settings` also persists the validated `#rrggbb` accent override,
-independent `fontUi` and `fontChat` choices from HUI's bounded OpenClaw font
-catalogue, a `fontTerminal` local family name (1–128 characters, default
-`JetBrains Mono`; blank or invalid values reset to default), the shared `textScale`,
-OpenClaw-compatible HUI chat preferences (`messageWidth`,
-`collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
-[`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
-Profile presentation fields, the gateway's own `name` (trimmed, at most 60
+The gateway's `settings.json` keeps what a gateway owns, not what a screen owns.
+It holds [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by
+default), Profile presentation fields, the gateway's own `name` (trimmed, at most 60
 characters, `""` by default; empty means this machine's hostname, which is what
-`GET /__hui/health` and the browser show) and reversible Labs flags (`labs`:
-`denseObservability` and `detailedDebug`, each off unless explicitly `true`).
+`GET /__hui/health` and the browser show), reversible Labs flags (`labs`:
+`denseObservability` and `detailedDebug`, each off unless explicitly `true`) and
+one `chat` object holding a tool's own mark and icon file per CLI or tool name
+(`toolMarks`, `toolIcons`; the icon files live in the gateway's config directory,
+so every device reads the same maps).
+
+Appearance is not there. A theme, color mode, accent, interface, chat-prose or
+terminal typeface, text size and the chat preferences (`messageWidth`,
+`collapseTaskProgress`, `sendShortcut`, `githubEmbeds`, `datadogEmbeds`) belong to
+the client that shows them, and are kept in that client's own storage under the
+versioned `hui.appearance.v1` key: one gateway serves many screens and people, so
+two clients must be able to disagree, and a phone's WebView keeps its own copy per
+app install. A device that stored nothing starts from HUI's defaults rather than
+from the gateway's old values, and corrupt or absent storage reads as those
+defaults. The desktop app's native window chrome follows the mode the page reports
+to it over a preload bridge and keeps the last one in its own `userData`.
+`hui doctor` reports a `settings.json` that still carries the moved keys and
+rewrites it without them under `--fix`, after writing the look alone (no chat
+preference: those are habits, not a screen) to `desktop-appearance.json` in the
+gateway's config directory as `{ format: 1, gateway, exportedAt, appearance }`.
+HUI's desktop app hands that seed to its page, which applies it only to a device
+that stored no appearance of its own and then marks it consumed; nothing is
+written when the look is only HUI's defaults. The seed is written on the
+gateway's machine, so a desktop app running elsewhere takes the file by hand.
+
 These values affect HUI only. They never change PI configuration, provider
 identity, runtime permissions or transcripts.
 

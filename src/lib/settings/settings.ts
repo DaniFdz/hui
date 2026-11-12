@@ -1,12 +1,11 @@
 /**
- * Shape, defaults and normalisation of HUI's user settings. Every value passes through here on the way in and
- * out, so a stale or hand-edited file degrades to defaults instead of reaching CSS or the gateway. Loading
- * and saving them through the gateway is `settings/settings-store.ts`'s job.
+ * Shape, defaults and normalisation of the settings the gateway owns. Every value passes through here on the way in
+ * and out, so a stale or hand-edited file degrades to defaults instead of reaching the gateway. This device's
+ * appearance (theme, colour mode, accent, typefaces, text size and chat preferences) is not here: it belongs to the
+ * screen that shows it, in `appearance/store.ts`. Loading and saving these through the gateway is
+ * `settings/settings-store.ts`'s job.
  */
 import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice } from "../voice/calls.ts";
-import { normalizeAppearance, DEFAULT_APPEARANCE } from "../theme/appearance.ts";
-import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "../terminal/font.ts";
-import { normalizeThemeMode } from "../theme/theme.ts";
 import { PI_THINKING_LEVELS } from "../thinking.ts";
 import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../../api/schema/settings.ts";
 
@@ -20,22 +19,9 @@ export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executa
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "claw",
-  themeMode: "system",
-  accent: "",
-  fontUi: DEFAULT_APPEARANCE.fontUi,
-  fontChat: DEFAULT_APPEARANCE.fontChat,
-  fontTerminal: DEFAULT_TERMINAL_FONT,
-  textScale: DEFAULT_APPEARANCE.textScale,
-  chat: {
-    messageWidth: "comfortable",
-    collapseTaskProgress: false,
-    sendShortcut: "enter",
-    githubEmbeds: true,
-    datadogEmbeds: true,
-    toolMarks: {},
-    toolIcons: {},
-  },
+  // A tool's own mark and icon file stay here: the files live in the gateway's config directory, so every device
+  // that draws a tool call reads them from the gateway that serves it.
+  chat: { toolMarks: {}, toolIcons: {} },
   profileName: "HUI Operator",
   profileHandle: "",
   name: "",
@@ -55,17 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export function normalizeSettings(raw: unknown): Settings {
   const source = isRecord(raw) ? raw : {};
-  const appearance = normalizeAppearance(source["fontUi"], source["fontChat"], source["textScale"]);
-  const theme = source["theme"];
-  const normalizedTheme = typeof theme === "string" ? theme.trim() : "";
   return {
-    theme: normalizedTheme || DEFAULT_SETTINGS.theme,
-    themeMode: normalizeThemeMode(source["themeMode"]),
-    accent: normalizeAccent(source["accent"]),
-    fontUi: appearance.fontUi,
-    fontChat: appearance.fontChat,
-    fontTerminal: normalizeTerminalFont(source["fontTerminal"]),
-    textScale: appearance.textScale,
     chat: normalizeChat(source["chat"]),
     profileName: boundedText(source["profileName"], DEFAULT_SETTINGS.profileName, 80),
     profileHandle: boundedText(source["profileHandle"], "", 80),
@@ -228,17 +204,11 @@ function normalizeDisabledSkills(value: unknown): Settings["disabledSkills"] {
   return [...skills.values()];
 }
 
+/** A file saved before this device owned its chat preferences still carries the ones that moved: they are not read,
+ * so the next save leaves them out (`cli/doctor-appearance.ts` reports the file until then). */
 function normalizeChat(value: unknown): Settings["chat"] {
   const source = isRecord(value) ? value : {};
-  const width = source["messageWidth"];
-  const shortcut = source["sendShortcut"];
   return {
-    messageWidth: width === "compact" || width === "wide" ? width : "comfortable",
-    collapseTaskProgress: source["collapseTaskProgress"] === true,
-    sendShortcut: shortcut === "modifierEnter" ? shortcut : "enter",
-    // Opt-out: only an explicit false disables previews.
-    githubEmbeds: source["githubEmbeds"] !== false,
-    datadogEmbeds: source["datadogEmbeds"] !== false,
     toolMarks: normalizeToolMarks(source["toolMarks"]),
     toolIcons: normalizeToolIcons(source["toolIcons"]),
   };
@@ -294,12 +264,6 @@ export function normalizeBranchPrefix(value: unknown): string {
     return DEFAULT_BRANCH_PREFIX;
   }
   return prefix;
-}
-
-function normalizeAccent(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const normalized = value.trim().toLowerCase();
-  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : "";
 }
 
 function boundedText(value: unknown, fallback: string, maximum: number): string {
