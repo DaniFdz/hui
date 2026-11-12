@@ -145,7 +145,7 @@ const cases: UseCase[] = [
   {
     id: "CALL-016",
     title: "Ask the bot a quick question during a call",
-    behaviour: "A question GPT-Live passes to the bot shows *Asking <bot>…* while the bot's helper answers from its soul, its memory and the call so far, then the bot speaks the answer in its own words. Nothing is posted to the chat during the call; the card's transcript later shows the helper's line with *asked “…”*.",
+    behaviour: "A question GPT-Live passes to the bot shows *Asking <bot>…* while the bot's helper answers from its soul, its memory, the newest messages of its chat and the call so far, then the bot speaks the answer in its own words. When the answer is not there (older memory, a file, an action) the helper hands it to the bot's chat instead of saying it does not know, and the call shows *<bot> is working on it in the chat.* Nothing is posted to the chat during the call; the card's transcript later shows the helper's line with *asked “…”*.",
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscalliddelegations"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/delegations"],
     web: "backlog",
@@ -163,9 +163,18 @@ const cases: UseCase[] = [
   {
     id: "CALL-018",
     title: "Reach the call's limits",
-    behaviour: "After six quick questions every request is handed to the chat, and after four hand-offs the bot says it cannot take more on this call; a question the helper cannot answer within 25 s makes the bot offer to hand it off. A call ends by itself after 15 minutes and leaves its card like any hang-up.",
+    behaviour: "After six quick questions every request is handed to the chat, and after six hand-offs the bot says it cannot take more on this call; a question the helper cannot answer within 25 s makes the bot offer to hand it off. A call ends by itself after 15 minutes and leaves its card like any hang-up.",
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscalliddelegations"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/delegations"],
+    web: "backlog",
+    ios: "backlog",
+  },
+  {
+    id: "CALL-029",
+    title: "Start a call with the bot's handoff ready",
+    behaviour: "Starting a call keeps the call view at *Connecting…* while the bot's utility model writes its handoff note from its soul, its memory, the newest messages of its chat and its saved knowledge (at most six seconds); the note reaches the call's instructions and the bot speaks from it, so a handoff given in the chat minutes earlier is known on the call. When no model answers in time the call starts anyway, with the memory and the newest chat messages only.",
+    spec: [CALLS, "docs/api.md#post-__huibotsidcalls"],
+    surfaces: ["route:POST /__hui/bots/:id/calls"],
     web: "backlog",
     ios: "backlog",
   },

@@ -23,7 +23,7 @@ import { localBotSkills } from "./bots/skills.ts";
 import { durableBotConversations } from "./bots/conversations.ts";
 import { CallBroker, providerCallAccounts } from "./bots/calls.ts";
 import { createCallRoutes } from "./routes/calls.ts";
-import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./bots/call-helper.ts";
+import { buildCallHandoff, buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall, utilityCandidates } from "./bots/call-helper.ts";
 import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
 import { type BotReply, type BotView } from "./bots-format.ts";
@@ -498,8 +498,19 @@ const callBroker = new CallBroker({
 export const callRoutes = createCallRoutes({
   broker: callBroker,
   bots,
+  // The note a call starts with, on the same utility model its quick answers use: written from the soul, the memory, the
+  // newest chat messages and the saved knowledge, so a handoff given minutes earlier reaches the call.
+  handoff: async (input) => {
+    const settings = await callSettings();
+    return await buildCallHandoff({ ...input, operator: settings.operator }, {
+      completion: callCompletion,
+      models: utilityCandidates(input.bot, settings.utility),
+      report: reportCall,
+    });
+  },
   delegate: createCallDelegate({
     view: async (botId) => (await bots.callContext(botId)).view,
+    recent: async (botId) => (await bots.callContext(botId)).recent,
     soul: async (botId) => (await bots.soul(botId)) ?? undefined,
     facts: async (botId) => bots.facts(botId),
     settings: callSettings,
