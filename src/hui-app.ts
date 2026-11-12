@@ -1703,11 +1703,20 @@ export class HuiApp extends HuiElement {
   private showEarlierRows = async (start: number) => {
     const scroller = this.renderRoot.querySelector?.(TRANSCRIPT_SCROLLER_SELECTOR);
     if (!(scroller instanceof HTMLElement)) return;
-    const fromBottom = scroller.scrollHeight - scroller.scrollTop;
+    const anchor = scroller.querySelector<HTMLElement>(".chat-thread-inner > .chat-history-boundary + *");
+    if (!anchor) return;
+    // This row survives the prepend. scrollHeight rounds fractional geometry;
+    // measure its actual movement, including any native scroll anchoring.
+    const top = anchor.getBoundingClientRect().top;
     this.autoFollow = false;
     this.transcriptWindowStart = start;
     await this.updateComplete;
-    scroller.scrollTop = scroller.scrollHeight - fromBottom;
+    const target = scroller.scrollTop + anchor.getBoundingClientRect().top - top;
+    scroller.scrollTop = target;
+    // WebKit can truncate scroll offsets to whole CSS pixels. Use the nearest
+    // offset there; leave engines that retain fractional offsets alone.
+    const roundedTarget = Math.round(target);
+    if (Number.isInteger(scroller.scrollTop) && scroller.scrollTop !== roundedTarget) scroller.scrollTop = roundedTarget;
   };
 
   private navigateTranscript = (element: HTMLElement, top: number) => {
