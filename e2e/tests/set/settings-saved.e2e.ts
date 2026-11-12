@@ -42,9 +42,12 @@ test("a device whose storage refuses the write applies the change, says so, and 
   await expect(refused).toBeVisible();
   await expect.poll(() => hui.appearance()).toBe("light");
   await expect(chosen("Light")).toBeVisible();
+  expect((await hui.storedAppearance())?.themeMode).toBe("dark");
 
   await hui.reload();
-  await expect.poll(() => hui.appearance()).toBe("light");
   await hui.scrollTo(screen.getByTestId("settings-page"), screen.getByRole("button", "Dark"));
   await expect(chosen("Dark")).toBeVisible();
+  // The refused Light write never replaced the stored Dark choice. Wait for the loaded picker before reading the mode.
+  await expect.poll(() => hui.appearance()).toBe("dark");
+  expect((await hui.storedAppearance())?.themeMode).toBe("dark");
 });

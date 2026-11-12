@@ -61,7 +61,8 @@ test("another Terminal font reaches a terminal that is already open: the same sh
   await hui.scrollTo(page, list.getByText("FiraCode Nerd Font Mono", { exact: true }));
   await list.getByText("FiraCode Nerd Font Mono", { exact: true }).tap();
   await expect(screen.getByRole("button", { name: "Terminal font: FiraCode Nerd Font Mono" })).toBeVisible();
-  await expect.poll(async () => (await hui.api<Record<string, string>>("GET", "/__hui/settings"))["fontTerminal"]).toBe("FiraCode Nerd Font Mono");
+  await expect.poll(async () => (await hui.storedAppearance())?.fontTerminal).toBe("FiraCode Nerd Font Mono");
+  expect((await hui.api<Record<string, unknown>>("GET", "/__hui/settings")).fontTerminal).toBeUndefined();
 
   // The same terminal is still there, its shell is the same process, and it keeps what it printed…
   await hui.open(`/sessions/${session.id}`);
