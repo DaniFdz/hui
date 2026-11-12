@@ -50,6 +50,17 @@ function statusMessage(title: string, id: string, state: HeartbeatState, last: s
   ].join("\n");
 }
 
+function completedMessage(title: string, id: string, last: string | undefined): string {
+  return [
+    `[routine: Heartbeat] Watched session "${title}" reached done.`,
+    "| Session | Pull request | Status / blockers |",
+    "| --- | --- | --- |",
+    `| [${title}](/sessions/${id}?open=app) | — | Done |`,
+    ...(last?.trim() ? ["", last.trim().slice(0, 1_000)] : []),
+    "Read the final report. Nothing is waiting to continue.",
+  ].join("\n");
+}
+
 function continuedMessage(title: string, id: string): string {
   return [
     `[routine: Heartbeat] Continued watched session "${title}" after it was idle.`,
@@ -79,11 +90,23 @@ export function createHeartbeat(deps: HeartbeatDeps) {
     const continued: string[] = [];
     for (const [id, watcherIds] of watchedBy) {
       const target = byId.get(id);
-      if (!target || target.archived || target.bot || target.stage === "done") continue;
+      if (!target || target.archived || target.bot) continue;
+      const at = deps.now?.() ?? Date.now();
+      if (target.stage === "done") {
+        if (deps.status(id) !== "idle") continue;
+        const previous = notifiedAt.get(id);
+        if (previous !== undefined && Date.parse(target.updatedAt) <= previous) continue;
+        let sent = false;
+        for (const watcherId of watcherIds) {
+          await deps.notify(watcherId, completedMessage(target.title, id, deps.lastAssistant(id))).catch(() => undefined);
+          sent = true;
+        }
+        if (sent) notifiedAt.set(id, at);
+        continue;
+      }
       const goal: SessionGoalStatus | undefined = target.goal?.status;
       if (goal !== undefined && goal !== "active") continue;
       const status = deps.status(id);
-      const at = deps.now?.() ?? Date.now();
       const state = status === "waiting" || status === "error" ? status : looksLikeDecision(deps.lastAssistant(id)) ? "decision" : undefined;
       if (state) {
         const previous = notifiedAt.get(id);

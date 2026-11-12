@@ -90,6 +90,23 @@ test("waiting for input, an error, a starting runtime and a done stage are never
   assert.deepEqual(await createHeartbeat(done.deps).scan(), { continued: [] });
 });
 
+test("a done-stage target tells the watcher once and is never continued", async () => {
+  const f = fixture();
+  f.deps.records = async () => [
+    session("watcher", undefined, { watches: ["target"] }),
+    session("target", undefined, { stage: "done" }),
+  ];
+  f.deps.lastAssistant = () => "Merged and deployed. All checks green.";
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { continued: [] });
+  assert.deepEqual(f.prompts, []);
+  assert.equal(f.notifications.length, 1);
+  assert.match(f.notifications[0]?.text ?? "", /reached done/u);
+  assert.match(f.notifications[0]?.text ?? "", /\| \[target\]\(\/sessions\/target\?open=app\) \| — \| Done \|/u);
+  assert.deepEqual(await heartbeat.scan(), { continued: [] });
+  assert.equal(f.notifications.length, 1);
+});
+
 test("a running target or a running watcher is left alone", async () => {
   const running = fixture("running");
   assert.deepEqual(await createHeartbeat(running.deps).scan(), { continued: [] });

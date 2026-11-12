@@ -519,7 +519,7 @@ starts idle: it has a SOUL.md and its skills, and it says nothing until you
 message it. Its home folder holds the pack's skills under `skills/`, and the
 bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
 with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
-`machines`, `status`, `learn`, `lessons`,
+`machines`, `status`, `decision`, `learn`, `lessons`,
 `verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
 `figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
 `principles` reference. No other chat loads them.
@@ -546,10 +546,10 @@ You archive the session then; the chief settles the ledger row and never
 archives it for you. A **lead** is opt-in inside such a session, or when you
 ask for one, not the chief's default.
 
-The session is the **lead** for one PR. HUI adds the PR-lead phase protocol: one phase at a
-time, an `explorer` for investigation, then after your go a `worker` in a worktree, a fresh
-`verifier`, then a `reviewer`; it never creates a second session for a phase. It ends each phase
-with `Waiting for the go...`; read its evidence and send the next phase. Its own model is the
+The session is the **lead** for one PR. HUI adds the PR-lead phase protocol: it runs the phases
+end to end, an `explorer` for investigation, a `worker` in a worktree, a fresh `verifier`, then a
+`reviewer`; it never creates a second session for a phase. It stops only for a real decision and
+reports its final evidence; there is no go between phases. Its own model is the
 orchestrator; set the route models in Settings to change each phase's model. A model-less
 route inherits the lead's model.
 
@@ -559,6 +559,10 @@ route inherits the lead's model.
 | Implementation | `worker` | A coding model |
 | Verification | `verifier` | An independent model |
 | Review | `reviewer` | A different model family from the implementer |
+
+When the operator is truly needed, the chief uses the `decision` skill: one line, a compact
+table or diagram of the options, a recommendation and one question, never a wall of text.
+Technical choices with evidence are the chief's or lead's to make.
 
 A status answer uses the `status` skill: one table row per session
 (`[title](/sessions/<id>?open=app)`, PR link, status and blockers), then one
