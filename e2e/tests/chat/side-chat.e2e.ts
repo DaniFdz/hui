@@ -1,6 +1,7 @@
 /** /btw and /side ask the utility model a side question in the Work pane's Side chat view, which never enters the conversation, and refuse a bare command or attachments (CHAT-043). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { expectWorkPaneHidden, hideWork, reopenWork } from "../work/work-views.ts";
 
 test("/btw answers in the Side chat Work view, which stays out of the transcript and closes with its tab", { tags: ["CHAT-043"], platforms: ["web"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
@@ -25,16 +26,20 @@ test("/btw answers in the Side chat Work view, which stays out of the transcript
   await expect(screen.getByText("Fixture response.")).toBeVisible();
   await expect(screen.getByText("Ephemeral · hui-e2e/fixture")).toBeVisible();
   await expect(screen.getByText("Asking utility model…")).toBeHidden();
+  // A phone draws the Side chat as the whole screen, so the transcript it must stay out of is read once that destination
+  // is left; a desktop keeps both on screen and `hideWork` has nothing to do.
+  await hideWork(screen);
   await expect(transcript.getByText("Start a conversation")).toBeVisible();
   await expect(transcript.getByText("which file are we editing?")).toBeHidden();
 
+  await reopenWork(screen, "Side chat");
   await pane.getByRole("button", "Close Side chat").tap();
   await expect(pane.getByRole("tab", "Side chat")).toHaveCount(0);
-  await expect(screen.getByRole("button", "Show Work pane")).toBeVisible();
+  await expectWorkPaneHidden(screen);
   await hui.reload();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(transcript.getByText("Start a conversation")).toBeVisible();
-  await expect(screen.getByRole("button", "Show Work pane")).toBeVisible();
+  await expectWorkPaneHidden(screen);
 
   await message.fill("/side and the other one?");
   await screen.getByRole("button", "Send message").tap();

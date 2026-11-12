@@ -1,6 +1,7 @@
 /** Settings → Models chooses the primary, fallback and utility models and the default reasoning, and the utility model names sessions and answers /btw in the Side chat Work view (SET-045, SET-047). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { hideWork } from "../work/work-views.ts";
 
 test("Primary, Fallback, Utility and Default reasoning choose their values, say when each runs and keep the choice after a reload", { tags: ["SET-045"] }, async ({ screen, hui }) => {
   await hui.open("/settings/models");
@@ -66,6 +67,8 @@ test("the utility model names a new session from its first prompt and answers /b
   // The question and the answer stay outside the conversation, which keeps its one reply.
   await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
   await expect(screen.getByText("Fixture response.")).toHaveCount(2);
+  // A phone answers in a full-screen Work destination, so the transcript is read once it is back on screen.
+  await hideWork(screen);
   await expect(transcript.getByText("Plan the release notes")).toBeVisible();
   await expect(transcript.getByText("which model answers this?")).toBeHidden();
 });

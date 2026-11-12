@@ -1,5 +1,5 @@
 /**
- * Opening a Work view for the WORK area's shared tests at either width: the wide split workspace shows the pane and
+ * Opening a Work view for a test at either width: the wide split workspace shows the pane and
  * picks the launcher from its + menu (WORK-001, WORK-002), while a narrow screen opens the full-screen Work destination
  * from the Active panel selector (WORK-010). The test reads neither the width nor a platform, so one test proves its use
  * case where a desktop draws the pane beside the chat and where a phone draws it as a destination of its own.
@@ -9,6 +9,9 @@
  * open — a wide pane collapsed to its rail, or a phone's chat with the view in its Active panel selector — and
  * `hideWork` hides the pane either way. A reload at phone size lands on the chat, so a test that reloads reopens the
  * view it means.
+ *
+ * A view that is not a Work view's own test but opens one anyway (a chat's /btw answers in the Side chat view) uses the
+ * same routes instead of assuming the pane sits beside the chat.
  */
 import { expect, type Locator, type Screen } from "e2e";
 
@@ -98,4 +101,25 @@ export const showWork = async (screen: Screen): Promise<void> => {
 export const backToChat = async (screen: Screen): Promise<void> => {
   const back = screen.getByRole("button", "Back to chat");
   if (await back.isVisible()) await back.tap();
+};
+
+/**
+ * Gives the pane the room a view's own wide controls need: the split workspace maximizes it, and a phone's destination is
+ * already the whole screen, so nothing is pressed there (WORK-010, WORK-017).
+ */
+export const maximizeWork = async (screen: Screen): Promise<void> => {
+  const maximize = screen.getByRole("button", "Maximize Work pane");
+  await settle(maximize, screen.getByRole("button", "Back to chat"), panelSelector(screen));
+  if (await maximize.isVisible()) await maximize.tap();
+};
+
+/**
+ * Waits for the Work pane to be hidden again: a wide screen shows its rail's Show Work pane, and a phone is back on the
+ * chat, with no Back to chat control of the destination on screen (WORK-006, WORK-010).
+ */
+export const expectWorkPaneHidden = async (screen: Screen): Promise<void> => {
+  const show = screen.getByRole("button", "Show Work pane");
+  const back = screen.getByRole("button", "Back to chat");
+  await settle(show, panelSelector(screen));
+  await expect.poll(async () => (await show.isVisible()) || !(await back.isVisible())).toBe(true);
 };
