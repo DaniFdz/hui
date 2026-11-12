@@ -893,7 +893,7 @@ const cases: UseCase[] = [
   {
     id: "SET-092",
     title: "Name a gateway and see its name",
-    behaviour: "Settings → Gateway has “Gateway name”, empty on a fresh gateway, which shows this machine's hostname as the name it reports until it is named. Typing a name and pressing **Save** keeps it after a reload, and About's Runtime list shows it as “Name” in place of the hostname; clearing the field and saving goes back to the hostname.",
+    behaviour: "The gateway's own name is edited from **Edit** on the gateway serving this page in Settings → Gateways, with no separate name field on the page: its address is fixed and its name is empty on a fresh gateway, showing the hostname it reports as the placeholder. Typing a name and saving keeps it after a reload, and About's Runtime list shows it as “Name” in place of the hostname; clearing the name and saving goes back to the hostname.",
     spec: ["SPEC.md#a-gateway-carries-a-name-2026-11-11", "docs/api.md#get-__huihealth", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["settings-page:connection", "setting:name", "page:about", "route:GET /__hui/health", "route:GET /__hui/settings", "route:PUT /__hui/settings"],
     journeys: ["gateway-settings"],
@@ -902,11 +902,22 @@ const cases: UseCase[] = [
   },
   {
     id: "SET-093",
-    title: "Add a gateway by its address",
+    title: "Add a gateway by its name and address",
     behaviour:
-      "Settings → Gateway lists **Gateways** above the gateway's own name: the gateway serving this page first, marked *Current*, then each gateway this device added with its name, its address and when it was last reached, or *Offline* with **Retry** when this page cannot reach it. Below them, **Add a gateway** takes an address and **Add** probes it; a gateway that answers the handshake is added under the name it gives, and an address that is not one shows *This address doesn't answer as a HUI gateway.*, an address with no scheme means http, and nothing is added. **Remove** forgets a saved gateway, never the current one.",
+      "Settings → Gateway lists **Gateways** above the gateway's own name: the gateway serving this page first, marked *Current*, then each gateway this device added with its name, its address and when it was last reached, or *Offline* with **Retry** when this page cannot reach it. **Add gateway** opens a dialog with **Name** and **Address**; its **Add gateway** probes the address and adds it under the name typed there, or the name the gateway gives when **Name** is empty. A gateway that refuses shows *This address doesn't answer as a HUI gateway.* in the dialog, an address with no scheme means http, an address with a query, fragment or credentials shows *Enter an http:// or https:// address.*, and nothing is added. Every row has **Edit**, and **Remove** forgets a saved gateway, never the current one.",
     spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "docs/api.md#adding-a-gateway", "SPEC.md#installed-gateway"],
     surfaces: ["settings-page:connection", "route:GET /__hui/update", "route:GET /__hui/health"],
+    journeys: ["gateway-settings"],
+    web: "required",
+    phone: "backlog",
+  },
+  {
+    id: "SET-097",
+    title: "Edit a gateway's connection",
+    behaviour:
+      "**Edit** on a saved gateway opens the same dialog prefilled with its name and address. Saving a new name without moving the address keeps the row and its last sighting (a later reach refreshes only the sighting, never the chosen name), even while the gateway is offline; saving another address asks it to identify itself first, refuses one already in the list or the one serving this page, and otherwise moves the row there. **Edit** on the current gateway fixes its address to where this page came from and saves only its name, the name every client that connects sees.",
+    spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "docs/api.md#adding-a-gateway"],
+    surfaces: ["settings-page:connection", "route:GET /__hui/update", "route:GET /__hui/health", "route:PUT /__hui/settings"],
     journeys: ["gateway-settings"],
     web: "required",
     phone: "backlog",

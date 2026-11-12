@@ -777,7 +777,7 @@ Browser and package proof is in `e2e/package.browser.md` and `e2e/update.browser
 
 A gateway can be named, and every client sees that name. It is the operator's
 label for one gateway, saved as `name` in HUI's own settings beside the profile
-fields (Settings → Gateway → Gateway name) and reported on
+fields (the current gateway's Edit dialog in Settings → Gateways) and reported on
 `GET /__hui/health`, so a client that keeps several gateways can tell them
 apart without knowing each machine's path, port or hostname. Empty is the
 normal state of a fresh install and means the hostname of the machine the
@@ -791,17 +791,30 @@ gateways is not part of this change.
 ### A device keeps a list of gateways (2026-11-11)
 
 A client remembers the gateways it has used. The browser keeps a list under one
-`localStorage` key: an address and the name the gateway gave for itself when it
-was added, plus when this device last reached it. The gateway that served the
+`localStorage` key: an address and the name this device shows for it — the one
+typed when it was added, else the name the gateway gives for itself — plus when
+this device last reached it. The gateway that served the
 page is the current one: it is named by its own `GET /__hui/health`, and it is
 never stored, renamed or removed, because the list is about the others. Adding a
 gateway asks that address for `GET /__hui/update` with `x-hui: 1` — the one route
 a gateway answers cross-origin, carrying a version, a job id and its own name,
-never user data. An address that answers that handshake is stored with the name
-in the answer; one that refuses, hangs or answers with something else shows HUI's
-own wording and is not stored. An address with no scheme means `http`, a query,
-fragment or credentials are refused rather than dropped, and duplicate addresses
-collapse into one row. Corrupt or absent storage reads as an empty list.
+never user data. An address that answers that handshake is stored under the name
+typed in the dialog, or the name in the answer when that field is empty; one
+that refuses, hangs or answers with something else shows HUI's own wording in
+the dialog and is not stored. The stored name is this device's own label: a later
+reach refreshes when the gateway was last seen, never what it calls itself today.
+An address with no scheme means `http`, a query, fragment or credentials are
+refused rather than dropped, and duplicate addresses collapse into one row.
+Corrupt or absent storage reads as an empty list.
+
+Adding and editing use one dialog with a name and an address. **Add gateway**
+opens it empty. Every row has **Edit**: a saved gateway's name and address are
+both editable, and a rename that does not move the address needs no handshake,
+so a gateway that is down today can still be renamed. Moving a saved gateway
+to another address probes it first and refuses one already in the list. The
+gateway serving the page is the current one, so its Edit fixes the address to
+where the page came from and saves only the name, which every client that
+connects sees.
 
 Switching navigates: the page opens the chosen gateway's own address, so
 everything on screen afterwards belongs to that gateway, with that gateway's
@@ -810,8 +823,7 @@ offline, with Retry, and it is kept rather than dropped: a gateway that is down
 today may be the one this device wants tomorrow. The list is presentation only —
 a per-device shortcut — and changes no PI configuration, credential, session or
 transcript. The sidebar footer shows the current gateway's name and opens the
-list, with Add a gateway… leading to Settings → Gateway, where the addresses are
-managed.
+list, whose **Add a gateway…** opens that same dialog in place.
 
 ### Appearance belongs to the device that shows it (2026-11-16)
 
@@ -1861,7 +1873,10 @@ than half its cores); when every machine is over a limit it returns a
 machine. `create_session`
 creates an ordinary top-level session instead: a group, a title, its first
 prompt and optionally a fresh worktree, a worker, a model and thinking. The
-caller's cwd, group, worker, model and thinking are defaults. The brief reaches
+target group's stored New session defaults decide its directory, machine, Git
+environment and base ref; the call fills in only what the group leaves unset. A
+group chief's own group is the default, then the caller's cwd, group, worker,
+model and thinking. The brief reaches
 the new chat tagged from the calling bot, like every message a bot sends into a
 chat, so the new session's own chat shows it under that bot's name rather than
 as the operator's words. It writes no

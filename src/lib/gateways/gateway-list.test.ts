@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
   addGateway,
+  editGateway,
   GATEWAY_LIST_VERSION,
   gatewayName,
   gatewayViews,
@@ -80,6 +81,22 @@ test("one address is one row, newest first, and the gateway serving the page is 
   ]);
   assert.deepEqual(addGateway(entries, { url: CURRENT, name: "Here", lastSeen: 400 }, CURRENT), entries);
   assert.deepEqual(addGateway(entries, { url: "ftp://x", name: "No", lastSeen: 400 }, CURRENT), entries);
+});
+
+test("an edited gateway keeps its row and sighting, and a move cannot overwrite another row", () => {
+  assert.deepEqual(editGateway(entries, "http://studio.local:8787", { url: "http://studio.local:8787", name: "Studio Mac", lastSeen: 100 }, CURRENT), [
+    { url: "http://studio.local:8787", name: "Studio Mac", lastSeen: 100 },
+    { url: "http://loft.local:8787", name: "Loft", lastSeen: 50 },
+  ]);
+  assert.deepEqual(editGateway(entries, "http://loft.local:8787", { url: "attic.local:8787", name: "Attic", lastSeen: 300 }, CURRENT), [
+    { url: "http://attic.local:8787", name: "Attic", lastSeen: 300 },
+    { url: "http://studio.local:8787", name: "Studio", lastSeen: 100 },
+  ]);
+  // Moving onto an address another row holds, onto this page's gateway, or from a row that is not saved changes nothing.
+  assert.deepEqual(editGateway(entries, "http://loft.local:8787", { url: "http://studio.local:8787", name: "Both", lastSeen: 300 }, CURRENT), entries);
+  assert.deepEqual(editGateway(entries, "http://loft.local:8787", { url: CURRENT, name: "Here", lastSeen: 300 }, CURRENT), entries);
+  assert.deepEqual(editGateway(entries, "http://gone.local", { url: "http://new.local", name: "New", lastSeen: 300 }, CURRENT), entries);
+  assert.deepEqual(editGateway(entries, "http://loft.local:8787", { url: "ftp://x", name: "No", lastSeen: 300 }, CURRENT), entries);
 });
 
 test("removing and marking seen leave the current gateway alone", () => {

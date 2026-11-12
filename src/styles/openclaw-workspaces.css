@@ -445,24 +445,6 @@ wa-switch::part(base) { min-width: inherit; min-height: inherit; }
   background: var(--danger);
 }
 
-.settings-gateway-add .settings-row__control {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.settings-gateway-add .settings-input {
-  width: min(46vw, 260px);
-  min-width: 0;
-}
-
-.settings-gateway__error {
-  margin-top: 2px;
-  color: var(--danger);
-  font-size: var(--control-ui-text-sm);
-  overflow-wrap: anywhere;
-}
-
 @media (max-width: 640px) {
   .settings-gateway {
     flex-wrap: wrap;
@@ -471,14 +453,6 @@ wa-switch::part(base) { min-width: inherit; min-height: inherit; }
   .settings-gateway .settings-row__control {
     width: 100%;
     justify-content: flex-start;
-  }
-
-  .settings-gateway-add {
-    flex-wrap: wrap;
-  }
-
-  .settings-gateway-add .settings-input {
-    width: 100%;
   }
 }
 

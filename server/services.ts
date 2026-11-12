@@ -128,11 +128,13 @@ import { ensureConfigDir } from "./themes.ts";
 import { AttachmentInputError, readAttachments } from "./sessions/attachments.ts";
 import {
   readRegistry,
+  readSessionGroups,
   SessionNotFoundError,
   updateRegistry,
   type SessionRecord,
 } from "./sessions/sessions.ts";
 import { createSessionLifecycle, defaultSessionTool, SESSION_TITLE_MAX } from "./sessions/lifecycle.ts";
+import { groupSessionDefaults, type RequestedWorker } from "./sessions/group-session-defaults.ts";
 import { setAgentStage } from "./sessions/stages.ts";
 import { claimGoalContinuation, updateGoalFromAgent } from "./sessions/goals.ts";
 import { SessionProgress } from "./sessions/session-progress.ts";
@@ -491,8 +493,8 @@ if (process.platform === "darwin") {
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 
-/** `create_session`: an ordinary top-level session, not a child. The caller's model, thinking, group,
- * worker and directory are defaults; a worker session creates its own worktree on that worker. */
+/** `create_session`: an ordinary top-level session, not a child. Its target group's New session defaults decide its
+ * directory, machine, Git mode and base ref; the caller's model and thinking are defaults. */
 async function createSessionFromAgent(callerSessionId: string, params: Record<string, unknown>) {
   const caller = (await readRegistry()).find(({ id }) => id === callerSessionId);
   if (!caller) throw new Error("Conversation no longer exists.");
@@ -505,24 +507,37 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
     const value = params[key];
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
   };
-  const worktree = params["worktree"] === true;
+  const group = text("group") ?? owner.group ?? caller.group ?? "";
+  const groupDefaults = group ? (await readSessionGroups()).find((entry) => entry.label === group) : undefined;
+  const requestedCwd = text("cwd");
+  const requestedBaseRef = text("baseRef");
   const requestedWorker = text("worker");
-  const worker = requestedWorker === "local"
-    ? undefined
+  const workerRequest: RequestedWorker | undefined = requestedWorker === "local"
+    ? { kind: "local" }
     : requestedWorker
-      ? (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker
-      : caller.worker;
+      ? { kind: "worker", worker: (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker }
+      : undefined;
+  const defaults = groupSessionDefaults({
+    ...(groupDefaults ? { group: groupDefaults } : {}),
+    caller: { cwd: caller.cwd, ...(caller.worker ? { worker: caller.worker } : {}) },
+    requested: {
+      ...(requestedCwd ? { cwd: requestedCwd } : {}),
+      ...(workerRequest ? { worker: workerRequest } : {}),
+      ...(params["worktree"] === true ? { worktree: true } : {}),
+      ...(requestedBaseRef ? { baseRef: requestedBaseRef } : {}),
+    },
+  });
   const model = text("model") ?? caller.model;
   const thinking = text("thinking") ?? caller.thinking;
   const record = await createSession({
-    cwd: text("cwd") ?? caller.cwd,
-    group: text("group") ?? caller.group ?? "",
+    cwd: defaults.cwd,
+    group,
     initialPrompt: prompt.slice(0, 4_000),
     ...(text("title") ? { title: text("title") } : {}),
-    ...(worker ? { worker } : {}),
-    ...(worktree ? { worktree: true } : {}),
-    ...(worktree && text("branchName") ? { branchName: text("branchName") } : {}),
-    ...(text("baseRef") ? { baseRef: text("baseRef") } : {}),
+    ...(defaults.worker ? { worker: defaults.worker } : {}),
+    ...(defaults.worktree ? { worktree: true } : {}),
+    ...(defaults.worktree && text("branchName") ? { branchName: text("branchName") } : {}),
+    ...(defaults.baseRef ? { baseRef: defaults.baseRef } : {}),
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
   } as Record<string, unknown>);
@@ -538,7 +553,7 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
   // bot's tag so the new chat shows who asked.
   await waitForSessionReady(record.id, 120_000);
   // A worker host has no HUI registry, so carry the phase protocol in the prompt there; a local prompt adds it as a section.
-  const initial = worker ? `${prompt}\n\n${LEAD_PROMPT}` : prompt;
+  const initial = defaults.worker ? `${prompt}\n\n${LEAD_PROMPT}` : prompt;
   await liveSessions.prompt(record.id, `${botTagPrefix(owner.handle)}${initial}`);
   return {
     id: record.id,
@@ -546,7 +561,7 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
     group: record.group,
     cwd: record.cwd,
     ...(record.worker ? { worker: record.worker } : {}),
-    ...(worktree ? { worktree: true } : {}),
+    ...(defaults.worktree ? { worktree: true } : {}),
   };
 }
 

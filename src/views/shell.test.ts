@@ -169,7 +169,7 @@ test("both sidebar lists show the same destinations and Settings", () => {
 
 test("the footer is this page's gateway, and its menu lists the others with the current one marked", () => {
   const switched: string[] = [];
-  let openedSettings = 0;
+  let openedAdd = 0;
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   assert.match(source, /<wa-dropdown class="session-menu sidebar-gateway-menu"[^>]*@keydown=\$\{closeDropdownOnEscape\}/u, "Escape closes it and returns focus to the trigger, as the session menus do");
   const view = renderSidebar({
@@ -180,7 +180,7 @@ test("the footer is this page's gateway, and its menu lists the others with the 
     groupReorderPending: false, bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
     gateways: GATEWAYS,
     onSwitchGateway: (url: string) => switched.push(url),
-    onOpenGatewaySettings: () => { openedSettings += 1; },
+    onAddGateway: () => { openedAdd += 1; },
   } as unknown as Parameters<typeof renderSidebar>[0]);
   const rendered = markup(view);
   // One button, showing the gateway serving this page.
@@ -194,7 +194,7 @@ test("the footer is this page's gateway, and its menu lists the others with the 
   assert.match(rendered, />Loft</u);
   assert.match(rendered, />Attic</u);
   assert.match(rendered, />Add a gateway…</u);
-  // Choosing another one navigates; the last item opens Settings → Gateway.
+  // Choosing another one navigates; the last item opens the Add gateway dialog in place.
   const select = handlers(view, "@wa-select=").at(-1);
   assert.equal(typeof select, "function", "the menu reports the chosen item");
   const choose = (value: string) => select!({
@@ -207,7 +207,7 @@ test("the footer is this page's gateway, and its menu lists the others with the 
   // The drawer helpers need a DOM; this menu closes the phone drawer before it navigates.
   vi.stubGlobal("HTMLElement", class HTMLElement {});
   choose("add");
-  assert.equal(openedSettings, 1);
+  assert.equal(openedAdd, 1);
   vi.unstubAllGlobals();
 });
 

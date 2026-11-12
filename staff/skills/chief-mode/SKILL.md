@@ -62,8 +62,9 @@ is not a child.
 
 **Everything else is a session.** A task with more than one step, a change that writes code, a
 long build, test or e2e, or anything that owns a branch or a pull request gets a new session,
-not a child. Write the brief, name the worktree branch and the worker when one is available,
-and create it with `create_session`. It is the **lead** for one PR: HUI adds the PR-lead phase
+not a child. Write the brief, then create it with `create_session`: the group's
+New session defaults decide the worktree and the worker, so name one only where
+the group leaves it unset. It is the **lead** for one PR: HUI adds the PR-lead phase
 protocol. Choose its model for orchestration; it runs the phases end to end: an `explorer`, then a
 `worker` in a worktree, then a fresh `verifier`, then a different-family `reviewer`. There is no go
 between phases; it stops only for a real decision, reports its final evidence, and I take the
@@ -103,7 +104,7 @@ their order: goal, scope, evidence, write paths, forbidden actions. Add the rest
 the verdict words. One fresh child per fast task; a fix round, retry or follow-up gets a
 consolidated brief, never a relayed summary. Name paths; never inline whole files. For a
 session, write the brief in `work/<task>.md` and create it with `create_session`, passing the
-cwd, group, title, prompt, worker, worktree and branch.
+group, title and prompt, plus a worker, worktree or branch only where the group leaves it unset.
 
 ## 6. Fan out only across disjoint fast checks
 

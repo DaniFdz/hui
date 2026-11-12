@@ -27,8 +27,16 @@ test("the store reads and writes the one key, keeping the current gateway out of
   store.markSeen("http://studio.local:8787", "Studio renamed");
   assert.deepEqual(store.list(), [{ url: "http://studio.local:8787", name: "Studio renamed", lastSeen: 500 }]);
 
+  // Renaming keeps the sighting; moving records a new one, under the moved address only.
+  store.edit("http://studio.local:8787", { url: "http://studio.local:8787", name: "Studio" });
+  assert.deepEqual(store.list(), [{ url: "http://studio.local:8787", name: "Studio", lastSeen: 500 }]);
+  store.edit("http://studio.local:8787", { url: "attic.local:8787", name: "Attic" });
+  assert.deepEqual(store.list(), [{ url: "http://attic.local:8787", name: "Attic", lastSeen: 500 }]);
+  store.edit("http://attic.local:8787", { url: CURRENT, name: "Here" });
+  assert.deepEqual(store.list(), [{ url: "http://attic.local:8787", name: "Attic", lastSeen: 500 }], "the current gateway is never stored");
+
   store.remove(CURRENT);
-  store.remove("http://studio.local:8787");
+  store.remove("http://attic.local:8787");
   assert.deepEqual(store.list(), []);
   assert.deepEqual(new GatewayStore({ storage, current: CURRENT }).list(), [], "the change was saved");
 });
