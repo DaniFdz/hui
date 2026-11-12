@@ -468,8 +468,8 @@ request through its gates. It asks the chief, not you, when something is unclear
 stops before a merge or a deploy that needs you, and ends on a report to the
 chief. The chief brings you only the decisions it cannot take. Your own messages
 always come first. Switch back to Ask me while the session is idle to take it
-over: the chief HUI chose for it stops watching it. New Session starts on Ask me
-each time.
+over: the chief HUI chose for it stops watching it, unless the gateway restarted
+since. New Session starts on Ask me each time.
 Without a Chief of Staff the plan waits for you in the session.
 
 ## Bots

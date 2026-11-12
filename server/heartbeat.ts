@@ -100,9 +100,9 @@ function blockedMessage(title: string, id: string, state: HeartbeatState, last: 
     `[routine: Heartbeat] ${watched(autonomous, title)} is ${state === "error" ? "in error" : state === "waiting" ? "waiting for an answer" : "idle and waiting for a decision"}.`,
     ...table(title, id, status),
     ...detail(last),
-    "Read it with sessions_history; decide or escalate to the operator, then send the answer with sessions_send. Do not start unrelated work.",
-    ...state === "waiting" ? ["A question card in the session is answered only there: ask the operator to answer it."] : [],
-    ...note(autonomous),
+    ...state === "waiting"
+      ? ["Read it with sessions_history. A question card in the session is answered only there: ask the operator to answer it. Do not start unrelated work."]
+      : ["Read it with sessions_history; decide or escalate to the operator, then send the answer with sessions_send. Do not start unrelated work.", ...note(autonomous)],
   ].join("\n");
 }
 
@@ -182,27 +182,29 @@ export function createHeartbeat(deps: HeartbeatDeps) {
 
   /** An Autonomous session stopped: the chief `chiefToWatch` picks starts watching it, and a scan runs at once. Answers
    * false when that chief's watch list is full, so the stop reaches no chief. */
-  function supervise(id: string): Promise<boolean> {
-    return inTurn(async () => {
+  async function supervise(id: string): Promise<boolean> {
+    const full = await inTurn(async () => {
       const records = await deps.records();
       const session = records.find((record) => record.id === id);
       const chief = session?.autonomous ? chiefToWatch(await deps.bots(), records, session) : undefined;
-      const full = chief !== undefined && (records.find((record) => record.id === chief.sessionId)?.watches?.length ?? 0) >= deps.watchLimit;
-      if (chief && !full) {
+      const atLimit = chief !== undefined && (records.find((record) => record.id === chief.sessionId)?.watches?.length ?? 0) >= deps.watchLimit;
+      if (chief && !atLimit) {
         await deps.watch(chief.sessionId, id, true);
         given.set(id, chief.sessionId);
       }
-      await scan();
-      return !full;
+      return atLimit;
     });
+    await scan();
+    return !full;
   }
 
   /** An Autonomous session the operator took back leaves the watch `supervise` gave it; a chief's own watch stays. */
   function release(id: string): Promise<void> {
     return inTurn(async () => {
       const chat = given.get(id);
+      if (!chat) return;
+      await deps.watch(chat, id, false);
       given.delete(id);
-      if (chat) await deps.watch(chat, id, false);
     });
   }
 

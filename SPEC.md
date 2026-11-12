@@ -3993,14 +3993,14 @@ Session, never in a bot's chat, and persists as `autonomous: true`.
   queued behind a running turn and opening a sleeping chat. The chief answers with `sessions_send`, which starts the
   session's next turn; no bot hop or hourly limit applies, and a session on a worker works the same way. Not reported:
   a stop while the session's subagents or watchers still work and its reply does not end on a question (they wake
-  it), a run the operator stopped and a failed run. Scans run one at a time so a stop is reported once, and the heartbeat skips a
-  session not open in this gateway, so a restart does not report every watched session again. An active goal does
-  not continue by itself in this mode: the chief takes the next step.
+  it), a run the operator stopped and a failed run. Scans run one at a time so a stop is reported once, and the
+  heartbeat skips a session not open in this gateway, so a restart does not report every watched session again. An
+  active goal does not continue by itself in this mode: the chief takes the next step.
 - **The chief's method is in the pack.** `chief-mode` (pack 14) tells a chief to accept or correct the plan, answer
   questions, use `decision` only for its four cases and settle the report like a lead's.
 - Turning the mode off removes the section and takes back the watch HUI gave the chief (not a chief's own, and not
-  one given before the gateway last restarted), so the operator has the session back. HUI does not refuse a merge command in this mode: the stop before a merge is
-  the prompt's and the repository's rule.
+  one given before the gateway last restarted), so the operator has the session back. HUI does not refuse a merge
+  command in this mode: the stop before a merge is the prompt's and the repository's rule.
 
 ### A custom group's chief is its own bot (2026-11-08)
 

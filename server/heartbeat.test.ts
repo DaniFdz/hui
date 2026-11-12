@@ -221,6 +221,27 @@ test("Ask me takes back only the watch an Autonomous stop gave, even when it com
   assert.deepEqual(changes, [], "a session no longer Autonomous gets no chief");
 });
 
+test("an Ask me whose registry write fails is tried again by the next one", async () => {
+  const f = fixture();
+  let records = [session("seeded-chat"), session("target", undefined, { autonomous: true })];
+  let failing = false;
+  const unwatched: string[] = [];
+  f.deps.records = async () => records;
+  f.deps.bots = async () => [{ title: "Chief of Staff", sessionId: "seeded-chat" }];
+  f.deps.watch = async (watcherId, id, on) => {
+    if (!on && failing) throw new Error("registry is read-only");
+    if (!on) unwatched.push(watcherId);
+    records = records.map((record) => record.id === watcherId ? { ...record, watches: on ? [id] : [] } : record);
+  };
+  const heartbeat = createHeartbeat(f.deps);
+  await heartbeat.supervise("target");
+  failing = true;
+  await assert.rejects(heartbeat.release("target"), /read-only/u);
+  failing = false;
+  await heartbeat.release("target");
+  assert.deepEqual(unwatched, ["seeded-chat"]);
+});
+
 test("running, starting, reconnecting and disconnected targets are left alone", async () => {
   for (const status of ["running", "starting", "reconnecting", "disconnected"] as const) {
     const f = fixture(status);
