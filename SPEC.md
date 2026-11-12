@@ -3832,6 +3832,15 @@ seeds it once:
   `create-verification-skill`, listed for every chat and turned off in
   Settings → Skills. They are not part of the pack.
 
+### A PR session is its lead (2026-11-11)
+
+A session a Chief of Staff creates with `create_session` owns one pull request and carries HUI's
+PR-lead section. It does not write product code itself: it spawns an `explorer` for investigation,
+a `worker` in a worktree for implementation, a fresh `verifier`, then a `reviewer`, and creates no
+second session for a phase. Its own model is the orchestrator and stays fixed; each child's model
+comes from its route or explicit model. A route with no model inherits the lead's model, so the
+operator sets route models to make the phases use different models.
+
 ### A custom group's chief is its own bot (2026-11-08)
 
 The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label and project directory, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its home, sets the bot's `group`, and puts its chat in that directory; the pack's routes are merged by name. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
