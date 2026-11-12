@@ -3,7 +3,7 @@
  * Allow, in either place, turns the tool back on and the bot carries on with it; Deny leaves it off (BOT-033). */
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { hideBotPanel, panelOverview, roster } from "./bot-panel.ts";
+import { hideBotPanel, panelOverview, roster, showBotPanel } from "./bot-panel.ts";
 
 const disabledTools = async (hui: Hui, id: string): Promise<string[]> =>
   (await hui.api<{ bot: { disabledTools?: string[] } }>("GET", `/__hui/bots/${id}`)).bot.disabledTools ?? [];
@@ -15,7 +15,9 @@ test("an access request waits in the chat, the roster and Tools & skills, surviv
   const transcript = screen.getByTestId("transcript");
   await hui.open(`/bots/${bot.id}`);
 
-  // The operator turns the shell off for this bot.
+  // The operator turns the shell off for this bot. A phone draws the bot's panel as a sheet over the chat until it is
+  // opened, and a desktop docks it beside the chat, so `showBotPanel` only presses anything on the phone.
+  await showBotPanel(screen, "Tooly");
   await screen.getByText("Tools & skills", { exact: true }).tap();
   const shell = screen.getByRole("switch", "Shell (bash)");
   await expect(shell).toBeChecked();
@@ -50,11 +52,14 @@ test("an access request waits in the chat, the roster and Tools & skills, surviv
   await expect(screen.getByText(REASON)).toBeVisible();
   await screen.getByRole("button", "Allow").tap();
   await expect.poll(async () => await disabledTools(hui, bot.id)).toEqual([]);
-  await expect(transcript.getByText("The operator allowed it: you now have bash, from your next step.")).toBeVisible();
   await expect(shell).toBeChecked();
+  // A phone's sheet covers the chat, so what the chat says is read once the panel is closed again.
+  await hideBotPanel(screen);
+  await expect(transcript.getByText("The operator allowed it: you now have bash, from your next step.")).toBeVisible();
   await expect(card).toBeHidden();
 
   // Off again, the bot asks once more; Deny in the chat leaves the tool off.
+  await showBotPanel(screen, "Tooly");
   await hui.flip(shell);
   await expect(shell).toBeChecked({ checked: false });
   await expect.poll(async () => await disabledTools(hui, bot.id)).toEqual(["bash"]);
