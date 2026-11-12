@@ -1,18 +1,19 @@
-/** The sidebar's work destinations, with Settings in its header row and this page's gateway in its footer (SHELL-001,
- * SHELL-002, SHELL-049). */
+/** The sidebar's work destinations, ending with Settings, and this page's gateway in its footer for both lists
+ * (SHELL-001, SHELL-002, SHELL-049). */
 import assert from "node:assert/strict";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 /** Each destination, and text only its own page shows: the label alone also exists in the sidebar. */
 const DESTINATIONS = [
+  ["Dashboard", "The sessions in flight and the resource use of the machines that run them."],
   ["Contributions", "Commits and pull requests of the GitHub accounts signed in to"],
   ["Kanban", "Backlog items and where each session is in development."],
   ["Sessions", "Active sessions and defaults."],
   ["Usage", "Recorded tokens and PI cost estimates."],
 ] as const;
 
-test("the sidebar lists its work destinations under Settings, above this page's gateway", { tags: ["SHELL-001", "SHELL-049", "smoke"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the sidebar lists its work destinations, ending with Settings, above this page's gateway", { tags: ["SHELL-001", "SHELL-049", "smoke"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/");
   const navigation = screen.getByTestId("primary-navigation");
 
@@ -20,7 +21,6 @@ test("the sidebar lists its work destinations under Settings, above this page's 
   await expect(navigation.getByText("Home")).toHaveCount(0);
   // Destinations in reading order: each row starts below the one before it.
   let previous = -Infinity;
-  let first = Infinity;
   for (const [label] of DESTINATIONS) {
     const row = navigation.getByText(label);
     await expect(row).toBeVisible();
@@ -28,28 +28,30 @@ test("the sidebar lists its work destinations under Settings, above this page's 
     assert(box);
     expect(box.y).toBeGreaterThan(previous);
     previous = box.y;
-    first = Math.min(first, box.y);
   }
 
-  // Settings sits in the sidebar's header row, above the destinations, so the tab panel cannot scroll it away.
-  await expect(navigation.getByText("Settings")).toHaveCount(0);
-  const settings = screen.getByTestId("nav-settings");
+  // Settings is the last destination in the same list, so the list scrolls as one piece.
+  const settings = navigation.getByTestId("nav-settings");
   await expect(settings).toBeVisible();
+  await expect(settings).toHaveText("Settings");
   const settingsBox = await settings.boundingBox();
   assert(settingsBox);
-  expect(settingsBox.y).toBeLessThan(first);
-  await expect(screen.getByLabel("Collapse sidebar")).toBeVisible();
+  expect(settingsBox.y).toBeGreaterThan(previous);
 
   // The footer below both lists is the gateway serving this page, not a Settings link.
   const gateway = screen.getByTestId("sidebar-gateway");
   await expect(gateway).toBeVisible();
   const gatewayBox = await gateway.boundingBox();
   assert(gatewayBox);
-  expect(gatewayBox.y).toBeGreaterThan(previous);
+  expect(gatewayBox.y).toBeGreaterThan(settingsBox.y);
+  await expect(screen.getByLabel("Collapse sidebar")).toBeVisible();
 
-  // The Bots list shows no destinations, and keeps Settings and the gateway.
+  // The Bots list keeps the same destinations, Settings included, and the gateway.
   await screen.getByRole("tab", "Bots").tap();
-  await expect(navigation).toBeHidden();
+  await expect(navigation).toBeVisible();
+  for (const [label] of DESTINATIONS) {
+    await expect(navigation.getByText(label)).toBeVisible();
+  }
   await expect(settings).toBeVisible();
   await expect(gateway).toBeVisible();
 
