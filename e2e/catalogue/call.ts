@@ -218,6 +218,14 @@ const cases: UseCase[] = [
     journeys: ["bots"],
     web: "backlog",
   },
+  {
+    id: "CALL-029",
+    title: "Start a call with the bot's handoff ready",
+    behaviour: "Starting a call keeps the call view at *Connecting…* while the bot's utility model writes its handoff note from its soul, its memory, the newest messages of its chat and its saved knowledge (at most six seconds); the note reaches the call's instructions and the bot speaks from it, so a handoff given in the chat minutes earlier is known on the call. When no model answers in time the call starts anyway, with the memory and the newest chat messages only.",
+    spec: [CALLS, "docs/api.md#post-__huibotsidcalls"],
+    surfaces: ["route:POST /__hui/bots/:id/calls"],
+    web: "backlog",
+  },
 ];
 
 export default cases;

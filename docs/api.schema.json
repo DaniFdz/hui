@@ -4314,10 +4314,6 @@
             {
               "type": "string",
               "const": "timeout"
-            },
-            {
-              "type": "string",
-              "const": "limit"
             }
           ]
         },
