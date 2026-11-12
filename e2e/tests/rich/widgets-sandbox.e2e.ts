@@ -1,7 +1,8 @@
 /** The isolation probe widget: every attempt to leave HUI's widget sandbox is listed as Blocked, the card shows the
  * blocked load as a notice, and HUI and the widget beside it are left as they were (RICH-056). */
 import { expect } from "e2e";
-import { test, type Hui } from "../../fixtures/hui.ts";
+import type { Hui } from "../../fixtures/hui.ts";
+import { test } from "../../fixtures/widget-probe.ts";
 
 const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
 
@@ -32,7 +33,9 @@ const ATTEMPTS = [
   "Run in an opaque origin",
 ];
 
-test("The isolation probe lists every attempt to leave the sandbox as Blocked, with its origin null, and HUI and the widget beside it stay as they were", { tags: ["RICH-056"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("The isolation probe lists every attempt to leave the sandbox as Blocked, with its origin null, and HUI and the widget beside it stay as they were", { tags: ["RICH-056"], platforms: ["web"] }, async ({ screen, hui, widgetCookies }) => {
+  // This is a real, readable cookie on HUI's origin, not an empty parent cookie jar.
+  await widgetCookies.expectIntact();
   const session = await hui.createSession({ title: "Sandbox probe" });
   await hui.prompt(session, call("show_widget", { title: "Counter", widget_code: COUNTER }));
   await hui.open(`/sessions/${session.id}`);
@@ -70,6 +73,7 @@ test("The isolation probe lists every attempt to leave the sandbox as Blocked, w
 
   // HUI itself and the widget beside the probe are untouched: same page, same reply, same count in the sandbox.
   expect(await hui.url()).toBe(url);
+  await widgetCookies.expectIntact();
   await expect(screen.getByTestId("transcript").getByText(/^tool answered: /u)).toBeVisible();
   await expect(counter.getByText("Interactive widget · sandboxed")).toBeVisible();
   const after = await widget(hui, "iframe.hui-widget-card__frame >> nth=0");
