@@ -2,7 +2,7 @@
  * its repeats merged into one count, waits while the gateway is unreachable and is sent once it answers again, and a page
  * that is reloaded meanwhile never sends what it held (SHELL-025). */
 import { expect } from "e2e";
-import { test } from "../../fixtures/hui.ts";
+import { offlineTest as test } from "../../fixtures/hui.ts";
 
 test("a request the browser could not get to the gateway appears in Logs once with its count, and what an unreachable gateway left waiting is sent when it answers again unless the page was reloaded", { tags: ["SHELL-025"], platforms: ["web"] }, async ({ screen, hui }) => {
   const logs = screen.getByLabel("logs");

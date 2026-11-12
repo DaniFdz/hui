@@ -1,6 +1,6 @@
 /** Offline reading and connection recovery in a production build (SHELL-044, SHELL-045, SHELL-046, CHAT-074). */
 import { expect, type Screen } from "e2e";
-import { test, type Hui } from "../../fixtures/hui.ts";
+import { offlineTest as test, type Hui } from "../../fixtures/hui.ts";
 
 const MESSAGE = "Offline reading proof";
 const DRAFT = "A draft that stays";

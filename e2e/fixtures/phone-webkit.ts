@@ -48,6 +48,20 @@ export function webkitPhoneOptions(): WebOptions {
 
 /** A browser context's options, of which this target owns the two a phone needs. */
 type ContextOptions = Record<string, unknown>;
+/** Ordinary UI tests intercept their own requests. WebKit sends a service-worker-controlled page's requests around
+ * context routes even when the worker does not handle them, so only the offline fixture opts into a real worker. */
+let serviceWorkersAllowed = false;
+
+/** Selects the worker policy before hui.clearState() creates the attempt's fresh context. */
+export function webkitServiceWorkers(allowed: boolean): void {
+  serviceWorkersAllowed = allowed;
+}
+
+/** The engine's options stay intact; touch, mobile layout and worker isolation belong to this target. */
+export function phoneContextOptions(options: ContextOptions = {}): ContextOptions {
+  return { hasTouch: true, isMobile: true, ...options, serviceWorkers: serviceWorkersAllowed ? "allow" : "block" };
+}
+
 type Browser = { newContext(options?: ContextOptions): Promise<unknown> };
 type BrowserType = { launch(options?: Record<string, unknown>): Promise<Browser> };
 
@@ -74,7 +88,7 @@ function phoneContexts(): void {
   webkit.launch = async (options?: Record<string, unknown>) => {
     const browser = await launch(options);
     const newContext = browser.newContext.bind(browser);
-    browser.newContext = async (contextOptions: ContextOptions = {}) => newContext({ hasTouch: true, isMobile: true, ...contextOptions });
+    browser.newContext = async (contextOptions: ContextOptions = {}) => newContext(phoneContextOptions(contextOptions));
     return browser;
   };
 }

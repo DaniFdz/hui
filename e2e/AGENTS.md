@@ -63,6 +63,12 @@ phone has no wide screen and no hover, so `hui.wideScreen()`, `hui.peek()`, `hui
 unfiltered, and its failures are the phone backlog: a use case is phone-required only once it passes on both `android`
 and `webkit-phone`.
 
+Ordinary WebKit-phone tests block service workers in their fresh contexts: WebKit sends a controlled page's requests
+around Playwright's routes, even when the worker does not handle them. Journeys that prove offline installation or
+recovery import `offlineTest as test` from `fixtures/hui.ts`; those contexts allow the real shipped worker. Both modes
+reset before each test, so an intercepted mutation never quietly reaches the gateway and offline tests still prove the
+actual cache and reconnect behavior.
+
 A phone shows one screen at a time, so a test calls `hui.sessionList()` before it checks session rows while a chat
 or the Sessions page is open: on the web's wide layout the sidebar is always there and it does nothing, and on the
 web's phone layout (the shell's drawer media) it opens the navigation drawer. It never stands in for a check: when a

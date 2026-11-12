@@ -37,7 +37,7 @@ import { startGatewayStub, type GatewayStub } from "./gateway-stub.ts";
 import { advanceClock, installClock } from "./clock.ts";
 import { allowMedia } from "./web-browser.ts";
 import { clearAppStorage, deviceBytes, deviceFiles, onPhone, PHONE_DOWNLOADS } from "./phone.ts";
-import { IPHONE_SCREEN, onWebKitPhone } from "./phone-webkit.ts";
+import { IPHONE_SCREEN, onWebKitPhone, webkitServiceWorkers } from "./phone-webkit.ts";
 import { startWorld, type World, type WorldName } from "./world.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
@@ -457,7 +457,9 @@ const trackSockets = () => {
   }, Native) as unknown as typeof WebSocket;
 };
 
-export const test = base.extend<{ hui: Hui }>({
+/** Ordinary tests isolate routed requests from WebKit's worker; offline tests explicitly exercise the real worker. */
+function huiTest(offline: boolean) {
+  return base.extend<{ hui: Hui }>({
   hui: async (fixtures, use) => {
     const port = new URL(fixtures.app.baseUrl!).port;
     const file = new URL(`../../.e2e/hui/receipt-${port}.json`, import.meta.url);
@@ -1109,6 +1111,7 @@ export const test = base.extend<{ hui: Hui }>({
             },
           }
         : web;
+    if (onWebKitPhone(fixtures.app.baseUrl)) webkitServiceWorkers(offline);
     if (fixtures.platform === "web") await browser().addInitScript(trackSockets);
     if (fixtures.platform === "web") await browser().addInitScript(recordTabs);
     await steps.clearState();
@@ -1231,4 +1234,9 @@ export const test = base.extend<{ hui: Hui }>({
     // A world is another gateway and its own fake services: stop each one the test started, gateway and all.
     for (const world of worlds.reverse()) await world.stop();
   },
-});
+  });
+}
+
+export const test = huiTest(false);
+/** Real service-worker installation and offline recovery, never the intercepted online test mode. */
+export const offlineTest = huiTest(true);
