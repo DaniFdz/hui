@@ -100,6 +100,15 @@ test("editing a saved gateway renames it without a probe, or moves it to an addr
   assert.deepEqual(store.list(), [{ url: "http://attic.local:8787", name: "Attic", lastSeen: 1_000 }]);
 });
 
+test("reaching a saved gateway again keeps the name this device chose for it", async () => {
+  const { controller, store } = setup({
+    entries: [{ url: "http://loft.local:8787", name: "Loft", lastSeen: 100 }],
+    probe: async () => ({ ok: true, name: "Renamed upstream" }),
+  });
+  await controller.checkKnown();
+  assert.deepEqual(store.list(), [{ url: "http://loft.local:8787", name: "Loft", lastSeen: 1_000 }]);
+});
+
 test("editing the gateway serving this page fixes its address and saves only its name", async () => {
   const saved: string[] = [];
   const { controller, closes } = setup({ saveCurrentName: async (name) => { saved.push(name); return true; } });

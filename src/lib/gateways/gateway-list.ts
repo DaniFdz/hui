@@ -10,7 +10,7 @@
 export type GatewayEntry = {
   /** Normalized: an http(s) origin and optional path, never a trailing slash, query, fragment or credentials. */
   url: string;
-  /** What the gateway called itself in the probe's identity handshake; empty means show its hostname. */
+  /** This device's own label for it, chosen when it was added or edited; empty means show its hostname. */
   name: string;
   /** When this device last probed it, in epoch milliseconds. */
   lastSeen: number;

@@ -173,7 +173,8 @@ export class GatewaysController implements ReactiveController {
     this.#close();
   };
 
-  /** Tries a gateway this page could not reach, and records the sighting when it answers. */
+  /** Tries a gateway this page could not reach, and records the sighting when it answers. Its saved name is this
+   * device's own label, so a probe refreshes when it was reached, never what the gateway calls itself today. */
   retry = async (url: string): Promise<void> => {
     const answer = await this.#probe(url);
     if (!answer.ok) {
@@ -182,7 +183,7 @@ export class GatewaysController implements ReactiveController {
       return;
     }
     this.#offline.delete(url);
-    this.store.markSeen(url, answer.name);
+    this.store.markSeen(url);
     this.#changed();
   };
 
@@ -195,7 +196,7 @@ export class GatewaysController implements ReactiveController {
         const answer = await this.#probe(entry.url);
         if (answer.ok) {
           this.#offline.delete(entry.url);
-          this.store.markSeen(entry.url, answer.name);
+          this.store.markSeen(entry.url);
         } else {
           this.#offline.add(entry.url);
         }

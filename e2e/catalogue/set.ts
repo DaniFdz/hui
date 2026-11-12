@@ -821,7 +821,7 @@ const cases: UseCase[] = [
     id: "SET-097",
     title: "Edit a gateway's connection",
     behaviour:
-      "**Edit** on a saved gateway opens the same dialog prefilled with its name and address. Saving a new name without moving the address keeps the row and its last sighting, even while the gateway is offline; saving another address asks it to identify itself first, refuses one already in the list or the one serving this page, and otherwise moves the row there. **Edit** on the current gateway fixes its address to where this page came from and saves only its name, the name every client that connects sees.",
+      "**Edit** on a saved gateway opens the same dialog prefilled with its name and address. Saving a new name without moving the address keeps the row and its last sighting (a later reach refreshes only the sighting, never the chosen name), even while the gateway is offline; saving another address asks it to identify itself first, refuses one already in the list or the one serving this page, and otherwise moves the row there. **Edit** on the current gateway fixes its address to where this page came from and saves only its name, the name every client that connects sees.",
     spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "docs/api.md#adding-a-gateway"],
     surfaces: ["settings-page:connection", "route:GET /__hui/update", "route:GET /__hui/health", "route:PUT /__hui/settings"],
     journeys: ["gateway-settings"],

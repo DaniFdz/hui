@@ -831,7 +831,8 @@ A client that keeps several gateways probes one before it adds it
 with `x-hui: 1`: it needs the header, so a browser sends a preflight first, and
 this route — and only this route — answers one. The name a client shows is the one
 typed in its Add dialog, or the `name` in this answer when that field is empty; a
-saved gateway can be renamed on the device without asking this route again.
+saved gateway can be renamed on the device without asking this route again, and a
+later probe refreshes only when it was last reached.
 
 - `OPTIONS /__hui/update` answers 204 with `access-control-allow-origin: *`,
   `access-control-allow-methods: GET`, `access-control-allow-headers: x-hui`,

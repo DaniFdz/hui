@@ -105,6 +105,11 @@ test("Edit changes a saved gateway's name and address, and only the current gate
   await expect(page.getByText("Loft studio", { exact: true })).toBeVisible();
   await expect(page.getByText(loft.url, { exact: true })).toBeVisible();
 
+  // The chosen name is this device's own: reaching the gateway again refreshes its sighting, not its label.
+  await hui.reload();
+  await expect(page.getByText("Loft studio", { exact: true })).toBeVisible();
+  await expect(page.getByText("last seen just now", { exact: true })).toBeVisible();
+
   // Moving to another address probes it first and moves the one row there.
   await page.getByRole("button", "Edit Loft studio").tap();
   await expect(edit).toBeVisible();

@@ -789,8 +789,9 @@ gateways is not part of this change.
 ### A device keeps a list of gateways (2026-11-11)
 
 A client remembers the gateways it has used. The browser keeps a list under one
-`localStorage` key: an address and the name the gateway gave for itself when it
-was added, plus when this device last reached it. The gateway that served the
+`localStorage` key: an address and the name this device shows for it — the one
+typed when it was added, else the name the gateway gives for itself — plus when
+this device last reached it. The gateway that served the
 page is the current one: it is named by its own `GET /__hui/health`, and it is
 never stored, renamed or removed, because the list is about the others. Adding a
 gateway asks that address for `GET /__hui/update` with `x-hui: 1` — the one route
@@ -798,9 +799,11 @@ a gateway answers cross-origin, carrying a version, a job id and its own name,
 never user data. An address that answers that handshake is stored under the name
 typed in the dialog, or the name in the answer when that field is empty; one
 that refuses, hangs or answers with something else shows HUI's own wording in
-the dialog and is not stored. An address with no scheme means `http`, a query,
-fragment or credentials are refused rather than dropped, and duplicate addresses
-collapse into one row. Corrupt or absent storage reads as an empty list.
+the dialog and is not stored. The stored name is this device's own label: a later
+reach refreshes when the gateway was last seen, never what it calls itself today.
+An address with no scheme means `http`, a query, fragment or credentials are
+refused rather than dropped, and duplicate addresses collapse into one row.
+Corrupt or absent storage reads as an empty list.
 
 Adding and editing use one dialog with a name and an address. **Add gateway**
 opens it empty. Every row has **Edit**: a saved gateway's name and address are
