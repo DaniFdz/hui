@@ -104,7 +104,10 @@ let activeGateway: string | undefined;
 /** A fixture world is another real gateway. Let the debug activity rebuild its bridge on that origin, as a Connect
  * handoff does, without force-stopping the app's process or replacing its persistent browser context. */
 export async function openPhoneGateway(gateway: string): Promise<void> {
+  const current = (await nativeTargets()).find((page) => page.type === "page" && /^https?:\/\//u.test(page.url));
+  if (current) activeGateway = new URL(current.url).origin;
   if (activeGateway === gateway) return;
+  if (REUSE) throw new Error("Switching fixture gateways needs per-attempt app launches; unset E2E_PHONE_REUSE.");
   const port = new URL(gateway).port;
   adb("reverse", `tcp:${port}`, `tcp:${port}`);
   adb("shell", "am", "start", "-W", "-n", `${PACKAGE}/${ACTIVITY}`, "--es", "huiGatewayUrl", gateway);
@@ -122,16 +125,23 @@ function forwardDevTools(): void {
 
 type Target = { url: string; type: string; id: string; webSocketDebuggerUrl?: string };
 
-/** Waits until the gateway's own page is a DevTools target, so an attempt never drives the Connect page. */
-async function waitForGatewayPage(gateway: string, timeoutMs = 60_000): Promise<void> {
+async function nativeTargets(): Promise<Target[]> {
+  return fetch(`http://127.0.0.1:${CDP_PORT}/json/list`, { signal: AbortSignal.timeout(5_000) })
+    .then((response) => response.ok ? response.json() as Promise<Target[]> : [])
+    .catch(() => [] as Target[]);
+}
+
+/** A launch must reach its requested gateway. A reconnect follows the app's current main window, including a gateway
+ * the operator chose through the UI, rather than navigating back to the launch's old address. */
+async function waitForGatewayPage(gateway: string | undefined, timeoutMs = 60_000): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   let listed: string[] = [];
   for (;;) {
-    const pages = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`, { signal: AbortSignal.timeout(5_000) })
-      .then((response) => (response.ok ? response.json() as Promise<Target[]> : []))
-      .catch(() => [] as Target[]);
+    const pages = await nativeTargets();
     listed = pages.map((page) => page.url);
-    if (pages.some((page) => page.type === "page" && page.url.startsWith(gateway))) return;
+    const page = pages.find((page) => page.type === "page" && /^https?:\/\//u.test(page.url)
+      && (gateway === undefined || new URL(page.url).origin === gateway));
+    if (page) return new URL(page.url).origin;
     if (Date.now() > deadline) {
       throw new Error(`the WebView never showed ${gateway} within ${Math.round(timeoutMs / 1000)} s: its DevTools target lists ${JSON.stringify(listed)}`);
     }
@@ -165,6 +175,10 @@ const REUSE = process.env["E2E_PHONE_REUSE"] === "1";
 /** The synthetic context identity of the attempt being prepared. */
 let contextId = "";
 let attempts = 0;
+let owningPid = 0;
+let lastTargetId = "";
+let recovering = false;
+let initScripts: { script: unknown; argument: unknown }[] = [];
 
 /**
  * Prepares the app for one CDP attach and resolves the endpoint to attach to. `relaunch` is what a fresh attempt needs
@@ -193,11 +207,17 @@ async function prepare({ relaunch, gateway }: { relaunch: boolean; gateway: stri
       contextId = `webview-${appPid()}`;
     }
   }
+  if (relaunch) {
+    owningPid = appPid();
+    initScripts = [];
+  } else if (appPid() !== owningPid) throw new Error("the Android app process changed; this attempt cannot resume a different app context");
   // A transport reconnect resumes this attempt's context; its identity must not change merely because it reattaches.
   forwardDevTools();
-  await waitForGatewayPage(gateway);
+  activeGateway = await waitForGatewayPage(relaunch ? gateway : undefined);
+  if (relaunch) lastTargetId = (await nativeTargets()).find((page) => page.type === "page" && /^https?:\/\//u.test(page.url) && new URL(page.url).origin === activeGateway)?.id ?? "";
+  recovering = !relaunch;
   await webViewProtocol();
-  prepared = { port: new URL(gateway).port };
+  prepared = { port: PHONE_PORT };
   return `http://127.0.0.1:${CDP_PORT}`;
 }
 
@@ -241,13 +261,41 @@ function webViewProtocol(): Promise<void> {
     const connectOverCDP = chromium.connectOverCDP.bind(chromium);
     chromium.connectOverCDP = async (endpoint: string, options: Record<string, unknown> = {}) => {
       const browser = await connectOverCDP(endpoint, { ...options, noDefaults: true, isWebView: true });
+      const resume = recovering;
+      recovering = false;
+      const target = (await nativeTargets()).find((page) => page.type === "page" && /^https?:\/\//u.test(page.url));
       for (const context of browser.contexts()) {
-        // Rebuilding the bridge closes the old page and creates the app's next one. The engine asks newPage after its
-        // current page closes; a WebView cannot create a tab, so reuse that next live page instead.
-        context.newPage = async () => {
-          const pages = context.pages().filter((page) => !page.isClosed());
-          if (pages.length !== 1) throw new Error(`the Android app must have one live WebView page, found ${pages.length}`);
-          return pages[0]!;
+        const addInitScript = context.addInitScript.bind(context);
+        context.addInitScript = async (script, argument) => {
+          if (!initScripts.some((entry) => entry.script === script && entry.argument === argument)) initScripts.push({ script, argument });
+          await addInitScript(script, argument);
+        };
+        if (resume && target && target.id !== lastTargetId) {
+          // A replacement document did not run the engine's closed-shadow tracking or this attempt's init scripts.
+          // Install those real scripts and reload it before recovery verifies tracking; never manufacture its marker.
+          for (const entry of [...initScripts]) await addInitScript(entry.script, entry.argument);
+          const page = context.pages()[0] ?? await context.waitForEvent("page", { predicate: (page) => !page.isClosed(), timeout: 30_000 });
+          if (context.pages().length !== 1) throw new Error(`the replacement Android window must have one live page, found ${context.pages().length}`);
+          await page.reload({ waitUntil: "domcontentloaded" });
+          lastTargetId = target.id;
+        }
+        // An activity rebuild replaces the physical WebView, not the app's logical main window. Detach a stale CDP
+        // connection when its page closes so the engine reattaches to the replacement. A PID guard above refuses an
+        // unrelated/restarted app; this adapter never leases another browser or invents a second page.
+        const watch = (page: Page) => page.on("close", () => { void browser.close().catch(() => undefined); });
+        for (const page of context.pages()) watch(page);
+        context.on("page", watch);
+        const openSession = context.newCDPSession.bind(context);
+        context.newCDPSession = async (page) => {
+          const session = await openSession(page);
+          const send = session.send.bind(session);
+          session.send = async (method, params) => {
+            const result = await send(method, params);
+            if (method !== "Target.getTargetInfo") return result;
+            const info = result as { targetInfo: Record<string, unknown> };
+            return { ...info, targetInfo: { ...info.targetInfo, targetId: `${contextId}:main-window` } };
+          };
+          return session;
         };
       }
       const openBrowserSession = browser.newBrowserCDPSession.bind(browser);
@@ -265,9 +313,15 @@ function webViewProtocol(): Promise<void> {
   return patched;
 }
 
-type Page = { isClosed(): boolean };
-type Context = { pages(): Page[]; newPage(): Promise<Page> };
-type Browser = { newBrowserCDPSession(): Promise<CdpSession>; contexts(): Context[] };
+type Page = { isClosed(): boolean; on(event: "close", listener: () => void): unknown; reload(options: { waitUntil: "domcontentloaded" }): Promise<unknown> };
+type Context = {
+  pages(): Page[];
+  addInitScript(script: unknown, argument?: unknown): Promise<void>;
+  newCDPSession(page: Page): Promise<CdpSession>;
+  on(event: "page", listener: (page: Page) => void): unknown;
+  waitForEvent(event: "page", options: { predicate: (page: Page) => boolean; timeout: number }): Promise<Page>;
+};
+type Browser = { newBrowserCDPSession(): Promise<CdpSession>; contexts(): Context[]; close(): Promise<void> };
 type CdpSession = { send(method: string, params?: Record<string, unknown>): Promise<unknown> };
 type Chromium = { connectOverCDP(endpoint: string, options?: Record<string, unknown>): Promise<Browser> };
 

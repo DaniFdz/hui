@@ -375,8 +375,22 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
 const swipe = ({ x, y, drag }: { x: number; y: number; drag: number }) => {
   const target = document.elementFromPoint(x, y);
   if (!target) throw new Error(`touch: nothing is at ${x}, ${y}`);
-  const at = (clientY: number) => new Touch({ identifier: 1, target, clientX: x, clientY, screenX: x, screenY: clientY });
-  const fire = (type: string, moving: Touch[], ended: Touch[]) => target.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, composed: true, touches: moving, changedTouches: ended, targetTouches: moving }));
+  const legacy = document as Document & {
+    createTouch?: (view: Window, target: EventTarget, id: number, pageX: number, pageY: number, screenX: number, screenY: number) => Touch;
+    createTouchList?: (...touches: Touch[]) => TouchList;
+  };
+  let legacyLists = false;
+  const at = (clientY: number) => {
+    try { return new Touch({ identifier: 1, target, clientX: x, clientY, screenX: x, screenY: clientY }); }
+    catch (error) {
+      // WebKit exposes Touch but its constructor is illegal; its native Touch/TouchList factories remain supported.
+      if (!legacy.createTouch || !legacy.createTouchList) throw error;
+      legacyLists = true;
+      return legacy.createTouch(window, target, 1, x + scrollX, clientY + scrollY, x, clientY);
+    }
+  };
+  const list = (touches: Touch[]) => legacyLists ? legacy.createTouchList!(...touches) as unknown as Touch[] : touches;
+  const fire = (type: string, moving: Touch[], ended: Touch[]) => target.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, composed: true, touches: list(moving), changedTouches: list(ended), targetTouches: list(moving) }));
   fire("touchstart", [at(y)], [at(y)]);
   for (let moved = 0; Math.abs(moved) < Math.abs(drag);) {
     moved = Math.sign(drag) * Math.min(Math.abs(moved) + 40, Math.abs(drag));
@@ -646,24 +660,26 @@ function huiTest(offline: boolean) {
       },
       sessionList: async () => {
         const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
-        // A closing backdrop remains visible during its fade. The trigger's label changes with the drawer state,
-        // so it, not that fading backdrop, decides whether the next destination needs the drawer opened again.
-        const open = fixtures.screen.getByRole("button", "Open navigation", { visible: true });
-        if (phone && await open.count() > 0) {
-          await open.first().tap();
-          // A row is tappable only once a drawer has taken the screen. A split renders one per pane, so wait for
-          // any of them instead of making a two-match locator an error.
-          await expect.poll(() => fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count()).toBeGreaterThan(0);
-        }
+        if (!phone) return;
+        // A closing backdrop stays visible during its fade, and an initial route may not have drawn its trigger yet.
+        // Read the drawer's actual state, then let tap wait for the real Open navigation control when it is closed.
+        const opened = () => browser().evaluate(() => document.querySelector(".sidebar")?.getAttribute("data-open") === "true");
+        if (!(await opened())) await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).first().tap();
+        await expect.poll(opened).toBe(true);
       },
       settingsPages: async () => {
-        const open = fixtures.screen.getByRole("button", "Open settings navigation", { visible: true });
-        if (await open.count() > 0) await open.first().tap();
+        const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
+        if (!phone) return;
+        const opened = () => browser().evaluate(() => document.querySelector(".settings-sidebar")?.getAttribute("data-open") === "true");
+        if (!(await opened())) await fixtures.screen.getByRole("button", "Open settings navigation", { visible: true }).first().tap();
+        await expect.poll(opened).toBe(true);
       },
       sessionMenu: async (title) => {
+        await webSteps.sessionList();
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
-        await row.hover();
-        await row.getByRole("button", `Actions for ${title}`).tap();
+        const actions = row.getByRole("button", `Actions for ${title}`);
+        await actions.focus();
+        await actions.tap();
         return row;
       },
       glyph: (title) => browser().evaluate((name) => {
@@ -726,13 +742,26 @@ function huiTest(offline: boolean) {
         await target.scrollIntoView();
         const box = await target.boundingBox();
         if (!box) throw new Error("look: the target lays out no box");
-        return browser().evaluate(({ x, y, width, height }) => {
+        const label = await target.getAttribute("aria-label");
+        return browser().evaluate(({ x, y, width, height, label }) => {
           const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
-          const element = document.elementsFromPoint(x + width / 2, y + height / 2).find((candidate) => {
+          let element: Element | undefined;
+          if (label) {
+            // A terminal's tiny input moves with its cursor and is not pointer-hit-testable. Read the uniquely named
+            // visible control directly, in the same frame as its computed style, rather than racing a prior box.
+            const roots: ParentNode[] = [document];
+            const named: Element[] = [];
+            for (let root = roots.pop(); root; root = roots.pop()) {
+              named.push(...[...root.querySelectorAll("[aria-label]")].filter((node) => node.getAttribute("aria-label") === label && node.getClientRects().length > 0));
+              for (const host of root.querySelectorAll("*")) if (host.shadowRoot) roots.push(host.shadowRoot);
+            }
+            if (named.length === 1) element = named[0];
+          }
+          element ??= document.elementsFromPoint(x + width / 2, y + height / 2).find((candidate) => {
             const rect = candidate.getBoundingClientRect();
             return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
           });
-          if (!element) throw new Error("look: no element has the target's box");
+          if (!element) throw new Error("look: no uniquely named control or element has the target's box");
           const rgb = (color: string) => {
             const channels = /^(?:rgba?\(|color\(srgb )([\d.e-]+),? ([\d.e-]+),? ([\d.e-]+)/u.exec(color);
             if (!channels) throw new Error(`look: ${color} is not an sRGB colour`);
@@ -762,7 +791,7 @@ function huiTest(offline: boolean) {
               : style.outlineStyle !== "none" ? rgb(style.outlineColor)
               : outerShadow === "none" ? null : rgb(outerShadow),
           };
-        }, box);
+        }, { ...box, label });
       },
       attach: async (target, files) => {
         const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";

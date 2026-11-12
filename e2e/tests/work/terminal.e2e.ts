@@ -275,7 +275,8 @@ test("a scrolled-back terminal keeps its place while output arrives, and Jump to
   await expect(jump).toHaveAttribute("aria-hidden", "true");
 
   await run(hui, screen, "for i in $(seq 1 40); do echo LATE$i; sleep 0.2; done");
-  await hui.wheel(terminal, -2_000);
+  // Exercise the terminal's real touch adapter rather than bypassing it with a synthetic wheel.
+  await hui.touch(terminal, { drag: 2_000 });
   await expect(jump).toHaveAttribute("aria-hidden", "false");
   await expect.poll(() => replay(hui, session.id, id)).toContain("LATE40");
   await expect(jump).toHaveAttribute("aria-hidden", "false");
