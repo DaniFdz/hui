@@ -5,6 +5,10 @@ description: "Use when choosing where a session runs: read worker_stats at the s
 
 # Machines
 
+## The group comes first
+
+A session follows its group's New session defaults for directory, machine, Git environment and base ref. A value the group stores wins over the `worker` or `worktree` you pass, so a session you create for a group does not move to another machine because you picked one. When the group names a machine, that machine is the plan; use the steps below only where the group names none.
+
 ## At the start of a task
 
 Call `worker_stats` before the first delegation. In your first reply, name the machines available for this work, their load and running sessions, and where each piece will run. If the operator names a machine or a constraint, follow it. If the choice is not obvious, say which machine you picked and why. When access, cost or capability changes the answer, ask one question with the options before the first handoff. Do not silently choose a machine for a multi-session task; the operator can redirect the plan line.
@@ -20,4 +24,4 @@ Call `worker_stats` before the first delegation. In your first reply, name the m
 
 ## Delegate with the machine in mind
 
-Pass `worker` to `create_session`; that is the only way to put a session on another machine. A `sessions_spawn` child runs on its parent's machine and cannot choose another, so a child is not a way to spread load. Record the machine in the ledger row and the session brief. When a session settles, re-check the stats before the next handoff.
+Pass `worker` to `create_session` where the group names no machine; that is the only way to put a session on another machine. A `sessions_spawn` child runs on its parent's machine and cannot choose another, so a child is not a way to spread load. Record the machine in the ledger row and the session brief. When a session settles, re-check the stats before the next handoff.
