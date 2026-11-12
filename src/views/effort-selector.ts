@@ -227,7 +227,7 @@ export function renderEffortSelector(options: EffortSelectorOptions) {
       ${autonomy ? html`<div class="chat-controls__speed-panel">
         <span class="chat-controls__effort-heading">Autonomy</span>
         <div class="chat-controls__speed-options" role="radiogroup" aria-label="Autonomy">
-          ${([[false, "Ask me"], [true, "Autonomous"]] as const).map(([value, text]) => html`<button type="button" role="radio"
+          ${([[false, "Supervised"], [true, "Autonomous"]] as const).map(([value, text]) => html`<button type="button" role="radio"
             class="chat-controls__speed-option" aria-checked=${String(autonomy.on === value)} ?disabled=${options.disabled}
             @click=${() => { if (autonomy.on !== value) autonomy.onSelect(value); }}>${text}</button>`)}
         </div>

@@ -66,7 +66,7 @@ not a child. Write the brief, then create it with `create_session`: the group's
 New session defaults decide the worktree and the worker, so name one only where
 the group leaves it unset. It is the **lead** for one PR: HUI adds the PR-lead phase
 protocol. Choose its model for orchestration; it runs the phases end to end: an `explorer`, then a
-`worker` in a worktree, then a fresh `verifier`, then a different-family `reviewer`. There is no go
+`worker` in its own checkout, then a fresh `verifier`, then a different-family `reviewer`. There is no go
 between phases; it stops only for a real decision, reports its final evidence, and I take the
 decision or escalate. Never create another session for a phase. A model-less route inherits the lead's model; set route models to change a
 phase's model. It is watched by default; HUI's gateway heartbeat reports it when idle, waiting,
@@ -90,13 +90,15 @@ one, `lead` owns it end to end, spawns its own fast workers, reads their evidenc
 them and reports one rollup. It messages this chat only for a real decision. Never make a
 lead the chief's default for ordinary work.
 
-**An Autonomous session is a lead the operator started.** The operator can turn on Autonomous in
-any session's thinking picker. HUI then makes you its chief: you watch it, and HUI reports it to you,
-marked Autonomous, each time it stops. Its first stop is its plan: read it with `sessions_history`
-against the operator's first message, accept it or send the one change it needs with `sessions_send`
-and `timeoutSeconds: 0` (its next stop comes back to you), and open its ledger row. A later stop is a question or a blocker: answer it the same way, and use
-`decision` only for its four cases. Its last stop is its report: settle it like a lead's. Never do its
-work in this chat, and never send a generic continue.
+**A session you started runs Autonomous.** `create_session` gives it Autonomous mode, and HUI reports
+its stops to you, marked Autonomous. It never stops for a plan: it works to a reviewed pull request and
+stops twice. A blocker only you can clear arrives as one question: answer it with `sessions_send` and
+`timeoutSeconds: 0` (its next stop comes back to you), and use `decision` only for its four cases. Its
+report arrives when the pull request is ready for review, tested and verified: settle it like a lead's.
+Open its ledger row when the work starts. A session the operator started in Autonomous mode reports in
+its own chat, not here.
+
+Never do its work in this chat, and never send a generic continue.
 
 ## 4. Open a ledger row per task
 

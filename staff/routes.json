@@ -9,7 +9,7 @@
   },
   {
     "name": "worker",
-    "description": "Implement one scoped change and prove it with the evidence the kickoff names. Use for code, tests and docs that one checkout can carry."
+    "description": "Implement one scoped change in the session's checkout and prove it with the evidence the kickoff names. Use for code, tests and docs that one checkout can carry."
   },
   {
     "name": "reviewer",

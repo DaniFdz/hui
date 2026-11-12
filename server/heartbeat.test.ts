@@ -95,17 +95,17 @@ test("a done-stage target tells the watcher once and is never continued", async 
   assert.equal(f.notifications.length, 1);
 });
 
-test("an Autonomous session's stop is reported as one, its plan as a decision", async () => {
+test("an Autonomous session's stop is reported as one, its blocker as a decision", async () => {
   const f = fixture();
   f.deps.records = async () => [
     session("watcher", undefined, { watches: ["target"] }),
-    session("target", undefined, { autonomous: true }),
+    session("target", undefined, { autonomous: true, lead: true }),
   ];
-  f.deps.lastAssistant = () => "## Plan\nShip the toggle in one PR.\n\nAccept this plan?";
+  f.deps.lastAssistant = () => "## Plan\nShipped the toggle in one PR; checks pass.\n\nThe deploy needs a token I do not have. Can you add it?";
   assert.deepEqual(await createHeartbeat(f.deps).scan(), { notified: ["target"] });
   assert.match(f.notifications[0]?.text ?? "", /^\[routine: Heartbeat\] Autonomous session "target" is idle and waiting for a decision\./u);
-  assert.match(f.notifications[0]?.text ?? "", /Accept this plan\?/u);
-  assert.match(f.notifications[0]?.text ?? "", /It runs in Autonomous mode and reports to you: accept or correct its plan/u);
+  assert.match(f.notifications[0]?.text ?? "", /Can you add it\?/u);
+  assert.match(f.notifications[0]?.text ?? "", /It runs Autonomous and reports to you: clear its blocker or settle its report/u);
 });
 
 test("an idle session whose subagents still work waits for them, unless it asks something", async () => {
@@ -143,9 +143,9 @@ test("an Autonomous session is reported whatever its goal's status, with the end
     session("watcher", undefined, { watches: ["target"] }),
     session("target", undefined, { autonomous: true, goal: { objective: "x", status: "complete", createdAt: "", updatedAt: "", continuations: 0 } }),
   ];
-  f.deps.lastAssistant = () => `## Plan\n${"A unit of work.\n".repeat(120)}\nAccept this plan?`;
+  f.deps.lastAssistant = () => `## Report\n${"A unit of work.\n".repeat(120)}\nThe pull request is ready for review.`;
   assert.deepEqual(await createHeartbeat(f.deps).scan(), { notified: ["target"] });
-  assert.match(f.notifications[0]?.text ?? "", /is idle and waiting for a decision\..*## Plan.*…\n.*Accept this plan\?/su);
+  assert.match(f.notifications[0]?.text ?? "", /is idle; decide the next step\..*## Report.*….*ready for review/su);
 });
 
 test("scans asked for at once run one after the other and report a change once", async () => {
@@ -165,7 +165,7 @@ test("scans asked for at once run one after the other and report a change once",
 
 test("an Autonomous session that stops gets its chief as watcher, and the stop reaches that chief at once", async () => {
   const f = fixture();
-  let records = [session("seeded-chat"), session("payments-chat"), session("target", undefined, { group: "Payments", autonomous: true })];
+  let records = [session("seeded-chat"), session("payments-chat"), session("target", undefined, { group: "Payments", autonomous: true, lead: true })];
   const watched: Array<[string, string]> = [];
   f.deps.records = async () => records;
   f.deps.bots = async () => [{ title: "Chief of Staff", sessionId: "seeded-chat" }, { title: "Chief of Staff · Payments", group: "Payments", sessionId: "payments-chat" }];
@@ -186,7 +186,7 @@ test("an Autonomous session that stops gets its chief as watcher, and the stop r
 test("a chief whose watch list is full is not given the session, and the stop reaches no one", async () => {
   const f = fixture();
   const full = Array.from({ length: 2 }, (_, index) => `other-${index}`);
-  f.deps.records = async () => [session("seeded-chat", undefined, { watches: full }), session("target", undefined, { autonomous: true })];
+  f.deps.records = async () => [session("seeded-chat", undefined, { watches: full }), session("target", undefined, { autonomous: true, lead: true })];
   f.deps.bots = async () => [{ title: "Chief of Staff", sessionId: "seeded-chat" }];
   let watches = 0;
   f.deps.watch = async () => { watches += 1; };
@@ -196,9 +196,9 @@ test("a chief whose watch list is full is not given the session, and the stop re
   assert.equal(f.notifications.length, 0);
 });
 
-test("Ask me takes back only the watch an Autonomous stop gave, even when it comes right after that stop", async () => {
+test("Supervised takes back only the watch an Autonomous stop gave, even when it comes right after that stop", async () => {
   const f = fixture();
-  let records = [session("seeded-chat"), session("target", undefined, { autonomous: true })];
+  let records = [session("seeded-chat"), session("target", undefined, { autonomous: true, lead: true })];
   const changes: Array<[string, string, boolean]> = [];
   f.deps.records = async () => records;
   f.deps.bots = async () => [{ title: "Chief of Staff", sessionId: "seeded-chat" }];
@@ -211,19 +211,24 @@ test("Ask me takes back only the watch an Autonomous stop gave, even when it com
   assert.deepEqual(changes, [["seeded-chat", "target", true], ["seeded-chat", "target", false]]);
 
   changes.length = 0;
-  records = [session("seeded-chat", undefined, { watches: ["target"] }), session("target", undefined, { autonomous: true })];
+  records = [session("seeded-chat", undefined, { watches: ["target"] }), session("target", undefined, { autonomous: true, lead: true })];
   await heartbeat.supervise("target");
   await heartbeat.release("target");
   assert.deepEqual(changes, [], "a chief's own watch stays");
 
-  records = [session("seeded-chat"), session("target")];
+  records = [session("seeded-chat"), session("target", undefined, { lead: true })];
   assert.equal(await heartbeat.supervise("target"), true);
   assert.deepEqual(changes, [], "a session no longer Autonomous gets no chief");
+
+  changes.length = 0;
+  records = [session("seeded-chat"), session("target", undefined, { autonomous: true })];
+  assert.equal(await heartbeat.supervise("target"), true);
+  assert.deepEqual(changes, [], "a session the operator started reports in its own chat");
 });
 
-test("an Ask me whose registry write fails is tried again by the next one", async () => {
+test("a Supervised switch whose registry write fails is tried again by the next one", async () => {
   const f = fixture();
-  let records = [session("seeded-chat"), session("target", undefined, { autonomous: true })];
+  let records = [session("seeded-chat"), session("target", undefined, { autonomous: true, lead: true })];
   let failing = false;
   const unwatched: string[] = [];
   f.deps.records = async () => records;

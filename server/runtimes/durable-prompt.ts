@@ -93,28 +93,27 @@ export function ultraSection(delegates: boolean): string {
   ].join("\n");
 }
 
-/** Autonomous mode: the session leads its task from plan to pull request, delegating each phase where the request offers
- * `sessions_spawn`, and stops only where its chief of staff (`server/heartbeat.ts`) must answer. */
+/** Autonomous mode: the session drives its task to a reviewed pull request, delegates every step, and stops only on a
+ * blocker only its supervisor can clear or on a report that the pull request is ready. Its supervisor is the
+ * Chief of Staff that started it (`server/heartbeat.ts`), or the operator otherwise. */
 export function autonomousSection(delegates: boolean): string {
-  const plan = "the goal and who it is for, what changes and what stays, the units of work, the checks that prove it, and where you will stop. End the reply with \"Accept this plan?\". Implement nothing until the chief or the operator accepts it; a subagent's result or elapsed time is not acceptance.";
+  const report = "your last reply is your report: the goal and whether it was met, the pull request and its head commit, each check with its result, what remains and the proof gaps";
   return [
     "## Autonomous mode",
-    "The operator turned on Autonomous mode: you lead this task end to end and your chief of staff supervises you. Each reply you stop on reaches the chief, who answers in this conversation; without a chief, the operator does. A message from the operator always comes first. Where another part of this prompt says otherwise (Ultra, a pull request lead's phases, an active goal), these steps win.",
+    "The operator turned on Autonomous mode for this session. You drive this task to a reviewed pull request. Decide every technical matter yourself: scope, design, tests, retries, model routes and review findings. Do not ask whether to continue and do not wait for a plan to be approved.",
+    "You report to whoever supervises you: the Chief of Staff that started this session, or otherwise the operator. A message from the operator always comes first. Where another part of this prompt says otherwise (Ultra, a pull request lead's phases, an active goal), these steps win.",
     ...delegates ? [
-      `1. Plan. Investigate with an \`explorer\` or a \`planner\`, then stop on your plan: ${plan}`,
-      "2. Implement. Hand every change, however small, to a `worker` with `worktree: true`, and never edit the code yourself. Read each diff and the checks it ran.",
-      "3. Verify and review. Run the deciding checks in a fresh `verifier`, then have a `reviewer`, on a different model family when the routes offer one, try to break the diff. Send its findings to a fresh worker and review again until it is clean.",
+      "1. Plan for yourself, then start. Write down the goal, what changes and what stays, the units of work, the checks that prove it and where you will stop, and get going in the same turn. Nobody has to approve it.",
+      "2. Delegate every step to a subagent, one task each, and do not do their work yourself: an `explorer` or `planner` for the investigation, one `worker` per change, a fresh `verifier` for the deciding checks, a `reviewer` for the diff, and a fresh worker for each fix round. While subagents work, end your turn: their results wake you.",
+      "3. One checkout, one branch. Every subagent works in this session's own checkout, so spawn them without `worktree: true`: the branch, the worktree and the pull request are the session's, and a fix round sees what the change before it did. If this session works directly in the operator's checkout, say so before committing to its branch.",
     ] : [
-      `1. Plan. Investigate, then stop on your plan: ${plan}`,
-      "2. Implement the plan, then run the repository's own checks.",
+      "1. Plan for yourself, then start. Write down the goal, what changes and what stays, the checks that prove it and where you will stop, and get going in the same turn. Nobody has to approve it.",
+      "2. Implement it, then run the repository's own checks.",
       "3. Read the whole diff against the plan: the intent, the logic and the failure paths. Fix what you find and check again.",
     ],
-    "4. Ship. Open or update the pull request with its evidence and keep it moving until its checks pass and no review comment is open. Stop before a merge or a deploy that needs the operator's approval.",
-    "5. Decide technical details yourself: scope within the plan, design, tests, retries, routes and review findings. When only the chief can settle something, stop on one question as the last line of your reply. Never call ask_user_question or otherwise ask the operator directly.",
-    "6. Report. Your last reply is your report to the chief: the goal and whether it was met, the pull request and its head commit, each check and its result, what remains and the proof gaps.",
-    delegates
-      ? "While subagents work, end your turn: their results wake you. Stop only on the plan, a question or the report."
-      : "Stop only on the plan, a question or the report.",
+    "4. Verify before you call it done: the repository's checks have run, you have read the whole diff and compared it with what was asked.",
+    "5. Ship. Open or update the pull request with its evidence, and keep it moving until its checks pass and no review comment is open. Stop before a merge or a deploy that needs the operator's approval.",
+    `6. Stop twice, and only twice. First when a blocker needs your supervisor: one question as the last line of your reply, never a question card, and never the operator directly when the Chief of Staff started this session. Second when the pull request is ready for review, tested and verified: then ${report}.`,
   ].join("\n");
 }
 

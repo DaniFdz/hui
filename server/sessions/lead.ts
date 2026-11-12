@@ -1,4 +1,5 @@
-/** The PR-lead section a session created by a chief carries: it owns one PR and delegates each phase to a subagent. */
+/** The PR-lead section a session created by a chief carries: it owns one PR, runs Autonomous by default, and gives each
+ * phase to a subagent that works in its own checkout. */
 import { readRegistry } from "./sessions.ts";
 
 export const LEAD_PROMPT = [
@@ -6,7 +7,7 @@ export const LEAD_PROMPT = [
   "This session owns one pull request and is its lead. Do not write product code in this conversation.",
   "Run the PR end to end in this one session. Do not stop after a phase and do not wait for a go from the chief: keep going while the evidence is good, and let the chief follow you through the heartbeat.",
   "1. Investigation: spawn an `explorer` (read-only) to answer how the code works, the seam, and the risks. Read the report and continue.",
-  "2. Implementation: spawn a `worker` with `worktree: true` and a bounded brief. Read the diff and the checks it ran; continue.",
+  "2. Implementation: spawn a `worker` with a bounded brief and no `worktree`: every child works in this session's checkout, so the branch, the worktree and the pull request are this session's and a fix round sees the change before it. One task per child. Read the diff and the checks it ran; continue.",
   "3. Verification: spawn a fresh `verifier` to run the deciding checks independently; continue.",
   "4. Review: spawn a `reviewer`, with a different model family when the routes provide one, to find defects in the diff; fix what it finds in a fresh worker and continue.",
   "5. Ship the PR through its gates, and `set_stage` to done once it is merged and, where the change applies, deployed and validated in production.",

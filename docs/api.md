@@ -2137,7 +2137,8 @@ Query `id=&n=`.
 
 ### `POST /__hui/heartbeat`
 
-200 `{ notified: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and reports each idle, waiting, errored or done watched session to the session that watches it, at most once per state change. A session not open in this gateway is skipped, so a restart does not report the sessions on this machine again (a worker's sessions open when the worker reconnects and are reported once more); an idle session whose watchers or subagents still work is not reported until they wake it, unless its last reply ends on a question; a session waiting on a question card is reported with a line saying only the operator can answer it there; and a session in Autonomous mode is reported as `Autonomous session "<title>"`, whatever its goal's status. It never prompts the watched session itself; the chief reads the last reply and decides whether to send a specific followup or remove the watch. A report to a bot's chat opens the chat when it is asleep and waits behind a running turn. Scans run one at a time. The same scan runs at gateway start, every 15 minutes and whenever a run of an Autonomous session ends; this route lets the operator check without waiting. There is no request body.
+200 `{ notified: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and reports each idle, waiting, errored or done watched session to the session that watches it, at most once per state change. A session not open in this gateway is skipped, so a restart does not report the sessions on this machine again (a worker's sessions open when the worker reconnects and are reported once more); an idle session whose watchers or subagents still work is not reported until they wake it, unless its last reply ends on a question; a session waiting on a question card is reported with a line saying only the operator can answer it there; and a session a Chief of Staff started, running Autonomous, is reported as `Autonomous session "<title>"`, whatever its
+goal's status. It never prompts the watched session itself; the chief reads the last reply and decides whether to send a specific followup or remove the watch. A report to a bot's chat opens the chat when it is asleep and waits behind a running turn. Scans run one at a time. The same scan runs at gateway start, every 15 minutes and whenever a run of an Autonomous session ends; this route lets the operator check without waiting. There is no request body.
 
 ### `POST /__hui/staff/chiefs`
 
@@ -3779,25 +3780,29 @@ session went back to its previous speed.
 Accepts `{ "autonomous": boolean }`, applies it live, persists it with the session (`autonomous: true` in the
 registry) and answers `{ "autonomous": boolean }`; every viewer gets `event: autonomous` with
 `{ "autonomous": boolean }`. Autonomous mode is independent of the reasoning level and of fast mode. While it is on,
-each request's system prompt carries a `hui_autonomous` section that makes the session the lead of its own task: it
-investigates and stops on a plan ending "Accept this plan?", implements nothing until its chief or the operator
-accepts it, then (where `sessions_spawn` is offered) hands every change to a `worker` in a worktree, verifies in a
-fresh `verifier`, has a `reviewer` of another model family try to break the diff, ships the pull request through its
-gates and stops before a merge or deploy that needs the operator. It decides technical details itself, stops on one
-question when only its chief can settle something, and ends on a report to the chief.
+each request's system prompt carries a `hui_autonomous` section that makes the session drive its task to a reviewed
+pull request: it plans for itself and starts, stopping for nobody's approval; where `sessions_spawn` is offered it
+gives every step to a subagent, one task each, and spawns them without `worktree: true` so they share its own checkout,
+branch and pull request (an `explorer` or `planner` for the investigation, a `worker` per change, a fresh `verifier`
+for the checks, a `reviewer` for the diff, a fresh worker per fix round); it verifies, ships through the pull request's
+gates, and stops before a merge or deploy that needs the operator. It decides technical matters itself and stops only
+twice: on a blocker only its supervisor can clear, as one question at the end of its reply, and on the report that its
+pull request is ready for review, tested and verified.
 
-Its chief is the Chief of Staff of the session's group, else the Chief of Staff of no group (not an archived bot); a
-chief that already watches the session keeps it. Each time a run of the session ends, HUI makes the chief watch the
-session if none does and runs the gateway heartbeat at once, so the stop reaches the chief's chat as
-`[routine: Heartbeat] Autonomous session "<title>" is …` with the last reply (its start and end when it is long) and
-a line telling the chief to accept or correct the plan, answer the question or settle the report with `sessions_send`
-and `timeoutSeconds` 0, queued behind a running turn. Not reported at once: a stop while the session's subagents or
-watchers still work and its reply does not end on a question (they wake it), a run the operator stopped and a run that
-failed (it retries or shows its error; a chief that already watches the session sees it at the next tick). Without a
-chief, or when the chief already watches 50 sessions, nothing is reported and the operator answers in the session. An
-active goal does not continue by itself in this mode: the chief takes the next step. Turning the mode off removes the
-section and takes back the watch HUI gave the chief; a chief's own watch stays, and so does one given before the
-gateway last restarted. A fork starts on Ask me.
+A session a Chief of Staff starts with `create_session` carries the mode from its creation, and its supervisor is the
+Chief of Staff of its group, else the Chief of Staff of no group (not an archived bot); a chief that already watches
+the session keeps it. Each time a run of such a session ends, HUI makes that chief watch it if none does and runs the
+gateway heartbeat at once, so the stop reaches the chief's chat as `[routine: Heartbeat] Autonomous session "<title>"
+is …` with the last reply (its start and end when it is long) and a line telling the chief to clear the blocker or
+settle the report with `sessions_send` and `timeoutSeconds` 0, queued behind a running turn. A session the operator
+started is not given to a chief: its stops are reported in its own chat, with the desktop notification HUI sends when
+one of its runs ends. Not reported at once: a stop while the session's subagents or watchers still work and its reply
+does not end on a question (they wake it), a run the operator stopped and a run that failed (it retries or shows its
+error; a chief that already watches the session sees it at the next tick). When the chief already watches 50 sessions
+nothing is reported and the operator answers in the session. An active goal does not continue by itself in this mode:
+the session's supervisor takes the next step. Turning the mode off removes the section and takes back the watch HUI
+gave the chief; a chief's own watch stays, and so does one given before the gateway last restarted. A fork starts on
+Supervised.
 
 400 when the session cannot carry the mode (a bot's chat, a subagent, a PI SDK session, a worker on an older release)
 or is not running; 500 when the registry write fails, after the session went back to its previous mode.

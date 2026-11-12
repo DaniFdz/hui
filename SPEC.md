@@ -3974,33 +3974,39 @@ second session for a phase. Its own model is the orchestrator and stays fixed; e
 comes from its route or explicit model. A route with no model inherits the lead's model, so the
 operator sets route models to make the phases use different models.
 
-### Autonomous mode makes any session a lead its chief supervises (2026-11-12)
+### Autonomous mode drives a session to a reviewed pull request (2026-11-12)
 
-The owner wanted the PR lead without having to ask a chief for it: a choice in the session itself that has it plan,
-hand the plan to the staff to accept, delegate every phase, verify, ask the staff when something is unclear and
-report back. It is a separate **Autonomy** choice under Speed in the thinking picker (**Ask me** or **Autonomous**),
-not a reasoning level, so it combines with any Effort. It is offered for Durable sessions in the composer and on New
-Session, never in a bot's chat, and persists as `autonomous: true`.
+The owner wanted the PR lead without having to ask a chief for it, and without a plan to approve: a session that
+keeps working, gives every step to a subagent, and stops only on a blocker or when the pull request is ready for
+review. It is an **Autonomy** choice beside Speed in the thinking picker (**Supervised** or **Autonomous**), not a
+reasoning level, so it combines with any Effort. It is offered for Durable sessions in the composer and on New
+Session, never in a bot's chat or a subagent, and persists as `autonomous: true`.
 
-- **The session leads.** Its prompt carries `hui_autonomous`: investigate, stop on a plan ("Accept this plan?") and
-  implement nothing before the chief or the operator accepts it; then every change to a `worker` in a worktree, a
-  fresh `verifier`, a `reviewer` of another model family, the pull request through its gates and no merge or deploy
-  that needs the operator. It decides technical details, stops on one question only for its chief, and ends on a
-  report to the chief. The operator's own messages always come first.
-- **HUI carries the stops the chief must act on.** The session never names or messages its chief. When one of its
-  runs ends, the chief of its group, else the Chief of Staff of no group, starts watching it unless a chief already
-  does, and the gateway heartbeat runs at once, so the stop reaches the chief's chat marked `Autonomous session`,
-  queued behind a running turn and opening a sleeping chat. The chief answers with `sessions_send`, which starts the
-  session's next turn; no bot hop or hourly limit applies, and a session on a worker works the same way. Not reported:
-  a stop while the session's subagents or watchers still work and its reply does not end on a question (they wake
-  it), a run the operator stopped and a failed run. Scans run one at a time so a stop is reported once, and the
-  heartbeat skips a session not open in this gateway, so a restart does not report every watched session again. An
-  active goal does not continue by itself in this mode: the chief takes the next step.
-- **The chief's method is in the pack.** `chief-mode` (pack 14) tells a chief to accept or correct the plan, answer
-  questions, use `decision` only for its four cases and settle the report like a lead's.
-- Turning the mode off removes the section and takes back the watch HUI gave the chief (not a chief's own, and not
-  one given before the gateway last restarted), so the operator has the session back. HUI does not refuse a merge
-  command in this mode: the stop before a merge is the prompt's and the repository's rule.
+- **The session drives.** Its prompt carries `hui_autonomous`: plan for itself and start, with nobody's approval;
+  give every step to a subagent, one task each, and spawn them without `worktree: true` so they share the session's
+  checkout, branch and pull request, which is what lets a fix round see the change before it; verify, review with
+  another model family where the routes offer one, and ship through the pull request's gates. It decides technical
+  matters itself and stops twice: a blocker only its supervisor can clear, as one question at the end of its reply,
+  and the report that its pull request is ready for review, tested and verified. The operator's own messages always
+  come first, and where Ultra, a PR lead's phases or an active goal say otherwise, these steps win.
+- **Who supervises depends on who started it.** `create_session` gives a chief's session Autonomous mode, and HUI
+  reports its stops to that chief: the chief of its group, else the Chief of Staff of no group (not an archived bot),
+  which starts watching it when a run ends and gets the stop through the gateway heartbeat at once, marked
+  `Autonomous session`, queued behind a running turn and opening a sleeping chat. The chief answers with
+  `sessions_send`, which starts the session's next turn; no bot hop or hourly limit applies, and a session on a worker
+  works the same way. A session the operator started in Autonomous mode is given to no chief: its stops are reported
+  in its own chat, with the desktop notification HUI already sends when one of its runs ends.
+- **What is not reported at once.** A stop while the session's subagents or watchers still work and its reply does
+  not end on a question (they wake it), a run the operator stopped and a failed run (it retries or shows its error).
+  Scans run one at a time so a stop is reported once, and the heartbeat skips a session not open in this gateway, so
+  a restart does not report every watched session again. An active goal does not continue by itself in this mode: the
+  session's supervisor takes the next step.
+- **The chief's method is in the pack.** `chief-mode` (pack 15) tells a chief a session it started runs Autonomous, to
+  answer its one blocker with `timeoutSeconds` 0, to use `decision` only for its four cases, and to settle its report
+  like a lead's.
+- Turning the mode off removes the section and takes back the watch HUI gave the chief (not a chief's own, and not one
+  given before the gateway last restarted), so the operator has the session back. HUI does not refuse a merge command
+  in this mode: the stop before a merge is the prompt's and the repository's rule.
 
 ### A custom group's chief is its own bot (2026-11-08)
 

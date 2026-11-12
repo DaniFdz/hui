@@ -417,8 +417,9 @@ export const heartbeat = createHeartbeat({
   watchLimit: WATCH_LIMIT,
 });
 export const heartbeatRoutes = createHeartbeatRoutes({ heartbeat });
-/** Autonomous mode: a session in it that stops is reported to its chief at once (`heartbeat.supervise`), except a run
- * that failed, which retries or shows its error. Taken back with Ask me, it leaves the watch that gave it. */
+/** Autonomous mode: a session a Chief of Staff started that stops is reported to its chief at once
+ * (`heartbeat.supervise`), except a run that failed, which retries or shows its error. A session the operator started
+ * reports in its own chat. Taken back with Supervised, it leaves the watch that gave it. */
 liveSessions.watchRunEnds(({ id, failed }) => {
   if (failed || !liveSessions.isAutonomous(id)) return;
   void heartbeat.supervise(id).then((watching) => {
@@ -576,6 +577,8 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
     ...(defaults.baseRef ? { baseRef: defaults.baseRef } : {}),
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
+    // Autonomous from its first request, so the phase protocol and the mode reach the lead's first prompt.
+    autonomous: true,
   } as Record<string, unknown>);
   // The session is the PR lead, and the caller watches it for the heartbeat.
   await updateRegistry((records) => records.map((current) => {

@@ -28,8 +28,10 @@ report the parent did not need.
   your model. Never route and model together.
 - **Your machine, not another.** Children run where this session runs. To use another
   machine, create a session with `create_session`; a child cannot select one.
-- **A worktree per writer.** `worktree: true` gives the child its own checkout and branch.
-  Two workers never write one working tree.
+- **One checkout per pull request.** A writer spawned without `worktree: true` works in your
+  own checkout, so the branch and the pull request stay yours and a fix round sees the change
+  before it. One writer at a time, one task each. `worktree: true` is for a unit on a branch
+  nothing else touches.
 - **The brief names the evidence.** Goal, unit, writable and forbidden paths, forbidden
   actions, and the command or artifact that proves done. `delegate` owns the full shape.
 - **Fan out with `collect: true`.** Spawn independent units from one `codemode` script and

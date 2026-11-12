@@ -715,10 +715,10 @@ const cases: UseCase[] = [
   },
   {
     id: "CHAT-087",
-    title: "Hand a session to its Chief of Staff with Autonomous mode",
+    title: "Let a session run its task autonomously",
     behaviour:
-      'The thinking picker adds an Autonomy choice under Speed, Ask me or Autonomous, in the composer of a Durable session, one on a worker included, and on New Session. Autonomous reads "Thinking: <level>, autonomous", applies live and stays with the session across a reload, and New Session starts the session in it. When the session stops on its plan or after its first turn, the Chief of Staff of its group gets the stop in its chat as "Autonomous session \"<title>\" is …" with its last reply and a line saying it reports to that chief. Ask me turns it off.',
-    spec: ["docs/api.md#post-__huisessionsidautonomous", "SPEC.md#autonomous-mode-makes-any-session-a-lead-its-chief-supervises-2026-11-12"],
+      'The thinking picker adds an Autonomy choice under Speed, Supervised or Autonomous, in the composer of a Durable session, one on a worker included, and on New Session. Autonomous reads "Thinking: <level>, autonomous", applies live, stays with the session across a reload, and New Session starts on Supervised again. A session a Chief of Staff starts with `create_session` runs Autonomous by default, and each stop it makes (a blocker only that chief can clear, or the report that its pull request is ready for review) reaches the chief\'s chat as "Autonomous session \"<title>\" is …" with its last reply and a line saying it reports to that chief. A session the operator started in Autonomous mode reports in its own chat, and no chief is given it. Supervised turns the mode off.',
+    spec: ["docs/api.md#post-__huisessionsidautonomous", "SPEC.md#autonomous-mode-drives-a-session-to-a-reviewed-pull-request-2026-11-12"],
     surfaces: ["route:POST /__hui/sessions/:id/autonomous"],
     journeys: ["chat-composer"],
     web: "required",

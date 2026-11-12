@@ -456,21 +456,24 @@ popup also shows **Speed**: **Fast** asks the provider for its fast mode
 choices are kept per session and apply to its next model request; a proxy that
 does not support fast mode serves the request at standard speed or refuses it.
 
-Under Speed, **Autonomy** chooses who drives the session: **Ask me** (the
+Under Speed, **Autonomy** chooses who drives the session: **Supervised** (the
 default) or **Autonomous**, in the composer and on New Session. Autonomous makes
-the session the lead of its own task, at whatever Effort you picked: it
-investigates, then stops on a plan that ends "Accept this plan?". Its chief of
-staff, the Chief of Staff of the session's group or else the main one, gets that
-stop right away in its chat and accepts the plan or corrects it. The session
-then hands every change to a worker subagent in its own worktree, has a fresh
-verifier run the checks and a reviewer try to break the diff, and ships the pull
-request through its gates. It asks the chief, not you, when something is unclear,
-stops before a merge or a deploy that needs you, and ends on a report to the
-chief. The chief brings you only the decisions it cannot take. Your own messages
-always come first. Switch back to Ask me while the session is idle to take it
-over: the chief HUI chose for it stops watching it, unless the gateway restarted
-since. New Session starts on Ask me each time.
-Without a Chief of Staff the plan waits for you in the session.
+the session drive its task to a reviewed pull request at whatever Effort you
+picked. It plans for itself and starts, without waiting for anyone's approval.
+Then it gives every step to a subagent, one task each, and the subagents work in
+the session's own checkout: the branch and the pull request are the session's, so
+a fix round sees what the change before it did. A fresh verifier runs the checks
+and a reviewer tries to break the diff. It stops only twice: when a blocker needs
+a decision it cannot take, and when the pull request is ready for review, tested
+and verified.
+
+Who it reports to depends on who started it. A session you start reports in its
+own chat, and HUI notifies you when its run ends. A session a Chief of Staff
+starts runs Autonomous by default and reports to that chief, which brings you only
+the decisions it cannot take. Your own messages always come first in either case.
+Switch to Supervised while the session is idle to take it over: the chief HUI
+chose for it stops watching it, unless the gateway restarted since. New Session
+starts on Supervised each time.
 
 ## Bots
 

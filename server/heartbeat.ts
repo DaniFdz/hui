@@ -1,11 +1,11 @@
 /**
  * HUI's gateway heartbeat: a gateway-side check of the sessions a bot watches. It never prompts a watched session
  * itself. An idle or blocked watched session is reported to the session that watches it, and the chief decides the
- * next step; the scan itself costs no turn in a bot's chat and cannot send a generic "continue". When a session in
- * Autonomous mode stops, its chief (`chiefToWatch`) starts watching it and a scan runs at once; its reports say it is
- * Autonomous, so the chief reads the stop as its plan, a question or its report, and the operator who takes it back
- * takes back the watch the heartbeat gave. Scans run one at a time, so the 15-minute tick and that scan never report one
- * change twice. Also removes the Heartbeat routines a previous build provisioned in bot chats.
+ * next step; the scan itself costs no turn in a bot's chat and cannot send a generic "continue". A session a Chief of
+ * Staff started stops for its chief only: `supervise` gives that chief the watch (`chiefToWatch`) and a scan runs at
+ * once, saying the session is autonomous, so the chief reads its blocker or its report. The operator who switches it
+ * back to Supervised takes back the watch the heartbeat gave. Scans run one at a time, so the 15-minute tick and that
+ * scan never report one change twice. Also removes the Heartbeat routines a previous build provisioned in bot chats.
  */
 import type { AutomationService, AutomationTask } from "./automation.ts";
 import type { SessionGoalStatus, SessionStatus } from "./api/sessions.ts";
@@ -63,7 +63,7 @@ const WORKING = new Set(["queued", "starting", "running"]);
 const watched = (autonomous: boolean, title: string) => `${autonomous ? "Autonomous" : "Watched"} session "${title}"`;
 
 /** What a chief does with an Autonomous session's stop, said in the report so it holds without the pack's skills. */
-const AUTONOMOUS_NOTE = "It runs in Autonomous mode and reports to you: accept or correct its plan, answer its question, or settle its report, with sessions_send and timeoutSeconds 0, since its next stop comes back to you. Escalate to the operator only what the decision skill reserves for them.";
+const AUTONOMOUS_NOTE = "It runs Autonomous and reports to you: clear its blocker or settle its report with sessions_send and timeoutSeconds 0, since its next stop comes back to you. Escalate to the operator only what the decision skill reserves for them.";
 
 const note = (autonomous: boolean) => autonomous ? [AUTONOMOUS_NOTE] : [];
 
@@ -173,20 +173,21 @@ export function createHeartbeat(deps: HeartbeatDeps) {
   /** The chief's chat each Autonomous session was given by `supervise`, the only watch `release` takes back. */
   const given = new Map<string, string>();
   let previousChange: Promise<unknown> = Promise.resolve();
-  /** Supervision and release run one at a time, so Ask me right after a stop takes back the watch that stop gave. */
+  /** Supervision and release run one at a time, so Supervised right after a stop takes back the watch that stop gave. */
   function inTurn<T>(change: () => Promise<T>): Promise<T> {
     const run = previousChange.then(change, change);
     previousChange = run.catch(() => undefined);
     return run;
   }
 
-  /** An Autonomous session stopped: the chief `chiefToWatch` picks starts watching it, and a scan runs at once. Answers
-   * false when that chief's watch list is full, so the stop reaches no chief. */
+    /** A session a Chief of Staff started that stops: the chief `chiefToWatch` picks starts watching it, and a scan runs
+   * at once. Answers false when that chief's watch list is full, so the stop reaches no chief. */
   async function supervise(id: string): Promise<boolean> {
     const full = await inTurn(async () => {
       const records = await deps.records();
       const session = records.find((record) => record.id === id);
-      const chief = session?.autonomous ? chiefToWatch(await deps.bots(), records, session) : undefined;
+      // A session the operator started reports in its own chat, so no chief is given it.
+      const chief = session?.autonomous && session.lead ? chiefToWatch(await deps.bots(), records, session) : undefined;
       const atLimit = chief !== undefined && (records.find((record) => record.id === chief.sessionId)?.watches?.length ?? 0) >= deps.watchLimit;
       if (chief && !atLimit) {
         await deps.watch(chief.sessionId, id, true);
