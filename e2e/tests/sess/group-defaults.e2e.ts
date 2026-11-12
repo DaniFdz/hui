@@ -12,7 +12,7 @@ test("New session in a group selects it and its directory, and the Group picker 
 
   await hui.open("/");
   await hui.sessionList();
-  await hui.peek(screen.getByText("ALPHA", { exact: true, visible: true }));
+  // Group actions are drawn at every width; the phone reaches them in its drawer without a hover.
   await screen.getByRole("button", "New session in ALPHA").tap();
   await expect(chooser).toContainText("ALPHA");
   await expect(screen.getByLabel("Project directory")).toHaveValue(hui.workspace);
@@ -26,8 +26,8 @@ test("New session in a group selects it and its directory, and the Group picker 
   await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();
   await expect(screen.getByText("durable · BETA · Idle", { visible: true })).toBeVisible();
   const rows = () => screen.getByLabel(/^.+, status \w+, tool durable, stage \w+/u).allTextContents();
-  await expect.poll(async () => (await rows()).length).toBe(3);
   await hui.sessionList();
+  await expect.poll(async () => (await rows()).length).toBe(3);
   await screen.getByRole("button", "BETA").tap();
   await expect.poll(rows).toEqual(["Alpha anchor"]);
   await expect.poll(() => groupSize("Beta")).toBe(2);
@@ -54,7 +54,6 @@ test("a group's Git defaults are saved, survive a reload and a cancel, start ses
   const launchFrom = (path: string) => choose(path, "Pick where this session works, then say what to do.");
   const openDefaults = async () => {
     await hui.sessionList();
-    await hui.peek(screen.getByText("DEFAULTS", { exact: true, visible: true }));
     await screen.getByRole("button", "Group options for Defaults").tap();
     await screen.getByText("New session defaults", { visible: true }).tap();
     await expect(screen.getByText("New session defaults for “DEFAULTS”")).toBeVisible();
@@ -62,7 +61,6 @@ test("a group's Git defaults are saved, survive a reload and a cancel, start ses
   };
   const startFromGroup = async (prompt: string) => {
     await hui.sessionList();
-    await hui.peek(screen.getByText("DEFAULTS", { exact: true, visible: true }));
     await screen.getByRole("button", "New session in DEFAULTS").tap();
     await expect(directory).toHaveValue(repository.path);
     await screen.getByPlaceholder("What should this session work on?").fill(prompt);

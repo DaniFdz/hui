@@ -9,8 +9,11 @@ test("the row's Pin session button pins a session and its Unpin session button u
 
   await hui.open("/");
   await hui.sessionList();
-  await hui.peek(zuluRow);
-  await zuluRow.getByRole("button", "Pin session").tap();
+  // Focus reveals the desktop row's actions; touch layouts already draw the same buttons.
+  const pin = zuluRow.getByRole("button", "Pin session");
+  await pin.focus();
+  await expect(pin).toBeFocused();
+  await pin.tap();
   await expect(screen.getByLabel("Zulu pin, status idle, tool durable, stage investigation, pinned")).toBeVisible();
   await zuluRow.getByRole("button", "Unpin session").tap();
   await expect(screen.getByLabel("Zulu pin, status idle, tool durable, stage investigation")).toBeVisible();
