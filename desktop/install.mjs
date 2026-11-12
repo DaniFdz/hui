@@ -87,6 +87,7 @@ export async function installMacApp({ applications = join(homedir(), 'Applicatio
     // remains linked to the original installation and its active release.
     await cp(new URL('./main.cjs', import.meta.url), join(resources, 'app/main.cjs'));
     await cp(new URL('./policy.cjs', import.meta.url), join(resources, 'app/policy.cjs'));
+    await cp(new URL('./preload.cjs', import.meta.url), join(resources, 'app/preload.cjs'));
     const plist = join(candidate, 'Contents/Info.plist');
     await writeFile(plist, updatePlist(await readFile(plist, 'utf8'), version));
     await finalize(candidate);

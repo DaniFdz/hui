@@ -150,3 +150,41 @@ is green*, and the imported bot's first turn), driven with the Browser tool,
   `server/bots/export.test.ts`, `server/bots/templates/cleanup.test.ts` and
   `server/bots/template-import.test.ts`, not by this browser run.
 
+
+## 2026-11-12: the setup's budget
+
+An export's `BOOTSTRAP.md` becomes the imported bot's own file, which holds
+6,000 characters; it used to be written up to 8,000, so an export over the limit
+was refused at Create, and one at the cap could grow past it when the importer's
+profile name replaced `{{user}}`. Run with `node e2e/visual-verification.mjs
+launch`, driven with the Browser tool at 1440×900 and 390×844 by resizing.
+
+### Reproduce
+
+1. Settings through `PUT /__hui/settings`: utility model `hui-e2e/fixture`,
+   profile name *Dani Fernandez*.
+2. A bot through `POST /__hui/bots`: Ada, a soul naming the fixture passages, and
+   a `BOOTSTRAP.md` of 5,952 characters (a Slack onboarding body).
+3. Bots → Ada's ⋯ → **Export…**.
+
+### Observed
+
+1. **The dialog**: *Setup 1,667 of 6,000 characters*; the warning *Its setup
+   (BOOTSTRAP.md) is full at 6,000 characters: 1 item stayed behind*; *Left out of
+   its setup* listing *The previous owner's onboarding body (5,952 characters)*.
+   The points, needs and schedules stayed in the document; the body went whole,
+   never cut. Desktop and 390×844, where the facts sit two by two.
+2. **Download** closed the dialog after `POST /__hui/bots/:id/export` answered
+   200. Exporting the same review through the route and importing the zip back
+   made @ada-2 with a 1,673-character `BOOTSTRAP.md`: no *must be at most 6000*
+   refusal, and its first turn went through the two open points.
+3. **Import preview** (pasted from the file): *Onboarding 1,673 of 6,000
+   characters*. The `{{user}}` growth that pushed an at-the-cap setup over is
+   proved by `server/bots/template-import.test.ts`, which builds such an export
+   and checks the note and the cut file.
+
+### Limits
+
+- The review is the fixture's; the dialog's numbers follow the seeded body, so a
+  different body moves them.
+- No page errors beyond Lit's development warnings.

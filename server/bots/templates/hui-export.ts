@@ -8,7 +8,7 @@
  * blank about them.
  */
 import { BOT_EXPORT_FILES, BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, type BotOpenPoint, type BotTemplateTrigger } from "../export-format.ts";
-import { BOT_FILE_LIMITS, BOT_LIMITS, isBotFaceEars, isBotFaceShape, storedTagging, type BotVoice } from "../../bots-format.ts";
+import { BOT_LIMITS, isBotFaceEars, isBotFaceShape, storedTagging, type BotVoice } from "../../bots-format.ts";
 import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateSkillFile } from "./formats.ts";
 import { BOT_TRIGGER_LIMITS } from "../triggers-format.ts";
 import type { AutomationSchedule } from "../../automation.ts";
@@ -159,10 +159,11 @@ export function parseHuiExport(all: readonly ImportFile[], origin?: string, pars
   template.hui = extras;
   const soul = findFile(files, BOT_EXPORT_FILES.soul);
   template.soul = (soul ? fileText(soul) ?? "" : "").trim();
-  // The operator's onboarding body travels beside the soul, when it wrote one.
+  // The operator's onboarding body travels beside the soul, when it wrote one. Its length is checked where the
+  // template's `{{user}}` is filled in: the new owner's name can make it longer than a bot's own BOOTSTRAP.md holds.
   const bootstrap = findFile(files, BOT_EXPORT_FILES.bootstrap);
   const onboarding = bootstrap ? (fileText(bootstrap) ?? "").trim() : "";
-  if (onboarding) template.bootstrap = onboarding.slice(0, BOT_FILE_LIMITS.bootstrap);
+  if (onboarding) template.bootstrap = onboarding;
   else if (bootstrap) template.notes.push("Its BOOTSTRAP.md was empty.");
   for (const skill of Array.isArray(manifest["skills"]) ? manifest["skills"].map(str).filter(Boolean) : []) {
     const folder = within(files, `${BOT_EXPORT_FILES.skills}/${skill}`);

@@ -544,11 +544,11 @@ const cases: UseCase[] = [
   {
     id: "BOT-061",
     title: "Export a bot as a template",
-    behaviour: "A row's ⋯ → Export… reviews the bot and lists every change by group (kept, removed, asked, confirmed) with its reason and a picker, what was cleaned automatically, what it needs, what stays behind and every file as it will be saved, all following the picks. Download saves the zip; a bot without SOUL.md yet, or one that changed since the review, is refused with the reason.",
+    behaviour: "A row's ⋯ → Export… reviews the bot and lists every change by group (kept, removed, asked, confirmed) with its reason and a picker, what was cleaned automatically, what it needs, what stays behind and every file as it will be saved, all following the picks. Its setup (BOOTSTRAP.md) is shown against the 6,000 characters a bot's own file holds, and what didn't fit is listed under \"Left out of its setup\". Download saves the zip; a bot without SOUL.md yet, or one that changed since the review, is refused with the reason.",
     spec: ["SPEC.md#bots", "SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#post-__huibotsidexportreview", "docs/api.md#exporting-a-bot-as-a-template"],
     surfaces: ["route:POST /__hui/bots/:id/export/review", "route:POST /__hui/bots/:id/export"],
     journeys: ["bot-templates"],
-    web: "backlog",
+    web: "required",
   },
   {
     id: "BOT-062",
@@ -679,7 +679,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-077",
     title: "The gateway heartbeat continues a watched session",
-    behaviour: "A session watches another. Running the gateway heartbeat continues an idle watched session with no running watcher, unless its last reply asks for a decision: then the watcher is told instead and the target is not prompted. A waiting or errored target tells the watcher too. No heartbeat turn enters any bot's chat.",
+    behaviour: "A session watches another. Running the gateway heartbeat reports an idle watched session to the watcher, who decides the next step; it never prompts the target. A decision, waiting or errored target is reported the same way. No heartbeat turn enters any bot's chat.",
     spec: ["SPEC.md#a-staff-pack-seeds-one-chief-of-staff-2026-11-06", "docs/api.md#post-__huiheartbeat"],
     surfaces: ["route:POST /__hui/heartbeat", "tool:watch_session"],
     journeys: ["bots"],

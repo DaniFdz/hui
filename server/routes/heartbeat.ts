@@ -7,10 +7,10 @@ import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 
 export { routeSchemas };
 
-export function createHeartbeatRoutes(deps: { heartbeat: { scan(): Promise<{ continued: string[] }> } }) {
+export function createHeartbeatRoutes(deps: { heartbeat: { scan(): Promise<{ notified: string[] }> } }) {
   return async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     if (request.path !== "/__hui/heartbeat") return undefined;
-    if (request.method !== "POST") return reply(HeartbeatRun, { continued: [] }, 405);
+    if (request.method !== "POST") return reply(HeartbeatRun, { notified: [] }, 405);
     return reply(HeartbeatRun, await deps.heartbeat.scan());
   };
 }

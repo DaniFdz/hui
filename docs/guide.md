@@ -130,9 +130,12 @@ HUI** to restore the window; use `hui gateway stop` for normal gateway shutdown.
 `hui desktop` opens the registered `HUI.app` on macOS (otherwise Electron
 directly) and exits immediately. Without `HUI.app`, the window runs Electron from
 the release that was active when it opened. Updates can delete that release
-later, so restart the window after updating. The window follows HUI's
-Appearance color mode; with **System** (the default) both the page and the
-native title bar track the OS live.
+later, so restart the window after updating. The window follows the Appearance
+color mode this device stored in the page; with **System** (the default) both the
+page and the native title bar track the OS live. The page reports the mode to the
+shell, which keeps the last one it heard in Electron's `userData` so the next
+launch paints its window in that mode before the page exists. The shell never
+asks the gateway.
 External web and mail links open in the default browser. The renderer is
 sandboxed without Node integration. Browser-local drafts have a separate Electron
 profile; HUI/PI storage remains shared through the existing gateway.
@@ -522,7 +525,7 @@ starts idle: it has a SOUL.md and its skills, and it says nothing until you
 message it. Its home folder holds the pack's skills under `skills/`, and the
 bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
 with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
-`machines`, `status`, `learn`, `lessons`,
+`machines`, `status`, `decision`, `learn`, `lessons`,
 `verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
 `figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
 `principles` reference. No other chat loads them.
@@ -549,16 +552,36 @@ You archive the session then; the chief settles the ledger row and never
 archives it for you. A **lead** is opt-in inside such a session, or when you
 ask for one, not the chief's default.
 
+The session is the **lead** for one PR. HUI adds the PR-lead phase protocol: it runs the phases
+end to end, an `explorer` for investigation, a `worker` in a worktree, a fresh `verifier`, then a
+`reviewer`; it never creates a second session for a phase. It makes technical choices itself and
+stops only for an irreversible action, missing access, an owner-only approval or a material
+preference evidence cannot settle. It reports its final evidence; there is no go between phases. Its own model is the
+orchestrator; set the route models in Settings to change each phase's model. A model-less
+route inherits the lead's model.
+
+| Phase | Route | Model to configure |
+| --- | --- | --- |
+| Investigation | `explorer` | A strong reasoning model |
+| Implementation | `worker` | A coding model |
+| Verification | `verifier` | An independent model |
+| Review | `reviewer` | A different model family from the implementer |
+
+The chief asks you almost never: implementation, scope, test choice, design, retries and model
+routes are decided with a reversible default and recorded. Only an irreversible action, missing
+access, an explicit owner-only approval or a material preference evidence cannot settle uses the
+`decision` skill: one line, a compact table or diagram, a recommendation and one question.
+
 A status answer uses the `status` skill: one table row per session
 (`[title](/sessions/<id>?open=app)`, PR link, status and blockers), then one
 question only if it waits on you. HUI's heartbeat changes use the same shape.
 
 Each session the chief creates is **watched** by default. HUI runs the
-**heartbeat** itself, every 15 minutes, without a turn in the bot's chat: it
-continues a watched session that is idle and has no running watcher, and leaves
-a running one alone. If the watched session is waiting for a decision, an answer
-or is errored, the heartbeat tells the watching bot instead of prompting it.
-Nothing from the heartbeat enters the bot's context.
+**heartbeat** itself, every 15 minutes, without a turn in a bot's chat. It reports
+a watched session that is idle, waiting, errored or done to the chief; it never
+prompts the watched session. The chief reads the last reply and decides: send
+one specific followup with `sessions_send`, or remove the watch if nothing is
+left. A generic continue is never sent.
 
 After a task that failed, drifted, or needed a step the pack did not know, the chief adds one evidence-backed entry to its own **`lessons`** skill. It never edits the pack's skills: an edited pack file stops taking pack updates. The `lessons` skill is the bot's, and `hui doctor` reports it.
 
@@ -569,11 +592,17 @@ model; for a chief that lives for months, set a stronger one in the bot's
 Settings → Memory. The ledger in `work/` and MEMORY.md are the durable record;
 the chat is not.
 
-The pack is versioned. On a later start HUI replaces a skill file nobody edited,
-keeps a skill with any edited file whole, and adds only routes whose names are
-missing; it never writes SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md after
-creation. `hui doctor` reports a skill that can take the shipped text and one
-you edited; `hui doctor --fix` installs the untouched updates.
+The pack is versioned, and it reaches every chief: the seeded one and each group's.
+On a later start HUI replaces a skill file nobody edited, keeps a skill with any
+edited file whole, and adds only routes whose names are missing; it never writes
+SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md after creation. A chief that got the
+pack before HUI recorded each bot is adopted the first time: a file that already
+matches the pack byte for byte is recorded as pack text, a skill it lacks is
+installed, and a skill that differs is kept and reported, because HUI cannot
+tell your edit from older pack text there. `hui doctor` reports, per chief, a
+skill that can take the shipped text, one you edited, and one the pack no longer
+ships (which you can delete); `hui doctor --fix` installs the untouched updates
+and leaves everything else alone.
 
 A **custom session group** is a project here, so its ⋯ menu offers **Create Chief of Staff**: one bot named *Chief of Staff · <group>* whose chat works in that project's folder, with its own OptChat memory and its own copy of the pack's skills. Asking again opens that same chief. The seeded default chief stays for work that belongs to no group.
 
@@ -1250,14 +1279,17 @@ never reaches it.
 To draw a widget, HUI asks Datadog for a snapshot of it, which Datadog keeps at a
 long, unguessable link, as it does for its own sharing and its Slack app. HUI
 never shows that link. **Settings → Appearance → Chat → Datadog link
-previews** turns the cards off. [docs/api.md](api.md#datadog-link-previews) has
+previews** turns the cards off, on that device. [docs/api.md](api.md#datadog-link-previews) has
 the full contract.
 
 ## Custom marks for tool calls
 
 A turn's tool calls show a mark per row. HUI picks it in this order: your icon file, your emoji, the built-in emoji for that CLI or tool, then the tinted SVG mark.
 
-Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`):
+Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`),
+and stay on the gateway: the icon files are there, so every device that draws a
+tool call reads the same maps. Everything else on the Appearance page is the
+device's own.
 
 ```json
 {
@@ -1621,6 +1653,21 @@ session in its own directory, and signing in again in Settings → Integrations 
 Datadog fixes it. There is no `--fix` for it, since the sign-in runs in a
 browser. Until each org is signed in again, the check fails and `hui doctor`
 exits with status 1.
+
+### Appearance in `settings.json`
+
+Appearance belongs to the device that shows it, so
+`settings.json` should not hold a theme, color mode, accent, typeface, text size
+or chat preference. One an older HUI wrote still does: `hui doctor` lists each of
+those keys and exits 1, and `--fix` rewrites the file without them, keeping every
+setting the gateway still owns. The look alone — theme, color mode, accent, the
+two typefaces, the terminal font and the text size — is first written to
+`~/.config/hui/desktop-appearance.json` for HUI's desktop app, which applies it
+to a device that never stored an appearance of its own and then marks it
+consumed; the chat preferences stay behind, since they are habits rather than how
+a screen looks. Nothing is written when the look is only HUI's defaults. The
+seed is written on the gateway's machine, so a desktop app running on another
+machine needs that file carried over by hand.
 
 ### HUI desktop app
 

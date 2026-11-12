@@ -52,7 +52,7 @@ iframe; it does not import HUI renderers into the reference or mutate app state.
 | --- | --- |
 | Typeface | Open picker; keyboard typeahead `s`, Enter → System; preference survives reload. Home/Enter restores Instrument Sans. |
 | Chat preferences | Message width changes to Wide and persists; restored to Comfortable. Collapse progress toggles by visible control and Space; persisted value verified and restored to false. |
-| Appearance themes | Claw Light/Dark and imported Rosé render correctly in the recorded comparison states. Language remains deliberately disabled. Claw/Dark restored. |
+| Appearance themes | Claw Light/Dark and imported Rosé render correctly in the recorded comparison states. Claw/Dark restored. (The disabled Language select this table used to note is gone: HUI has no language setting, and the row claimed a stored preference nothing read.) |
 | Hub tabs | ArrowRight focuses Worktrees without navigating; Enter activates it and the destination tab reclaims focus. Clicking Sessions returns to its route. Tablist has the Sessions pages label. |
 | Sidebar menus | Rename/Pin/Delete and four group actions have labeled menus. Pin/unpin persists. Group Rename opens the existing dialog; Cancel restores trigger focus. End/arrows/Enter and Escape exercised. |
 | Mobile drawer | Escape closes an inner menu first, keeping main inert and returning focus to its trigger. A second Escape closes navigation, releases inert and focuses Open navigation. |

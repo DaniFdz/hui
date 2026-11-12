@@ -13,7 +13,7 @@ const cases: UseCase[] = [
     id: "SHELL-001",
     title: "Open Home",
     behaviour:
-      "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs.",
+      "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings sits in the sidebar's header row beside **Collapse sidebar** and the Agents and Bots tabs, so both lists reach it, and the footer below both lists is this page's gateway.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
@@ -466,6 +466,16 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: [],
     journeys: ["sidebar-toolbar", "shell-navigation"],
+    web: "required",
+  },
+  {
+    id: "SHELL-049",
+    title: "See this page's gateway and switch from the sidebar footer",
+    behaviour:
+      "The sidebar's footer is one button named after the gateway serving this page, with a state dot. Opening it lists **Gateways**: that one marked *Current*, then every other gateway this device added by its own name, then **Add a gateway…**. Choosing another gateway opens that address in this page, and **Add a gateway…** opens Settings → Gateway. Escape closes the list and returns focus to the button.",
+    spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", GATEWAY, "docs/api.md#adding-a-gateway"],
+    surfaces: ["route:GET /__hui/update", "route:GET /__hui/health", "nav:settings"],
+    journeys: ["gateway-settings"],
     web: "required",
   },
 ];

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import {
   type DrawerMediaQuery,
   APP_SHELL_DRAWER_MEDIA,
@@ -25,6 +25,7 @@ import {
 } from "./settings.ts";
 import { ACCENTS } from "../lib/theme/appearance.ts";
 import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
+import { DEFAULT_DEVICE_APPEARANCE } from "../lib/appearance/store.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
 import { DEFAULT_SIDEBAR_SESSION_OPTIONS } from "../lib/session/sidebar-sessions.ts";
 import { HUI_PAGES } from "../lib/pages.ts";
@@ -72,6 +73,12 @@ const SESSION_GROUPS: SessionGroup[] = [
   },
 ];
 
+const GATEWAYS = [
+  { url: "http://127.0.0.1:8787", name: "Studio Mac", state: "current" as const },
+  { url: "http://loft.local:8787", name: "Loft", state: "known" as const, lastSeen: 1 },
+  { url: "http://attic.local:8787", name: "Attic", state: "offline" as const, lastSeen: 2 },
+];
+
 function controlledMedia(initialMatches = true) {
   let matches = initialMatches;
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
@@ -99,18 +106,24 @@ function controlledMedia(initialMatches = true) {
   };
 }
 
-test("the primary sidebar lists work destinations above a Settings footer", () => {
+test("the primary sidebar lists work destinations, with Settings on the top row above the gateway footer", () => {
   assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["dashboard", "contributions", "sessions", "usage"]);
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const nav = source.slice(source.indexOf('<nav class="sidebar-nav"'), source.indexOf("</nav>", source.indexOf('<nav class="sidebar-nav"')));
   assert.doesNotMatch(nav, /(?<![A-Z_])NAV\.map|icons\.home/u);
   // Kanban is a HUI route rendered directly below Contributions.
   assert.match(nav, /item\.id === "contributions" \? kanbanNavItem\(props\)/u);
-  // Settings is not a destination in that tab panel: it closes the sidebar below both lists.
+  // Settings is not a destination in that tab panel, and no longer closes the sidebar below the lists.
   assert.doesNotMatch(nav, /sidebar-nav__settings/u);
+  // It sits on the top row beside the collapse control and the Agents | Bots switch, so both lists reach it.
+  const top = source.slice(source.indexOf('<div class="sidebar-brand"'), source.indexOf('<label class="sidebar-search'));
+  assert.match(top, /class="[^"]*sidebar-brand__settings"[\s\S]*aria-label="Settings"[\s\S]*props\.onOpenSettings\(\)[\s\S]*\$\{icons\.settings\}/u);
+  // The footer is the gateway this page came from, not a Settings link.
   const footer = source.indexOf('class="sidebar-footer"');
   assert.ok(footer > source.indexOf('class="sidebar-shell__content"'), "the footer follows the scrolling content");
-  assert.match(source.slice(footer), /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>/u);
+  const footerMarkup = source.slice(footer, source.indexOf('<div\n      class="sidebar-resize-handle"'));
+  assert.match(footerMarkup, /\$\{renderGatewayPicker\(props\)\}/u);
+  assert.doesNotMatch(footerMarkup, /sidebar-nav__settings|>Settings<\/span>/u);
 });
 
 test("each destination marks itself current, and Settings never does", () => {
@@ -120,6 +133,7 @@ test("each destination marks itself current, and Settings never does", () => {
     sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "",
     sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
     bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
   } as unknown as Parameters<typeof renderSidebar>[0]));
   const current = (path: string) => new RegExp(`href=\\${path}\\b[\\s\\S]{0,160}?aria-current=page`, "u");
   assert.match(rendered, current("/usage"));
@@ -134,15 +148,60 @@ test("the sidebar lists Dashboard with the other destinations", () => {
     importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "",
     draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined,
     groupReorderPending: false, bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
   } as unknown as Parameters<typeof renderSidebar>[0]));
   assert.match(rendered, /href=\/dashboard\b[\s\S]*>Dashboard</u);
   assert.match(rendered, /href=\/usage\b/u, "the other destinations stay");
 });
 
 test("Settings stays available while the Bots list is showing", () => {
-  assert.match(sidebar(1), /sidebar-nav__settings[\s\S]*>Settings</u);
-  assert.match(sidebar(1, "", "bots"), /sidebar-nav__settings[\s\S]*>Settings</u);
+  assert.match(sidebar(1), /data-testid="nav-settings"[\s\S]{0,120}aria-label="Settings"/u);
+  assert.match(sidebar(1, "", "bots"), /data-testid="nav-settings"[\s\S]{0,120}aria-label="Settings"/u);
   assert.doesNotMatch(sidebar(1, "", "bots"), /Primary navigation/u, "the Agents navigation stays out of the Bots list");
+});
+
+test("the footer is this page's gateway, and its menu lists the others with the current one marked", () => {
+  const switched: string[] = [];
+  let openedSettings = 0;
+  const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
+  assert.match(source, /<wa-dropdown class="session-menu sidebar-gateway-menu"[^>]*@keydown=\$\{closeDropdownOnEscape\}/u, "Escape closes it and returns focus to the trigger, as the session menus do");
+  const view = renderSidebar({
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "",
+    groups: [], draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "",
+    importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "",
+    draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined,
+    groupReorderPending: false, bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
+    onSwitchGateway: (url: string) => switched.push(url),
+    onOpenGatewaySettings: () => { openedSettings += 1; },
+  } as unknown as Parameters<typeof renderSidebar>[0]);
+  const rendered = markup(view);
+  // One button, showing the gateway serving this page.
+  assert.match(rendered, /data-testid="sidebar-gateway"[\s\S]{0,200}?aria-label=Gateway: Studio Mac/u);
+  assert.match(rendered, /class="sidebar-gateway__name">Studio Mac</u);
+  assert.match(rendered, /class="sidebar-gateway__dot sidebar-gateway__dot--current"/u);
+  // Every gateway this device knows, with the current one marked and not offered again.
+  assert.match(rendered, /data-url=http:\/\/127\.0\.0\.1:8787[\s\S]{0,160}?data-state=current[\s\S]{0,500}?>Current</u);
+  assert.match(rendered, /data-url=http:\/\/loft\.local:8787[\s\S]{0,160}?data-state=known/u);
+  assert.match(rendered, /data-url=http:\/\/attic\.local:8787[\s\S]{0,160}?data-state=offline[\s\S]{0,500}?>Offline</u);
+  assert.match(rendered, />Loft</u);
+  assert.match(rendered, />Attic</u);
+  assert.match(rendered, />Add a gateway…</u);
+  // Choosing another one navigates; the last item opens Settings → Gateway.
+  const select = handlers(view, "@wa-select=").at(-1);
+  assert.equal(typeof select, "function", "the menu reports the chosen item");
+  const choose = (value: string) => select!({
+    currentTarget: { querySelector: () => null },
+    detail: { item: { value } },
+    preventDefault: () => undefined,
+  } as unknown as { preventDefault(): void });
+  choose("switch:http://loft.local:8787");
+  assert.deepEqual(switched, ["http://loft.local:8787"]);
+  // The drawer helpers need a DOM; this menu closes the phone drawer before it navigates.
+  vi.stubGlobal("HTMLElement", class HTMLElement {});
+  choose("add");
+  assert.equal(openedSettings, 1);
+  vi.unstubAllGlobals();
 });
 
 test("settings navigation contains only the fifteen accepted regions", () => {
@@ -466,17 +525,18 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   assert.match(source, /class="sidebar-shell sidebar-drawer__body"/);
   assert.doesNotMatch(source, /sidebar-shell__footer|sidebar-footer-bar|renderFooter/);
   assert.doesNotMatch(source, /sidebar-agent-card|deck-card/);
-  // The header's only control is the collapse toggle, first in the top row: New session
-  // and search left it on 2026-10-06 (owner). New sessions start from a group's + or
-  // the Ctrl+K palette, which also finds sessions; the mobile top bar keeps its search.
+  // The top row's controls are the collapse toggle and Settings: New session and search left it
+  // on 2026-10-06 (owner) and Settings joined it 2026-11-11, so both sidebar lists reach it.
   const header = source.slice(source.indexOf('<div class="sidebar-brand"'), source.indexOf('<label class="sidebar-search'));
   assert.match(header, /^<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"/u);
-  assert.deepEqual([...header.matchAll(/aria-label=(?:"([^"]+)"|\$\{(\w+)\})/gu)].map((match) => match[1] ?? match[2]), ["Collapse sidebar"]);
+  assert.deepEqual([...header.matchAll(/aria-label=(?:"([^"]+)"|\$\{(\w+)\})/gu)].map((match) => match[1] ?? match[2]), ["Collapse sidebar", "Settings"]);
   assert.doesNotMatch(source, /sidebar-brand__(new-thread|search|utilities|actions)/u);
   assert.match(source, /aria-label=\$\{`New session in \$\{sessionGroupLabel\(group\.label\)\}`\}/u);
   assert.match(source, /class="topbar-search" aria-label=\$\{searchLabel\} @click=\$\{focusSessionSearch\}/u);
   assert.match(source, /const searchLabel = botsTab \? "Search bots" : "Search sessions";/);
-  assert.doesNotMatch(header, /sidebar-brand__settings|aria-label="Settings"/);
+  assert.match(header, /class="[^"]*sidebar-brand__settings"/, "Settings is one of the top row's controls");
+  // The footer keeps one button: the gateway this page came from.
+  assert.match(source.slice(source.indexOf('<div class="sidebar-footer">')), /^<div class="sidebar-footer">\s*\$\{renderGatewayPicker\(props\)\}/u);
   assert.match(source.slice(source.indexOf('<label class="sidebar-search')), /^<label class="sidebar-search /u);
   assert.doesNotMatch(source.slice(source.indexOf('<div class="sidebar-sessions">')), /aria-label="Search sessions"/);
   assert.doesNotMatch(source, /sidebar-identity-card/);
@@ -494,10 +554,10 @@ test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only 
     assert.notEqual(index, -1, marker);
     return index;
   };
-  // The top row: the collapse toggle, then the switch. Nothing sits above them, and each
-  // tab has a sidebar of its own below.
+  // The top row: the collapse toggle, the switch, and Settings at its trailing edge. Nothing
+  // sits above them, and each tab has a sidebar of its own below.
   const top = sidebar.slice(at('<div class="sidebar-shell sidebar-drawer__body">'), at('<label class="sidebar-search'));
-  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>\s*<\/div>\s*$/u);
+  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>\s*<a\s+href="\/settings\/appearance"\s+data-testid="nav-settings"[\s\S]*?aria-label="Settings"[\s\S]*?>\$\{icons\.settings\}<\/a>\s*<\/div>\s*$/u);
   assert.ok(at('<label class="sidebar-search') < at('<nav class="sidebar-nav"'));
   assert.equal(sidebar.split("renderSidebarTabs(").length, 2, "one switch, not one per list");
   // Bots: no primary navigation, and the toolbar names the roster.
@@ -590,7 +650,8 @@ test("appearance exposes OpenClaw accent presets and a custom color", () => {
   const result = renderedText(
     renderSettingsPage({
       page: "appearance",
-      settings: { ...DEFAULT_SETTINGS, accent: "#ff8066" },
+      settings: DEFAULT_SETTINGS,
+      appearance: { ...DEFAULT_DEVICE_APPEARANCE, accent: "#ff8066" },
       previews: [],
       variant: "dark",
       themeId: "claw",
@@ -843,6 +904,7 @@ function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents", lo
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
     groupDropTarget: undefined, groupReorderPending: false,
     bots: { tab, search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
   };
   return markup(renderSidebar(data as unknown as Parameters<typeof renderSidebar>[0]));
 }
@@ -875,6 +937,7 @@ test("a right click on a session row asks for the actions menu its button opens"
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
     groupDropTarget: undefined, groupReorderPending: false,
     bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
     onToggleMenu: (id: string) => menus.push(id),
     onSelectSession: (row: SessionView) => selected.push(row.id),
   } as unknown as Parameters<typeof renderSidebar>[0]);
@@ -897,6 +960,7 @@ test("an enabled extension page is a primary destination with its own icon", () 
     menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "",
     draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
     bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
   } as unknown as Parameters<typeof renderSidebar>[0]));
   assert.match(rendered, /href=\/ext\/hello\b/u);
   assert.match(rendered, /aria-current=page/u);
