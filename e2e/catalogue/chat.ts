@@ -25,7 +25,7 @@ const cases: UseCase[] = [
     behaviour:
       'On a keyboard device plain Enter sends (or steers while a run is busy), Shift+Enter adds a line and Command/Ctrl+Enter queues a follow-up; with the modifier-Enter preference plain Enter is a line break. While busy, the empty composer\'s placeholder names the shortcuts ("↵ adds to this run · ⌘↵ queues for later", Ctrl+↵ off Apple platforms).',
     spec: ["SPEC.md#live-chat-projection"],
-    surfaces: ["setting:chat.sendShortcut"],
+    surfaces: ["appearance:chat.sendShortcut"],
     journeys: ["slash-commands"],
     web: "required",
   },

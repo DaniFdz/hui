@@ -23,7 +23,7 @@ const bannerIds = async (t, ...chats) => {
   return writer.notifications.map((notification) => notification.options.id);
 };
 
-async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], delivered = []) {
+async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], delivered = [], saved = new Map()) {
   const app = new EventEmitter();
   const windows = [];
   const errors = [];
@@ -40,6 +40,8 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
   const nativeTheme = { shouldUseDarkColors: false, themeSource: 'dark' };
   const settingsRequests = [];
   const saveDialogs = [];
+  const themeReports = [];
+  const ipcChannels = new Map();
   let saveChoice = '';
   const downloads = new EventEmitter();
   let onSettingsCompleted;
@@ -57,10 +59,7 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
       super(); this.options = options; this.webContents = new EventEmitter();
       this.webContents.setWindowOpenHandler = () => {};
       this.webContents.setVisualZoomLevelLimits = async (...limits) => { this.webContents.zoomLimits = limits; };
-      this.webContents.session = {
-        setPermissionRequestHandler(handler) { this.permission = handler; },
-        webRequest: { onCompleted(filter, handler) { onSettingsCompleted = { filter, handler }; } },
-      };
+      this.webContents.session = { setPermissionRequestHandler(handler) { this.permission = handler; } };
       this.webContents.getURL = () => this.url ?? '';
       windows.push(this);
     }
@@ -82,11 +81,22 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
     show() { this.shown = true; if (refusal) this.emit('failed', {}, refusal); else this.emit('show'); }
   }
   const dialog = { showErrorBox: (...args) => errors.push(args), showSaveDialogSync: (...args) => { saveDialogs.push(args); return saveChoice; } };
-  const electron = { app, BrowserWindow: Window, Notification: NativeNotification, dialog, session: { defaultSession: downloads }, Menu: { buildFromTemplate: (menu) => menu, setApplicationMenu(menu) { applicationMenu = menu; } }, nativeTheme, shell: { openExternal: async () => {} } };
-  const modules = { electron, 'node:child_process': { execFile: (...args) => { startup.push('gateway'); launchArgs = args; complete = args[3]; } }, 'node:crypto': crypto, 'node:fs': {}, 'node:path': path, './policy.cjs': policy };
+  const ipcMain = {
+    on: (channel, handler) => { ipcChannels.set(channel, { kind: 'on', handler }); },
+    handle: (channel, handler) => { ipcChannels.set(channel, { kind: 'handle', handler }); },
+  };
+  const electron = { app, BrowserWindow: Window, Notification: NativeNotification, dialog, ipcMain, session: { defaultSession: downloads }, Menu: { buildFromTemplate: (menu) => menu, setApplicationMenu(menu) { applicationMenu = menu; } }, nativeTheme, shell: { openExternal: async () => {} } };
+  // The shell's own userData, in memory: a path it writes survives into the next launch this test starts.
+  const files = saved;
+  const missing = (name) => Object.assign(new Error(`ENOENT: ${name}`), { code: 'ENOENT' });
+  const fileSystem = {
+    readFileSync: (name) => { if (!files.has(name)) throw missing(name); return files.get(name); },
+    writeFileSync: (name, body) => { files.set(name, String(body)); },
+  };
+  const modules = { electron, 'node:child_process': { execFile: (...args) => { startup.push('gateway'); launchArgs = args; complete = args[3]; } }, 'node:crypto': crypto, 'node:fs': fileSystem, 'node:path': path, './policy.cjs': policy };
   t.onTestFinished(() => {});
   vm.runInNewContext(await readFile(new URL('./main.cjs', import.meta.url), 'utf8'), {
-    require: (name) => modules[name], URL, AbortSignal,
+    require: (name) => modules[name], URL, AbortSignal, __dirname: '/fixture/desktop',
     fetch: async (url, init) => {
       if (init.method === 'POST') { notificationReceipts.push(String(url)); return { ok: true }; }
       settingsRequests.push({ url: String(url), headers: init.headers });
@@ -99,7 +109,13 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
   await new Promise(setImmediate);
   const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate); };
   return {
-    app, windows, errors, notifications, notificationReceipts, launchArgs, nativeTheme, settingsRequests, settle,
+    app, windows, errors, notifications, notificationReceipts, launchArgs, nativeTheme, settingsRequests, settle, files, themeReports,
+    /** The page reporting its mode, as `preload.cjs` sends it: from the window the shell opened. */
+    reportThemeMode: (mode, sender = windows.at(-1)?.webContents) => ipcChannels.get('hui:theme-mode').handler({ sender }, mode),
+    ipcChannel: () => [...ipcChannels.keys()].join(','),
+    /** The page asking for the exported look, and telling the shell it landed. */
+    appearanceSeed: async (sender = windows.at(-1)?.webContents) => await ipcChannels.get('hui:appearance-seed').handler({ sender }),
+    consumeSeed: (sender = windows.at(-1)?.webContents) => ipcChannels.get('hui:appearance-seed-consumed').handler({ sender }),
     setSettings: (next) => { settings = next; },
     failNextLoad: (error) => { loadFailure = error; },
     refuseNotifications: (message) => { refusal = message; },
@@ -109,8 +125,6 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
     download: (item) => downloads.emit('will-download', { preventDefault() {} }, item, {}),
     openUrl: (link) => app.emit('open-url', { preventDefault() {} }, link),
     startup,
-    completeSettings: (method) => onSettingsCompleted.handler({ method }),
-    settingsFilter: () => onSettingsCompleted.filter,
     complete: (...args) => complete(...args), quits: () => quits,
     menu: () => applicationMenu,
   };
@@ -427,39 +441,95 @@ test('clipboard writes and fullscreen stay local and other renderer permissions 
   assert.equal(granted, false);
 });
 
-test('window color scheme follows the saved HUI mode, defaulting to the OS', async (t) => {
-  const state = await shell(t);
-  assert.equal(state.nativeTheme.themeSource, 'system');
+test('the window chrome follows the mode the page reports, and the next launch starts in the one it kept', async (t) => {
+  const saved = new Map();
+  const state = await shell(t, undefined, [], [], saved);
+  assert.equal(state.nativeTheme.themeSource, 'system', 'nothing kept yet');
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
   await state.settle();
-  assert.equal(state.nativeTheme.themeSource, 'system');
-  assert.equal(state.settingsRequests[0].url, 'http://127.0.0.1:5174/__hui/settings');
-  assert.equal(state.settingsRequests[0].headers['x-hui'], '1');
+  assert.equal(state.ipcChannel(), 'hui:theme-mode,hui:appearance-seed,hui:appearance-seed-consumed', 'the bridges the preload exposes');
+  assert.equal(state.windows[0].options.webPreferences.preload, path.join('/fixture/desktop', 'preload.cjs'));
+  assert.equal(state.windows[0].options.webPreferences.sandbox, true, 'the preload does not lift the sandbox');
   assert.equal(state.windows[0].options.backgroundColor, '#fafaf9');
-  assert.deepEqual(Array.from(state.settingsFilter().urls), ['http://127.0.0.1:5174/__hui/settings']);
+  assert.deepEqual(state.settingsRequests, [], 'the shell never asks the gateway what appearance this device has');
 
-  state.setSettings({ themeMode: 'light' });
-  state.completeSettings('GET');
-  await state.settle();
-  assert.equal(state.nativeTheme.themeSource, 'system', 'reads alone do not resync');
-  state.completeSettings('PUT');
-  await state.settle();
-  assert.equal(state.nativeTheme.themeSource, 'light');
-
-  state.setSettings({ themeMode: 'dark' });
-  state.windows[0].emit('focus');
-  await state.settle();
+  state.reportThemeMode('dark');
   assert.equal(state.nativeTheme.themeSource, 'dark');
+  assert.deepEqual(JSON.parse(saved.get('/fixture/home/appearance.json')), { themeMode: 'dark' });
 
-  state.setSettings({ themeMode: 'bogus' });
-  state.completeSettings('PUT');
-  await state.settle();
+  state.reportThemeMode('light');
+  assert.equal(state.nativeTheme.themeSource, 'light');
+  state.reportThemeMode('system');
   assert.equal(state.nativeTheme.themeSource, 'system');
 
-  state.setSettings(new Error('offline'));
-  state.completeSettings('PUT');
-  await state.settle();
+  // A value that is not a mode is the OS's, as the page's own validator would have said.
+  state.reportThemeMode('bogus');
   assert.equal(state.nativeTheme.themeSource, 'system');
+  assert.deepEqual(JSON.parse(saved.get('/fixture/home/appearance.json')), { themeMode: 'system' });
+
+  // Another frame in the process cannot set this window's chrome.
+  state.reportThemeMode('dark', 'another frame');
+  assert.equal(state.nativeTheme.themeSource, 'system');
+
+  state.reportThemeMode('dark');
+  const relaunched = await shell(t, undefined, [], [], saved);
+  assert.equal(relaunched.nativeTheme.themeSource, 'dark', 'chosen before the window and the page exist');
+  relaunched.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await relaunched.settle();
+  assert.equal(relaunched.windows[0].options.backgroundColor, '#fafaf9');
+});
+
+test('an exported look is handed to the page once, and the page\'s confirmation marks it consumed', async (t) => {
+  const saved = new Map();
+  const seedPath = '/fixture/home/.config/hui/desktop-appearance.json';
+  const seed = {
+    format: 1, gateway: 'build-box', exportedAt: '2026-11-16T10:00:00.000Z',
+    appearance: { theme: 'miami', themeMode: 'dark', accent: '#5b9cf6', fontUi: 'geist', fontChat: 'lora', fontTerminal: 'MesloLGS NF', textScale: 125 },
+  };
+  saved.set(seedPath, JSON.stringify(seed));
+  const state = await shell(t, undefined, [], [], saved);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  // A device that never chose takes the seed's colour mode for its window before the page has loaded.
+  assert.equal(state.nativeTheme.themeSource, 'dark');
+  assert.deepEqual(JSON.parse(JSON.stringify(await state.appearanceSeed())), seed, 'the page reads the look the gateway exported');
+  assert.deepEqual(await state.appearanceSeed('another frame'), null, 'another frame gets nothing');
+
+  state.consumeSeed('another frame');
+  assert.equal(JSON.parse(saved.get(seedPath)).consumedAt, undefined, 'another frame cannot consume it');
+  state.consumeSeed();
+  assert.match(JSON.parse(saved.get(seedPath)).consumedAt, /^\d{4}-\d{2}-\d{2}T/u);
+  assert.equal(JSON.parse(saved.get(seedPath)).appearance.theme, 'miami', 'the look it carried stays readable');
+  assert.deepEqual(await state.appearanceSeed(), null, 'a consumed seed is never offered again');
+});
+
+test('a seed this shell cannot read, or one consumed already, leaves the window in the mode the device stored', async (t) => {
+  const saved = new Map();
+  const seedPath = '/fixture/home/.config/hui/desktop-appearance.json';
+  const modePath = '/fixture/home/appearance.json';
+  saved.set(modePath, JSON.stringify({ themeMode: 'light' }));
+  for (const body of ['{ not json', JSON.stringify({ format: 2, appearance: { themeMode: 'dark' } }), JSON.stringify({ format: 1, appearance: 'miami' }), JSON.stringify({ format: 1, appearance: { themeMode: 'dark' }, consumedAt: '2026-11-16T11:00:00.000Z' })]) {
+    saved.set(seedPath, body);
+    const state = await shell(t, undefined, [], [], saved);
+    state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+    await state.settle();
+    assert.equal(state.nativeTheme.themeSource, 'light', body);
+    assert.deepEqual(await state.appearanceSeed(), null, body);
+    state.windows[0].emit('closed');
+  }
+});
+
+test('a userData directory that refuses the write still lets the page set the chrome now', async (t) => {
+  const state = await shell(t, undefined, [], [], {
+    has: () => false,
+    get: () => undefined,
+    set: () => { throw new Error('read-only'); },
+  });
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.reportThemeMode('dark');
+  assert.equal(state.nativeTheme.themeSource, 'dark');
+  assert.deepEqual(state.errors, []);
 });
 
 test('zoom follows macOS conventions: Cmd+= zooms in and trackpad pinch is enabled', async (t) => {

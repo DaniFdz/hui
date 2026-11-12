@@ -1,8 +1,8 @@
 /**
- * `SettingsController` keeps the settings state outside `hui-app.ts`: the HUI settings and their saves, the theme
- * picker and imports, PI's configuration and its package and skill changes, the resource reader, and the control
- * surfaces (gateway health, macOS power, the workspace inspection and observability). Settings elements that load
- * their own data keep their own requests.
+ * `SettingsController` keeps the settings state outside `hui-app.ts`: this device's appearance and its synchronous
+ * saves, the gateway's settings and their saves, the theme picker and imports, PI's configuration and its package
+ * and skill changes, the resource reader, and the control surfaces (gateway health, macOS power, the workspace
+ * inspection and observability). Settings elements that load their own data keep their own requests.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "../api/observability.ts";
@@ -21,6 +21,7 @@ import type { HuiPage } from "../lib/pages.ts";
 import { skillPreferencePath, type PiMutationKind, type PiMutationResult, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import type { Settings } from "../lib/settings/settings.ts";
 import { currentSettings, patchSettings, saveSubagentRoute } from "../lib/settings/settings-store.ts";
+import { applyDeviceAppearance, normalizeDeviceAppearance, readAppearance, saveAppearance, type DeviceAppearance } from "../lib/appearance/store.ts";
 import type { ThemeMode, ThemeVariant } from "../lib/theme/theme.ts";
 import {
   applyAccent,
@@ -46,7 +47,11 @@ type SettingsEvents = {
 
 export class SettingsController implements ReactiveController {
   settings: Settings = currentSettings();
+  /** This device's theme, accent, typefaces, text size and chat preferences; saved here, never through the gateway. */
+  appearance: DeviceAppearance = readAppearance();
   saveFailed = false;
+  /** A device store the browser refused to write: the choice applies now and is gone after a reload. */
+  appearanceSaveFailed = false;
   themeId: string = selectedThemeId();
   variant: ThemeVariant = selectedThemeVariant();
   previews: readonly ThemePreview[] = [];
@@ -135,9 +140,22 @@ export class SettingsController implements ReactiveController {
     });
   }
 
+  /**
+   * Saves this device's appearance and applies it at once. Unlike `save`, nothing leaves the page: no request, no
+   * gateway round-trip, and no waiting to hear that it landed. A storage that refuses the write still applies the
+   * change, so the page shows what it is using and the note says the next load forgets it.
+   */
+  saveAppearance = (patch: Partial<DeviceAppearance>) => {
+    const saved = saveAppearance(patch);
+    this.appearanceSaveFailed = saved === undefined;
+    this.appearance = saved ?? normalizeDeviceAppearance({ ...this.appearance, ...patch });
+    applyDeviceAppearance(this.appearance);
+    this.#changed();
+  };
+
   chooseMode = (mode: ThemeMode) => {
     applyMode(mode);
-    void this.save({ themeMode: mode });
+    this.saveAppearance({ themeMode: mode });
   };
 
   chooseTheme = (id: string) => {
@@ -146,7 +164,7 @@ export class SettingsController implements ReactiveController {
 
   chooseAccent = (accent: string) => {
     applyAccent(accent);
-    void this.save({ accent });
+    this.saveAppearance({ accent });
   };
 
   async #applyTheme(id: string) {
@@ -156,9 +174,7 @@ export class SettingsController implements ReactiveController {
     this.themeId = selectedThemeId();
     this.variant = variant ?? this.variant;
     this.#changed();
-    if (variant) {
-      await this.save({ theme: selectedThemeId() });
-    }
+    if (variant) this.saveAppearance({ theme: selectedThemeId() });
   }
 
   importTheme = (url: string) => {
@@ -454,8 +470,10 @@ export class SettingsController implements ReactiveController {
       onSelectAccent: this.chooseAccent,
       onChangeBranchPrefix: (branchPrefix) => void this.save({ branchPrefix }),
       onChangeGatewayName: (name) => void this.save({ name }),
-      onChangeAppearance: (next) => void this.save(next),
-      onChangeChat: (chat) => void this.save({ chat }),
+      appearance: this.appearance,
+      appearanceSaveFailed: this.appearanceSaveFailed,
+      onChangeAppearance: this.saveAppearance,
+      onChangeChat: (chat) => this.saveAppearance({ chat }),
       onChangeBrowser: (browser) => this.save({ browser }),
       onChangeVscode: (vscode) => this.save({ vscode }),
       onChangeCodemode: (codemode) => void this.save({ codemode }),

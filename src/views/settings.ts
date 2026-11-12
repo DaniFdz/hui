@@ -8,6 +8,7 @@ import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib
 import { ACCENTS, TEXT_SCALE_STOPS, TYPEFACES } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
+import { MESSAGE_WIDTHS, SEND_SHORTCUTS, type ChatAppearance, type DeviceAppearance } from "../lib/appearance/store.ts";
 import { PI_THINKING_LEVELS, THINKING_LABELS } from "../lib/thinking.ts";
 import { closeEffortSelector, placeEffortPanel, renderEffortSelector } from "./effort-selector.ts";
 import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
@@ -83,6 +84,10 @@ export type SettingsProps = AutomationProps & {
   onSelectPage: (page: SettingsPage) => void;
   previews: readonly ThemePreview[];
   settings: Settings;
+  /** This device's theme, accent, typefaces, text size and chat preferences: never the gateway's. */
+  appearance: DeviceAppearance;
+  /** The browser refused to store this device's appearance, so the change is gone after a reload. */
+  appearanceSaveFailed: boolean;
   themeId: string;
   variant: ThemeVariant;
   saveFailed: boolean;
@@ -93,8 +98,8 @@ export type SettingsProps = AutomationProps & {
   onSelectAccent: (accent: string) => void;
   onChangeBranchPrefix: (prefix: string) => void;
   onChangeGatewayName: (name: string) => void;
-  onChangeAppearance: (next: Partial<Pick<Settings, "fontUi" | "fontChat" | "fontTerminal" | "textScale">>) => void;
-  onChangeChat: (next: Settings["chat"]) => void;
+  onChangeAppearance: (next: Partial<DeviceAppearance>) => void;
+  onChangeChat: (next: ChatAppearance) => void;
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   /** Resolves once the settings write lands, so the VS Code section can re-read status. */
@@ -229,7 +234,7 @@ function renderThemeSection(props: SettingsProps) {
   const selectable = modeIsSelectable(props.variant);
   // With a single-mode theme the preference is moot, so show what is actually
   // in effect rather than highlighting a button that does not match the screen.
-  const shownMode = selectable ? props.settings.themeMode : props.variant;
+  const shownMode = selectable ? props.appearance.themeMode : props.variant;
   const body = html`
     ${
       props.previews.length > 0
@@ -284,7 +289,7 @@ function renderThemeSection(props: SettingsProps) {
   return renderSection(
     "Theme",
     props.previews.length > 0
-      ? "Choose a theme family for this Control UI client."
+      ? "Choose a theme family for this device."
       : "No themes could be loaded; the built-in defaults are in use.",
     body,
   );
@@ -292,8 +297,8 @@ function renderThemeSection(props: SettingsProps) {
 
 function renderAccentSection(props: SettingsProps) {
   const inherited = props.previews.find((preview) => preview.id === props.themeId)?.accent ?? "var(--accent)";
-  const preset = ACCENTS.find((item) => item.value === props.settings.accent);
-  const custom = Boolean(props.settings.accent && !preset);
+  const preset = ACCENTS.find((item) => item.value === props.appearance.accent);
+  const custom = Boolean(props.appearance.accent && !preset);
   return renderSection(
     "Accent",
     "Choose the accent color used by buttons, highlights and focus controls.",
@@ -302,48 +307,33 @@ function renderAccentSection(props: SettingsProps) {
         <div class="settings-accent-swatches" role="group" aria-label="Accent color">
           ${ACCENTS.map((item) => html`<button
             type="button"
-            class="settings-accent-swatch ${props.settings.accent === item.value ? "settings-accent-swatch--active" : ""}"
+            class="settings-accent-swatch ${props.appearance.accent === item.value ? "settings-accent-swatch--active" : ""}"
             style=${`--settings-accent-swatch: ${item.value || inherited}`}
             aria-label=${item.label}
-            aria-pressed=${String(props.settings.accent === item.value)}
+            aria-pressed=${String(props.appearance.accent === item.value)}
             title=${item.label}
             @click=${() => props.onSelectAccent(item.value)}
-          >${props.settings.accent === item.value
+          >${props.appearance.accent === item.value
             ? html`<span class="settings-accent-swatch__check" aria-hidden="true">${icons.check}</span>`
             : item.id === "default"
               ? html`<span class="settings-accent-swatch__reset" aria-hidden="true">${icons.rotateCcw}</span>`
               : nothing}</button>`)}
           <label
             class="settings-accent-swatch settings-accent-swatch--custom ${custom ? "settings-accent-swatch--active" : ""}"
-            style=${`--settings-accent-swatch: ${props.settings.accent || "#ff5c5c"}`}
+            style=${`--settings-accent-swatch: ${props.appearance.accent || "#ff5c5c"}`}
             title="Custom color"
           >
-            <input class="settings-accent-swatch__input" type="color" aria-label="Custom accent color" .value=${props.settings.accent || "#ff5c5c"}
+            <input class="settings-accent-swatch__input" type="color" aria-label="Custom accent color" .value=${props.appearance.accent || "#ff5c5c"}
               @change=${(event: Event) => props.onSelectAccent((event.currentTarget as HTMLInputElement).value)} />
             <span class="settings-accent-swatch__picker" aria-hidden="true">${icons.pipette}</span>
           </label>
         </div>
       </div>
       <div class="settings-row">
-        <div class="settings-row__text"><span class="settings-row__title">Current accent</span><span class="settings-row__desc">Saved locally in HUI and applied over the active theme.</span></div>
+        <div class="settings-row__text"><span class="settings-row__title">Current accent</span><span class="settings-row__desc">Stored on this device and applied over the active theme.</span></div>
         <div class="settings-row__control"><span class="settings-row__value" data-testid="settings-current-accent">${preset?.label ?? "Custom color"}</span></div>
       </div>
     `,
-  );
-}
-
-function renderLanguageSection() {
-  return renderSection(
-    "Language",
-    "",
-    renderRow(
-      "Language",
-      "Default: System. Saved locally for this browser.",
-      html`<wa-select class="settings-select" size="s" value="system" disabled>
-        <span slot="label" class="settings-control__sr-label">Language</span>
-        <wa-option value="system">System</wa-option>
-      </wa-select>`,
-    ),
   );
 }
 
@@ -370,13 +360,13 @@ function renderFontSection(props: SettingsProps) {
         renderPicker({
           id: "settings-font-ui",
           label: "Interface font",
-          value: props.settings.fontUi,
+          value: props.appearance.fontUi,
           options,
           searchable: true,
           onChange: (fontUi) => props.onChangeAppearance({
-            fontUi: fontUi as Settings["fontUi"],
-            fontChat: props.settings.fontChat,
-            textScale: props.settings.textScale,
+            fontUi: fontUi as DeviceAppearance["fontUi"],
+            fontChat: props.appearance.fontChat,
+            textScale: props.appearance.textScale,
           }),
         }),
       )}
@@ -386,13 +376,13 @@ function renderFontSection(props: SettingsProps) {
         renderPicker({
           id: "settings-font-chat",
           label: "Chat prose font",
-          value: props.settings.fontChat,
+          value: props.appearance.fontChat,
           options,
           searchable: true,
           onChange: (fontChat) => props.onChangeAppearance({
-            fontUi: props.settings.fontUi,
-            fontChat: fontChat as Settings["fontChat"],
-            textScale: props.settings.textScale,
+            fontUi: props.appearance.fontUi,
+            fontChat: fontChat as DeviceAppearance["fontChat"],
+            textScale: props.appearance.textScale,
           }),
         }),
       )}
@@ -402,7 +392,7 @@ function renderFontSection(props: SettingsProps) {
         renderPicker({
           id: "settings-font-terminal",
           label: "Terminal font",
-          value: props.settings.fontTerminal,
+          value: props.appearance.fontTerminal,
           options: terminalFontOptions,
           searchable: true,
           searchPlaceholder: "Search or type a font name",
@@ -419,7 +409,7 @@ function renderFontSection(props: SettingsProps) {
             Good typography makes room for the conversation. Choose a face that feels comfortable to read.
           </p>
           <code class="settings-typography-preview__code">const greeting = "Hello, world!";</code>
-          <div style=${`font-family: ${terminalFontStack(props.settings.fontTerminal)}; margin-top: 16px; overflow-wrap: anywhere;`} aria-label="Terminal font preview">❯ ~/project ⎇ main &#xe0b0; &#xf07c; &#xf120; git status</div>
+          <div style=${`font-family: ${terminalFontStack(props.appearance.fontTerminal)}; margin-top: 16px; overflow-wrap: anywhere;`} aria-label="Terminal font preview">❯ ~/project ⎇ main &#xe0b0; &#xf07c; &#xf120; git status</div>
         </div>
       </div>
     `,
@@ -437,11 +427,11 @@ function renderTextSizeSection(props: SettingsProps) {
             (stop) => html`
               <button
                 type="button"
-                class="settings-text-scale__btn ${stop === props.settings.textScale ? "active" : ""}"
-                aria-pressed=${String(stop === props.settings.textScale)}
+                class="settings-text-scale__btn ${stop === props.appearance.textScale ? "active" : ""}"
+                aria-pressed=${String(stop === props.appearance.textScale)}
                 @click=${() => props.onChangeAppearance({
-                  fontUi: props.settings.fontUi,
-                  fontChat: props.settings.fontChat,
+                  fontUi: props.appearance.fontUi,
+                  fontChat: props.appearance.fontChat,
                   textScale: stop,
                 })}
               >
@@ -457,17 +447,17 @@ function renderTextSizeSection(props: SettingsProps) {
 }
 
 function renderChatSection(props: SettingsProps) {
-  const chat = props.settings.chat;
+  const chat = props.appearance.chat;
   return renderSection(
     "Chat",
-    "Composer and conversation preferences. Stored for this HUI client.",
+    "Composer and conversation preferences, stored on this device.",
     html`
       ${renderRow(
         "Message width",
         "Controls the maximum width of the conversation and composer.",
         renderSettingsPicker("Message width", chat.messageWidth,
-          [{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "wide", label: "Wide" }],
-          (value) => props.onChangeChat({ ...chat, messageWidth: value as Settings["chat"]["messageWidth"] })),
+          MESSAGE_WIDTHS.map((width) => ({ value: width, label: SETTINGS_COPY.messageWidths[width] })),
+          (value) => props.onChangeChat({ ...chat, messageWidth: value as ChatAppearance["messageWidth"] })),
       )}
       ${renderRow(
         "Collapse task progress",
@@ -479,8 +469,8 @@ function renderChatSection(props: SettingsProps) {
         "Send shortcut",
         "Choose whether Enter sends or inserts a new line.",
         renderSettingsPicker("Send shortcut", chat.sendShortcut,
-          [{ value: "enter", label: "Enter" }, { value: "modifierEnter", label: "⌘/Ctrl + Enter" }],
-          (value) => props.onChangeChat({ ...chat, sendShortcut: value as Settings["chat"]["sendShortcut"] })),
+          SEND_SHORTCUTS.map((shortcut) => ({ value: shortcut, label: SETTINGS_COPY.sendShortcuts[shortcut] })),
+          (value) => props.onChangeChat({ ...chat, sendShortcut: value as ChatAppearance["sendShortcut"] })),
       )}
       ${renderRow(
         "GitHub link previews",
@@ -1001,12 +991,12 @@ function renderNotificationsPage(props: SettingsProps) {
 function renderAppearancePage(props: SettingsProps) {
   return html`
     <p class="settings-page__intro">${SETTINGS_COPY.intros.appearance}</p>
-    ${renderLanguageSection()} ${renderThemeSection(props)} ${renderAccentSection(props)} ${renderFontSection(props)}
+    ${renderThemeSection(props)} ${renderAccentSection(props)} ${renderFontSection(props)}
     ${renderTextSizeSection(props)} ${renderChatSection(props)}
-    <p class="settings-page__note settings-page__intro">
-      ${props.saveFailed
-        ? "Could not write settings.json — changes apply now but will not be remembered."
-        : "Saved to ~/.config/hui/settings.json"}
+    <p class="settings-page__note settings-page__intro" role=${props.appearanceSaveFailed ? "alert" : nothing}>
+      ${props.appearanceSaveFailed
+        ? "Could not save on this device — the change applies now and is gone after a reload."
+        : "Saved on this device. Another browser, app or phone keeps its own appearance."}
     </p>
   `;
 }

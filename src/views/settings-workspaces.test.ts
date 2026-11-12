@@ -143,9 +143,9 @@ test("Appearance selects interface and chat prose fonts independently", () => {
     assert.match(settingsSource, new RegExp(label));
   }
   assert.match(settingsSource, /id: "settings-font-ui"/);
-  assert.match(settingsSource, /value: props\.settings\.fontUi/);
+  assert.match(settingsSource, /value: props\.appearance\.fontUi/);
   assert.match(settingsSource, /id: "settings-font-chat"/);
-  assert.match(settingsSource, /value: props\.settings\.fontChat/);
+  assert.match(settingsSource, /value: props\.appearance\.fontChat/);
   assert.match(settingsSource, /class="settings-typography-preview"/);
   assert.match(settingsCss, /\.settings-typography-preview__caption[\s\S]*var\(--font-body\)/);
   assert.match(settingsCss, /\.settings-typography-preview__prose[\s\S]*var\(--font-chat\)/);
