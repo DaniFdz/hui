@@ -580,11 +580,17 @@ model; for a chief that lives for months, set a stronger one in the bot's
 Settings → Memory. The ledger in `work/` and MEMORY.md are the durable record;
 the chat is not.
 
-The pack is versioned. On a later start HUI replaces a skill file nobody edited,
-keeps a skill with any edited file whole, and adds only routes whose names are
-missing; it never writes SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md after
-creation. `hui doctor` reports a skill that can take the shipped text and one
-you edited; `hui doctor --fix` installs the untouched updates.
+The pack is versioned, and it reaches every chief: the seeded one and each group's.
+On a later start HUI replaces a skill file nobody edited, keeps a skill with any
+edited file whole, and adds only routes whose names are missing; it never writes
+SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md after creation. A chief that got the
+pack before HUI recorded each bot is adopted the first time: a file that already
+matches the pack byte for byte is recorded as pack text, a skill it lacks is
+installed, and a skill that differs is kept and reported, because HUI cannot
+tell your edit from older pack text there. `hui doctor` reports, per chief, a
+skill that can take the shipped text, one you edited, and one the pack no longer
+ships (which you can delete); `hui doctor --fix` installs the untouched updates
+and leaves everything else alone.
 
 A **custom session group** is a project here, so its ⋯ menu offers **Create Chief of Staff**: one bot named *Chief of Staff · <group>* whose chat works in that project's folder, with its own OptChat memory and its own copy of the pack's skills. Asking again opens that same chief. The seeded default chief stays for work that belongs to no group.
 

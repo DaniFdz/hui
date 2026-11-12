@@ -3845,7 +3845,14 @@ operator sets route models to make the phases use different models.
 
 The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label and project directory, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its home, sets the bot's `group`, and puts its chat in that directory; the pack's routes are merged by name. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
 
-A group chief's skills are installed at creation. A pack update does not reach it yet: per-bot manifests are the next step, and the operator can edit any of its skills in Tools & skills meanwhile.
+A group chief's skills are installed at creation and recorded, and every later pack update reaches it the same way as the
+seeded chief: `staff.json` keeps a per-bot manifest (`{ version: 2, bots: { <bot id>: { packVersion, installedAt, files } } }`),
+a version 1 record is read as the seeded bot's, and the installer writes a skill only where every file it recorded is
+still unchanged and the folder holds nothing it did not write. A chief HUI never recorded (one created before per-bot
+records) is adopted on the next start when it carries the pack's text: what matches the shipped text byte for byte is
+recorded, a missing skill is installed, and a skill that differs is kept and reported, because there the text could be
+the operator's or an older pack's. The operator can edit any of its skills in Tools & skills; the pack keeps an edited
+skill whole and `hui doctor` reports it per chief.
 
 ### Bots write their own SOUL.md in a first conversation (2026-10-06)
 
