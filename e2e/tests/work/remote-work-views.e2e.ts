@@ -12,7 +12,6 @@ test("a Files view of a conversation on a remote worker says Files are not avail
   const worker = await hui.addWorker("files-box");
   const session = await remoteSession(hui, worker.id, "Files on a worker");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await openWork(screen, "Files");
 
@@ -28,7 +27,6 @@ test("a VS Code view of a conversation on a remote worker says VS Code is not av
   const worker = await hui.addWorker("code-box");
   const session = await remoteSession(hui, worker.id, "VS Code on a worker");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await openWork(screen, "VS Code");
 

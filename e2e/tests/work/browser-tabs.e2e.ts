@@ -16,7 +16,6 @@ test("the Browser tab picker switches the view to another tab the conversation o
   const fixturePage = `${hui.provider.url}/browser-fixture`;
   const handoffPage = `${hui.provider.url}/browser-handoff-fixture`;
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await openWork(screen, "Browser");
 

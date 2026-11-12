@@ -26,7 +26,6 @@ test("a Diff view keeps its comparison, Include uncommitted, layout and file acr
     return (await marked.count()) > 0 && (await marked.getAttribute("aria-current")) === "true";
   };
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   // The split workspace gives the pane its widest form so the layout switch is on offer; a phone's destination already
   // is the whole screen, and its Diff view says why side by side is off.

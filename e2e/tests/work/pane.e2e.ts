@@ -267,7 +267,6 @@ test("on a narrow screen the Active panel selector lists the chat, the open view
   await expect(screen.getByText(/The managed browser is off/u).first()).toBeVisible();
   await screen.getByText("Browser").first().tap();
   await expect(screen.getByRole("button", "Back to chat")).toBeHidden();
-  await hui.wideScreen();
 });
 
 test("a reload restores the pane open, maximized and at its width, with its tabs, their order and the active view, and its terminal reconnects", { tags: ["WORK-011"], platforms: ["web"] }, async ({ screen, hui }) => {
