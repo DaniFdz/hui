@@ -22,8 +22,6 @@ export type HeartbeatDeps = {
   watchers(id: string): readonly { state: WatcherState }[];
   /** Its subagents: one still at work wakes it when it reports, as a running watcher does. */
   subagents(id: string): readonly { status: string }[];
-  /** Whether it is in Autonomous mode. */
-  autonomous(id: string): boolean;
   /** The newest assistant message, for the chief to judge what the session last said. */
   lastAssistant(id: string): string | undefined;
   /** Deliver the status to the session that watches a target. The watcher decides; this never prompts the target. */
@@ -48,6 +46,11 @@ const WORKING = new Set(["queued", "starting", "running"]);
 
 const watched = (autonomous: boolean, title: string) => `${autonomous ? "Autonomous" : "Watched"} session "${title}"`;
 
+/** What a chief does with an Autonomous session's stop, said in the report so it holds without the pack's skills. */
+const AUTONOMOUS_NOTE = "It runs in Autonomous mode and reports to you: accept or correct its plan, answer its question, or settle its report, with sessions_send. Escalate to the operator only what the decision skill reserves for them.";
+
+const note = (autonomous: boolean) => autonomous ? [AUTONOMOUS_NOTE] : [];
+
 function table(title: string, id: string, status: string): string[] {
   return [
     "| Session | Pull request | Status / blockers |",
@@ -68,6 +71,7 @@ function idleMessage(title: string, id: string, last: string | undefined, done: 
     done
       ? "Read the final report and remove the watch when you have settled its ledger row. Nothing is waiting to continue."
       : "Read it with sessions_history. Send one specific followup with sessions_send, or remove the watch if nothing is left. Do not send a generic continue.",
+    ...note(autonomous),
   ].join("\n");
 }
 
@@ -78,6 +82,7 @@ function blockedMessage(title: string, id: string, state: HeartbeatState, last: 
     ...table(title, id, status),
     ...detail(last),
     "Read it with sessions_history; decide or escalate to the operator, then send the answer with sessions_send. Do not start unrelated work.",
+    ...note(autonomous),
   ].join("\n");
 }
 
@@ -119,7 +124,7 @@ export function createHeartbeat(deps: HeartbeatDeps) {
       const previous = notifiedAt.get(id);
       if (previous !== undefined && Date.parse(target.updatedAt) <= previous) continue;
       const last = deps.lastAssistant(id);
-      const autonomous = deps.autonomous(id);
+      const autonomous = target.autonomous === true;
       const message = target.stage === "done"
         ? idleMessage(target.title, id, last, true, autonomous)
         : status === "waiting" || status === "error"

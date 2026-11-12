@@ -3988,8 +3988,8 @@ Session, never in a bot's chat, and persists as `autonomous: true`.
   that needs the operator. It decides technical details, stops on one question only for its chief, and ends on a
   report to the chief. The operator's own messages always come first.
 - **HUI carries every stop to the chief.** The session never names or messages its chief. When one of its runs ends,
-  the chief of its group, else the Chief of Staff of no group, starts watching it, and the gateway heartbeat runs at
-  once, so the stop reaches the chief's chat marked `Autonomous session`, queued behind a running turn and opening a
+  the chief of its group, else the Chief of Staff of no group, starts watching it unless a chief already does, and the
+  gateway heartbeat runs at once, so the stop reaches the chief's chat marked `Autonomous session`, queued behind a running turn and opening a
   sleeping chat. The chief answers with `sessions_send`, which starts the session's next turn; no bot hop or hourly
   limit applies, and a session on a worker works the same way. A stop while the session's subagents or watchers
   still work is not reported, since they wake it; scans run one at a time so a stop is reported once.

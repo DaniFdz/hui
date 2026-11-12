@@ -92,7 +92,7 @@ import { WatcherInputError, WatcherService } from "./agent-tools/watchers.ts";
 import { SecretFiles, SecretRequests } from "./agent-tools/secret-requests.ts";
 import { Questionnaires } from "./agent-tools/questionnaires.ts";
 import { summarizeWorkerStats } from "./agent-tools/worker-stats.ts";
-import { chiefFor, isChiefTitle } from "./bots/chief-title.ts";
+import { chiefToWatch, isChiefTitle } from "./bots/chief-title.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";
 import { createSessionListHub } from "./sessions/list.ts";
@@ -391,7 +391,6 @@ export const heartbeat = createHeartbeat({
   status: (id) => liveSessions.status(id),
   watchers: (id) => watchers.list(id),
   subagents: (id) => liveSessions.subagents(id),
-  autonomous: (id) => liveSessions.isAutonomous(id),
   lastAssistant: (id) => {
     const entries = liveSessions.transcript(id);
     for (let index = entries.length - 1; index >= 0; index -= 1) {
@@ -409,7 +408,7 @@ export const heartbeat = createHeartbeat({
 });
 export const heartbeatRoutes = createHeartbeatRoutes({ heartbeat });
 /** Autonomous mode: when a session in it stops, the chief of its group (else the Chief of Staff) watches it from then
- * on, and the heartbeat reports the stop at once instead of at its next tick. */
+ * on, unless a chief already does, and the heartbeat reports the stop at once instead of at its next tick. */
 liveSessions.watchRunEnds(({ id }) => {
   if (!liveSessions.isAutonomous(id)) return;
   void superviseAutonomous(id).catch((error: unknown) => recordDiagnosticEvent({
@@ -419,11 +418,10 @@ liveSessions.watchRunEnds(({ id }) => {
 });
 
 async function superviseAutonomous(id: string): Promise<void> {
-  const records = await readRegistry();
+  const [records, roster] = await Promise.all([readRegistry(), bots.list()]);
   const session = records.find((record) => record.id === id);
-  const chief = session && chiefFor(await bots.list(), session.group);
-  if (!chief) return;
-  if (!records.find((record) => record.id === chief.sessionId)?.watches?.includes(id)) {
+  const chief = session && chiefToWatch(roster, records, session);
+  if (chief) {
     await updateRegistry((all) => all.map((record) => record.id === chief.sessionId
       ? { ...record, watches: [...new Set([...(record.watches ?? []), id])].slice(0, WATCH_LIMIT) }
       : record));
