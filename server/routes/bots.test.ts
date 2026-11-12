@@ -195,12 +195,19 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal((await call("/__hui/bots/nobody/memory")).status, 404);
   assert.equal((await call("/__hui/bots/ada/memory", "POST", {})).status, 405);
 
-  // A forever chat refuses what would reset, shorten, fork or delete it.
-  for (const [path, method, body] of [["clear", "POST", {}], ["compact", "POST", {}], ["rewind", "POST", { entryId: "1" }], ["fork", "POST", { entryId: "1" }]] as const) {
+  // A forever chat refuses what would shorten, fork or delete it. A clear and a rewind are allowed: they keep the
+  // bot's memory to the kept branch, so they reach their handlers rather than the forever-chat refusal.
+  for (const [path, method, body] of [["compact", "POST", {}], ["fork", "POST", { entryId: "1" }]] as const) {
     const refused = await call(`/__hui/sessions/${ada.sessionId}/${path}`, method, body);
     assert.equal(refused.status, 409, path);
     assert.match(String(refused.body["error"]), /@ada's forever chat/u);
   }
+  const cleared = await call(`/__hui/sessions/${ada.sessionId}/clear`, "POST", {});
+  assert.equal(cleared.status, 200, "a bot's chat clears");
+  // An unknown rewind point is an ordinary 400 for the rewind handler, not the forever-chat refusal.
+  const rewound = await call(`/__hui/sessions/${ada.sessionId}/rewind`, "POST", { entryId: "missing" });
+  assert.equal(rewound.status, 400);
+  assert.doesNotMatch(String(rewound.body["error"]), /forever chat/u);
   const deleted = await call(`/__hui/sessions/${ada.sessionId}`, "DELETE");
   assert.equal(deleted.status, 409);
   assert.match(String(deleted.body["error"]), /archive the bot instead/u);

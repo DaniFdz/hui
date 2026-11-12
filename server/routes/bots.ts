@@ -100,7 +100,8 @@ export function createBotRoutes(deps: Deps) {
     if (timeout !== undefined && (input["wait"] !== true || !Number.isInteger(timeout) || (timeout as number) < 1 || (timeout as number) > MAX_WAIT_SECONDS)) {
       throw new BotInputError(`timeoutSeconds needs wait and must be 1-${MAX_WAIT_SECONDS}.`);
     }
-    // Commands HUI owns never reach the model, as on the prompt route; a forever chat has no /clear or /compact at all.
+    // Commands HUI owns never reach the model, as on the prompt route; whatever a bot's chat itself does with /clear, a
+    // message to a bot never clears it.
     for (const [parse, name] of [[parseUpdateCommand, "/update"], [parseClearCommand, "/clear"], [parseReloadCommand, "/reload"], [parseCompactCommand, "/compact"]] as const) {
       if (parse(text)) throw new BotInputError(`${name} is a HUI command, not a message.`);
     }

@@ -543,7 +543,19 @@ export function createDurableBots(host: DurableHost, deps: DurableBotsDeps): Dur
     },
     promptContributions: { ...BOT_TOOL_CONTRIBUTIONS, ...BOT_ACCESS_CONTRIBUTIONS, [ROUTINES_TOOL]: BOT_ROUTINES_CONTRIBUTION },
     skillsPrompt: (skills, selectedTools) => selectedTools.includes(LOAD_SKILL_TOOL) ? botSkillsPrompt(skills) : undefined,
-  };
+    // A rewind's abandoned branch stays stored, but it is nobody's chat: clearing the document means deleting the bot
+    // later (`bots/conversations.ts` forget) cannot leave a record that still names it, and no bot tools or sections
+    // apply to it. OptChat is left as it is; the rewind's `abandon` keeps its memory from ever opening again.
+    async release(conversationId) {
+      const harness = await host.open();
+      if (!await conversationBotState(harness, conversationId, durableContext)) return;
+      await harness.commit(async (tx) => {
+        const doc = await tx.doc(BotDoc, conversationId);
+        doc.bot = "";
+        delete doc.disabledTools;
+        delete doc.disabledSkills;
+      }, durableContext);
+    },  };
 }
 
 /** The tools every bot's chat on `host` has before extensions that the operator can turn off: what a chat that isn't

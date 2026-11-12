@@ -22,8 +22,8 @@ export function skillCommands(skills: readonly PiSkill[], disabled: readonly { p
   return skills.filter((skill) => skillIsEnabled(skill, disabled))
     .map((skill) => ({ name: `skill:${skill.name}`, description: skill.description, source: "skill" }));
 }
-/** A bot's chat is permanent: the gateway refuses to reset or compact it. */
-export const BOT_CHAT_REFUSED_COMMANDS: readonly string[] = ["clear", "compact"];
+/** A bot's chat is permanent: the gateway refuses to compact it (its memory condenses it), but it may be cleared. */
+export const BOT_CHAT_REFUSED_COMMANDS: readonly string[] = ["compact"];
 /** `botChat` leaves out the commands a bot's permanent chat refuses; their
  * names stay reserved so a runtime command cannot take their place. */
 export function composerCommands(commands: readonly RuntimeCommand[], includeSessionCommands = false, botChat = false): ComposerCommand[] {
@@ -32,10 +32,10 @@ export function composerCommands(commands: readonly RuntimeCommand[], includeSes
   const offered = botChat ? huiCommands.filter((command) => !BOT_CHAT_REFUSED_COMMANDS.includes(command.name)) : huiCommands;
   return [...offered, ...commands.filter((command) => !names.has(command.name))];
 }
-/** Why a bot's chat does not run this text as a command, or undefined when it may. */
+/** Why a bot's chat does not run this text as a command, or undefined when it may. `/clear` runs: it empties the bot's
+ * memory. */
 export function botChatCommandRefusal(text: string): string | undefined {
-  const command = parseClearCommand(text) ? "clear" : parseCompactCommand(text) ? "compact" : undefined;
-  return command ? `A bot keeps one permanent chat, so /${command} is not available here. Its memory summarizes older messages by itself.` : undefined;
+  return parseCompactCommand(text) ? `A bot keeps one permanent chat, so /compact is not available here. Its memory summarizes older messages by itself.` : undefined;
 }
 /** Reserve the entire /update namespace, including invalid arguments, so an
  * operational command can never accidentally become a model prompt. */

@@ -326,6 +326,16 @@ test("the composer shows context usage and only offers compaction on a live idle
   assert.doesNotMatch(await renderWorkerSession("idle", { usage, session: { id: "bot", title: "Bot", tool: "pi", status: "idle", bot: "bot" } }), /Compact now/u);
 });
 
+test("a bot's own message offers Rewind to here, and a bot's chat offers no fork or compaction", async () => {
+  const bot = { id: "bot", title: "Bot", group: "", cwd: "/repo", displayCwd: "repo", tool: "durable", status: "idle", bot: { id: "b", handle: "ada", name: "Ada" } };
+  const transcript = [{ kind: "message", id: "u1", role: "user", text: "Plan the week", entryId: 7 }, { kind: "message", id: "a1", role: "assistant", text: "Here it is." }];
+  const usage = { percent: 10, contextTokens: 2_000, contextWindow: 200_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.01, sessionCost: { usd: 0.1, source: "Metered", asOf: new Date().toISOString() } };
+  const html = await renderWorkerSession("idle", { session: bot, transcript, usage });
+  assert.match(html, /class="chat-group-rewind" aria-label=Rewind to here/u, "the bot's user message offers the rewind");
+  assert.doesNotMatch(html, /Fork into a new session from here/u);
+  assert.doesNotMatch(html, /Compact now/u);
+});
+
 test("a saved PI conversation cannot continue or open a terminal", async () => {
   const html = await renderWorkerSession("disconnected", {
     connection: "saved", session: { id: "s", title: "Saved", tool: "pi", status: "disconnected" },
