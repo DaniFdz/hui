@@ -13,7 +13,7 @@ const cases: UseCase[] = [
     id: "SHELL-001",
     title: "Open Home",
     behaviour:
-      "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings sits in the sidebar's header row beside **Collapse sidebar** and the Agents and Bots tabs, so both lists reach it, and the footer below both lists is this page's gateway.",
+      "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions, Usage and Settings in that order, with no Home entry, for the Agents and the Bots lists alike. The sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs, and the footer below both lists is this page's gateway.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
@@ -503,7 +503,7 @@ const cases: UseCase[] = [
   {
     id: "SHELL-048",
     title: "Widen or narrow the sidebar",
-    behaviour: "Dragging the boundary at the sidebar's right edge widens or narrows it, and it stops at 200px and at 460px. The boundary is a separator named **Resize sidebar** that also takes the arrow keys, 16px a press and 48px with Shift, and the sidebar comes back at the width it was left at after a reload.",
+    behaviour: "Dragging the boundary at the sidebar's right edge widens or narrows it, and it stops at 200px and at 460px. The boundary is a separator named **Resize sidebar** that also takes the arrow keys, 16px a press and 48px with Shift, and the sidebar comes back at the width it was left at after a reload. The Settings shell's rail is the same sidebar at the same width, with the same boundary, and resizing either one moves both.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: [],
     journeys: ["sidebar-toolbar", "shell-navigation"],

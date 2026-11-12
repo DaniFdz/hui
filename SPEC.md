@@ -14,9 +14,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 |---|---|
 | `sidebar-agent-card` — identity card at the top | removed; HUI has no agent identity selector |
 | `sidebar-brand` — brand line with actions | the collapse toggle at the top-left (wide layout), then the Agents and Bots switch; session search is the field below it |
-| `sidebar-nav` — page destinations | Contributions, Kanban, Sessions, then Settings; no Home entry. Automations, Plugins and Skills live in Settings. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
+| `sidebar-nav` — page destinations | Contributions, Kanban, Sessions, Usage, then Settings; no Home entry. Both the Agents and Bots lists show it. Automations, Plugins and Skills live in Settings. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
 | `sidebar-online` / session sections — collapsible groups of rows | groups, flattened, with session rows |
-| `sidebar-footer-bar` — identity + connection state | removed; Settings is the last sidebar destination |
+| `sidebar-footer-bar` — identity + connection state | keeps the gateway serving this page, whose menu lists the others; Settings is the last sidebar destination |
 | main region — header, body, composer | session header, transcript, composer |
 
 ## Behaviour
@@ -39,11 +39,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the restore control appears while the sidebar is collapsed, so toggling needs
   no mouse travel, and then the Agents and Bots switch (the owner dropped the
   header's New session and Search buttons on 2026-10-06; new sessions start from
-  a group's +). Settings is the last primary-navigation destination, not a
-  header button.
+  a group's +). Settings is the last primary-navigation destination, below
+  Usage, not a header button, and both the Agents and Bots lists show it.
 - The wide layout's sidebar can be widened or narrowed by dragging the boundary
   at its right edge, between 200px and 460px, and the browser keeps that width
-  for the next visit. The boundary is a separator named *Resize sidebar* that
+  for the next visit. Settings' rail is the same sidebar at the same width, with
+  the same boundary, so moving between the two never changes the column. The
+  boundary is a separator named *Resize sidebar* that
   the arrow keys also move, 16px a press and 48px with Shift. Narrow screens
   show the drawer at its own width, with no boundary.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
@@ -2648,8 +2650,8 @@ everything the Bots tab can, through the same routes.
 - **Always on.** Bots have no switch (decision below).
 - **The Bots tab**: an **Agents | Bots** switch fills the sidebar's top
   row after the collapse toggle (arrow keys, Home/End; the browser remembers the
-  tab): Agents is the sidebar as before, and Bots shows only the roster, without
-  the navigation. Bot
+  tab): Agents is the sidebar as before, and Bots swaps the session list for the
+  roster. Both lists keep the primary navigation, ending with Settings. Bot
   chats, the subagents a bot spawns and their own subagents never appear in the Sessions list, its search, Kanban, the Sessions page, the command palette or session
   pickers; a message from one still names and links it; Automations labels their routines
   *Bot · name* and words
@@ -3997,13 +3999,25 @@ gateway only (remote workers are a later follow-up).
 
 On 2026-10-06 the owner asked for Hermes's layout: the switch moved to the top
 of the sidebar and its first tab is named **Agents**. Agents is the same session
-sidebar, not an Agents page or agent selector; Bots shows only the roster.
+sidebar, not an Agents page or agent selector; Bots swaps the session list for
+the roster (both lists have kept the navigation since 2026-11-12).
 Later that day he asked for it above everything else, the header buttons
 included, because the two tabs work differently: it is now a full-width tab bar
 over a divider in the sidebar's top row. He then dropped the header's New
 session and Search buttons, which he never used, and asked for the collapse
 toggle to stay put: it now starts that top row, and the restore control appears
 on the same spot while the sidebar is collapsed.
+
+### The sidebar's destinations and width hold in both shells (2026-11-12)
+
+The owner asked for Settings to sit under Usage instead of in the sidebar's
+header, for the primary navigation to stay visible on the Bots tab, and for the
+Settings shell to keep the sidebar's width. Contributions, Kanban, Sessions,
+Usage and Settings are one scrolling list, and the Agents and Bots lists both
+draw it; the footer below them keeps this page's gateway. The Settings rail and
+the main sidebar are one column at one stored width, each with the same *Resize
+sidebar* boundary, so choosing a width anywhere applies everywhere the wide
+layout shows a sidebar.
 
 ### Bots have animated faces (2026-10-06)
 

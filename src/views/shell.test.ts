@@ -107,18 +107,20 @@ function controlledMedia(initialMatches = true) {
   };
 }
 
-test("the primary sidebar lists work destinations, with Settings on the top row above the gateway footer", () => {
+test("the primary sidebar lists work destinations, ending with Settings, above the gateway footer", () => {
   assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["dashboard", "contributions", "sessions", "usage"]);
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
-  const nav = source.slice(source.indexOf('<nav class="sidebar-nav"'), source.indexOf("</nav>", source.indexOf('<nav class="sidebar-nav"')));
+  const navStart = source.indexOf('<nav class="sidebar-nav"');
+  const nav = source.slice(navStart, source.indexOf("</nav>", navStart));
   assert.doesNotMatch(nav, /(?<![A-Z_])NAV\.map|icons\.home/u);
   // Kanban is a HUI route rendered directly below Contributions.
   assert.match(nav, /item\.id === "contributions" \? kanbanNavItem\(props\)/u);
-  // Settings is not a destination in that tab panel, and no longer closes the sidebar below the lists.
-  assert.doesNotMatch(nav, /sidebar-nav__settings/u);
-  // It sits on the top row beside the collapse control and the Agents | Bots switch, so both lists reach it.
+  // Settings is the last destination, below Usage and every extension page, in the list both tabs share.
+  assert.ok(nav.indexOf("sidebar-nav__settings") > nav.indexOf("props.extensionPages.map"), "Settings follows the mapped destinations");
+  assert.match(nav.slice(nav.indexOf("sidebar-nav__settings")), /props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>/u);
+  // The top row holds only the collapse control and the tabs.
   const top = source.slice(source.indexOf('<div class="sidebar-brand"'), source.indexOf('<label class="sidebar-search'));
-  assert.match(top, /class="[^"]*sidebar-brand__settings"[\s\S]*aria-label="Settings"[\s\S]*props\.onOpenSettings\(\)[\s\S]*\$\{icons\.settings\}/u);
+  assert.doesNotMatch(top, /nav-settings|onOpenSettings|sidebar-brand__settings/u);
   // The footer is the gateway this page came from, not a Settings link.
   const footer = source.indexOf('class="sidebar-footer"');
   assert.ok(footer > source.indexOf('class="sidebar-shell__content"'), "the footer follows the scrolling content");
@@ -155,10 +157,14 @@ test("the sidebar lists Dashboard with the other destinations", () => {
   assert.match(rendered, /href=\/usage\b/u, "the other destinations stay");
 });
 
-test("Settings stays available while the Bots list is showing", () => {
-  assert.match(sidebar(1), /data-testid="nav-settings"[\s\S]{0,120}aria-label="Settings"/u);
-  assert.match(sidebar(1, "", "bots"), /data-testid="nav-settings"[\s\S]{0,120}aria-label="Settings"/u);
-  assert.doesNotMatch(sidebar(1, "", "bots"), /Primary navigation/u, "the Agents navigation stays out of the Bots list");
+test("both sidebar lists show the same destinations and Settings", () => {
+  for (const tab of ["agents", "bots"] as const) {
+    const rendered = sidebar(1, "", tab);
+    assert.match(rendered, /data-testid="primary-navigation"/u);
+    for (const label of ["Contributions", "Kanban", "Sessions", "Usage", "Settings"]) {
+      assert.match(rendered, new RegExp(`>${label}<`), `${tab} lists ${label}`);
+    }
+  }
 });
 
 test("the footer is this page's gateway, and its menu lists the others with the current one marked", () => {
@@ -526,16 +532,15 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   assert.match(source, /class="sidebar-shell sidebar-drawer__body"/);
   assert.doesNotMatch(source, /sidebar-shell__footer|sidebar-footer-bar|renderFooter/);
   assert.doesNotMatch(source, /sidebar-agent-card|deck-card/);
-  // The top row's controls are the collapse toggle and Settings: New session and search left it
-  // on 2026-10-06 (owner) and Settings joined it 2026-11-11, so both sidebar lists reach it.
+  // The top row's only control is the collapse toggle: New session and search left it
+  // on 2026-10-06 (owner), and Settings moved into the navigation on 2026-11-12.
   const header = source.slice(source.indexOf('<div class="sidebar-brand"'), source.indexOf('<label class="sidebar-search'));
   assert.match(header, /^<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"/u);
-  assert.deepEqual([...header.matchAll(/aria-label=(?:"([^"]+)"|\$\{(\w+)\})/gu)].map((match) => match[1] ?? match[2]), ["Collapse sidebar", "Settings"]);
-  assert.doesNotMatch(source, /sidebar-brand__(new-thread|search|utilities|actions)/u);
+  assert.deepEqual([...header.matchAll(/aria-label=(?:"([^"]+)"|\$\{(\w+)\})/gu)].map((match) => match[1] ?? match[2]), ["Collapse sidebar"]);
+  assert.doesNotMatch(source, /sidebar-brand__(new-thread|search|utilities|actions|settings)/u);
   assert.match(source, /aria-label=\$\{`New session in \$\{sessionGroupLabel\(group\.label\)\}`\}/u);
   assert.match(source, /class="topbar-search" aria-label=\$\{searchLabel\} @click=\$\{focusSessionSearch\}/u);
   assert.match(source, /const searchLabel = botsTab \? "Search bots" : "Search sessions";/);
-  assert.match(header, /class="[^"]*sidebar-brand__settings"/, "Settings is one of the top row's controls");
   // The footer keeps one button: the gateway this page came from.
   assert.match(source.slice(source.indexOf('<div class="sidebar-footer">')), /^<div class="sidebar-footer">\s*\$\{renderGatewayPicker\(props\)\}/u);
   assert.match(source.slice(source.indexOf('<label class="sidebar-search')), /^<label class="sidebar-search /u);
@@ -543,7 +548,7 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   assert.doesNotMatch(source, /sidebar-identity-card/);
 });
 
-test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only the roster", () => {
+test("the Bots tab's Agents | Bots switch tops the sidebar, and both tabs keep the navigation", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
   const tabs = source.slice(source.indexOf("function renderSidebarTabs"), source.indexOf("export function renderSidebar("));
@@ -555,14 +560,15 @@ test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only 
     assert.notEqual(index, -1, marker);
     return index;
   };
-  // The top row: the collapse toggle, the switch, and Settings at its trailing edge. Nothing
-  // sits above them, and each tab has a sidebar of its own below.
+  // The top row: the collapse toggle and the switch. Nothing sits above them, and each tab
+  // keeps the navigation above its own list.
   const top = sidebar.slice(at('<div class="sidebar-shell sidebar-drawer__body">'), at('<label class="sidebar-search'));
-  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>\s*<a\s+href="\/settings\/appearance"\s+data-testid="nav-settings"[\s\S]*?aria-label="Settings"[\s\S]*?>\$\{icons\.settings\}<\/a>\s*<\/div>\s*$/u);
+  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>\s*<\/div>\s*$/u);
   assert.ok(at('<label class="sidebar-search') < at('<nav class="sidebar-nav"'));
   assert.equal(sidebar.split("renderSidebarTabs(").length, 2, "one switch, not one per list");
-  // Bots: no primary navigation, and the toolbar names the roster.
-  assert.match(sidebar, /\$\{botsTab \? nothing : html`<nav class="sidebar-nav"/u);
+  // Both tabs keep the primary navigation above their list; the toolbar names the roster.
+  assert.match(sidebar, /<nav class="sidebar-nav"/u);
+  assert.doesNotMatch(sidebar, /\$\{botsTab \? nothing : html`<nav class="sidebar-nav"/u);
   assert.match(sidebar, /<span>\$\{botsTab \? "Bots" : "Sessions"\}<\/span>/u);
   // The lists under the header are its tab panel, labelled by the selected tab.
   assert.match(sidebar, /role="tabpanel" aria-labelledby="sidebar-tab-\$\{props\.bots\.tab\}"/u);
@@ -1042,7 +1048,13 @@ test("the sidebar's right edge is a separator the arrow keys move, with none in 
   assert.match(handle, /aria-valuemin=200/);
   assert.match(handle, /aria-valuemax=460/);
   assert.match(handle, /aria-valuenow=258/);
-  assert.match(css, /\.app-shell \.sidebar-resize-handle \{[^}]*cursor: col-resize/);
+  assert.match(css, /:is\(\.app-shell, \.settings-shell\) \.sidebar-resize-handle \{[^}]*cursor: col-resize/u);
   // The drawer has its own width, so it shows no boundary.
-  assert.match(css, /@media \(max-width: 900px\)[^@]*?\.app-shell \.sidebar-resize-handle \{\s*display: none;/u);
+  assert.match(css, /@media \(max-width: 900px\)[^@]*?:is\(\.app-shell, \.settings-shell\) \.sidebar-resize-handle \{\s*display: none;/u);
+  // Settings' rail is the same sidebar: same stored width, same handle.
+  const workspaces = readFileSync(new URL("../styles/openclaw-workspaces.css", import.meta.url), "utf8");
+  assert.match(workspaces, /\.settings-shell \{[^}]*grid-template-columns: var\(--hui-sidebar-width, 258px\) minmax\(0, 1fr\)/u);
+  assert.match(workspaces, /@media \(max-width: 900px\)[^@]*?\.settings-shell \.sidebar-resize-handle \{\s*display: none;/u);
+  const settingsSource = readFileSync(new URL("./settings.ts", import.meta.url), "utf8");
+  assert.match(settingsSource, /class="sidebar-resize-handle"[\s\S]*?aria-label="Resize sidebar"[\s\S]*?@pointerdown=\$\{startSidebarResize\}[\s\S]*?@keydown=\$\{resizeSidebarWithKeys\}/u);
 });

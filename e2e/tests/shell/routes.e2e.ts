@@ -9,7 +9,7 @@ const soul = "# Who I am\nA bot that only answers by address.\n";
 const names = (hui: Hui, screen: Screen, title: string) =>
   expect.poll(() => hui.textOf(screen.getByTestId("chat-header"))).toContain(title);
 
-test("Home shows the new-session form with no session selected, the five destinations and only Collapse sidebar beside the tabs", { tags: ["SHELL-001"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Home shows the new-session form with no session selected, the six destinations and only Collapse sidebar beside the tabs", { tags: ["SHELL-001"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.createSession({ title: "Not selected" });
   await hui.open("/");
   await expect(screen.getByTestId("new-session-composer")).toBeVisible();
@@ -17,7 +17,7 @@ test("Home shows the new-session form with no session selected, the five destina
   await hui.sessionList();
   await expect(screen.getByLabel(/^Not selected, status idle/u)).toBeVisible();
   await expect(screen.getByTestId("session-title")).toBeHidden();
-  await expect(screen.getByLabel("Primary navigation")).toHaveText("Dashboard Contributions Kanban Sessions Usage");
+  await expect(screen.getByLabel("Primary navigation")).toHaveText("Dashboard Contributions Kanban Sessions Usage Settings");
   const header = screen.getByTestId("sidebar-header");
   // The header holds one control, the desktop's sidebar toggle. A phone's drawer hides that control (SHELL-015) and
   // closes from buttons of its own (SHELL-011), so it is read by its label, which a hidden control still answers.

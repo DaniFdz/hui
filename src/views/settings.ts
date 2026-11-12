@@ -1,5 +1,6 @@
 /**
- * The Settings shell: its page list, drawer and search, and the render functions for the built-in pages. Edits leave
+ * The Settings shell: its page list, drawer and search, and the render functions for the built-in pages. Its rail is
+ * the same sidebar at the shared stored width (lib/sidebar-width.ts), drag handle included. Edits leave
  * through prop callbacks to the app; the pi-backed pages only report pi's configuration, and self-contained sections
  * (providers, model routes, integrations, tools, browser, workers, calls) are their own elements.
  */
@@ -21,6 +22,7 @@ import { lastSeenLabel, type GatewayAddState, type GatewayView } from "../lib/ga
 import { formatGatewayUptime } from "../lib/gateway-presentation.ts";
 import type { ObservabilitySnapshot } from "../api/observability.ts";
 import { icons } from "../lib/icons.ts";
+import { resizeSidebarWithKeys, sidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, startSidebarResize } from "../lib/sidebar-width.ts";
 import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { renderPicker, renderSettingsPicker } from "./settings-picker.ts";
 import { renderListFilter } from "../components/list-filter.ts";
@@ -1085,7 +1087,7 @@ function renderPendingSettingsPage(page: keyof typeof SETTINGS_SUMMARIES) {
 
 export function renderSettingsPage(props: SettingsProps) {
   return html`
-    <aside class="shell-nav settings-sidebar settings-nav" data-open=${String(SETTINGS_DRAWER_DEFAULT_OPEN)} @keydown=${(event: KeyboardEvent) => handleSettingsEscape(event, props)}>
+    <aside class="shell-nav settings-sidebar settings-nav" data-open=${String(SETTINGS_DRAWER_DEFAULT_OPEN)} data-testid="settings-sidebar" @keydown=${(event: KeyboardEvent) => handleSettingsEscape(event, props)}>
       <button
         type="button"
         class="settings-mobile-topbar"
@@ -1170,6 +1172,18 @@ export function renderSettingsPage(props: SettingsProps) {
         <span class="sidebar-footer-build">HUI</span>
       </footer>
       </div>
+      <div
+        class="sidebar-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-valuemin=${SIDEBAR_WIDTH_MIN}
+        aria-valuemax=${SIDEBAR_WIDTH_MAX}
+        aria-valuenow=${sidebarWidth()}
+        tabindex="0"
+        @pointerdown=${startSidebarResize}
+        @keydown=${resizeSidebarWithKeys}
+      ></div>
     </aside>
     <main class="content settings-main" @keydown=${(event: KeyboardEvent) => handleSettingsEscape(event, props)}>
       <header class="content-header content-header--settings">

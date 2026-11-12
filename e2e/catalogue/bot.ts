@@ -5,7 +5,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-001",
     title: "Switch the sidebar between Agents and Bots",
-    behaviour: "The sidebar's top row always offers Agents and Bots, with no setting to turn bots on. Bots shows only the roster, without the navigation, with Search bots and its + (New bot); the choice survives a reload, and a bot's page keeps the Bots tab, in the mobile drawer too.",
+    behaviour: "The sidebar's top row always offers Agents and Bots, with no setting to turn bots on. Bots swaps the session list for the roster, with Search bots and its + (New bot), while both lists keep the same navigation ending with Settings; the choice survives a reload, and a bot's page keeps the Bots tab, in the mobile drawer too.",
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-always-on-2026-10-20", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05", "docs/api.md#bots-are-always-on"],
     surfaces: ["route:GET /__hui/bots", "route:GET /__hui/bots/events"],
     journeys: ["bots"],
