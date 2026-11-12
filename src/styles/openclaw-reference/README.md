@@ -29,9 +29,9 @@ detects unreviewed changes to this versioned snapshot.
   separate upstream 768 px/landscape rule.
 - PI branding, real runtime/session data and HUI-owned settings replace
   OpenClaw data. No fake avatar, Fast mode, dictation or approval controls.
-- At the project owner's explicit request, session search and Settings occupy the left side
-  of the sidebar header; collapse and new session remain on the right. The
-  separate Settings footer is removed.
+- At the project owner's explicit request, session search sits directly below
+  the sidebar header, and Settings is the last primary-navigation destination,
+  shared by the Agents and Bots lists, rather than a header button or a footer.
 - PI inventory/install and scheduler forms retain their existing contracts,
   using the original Settings rows, controls and action classes.
 - The attachment-only menu uses the upstream attachment surface (176 px), not
