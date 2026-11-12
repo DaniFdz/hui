@@ -3,7 +3,8 @@
  * owns the state and every request (`lib/bots/templates.ts`). The import dialog has two steps: the source (a file or a
  * folder, a Grok Bot link, or pasted text), then the gateway's preview of everything creating it would do, which shows
  * all of the imported text, since it is untrusted, before Create. The export dialog shows the gateway's review of the
- * bot (what the cleanup and the utility model would change), a group picker per change, and the files exactly as
+ * bot (what the cleanup and the utility model would change) as a report: HUI already picked what happens to each
+ * passage, and each group stays folded until the operator opens it to override a pick. The files are exactly what
  * Download saves them (`buildExport`, a copy of the gateway's).
  */
 import { html, nothing, type TemplateResult } from "lit";
@@ -303,6 +304,11 @@ function renderReview(props: BotExportDialogProps, held: BotExportReview) {
     ["Setup", `${build.setup.characters.toLocaleString()} of ${build.setup.limit.toLocaleString()} characters`],
     ["Files", String(build.files.length)],
   ];
+  // What HUI already decided, in the operator's words: the sections below are the report, not a form to fill in.
+  const decided = SECTIONS.flatMap(([group, title]) => {
+    const count = review.changes.filter((change) => pick(change.id, change.group) === group).length;
+    return count ? [`${count} ${title.toLowerCase()}`] : [];
+  });
   return html`<div class="bot-import__who">
       ${renderBotAvatar(bot, "md")}
       <div class="bot-import__identity">
@@ -316,6 +322,7 @@ function renderReview(props: BotExportDialogProps, held: BotExportReview) {
     <dl class="bot-import__facts">${facts.map(([term, value]) => html`<div><dt>${term}</dt><dd>${value}</dd></div>`)}</dl>
     ${build.setup.dropped.length ? html`<p class="bot-import__untrusted" role="note"><span aria-hidden="true">${icons.alertTriangle}</span><span>Its setup (BOOTSTRAP.md) is full at ${build.setup.limit.toLocaleString()} characters: ${plural(build.setup.dropped.length, "item")} stayed behind. They are listed below, and the new owner never sees them.</span></p>` : nothing}
     ${build.setup.dropped.length ? section("Left out of its setup", String(build.setup.dropped.length), html`<p class="bot-import__hint">A bot's BOOTSTRAP.md holds at most ${build.setup.limit.toLocaleString()} characters, and these didn't fit. The document counts them, and the new owner never sees them: share them yourself if they matter.</p><ul class="bot-import__lines">${build.setup.dropped.map((line) => html`<li>${line}</li>`)}</ul>`, { name: "export-setup", open: true }) : nothing}
+    ${decided.length ? html`<p class="bot-import__hint">HUI already decided each change (${decided.join(", ")}). Open a section to override one; Download saves the template as it stands.</p>` : nothing}
     ${SECTIONS.map(([group, title, about]) => {
       const changes = review.changes.filter((change) => pick(change.id, change.group) === group);
       return changes.length ? section(title, String(changes.length), html`<p class="bot-import__hint">${about}</p><ul class="bot-import__list">${changes.map((change) => html`<li class="bot-export__change" data-change=${change.id}>
@@ -323,16 +330,16 @@ function renderReview(props: BotExportDialogProps, held: BotExportReview) {
           ${textBlock(change.quote)}
           <div class="bot-export__outcome">${outcome(build.outcomes[change.id], group)}</div>
           <div class="bot-import__hint">${change.reason}${change.id.startsWith("a") ? html` <button type="button" class="btn btn--ghost btn--sm bot-export__undo" ?disabled=${props.pending} @click=${() => props.onUndo(Number(change.id.slice(1)) - 1)}>Undo</button>` : nothing}</div>
-        </li>`)}</ul>`, { name: `export-${group}`, open: true }) : nothing;
+        </li>`)}</ul>`, { name: `export-${group}` }) : nothing;
     })}
     ${section("Missed something?", props.added.length ? String(props.added.length) : undefined, renderAddition(props), { name: "export-add" })}
     ${review.files.length ? section("Scripts", String(review.files.length), html`<p class="bot-import__hint">A script is never rewritten: it travels as it is, travels for the new owner to check, or stays behind.</p><ul class="bot-import__list">${review.files.map((file) => html`<li class="bot-export__change" data-change=${file.id}>
         <div class="bot-export__row"><strong>${label(file.part)}</strong>${picker(`What happens to ${label(file.part)}`, FILE_GROUPS, pick(file.id, file.group), props, file.id)}</div>
         <ul class="bot-import__lines">${file.reasons.map((reason) => html`<li>${reason}</li>`)}</ul>
-      </li>`)}</ul>`, { name: "export-scripts", open: true }) : nothing}
+      </li>`)}</ul>`, { name: "export-scripts" }) : nothing}
     ${review.needs.length ? section("What it needs", String(review.needs.filter((need) => pick(need.id, "keep") !== "remove").length), html`<p class="bot-import__hint">The new owner sees these before they import it.</p><ul class="bot-import__list bot-import__list--compact">${review.needs.map((need) => html`<li><label class="bot-export__need">
         <input type="checkbox" .checked=${pick(need.id, "keep") !== "remove"} ?disabled=${props.pending} @change=${(event: Event) => props.onPick(need.id, (event.currentTarget as HTMLInputElement).checked ? "keep" : "remove")} />
-        <span>${need.text}</span></label></li>`)}</ul>`, { name: "export-needs", open: true }) : nothing}
+        <span>${need.text}</span></label></li>`)}</ul>`, { name: "export-needs" }) : nothing}
     ${review.cleanup.length ? section("Cleaned automatically", String(cleaned), html`<p class="bot-import__hint">Done before any model read it, and always applied.</p><ul class="bot-import__lines">${review.cleanup.map((hit) => html`<li>${label(hit.part)}: ${hit.kind}${hit.count > 1 ? ` ×${hit.count}` : ""} <span class="bot-import__muted">(${hit.sample})</span></li>`)}</ul>`, { name: "export-cleanup" }) : nothing}
     ${unread.length ? section("Not read by the model", String(unread.length), html`<ul class="bot-import__lines">${unread.map((part) => html`<li>${part.label}: ${part.unread ?? "not read"}</li>`)}</ul>`, { name: "export-unread", open: review.parts.length > unread.length }) : nothing}
     ${review.leftOut.length ? section("Stays behind", String(review.leftOut.length), html`<ul class="bot-import__lines">${review.leftOut.map((line) => html`<li>${line}</li>`)}</ul>`, { name: "export-left-out" }) : nothing}
