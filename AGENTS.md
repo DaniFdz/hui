@@ -66,12 +66,10 @@ details in the owning directory guide.
   APK, installs it and launches it against a gateway; `test` runs the shell's JVM
   tests; `screenshot <path>` captures the screen. The loops, ports and the
   two-worker setup are in `mobile/AGENTS.md`.
-- The suite's `android` target is not in `e2e.config.ts` yet: it lands with the
-  phone e2e package of `mobile/AGENTS.md` (WP4). Until then the emulator
-  procedure in
-  [hui-visual-verification](.agents/skills/hui-visual-verification/references/android.md)
-  is the phone check, and the `mobile / android-build` job covers the app's build
-  and the shell's JVM tests.
+- The shared suite has `web`, `android` and `webkit-phone` targets; see
+  `e2e/AGENTS.md` for their scope and `mobile/AGENTS.md` for native toolchains.
+  The mobile workflow also builds Android, runs the shell's JVM tests and
+  exercises the iOS simulator.
 - Never weaken assertions, add sleeps, or hide failures to make a check pass.
   Synchronize on observable state and fix defects at their owning boundary.
 
@@ -122,11 +120,9 @@ with `role="tooltip"`), never a native `title`.
   `e2e/tests/` that passes on the web (`npm run e2e`), unless the use case is excluded there; catching up baseline
   use cases follows `e2e/AGENTS.md`, which has the catalogue and test rules.
 - A user-visible change passes the phone targets too: `android`, the shared suite in the app's WebView, and
-  `webkit-phone`, the suite in mobile WebKit. Neither target is in `e2e.config.ts` yet; they land with WP4 and WP6 of
-  `mobile/AGENTS.md`, and from then on a use case's phone requirement is part of its catalogue entry. A change
-  under `mobile/` carries emulator screenshots captured through the
-  [visual-verification skill](.agents/skills/hui-visual-verification/SKILL.md) and runs the iOS smoke job once WP5
-  adds it.
+  `webkit-phone`, the suite in mobile WebKit. A use case's phone requirement is part of its catalogue entry.
+  A change under `mobile/` carries emulator screenshots captured through the
+  [visual-verification skill](.agents/skills/hui-visual-verification/SKILL.md) and runs the iOS smoke job.
 - Do not add dependencies, alter persisted formats, or delete PI/HUI user data
   without explicit approval. Tests use temporary directories and isolated processes.
 - A change that leaves existing persisted state behind (a format, location or

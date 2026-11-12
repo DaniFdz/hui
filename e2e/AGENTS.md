@@ -59,9 +59,9 @@ back button of its own, no soft keyboard and no notification, so a shell behavio
 `web` too, so the fixture tells it from `web` by its gateway's fixed port (`E2E_WEBKIT_PHONE_PORT`, 47500 by default). A
 phone has no wide screen and no hover, so `hui.wideScreen()` and `hui.peek()` refuse there instead of proving desktop
 behavior on a phone. Shared message actions scroll to the message whose actions the touch layout draws outright, and
-`hui.openWorkView()` opens the narrow panel chooser or the wide pane's menu, whichever the real UI offers. The target runs the whole suite
-unfiltered, and its failures are the phone backlog: a use case is phone-required only once it passes on both `android`
-and `webkit-phone`.
+`hui.openWorkView()` opens the narrow panel chooser or the wide pane's menu, whichever the real UI offers. Both phone
+targets default to the catalogue's phone-required cases. Use `--tag <ID>` to prove a backlog case before graduating it;
+a use case is phone-required only once it passes on both `android` and `webkit-phone`.
 
 Ordinary WebKit-phone tests block service workers in their fresh contexts: WebKit sends a controlled page's requests
 around Playwright's routes, even when the worker does not handle them. Journeys that prove offline installation or

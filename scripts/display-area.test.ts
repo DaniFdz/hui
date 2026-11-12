@@ -1,7 +1,7 @@
 /** Guards independent native-frame parsing and CSS-to-display mapping, including failures that must not look safe. */
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { displayBox, parseDisplay, parseWebView, validateNativeFrame } from "./display-area.ts";
+import { test, vi } from "vitest";
+import { androidDisplay, displayBox, parseDisplay, parseWebView, validateNativeFrame } from "../e2e/fixtures/display-area.ts";
 
 const state = (cutout = 0, status = 63) => `mDisplayFrame=Rect(0, 0 - 1080, 2400)
  mDisplayCutout=DisplayCutout{insets=Rect(0, ${cutout} - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0}}
@@ -42,4 +42,16 @@ test("native origin is taken from the one app WebView, not a calculated safe ins
   assert.throws(() => parseWebView(view("[0,220][1080,2337]", "another.app")), /found 0/u);
   assert.throws(() => parseWebView(view("[0,220][1080,2337]").repeat(2)), /found 2/u);
   assert.throws(() => parseWebView(view("[0,220][1080,220]")), /empty/u);
+});
+
+test("display injection cannot alter a physical handset's settings", () => {
+  vi.stubEnv("ANDROID_SERIAL", "physical-handset");
+  try {
+    const display = androidDisplay();
+    assert.throws(() => display.rotate("landscape"), /isolated Android emulator/u);
+    assert.throws(() => display.cutout(), /isolated Android emulator/u);
+    display.restore();
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });

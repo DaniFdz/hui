@@ -74,11 +74,16 @@ export function validateNativeFrame(safe: ReturnType<typeof parseDisplay>, frame
 /** A test owns only the cutout overlays it changes, restored even when setup, measurement or an assertion fails. */
 export function androidDisplay() {
   let original: { name: string; enabled: boolean }[] | undefined;
-  const evidence = mkdtempSync(join(tmpdir(), "hui-safe-display-"));
+  let evidence: string | undefined;
   let captures = 0;
   let rotation: { key: string; value: string }[] | undefined;
+  const requireEmulator = () => {
+    const serial = process.env["ANDROID_SERIAL"] ?? adb("get-serialno");
+    if (!/^emulator-\d+$/u.test(serial)) throw new Error("Display injection and rotation require an isolated Android emulator, not a physical handset.");
+  };
   return {
     rotate(orientation: "portrait" | "landscape") {
+      requireEmulator();
       rotation ??= ["accelerometer_rotation", "user_rotation"].map((key) => ({ key, value: adb("shell", "settings", "get", "system", key) }));
       adb("shell", "settings", "put", "system", "accelerometer_rotation", "0");
       adb("shell", "settings", "put", "system", "user_rotation", orientation === "portrait" ? "0" : "1");
@@ -100,6 +105,7 @@ export function androidDisplay() {
       return targets[0]!.id;
     },
     cutout() {
+      requireEmulator();
       if (original) return false;
       original = [...adb("shell", "cmd", "overlay", "list").matchAll(/^\[([ x])\] (com\.android\.internal\.(?:display\.cutout\.emulation\.|emulation\.pixel_)[\w.]+)$/gmu)]
         .map(([, enabled, name]) => ({ name: name!, enabled: enabled === "x" }));
@@ -138,6 +144,7 @@ export function androidDisplay() {
       const frame = parseWebView(adb("shell", "cat", "/sdcard/hui-safe-display.xml"));
       const { ratio } = metrics;
       validateNativeFrame(safe, frame, metrics);
+      evidence ??= mkdtempSync(join(tmpdir(), "hui-safe-display-"));
       const capture = join(evidence, String(++captures));
       writeFileSync(`${capture}.json`, JSON.stringify({ safe, frame, metrics }, null, 2));
       writeFileSync(`${capture}.png`, execFileSync(process.env["ADB"] ?? "adb", [
