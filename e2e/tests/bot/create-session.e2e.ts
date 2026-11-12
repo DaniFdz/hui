@@ -59,3 +59,42 @@ test("a normal agent cannot create an ordinary session", { tags: ["BOT-073"], pl
   expect(sessions.filter((session) => session.title === "Should not exist")).toHaveLength(0);
   await expect.poll(async () => (await hui.stored("Only a Chief of Staff bot can create an ordinary session")).length, { timeout: 30_000 }).toBeGreaterThan(0);
 });
+
+test("a chief's session follows its group's New session defaults", { tags: ["BOT-073"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const chief = (await hui.api<{ bots: Array<{ id: string; name: string; sessionId: string }> }>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
+  const repo = await hui.repository();
+  const group = "Agent group defaults";
+  await hui.createSession({ title: "Defaults anchor", group });
+  await hui.api("PATCH", `/__hui/session-groups/${encodeURIComponent(group)}`, {
+    cwd: repo.path, workspaceMode: "worktree", baseRef: "release/1.0",
+  });
+  try {
+    // The chief's own directory and its "no worktree" cannot move the session off the group's defaults.
+    await hui.prompt({ id: chief.sessionId }, call("create_session", {
+      prompt: "Work in the group's checkout.",
+      title: "Agent on group defaults",
+      group,
+      cwd: hui.workspace,
+      worker: "local",
+      worktree: false,
+      branchName: "e2e-agent-group-defaults",
+    }));
+
+    const find = async () => (await hui.api<{ groups: Array<{ sessions: ListedSession[] }> }>("GET", "/__hui/sessions"))
+      .groups.flatMap((entry) => entry.sessions).filter((session) => session.title === "Agent on group defaults");
+    await expect.poll(find, { timeout: 30_000 }).toHaveLength(1);
+    const [created] = await find();
+    expect(created?.group).toBe(group);
+    expect(created?.cwd).not.toBe(hui.workspace);
+    expect(created?.cwd).not.toBe(repo.path);
+    expect(repo.git("-C", created!.cwd, "branch", "--show-current")).toBe("feature/e2e-agent-group-defaults");
+    expect(repo.git("-C", created!.cwd, "rev-parse", "HEAD")).toBe(repo.git("rev-parse", "release/1.0^{commit}"));
+
+    await hui.open("/");
+    await expect(screen.getByLabel(/^Agent on group defaults, status/u)).toBeVisible();
+    await hui.open(`/sessions/${created!.id}`);
+    await expect(screen.getByTestId("transcript").getByText("Work in the group's checkout.")).toBeVisible();
+  } finally {
+    await hui.api("PATCH", `/__hui/sessions/${chief.sessionId}`, { unread: false });
+  }
+});

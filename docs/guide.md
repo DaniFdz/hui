@@ -540,16 +540,18 @@ model until you give it one, so they follow your primary model. The chief uses a
 route only for a fast child: a read-only probe, one command, one check, one
 reply. A writing task gets a new session with its own worktree and branch. Before the first delegation the chief calls `worker_stats` and states the
 machine plan: which machines are in play, their load and running sessions, and
-where each piece runs. `machines` says to spread independent sessions, keep
+where each piece runs. A session follows its group's New session defaults; when
+the group names no machine, the chief picks one from these stats. `machines` says to spread independent sessions, keep
 headroom on every machine and never fill one; `local` is the main machine.
 
 The chief uses a subagent only for **fast iteration**: a read-only probe, one
 command, one small check, one reply. A child never owns a branch or a pull
 request.
 
-Everything else is a **new session**. The chief writes the brief, names the
-worktree branch and a worker when one is available, and creates it with
-`create_session`; you can open it in the sidebar. The session owns the work; the chief keeps the ledger row and reads the
+Everything else is a **new session**. The chief writes the brief and creates it
+with `create_session`; the session follows its group's New session defaults for
+directory, machine, Git environment and base ref, and the chief fills in a worker
+or worktree only where the group names none. You can open it in the sidebar. The session owns the work; the chief keeps the ledger row and reads the
 evidence it reports, not its transcript. It is done when its pull request is
 merged and, where the change applies, deployed and validated in production.
 You archive the session then; the chief settles the ledger row and never
