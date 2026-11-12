@@ -13,7 +13,7 @@ test("an export's setup stays within a bot's BOOTSTRAP.md and names what it left
   await screen.getByRole("tab", "Bots").tap();
   await screen.getByText("Quill").hover();
   await screen.getByRole("button", "Actions for Quill").tap();
-  await screen.getByRole("menuitem", "Export…").tap();
+  await screen.getByText("Export…", { exact: true, visible: true }).first().tap();
 
   await expect(screen.getByText("Left out of its setup")).toBeVisible();
   await expect(screen.getByText(`The previous owner's onboarding body (${BODY.length.toLocaleString("en-US")} characters)`)).toBeVisible();
