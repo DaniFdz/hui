@@ -41,6 +41,19 @@ test("normalizes HUI-owned profile and labs", () => {
   assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false });
 });
 
+test("a gateway name is trimmed and bounded, and empty means the machine's hostname", () => {
+  assert.equal(DEFAULT_SETTINGS.name, "");
+  assert.equal(normalizeSettings({}).name, "", "no saved name at all");
+  assert.equal(normalizeSettings({ name: "  build-box  " }).name, "build-box");
+  assert.equal(normalizeSettings({ name: "   " }).name, "", "whitespace is not a name");
+  assert.equal(normalizeSettings({ name: "x".repeat(80) }).name, "x".repeat(60), "bounded to 60 characters");
+  assert.equal(normalizeSettings({ name: "a".repeat(60) }).name, "a".repeat(60), "60 characters still fit");
+  for (const name of [42, null, ["build-box"], { name: "build-box" }]) {
+    assert.equal(normalizeSettings({ name }).name, "", JSON.stringify(name));
+  }
+  assert.equal(normalizeSettings(normalizeSettings({ name: " build-box " })).name, "build-box", "round-trips");
+});
+
 test("codemode is on unless explicitly switched off", () => {
   assert.deepEqual([undefined, {}, { codemode: "off" }, { codemode: { enabled: "no" } }, { codemode: { enabled: false } }]
     .map((raw) => normalizeSettings(raw).codemode.enabled), [true, true, true, true, false]);

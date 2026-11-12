@@ -21,7 +21,8 @@ test("About shows HUI's description and runtime, and Gateway reads Unavailable w
   await expect(screen.getByText(health.transport, { exact: true })).toBeVisible();
   await expect(screen.getByText("Full Access", { exact: true })).toBeVisible();
   await expect(screen.getByText("Config and transcripts", { exact: true })).toBeVisible();
-  for (const title of ["Gateway", "Transport", "Access mode", "PI ownership"]) await expect(screen.getByText(title, { exact: true })).toBeVisible();
+  // `visible` drops the sidebar's closed Sort by menu, which also holds a `Name` row.
+  for (const title of ["Name", "Gateway", "Transport", "Access mode", "PI ownership"]) await expect(screen.getByText(title, { exact: true, visible: true })).toBeVisible();
   await expect(screen.getByText("Unavailable", { exact: true })).toBeHidden();
 });
 

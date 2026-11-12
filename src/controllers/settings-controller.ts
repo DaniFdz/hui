@@ -452,6 +452,7 @@ export class SettingsController implements ReactiveController {
       onSelectMode: this.chooseMode,
       onSelectAccent: this.chooseAccent,
       onChangeBranchPrefix: (branchPrefix) => void this.save({ branchPrefix }),
+      onChangeGatewayName: (name) => void this.save({ name }),
       onChangeAppearance: (next) => void this.save(next),
       onChangeChat: (chat) => void this.save({ chat }),
       onChangeBrowser: (browser) => this.save({ browser }),

@@ -14,11 +14,13 @@ function text(value: unknown): string {
 }
 
 const health: SettingsProps["health"] = {
-  status: "online", transport: "HTTP + SSE", access: "Full Access", uptimeSeconds: 183840,
+  status: "online", transport: "HTTP + SSE", access: "Full Access", uptimeSeconds: 183840, name: "build-box",
   sessions: { registered: 12, running: 2, starting: 0, idle: 10, waiting: 0, error: 0, reconnecting: 0, disconnected: 0, processes: 2 },
 };
+const settings = { power: { keepAwake: true }, name: "" } as SettingsProps["settings"];
+const named = (name: string) => ({ ...settings, name });
 const render = (overrides: Partial<SettingsProps>) => text(renderConnectionPage({
-  healthError: "", ...overrides,
+  healthError: "", settings, ...overrides,
 } as SettingsProps));
 
 test("gateway health renders independently of PI configuration", () => {
@@ -46,12 +48,27 @@ test("initial loading, initial failure and idle are distinct", () => {
   assert.match(render({ health: { ...health, sessions: { ...health.sessions, running: 0 } } }), /Idle/);
 });
 
-const settings = { power: { keepAwake: true } } as SettingsProps["settings"];
 const power: PowerStatus = {
   keepAwake: { state: "active", detail: "" },
   lidAwake: { state: "error", detail: "Administrator approval was cancelled." },
   lidOn: false,
 };
+
+test("the Gateway page names the gateway, and shows the hostname it falls back to while it has none", () => {
+  const unnamed = render({ health });
+  assert.match(unnamed, /Gateway name/);
+  assert.match(unnamed, /Leave it empty to use this machine's hostname, build-box\./);
+
+  const saved = render({ health, settings: named("Studio Mac") });
+  assert.match(saved, /Shown to every client that connects, and on About\./);
+  assert.match(saved, /Studio Mac/);
+  assert.doesNotMatch(saved, /build-box/);
+
+  // Health has not answered yet: the section is still there, without a fallback to show.
+  const loading = render({});
+  assert.match(loading, /Gateway name/);
+  assert.doesNotMatch(loading, /build-box/);
+});
 
 test("macOS power shows each choice beside what the gateway holds", () => {
   const result = render({ health, power, settings });

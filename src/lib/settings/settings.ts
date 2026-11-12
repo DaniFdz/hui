@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   profileName: "HUI Operator",
   profileHandle: "",
+  name: "",
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
   codemode: { enabled: true },
@@ -68,6 +69,8 @@ export function normalizeSettings(raw: unknown): Settings {
     chat: normalizeChat(source["chat"]),
     profileName: boundedText(source["profileName"], DEFAULT_SETTINGS.profileName, 80),
     profileHandle: boundedText(source["profileHandle"], "", 80),
+    // Empty is not a name: the gateway reports this machine's hostname until the operator sets one.
+    name: boundedText(source["name"], "", 60),
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
     codemode: { enabled: !isRecord(source["codemode"]) || source["codemode"]["enabled"] !== false },
