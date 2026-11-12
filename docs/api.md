@@ -1233,6 +1233,9 @@ type SessionSnapshot = {
   // Fast mode on or off; absent when the runtime cannot change speed (only
   // Durable sessions can).
   fast?: boolean;
+  // Autonomous mode on or off; absent when the session cannot carry it (a bot's
+  // chat, a PI SDK session, a worker on an older release).
+  autonomous?: boolean;
   queue: RuntimeQueue;
   questions: readonly RuntimeQuestion[];
   subagents: readonly SubagentTaskView[];
@@ -1345,7 +1348,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `title`, `group`, `pinned`, `archived`, `unread`, `icon` | HUI | Writable organizer metadata; changing it never renames or rewrites a PI file. Sidebar drag/drop and **Move to group** both update `group` through the session PATCH route. |
 | `cwd`, `tool`, `createdAt`, `source` | HUI | Fixed when registered |
 | `updatedAt` | HUI | Advanced when PI accepts a prompt; drives recency ordering |
-| `model`, `thinking`, `fast` | HUI | Session preference passed back to the runtime on reopen; `fast` is optional and only `true` is stored, so no registry version bump |
+| `model`, `thinking`, `fast`, `autonomous` | HUI | Session preference passed back to the runtime on reopen; `fast` and `autonomous` are optional and only `true` is stored, so no registry version bump |
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
@@ -2134,7 +2137,7 @@ Query `id=&n=`.
 
 ### `POST /__hui/heartbeat`
 
-200 `{ notified: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and reports each idle, waiting, errored or done watched session to the session that watches it, at most once per state change. It never prompts the watched session itself; the chief reads the last reply and decides whether to send a specific followup or remove the watch. The same scan runs at gateway start and every 15 minutes; this route lets the operator check without waiting. There is no request body. The same scan runs at gateway start and every 15 minutes; this route lets the operator check without waiting. There is no request body.
+200 `{ notified: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and reports each idle, waiting, errored or done watched session to the session that watches it, at most once per state change. An idle session whose watchers or subagents still work is not reported until they wake it, and a session in Autonomous mode is reported as `Autonomous session "<title>"`. It never prompts the watched session itself; the chief reads the last reply and decides whether to send a specific followup or remove the watch. A report to a bot's chat opens the chat when it is asleep and waits behind a running turn. Scans run one at a time. The same scan runs at gateway start, every 15 minutes and whenever a run of an Autonomous session ends; this route lets the operator check without waiting. There is no request body.
 
 ### `POST /__hui/staff/chiefs`
 
@@ -3414,17 +3417,17 @@ empty answer, the branch uses the first meaningful words of the operator
 `title` or the first prompt line. This step is reported as the `naming`
 worktree phase before any Git progress. An operator `title` is never replaced.
 
-`model`, `thinking` and `fast` are optional initial session preferences selected in New
+`model`, `thinking`, `fast` and `autonomous` are optional initial session preferences selected in New
 Session. `model` uses canonical `provider/id` form: the first slash separates the
 provider from the complete model ID, which may contain further slashes (for
 example, `vercel-ai-gateway/anthropic/claude-opus-5.5`). Neither part may be empty
 or contain whitespace. `thinking` accepts `off`,
 `minimal`, `low`, `medium`, `high`, `xhigh`, `max` or `ultra`; PI clamps it to the levels
 the model has (see `POST /__hui/sessions/:id/thinking` for `ultra`). `fast` is a boolean (default false; see
-`POST /__hui/sessions/:id/fast`). Without `model`, the session
-uses `settings.models.primary` when one is set, otherwise PI's default. All are persisted before the
-runtime starts; `model` and `thinking` are passed to PI on its first launch as well as later reopen,
-and HUI turns `fast` on as soon as the runtime has started.
+`POST /__hui/sessions/:id/fast`), and so is `autonomous` (see `POST /__hui/sessions/:id/autonomous`). Without
+`model`, the session uses `settings.models.primary` when one is set, otherwise PI's default. All are persisted before
+the runtime starts; `model` and `thinking` are passed to PI on its first launch as well as later reopen, and HUI turns
+`fast` and `autonomous` on as soon as the runtime has started, so the first prompt already runs in the mode.
 
 `worktree` is optional and defaults to false. `baseRef` optionally selects any
 local branch, known remote branch or commit resolvable by Git. When `worktree`
@@ -3771,6 +3774,28 @@ fast-mode premium. 400 when the runtime cannot change speed (PI SDK sessions)
 or the session is not running; 500 when the registry write fails, after the
 session went back to its previous speed.
 
+### `POST /__hui/sessions/:id/autonomous`
+
+Accepts `{ "autonomous": boolean }`, applies it live, persists it with the session (`autonomous: true` in the
+registry) and answers `{ "autonomous": boolean }`; every viewer gets `event: autonomous` with
+`{ "autonomous": boolean }`. Autonomous mode is independent of the reasoning level and of fast mode. While it is on,
+each request's system prompt carries a `hui_autonomous` section that makes the session the lead of its own task: it
+investigates and stops on a plan ending "Accept this plan?", implements nothing until its chief or the operator
+accepts it, then (where `sessions_spawn` is offered) hands every change to a `worker` in a worktree, verifies in a
+fresh `verifier`, has a `reviewer` of another model family try to break the diff, ships the pull request through its
+gates and stops before a merge or deploy that needs the operator. It decides technical details itself, stops on one
+question when only its chief can settle something, and ends on a report to the chief.
+
+Its chief is the Chief of Staff of the session's group, else the Chief of Staff of no group (not an archived bot).
+Each time a run of the session ends, HUI makes that chief watch the session and runs the gateway heartbeat at once,
+so the stop reaches the chief's chat as `[routine: Heartbeat] Autonomous session "<title>" is …` with the last reply,
+queued behind a running turn; the chief answers with `sessions_send`. A stop while the session's subagents or
+watchers still work is not reported: they wake it. Without a chief nothing is reported and the operator answers in
+the session. Turning the mode off removes the section; the chief keeps its watch until it removes it.
+
+400 when the session cannot carry the mode (a bot's chat, a PI SDK session, a worker on an older release) or is not
+running; 500 when the registry write fails, after the session went back to its previous mode.
+
 ### `POST /__hui/sessions/:id/question`
 
 Answers or cancels a pending PI extension-UI request:
@@ -3862,6 +3887,9 @@ data: { "level": "high" }
 
 event: fast
 data: { "fast": true }
+
+event: autonomous
+data: { "autonomous": true }
 ```
 
 While a turn is live, HUI keeps a replay projection of user messages, thinking,
@@ -3930,7 +3958,7 @@ browsers allow only six HTTP/1.1 connections per origin and a few split panes
 would otherwise stall every other request. Like terminal and browser streams,
 the upgrade also requires a same-origin `Origin` and an allowed `Host`, and it
 is refused with 403 otherwise. Each text message is
-`{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "fast" | "heartbeat" | "closed", "data": … }`
+`{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "fast" | "autonomous" | "heartbeat" | "closed", "data": … }`
 with the SSE payloads above, beginning with the snapshot. An upgrade URL with
 `&slim=1` asks for snapshots without `transcript` when it has not changed: one
 that only updates watchers, task suggestions, questions or subagents. With

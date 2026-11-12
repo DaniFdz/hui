@@ -21,6 +21,8 @@ function fixture(targetStatus: SessionStatus = "idle", watcherStates: WatcherSta
     ],
     status: () => targetStatus,
     watchers: () => watcherStates.map((state) => ({ state })),
+    subagents: (): readonly { status: string }[] => [],
+    autonomous: () => false,
     lastAssistant: () => "Done.",
     notify: async (id: string, text: string) => { notifications.push({ id, text }); },
     now: () => now,
@@ -88,6 +90,39 @@ test("a done-stage target tells the watcher once and is never continued", async 
   assert.equal(f.notifications.length, 1);
 });
 
+test("an Autonomous session's stop is reported as one, its plan as a decision", async () => {
+  const f = fixture();
+  f.deps.autonomous = () => true;
+  f.deps.lastAssistant = () => "## Plan\nShip the toggle in one PR.\n\nAccept this plan?";
+  assert.deepEqual(await createHeartbeat(f.deps).scan(), { notified: ["target"] });
+  assert.match(f.notifications[0]?.text ?? "", /^\[routine: Heartbeat\] Autonomous session "target" is idle and waiting for a decision\./u);
+  assert.match(f.notifications[0]?.text ?? "", /Accept this plan\?/u);
+});
+
+test("an idle session whose subagents still work waits for them, and is reported once they finish", async () => {
+  const f = fixture();
+  let children = [{ status: "running" }, { status: "completed" }];
+  f.deps.subagents = () => children;
+  const heartbeat = createHeartbeat(f.deps);
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  children = [{ status: "queued" }];
+  assert.deepEqual(await heartbeat.scan(), { notified: [] });
+  children = [{ status: "completed" }];
+  assert.deepEqual(await heartbeat.scan(), { notified: ["target"] });
+});
+
+test("scans asked for at once run one after the other and report a change once", async () => {
+  const f = fixture();
+  f.deps.notify = async (id, text) => {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    f.notifications.push({ id, text });
+  };
+  const heartbeat = createHeartbeat(f.deps);
+  const [first, second] = await Promise.all([heartbeat.scan(), heartbeat.scan()]);
+  assert.deepEqual([first, second], [{ notified: ["target"] }, { notified: [] }]);
+  assert.equal(f.notifications.length, 1);
+});
+
 test("running, starting, reconnecting and disconnected targets are left alone", async () => {
   for (const status of ["running", "starting", "reconnecting", "disconnected"] as const) {
     const f = fixture(status);
@@ -109,7 +144,7 @@ test("a paused goal, an archived target, a bot chat and an archived watcher are 
   for (const records of cases) {
     const notifications: string[] = [];
     const heartbeat = createHeartbeat({
-      records: async () => records, status: () => "idle", watchers: () => [],
+      records: async () => records, status: () => "idle", watchers: () => [], subagents: () => [], autonomous: () => false,
       lastAssistant: () => "Done.", notify: async (id) => { notifications.push(id); },
     });
     assert.deepEqual(await heartbeat.scan(), { notified: [] });

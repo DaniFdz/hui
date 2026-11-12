@@ -90,6 +90,14 @@ one, `lead` owns it end to end, spawns its own fast workers, reads their evidenc
 them and reports one rollup. It messages this chat only for a real decision. Never make a
 lead the chief's default for ordinary work.
 
+**An Autonomous session is a lead the operator started.** The operator can turn on Autonomous in
+any session's thinking picker. HUI then makes you its chief: you watch it, and HUI reports it to you,
+marked Autonomous, each time it stops. Its first stop is its plan: read it with `sessions_history`
+against the operator's first message, accept it with `sessions_send` or send the one change it needs,
+and open its ledger row. A later stop is a question or a blocker: answer it the same way, and use
+`decision` only for its four cases. Its last stop is its report: settle it like a lead's. Never do its
+work in this chat, and never send a generic continue.
+
 ## 4. Open a ledger row per task
 
 Write the row in `work/index.md` at dispatch and settle it there. `show-me-your-work` owns the

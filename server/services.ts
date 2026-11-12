@@ -92,7 +92,7 @@ import { WatcherInputError, WatcherService } from "./agent-tools/watchers.ts";
 import { SecretFiles, SecretRequests } from "./agent-tools/secret-requests.ts";
 import { Questionnaires } from "./agent-tools/questionnaires.ts";
 import { summarizeWorkerStats } from "./agent-tools/worker-stats.ts";
-import { isChiefTitle } from "./bots/chief-title.ts";
+import { chiefFor, isChiefTitle } from "./bots/chief-title.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";
 import { createSessionListHub } from "./sessions/list.ts";
@@ -390,6 +390,8 @@ export const heartbeat = createHeartbeat({
   records: readRegistry,
   status: (id) => liveSessions.status(id),
   watchers: (id) => watchers.list(id),
+  subagents: (id) => liveSessions.subagents(id),
+  autonomous: (id) => liveSessions.isAutonomous(id),
   lastAssistant: (id) => {
     const entries = liveSessions.transcript(id);
     for (let index = entries.length - 1; index >= 0; index -= 1) {
@@ -398,9 +400,36 @@ export const heartbeat = createHeartbeat({
     }
     return undefined;
   },
-  notify: (id, text) => liveSessions.prompt(id, text),
+  // A chief's chat may be asleep or busy: the bots' delivery opens it, and queues behind a running turn.
+  notify: async (id, text) => {
+    const chief = await bots.botForSession(id);
+    if (chief) await bots.send(chief.id, { text });
+    else await liveSessions.prompt(id, text);
+  },
 });
 export const heartbeatRoutes = createHeartbeatRoutes({ heartbeat });
+/** Autonomous mode: when a session in it stops, the chief of its group (else the Chief of Staff) watches it from then
+ * on, and the heartbeat reports the stop at once instead of at its next tick. */
+liveSessions.watchRunEnds(({ id }) => {
+  if (!liveSessions.isAutonomous(id)) return;
+  void superviseAutonomous(id).catch((error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "autonomous_report_failed", summary: "HUI could not report an autonomous session to its chief",
+    detail: error instanceof Error ? error.message : String(error), sessionId: id,
+  }));
+});
+
+async function superviseAutonomous(id: string): Promise<void> {
+  const records = await readRegistry();
+  const session = records.find((record) => record.id === id);
+  const chief = session && chiefFor(await bots.list(), session.group);
+  if (!chief) return;
+  if (!records.find((record) => record.id === chief.sessionId)?.watches?.includes(id)) {
+    await updateRegistry((all) => all.map((record) => record.id === chief.sessionId
+      ? { ...record, watches: [...new Set([...(record.watches ?? []), id])].slice(0, WATCH_LIMIT) }
+      : record));
+  }
+  await heartbeat.scan();
+}
 /** One managed browser per gateway; its settings are re-read on every call. With mirroring on it seeds itself from
  * what any worker sent, and hands what it captured to every worker's document. State goes through this machine: a
  * worker's document never reaches another worker. */

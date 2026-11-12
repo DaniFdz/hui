@@ -2351,6 +2351,42 @@ test("fast mode is saved with the session and turned back on when it boots again
   restarted.disposeAll();
 });
 
+test("Autonomous mode is saved with the session, turned back on when it boots again, and never offered in a bot's chat", async () => {
+  class AutonomousSession extends FakeSession {
+    autonomous = false;
+    currentAutonomous(): boolean { return this.autonomous; }
+    async setAutonomous(on: boolean): Promise<void> { this.autonomous = on; }
+  }
+  const started: AutonomousSession[] = [];
+  const runtime: AgentRuntime = { id: "pi", start: async () => { const session = new AutonomousSession(); started.push(session); return session; } };
+  const manager = new LiveSessions(runtime);
+  manager.ensure(recordFor("autonomous"));
+  await waitForBoot(manager, "autonomous");
+  const messages: SessionStreamMessage[] = [];
+  manager.subscribe("autonomous", (message) => messages.push(message));
+  assert.equal(manager.snapshot("autonomous").autonomous, false);
+
+  assert.equal(await manager.setAutonomous("autonomous", true), true);
+  assert.equal(manager.isAutonomous("autonomous"), true);
+  assert.equal((await stored("autonomous"))?.autonomous, true);
+  assert.ok(messages.some((message) => message.kind === "autonomous" && message.autonomous));
+  manager.disposeAll();
+
+  const restarted = new LiveSessions(runtime);
+  restarted.ensure((await stored("autonomous"))!);
+  await waitForBoot(restarted, "autonomous");
+  assert.equal(started[1]?.autonomous, true);
+  assert.equal(restarted.snapshot("autonomous").autonomous, true);
+  await restarted.setAutonomous("autonomous", false);
+  assert.equal((await stored("autonomous"))?.autonomous, undefined);
+
+  restarted.ensure({ ...recordFor("chief-chat"), bot: "chief" });
+  await waitForBoot(restarted, "chief-chat");
+  assert.equal(restarted.snapshot("chief-chat").autonomous, undefined);
+  await assert.rejects(restarted.setAutonomous("chief-chat", true), /A bot's chat has no Autonomous mode/u);
+  restarted.disposeAll();
+});
+
 test("queue, thinking and questions share the reconnect snapshot and delegate commands", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

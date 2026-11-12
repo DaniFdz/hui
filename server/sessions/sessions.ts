@@ -48,6 +48,8 @@ export type SessionRecord = {
   thinking?: string;
   /** Fast mode on, for the models that have one (`RuntimeModel.fast`). */
   fast?: boolean;
+  /** Autonomous mode on: the session leads its own task and reports each stop to its chief of staff. */
+  autonomous?: boolean;
   /** Durable crash-recovery marker. Set before HUI hands a new prompt to the
    * runtime and cleared only when that run settles or the operator stops it. */
   runStartedAt?: string;
@@ -292,6 +294,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
     ...(raw["fast"] === true ? { fast: true } : {}),
+    ...(raw["autonomous"] === true ? { autonomous: true } : {}),
     ...(runStartedAt ? { runStartedAt } : {}),
     ...(runPrompt ? { runPrompt } : {}),
     ...(runRecoveryAttempts !== undefined ? { runRecoveryAttempts } : {}),

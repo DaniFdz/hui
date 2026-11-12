@@ -8,7 +8,8 @@
  * directory, and a bot's chat adds its own (`skills/` in its home folder,
  * `bots/skills.ts`); it lists only the ones the operator left on
  * (`bots/durable-access.ts`), so two chats in one directory can differ. A
- * session on Ultra adds OpenClaw's plan, delegate and verify section.
+ * session on Ultra adds OpenClaw's plan, delegate and verify section, and one in
+ * Autonomous mode the section that makes it the lead of its own task.
  */
 import { DefaultResourceLoader, type BuildSystemPromptOptions, type Skill } from "@earendil-works/pi-coding-agent";
 import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
@@ -51,7 +52,7 @@ const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
  * `before_agent_start` follow PI's, already tagged, in `extension_sections`. */
 const SECTION_KEYS = [
   "preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd", "extension_sections",
-  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_goal", "hui_extensions", "hui_ultra",
+  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_goal", "hui_extensions", "hui_ultra", "hui_autonomous",
 ] as const;
 const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
@@ -92,6 +93,31 @@ export function ultraSection(delegates: boolean): string {
   ].join("\n");
 }
 
+/** Autonomous mode: the session leads its task from plan to pull request, delegating each phase where the request offers
+ * `sessions_spawn`, and stops only where its chief of staff (`server/heartbeat.ts`) must answer. */
+export function autonomousSection(delegates: boolean): string {
+  const plan = "the goal and who it is for, what changes and what stays, the units of work, the checks that prove it, and where you will stop. End the reply with \"Accept this plan?\". Implement nothing until the chief or the operator accepts it; a subagent's result or elapsed time is not acceptance.";
+  return [
+    "## Autonomous mode",
+    "The operator turned on Autonomous mode: you lead this task end to end and your chief of staff supervises you. Each reply you stop on reaches the chief, who answers in this conversation; without a chief, the operator does. A message from the operator always comes first.",
+    ...delegates ? [
+      `1. Plan. Investigate with an \`explorer\` or a \`planner\`, then stop on your plan: ${plan}`,
+      "2. Implement. Hand every change, however small, to a `worker` with `worktree: true`, and never edit the code yourself. Read each diff and the checks it ran.",
+      "3. Verify and review. Run the deciding checks in a fresh `verifier`, then have a `reviewer`, on a different model family when the routes offer one, try to break the diff. Send its findings to a fresh worker and review again until it is clean.",
+    ] : [
+      `1. Plan. Investigate, then stop on your plan: ${plan}`,
+      "2. Implement the plan, then run the repository's own checks.",
+      "3. Read the whole diff against the plan: the intent, the logic and the failure paths. Fix what you find and check again.",
+    ],
+    "4. Ship. Open or update the pull request with its evidence and keep it moving until its checks pass and no review comment is open. Stop before a merge or a deploy that needs the operator's approval.",
+    "5. Decide technical details yourself: scope within the plan, design, tests, retries, routes and review findings. When only the chief can settle something, stop on one question as the last line of your reply. Do not ask the operator directly.",
+    "6. Report. Your last reply is your report to the chief: the goal and whether it was met, the pull request and its head commit, each check and its result, what remains and the proof gaps.",
+    delegates
+      ? "While subagents work, end your turn: their results wake you. Stop only on the plan, a question or the report."
+      : "Stop only on the plan, a question or the report.",
+  ].join("\n");
+}
+
 export class DurablePrompt {
   readonly #agentDir: string;
   readonly #readSettings: () => Promise<PromptSettings>;
@@ -111,6 +137,8 @@ export class DurablePrompt {
   skillDirsFor: (conversationId: ConversationId) => Promise<readonly string[]> = async () => [];
   /** Whether the conversation's session is on Ultra. The Durable host answers. */
   ultraFor: (conversationId: ConversationId) => boolean = () => false;
+  /** Whether the conversation's session is in Autonomous mode. The Durable host answers. */
+  autonomousFor: (conversationId: ConversationId) => boolean = () => false;
   /** The active goal of the conversation's session, as its own prompt section. The Durable host answers. */
   goalFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
   /** The PR-lead section of a session a chief created, if it is one. The Durable host answers. */
@@ -193,7 +221,7 @@ export class DurablePrompt {
   /** PI's builder input for a request offering these tools. A bot's chat (`bot` given) lists only the skills the operator
    * left on: in PI's own section while it has read or bash, otherwise in one of HUI's that loads them with `load_skill`,
    * which such a chat is offered. */
-  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, bot?: BotSkills, skillDirs: readonly string[] = [], ultra = false): Promise<BuildSystemPromptOptions> {
+  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, bot?: BotSkills, skillDirs: readonly string[] = [], ultra = false, autonomous = false): Promise<BuildSystemPromptOptions> {
     const loader = await this.loader(cwd, skillDirs);
     const skills = bot ? bot.skills(loader.getSkills().skills) : loader.getSkills().skills;
     const own = bot?.section(skills, selectedTools);
@@ -215,6 +243,7 @@ export class DurablePrompt {
       sections: {
         ...huiToolSections(selectedTools, contributions, (await this.#readSettings()).models.routes), ...(own ? { skills: own } : {}),
         ...(ultra ? { hui_ultra: ultraSection(selectedTools.includes("sessions_spawn")) } : {}),
+        ...(autonomous ? { hui_autonomous: autonomousSection(selectedTools.includes("sessions_spawn")) } : {}),
       },
       cwd,
       contextFiles: loader.getAgentsFiles().agentsFiles,
@@ -230,7 +259,8 @@ export class DurablePrompt {
     const bot = conversationId === undefined ? undefined : await this.botSkillsFor(conversationId);
     const skillDirs = conversationId === undefined ? [] : await this.skillDirsFor(conversationId);
     const ultra = conversationId !== undefined && this.ultraFor(conversationId);
-    const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra);
+    const autonomous = conversationId !== undefined && this.autonomousFor(conversationId);
+    const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra, autonomous);
     const goal = conversationId === undefined ? undefined : await this.goalFor(conversationId);
     if (goal) base.sections = { ...base.sections, hui_goal: goal };
     const lead = conversationId === undefined ? undefined : await this.leadFor(conversationId);

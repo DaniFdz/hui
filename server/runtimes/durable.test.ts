@@ -33,6 +33,7 @@ const { estimateContext } = await import(new URL("./harness/compaction.js", impo
   estimateContext(view: unknown, extra: readonly unknown[]): number;
 };
 const { durableConversationId, durableReference, expandSkill, startDurable } = await import("./durable.ts");
+const { autonomousSection } = await import("./durable-prompt.ts");
 const { importPiSession } = await import("./pi-import.ts");
 const { searchTranscripts } = await import("./transcript-search.ts");
 const { aggregateUsage } = await import("../observability.ts");
@@ -314,6 +315,22 @@ test("Ultra sends the model its highest level and asks the agent to plan, decide
   assert.deepEqual([session.currentThinking(), session.modelThinking()], ["high", "high"]);
   await turns(session, ["hello high"]);
   assert.doesNotMatch(await ultraPrompt(), /Ultra active/u);
+});
+
+test("Autonomous mode makes the session the lead of its task, at the level it chose, until it is turned off", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-autonomous" }, f.host());
+  const system = async () => JSON.stringify((await providerRequests(f.log)).filter((request) => !summarizing(request)).at(-1)?.system);
+  assert.equal(session.currentAutonomous(), false);
+
+  await session.setAutonomous(true);
+  assert.deepEqual([session.currentAutonomous(), session.currentThinking()], [true, "high"]);
+  await turns(session, ["hello autonomous"]);
+  assert.ok((await system()).includes(JSON.stringify(autonomousSection(true)).slice(1, -1)));
+
+  await session.setAutonomous(false);
+  await turns(session, ["hello again"]);
+  assert.doesNotMatch(await system(), /Autonomous mode/u);
 });
 
 test("Durable runs a real tool turn and reopens the conversation from its store", { timeout: 45_000 }, async (t) => {

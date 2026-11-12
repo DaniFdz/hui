@@ -1,6 +1,6 @@
 /**
  * `LaunchController` owns the New Session page's launch state outside `hui-app.ts`: the group defaults it opened with,
- * the workers and the sticky worker, the launch model, thinking and fast choices, the folder suggestions and the
+ * the workers and the sticky worker, the launch model, thinking, fast and Autonomous choices, the folder suggestions and the
  * machine they came from, and the inspected Git checkout with its branch, worktree and base ref defaults. The shell
  * sends the launch itself and decides when to load these.
  */
@@ -24,6 +24,7 @@ export class LaunchController {
   /** PI's own default level: what New Session shows while Settings' default reasoning is unset. */
   #piThinking = "medium";
   fast = false;
+  autonomous = false;
   directorySuggestions: readonly string[] = [];
   /** The machine `directorySuggestions` came from: "" for this one, else a worker's id. A bot's Settings page shows only
    * its own machine's, so a bot on a worker is never offered this machine's folders. */
@@ -160,13 +161,13 @@ export class LaunchController {
     }, attempt ? 1_500 : 400);
   }
 
-  #set(patch: Partial<Pick<LaunchController, "model" | "thinking" | "fast" | "worker" | "worktree" | "baseRef" | "branch" | "branchSuggestionsOpen">>): void {
+  #set(patch: Partial<Pick<LaunchController, "model" | "thinking" | "fast" | "autonomous" | "worker" | "worktree" | "baseRef" | "branch" | "branchSuggestionsOpen">>): void {
     Object.assign(this, patch);
     this.#host.requestUpdate();
   }
 
   props(): Pick<HomeProps,
-    "launchDefaults" | "launchThinking" | "onSelectLaunchModel" | "onSelectLaunchThinking" | "launchFast" | "onSelectLaunchFast"
+    "launchDefaults" | "launchThinking" | "onSelectLaunchModel" | "onSelectLaunchThinking" | "launchFast" | "onSelectLaunchFast" | "launchAutonomous" | "onSelectLaunchAutonomous"
     | "launchWorkers" | "launchWorker" | "onSelectLaunchWorker" | "onConnectLaunchWorker" | "onRefreshLaunchWorkers"
     | "directorySuggestions" | "gitCheckout" | "gitCheckoutLoading"
     | "workspaceWorktree" | "workspaceBaseRef" | "workspaceBranchSuggestionsOpen" | "workspaceBranch"
@@ -178,6 +179,8 @@ export class LaunchController {
       onSelectLaunchThinking: (thinking) => this.#set({ thinking }),
       launchFast: this.fast,
       onSelectLaunchFast: (fast) => this.#set({ fast }),
+      launchAutonomous: this.autonomous,
+      onSelectLaunchAutonomous: (autonomous) => this.#set({ autonomous }),
       launchWorkers: this.workers,
       ...(this.worker ? { launchWorker: this.worker } : {}),
       onSelectLaunchWorker: (worker) => {
