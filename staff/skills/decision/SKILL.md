@@ -5,9 +5,16 @@ description: "Use when the operator is truly needed: one line, a compact table o
 
 # Decision
 
-Ask the operator only when the decision is irreversible, needs access or a preference that evidence cannot
-settle. A technical choice with evidence is the lead's or the chief's to make, and gets a ledger line, not a
-question.
+Ask the operator only in these four cases:
+
+1. The action is irreversible: it can destroy work or data, and there is no rollback.
+2. Access or a credential is missing.
+3. An explicit repository or product rule requires owner approval.
+4. Two options materially change cost, risk or outcome, and evidence cannot settle the choice.
+
+Everything else is yours: implementation detail, scope, naming, test choice, model route, retries and review
+findings. When in doubt, choose the reversible default, record it and continue. Do not ask a question to
+confirm a plan or to share status.
 
 ## The brief
 

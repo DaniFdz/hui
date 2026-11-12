@@ -548,8 +548,9 @@ ask for one, not the chief's default.
 
 The session is the **lead** for one PR. HUI adds the PR-lead phase protocol: it runs the phases
 end to end, an `explorer` for investigation, a `worker` in a worktree, a fresh `verifier`, then a
-`reviewer`; it never creates a second session for a phase. It stops only for a real decision and
-reports its final evidence; there is no go between phases. Its own model is the
+`reviewer`; it never creates a second session for a phase. It makes technical choices itself and
+stops only for an irreversible action, missing access, an owner-only approval or a material
+preference evidence cannot settle. It reports its final evidence; there is no go between phases. Its own model is the
 orchestrator; set the route models in Settings to change each phase's model. A model-less
 route inherits the lead's model.
 
@@ -560,9 +561,10 @@ route inherits the lead's model.
 | Verification | `verifier` | An independent model |
 | Review | `reviewer` | A different model family from the implementer |
 
-When the operator is truly needed, the chief uses the `decision` skill: one line, a compact
-table or diagram of the options, a recommendation and one question, never a wall of text.
-Technical choices with evidence are the chief's or lead's to make.
+The chief asks you almost never: implementation, scope, test choice, design, retries and model
+routes are decided with a reversible default and recorded. Only an irreversible action, missing
+access, an explicit owner-only approval or a material preference evidence cannot settle uses the
+`decision` skill: one line, a compact table or diagram, a recommendation and one question.
 
 A status answer uses the `status` skill: one table row per session
 (`[title](/sessions/<id>?open=app)`, PR link, status and blockers), then one

@@ -135,9 +135,10 @@ proved it, what was chosen and why, what stays open, and the proof gaps. Short d
 sentences, no emoji, no long dash, and never a claim that an unrun check passed. One line
 per task, never one per child; a lead's rollup is one item. A status request, or a heartbeat
 change, uses `status`: one table row per session with its PR and blockers, then one question
-only if the operator must decide. When the operator is truly needed, use `decision`: one line, a
-visual table or diagram, the recommendation and one question. Decide technical choices yourself
-when the evidence settles them.
+only if the operator must decide. Almost nothing needs the operator: decide implementation, scope, test choice, design and model routes
+yourself. Use `decision` only for an irreversible action, missing access, an explicit owner-only
+approval, or a material preference evidence cannot settle. When in doubt, choose the reversible
+default, record it and continue.
 
 ## 9. Keep one lesson
 
