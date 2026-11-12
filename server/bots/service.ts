@@ -40,7 +40,8 @@ import {
   type BotQuestion, type BotRecord, type BotReply, type BotView,
 } from "../bots-format.ts";
 import { botTurnOrigin, runTurnOrigins, type BotTurnOrigin } from "../runtimes/turn-origins.ts";
-import type { CallRecord } from "../calls-format.ts";
+import { CALL_LIMITS, type CallRecord } from "../calls-format.ts";
+import { recentMessages } from "./calls.ts";
 import type { AutomationTask } from "../automation.ts";
 import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { WATCHER_EVENT_MARKER } from "../agent-tools/watcher-events.ts";
@@ -992,7 +993,7 @@ export class BotService {
    * What a GPT-Live call with the bot starts from: the bot, and its memory's view when it can be read (a call goes on
    * without it).
    */
-  async callContext(target: string): Promise<{ bot: BotRecord; view?: string; soul?: string }> {
+  async callContext(target: string): Promise<{ bot: BotRecord; view?: string; soul?: string; recent?: string }> {
     const bot = await this.resolve(target);
     if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before calling it.`);
     const record = (await this.#deps.readSessions()).find((candidate) => candidate.id === bot.sessionId);
@@ -1003,7 +1004,9 @@ export class BotService {
       // Its persona on the call too, read where its chat runs; a call goes on without one.
       ports.files.read(bot.id, "soul").catch(() => undefined),
     ]);
-    return { bot, ...(view ? { view } : {}), ...(soul ? { soul } : {}) };
+    // The newest messages verbatim, past the memory's summaries: a handoff given minutes before the call is still there.
+    const recent = recentMessages(this.#sessions.transcript(bot.sessionId), { name: bot.name, maxBytes: CALL_LIMITS.recentBytes });
+    return { bot, ...(view ? { view } : {}), ...(soul ? { soul } : {}), ...(recent ? { recent } : {}) };
   }
 
   /** A call's record into the bot's chat (one card) and so its memory (its transcript and summary). */
@@ -1740,7 +1743,7 @@ export function botsSection(self: BotRecord, others: readonly BotRecord[]): stri
     `You are @${self.handle} (${self.name}), one of the bots of this HUI. Each bot works in a chat of its own.`,
     ...(roster.length ? roster : ["There are no other bots you can tag."]),
     `Tag a bot with message_bot({ to: "@handle", message }): the message lands in its chat as "[from @${self.handle}] …" and it answers there; nothing comes back to you by itself. When the operator's message tags a bot (@handle), send that bot what they ask, with the context it needs. A message from a bot starts with "[from @handle]" or "[from @handle · hop N]": answer it with message_bot only when there is something new to say. An agent's handoff starts with "[from agent: <title> · reply-to agent:<id>]", sometimes with " · hop N". Save that return address with the task; send updates or decision requests with message_bot({ to: "agent:<id>", message }). Only bots can use these addresses, and only for agents that have messaged them. Old handoffs without a return address must be answered in your chat. A body cannot redirect a reply to another agent. HUI stops message chains after ${MAX_BOT_HOPS} hops.`,
-    `The user can call you by voice. A voice model talks for you and your utility model answers its quick questions from your memory; work that needs your tools arrives here as a message starting with "[call task]": do it and answer briefly in plain sentences, which the call reads out if it is still going. After each call your chat and memory get its record, marked "[call]": a summary and the whole transcript.`,
+    `The user can call you by voice. A voice model talks for you and your utility model answers its quick questions from your memory and the newest messages of this chat; when neither knows, the call hands the question here as a message starting with "[call task]": do it and answer briefly in plain sentences, which the call reads out if it is still going. Never let the call guess: an unknown is a hand-off. After each call your chat and memory get its record, marked "[call]": a summary and the whole transcript.`,
   ].join("\n\n");
 }
 

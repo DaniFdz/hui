@@ -47,8 +47,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the arrow keys also move, 16px a press and 48px with Shift. Narrow screens
   show the drawer at its own width, with no boundary.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
-  system modes. Theme, accent, interface-font and chat-prose-font preferences
-  persist in HUI settings. A custom or imported theme's colors must read where
+  system modes. Theme, color mode, accent, interface font, chat-prose font,
+  terminal font, text size and the chat preferences persist per device, in the
+  storage of the browser, app or phone that shows them — not in the gateway's
+  settings. A custom or imported theme's colors must read where
   they meet: text, muted text, the accent and errors reach 4.5:1 on the page and
   cards (and menus for text), focus rings and primary fills 3:1, and the text on
   each fill 4.5:1. A color that falls short keeps its hue and moves only its
@@ -436,7 +438,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   entry tree, moves the active leaf to the point before the selected user
   message, removes that message from the active transcript and restores its
   full text to the focused composer for editing. The abandoned branch remains
-  recoverable from PI's tree. The transcript is the whole active branch (PI's,
+  recoverable from PI's tree. In a bot's chat a rewind keeps the bot and its
+  OptChat memory, which then holds only the kept branch (the abandoned branch is
+  forgotten by the memory, and stays stored in Durable); a rewind before the
+  chat's first message clears it. The transcript is the whole active branch (PI's,
   or a Durable conversation's history since its latest `/clear`): a
   compaction appears as a divider with its expandable summary and never hides
   earlier messages. On PI, rewinding inside the window the summary kept
@@ -765,6 +770,79 @@ until reload; a different version can appear. No host task or persisted setting
 is added, and source-development servers do not query GitHub automatically.
 There is no npm publication or boot-service registration in this iteration.
 Browser and package proof is in `e2e/package.browser.md` and `e2e/update.browser.md`.
+
+### A gateway carries a name (2026-11-11)
+
+A gateway can be named, and every client sees that name. It is the operator's
+label for one gateway, saved as `name` in HUI's own settings beside the profile
+fields (Settings → Gateway → Gateway name) and reported on
+`GET /__hui/health`, so a client that keeps several gateways can tell them
+apart without knowing each machine's path, port or hostname. Empty is the
+normal state of a fresh install and means the hostname of the machine the
+gateway runs on, falling back to `HUI` when the machine reports none; the
+effective name is computed per read and never written into the saved setting,
+so renaming the machine renames an unnamed gateway. The name is presentation
+only: it changes no PI configuration, credential, session or transcript, and
+About shows it beside the runtime facts it already lists. Choosing among saved
+gateways is not part of this change.
+
+### A device keeps a list of gateways (2026-11-11)
+
+A client remembers the gateways it has used. The browser keeps a list under one
+`localStorage` key: an address and the name the gateway gave for itself when it
+was added, plus when this device last reached it. The gateway that served the
+page is the current one: it is named by its own `GET /__hui/health`, and it is
+never stored, renamed or removed, because the list is about the others. Adding a
+gateway asks that address for `GET /__hui/update` with `x-hui: 1` — the one route
+a gateway answers cross-origin, carrying a version, a job id and its own name,
+never user data. An address that answers that handshake is stored with the name
+in the answer; one that refuses, hangs or answers with something else shows HUI's
+own wording and is not stored. An address with no scheme means `http`, a query,
+fragment or credentials are refused rather than dropped, and duplicate addresses
+collapse into one row. Corrupt or absent storage reads as an empty list.
+
+Switching navigates: the page opens the chosen gateway's own address, so
+everything on screen afterwards belongs to that gateway, with that gateway's
+sessions, settings and name. A saved gateway this page cannot reach reads as
+offline, with Retry, and it is kept rather than dropped: a gateway that is down
+today may be the one this device wants tomorrow. The list is presentation only —
+a per-device shortcut — and changes no PI configuration, credential, session or
+transcript. The sidebar footer shows the current gateway's name and opens the
+list, with Add a gateway… leading to Settings → Gateway, where the addresses are
+managed.
+
+### Appearance belongs to the device that shows it (2026-11-16)
+
+Every control on the Appearance page is kept by the client, not the gateway: the
+theme, the color mode, the accent, the interface, chat-prose and terminal fonts,
+the text size and the chat preferences (message width, collapsed task progress,
+the send shortcut and the two link-preview switches). They live under one
+versioned `localStorage` key on the web and in the desktop app's page, which is
+the same store, and a phone's WebView keeps its own per app install, so a phone
+needs no work to join in. A device that stored nothing starts from HUI's
+defaults: the gateway's old values are not copied into it, so everyone resets
+once. The desktop app's native window chrome follows the mode this device chose:
+the page reports it and the shell keeps the last one in its own `userData`,
+because the window's background is painted before the page loads. Nothing asks
+the gateway what appearance to use.
+
+The reason is the same one that keeps Text size off the iPhone: one gateway
+serves many screens and people, and a preference about how a screen looks is the
+screen's. Two clients on one gateway must be able to disagree — a light laptop
+beside a dark desktop, a large text size on a phone and a small one on a
+monitor — and a value in `settings.json` cannot say which client it is for. It
+is also where the iPhone's text size argument already pointed: the app draws at
+the phone's own type size instead of reading `textScale` from the gateway,
+because a setting the phone's user cannot see or change there is a setting
+imposed on them. A tool's own mark and icon stay on the gateway, in `chat`:
+their files live in its config directory, so every device that draws a tool call
+reads the same maps. `hui doctor` reports a `settings.json` that still carries
+the moved keys and rewrites it without them under `--fix`; before dropping them
+it exports the look alone — theme, color mode, accent, the typefaces, the
+terminal font and the text size, never the chat preferences — to
+`desktop-appearance.json`, which HUI's desktop app applies once to a device that
+never stored an appearance of its own and then marks consumed, so the look
+someone already had is not silently lost.
 
 ## Ownership
 
@@ -2486,8 +2564,10 @@ everything the Bots tab can, through the same routes.
   `set_profile` tool (only in turns the operator started that took no message
   from a routine, a trigger or another bot). A handle derived
   from the old name follows the new one; a chosen handle stays.
-- **Forever, until deleted.** Clearing, compacting, rewinding or deleting a bot's chat is
-  refused; archiving the bot deletes nothing, disables its routines and stops a
+- **Forever, until deleted.** Compacting, forking or deleting a bot's chat is
+  refused. Clearing it empties its transcript and its memory, and rewinding it
+  keeps the bot and its memory to the kept branch: the abandoned branch is
+  forgotten. Archiving the bot deletes nothing, disables its routines and stops a
   running turn, and restoring it brings it back with its routines still off.
 - **Messages.** A message to a bot is a prompt when it is idle and a follow-up
   when it is busy; a caller may wait for the reply of the turn that answers it,
@@ -2601,8 +2681,9 @@ everything the Bots tab can, through the same routes.
   `/bots/<id>` as its one chat in the ordinary session pane, its header
   showing face, name, role, the worker it runs on (if any) and status and a ⋯
   menu with Edit bot…, Archive… and Delete…;
-  assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
-  rewind are not offered. A new bot speaks first: its chat opens on a small
+  assistant turns carry the bot's name. `/clear` is listed and runs, and
+  Rewind to here is offered on the operator's messages; `/compact`, Compact now
+  and Fork from here are not offered. A new bot speaks first: its chat opens on a small
   centered note, *<name> was created*, where HUI started its first turn, then
   the bot's questions (an empty chat says *Say hi to <name>*). Opening it
   marks it read. A **panel** docks beside the chat (open or closed and its
@@ -3834,7 +3915,7 @@ seeds it once:
   whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
   BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
   `--fix` installs the untouched updates.
-- **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches. An idle watched session with no running watcher gets one continuation; if its last reply asks for a decision, or it is waiting for an answer or errored, the watcher session is told instead and the target is not prompted. The heartbeat itself never starts new work, and the watch is what makes a session a candidate; no routine lives in the bot's context.
+- **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches. An idle, waiting, errored or done watched session is reported to the watcher session; the target is never prompted. The chief reads the last reply and decides whether to send one specific followup or remove the watch, so the gateway never sends a generic continue. The heartbeat itself never starts new work, and the watch is what makes a session a candidate; no routine lives in the bot's context.
 - **Workers carry the pack, nothing else.** A spawn from a bot's chat records
   `botSkills`, written as the `hui.botSkills` document in the child's creating
   commit; `skillDirsFor` loads that bot's skill folder for the child and its
@@ -3850,11 +3931,27 @@ seeds it once:
   `create-verification-skill`, listed for every chat and turned off in
   Settings → Skills. They are not part of the pack.
 
+### A PR session is its lead (2026-11-11)
+
+A session a Chief of Staff creates with `create_session` owns one pull request and carries HUI's
+PR-lead section. It does not write product code itself: it spawns an `explorer` for investigation,
+a `worker` in a worktree for implementation, a fresh `verifier`, then a `reviewer`, and creates no
+second session for a phase. Its own model is the orchestrator and stays fixed; each child's model
+comes from its route or explicit model. A route with no model inherits the lead's model, so the
+operator sets route models to make the phases use different models.
+
 ### A custom group's chief is its own bot (2026-11-08)
 
 The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label and project directory, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its home, sets the bot's `group`, and puts its chat in that directory; the pack's routes are merged by name. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
 
-A group chief's skills are installed at creation. A pack update does not reach it yet: per-bot manifests are the next step, and the operator can edit any of its skills in Tools & skills meanwhile.
+A group chief's skills are installed at creation and recorded, and every later pack update reaches it the same way as the
+seeded chief: `staff.json` keeps a per-bot manifest (`{ version: 2, bots: { <bot id>: { packVersion, installedAt, files } } }`),
+a version 1 record is read as the seeded bot's, and the installer writes a skill only where every file it recorded is
+still unchanged and the folder holds nothing it did not write. A chief HUI never recorded (one created before per-bot
+records) is adopted on the next start when it carries the pack's text: what matches the shipped text byte for byte is
+recorded, a missing skill is installed, and a skill that differs is kept and reported, because there the text could be
+the operator's or an older pack's. The operator can edit any of its skills in Tools & skills; the pack keeps an edited
+skill whole and `hui doctor` reports it per chief.
 
 ### Bots write their own SOUL.md in a first conversation (2026-10-06)
 
@@ -3958,15 +4055,31 @@ faster."
   ChatGPT login: the gateway keeps the credential and sets each call up, the
   browser carries the audio and the call's data channel. GPT-Live's one tool
   (client delegation) asks the bot.
+- **A handoff before it speaks.** Each call starts with a note the bot's utility
+  model writes for it, from the bot's soul, its memory, the newest messages of its
+  chat verbatim and the operator's saved knowledge: what is active, the last
+  decisions, what waits on the operator and what they may ask about today. It is
+  written inside the call's start request, bounded to six seconds and 1,600
+  characters; a note no model writes leaves the call starting without one, and
+  the newest messages of the chat ride along in its place. So a handoff given
+  minutes before the call reaches it, which the memory's summaries alone lost.
+  While it is written the browser plays a ringback tone (425 Hz, 1.5 s on and 3 s
+  off) and the call shows *Connecting…*, so the wait sounds like a call being
+  placed; the tone stops when the call is answered, fails or is hung up.
+- **It opens as the bot.** The greeting cue GPT-Live receives names the bot and
+  forbids introducing itself as ChatGPT, where the model is certain to read it,
+  not only in the session's instructions.
 - **The tool runs on a faster model.** A call helper on the bot's utility model,
-  at low thinking, answers from the bot's soul (its SOUL.md), its memory and the call
-  so far. It never queues behind the bot's own turn. What needs tools goes to the
-  bot's chat as a `[call task]` message on the bot's own model; its reply is
-  spoken if the call is still up and stays in the chat either way. The limits
-  follow OpenDots': 25 s per question (then GPT-Live offers to hand it off), six
-  questions and four hand-offs per call, and calls of at most 15 minutes. The
-  helper has no tools yet: a restricted tool set would need new runtime
-  plumbing, so it hands off anything that needs one.
+  at low thinking, answers from the bot's soul (its SOUL.md), its memory, the
+  newest messages of its chat and the call so far. It never queues behind the
+  bot's own turn. What needs tools, or is not in those, goes to the bot's chat as
+  a `[call task]` message on the bot's own model: the helper is told never to
+  answer that it does not know, an unknown being a hand-off. Its reply is spoken
+  if the call is still up and stays in the chat either way. A call keeps no
+  per-call count: 25 s per question (then GPT-Live offers to hand it off), every
+  question answered or handed off, and calls of at most 15 minutes. The helper
+  has no tools yet: a restricted tool set would need new runtime plumbing, so it
+  hands off anything that needs one.
 - **What happened, at hang-up.** No chat message per utterance. When a call
   ends (hang-up, 90 s without a heartbeat, or 15 minutes), the utility model
   writes a summary in the bot's language: what was discussed, confirmed
@@ -4540,8 +4653,12 @@ imported bot walks the new owner through it.
   answer for the operator, write what they say to USER.md, MEMORY.md and SOUL.md.
   The import carries the whole document in the imported bot's first turn, so the
   bot needs no file tool and the operator's chat shows only "<name> was created",
-  as before. Bounded at 8,000 characters: over it items are left out and counted,
-  never cut.
+  as before. Bounded at 6,000 characters, a bot's own BOOTSTRAP.md limit, so an
+  export always imports: over it items are left out and counted, never cut, and
+  the previous owner's onboarding body goes first, so the points, needs and
+  schedules stay. The export dialog says how full the document is and what it
+  left out, and the import cuts what `{{user}}` filled in with a longer name
+  makes too long, with a note, rather than refusing the bot.
 - **No live link, no updating copies.** Grok publishes a template and can push
   changes to every copy; HUI has no accounts or hosting, and a served template
   would have to be reviewed again on every publish. The zip is reviewed once,

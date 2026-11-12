@@ -1,7 +1,7 @@
 /**
  * A phone's own chrome — the status bar, the notch, the home indicator — never covers HUI's: the header a phone draws
  * starts below the top inset, so its menu button is a tap and not a guess, and the composer ends above the bottom
- * one (SHELL-049).
+ * one (SHELL-050).
  *
  * The insets are the ones a device reports; an emulator reports zero. The fixture states them (`hui.insets`) the way the
  * installed app's shell does, and the page is read where the cutout would be. The rule under test pads only in a browser
@@ -14,7 +14,7 @@ import { test } from "../../fixtures/hui.ts";
 const TOP = 47;
 const BOTTOM = 34;
 
-test("the phone's status bar and home indicator never cover HUI's header or composer", { tags: ["SHELL-049"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the phone's status bar and home indicator never cover HUI's header or composer", { tags: ["SHELL-050"], platforms: ["web"] }, async ({ screen, hui }) => {
   const session = await hui.createSession({ title: "Clear of the cutout" });
   const viewport = await hui.phoneScreen();
   await hui.open(`/sessions/${session.id}`);
@@ -63,7 +63,7 @@ test("the phone's status bar and home indicator never cover HUI's header or comp
   expect(cutoutComposer.y + cutoutComposer.height).toBeLessThanOrEqual(viewport.height - BOTTOM + 1);
 });
 
-test("every route's own chrome starts below the status bar, not only the shell's", { tags: ["SHELL-049"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("every route's own chrome starts below the status bar, not only the shell's", { tags: ["SHELL-050"], platforms: ["web"] }, async ({ screen, hui }) => {
   // Two layout roots: a route renders the shell (home, sessions, kanban, usage, a chat) or the settings shell, which
   // draws its own mobile top bar. The inset is applied per root, so each route is read where it draws its own chrome.
   await hui.phoneScreen();

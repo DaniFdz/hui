@@ -37,6 +37,9 @@ type LiveCallApi = {
   subscribeSession: typeof subscribeSession;
 };
 
+/** The ringback while a call is placed: 425 Hz, 1.5 s on and 3 s off, the tone most of Europe rings with. */
+export const RINGBACK = { hz: 425, onMs: 1_500, offMs: 3_000, gain: 0.06 } as const;
+
 /** A GPT-Live call with one bot, through the gateway's call routes. */
 export function liveCallPlatform(bot: { id: string; sessionId: string }, api: LiveCallApi): LiveCallPlatform {
   let context: AudioContext | undefined;
@@ -58,6 +61,45 @@ export function liveCallPlatform(bot: { id: string; sessionId: string }, api: Li
         setEnabled: (enabled: boolean) => { for (const track of stream.getAudioTracks()) track.enabled = enabled; },
         level,
         close: () => { for (const track of stream.getTracks()) track.stop(); },
+      };
+    },
+
+    ring(): () => void {
+      const ctx = audio();
+      // Resumed here, in the click that placed the call: a context resumed later may stay silent.
+      void ctx.resume().catch(() => {});
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      gain.connect(ctx.destination);
+      const oscillator = ctx.createOscillator();
+      oscillator.type = "sine";
+      oscillator.frequency.value = RINGBACK.hz;
+      oscillator.connect(gain);
+      oscillator.start();
+      const burst = () => {
+        const now = ctx.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(RINGBACK.gain, now + 0.02);
+        gain.gain.setValueAtTime(RINGBACK.gain, now + RINGBACK.onMs / 1000);
+        gain.gain.linearRampToValueAtTime(0, now + RINGBACK.onMs / 1000 + 0.05);
+      };
+      burst();
+      const timer = setInterval(burst, RINGBACK.onMs + RINGBACK.offMs);
+      let stopped = false;
+      return () => {
+        if (stopped) return;
+        stopped = true;
+        clearInterval(timer);
+        try {
+          gain.gain.cancelScheduledValues(ctx.currentTime);
+          gain.gain.setValueAtTime(0, ctx.currentTime);
+          oscillator.stop();
+        } catch {
+          // The context closed under the tone: already silent.
+        }
+        oscillator.disconnect();
+        gain.disconnect();
       };
     },
 

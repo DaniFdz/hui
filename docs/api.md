@@ -5,9 +5,13 @@ gateway's own UI at its origin ("Phone apps" below), so they speak this contract
 as the browser does. Change it deliberately: it is the seam the whole app is
 built across.
 
-Gateway API routes live under `/__hui/` and require the `x-hui: 1` header. Expected
-client errors use `{ "error": "message worth showing the user" }` with a 4xx
-status; storage/backend failures use the same shape with 500.
+Gateway API routes live under `/__hui/` and require the `x-hui: 1` header. A page
+on any site can reach localhost, but it cannot set a custom header without a
+preflight, and only one route answers one: `GET /__hui/update` (see [Adding a
+gateway](#adding-a-gateway)). Every other route refuses a preflight with 403 and
+carries no CORS header. Expected client errors use `{ "error": "message worth
+showing the user" }` with a 4xx status; storage/backend failures use the same
+shape with 500.
 
 ## Phone apps
 
@@ -104,7 +108,15 @@ running gateway address only after the existing CLI identity checks. It uses
 that gateway's origin rather than exposing control credentials to the renderer.
 Window close and application quit do not stop the shared gateway. Existing
 stop/restart/update busy-work checks remain unchanged; no desktop HTTP endpoints
-or alternate persisted gateway state are introduced.
+or alternate persisted gateway state are introduced. The window's native color
+mode is the device's own: a sandboxed preload exposes only
+`huiDesktop.reportThemeMode(mode)`, `huiDesktop.appearanceSeed()` and
+`huiDesktop.markAppearanceSeedConsumed()`. The page reports the mode it stored in
+its `hui.appearance.v1` storage, and the shell keeps the last one in its
+`userData` so the next launch paints its window before the page loads. The shell
+never asks the gateway what appearance to use: the one look it hands over is the
+seed `hui doctor --fix` writes (see [HUI-owned presentation
+state](#hui-owned-presentation-state)).
 
 ### Desktop notifications
 
@@ -213,7 +225,7 @@ routes expose `UpdateSnapshot` from `server/api/updates.ts`:
 
 | Route | Behavior |
 | --- | --- |
-| `GET /__hui/update` | Running package version, last in-process check and latest updater receipt; no remote request |
+| `GET /__hui/update` | The gateway's own name, running package version, last in-process check and latest updater receipt; no remote request. The one route another origin may read |
 | `GET /__hui/update/check` | Background discovery; use the gateway's one-hour in-memory check cache, shared across browsers |
 | `POST /__hui/update/check` | Check latest stable GitHub release; never install or restart |
 | `POST /__hui/update` | Accept only `{ version: "x.y.z" }` matching an installable check; return 202 after detached updater starts |
@@ -224,6 +236,8 @@ routes expose `UpdateSnapshot` from `server/api/updates.ts`:
 ### `POST /__hui/update`
 
 The table above describes these routes. Their response is `UpdateSnapshot`; the install request is `UpdateRequest`.
+`name` is the name `GET /__hui/health` reports, so a client can add a gateway by
+address without opening health to another origin.
 
 Malformed input returns 400; absent/stale checks, active sessions a restart
 would interrupt, or concurrent operations return 409. Pi Durable runs do not
@@ -835,8 +849,35 @@ neither is read, and the next `PUT` leaves them out.
 
 ### `GET /__hui/health`
 
-Returns gateway uptime, `HTTP + SSE`, the fixed `Full Access` product mode and
-registered/live PI runtime counts per session status. This endpoint is diagnostic and read-only.
+Returns the gateway's `name`, its uptime, `HTTP + SSE`, the fixed `Full Access`
+product mode and registered/live PI runtime counts per session status. `name` is
+the operator's name for this gateway (`name` in `Settings`), or the hostname of
+the machine it runs on when none is saved; a machine that reports no hostname
+falls back to `HUI`. The saved setting is never filled in with that fallback.
+This endpoint is diagnostic and read-only.
+
+### Adding a gateway
+
+A client that keeps several gateways probes one before it adds it
+(SPEC.md "A device keeps a list of gateways"). The probe is `GET /__hui/update`
+with `x-hui: 1`: it needs the header, so a browser sends a preflight first, and
+this route — and only this route — answers one.
+
+- `OPTIONS /__hui/update` answers 204 with `access-control-allow-origin: *`,
+  `access-control-allow-methods: GET`, `access-control-allow-headers: x-hui`,
+  `access-control-max-age: 600` and `vary: origin`. No other route answers a
+  preflight; they all keep the 403 the `x-hui` gate gives them.
+- `GET /__hui/update` carries `access-control-allow-origin: *` and
+  `vary: origin` as well, so the answer is readable from another origin.
+
+The wildcard is deliberate and narrow: `UpdateSnapshot` there carries the
+gateway's name, its package version and an updater receipt with a job id — no
+session, setting, credential or transcript. The name comes from the same rule
+`GET /__hui/health` uses, so the two agree, and health stays same-origin. A
+gateway older than this handshake cannot be added from the page: it answers the
+preflight with 403, so the probe fails and nothing is stored. The route takes no
+credentials and sends no cookies; `*` is refused by a browser for a request made
+with them, which is why it is safe here.
 
 ### macOS power
 
@@ -1277,7 +1318,7 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `create_session` | Only a Chief of Staff bot may call this; a normal agent is refused and uses `sessions_spawn`. `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker (its id, its name, or `local` for this machine); the caller's directory, group, worker, model and thinking are defaults. The brief is the session's first prompt, tagged from the calling bot like every message a bot sends into a chat; it is not a child, so `sessions_list` and `sessions_history` do not show it |
+| `create_session` | Only a Chief of Staff bot may call this; a normal agent is refused and uses `sessions_spawn`. `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker (its id, its name, or `local` for this machine); the caller's directory, group, worker, model and thinking are defaults. The brief is the session's first prompt, tagged from the calling bot like every message a bot sends into a chat; it becomes the PR lead, with HUI's phase protocol, and is not a child, so `sessions_list` and `sessions_history` do not show it |
 | `watch_session` | `{ action: "list" | "add" | "remove", session? }`: list the sessions the caller watches with their status, goal and watchers; add a session in the caller's group; or remove it. A watched session becomes visible to the caller's `sessions_list`, `sessions_history` and `sessions_send`; HUI's gateway heartbeat continues it when it stops. An archived session, a bot's chat and a session in another group cannot be watched |
 | `worker_stats` | `{}`: this machine and every configured worker with CPU, memory, disk, GPU, connection state and running session counts, plus the least loaded connected machine within headroom (CPU under 70%, memory under 80%, disk under 85%, fewer running sessions than half its cores). A disconnected or erroring worker has no metrics and is not recommended; when every machine is over a limit the reply carries `leastLoaded` instead; `local` is the gateway's machine |
 | `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/route or model/thinking, a bounded run timeout and `collect`; a `route` resolves to its model and pinned reasoning level from HUI settings before the child exists, and a route that is unknown, sent together with `model`, or whose model is missing from the caller's available models is rejected before any child is created, naming the route to fix or the configured route names; a raw `model` missing from that catalog names close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
@@ -2040,7 +2081,7 @@ Query `id=&n=`.
 
 ### `POST /__hui/heartbeat`
 
-200 `{ continued: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and continues each idle watched session with no running watcher, at most once per idle span. If the watched session's last reply asks for a decision, or it is waiting for an answer or errored, the heartbeat tells the session that watches it instead of prompting the target. It starts no bot turn and writes nothing into a bot's chat. The same scan runs at gateway start and every 15 minutes; this route lets the operator check without waiting. There is no request body.
+200 `{ notified: string[] }`. Runs the gateway heartbeat now: it scans the sessions bots watch and reports each idle, waiting, errored or done watched session to the session that watches it, at most once per state change. It never prompts the watched session itself; the chief reads the last reply and decides whether to send a specific followup or remove the watch. The same scan runs at gateway start and every 15 minutes; this route lets the operator check without waiting. There is no request body. The same scan runs at gateway start and every 15 minutes; this route lets the operator check without waiting. There is no request body.
 
 ### `POST /__hui/staff/chiefs`
 
@@ -2342,12 +2383,15 @@ API included. Real isolation means running the bot on a worker in a container.
 
 ### A forever chat
 
-Bot chats refuse what would reset, shorten, fork or delete them, with 409 and a
-message naming the bot: `POST /__hui/sessions/:id/clear`, `POST …/compact`,
-`POST …/rewind`, `POST …/fork` and `DELETE /__hui/sessions/:id` (archive the bot instead, or
-delete it with `DELETE /__hui/bots/:id?permanent=1`).
-Model and thinking changes stay allowed. The prompt route already refuses
-`/clear` and `/compact` text for every session.
+Bot chats refuse what would shorten, fork or delete them, with 409 and a message
+naming the bot: `POST /__hui/sessions/:id/compact`, `POST …/fork` and
+`DELETE /__hui/sessions/:id` (archive the bot instead, or delete it with
+`DELETE /__hui/bots/:id?permanent=1`). `POST …/clear` and `POST …/rewind` succeed
+on a bot's chat: a clear empties its transcript and its OptChat memory, and a
+rewind keeps the bot and its memory to the kept branch (see the clear and rewind
+routes). Model and thinking changes stay allowed. The prompt route already
+refuses `/clear` and `/compact` text for every session, and the bot message
+route refuses `/clear`, so a routine or another bot cannot clear the chat.
 
 A bot's chat has several writers: its routines, other bots, the bot messages
 route and every client of the session routes. So that each sees a message
@@ -3122,8 +3166,12 @@ arrive turned off), the previous owner's own onboarding body when there was one,
 that its memory never travels, and the instructions the imported bot follows in its
 first conversation (`## How to run this`: greet, go through the points one or two at
 a time, ask rather than answer for them, write the answers to USER.md, MEMORY.md and
-SOUL.md). It is bounded (`BOT_SETUP_CHARACTERS`, 8,000): over it items are left out
-and counted, never cut. Then `bot.json`, `SOUL.md` and `skills/<name>/…`, scripts
+SOUL.md). It is bounded (`BOT_SETUP_CHARACTERS`, the bot's own `BOOTSTRAP.md`
+limit, 6,000): over it items are left out
+and counted, never cut, and the previous owner's own onboarding body goes
+first, so the points, needs and schedules stay. The build says how full it is
+and what it left out (`setup: { characters, limit, dropped }`), which the dialog
+shows. Then `bot.json`, `SOUL.md` and `skills/<name>/…`, scripts
 picked `remove` left out. No export date: every entry is
 dated 1980-01-01 (a local date would tell the time zone), and the file is named
 from the bot's final name (`botExportFileName`, `{{user}}` left out).
@@ -3533,8 +3581,9 @@ it returns `409`. HUI invokes PI's native `new_session` RPC, refreshes the new
 runtime identity and empty history, then stores the replacement `piSessionFile`
 in the existing HUI registry row. Title, group, cwd, model and thinking
 preferences remain attached to that row. PI's previous JSONL is left untouched,
-and `/clear` itself is not added to either transcript. A bot's chat answers 409
-([a forever chat](#a-forever-chat)). A registry persistence
+and `/clear` itself is not added to either transcript. A bot's chat clears too:
+its OptChat memory starts over at the reset and stays empty after a restart
+(`cutoff.json`). A registry persistence
 failure is explicit because the live runtime has already moved to the fresh
 session and a later reopen may otherwise resume the previous pointer.
 
@@ -3908,8 +3957,11 @@ branch, where PI persisted that prompt when it accepted it. A prompt PI refused
 offers no rewind. The abandoned branch remains in PI's
 append-only tree. An active run is stopped
 before the branch changes; queued or waiting sessions return 409, and an
-unknown entry, or a rewind while PI is still compacting, returns 400. A bot's
-chat answers 409 ([a forever chat](#a-forever-chat)).
+unknown entry, or a rewind while PI is still compacting, returns 400. On a Pi
+Durable bot's chat the rewind keeps the bot: the fork carries the bot's document
+and OptChat, its memory is rebuilt from the kept branch, and the abandoned
+branch's memory is forgotten ([a forever chat](#a-forever-chat)). A rewind to
+before the chat's first message clears it instead (the chat stays the bot's).
 
 A compaction only applies while its entry is on the active branch. Rewinding
 behind it to a point inside the window PI kept verbatim appends the same
@@ -3939,7 +3991,8 @@ source's `cwd` (or the worktree), `worker`,
 `group`, `tool`, `model` and `thinking`, is titled `<title> (fork)` and
 carries none of its organizer fields (`pinned`, `unread`, `icon`,
 `jiraIssues`, `stage`). The copy keeps the Durable agent as of the fork entry
-and starts without OptChat; without a worktree no Git state changes. A malformed body, an entry
+and carries its documents, so a copy of a conversation with OptChat keeps it (a bot's chat itself answers 409, below). Without a worktree no Git state changes.
+A malformed body, an entry
 that is unknown or still waiting on its tool calls, or a session whose runtime
 cannot fork (PI) returns 400. A bot's chat answers 409
 ([a forever chat](#a-forever-chat)).
@@ -4334,14 +4387,17 @@ fields unchanged. Mapping and contrast adjustment happen when HUI applies the th
 ### `GET /__hui/settings`
 
 Returns the normalized HUI `Settings` document, including `BrowserSettings`
-and `VscodeSettings`. Missing or malformed saved settings use the defaults.
+and `VscodeSettings`. Missing or malformed saved settings use the defaults. The
+document holds only what the gateway owns: it carries no theme, color mode,
+accent, typeface, text size or chat preference, because those belong to the
+device that shows them (see [HUI-owned presentation state](#hui-owned-presentation-state)).
 
 ### `PUT /__hui/settings`
 
 Normalizes and saves the supplied settings, then returns the saved `Settings`.
 Missing or invalid fields use their defaults rather than the previous values.
 The gateway applies the settings to its running services. Neither route changes
-PI's configuration.
+PI's configuration, and neither carries this device's appearance.
 
 ### `GET /__hui/ext`
 
@@ -4435,15 +4491,35 @@ overrides one. Extensions the operator installs start disabled.
 
 ### HUI-owned presentation state
 
-`PUT /__hui/settings` also persists the validated `#rrggbb` accent override,
-independent `fontUi` and `fontChat` choices from HUI's bounded OpenClaw font
-catalogue, a `fontTerminal` local family name (1–128 characters, default
-`JetBrains Mono`; blank or invalid values reset to default), the shared `textScale`,
-OpenClaw-compatible HUI chat preferences (`messageWidth`,
-`collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
-[`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
-Profile presentation fields and reversible Labs flags (`labs`:
-`denseObservability` and `detailedDebug`, each off unless explicitly `true`).
+The gateway's `settings.json` keeps what a gateway owns, not what a screen owns.
+It holds [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by
+default), Profile presentation fields, the gateway's own `name` (trimmed, at most 60
+characters, `""` by default; empty means this machine's hostname, which is what
+`GET /__hui/health` and the browser show), reversible Labs flags (`labs`:
+`denseObservability` and `detailedDebug`, each off unless explicitly `true`) and
+one `chat` object holding a tool's own mark and icon file per CLI or tool name
+(`toolMarks`, `toolIcons`; the icon files live in the gateway's config directory,
+so every device reads the same maps).
+
+Appearance is not there. A theme, color mode, accent, interface, chat-prose or
+terminal typeface, text size and the chat preferences (`messageWidth`,
+`collapseTaskProgress`, `sendShortcut`, `githubEmbeds`, `datadogEmbeds`) belong to
+the client that shows them, and are kept in that client's own storage under the
+versioned `hui.appearance.v1` key: one gateway serves many screens and people, so
+two clients must be able to disagree, and a phone's WebView keeps its own copy per
+app install. A device that stored nothing starts from HUI's defaults rather than
+from the gateway's old values, and corrupt or absent storage reads as those
+defaults. The desktop app's native window chrome follows the mode the page reports
+to it over a preload bridge and keeps the last one in its own `userData`.
+`hui doctor` reports a `settings.json` that still carries the moved keys and
+rewrites it without them under `--fix`, after writing the look alone (no chat
+preference: those are habits, not a screen) to `desktop-appearance.json` in the
+gateway's config directory as `{ format: 1, gateway, exportedAt, appearance }`.
+HUI's desktop app hands that seed to its page, which applies it only to a device
+that stored no appearance of its own and then marks it consumed; nothing is
+written when the look is only HUI's defaults. The seed is written on the
+gateway's machine, so a desktop app running elsewhere takes the file by hand.
+
 These values affect HUI only. They never change PI configuration, provider
 identity, runtime permissions or transcripts.
 
@@ -6035,7 +6111,7 @@ call ends as **one record** in the chat.
 
 Request `{ sdp }`.
 
-201 `CallStarted`. Refused with 409 for an archived bot. The offer is at most 64 KB, a session description with audio and no video (400 otherwise). The gateway builds the session (below), posts `{ sdp, session }` to `https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas` with `Authorization: Bearer <access>`, `chatgpt-account-id`, `OpenAI-Alpha: quicksilver=v2`, fresh `session-id`, `thread-id` and `x-session-id`, and `originator: pi` (30 s timeout, no redirects), and returns only the answer SDP and HUI's own call id. A 401, 403 or 429 hands the call to the next account; when every account refuses, or ChatGPT fails, the answer is 502 `{ error, upstreamStatus }` with a message written for the browser (401: sign in again; 403: not available on this account or plan, or the voice refused; 429: the voice limit reached). ChatGPT's own body goes only to diagnostics, redacted. No ChatGPT login, or every account waiting, is 409; a third concurrent call is 429
+201 `CallStarted`. Refused with 409 for an archived bot. The offer is at most 64 KB, a session description with audio and no video (400 otherwise). The gateway first writes the call's **handoff note**: the bot's utility model, from its SOUL.md, its OptChat view, the newest messages of its chat verbatim and its saved knowledge, in at most 6 s (`CALL_LIMITS.handoffSeconds`; when no model answers in time the call starts without it), bounded to 1,600 characters. The session's instructions carry that note and the newest chat messages (its newest 4 KB) after the memory, so a handoff given minutes before the call is still there. It then posts `{ sdp, session }` to `https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas` with `Authorization: Bearer <access>`, `chatgpt-account-id`, `OpenAI-Alpha: quicksilver=v2`, fresh `session-id`, `thread-id` and `x-session-id`, and `originator: pi` (30 s timeout, no redirects), and returns only the answer SDP and HUI's own call id. A 401, 403 or 429 hands the call to the next account; when every account refuses, or ChatGPT fails, the answer is 502 `{ error, upstreamStatus }` with a message written for the browser (401: sign in again; 403: not available on this account or plan, or the voice refused; 429: the voice limit reached). ChatGPT's own body goes only to diagnostics, redacted. No ChatGPT login, or every account waiting, is 409; a third concurrent call is 429
 
 ### `POST /__hui/bots/:id/calls/:callId/lines`
 
@@ -6047,7 +6123,7 @@ Request `{ lines: [{ role, text, at? }] }`.
 
 Request `{ id, request }`.
 
-`CallDelegationResult`. `id` is GPT-Live's delegation item, `request` its text (≤ 4,000 characters, one line). The request goes through one seam (`CallDelegate` in `server/routes/calls.ts`, implemented in `server/bots/call-helper.ts`): the bot's **call helper**, one completion on the bot's utility model at low thinking (below), from the bot's SOUL.md (or a note that it has none yet), its OptChat view (its newest 16 KB), the call so far and the request. It never waits for or queues behind the bot's own turn. `answered`: `speak` is its answer (≤ 1,800 characters). When the request needs tools, files, current information or an action, the helper hands it off: `[call task] <task>` goes to the bot's chat as any message (a prompt, or a follow-up behind a running turn) on the bot's own model, and the result is `handed-off` with the task's id. The helper has 25 s per question (`timeout` past it: GPT-Live says it is taking long and offers to hand it off) and answers 6 questions per call; past them every request is handed off, and a call hands off at most 4 tasks (`limit`). `failed` says why no model answered. A client that leaves ends the wait
+`CallDelegationResult`. `id` is GPT-Live's delegation item, `request` its text (≤ 4,000 characters, one line). The request goes through one seam (`CallDelegate` in `server/routes/calls.ts`, implemented in `server/bots/call-helper.ts`): the bot's **call helper**, one completion on the bot's utility model at low thinking (below), from the bot's SOUL.md (or a note that it has none yet), its OptChat view (its newest 16 KB), the newest messages of its chat verbatim (its newest 4 KB, read again at every question), its saved knowledge, the call so far and the request. It never waits for or queues behind the bot's own turn. `answered`: `speak` is its answer (≤ 1,800 characters). When the request needs tools, files, current information or an action, or the answer is not in what it reads, the helper hands it off: `[call task] <task>` goes to the bot's chat as any message (a prompt, or a follow-up behind a running turn) on the bot's own model, and the result is `handed-off` with the task's id. The helper is told never to answer that it does not know: an unknown is a hand-off. It has 25 s per question (`timeout` past it: GPT-Live says it is taking long and offers to hand it off). A call keeps no per-call count: every question is answered or handed off, and the call's 15-minute limit ends the talk. `failed` says why no model answered. A client that leaves ends the wait
 
 ### `POST /__hui/bots/:id/calls/:callId/tasks/:task`
 

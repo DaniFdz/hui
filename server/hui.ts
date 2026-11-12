@@ -86,6 +86,7 @@ import {
 
 const PREFIX = "/__hui/";
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
+const UPDATE_ROUTE = `${PREFIX}update`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
 const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 
@@ -124,6 +125,24 @@ function sendRouteResult(response: ServerResponse, path: string, result: RouteRe
 function answered(response: ServerResponse, path: string, result: RouteResult | undefined): boolean {
   if (result) sendRouteResult(response, path, result);
   return Boolean(result);
+}
+
+/**
+ * The one route another origin may read: `GET /__hui/update` answers with a version, a job id and the gateway's own
+ * name, never user data, so a client that keeps several gateways can probe one before adding it (SPEC.md "A device
+ * keeps a list of gateways"). A browser only sends `x-hui` after a preflight, so this route answers that too; every
+ * other route keeps refusing both. Returns true when this answered the request.
+ */
+function allowUpdateFromAnotherOrigin(request: Connect.IncomingMessage, response: ServerResponse): boolean {
+  response.setHeader("access-control-allow-origin", "*");
+  response.setHeader("vary", "origin");
+  if (request.method !== "OPTIONS") return false;
+  response.statusCode = 204;
+  response.setHeader("access-control-allow-methods", "GET");
+  response.setHeader("access-control-allow-headers", CLIENT_HEADER);
+  response.setHeader("access-control-max-age", "600");
+  response.end();
+  return true;
 }
 
 /** The SSE form of a session's events, for scripts and other HTTP clients.
@@ -326,6 +345,10 @@ async function handleRequest(
     response.end(icon.bytes);
     return;
   }
+
+  // Before the gate and the blanket OPTIONS refusal below: this is the one header-carrying request another origin may
+  // make, and only to the route that answers with the gateway's identity.
+  if (path === UPDATE_ROUTE && allowUpdateFromAnotherOrigin(request, response)) return;
 
   if (request.method === "OPTIONS") {
     sendJson(response, 403, { error: "cross-origin requests are not accepted" });

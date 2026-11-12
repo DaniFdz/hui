@@ -13,7 +13,7 @@ const cases: UseCase[] = [
     id: "SHELL-001",
     title: "Open Home",
     behaviour:
-      "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs. On a phone the same sidebar is the drawer (SHELL-011): **Open navigation** opens it, and the desktop **Collapse sidebar** control is hidden there (SHELL-015).",
+      "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings sits in the sidebar's header row beside **Collapse sidebar** and the Agents and Bots tabs, so both lists reach it, and the footer below both lists is this page's gateway.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
@@ -511,13 +511,24 @@ const cases: UseCase[] = [
     phone: { excluded: "The phone app is always narrow, so its sidebar is the drawer, which has no boundary.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
-    id: "SHELL-049",
+    id: "SHELL-050",
     title: "Clear of the phone's own chrome",
     behaviour:
       "The status bar, the notch and the home indicator never cover HUI's own chrome: the header a phone draws starts below the top inset so its menu button is a full tap, and the composer ends above the bottom one. A page loaded in a browser reserves the insets itself (\`viewport-fit=cover\` is set, and Safari does not inset the layout); the installed app pads the page's frame natively and reports the tokens as zero, and a standalone page pads \`body\`, so no surface counts an inset twice.",
     spec: [LAYOUT],
     surfaces: ["nav:session", "nav:home"],
     journeys: ["phone", "shell-navigation"],
+    web: "required",
+    phone: "backlog",
+  },
+  {
+    id: "SHELL-049",
+    title: "See this page's gateway and switch from the sidebar footer",
+    behaviour:
+      "The sidebar's footer is one button named after the gateway serving this page, with a state dot. Opening it lists **Gateways**: that one marked *Current*, then every other gateway this device added by its own name, then **Add a gateway…**. Choosing another gateway opens that address in this page, and **Add a gateway…** opens Settings → Gateway. Escape closes the list and returns focus to the button.",
+    spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", GATEWAY, "docs/api.md#adding-a-gateway"],
+    surfaces: ["route:GET /__hui/update", "route:GET /__hui/health", "nav:settings"],
+    journeys: ["gateway-settings"],
     web: "required",
     phone: "backlog",
   },

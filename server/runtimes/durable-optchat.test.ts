@@ -603,3 +603,130 @@ test("a call's record lands in the chat as one card and in OptChat's view, and t
   assert.match(viewOf(turn!).view, /User: Remember that my sister's birthday is March 3\./u, "the bot's next turn starts from a view holding the call");
   assert.equal(session.transcript().filter((entry) => entry.kind === "message").length, 2, "no turn ran for the call");
 });
+
+// ── A bot's clear and rewind (its memory follows the kept branch; a clear empties it) ────────────────────────────
+
+/** A bot's conversation as a bot is created: its document names the bot, and OptChat is on, in the creating commit. */
+async function botChatSession(f: Fixture, host: DurableHost, huiSessionId: string) {
+  const { BotDoc } = await import("../bots/durable.ts");
+  const conversation = await (await host.open()).createConversation({
+    ownership: { kind: "ownerless" },
+    agent: { cwd: f.cwd, model: { provider: f.provider, modelId: "fixture" } },
+    init: async (tx, id) => {
+      (await tx.doc(BotDoc, id)).bot = "ada";
+      await enableOptChat(tx, id, { name: "Ada" });
+    },
+  }, durableContext);
+  const session = await startDurable({ cwd: f.cwd, sessionFile: durableReference(conversation.id), huiSessionId }, host);
+  return { session, id: conversation.id };
+}
+
+test("a bot's rewind keeps the bot and its OptChat, and its memory holds only the kept branch", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const { BotDoc } = await import("../bots/durable.ts");
+  const { session, id } = await botChatSession(f, host, "bot-rewind");
+  await turns(session, ["OPT_A first", "OPT_B second", "OPT_C third"]);
+  await statusWhere(host, id, (status) => status.messages === 6 && status.pending === 0);
+  const original = session.sessionFile;
+
+  // Rewind to before "OPT_B": the kept branch is "OPT_A" and its answer; the abandoned branch's memory is forgotten.
+  await session.rewind({ userFromEnd: 1 }, { excludeUserMessage: true });
+  assert.notEqual(session.sessionFile, original, "a rewind forks the conversation");
+  const forked = Number(session.sessionId) as ConversationId;
+  const harness = await host.open();
+  assert.equal((await harness.snapshot(BotDoc, forked, durableContext))?.bot, "ada", "the fork is still the bot's");
+  assert.equal((await harness.snapshot(OptChatDoc, forked, durableContext))?.enabled, true, "the fork keeps OptChat");
+  const kept = await statusWhere(host, forked, (status) => status.messages === 2 && status.pending === 0);
+  assert.equal(kept.messages, 2);
+  const view = String(await host.optchat.view(forked));
+  assert.match(view, /OPT_A first/u);
+  assert.doesNotMatch(view, /OPT_B|OPT_C/u, "the abandoned branch is forgotten");
+  assert.equal(existsSync(join(f.store, "optchat", String(id), "main")), false, "the abandoned branch's memory files are gone");
+  assert.equal((await harness.snapshot(BotDoc, id, durableContext))?.bot, "", "the abandoned branch stops being the bot's chat");
+  assert.equal((await harness.snapshot(OptChatDoc, id, durableContext))?.enabled, true, "its OptChat document is left as it is");
+  assert.equal(await host.optchat.status(id), undefined, "the abandoned branch's memory does not open again");
+
+  // The bot keeps talking from the kept branch, and its memory takes the new turn.
+  await turns(session, ["OPT_D after the rewind"]);
+  await statusWhere(host, forked, (status) => status.messages === 4 && status.pending === 0);
+  assert.match(String(await host.optchat.view(forked)), /OPT_D after the rewind/u);
+  // A restart reads the same memory: the abandoned branch stays forgotten.
+  await host.close();
+  const second = f.host();
+  await second.open();
+  const reopened = await statusWhere(second, forked, (status) => status.messages === 4 && status.pending === 0);
+  assert.equal(reopened.messages, 4);
+  assert.doesNotMatch(String(await second.optchat.view(forked)), /OPT_B|OPT_C/u);
+  assert.equal(await second.optchat.status(id), undefined, "after a restart the abandoned branch still does not reopen");
+  assert.equal(existsSync(join(f.store, "optchat", String(id), "main")), false);
+});
+
+test("a clear empties a bot's memory, and it stays empty after the gateway restarts", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const { session, id } = await botChatSession(f, host, "bot-clear");
+  await turns(session, ["OPT_CLEAR one", "OPT_CLEAR two"]);
+  await statusWhere(host, id, (status) => status.messages === 4 && status.pending === 0);
+
+  await session.clear();
+  assert.equal(session.transcript().length, 0, "the transcript starts again");
+  await statusWhere(host, id, (status) => status.messages === 0);
+  assert.equal(await host.optchat.view(id), "<chat>\n\n</chat>");
+  assert.equal(await (await host.open()).snapshot(OptChatDoc, id, durableContext).then((state) => state?.enabled), true, "still the bot's OptChat");
+  await host.close();
+
+  // The memory reopens empty: the cutoff keeps the cleared history out of it.
+  const second = f.host();
+  await second.open();
+  assert.equal((await second.optchat.status(id))?.messages, 0);
+  assert.equal(await second.optchat.view(id), "<chat>\n\n</chat>");
+
+  // What is said after the clear is the memory's whole history.
+  const reopened = await startDurable({ cwd: f.cwd, sessionFile: durableReference(id), huiSessionId: "bot-clear-again" }, second);
+  await turns(reopened, ["OPT_AFTER_CLEAR three"]);
+  await statusWhere(second, id, (status) => status.messages === 2 && status.pending === 0);
+  const view = String(await second.optchat.view(id));
+  assert.match(view, /OPT_AFTER_CLEAR three/u);
+  assert.doesNotMatch(view, /OPT_CLEAR/u, "nothing before the clear reaches the memory");
+});
+
+test("a clear the gateway did not see converges when the memory opens again", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  const first = f.host();
+  const { session, id } = await botChatSession(f, first, "bot-clear-offline");
+  await turns(session, ["OPT_OFFLINE_CLEAR before"]);
+  await statusWhere(first, id, (status) => status.messages === 2 && status.pending === 0);
+  session.dispose();
+  await first.close();
+
+  // A reset committed while no gateway follows the conversation, as a clear from another process would.
+  const raw = await Harness.open(await openNodeSqliteStorage(join(f.store, "harness.sqlite")), { models: { getAuth: () => undefined } as unknown as Models, registry: createRegistry() }, durableContext);
+  const conversation = (await raw.conversation(id, durableContext))!;
+  await conversation.reset(undefined, durableContext);
+  await raw.close(durableContext);
+
+  const second = f.host();
+  await second.open();
+  const status = await statusWhere(second, id, (candidate) => candidate.messages === 0 && candidate.pending === 0);
+  assert.equal(status.messages, 0);
+  assert.doesNotMatch(String(await second.optchat.view(id)), /OPT_OFFLINE_CLEAR/u);
+  const cutoff = JSON.parse((await readFile(join(f.store, "optchat", String(id), "cutoff.json"), "utf8")).trim()) as { entry?: number };
+  assert(Number.isSafeInteger(cutoff.entry), "the cutoff names the reset");
+});
+
+test("a rewind before a bot's first message clears the chat instead, so the bot and its memory stay", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const { BotDoc } = await import("../bots/durable.ts");
+  const { session, id } = await botChatSession(f, host, "bot-rewind-first");
+  await turns(session, ["OPT_FIRST only"]);
+  await statusWhere(host, id, (status) => status.messages === 2 && status.pending === 0);
+  const sessionFile = session.sessionFile;
+
+  await session.rewind({ userFromEnd: 0 }, { excludeUserMessage: true });
+  assert.equal(session.sessionFile, sessionFile, "no fork: the chat is cleared in place");
+  assert.equal((await (await host.open()).snapshot(BotDoc, id, durableContext))?.bot, "ada");
+  await statusWhere(host, id, (status) => status.messages === 0);
+  assert.equal((await (await host.open()).snapshot(OptChatDoc, id, durableContext))?.enabled, true);
+});

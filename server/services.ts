@@ -26,11 +26,12 @@ import { localBotSkills } from "./bots/skills.ts";
 import { durableBotConversations } from "./bots/conversations.ts";
 import { CallBroker, providerCallAccounts } from "./bots/calls.ts";
 import { createCallRoutes } from "./routes/calls.ts";
-import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./bots/call-helper.ts";
+import { buildCallHandoff, buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall, utilityCandidates } from "./bots/call-helper.ts";
 import { optChatBotMemory } from "./bots/memory.ts";
 import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
 import { readStaffPack } from "./staff/pack.ts";
-import { ensureStaff } from "./staff/service.ts";
+import { ensureStaff, recordChief, type StaffDeps } from "./staff/service.ts";
+import { LEAD_PROMPT } from "./sessions/lead.ts";
 import { botTagPrefix, type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
@@ -251,6 +252,27 @@ export const bots = new BotService({
   },
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
+/** The staff pack on disk, this gateway's bots and their own skills, and Settings' routes: what the installer needs to
+ * seed the Chief of Staff, keep every group chief current, and record a chief the route just created. */
+async function staffDeps(): Promise<StaffDeps> {
+  return {
+    pack: await readStaffPack(),
+    createBot: async (body) => {
+      const view = await bots.create(body);
+      return { id: view.id };
+    },
+    bots: async () => (await botRegistry.list()).map((bot) => ({
+      id: bot.id,
+      name: bot.name,
+      ...(bot.title ? { title: bot.title } : {}),
+      ...(bot.group ? { group: bot.group } : {}),
+      ...(bot.worker ? { worker: bot.worker } : {}),
+    })),
+    skills: localBotSkills(),
+    readSettings: readHuiSettings,
+    writeSettings: writeHuiSettings,
+  };
+}
 export const staffRoutes = createStaffRoutes({
   bots: () => botRegistry.list(),
   getBot: (id) => bots.get(id),
@@ -259,6 +281,7 @@ export const staffRoutes = createStaffRoutes({
   skills: localBotSkills(),
   readSettings: readHuiSettings,
   writeSettings: writeHuiSettings,
+  recordChief: async (botId) => recordChief(await staffDeps(), botId),
 });
 export const botRoutes = createBotRoutes({
   service: bots,
@@ -273,20 +296,11 @@ export const botRoutes = createBotRoutes({
 /** Bots imported from other platforms' templates (`bots/template-import.ts`), and exported as templates reviewed for
  * personal information (`bots/export.ts`), under `/__hui/bots`. */
 const localSkills = localBotSkills();
-/** The staff pack: seeds the Chief of Staff once, then installs the pack's skills and routes into it (staff/,
- * server/staff/service.ts). Deleting the bot opts out; the record keeps HUI from seeding it again. */
+/** The staff pack: seeds the Chief of Staff once, then keeps the pack's skills and routes current in it and in every
+ * group chief (staff/, server/staff/service.ts). Deleting the seeded bot opts out; the record keeps HUI from seeding
+ * it again. */
 export const staff = {
-  ensure: async () => ensureStaff({
-    pack: await readStaffPack(),
-    createBot: async (body) => {
-      const view = await bots.create(body);
-      return { id: view.id };
-    },
-    botIds: async () => (await botRegistry.list()).map((bot) => bot.id),
-    skills: localSkills,
-    readSettings: readHuiSettings,
-    writeSettings: writeHuiSettings,
-  }),
+  ensure: async () => ensureStaff(await staffDeps()),
 };
 // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
 const newBotOffer = (worker?: string) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR);
@@ -366,12 +380,11 @@ export const watchers = new WatcherService({
   onChange: (id) => liveSessions.notifySnapshot(id),
 });
 export const watcherRoutes = createWatcherRoutes({ watchers, readRegistry });
-/** HUI's gateway heartbeat: no bot turn, just the watched sessions that stopped. */
+/** HUI's gateway heartbeat: it reports a watched session that needs judgment; the chief decides, not the gateway. */
 export const heartbeat = createHeartbeat({
   records: readRegistry,
   status: (id) => liveSessions.status(id),
   watchers: (id) => watchers.list(id),
-  prompt: (id, text) => liveSessions.prompt(id, text),
   lastAssistant: (id) => {
     const entries = liveSessions.transcript(id);
     for (let index = entries.length - 1; index >= 0; index -= 1) {
@@ -513,16 +526,20 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
   } as Record<string, unknown>);
-  // A session the caller starts is one it watches: its heartbeat can read it and continue it.
-  if (params["watch"] !== false) {
-    await updateRegistry((records) => records.map((current) => current.id === callerSessionId
-      ? { ...current, watches: [...new Set([...(current.watches ?? []), record.id])].slice(0, WATCH_LIMIT) }
-      : current));
-  }
+  // The session is the PR lead, and the caller watches it for the heartbeat.
+  await updateRegistry((records) => records.map((current) => {
+    if (current.id === record.id) return { ...current, lead: true as const };
+    if (current.id === callerSessionId && params["watch"] !== false) {
+      return { ...current, watches: [...new Set([...(current.watches ?? []), record.id])].slice(0, WATCH_LIMIT) };
+    }
+    return current;
+  }));
   // The session is registered and starts its runtime; the brief is its first prompt, not its title, and it carries the
   // bot's tag so the new chat shows who asked.
   await waitForSessionReady(record.id, 120_000);
-  await liveSessions.prompt(record.id, `${botTagPrefix(owner.handle)}${prompt}`);
+  // A worker host has no HUI registry, so carry the phase protocol in the prompt there; a local prompt adds it as a section.
+  const initial = worker ? `${prompt}\n\n${LEAD_PROMPT}` : prompt;
+  await liveSessions.prompt(record.id, `${botTagPrefix(owner.handle)}${initial}`);
   return {
     id: record.id,
     title: record.title,
@@ -697,8 +714,19 @@ const callBroker = new CallBroker({
 export const callRoutes = createCallRoutes({
   broker: callBroker,
   bots,
+  // The note a call starts with, on the same utility model its quick answers use: written from the soul, the memory, the
+  // newest chat messages and the saved knowledge, so a handoff given minutes earlier reaches the call.
+  handoff: async (input) => {
+    const settings = await callSettings();
+    return await buildCallHandoff({ ...input, operator: settings.operator }, {
+      completion: callCompletion,
+      models: utilityCandidates(input.bot, settings.utility),
+      report: reportCall,
+    });
+  },
   delegate: createCallDelegate({
     view: async (botId) => (await bots.callContext(botId)).view,
+    recent: async (botId) => (await bots.callContext(botId)).recent,
     soul: async (botId) => (await bots.soul(botId)) ?? undefined,
     facts: async (botId) => bots.facts(botId),
     settings: callSettings,

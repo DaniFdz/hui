@@ -393,6 +393,88 @@ wa-switch::part(base) { min-width: inherit; min-height: inherit; }
   overflow-wrap: anywhere;
 }
 
+/* This device's gateways: one row per address, the current one first, and the add field under them. The address is the
+   row's second line so a long hostname or path wraps there instead of pushing the controls off the row. */
+.settings-gateway-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-gateway {
+  align-items: center;
+}
+
+.settings-gateway__name {
+  overflow-wrap: anywhere;
+}
+
+.settings-gateway__address {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--control-ui-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.settings-gateway .settings-row__control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settings-gateway__state--current {
+  color: var(--text);
+}
+
+.settings-gateway__state--current .settings-status__dot {
+  background: var(--ok);
+}
+
+.settings-gateway__state--offline {
+  color: var(--danger);
+}
+
+.settings-gateway__state--offline .settings-status__dot {
+  background: var(--danger);
+}
+
+.settings-gateway-add .settings-row__control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-gateway-add .settings-input {
+  width: min(46vw, 260px);
+  min-width: 0;
+}
+
+.settings-gateway__error {
+  margin-top: 2px;
+  color: var(--danger);
+  font-size: var(--control-ui-text-sm);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .settings-gateway {
+    flex-wrap: wrap;
+  }
+
+  .settings-gateway .settings-row__control {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .settings-gateway-add {
+    flex-wrap: wrap;
+  }
+
+  .settings-gateway-add .settings-input {
+    width: 100%;
+  }
+}
+
 /* Worktrees table ------------------------------------------------------- */
 
 /* The reference key column sticks after a checkbox column; this table has

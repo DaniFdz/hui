@@ -60,6 +60,10 @@ test("a chosen theme and accent paint the boot screen of the next load in their 
   await expect.poll(async () => (await hui.look(title)).background).toEqual(MIAMI_BACKGROUND);
   await screen.getByLabel("Accent color").getByRole("button", "Blue").tap();
   await expect.poll(async () => (await hui.look(title)).color).toEqual(BLUE_ACCENT);
+  // The theme and accent are this device's, so they are what its next load paints the boot screen in.
+  await expect.poll(async () => (await hui.storedAppearance())?.theme).toBe("miami");
+  expect((await hui.storedAppearance())?.accent).toBe("#5b9cf6");
+  expect((await hui.api<Record<string, unknown>>("GET", "/__hui/settings")).theme).toBeUndefined();
 
   // Reading the settings page installed the offline worker; drop it so the next load asks for the held chunk.
   await hui.clearOffline();

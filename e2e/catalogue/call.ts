@@ -244,6 +244,24 @@ const cases: UseCase[] = [
     web: "required",
     phone: "backlog",
   },
+  {
+    id: "CALL-029",
+    title: "Start a call with the bot's handoff ready",
+    behaviour: "Starting a call keeps the call view at *Connecting…* while the bot's utility model writes its handoff note from its soul, its memory, the newest messages of its chat and its saved knowledge (at most six seconds); the note reaches the call's instructions and the bot speaks from it, so a handoff given in the chat minutes earlier is known on the call. When no model answers in time the call starts anyway, with the memory and the newest chat messages only.",
+    spec: [CALLS, "docs/api.md#post-__huibotsidcalls"],
+    surfaces: ["route:POST /__hui/bots/:id/calls"],
+    web: "backlog",
+    phone: "backlog",
+  },
+  {
+    id: "CALL-030",
+    title: "Hear the call ring while it is placed",
+    behaviour: "Starting a call plays a ringback tone (425 Hz, 1.5 s on and 3 s off) while the call view reads *Connecting…* and the gateway writes the bot's handoff note; the tone stops when the call is answered, when it fails and when it is hung up first, and a browser that cannot make audio places the call without it. The bot's first words name the bot, never ChatGPT.",
+    spec: [CALLS, "SPEC.md#calls-talk-through-gpt-live-opendots-style-2026-10-06"],
+    surfaces: ["route:POST /__hui/bots/:id/calls"],
+    web: "backlog",
+    phone: "backlog",
+  },
 ];
 
 export default cases;

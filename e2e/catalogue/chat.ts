@@ -26,7 +26,7 @@ const cases: UseCase[] = [
     behaviour:
       'On a keyboard device plain Enter sends (or steers while a run is busy), Shift+Enter adds a line and Command/Ctrl+Enter queues a follow-up; with the modifier-Enter preference plain Enter is a line break. While busy, the empty composer\'s placeholder names the shortcuts ("↵ adds to this run · ⌘↵ queues for later", Ctrl+↵ off Apple platforms).',
     spec: ["SPEC.md#live-chat-projection"],
-    surfaces: ["setting:chat.sendShortcut"],
+    surfaces: ["appearance:chat.sendShortcut"],
     journeys: ["slash-commands"],
     web: "required",
     phone: { excluded: "A keyboard-only affordance; Send message, and Enqueue in the held Send button's menu (CHAT-001, CHAT-005, CHAT-006) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
@@ -417,7 +417,7 @@ const cases: UseCase[] = [
     id: "CHAT-034",
     title: "Rewind to an earlier message",
     behaviour:
-      'Rewind to here on a settled user message acts at once, without a dialog: the message and everything after it leave the transcript and its exact text and attachments return to the focused composer, with "Message restored to the composer. The previous branch is kept.". It works while a run is busy by stopping it first, and is not offered on messages from bots or sessions, on unsent prompts or in a bot\'s chat.',
+      'Rewind to here on a settled user message acts at once, without a dialog: the message and everything after it leave the transcript and its exact text and attachments return to the focused composer, with "Message restored to the composer. The previous branch is kept.". It works while a run is busy by stopping it first, and is not offered on messages from bots or sessions, on unsent prompts. In a bot\'s chat a rewind keeps the bot and its memory to the kept branch (the abandoned branch is forgotten), and a rewind before its first message clears the chat.',
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisessionsidrewind"],
     surfaces: ["route:POST /__hui/sessions/:id/rewind"],
     journeys: ["rewind-continue", "compaction-rewind"],
@@ -516,7 +516,7 @@ const cases: UseCase[] = [
     id: "CHAT-041",
     title: "Clear a session with /clear",
     behaviour:
-      '/clear, listed as "Clear this session\'s context and start a fresh PI transcript", keeps the same sidebar row and title, empties the transcript to Start a conversation and says "Session context cleared."; the old transcript is kept on disk. With arguments or attachments it says "Use /clear without arguments or attachments.", while work is active "Finish or stop active work before clearing the session.", and a bot\'s chat neither lists nor runs it.',
+      '/clear, listed as "Clear this session\'s context and start a fresh PI transcript", keeps the same sidebar row and title, empties the transcript to Start a conversation and says "Session context cleared."; the old transcript is kept on disk. With arguments or attachments it says "Use /clear without arguments or attachments.", while work is active "Finish or stop active work before clearing the session.", and a bot\'s chat lists and runs it too: the bot\'s memory empties with the transcript.',
     spec: [
       "SPEC.md#live-chat-projection",
       "docs/api.md#post-__huisessionsidclear",

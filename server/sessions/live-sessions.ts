@@ -54,6 +54,16 @@ import { readHuiSettings } from "../hui-settings.ts";
 import type { Settings } from "../hui-settings.ts";
 
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
+/** A run that ends on a failure the next attempt can pass is retried by itself:
+ * a dropped connection would otherwise wait for the operator to press Continue.
+ * The last waits cover an outage of minutes, and a failure still on the record
+ * when the gateway starts or the Mac wakes gets a fresh set. */
+const AUTO_RESUME_DELAYS = [5_000, 20_000, 60_000, 180_000, 600_000];
+/** How long a recorded failure is worth retrying after the gateway restarts. */
+export const AUTO_RESUME_MAX_AGE_MS = 12 * 60 * 60_000;
+/** Messages a run died on where asking again unchanged can work. Anything else
+ * (a bad key, an unknown model, a refused request) only fails the same way. */
+const RETRYABLE_FAILURE = /timed? ?out|timeout|connection|disconnect|reconnect|offline|unreachable|fetch failed|socket hang up|ECONNRESET|ECONNREFUSED|network|overload|service unavailable|\b50[0234]\b|\b429\b|rate.?limit/iu;
 const MAX_RECENT_MESSAGES = 10_000;
 const RECENT_MESSAGES_MS = 60_000;
 
@@ -207,6 +217,10 @@ type Live = {
   /** Runtime error already logged in this run, so settlement does not log the
    * same failure twice. */
   loggedRunError?: string;
+  /** Retries already spent on runs that ended on a connection failure. */
+  autoResumeAttempts?: number;
+  /** The retry waiting for its delay; cleared by anything that takes over. */
+  autoResumeTimer?: ReturnType<typeof setTimeout>;
   /** Set before removing this entry so a slow boot cannot resurrect it. */
   closed?: boolean;
   /** A boot reattaching to a runtime hosted elsewhere is in flight. */
@@ -251,6 +265,13 @@ function removedQueueEntries(previous: readonly string[], next: readonly string[
 /** A prompt arriving at a bad moment — the session is booting or already
  * working. The route turns this into a 409 rather than a server error. */
 export class SessionBusyError extends Error {}
+
+/** A failure HUI still means to retry: set when a run ended on one, within the
+ * window a restart or a wake keeps it. */
+export function retryableRunFailure(record: SessionRecord): boolean {
+  const at = Date.parse(record.runFailedAt ?? "");
+  return Number.isFinite(at) && Date.now() - at <= AUTO_RESUME_MAX_AGE_MS;
+}
 
 export class LiveSessions {
   /** In-memory check used at the shutdown boundary, without a registry race. */
@@ -304,6 +325,7 @@ export class LiveSessions {
   /** Hands a settled conversation to the progress refresher; it never delays the settle. */
   #progressRefresh: (sessionId: string, transcript: readonly TranscriptEntry[]) => void = () => {};
   #aborted: (sessionId: string) => void = () => {};
+  #autoResumeDelays: readonly number[];
 
   /** Injectable so the state machine can be exercised without waiting to boot a
    * real tool. A single runtime stands in for one tool, an array for several. */
@@ -311,9 +333,11 @@ export class LiveSessions {
     runtimes: AgentRuntime | AgentRuntime[] = [piRuntime, durableRuntime],
     registryUpdater: typeof updateRegistry = updateRegistry,
     settingsReader: () => Promise<Settings> = readHuiSettings,
+    autoResumeDelays: readonly number[] = AUTO_RESUME_DELAYS,
   ) {
     this.#updateRegistry = registryUpdater;
     this.#readSettings = settingsReader;
+    this.#autoResumeDelays = autoResumeDelays;
     for (const runtime of Array.isArray(runtimes) ? runtimes : [runtimes]) {
       this.#runtimes.set(runtime.id, runtime);
     }
@@ -655,6 +679,7 @@ export class LiveSessions {
     if (!live?.runtime) {
       throw this.#unavailable(live);
     }
+    this.#cancelAutoResume(live);
     if (this.#holdWhileCompacting(live)) {
       await this.followUp(id, text, attachments, options);
       return;
@@ -675,6 +700,10 @@ export class LiveSessions {
     live.lastPrompt = { text, ...(attachments?.length ? { attachments } : {}) };
     if (!text.startsWith(SUBAGENT_COMPLETION_MARKER)) live.runOrigin = recoveryPrompt;
     live.stopped = undefined;
+    if (live.record.runFailedAt !== undefined) {
+      live.record = { ...live.record, runFailedAt: undefined };
+      void this.#save(live, { runFailedAt: undefined }, true).catch(() => undefined);
+    }
     live.turnProducedOutput = false;
     live.fallbackAttempted = false;
     // Every screen on this session gets the prompt before the run is announced: a chat
@@ -1357,6 +1386,7 @@ export class LiveSessions {
       return;
     }
     live.closed = true;
+    this.#cancelAutoResume(live);
     live.unsubscribe?.();
     live.unsubscribeExit?.();
     live.runtime?.dispose();
@@ -1511,6 +1541,10 @@ export class LiveSessions {
           // subagent, an automation) hears that now.
           if (live.reattaching) this.#broadcast(live, { kind: "event", event: { type: "settled" } });
         } else await this.#recoverInterrupted(live);
+      } else if (readyStatus === "idle" && retryableRunFailure(live.record)) {
+        // A run this Mac cut off before HUI stopped: nobody pressed Continue for
+        // it, so opening the session retries it now.
+        this.#scheduleAutoResume(live);
       }
       // A resumed session only has its history after boot, so the transcript is
       // sent now rather than left empty at connect.
@@ -1621,6 +1655,8 @@ export class LiveSessions {
         if (live.turnStarted) this.#logRunFailure(live);
       }
       live.runFailed = live.loggedRunError !== undefined || live.transcript.at(-1)?.kind === "error";
+      if (live.runFailed) this.#scheduleAutoResume(live);
+      else live.autoResumeAttempts = undefined;
       live.turnStarted = undefined;
       live.loggedRunError = undefined;
       this.#clearRunMarker(live);
@@ -1859,6 +1895,54 @@ export class LiveSessions {
     for (const subscriber of this.#statusSubscribers) subscriber(update);
   }
 
+  /** Retries a run that ended on a failure the next attempt can pass, so a
+   * dropped connection recovers without the operator pressing Continue. */
+  #scheduleAutoResume(live: Live): void {
+    if (live.autoResumeTimer !== undefined) return;
+    const last = live.transcript.findLast((entry) => entry.kind !== "compaction");
+    const failure = last?.kind === "error" ? last.message : undefined;
+    if (live.closed || live.stopped || live.followUps.length > 0) return;
+    if (failure !== undefined ? !RETRYABLE_FAILURE.test(failure) : !retryableRunFailure(live.record)) return;
+    if (failure !== undefined) this.#markRunFailure(live);
+    const attempt = live.autoResumeAttempts ?? 0;
+    const delay = this.#autoResumeDelays[attempt];
+    if (delay === undefined) {
+      recordDiagnosticEvent({ area: "session", level: "warning", action: "auto_resume_exhausted", summary: "Automatic retry of a failed run gave up", detail: failure, sessionId: live.record.id });
+      return;
+    }
+    live.autoResumeAttempts = attempt + 1;
+    live.autoResumeTimer = setTimeout(() => {
+      live.autoResumeTimer = undefined;
+      void this.#autoResume(live, failure);
+    }, delay);
+    live.autoResumeTimer.unref?.();
+  }
+
+  #cancelAutoResume(live: Live): void {
+    if (live.autoResumeTimer !== undefined) clearTimeout(live.autoResumeTimer);
+    live.autoResumeTimer = undefined;
+  }
+
+  async #autoResume(live: Live, failure?: string): Promise<void> {
+    const id = live.record.id;
+    if (live.closed || this.#live.get(id) !== live || live.status !== "idle") return;
+    if (failure !== undefined) {
+      const last = live.transcript.findLast((entry) => entry.kind !== "compaction");
+      if (last?.kind !== "error" || last.message !== failure) return;
+    }
+    // The request the failed run was handling, restated the way Continue does it:
+    // a failure leaves no error row in a stored transcript, so the session record
+    // and the operator's own messages are what is left to go on.
+    const original = live.record.runPrompt?.trim() || lastOperatorRequest(live.transcript);
+    const message = interruptedRunPrompt(original);
+    recordDiagnosticEvent({ area: "session", level: "info", action: "auto_resume", summary: "Retrying a run that ended on a recoverable failure", detail: failure, sessionId: id });
+    try {
+      await this.prompt(id, message, undefined, original || message);
+    } catch (error) {
+      recordDiagnosticEvent({ area: "session", level: "warning", action: "auto_resume_failed", summary: "Automatic retry of a failed run did not start", detail: failureDetail(error), sessionId: id });
+    }
+  }
+
   async #recoverInterrupted(live: Live): Promise<void> {
     const attempts = live.record.runRecoveryAttempts ?? 0;
     if (!live.record.runStartedAt || attempts >= MAX_AUTOMATIC_RECOVERY_ATTEMPTS) {
@@ -1925,6 +2009,17 @@ export class LiveSessions {
             : "The run finished, but HUI could not save its recovery state.",
         },
       });
+    });
+  }
+
+  /** Records that the last run ended on a failure worth retrying, so the next
+   * gateway start or wake picks it up instead of leaving the session stopped. */
+  #markRunFailure(live: Live): void {
+    const runFailedAt = new Date().toISOString();
+    live.record = { ...live.record, runFailedAt };
+    void this.#save(live, { runFailedAt }).catch((error) => {
+      live.record = { ...live.record, runFailedAt: undefined };
+      recordDiagnosticEvent({ area: "session", level: "warning", action: "run_failure_unsaved", summary: "Could not record a failed run for a later retry", detail: failureDetail(error), sessionId: live.record.id });
     });
   }
 

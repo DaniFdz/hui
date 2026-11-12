@@ -1,4 +1,4 @@
-/** The interface and chat prose fonts restyle their own parts of the app, the terminal font takes a typed local family, and Text size scales the text together; all of them persist (SET-009, SET-010, SET-011). */
+/** The interface and chat prose fonts restyle their own parts of the app, the terminal font takes a typed local family, and Text size scales the text together; all of them persist in this device's own storage (SET-009, SET-010, SET-011). */
 import { expect, type Locator } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -28,7 +28,8 @@ test("the interface font restyles navigation, settings and controls, the chat pr
     await faces.getByText(chosen, { exact: true }).tap();
     await expect(screen.getByRole("button", `${picker}: ${chosen}`)).toBeVisible();
     await expect(faces.getByText("Atkinson Hyperlegible", { exact: true })).toBeHidden();
-    await expect.poll(async () => (await hui.api<Record<string, string>>("GET", "/__hui/settings"))[key]).toBe(chosen.toLowerCase());
+    await expect.poll(async () => (await hui.storedAppearance())?.[key]).toBe(chosen.toLowerCase());
+    expect((await hui.api<Record<string, unknown>>("GET", "/__hui/settings"))[key]).toBeUndefined();
   }
   await expect.poll(() => face(caption)).toBe("Geist");
   expect(await face(prose)).toBe("Lora");
@@ -90,7 +91,7 @@ test("the terminal font lists monospace and Nerd Fonts, takes a typed local fami
   await expect.poll(async () => (await hui.look(preview)).loaded).toContain("HUI Nerd Font Symbols");
 
   for (const typed of ["   ", "Mono; color: red"]) {
-    await hui.api("PUT", "/__hui/settings", { ...(await hui.api<Record<string, unknown>>("GET", "/__hui/settings")), fontTerminal: typed });
+    await hui.saveAppearance({ fontTerminal: typed });
     await hui.reload();
     await revealPicker("JetBrains Mono");
     await expect(screen.getByRole("button", "Terminal font: JetBrains Mono")).toBeVisible();
@@ -148,6 +149,8 @@ test("Text size scales every text size in the interface together (Settings, the 
   await expect.poll(inSessionDrawer).toEqual(scaled(chatList, 1.25));
   await hui.open("/settings/appearance");
   await expect(sizes.getByRole("button", { name: "XL 125%", pressed: true })).toBeVisible();
+  expect((await hui.storedAppearance())?.textScale).toBe(125);
+  expect((await hui.api<Record<string, unknown>>("GET", "/__hui/settings")).textScale).toBeUndefined();
 
   await sizes.getByRole("button", "Small 90%").tap();
   await expect.poll(() => measure(settingsText())).toEqual(scaled(settings, 0.9));

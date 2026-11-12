@@ -7,28 +7,31 @@ import { DEFAULT_SETTINGS, normalizeBranchPrefix, normalizeCalls, normalizeSetti
 test("round-trips a complete file", () => {
   assert.deepEqual(
     normalizeSettings({
-      theme: "catppuccin",
-      themeMode: "dark",
-      fontUi: "geist",
-      fontChat: "lora",
-      textScale: 125,
+      name: "build-box",
+      branchPrefix: "team/",
+      chat: { toolMarks: { pup: "🐶" }, toolIcons: { git: "github.svg" } },
     }),
     {
       ...DEFAULT_SETTINGS,
-      theme: "catppuccin",
-      themeMode: "dark",
-      fontUi: "geist",
-      fontChat: "lora",
-      textScale: 125,
+      name: "build-box",
+      branchPrefix: "team/",
+      chat: { toolMarks: { pup: "🐶" }, toolIcons: { git: "github.svg" } },
     },
   );
 });
 
-test("ignores the retired single typeface preference", () => {
-  const settings = normalizeSettings({ typeface: "serif" });
-  assert.equal(settings.fontUi, DEFAULT_SETTINGS.fontUi);
-  assert.equal(settings.fontChat, DEFAULT_SETTINGS.fontChat);
-  assert.equal("typeface" in settings, false);
+test("this device's appearance is not the gateway's to store", () => {
+  // A file written before the move still carries them: they are dropped rather than read back into the client.
+  const settings = normalizeSettings({
+    theme: "catppuccin", themeMode: "dark", accent: "#a78bfa", fontUi: "geist", fontChat: "lora",
+    fontTerminal: "MesloLGS NF", textScale: 125,
+    chat: { messageWidth: "wide", collapseTaskProgress: true, sendShortcut: "modifierEnter", githubEmbeds: false, datadogEmbeds: false },
+  });
+  assert.deepEqual(settings, DEFAULT_SETTINGS);
+  for (const key of ["theme", "themeMode", "accent", "fontUi", "fontChat", "fontTerminal", "textScale", "typeface"]) {
+    assert.equal(key in settings, false, key);
+  }
+  assert.deepEqual(Object.keys(settings.chat), ["toolMarks", "toolIcons"]);
 });
 
 test("normalizes HUI-owned profile and labs", () => {
@@ -39,6 +42,19 @@ test("normalizes HUI-owned profile and labs", () => {
   assert.equal(settings.profileName, "Alex");
   assert.equal(settings.profileHandle, "@alex");
   assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false });
+});
+
+test("a gateway name is trimmed and bounded, and empty means the machine's hostname", () => {
+  assert.equal(DEFAULT_SETTINGS.name, "");
+  assert.equal(normalizeSettings({}).name, "", "no saved name at all");
+  assert.equal(normalizeSettings({ name: "  build-box  " }).name, "build-box");
+  assert.equal(normalizeSettings({ name: "   " }).name, "", "whitespace is not a name");
+  assert.equal(normalizeSettings({ name: "x".repeat(80) }).name, "x".repeat(60), "bounded to 60 characters");
+  assert.equal(normalizeSettings({ name: "a".repeat(60) }).name, "a".repeat(60), "60 characters still fit");
+  for (const name of [42, null, ["build-box"], { name: "build-box" }]) {
+    assert.equal(normalizeSettings({ name }).name, "", JSON.stringify(name));
+  }
+  assert.equal(normalizeSettings(normalizeSettings({ name: " build-box " })).name, "build-box", "round-trips");
 });
 
 test("codemode is on unless explicitly switched off", () => {
@@ -96,31 +112,12 @@ test("keeping the Mac awake is opt-out and lid-close prevention is never saved",
   assert.deepEqual(normalizeSettings({ power: { keepAwake: false, lidAwake: true } }).power, { keepAwake: false });
 });
 
-test("normalizes OpenClaw-compatible chat preferences", () => {
-  assert.deepEqual(normalizeSettings({ chat: {
-    messageWidth: "wide",
-    collapseTaskProgress: true,
-    sendShortcut: "modifierEnter",
-    githubEmbeds: false,
-    datadogEmbeds: false,
-  } }).chat, {
-    messageWidth: "wide",
-    collapseTaskProgress: true,
-    sendShortcut: "modifierEnter",
-    githubEmbeds: false,
-    datadogEmbeds: false,
-    toolMarks: {},
-    toolIcons: {},
+test("a tool's own marks and icons stay on the gateway, where their files are", () => {
+  assert.deepEqual(normalizeSettings({ chat: { toolMarks: { pup: "🐶" }, toolIcons: { git: "github.svg" } } }).chat, {
+    toolMarks: { pup: "🐶" },
+    toolIcons: { git: "github.svg" },
   });
-  assert.deepEqual(normalizeSettings({ chat: {
-    messageWidth: "huge",
-    collapseTaskProgress: "yes",
-    sendShortcut: "space",
-    githubEmbeds: "no",
-    datadogEmbeds: 0,
-  } }).chat, DEFAULT_SETTINGS.chat);
-  assert.equal(DEFAULT_SETTINGS.chat.githubEmbeds, true);
-  assert.equal(DEFAULT_SETTINGS.chat.datadogEmbeds, true);
+  assert.deepEqual(normalizeSettings({ chat: { toolMarks: { pup: "" }, toolIcons: { git: "a/b.svg" } } }).chat, DEFAULT_SETTINGS.chat);
 });
 
 test("drops the retired dashboard widget preference from legacy files", () => {
@@ -132,9 +129,9 @@ test("drops the retired dashboard widget preference from legacy files", () => {
 // client read it, so anything unexpected has to land on a default rather than
 // reaching CSS or a lookup.
 test("fills in what a partial file leaves out", () => {
-  assert.deepEqual(normalizeSettings({ themeMode: "light" }), {
+  assert.deepEqual(normalizeSettings({ name: "build-box" }), {
     ...DEFAULT_SETTINGS,
-    themeMode: "light",
+    name: "build-box",
   });
   assert.deepEqual(normalizeSettings({}), DEFAULT_SETTINGS);
 });
@@ -144,23 +141,9 @@ test("rejects junk in every field", () => {
   assert.deepEqual(normalizeSettings("nope"), DEFAULT_SETTINGS);
   assert.deepEqual(normalizeSettings([]), DEFAULT_SETTINGS);
   assert.deepEqual(
-    normalizeSettings({ theme: 42, themeMode: "chartreuse", fontUi: {}, fontChat: [], textScale: "big" }),
+    normalizeSettings({ name: 42, branchPrefix: {}, chat: "nope", labs: [] }),
     DEFAULT_SETTINGS,
   );
-});
-
-test("keeps an unknown theme id, so a missing theme is not a lost setting", () => {
-  // The client falls back to the first available theme; dropping the id here
-  // would silently forget what the user picked.
-  assert.equal(normalizeSettings({ theme: "not-installed" }).theme, "not-installed");
-  assert.equal(normalizeSettings({ theme: "  spaced  " }).theme, "spaced");
-});
-
-test("accepts only a complete hex accent override", () => {
-  assert.equal(normalizeSettings({ accent: " #A78BFA " }).accent, "#a78bfa");
-  for (const accent of ["red", "#fff", "#gg55cc", "var(--accent)", 42]) {
-    assert.equal(normalizeSettings({ accent }).accent, "");
-  }
 });
 
 test("disabled skills keep bounded stable identities and discard malformed entries", () => {

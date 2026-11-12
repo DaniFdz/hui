@@ -1,4 +1,5 @@
-/** The sidebar's work destinations, and the Settings footer both of its lists end with (SHELL-001, SHELL-002). */
+/** The sidebar's work destinations, with Settings in its header row and this page's gateway in its footer (SHELL-001,
+ * SHELL-002, SHELL-049). */
 import assert from "node:assert/strict";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
@@ -11,7 +12,7 @@ const DESTINATIONS = [
   ["Usage", "Recorded tokens and PI cost estimates."],
 ] as const;
 
-test("the sidebar lists its work destinations above a Settings footer", { tags: ["SHELL-001", "smoke"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the sidebar lists its work destinations under Settings, above this page's gateway", { tags: ["SHELL-001", "SHELL-049", "smoke"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/");
   await hui.sessionList();
   const navigation = screen.getByTestId("primary-navigation");
@@ -20,6 +21,7 @@ test("the sidebar lists its work destinations above a Settings footer", { tags: 
   await expect(navigation.getByText("Home")).toHaveCount(0);
   // Destinations in reading order: each row starts below the one before it.
   let previous = -Infinity;
+  let first = Infinity;
   for (const [label] of DESTINATIONS) {
     const row = navigation.getByText(label);
     await expect(row).toBeVisible();
@@ -27,23 +29,30 @@ test("the sidebar lists its work destinations above a Settings footer", { tags: 
     assert(box);
     expect(box.y).toBeGreaterThan(previous);
     previous = box.y;
+    first = Math.min(first, box.y);
   }
 
-  // Settings closes the sidebar instead of sitting among the destinations, so the tab panel cannot scroll it away.
+  // Settings sits in the sidebar's header row, above the destinations, so the tab panel cannot scroll it away.
   await expect(navigation.getByText("Settings")).toHaveCount(0);
   const settings = screen.getByTestId("nav-settings");
   await expect(settings).toBeVisible();
   const settingsBox = await settings.boundingBox();
   assert(settingsBox);
-  expect(settingsBox.y).toBeGreaterThan(previous);
-  // The header's one control is the desktop toggle; a phone's drawer hides it (SHELL-015) and closes from buttons of
-  // its own (SHELL-011), so it is read by its label, which a hidden control still answers.
-  await expect(screen.getByTestId("sidebar-header").getByLabel("Collapse sidebar")).toHaveCount(1);
+  expect(settingsBox.y).toBeLessThan(first);
+  await expect(screen.getByLabel("Collapse sidebar")).toBeVisible();
 
-  // The Bots list shows no destinations, and keeps Settings.
+  // The footer below both lists is the gateway serving this page, not a Settings link.
+  const gateway = screen.getByTestId("sidebar-gateway");
+  await expect(gateway).toBeVisible();
+  const gatewayBox = await gateway.boundingBox();
+  assert(gatewayBox);
+  expect(gatewayBox.y).toBeGreaterThan(previous);
+
+  // The Bots list shows no destinations, and keeps Settings and the gateway.
   await screen.getByRole("tab", "Bots").tap();
   await expect(navigation).toBeHidden();
   await expect(settings).toBeVisible();
+  await expect(gateway).toBeVisible();
 
   await screen.getByRole("tab", "Agents").tap();
   await expect(navigation).toBeVisible();
