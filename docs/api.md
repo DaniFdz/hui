@@ -2310,12 +2310,15 @@ API included. Real isolation means running the bot on a worker in a container.
 
 ### A forever chat
 
-Bot chats refuse what would reset, shorten, fork or delete them, with 409 and a
-message naming the bot: `POST /__hui/sessions/:id/clear`, `POST …/compact`,
-`POST …/rewind`, `POST …/fork` and `DELETE /__hui/sessions/:id` (archive the bot instead, or
-delete it with `DELETE /__hui/bots/:id?permanent=1`).
-Model and thinking changes stay allowed. The prompt route already refuses
-`/clear` and `/compact` text for every session.
+Bot chats refuse what would shorten, fork or delete them, with 409 and a message
+naming the bot: `POST /__hui/sessions/:id/compact`, `POST …/fork` and
+`DELETE /__hui/sessions/:id` (archive the bot instead, or delete it with
+`DELETE /__hui/bots/:id?permanent=1`). `POST …/clear` and `POST …/rewind` succeed
+on a bot's chat: a clear empties its transcript and its OptChat memory, and a
+rewind keeps the bot and its memory to the kept branch (see the clear and rewind
+routes). Model and thinking changes stay allowed. The prompt route already
+refuses `/clear` and `/compact` text for every session, and the bot message
+route refuses `/clear`, so a routine or another bot cannot clear the chat.
 
 A bot's chat has several writers: its routines, other bots, the bot messages
 route and every client of the session routes. So that each sees a message
@@ -3501,8 +3504,9 @@ it returns `409`. HUI invokes PI's native `new_session` RPC, refreshes the new
 runtime identity and empty history, then stores the replacement `piSessionFile`
 in the existing HUI registry row. Title, group, cwd, model and thinking
 preferences remain attached to that row. PI's previous JSONL is left untouched,
-and `/clear` itself is not added to either transcript. A bot's chat answers 409
-([a forever chat](#a-forever-chat)). A registry persistence
+and `/clear` itself is not added to either transcript. A bot's chat clears too:
+its OptChat memory starts over at the reset and stays empty after a restart
+(`cutoff.json`). A registry persistence
 failure is explicit because the live runtime has already moved to the fresh
 session and a later reopen may otherwise resume the previous pointer.
 
@@ -3876,8 +3880,11 @@ branch, where PI persisted that prompt when it accepted it. A prompt PI refused
 offers no rewind. The abandoned branch remains in PI's
 append-only tree. An active run is stopped
 before the branch changes; queued or waiting sessions return 409, and an
-unknown entry, or a rewind while PI is still compacting, returns 400. A bot's
-chat answers 409 ([a forever chat](#a-forever-chat)).
+unknown entry, or a rewind while PI is still compacting, returns 400. On a Pi
+Durable bot's chat the rewind keeps the bot: the fork carries the bot's document
+and OptChat, its memory is rebuilt from the kept branch, and the abandoned
+branch's memory is forgotten ([a forever chat](#a-forever-chat)). A rewind to
+before the chat's first message clears it instead (the chat stays the bot's).
 
 A compaction only applies while its entry is on the active branch. Rewinding
 behind it to a point inside the window PI kept verbatim appends the same
@@ -3907,7 +3914,8 @@ source's `cwd` (or the worktree), `worker`,
 `group`, `tool`, `model` and `thinking`, is titled `<title> (fork)` and
 carries none of its organizer fields (`pinned`, `unread`, `icon`,
 `jiraIssues`, `stage`). The copy keeps the Durable agent as of the fork entry
-and starts without OptChat; without a worktree no Git state changes. A malformed body, an entry
+and carries its documents, so a copy of a conversation with OptChat keeps it (a bot's chat itself answers 409, below). Without a worktree no Git state changes.
+A malformed body, an entry
 that is unknown or still waiting on its tool calls, or a session whose runtime
 cannot fork (PI) returns 400. A bot's chat answers 409
 ([a forever chat](#a-forever-chat)).

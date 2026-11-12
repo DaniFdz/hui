@@ -436,7 +436,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   entry tree, moves the active leaf to the point before the selected user
   message, removes that message from the active transcript and restores its
   full text to the focused composer for editing. The abandoned branch remains
-  recoverable from PI's tree. The transcript is the whole active branch (PI's,
+  recoverable from PI's tree. In a bot's chat a rewind keeps the bot and its
+  OptChat memory, which then holds only the kept branch (the abandoned branch is
+  forgotten by the memory, and stays stored in Durable); a rewind before the
+  chat's first message clears it. The transcript is the whole active branch (PI's,
   or a Durable conversation's history since its latest `/clear`): a
   compaction appears as a divider with its expandable summary and never hides
   earlier messages. On PI, rewinding inside the window the summary kept
@@ -2486,8 +2489,10 @@ everything the Bots tab can, through the same routes.
   `set_profile` tool (only in turns the operator started that took no message
   from a routine, a trigger or another bot). A handle derived
   from the old name follows the new one; a chosen handle stays.
-- **Forever, until deleted.** Clearing, compacting, rewinding or deleting a bot's chat is
-  refused; archiving the bot deletes nothing, disables its routines and stops a
+- **Forever, until deleted.** Compacting, forking or deleting a bot's chat is
+  refused. Clearing it empties its transcript and its memory, and rewinding it
+  keeps the bot and its memory to the kept branch: the abandoned branch is
+  forgotten. Archiving the bot deletes nothing, disables its routines and stops a
   running turn, and restoring it brings it back with its routines still off.
 - **Messages.** A message to a bot is a prompt when it is idle and a follow-up
   when it is busy; a caller may wait for the reply of the turn that answers it,
@@ -2601,8 +2606,9 @@ everything the Bots tab can, through the same routes.
   `/bots/<id>` as its one chat in the ordinary session pane, its header
   showing face, name, role, the worker it runs on (if any) and status and a ⋯
   menu with Edit bot…, Archive… and Delete…;
-  assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
-  rewind are not offered. A new bot speaks first: its chat opens on a small
+  assistant turns carry the bot's name. `/clear` is listed and runs, and
+  Rewind to here is offered on the operator's messages; `/compact`, Compact now
+  and Fork from here are not offered. A new bot speaks first: its chat opens on a small
   centered note, *<name> was created*, where HUI started its first turn, then
   the bot's questions (an empty chat says *Say hi to <name>*). Opening it
   marks it read. A **panel** docks beside the chat (open or closed and its

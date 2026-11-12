@@ -509,8 +509,11 @@ back on the model and thinking level a new chat gets (*Gateway default* in the
 bot's Settings page), and `--memory-model ""` puts the utility model back on its
 default (Settings' utility model, then the chat's own model).
 
-A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
-and deleting the session all answer with an explanation instead.
+A bot's chat refuses what would shorten or fork it: `/compact`, Compact now, fork
+and deleting the session all answer with an explanation instead. `/clear` empties
+the chat and its memory, and **Rewind to here** on one of your messages keeps the
+bot and its memory to what comes before that message: the abandoned branch is
+forgotten by the memory, though it stays stored.
 
 ### The staff pack and the Chief of Staff
 
