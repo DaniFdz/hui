@@ -21,14 +21,13 @@ const SOUL = [
   "",
 ].join("\n");
 
-/** Opens a roster row's ⋯ → Export…, which is a desktop affordance: the row's actions menu needs a hover or a
- * secondary click, so this journey stays on the web. */
+/** Opens a roster row's ⋯ → Export…: focus reveals the desktop's trigger; a phone already draws it in the drawer. */
 async function openExport(screen: Screen, hui: Hui, name: string) {
   await hui.open("/");
   await roster(screen, hui);
-  const row = screen.getByLabel(new RegExp(`^${name},`, "u"));
-  await hui.peek(row);
-  await screen.getByRole("button", `Actions for ${name}`).tap();
+  const actions = screen.getByRole("button", `Actions for ${name}`);
+  await actions.focus();
+  await actions.tap();
   await screen.getByText("Export…", { exact: true, visible: true }).first().tap();
   return screen.getByRole("dialog", `Export ${name} as a template`);
 }
@@ -51,14 +50,18 @@ test("Export… lists every change by group with its reason and picker, the clea
 
   // Every change in its group, with the reviewer's reason and what its pick comes to.
   await expect(dialog.getByText("Removed", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Pat Doe", { exact: true })).toBeHidden();
+  await dialog.getByText("Removed", { exact: true }).tap();
   await expect(dialog.getByText("Pat Doe", { exact: true })).toBeVisible();
   await expect(dialog.getByText("A teammate's name.", { exact: true })).toBeVisible();
   await expect(dialog.getByText(/^Becomes .*a teammate/u)).toBeVisible();
   await expect(dialog.getByText("Asked", { exact: true })).toBeVisible();
+  await dialog.getByText("Asked", { exact: true }).tap();
   await expect(dialog.getByText("acme/widgets", { exact: true })).toBeVisible();
   await expect(dialog.getByText("The owner's own repository.", { exact: true })).toBeVisible();
   await expect(dialog.getByText(/^Becomes \[ask: the repositories to watch\] · asks: Which repositories should I watch for pull requests\?/u)).toBeVisible();
   await expect(dialog.getByText("Confirmed", { exact: true })).toBeVisible();
+  await dialog.getByText("Confirmed", { exact: true }).tap();
   await expect(dialog.getByText("Approve only when CI is green", { exact: true })).toBeVisible();
   await expect(dialog.getByText("An approval rule.", { exact: true })).toBeVisible();
   await expect(dialog.getByText(/^Asks: Should I approve only when CI is green, or do you want other rules\?/u)).toBeVisible();
@@ -67,6 +70,7 @@ test("Export… lists every change by group with its reason and picker, the clea
   await dialog.getByText("Cleaned automatically").tap();
   await expect(dialog.getByText("SOUL.md: an e-mail address (pat.doe@example.com)", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Done before any model read it, and always applied.", { exact: true })).toBeVisible();
+  await dialog.getByText("What it needs", { exact: true }).tap();
   await expect(dialog.getByText("The GitHub CLI signed in, with access to the repositories it reviews", { exact: true })).toBeVisible();
   await dialog.getByText("Stays behind").tap();
   await expect(dialog.getByText("USER.md and MEMORY.md, what it knows about you and what it keeps: they describe the operator, and never leave with an export.", { exact: true })).toBeVisible();
@@ -130,6 +134,7 @@ test("Missed something? adds a passage no change touches to the changes and to t
   await dialog.getByRole("textbox", "Becomes").fill("the fixture project");
   await add.tap();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await dialog.getByText("Removed", { exact: true }).tap();
   await expect(dialog.getByText("The fixture project is called Quasar.", { exact: true })).toBeVisible();
   await expect(dialog.getByText(/^Added by you\./u)).toBeVisible();
   await expect.poll(soulFile).toContain("the fixture project");
