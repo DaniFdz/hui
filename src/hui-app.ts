@@ -62,6 +62,7 @@ import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBo
 import { renderBotExportDialog, renderBotImportDialog } from "./views/bot-import.ts";
 import { BotImportController } from "./controllers/bot-import-controller.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
+import { renderGatewayDialog } from "./views/gateway-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import { renderPowerNotice } from "./views/power-notice.ts";
 import { renderAppLinkNotice } from "./views/app-link-notice.ts";
@@ -312,7 +313,10 @@ export class HuiApp extends HuiElement {
   private readonly updates = new UpdateController(this, () => this.composerTextarea?.focus());
   /** This device's gateway list, shared by Settings → Gateway and the sidebar's footer (SPEC.md "A device keeps a list
    * of gateways"). */
-  private readonly gateways = new GatewaysController(this);
+  private readonly gateways = new GatewaysController(this, undefined, {
+    saveCurrentName: (name) => this.control.saveGatewayName(name),
+    closeRenderedDialog: () => closeModal(this.renderRoot.querySelector<HTMLDialogElement>(".gateway-dialog") ?? undefined),
+  });
   /** Which sidebar row menu is open. Only one at a time. */
   @state() private menuFor = "";
   @state() private commandPaletteOpen = false;
@@ -784,6 +788,8 @@ export class HuiApp extends HuiElement {
     const groupDialog = this.groupAction ? this.renderRoot.querySelector?.(".group-action-dialog") : null;
     const updateDialog = this.updates.open ? this.renderRoot.querySelector?.(".hui-update-dialog") : null;
     if (updateDialog instanceof HTMLDialogElement) ensureModal(updateDialog);
+    const gatewayDialog = this.gateways.dialog ? this.renderRoot.querySelector?.(".gateway-dialog") : null;
+    if (gatewayDialog instanceof HTMLDialogElement) ensureModal(gatewayDialog);
     if (groupDialog instanceof HTMLDialogElement) ensureModal(groupDialog);
     const resourceReader = this.control.piResourceReader ? this.renderRoot.querySelector?.(".pi-resource-reader-modal") : null;
     if (resourceReader instanceof HTMLDialogElement) ensureModal(resourceReader);
@@ -1212,6 +1218,19 @@ export class HuiApp extends HuiElement {
       .onCreated=${this.backlog.jiraCreated}
       .onOpenSettings=${() => this.openSurfaceSettings("integrations")}
     ></hui-jira-create-dialog>`;
+  }
+
+  /** Add and Edit share one dialog, opened by the sidebar's gateway menu and by Settings → Gateway. */
+  private renderGatewayDialog() {
+    const dialog = this.gateways.dialog;
+    if (!dialog) return null;
+    return renderGatewayDialog({
+      dialog,
+      onName: (name) => this.gateways.setDialogName(name),
+      onAddress: (address) => this.gateways.setDialogAddress(address),
+      onClose: this.gateways.closeGatewayDialog,
+      onSubmit: () => void this.gateways.submitGatewayDialog(),
+    });
   }
 
   private moveSession = (session: SessionView, group: string) => {
@@ -3075,9 +3094,8 @@ export class HuiApp extends HuiElement {
           },
           ...this.control.props(),
           gateways: this.gateways.views(this.gatewayName),
-          gatewayAdd: this.gateways.addState,
-          onGatewayAddress: (address: string) => this.gateways.setAddress(address),
-          onAddGateway: () => void this.gateways.addGateway(),
+          onAddGateway: () => this.gateways.openAddGateway(),
+          onEditGateway: (gateway) => this.gateways.openEditGateway(gateway),
           onSwitchGateway: (url: string) => this.gateways.switchTo(url),
           onRemoveGateway: (url: string) => this.gateways.remove(url),
           onRetryGateway: (url: string) => void this.gateways.retry(url),
@@ -3095,6 +3113,7 @@ export class HuiApp extends HuiElement {
         ${this.renderFloatingCallBar()}
         ${this.commandPalette()}
         ${renderUpdateDialog(this.updates.dialogProps())}
+        ${this.renderGatewayDialog()}
         ${renderPiResourceReader(this.control.piResourceReader, this.control.closePiResourceReader, this.control.copyPiResource)}
       </div>`;
     }
@@ -3188,7 +3207,7 @@ export class HuiApp extends HuiElement {
       },
       gateways: this.gateways.views(this.gatewayName),
       onSwitchGateway: (url: string) => this.gateways.switchTo(url),
-      onOpenGatewaySettings: () => this.openSurfaceSettings("connection"),
+      onAddGateway: () => this.gateways.openAddGateway(),
       onSearch: this.updateSearch,
     };
 
@@ -3212,6 +3231,7 @@ export class HuiApp extends HuiElement {
       ${this.renderFloatingCallBar()}
       ${this.commandPalette()}
       ${renderUpdateDialog(this.updates.dialogProps())}
+      ${this.renderGatewayDialog()}
       ${renderPiResourceReader(this.control.piResourceReader, this.control.closePiResourceReader, this.control.copyPiResource)}
       ${renderMain(
         props,

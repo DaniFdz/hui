@@ -472,7 +472,7 @@ const cases: UseCase[] = [
     id: "SHELL-049",
     title: "See this page's gateway and switch from the sidebar footer",
     behaviour:
-      "The sidebar's footer is one button named after the gateway serving this page, with a state dot. Opening it lists **Gateways**: that one marked *Current*, then every other gateway this device added by its own name, then **Add a gateway…**. Choosing another gateway opens that address in this page, and **Add a gateway…** opens Settings → Gateway. Escape closes the list and returns focus to the button.",
+      "The sidebar's footer is one button named after the gateway serving this page, with a state dot. Opening it lists **Gateways**: that one marked *Current*, then every other gateway this device added by its own name, then **Add a gateway…**. Choosing another gateway opens that address in this page, and **Add a gateway…** opens the Add gateway dialog in place, with its **Name** and **Address**, the same dialog Settings → Gateway uses. Escape closes the list and returns focus to the button.",
     spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", GATEWAY, "docs/api.md#adding-a-gateway"],
     surfaces: ["route:GET /__hui/update", "route:GET /__hui/health", "nav:settings"],
     journeys: ["gateway-settings"],

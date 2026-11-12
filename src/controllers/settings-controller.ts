@@ -124,6 +124,22 @@ export class SettingsController implements ReactiveController {
     return saved;
   };
 
+  /**
+   * Saves the name this gateway reports to every client, then reads health again so the gateway list and About show
+   * it now rather than at the next poll. Resolves false when the write did not land.
+   */
+  saveGatewayName = async (name: string): Promise<boolean> => {
+    const revision = ++this.#saveRevision;
+    const saved = await patchSettings({ name });
+    if (revision === this.#saveRevision) {
+      this.saveFailed = !saved;
+      this.settings = currentSettings();
+      this.#changed();
+    }
+    if (saved) await this.refreshGatewayHealth();
+    return saved;
+  };
+
   patchOwnedSettings = (patch: Partial<Settings>) => {
     void this.save(patch);
   };
@@ -442,7 +458,7 @@ export class SettingsController implements ReactiveController {
   }
 
   props(): Omit<SettingsProps, keyof AutomationProps | "page" | "worktrees" | "onRefreshObservability" | "onSelectPage" | "onChangeModels" | "onClose"
-    | "gateways" | "gatewayAdd" | "onGatewayAddress" | "onAddGateway" | "onSwitchGateway" | "onRemoveGateway" | "onRetryGateway"> {
+    | "gateways" | "onAddGateway" | "onEditGateway" | "onSwitchGateway" | "onRemoveGateway" | "onRetryGateway"> {
     return {
       pi: this.pi,
       piLoading: this.piLoading,
@@ -469,7 +485,7 @@ export class SettingsController implements ReactiveController {
       onSelectMode: this.chooseMode,
       onSelectAccent: this.chooseAccent,
       onChangeBranchPrefix: (branchPrefix) => void this.save({ branchPrefix }),
-      onChangeGatewayName: (name) => void this.save({ name }),
+      onChangeGatewayName: (name) => void this.saveGatewayName(name),
       appearance: this.appearance,
       appearanceSaveFailed: this.appearanceSaveFailed,
       onChangeAppearance: this.saveAppearance,

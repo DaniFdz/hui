@@ -24,11 +24,9 @@ const gateways: NonNullable<SettingsProps["gateways"]> = [
   { url: "http://loft.local:8787", name: "Loft", state: "known", lastSeen: Date.now() - 3 * 60_000 },
   { url: "http://attic.local:8787", name: "Attic", state: "offline", lastSeen: Date.now() - 86_400_000 },
 ];
-const idleAdd: NonNullable<SettingsProps["gatewayAdd"]> = { address: "", busy: false, error: "" };
 const render = (overrides: Partial<SettingsProps>) => text(renderConnectionPage({
-  healthError: "", settings, gateways, gatewayAdd: idleAdd, ...overrides,
+  healthError: "", settings, gateways, ...overrides,
 } as SettingsProps));
-
 test("gateway health renders independently of PI configuration", () => {
   const result = render({ health });
   assert.match(result, /gateway-status--ok/);
@@ -86,13 +84,12 @@ test("the Gateways list marks the current gateway and shows when the others were
   assert.match(result, /aria-label=Retry Attic/u);
   assert.match(result, /aria-label=Remove Attic/u);
   assert.doesNotMatch(result, /aria-label=Remove build-box|aria-label=Switch to build-box/u);
-  // The add field sits under the list, with the refusal HUI words itself.
-  assert.match(result, /Gateway address/);
-  assert.match(result, /HUI asks it to identify itself before adding it\./u);
-  const refused = render({ gatewayAdd: { address: "http://nope.local:8787", busy: false, error: "This address doesn't answer as a HUI gateway." } });
-  assert.match(refused, /role="alert"[^>]*>This address doesn't answer as a HUI gateway\./u);
-  assert.match(refused, /This address doesn't answer as a HUI gateway\./u);
-  assert.match(refused, /value=http:\/\/nope\.local:8787/u, "a refusal leaves the address in the field");
+  // Every row is editable, the current one included; adding opens the same dialog instead of an inline field.
+  assert.match(result, /aria-label=Edit build-box/u);
+  assert.match(result, /aria-label=Edit Loft/u);
+  assert.match(result, /aria-label=Edit Attic/u);
+  assert.match(result, /class="btn btn--sm"[^>]*>Add gateway</u);
+  assert.doesNotMatch(result, /Gateway address|Add a gateway</u, "no address field sits on the page");
 });
 
 test("macOS power shows each choice beside what the gateway holds", () => {

@@ -180,8 +180,8 @@ export type ShellProps = {
   /** This device's gateways, the one serving this page first (SPEC.md "A device keeps a list of gateways"). */
   gateways: readonly GatewayView[];
   onSwitchGateway: (url: string) => void;
-  /** Opens Settings → Gateway, where an address is added and the saved ones are managed. */
-  onOpenGatewaySettings: () => void;
+  /** Opens the Add gateway dialog; Settings → Gateway also opens it and edits the saved ones. */
+  onAddGateway: () => void;
   onSearch: (value: string) => void;
   onToggleMenu: (sessionId: string) => void;
   /** Idempotent close, kept separate from toggle for document-level dismissal. */
@@ -795,8 +795,8 @@ function renderSidebarTabs(bots: ShellBotsProps) {
 }
 
 /** The sidebar footer: this page's gateway, with the others this device knows behind it. Choosing one navigates to
- * it; Add a gateway… opens Settings → Gateway, where the list is managed. Escape closes the menu and returns focus to
- * the button, exactly as the session menus do. */
+ * it; Add a gateway… opens the Add gateway dialog in place. Escape closes the menu and returns focus to the button,
+ * exactly as the session menus do. */
 function renderGatewayPicker(props: ShellProps) {
   const current = props.gateways.find((gateway) => gateway.state === "current");
   return html`<wa-dropdown class="session-menu sidebar-gateway-menu" placement="top-start" distance="8"
@@ -806,7 +806,7 @@ function renderGatewayPicker(props: ShellProps) {
       const value = event.detail.item.value;
       if (value === "add") {
         closeContainingDrawer(event);
-        props.onOpenGatewaySettings();
+        props.onAddGateway();
         return;
       }
       if (value.startsWith("switch:")) props.onSwitchGateway(value.slice("switch:".length));

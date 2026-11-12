@@ -1,6 +1,6 @@
 /**
  * The gateways this device knows, as pure rules: the address a typed value names, the one key the list is saved under,
- * what a corrupt or absent list reads as, how an entry joins, is marked seen or removed, and what each row shows
+ * what a corrupt or absent list reads as, how an entry joins, is edited, marked seen or removed, and what each row shows
  * (current, known with its last sighting, or offline). The current gateway is the one that served the page: it names
  * itself through `/__hui/health` and is never stored, renamed or removed here (SPEC.md "A device keeps a list of
  * gateways"). `gateway-store.ts` is the thin storage adapter around these rules.
@@ -28,6 +28,10 @@ export const GATEWAY_NOT_AN_ADDRESS = "Enter an http:// or https:// address.";
 export const GATEWAY_REFUSED = "This address doesn't answer as a HUI gateway.";
 /** What it reports when the address is the gateway already serving the page. */
 export const GATEWAY_IS_CURRENT = "This is the gateway serving this page.";
+/** What it reports when the address already belongs to another saved gateway. */
+export const GATEWAY_ALREADY_SAVED = "That gateway is already in your list.";
+/** What the editor reports when this gateway's own name did not save. */
+export const GATEWAY_NAME_UNSAVED = "Could not save the name. Try again.";
 
 /** A host a gateway can be reached at: a name, an IPv4 address or a bracketed IPv6 address. */
 const HOST = /^(?:\[[0-9a-f:.]+\]|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*)$/iu;
@@ -119,6 +123,19 @@ export function removeGateway(entries: readonly GatewayEntry[], url: string, cur
   return [...entries].filter((entry) => entry.url !== url);
 }
 
+/**
+ * `entries` with the row at `originalUrl` renamed and/or moved to another address, one row per address. The row keeps
+ * the sighting it had unless its address changed, and the gateway serving this page is neither stored nor renamed.
+ */
+export function editGateway(entries: readonly GatewayEntry[], originalUrl: string, entry: GatewayEntry, current: string): GatewayEntry[] {
+  const url = normalizeGatewayAddress(entry.url);
+  if (!url || url === current) return [...entries];
+  if (!entries.some((candidate) => candidate.url === originalUrl)) return [...entries];
+  if (url !== originalUrl && entries.some((candidate) => candidate.url === url)) return [...entries];
+  const edited: GatewayEntry = { url, name: entry.name.trim().slice(0, 60), lastSeen: entry.lastSeen };
+  return newestFirst([...entries.filter((candidate) => candidate.url !== originalUrl), edited]);
+}
+
 /** `entries` with `url` seen again: its name and last sighting refreshed. The current gateway is never renamed here. */
 export function markGatewaySeen(entries: readonly GatewayEntry[], url: string, seen: { name?: string; lastSeen: number }, current: string): GatewayEntry[] {
   if (url === current) return [...entries];
@@ -170,8 +187,20 @@ export function lastSeenLabel(lastSeen: number, now: number): string {
   return new Date(lastSeen).toISOString().slice(0, 10);
 }
 
-/** What the add field and its last probe show: the address as typed, whether a probe is running, and a refusal. */
-export type GatewayAddState = { address: string; busy: boolean; error: string };
+/**
+ * What the Add/Edit gateway dialog holds: which mode it is in, the saved address it edits (empty while adding), the
+ * values as typed, whether its address is the one serving this page, and its running probe or refusal.
+ */
+export type GatewayDialogState = {
+  mode: "add" | "edit";
+  originalUrl: string;
+  name: string;
+  address: string;
+  /** That address is where this page came from, so only the name can change here. */
+  addressFixed: boolean;
+  busy: boolean;
+  error: string;
+};
 
 /** The identity handshake a gateway answers on `GET /__hui/update`, or `null` when a body is not one. */
 export type GatewayHandshake = { name: string };

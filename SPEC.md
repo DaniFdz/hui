@@ -795,11 +795,21 @@ page is the current one: it is named by its own `GET /__hui/health`, and it is
 never stored, renamed or removed, because the list is about the others. Adding a
 gateway asks that address for `GET /__hui/update` with `x-hui: 1` — the one route
 a gateway answers cross-origin, carrying a version, a job id and its own name,
-never user data. An address that answers that handshake is stored with the name
-in the answer; one that refuses, hangs or answers with something else shows HUI's
-own wording and is not stored. An address with no scheme means `http`, a query,
+never user data. An address that answers that handshake is stored under the name
+typed in the dialog, or the name in the answer when that field is empty; one
+that refuses, hangs or answers with something else shows HUI's own wording in
+the dialog and is not stored. An address with no scheme means `http`, a query,
 fragment or credentials are refused rather than dropped, and duplicate addresses
 collapse into one row. Corrupt or absent storage reads as an empty list.
+
+Adding and editing use one dialog with a name and an address. **Add gateway**
+opens it empty. Every row has **Edit**: a saved gateway's name and address are
+both editable, and a rename that does not move the address needs no handshake,
+so a gateway that is down today can still be renamed. Moving a saved gateway
+to another address probes it first and refuses one already in the list. The
+gateway serving the page is the current one, so its Edit fixes the address to
+where the page came from and saves only the name, which every client that
+connects sees.
 
 Switching navigates: the page opens the chosen gateway's own address, so
 everything on screen afterwards belongs to that gateway, with that gateway's
@@ -808,8 +818,7 @@ offline, with Retry, and it is kept rather than dropped: a gateway that is down
 today may be the one this device wants tomorrow. The list is presentation only —
 a per-device shortcut — and changes no PI configuration, credential, session or
 transcript. The sidebar footer shows the current gateway's name and opens the
-list, with Add a gateway… leading to Settings → Gateway, where the addresses are
-managed.
+list, whose **Add a gateway…** opens that same dialog in place.
 
 ### Appearance belongs to the device that shows it (2026-11-16)
 
