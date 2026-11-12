@@ -1034,12 +1034,15 @@ The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):
   writes a short handoff note from its soul, its memory, the newest messages of
   its chat and the knowledge you saved: what is active, the last decisions, what
   waits on you and what you may ask about today. The call shows *Connecting…*
-  while it is written (at most six seconds) and starts without it if no model
-  answers. GPT-Live speaks from that note, the memory and the newest messages of
-  the chat, so a handoff you gave the bot minutes earlier is there.
-- **GPT-Live talks.** It answers greetings, small talk and what the bot's
-  soul, the handoff and recent memory already say, about a second after you
-  stop.
+  and plays a ringback tone (425 Hz, a second and a half on, three off) until the
+  bot answers, while the note is written (at most six seconds); it starts without
+  the note if no model answers. GPT-Live speaks from that note, the memory and the
+  newest messages of the chat, so a handoff you gave the bot minutes earlier is
+  there.
+- **GPT-Live talks as the bot.** The greeting it is asked for names the bot, so
+  the voice model opens as your bot and not as ChatGPT, and it answers greetings,
+  small talk and what the bot's soul, the handoff and recent memory already say,
+  about a second after you stop.
 - **Quick questions go to the bot's helper.** When GPT-Live needs to know
   something, it asks the bot: a helper on the bot's utility model answers from
   the bot's soul (its SOUL.md), the newest part of its memory, the newest

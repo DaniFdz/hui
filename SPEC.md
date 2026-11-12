@@ -4045,6 +4045,12 @@ faster."
   characters; a note no model writes leaves the call starting without one, and
   the newest messages of the chat ride along in its place. So a handoff given
   minutes before the call reaches it, which the memory's summaries alone lost.
+  While it is written the browser plays a ringback tone (425 Hz, 1.5 s on and 3 s
+  off) and the call shows *Connecting…*, so the wait sounds like a call being
+  placed; the tone stops when the call is answered, fails or is hung up.
+- **It opens as the bot.** The greeting cue GPT-Live receives names the bot and
+  forbids introducing itself as ChatGPT, where the model is certain to read it,
+  not only in the session's instructions.
 - **The tool runs on a faster model.** A call helper on the bot's utility model,
   at low thinking, answers from the bot's soul (its SOUL.md), its memory, the
   newest messages of its chat and the call so far. It never queues behind the
