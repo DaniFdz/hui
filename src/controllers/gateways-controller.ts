@@ -85,12 +85,13 @@ export class GatewaysController implements ReactiveController {
     this.#changed();
   };
 
-  /** Opens the dialog on one row: a saved gateway's name and address, or only this gateway's own name. */
-  openEditGateway = (gateway: GatewayView): void => {
+  /** Opens the dialog on one row: a saved gateway's name and address, or only this gateway's own name. The current
+   * gateway's stored name can arrive from HUI's settings, so an empty field shows the hostname it falls back to. */
+  openEditGateway = (gateway: GatewayView, name = gateway.name): void => {
     this.dialog = {
       mode: "edit",
       originalUrl: gateway.url,
-      name: gateway.name,
+      name,
       address: gateway.url,
       addressFixed: gateway.state === "current",
       busy: false,

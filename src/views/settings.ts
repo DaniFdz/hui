@@ -99,7 +99,6 @@ export type SettingsProps = AutomationProps & {
   onSelectMode: (mode: ThemeMode) => void;
   onSelectAccent: (accent: string) => void;
   onChangeBranchPrefix: (prefix: string) => void;
-  onChangeGatewayName: (name: string) => void;
   onChangeAppearance: (next: Partial<DeviceAppearance>) => void;
   onChangeChat: (next: ChatAppearance) => void;
   /** Resolves once the settings write lands, so the Browser section can re-read status. */
@@ -857,35 +856,8 @@ function renderGatewaysSection(props: SettingsProps) {
   );
 }
 
-/** The gateway's own name: saved here, reported on `/__hui/health`, and shown on About. Empty means the
- * machine's hostname, which health already reports as the effective name, so it is the field's placeholder. */
-function renderGatewayNameSection(props: SettingsProps) {
-  const saved = props.settings.name;
-  const fallback = saved ? "" : props.health?.name ?? "";
-  return renderSection(
-    "Gateway name",
-    "What this gateway calls itself in a client that keeps more than one.",
-    html`<form class="settings-row" @submit=${(event: SubmitEvent) => {
-      event.preventDefault();
-      const form = event.currentTarget;
-      if (!(form instanceof HTMLFormElement)) return;
-      const field = form.elements.namedItem("gatewayName");
-      if (field instanceof HTMLInputElement) props.onChangeGatewayName(field.value);
-    }}>
-      <div class="settings-row__text">
-        <label class="settings-row__title" for="gateway-name">Gateway name</label>
-        <span class="settings-row__desc">${saved
-          ? "Shown to every client that connects, and on About."
-          : `Leave it empty to use this machine's hostname${fallback ? `, ${fallback}` : ""}.`}</span>
-      </div>
-      <div class="settings-row__control">
-        <input id="gateway-name" class="settings-input" name="gatewayName" maxlength="60" spellcheck="false" autocomplete="off" placeholder=${fallback} .value=${saved} />
-        <button type="submit" class="btn">Save</button>
-      </div>
-    </form>`,
-  );
-}
-
+/** The gateway's own name is saved by the current gateway's Edit dialog, reported on `/__hui/health`, and shown on
+ * About and in every client that keeps more than one gateway. */
 export function renderConnectionPage(props: SettingsProps) {
   const health = props.health;
   const failed = Boolean(props.healthError);
@@ -894,7 +866,6 @@ export function renderConnectionPage(props: SettingsProps) {
   return html`
     <p class="settings-page__intro">${SETTINGS_COPY.intros.connection}</p>
     ${renderGatewaysSection(props)}
-    ${renderGatewayNameSection(props)}
     ${renderSection(
       "Access",
       "Connection checked every 3 seconds while this page is visible.",

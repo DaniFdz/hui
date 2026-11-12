@@ -3095,7 +3095,7 @@ export class HuiApp extends HuiElement {
           ...this.control.props(),
           gateways: this.gateways.views(this.gatewayName),
           onAddGateway: () => this.gateways.openAddGateway(),
-          onEditGateway: (gateway) => this.gateways.openEditGateway(gateway),
+          onEditGateway: (gateway) => this.gateways.openEditGateway(gateway, gateway.state === "current" ? this.control.settings.name : undefined),
           onSwitchGateway: (url: string) => this.gateways.switchTo(url),
           onRemoveGateway: (url: string) => this.gateways.remove(url),
           onRetryGateway: (url: string) => void this.gateways.retry(url),

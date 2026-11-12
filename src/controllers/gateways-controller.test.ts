@@ -113,9 +113,14 @@ test("editing the gateway serving this page fixes its address and saves only its
   const saved: string[] = [];
   const { controller, closes } = setup({ saveCurrentName: async (name) => { saved.push(name); return true; } });
   const current = controller.views("Studio Mac")[0]!;
-  controller.openEditGateway(current);
+  // The dialog shows HUI's own saved name, so a fresh gateway opens it empty with the hostname as its placeholder.
+  controller.openEditGateway(current, "");
+  assert.equal(controller.dialog?.name, "");
   assert.equal(controller.dialog?.addressFixed, true);
   assert.equal(controller.dialog?.address, CURRENT);
+  controller.closeGatewayDialog();
+  controller.openEditGateway(current);
+  assert.equal(controller.dialog?.name, "Studio Mac");
   controller.setDialogName("Studio");
   await controller.submitGatewayDialog();
   assert.deepEqual(saved, ["Studio"]);

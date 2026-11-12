@@ -143,7 +143,6 @@ test("Edit changes a saved gateway's name and address, and only the current gate
   await expect(currentDialog).toBeHidden();
   await expect(page.getByText("Studio Mac", { exact: true })).toBeVisible();
   await expect(page.getByText(here.origin, { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Gateway name", { exact: true })).toHaveValue("Studio Mac");
 
   // Every surface that names this gateway shows the saved name, including the sidebar footer.
   await screen.getByRole("button", "Exit Settings").tap();

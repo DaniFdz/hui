@@ -18,7 +18,6 @@ const health: SettingsProps["health"] = {
   sessions: { registered: 12, running: 2, starting: 0, idle: 10, waiting: 0, error: 0, reconnecting: 0, disconnected: 0, processes: 2 },
 };
 const settings = { power: { keepAwake: true }, name: "" } as SettingsProps["settings"];
-const named = (name: string) => ({ ...settings, name });
 const gateways: NonNullable<SettingsProps["gateways"]> = [
   { url: "http://127.0.0.1:8787", name: "build-box", state: "current" },
   { url: "http://loft.local:8787", name: "Loft", state: "known", lastSeen: Date.now() - 3 * 60_000 },
@@ -58,20 +57,11 @@ const power: PowerStatus = {
   lidOn: false,
 };
 
-test("the Gateway page names the gateway, and shows the hostname it falls back to while it has none", () => {
-  const unnamed = render({ health });
-  assert.match(unnamed, /Gateway name/);
-  assert.match(unnamed, /Leave it empty to use this machine's hostname, build-box\./);
-
-  const saved = render({ health, settings: named("Studio Mac"), gateways: [{ url: "http://127.0.0.1:8787", name: "Studio Mac", state: "current" }] });
-  assert.match(saved, /Shown to every client that connects, and on About\./);
-  assert.match(saved, /Studio Mac/);
-  assert.doesNotMatch(saved, /build-box/);
-
-  // Health has not answered yet: the section is still there, without a fallback to show.
-  const loading = render({ gateways: [] });
-  assert.match(loading, /Gateway name/);
-  assert.doesNotMatch(loading, /build-box/);
+test("the Gateways list is the only place this gateway is named", () => {
+  const result = render({ health });
+  // The standalone Gateway name field is gone: the current row's Edit dialog names the gateway.
+  assert.doesNotMatch(result, /GATEWAY NAME|Gateway name|id=gateway-name/u);
+  assert.match(result, /aria-label=Edit build-box/u);
 });
 
 test("the Gateways list marks the current gateway and shows when the others were last seen", () => {

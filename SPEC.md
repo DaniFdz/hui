@@ -777,7 +777,7 @@ Browser and package proof is in `e2e/package.browser.md` and `e2e/update.browser
 
 A gateway can be named, and every client sees that name. It is the operator's
 label for one gateway, saved as `name` in HUI's own settings beside the profile
-fields (Settings → Gateway → Gateway name) and reported on
+fields (the current gateway's Edit dialog in Settings → Gateways) and reported on
 `GET /__hui/health`, so a client that keeps several gateways can tell them
 apart without knowing each machine's path, port or hostname. Empty is the
 normal state of a fresh install and means the hostname of the machine the
