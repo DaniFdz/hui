@@ -2,6 +2,7 @@
  * onboarding body fills it has that body left out of the setup, and the export dialog says so before Download (BOT-061). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { roster } from "./bot-panel.ts";
 
 /** Long enough that the fixed part of a setup document plus this body passes what a bot's BOOTSTRAP.md holds (6,000). */
 const BODY = Array.from({ length: 60 }, (_, index) => `- Step ${index + 1}: E2E_SETUP read what the operator asked, check the page, and say what changed.`).join("\n");
@@ -10,9 +11,10 @@ test("an export's setup stays within a bot's BOOTSTRAP.md and names what it left
   await hui.api("POST", "/__hui/bots", { name: "Quill", soul: "# Who I am\nE2E_SOUL: a fixture bot.\n", bootstrap: BODY });
 
   await hui.open("/");
-  await screen.getByRole("tab", "Bots").tap();
-  await screen.getByText("Quill").hover();
-  await screen.getByRole("button", "Actions for Quill").tap();
+  await roster(screen, hui);
+  const actions = screen.getByRole("button", "Actions for Quill");
+  await actions.focus();
+  await actions.tap();
   await screen.getByText("Export…", { exact: true, visible: true }).first().tap();
 
   await expect(screen.getByText("Left out of its setup")).toBeVisible();
