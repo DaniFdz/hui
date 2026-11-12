@@ -6,6 +6,10 @@ import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 import { panelOverview } from "./bot-panel.ts";
 
+/** The card's pending line: the clock time the wait goes out at, or that time and its date when the cooldown ends past
+ * local midnight, which `whenLabel` names rather than leaving tomorrow's "12:05 AM" reading as today's. */
+const waitingAt = /^1 event waits, sent together at (?:[A-Z][a-z]{2} \d{1,2}, )?\d{1,2}:\d{2}(?:\s?[AP]M)?$/u;
+
 const makeBot = async (hui: Hui, name: string) =>
   (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name, soul: "# Who I am\nA terse fixture bot.\n" })).bot;
 
@@ -65,7 +69,7 @@ test("events within a trigger's cooldown wait on its card and reach the chat as 
   await expect(transcript.getByText("event a", { exact: true }).first()).toBeVisible();
   await expect(screen.getByText(/^Last fired just now · cooldown 1 min$/u)).toBeVisible();
   expect((await hui.api<{ status: string }>("POST", hook.path, report("b"))).status).toBe("held");
-  await expect(screen.getByText(/^1 event waits, sent together at \d{1,2}:\d{2}(?: [AP]M)?$/u)).toBeVisible();
+  await expect(screen.getByText(waitingAt)).toBeVisible();
   await expect(transcript.getByText("event b", { exact: true })).toBeHidden();
   expect(await triggerList(hui, bot.id).then((list) => list.triggers[0]!.pending?.events)).toBe(1);
 
@@ -99,7 +103,7 @@ test("events within a trigger's cooldown wait on its card and reach the chat as 
   await panelOverview(screen, "Burst");
   await screen.getByRole("button", "Add trigger").tap();
   await expect(screen.getByText("12 of 12 trigger deliveries in the last hour.")).toBeVisible();
-  await expect(screen.getByText(/^1 event waits, sent together at \d{1,2}:\d{2}(?: [AP]M)?$/u)).toBeVisible();
+  await expect(screen.getByText(waitingAt)).toBeVisible();
   await expect(transcript.getByText("event cap-11", { exact: true }).first()).toBeVisible();
   await expect(transcript.getByText("event cap-12", { exact: true })).toBeHidden();
 });
