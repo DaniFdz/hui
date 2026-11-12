@@ -47,7 +47,7 @@ const WORKING = new Set(["queued", "starting", "running"]);
 const watched = (autonomous: boolean, title: string) => `${autonomous ? "Autonomous" : "Watched"} session "${title}"`;
 
 /** What a chief does with an Autonomous session's stop, said in the report so it holds without the pack's skills. */
-const AUTONOMOUS_NOTE = "It runs in Autonomous mode and reports to you: accept or correct its plan, answer its question, or settle its report, with sessions_send. Escalate to the operator only what the decision skill reserves for them.";
+const AUTONOMOUS_NOTE = "It runs in Autonomous mode and reports to you: accept or correct its plan, answer its question, or settle its report, with sessions_send and timeoutSeconds 0, since its next stop comes back to you. Escalate to the operator only what the decision skill reserves for them.";
 
 const note = (autonomous: boolean) => autonomous ? [AUTONOMOUS_NOTE] : [];
 
