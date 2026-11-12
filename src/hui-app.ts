@@ -3111,6 +3111,12 @@ export class HuiApp extends HuiElement {
     };
   }
 
+  private switchGateway = (url: string): void => {
+    void this.gateways.switchTo(url).catch((error: unknown) => {
+      this.sessions.notify(error instanceof Error ? error.message : "Could not switch gateways.", true);
+    });
+  };
+
   /** The name this page's gateway reports: its Settings health poll once it ran, else the name read at boot. */
   private get gatewayName(): string {
     return this.control.health?.name || this.gateways.currentName;
@@ -3135,7 +3141,7 @@ export class HuiApp extends HuiElement {
           gatewayAdd: this.gateways.addState,
           onGatewayAddress: (address: string) => this.gateways.setAddress(address),
           onAddGateway: () => void this.gateways.addGateway(),
-          onSwitchGateway: (url: string) => this.gateways.switchTo(url),
+          onSwitchGateway: this.switchGateway,
           onRemoveGateway: (url: string) => this.gateways.remove(url),
           onRetryGateway: (url: string) => void this.gateways.retry(url),
           onRefreshObservability: () => this.loadOperationalData(true),
@@ -3244,7 +3250,7 @@ export class HuiApp extends HuiElement {
         this.openSettings();
       },
       gateways: this.gateways.views(this.gatewayName),
-      onSwitchGateway: (url: string) => this.gateways.switchTo(url),
+      onSwitchGateway: this.switchGateway,
       onOpenGatewaySettings: () => this.openSurfaceSettings("connection"),
       onSearch: this.updateSearch,
     };

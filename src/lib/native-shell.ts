@@ -16,6 +16,7 @@
  * view that offers the action never assembles a link, a title or a cap of its own.
  */
 import { navigationPath } from "./navigation.ts";
+import { normalizeGatewayAddress } from "./gateways/gateway-list.ts";
 
 export type NativePlatform = "android" | "ios";
 
@@ -51,6 +52,8 @@ export type NativeShell = {
    * the event's `preventDefault()` tells the shell so; a press nothing consumed is the shell's, which goes back in the
    * page's history and, at the root, leaves the app. Returns the unsubscribe. */
   onBack(callback: () => boolean): () => void;
+  /** Rebuilds the shell's bridge on the chosen gateway; a normal cross-origin WebView navigation cannot do that. */
+  connectGateway(url: string): Promise<void>;
   /** Drops the remembered gateway: the app returns to the shell's own Connect page. */
   forgetGateway(): Promise<void>;
 };
@@ -82,7 +85,7 @@ type NotificationsPlugin = Plugin & {
 };
 type SharePlugin = Plugin & { share?: (options: NativeShare) => Promise<unknown> };
 type StatusBarPlugin = Plugin & { setStyle?: (options: { style: "DARK" | "LIGHT" }) => Promise<void> };
-type GatewayPlugin = Plugin & { forget?: () => Promise<void> };
+type GatewayPlugin = Plugin & { connect?: (options: { url: string }) => Promise<void>; forget?: () => Promise<void> };
 
 /** The injected bridge and the phone it answers for, or nothing: a browser has no bridge, and Capacitor's own browser
  * build injects one that answers `isNativePlatform() === false`. A bridge that cannot name an Android or iOS shell is
@@ -224,6 +227,12 @@ function shellFor(cap: CapacitorBridge, platform: NativePlatform): NativeShell {
         const index = back.indexOf(callback);
         if (index >= 0) back.splice(index, 1);
       };
+    },
+    async connectGateway(url) {
+      const address = normalizeGatewayAddress(url);
+      if (!address) throw new Error("Enter an http:// or https:// address.");
+      if (!gateway?.connect) throw new Error("Update the HUI app to switch gateways.");
+      await gateway.connect({ url: address });
     },
     async forgetGateway() {
       try {

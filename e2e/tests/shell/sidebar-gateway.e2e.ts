@@ -16,6 +16,7 @@ test("the sidebar footer lists the gateways this device knows and marks the curr
   await expect(page.getByText("Loft Studio", { exact: true })).toBeVisible();
 
   await hui.open("/");
+  await hui.sessionList();
   const trigger = screen.getByTestId("sidebar-gateway");
   await expect(trigger).toBeVisible();
   await expect(trigger).toContainText(name);
@@ -27,14 +28,28 @@ test("the sidebar footer lists the gateways this device knows and marks the curr
   await expect(screen.getByText("Loft Studio", { exact: true })).toBeVisible();
   await expect(screen.getByText("Add a gateway…", { exact: true })).toBeVisible();
 
-  // Escape closes the list and returns focus to the button, as the session menus do.
-  await screen.getByText("Add a gateway…", { exact: true }).press("Escape");
-  await expect(screen.getByText("Add a gateway…", { exact: true })).toBeHidden();
-  await expect(trigger).toBeFocused();
-
-  // Add a gateway… leads to where addresses are managed.
-  await trigger.tap();
+  // Add a gateway… leads to where addresses are managed. Escape is the web-only keyboard case SHELL-051.
   await screen.getByText("Add a gateway…", { exact: true }).tap();
   await expect(page.getByLabel("Gateway address")).toBeVisible();
   assert.match(await hui.url(), /\/settings\/connection$/u);
+});
+
+test("choosing another gateway in the footer opens its own page", { tags: ["SHELL-049"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const there = new URL(hui.gateway);
+  there.hostname = "localhost";
+  const name = (await hui.api<{ name: string }>("GET", "/__hui/health")).name;
+  await hui.open("/settings/connection");
+  const page = screen.getByTestId("settings-page");
+  await page.getByLabel("Gateway address").fill(there.origin);
+  await page.getByRole("button", "Add", { exact: true }).tap();
+  await expect(page.getByRole("button", `Switch to ${name}`)).toBeVisible();
+  await hui.open("/");
+  await hui.sessionList();
+  await screen.getByTestId("sidebar-gateway").tap();
+  // The disabled current item also has Current in its accessible name; this is the other gateway's item.
+  await screen.getByRole("menuitem", { name, exact: true }).tap();
+  await expect.poll(() => hui.url()).toMatch(/^http:\/\/localhost:\d+\//u);
+  await hui.sessionList();
+  await expect(screen.getByTestId("sidebar-gateway")).toContainText(name);
+  await hui.open("/");
 });

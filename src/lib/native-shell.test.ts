@@ -19,7 +19,7 @@ type Harness = {
   shell: NativeShell;
 };
 
-const PLUGIN_ACTIONS = ["open", "schedule", "share", "setStyle", "forget"] as const;
+const PLUGIN_ACTIONS = ["open", "schedule", "share", "setStyle", "connect", "forget"] as const;
 
 /** A page as far as the adapter reads one: `window`, its `history`, its `location`, and the injected bridge. */
 function fakeShell(options: { platform?: string; history?: string[]; plugins?: readonly string[]; startActive?: boolean } = {}): Harness {
@@ -253,7 +253,19 @@ test("the share sheet and forgetting the gateway reach their plugins", async () 
   ]);
 });
 
-test("a shell missing every plugin still answers every call", async () => {
+test("choosing a gateway reaches the existing native bridge handoff and reports a refusal", async () => {
+  const { shell, calls, plugins } = fakeShell();
+  await shell.connectGateway("https://loft.test/");
+  assert.deepEqual(calls, [{ plugin: "HuiGateway", method: "connect", options: { url: "https://loft.test" } }]);
+  await assert.rejects(shell.connectGateway("javascript:alert(1)"), /http:\/\/ or https:\/\//u);
+  assert.equal(calls.length, 1, "an invalid address never reaches a native plugin");
+  plugins["HuiGateway"]!["connect"] = async () => { throw new Error("Gateway refused."); };
+  await assert.rejects(shell.connectGateway("https://loft.test"), /Gateway refused/u);
+  const old = fakeShell({ plugins: [] });
+  await assert.rejects(old.shell.connectGateway("https://loft.test"), /Update the HUI app/u);
+});
+
+test("a shell missing optional plugins still answers its best-effort calls", async () => {
   const { shell } = fakeShell({ plugins: [] });
   await shell.openExternal("https://example.com");
   await shell.notify({ id: 1, title: "t", body: "b", path: "/sessions/1" });

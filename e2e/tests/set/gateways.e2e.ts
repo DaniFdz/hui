@@ -67,6 +67,7 @@ test("switching opens the chosen gateway in this page", { tags: ["SET-094"], pla
 
   // The page is now that origin's app, and its footer names the gateway serving it.
   await expect.poll(() => hui.url()).toMatch(/^http:\/\/localhost:\d+\//u);
+  await hui.sessionList();
   const trigger = screen.getByTestId("sidebar-gateway");
   await expect(trigger).toBeVisible();
   await expect(trigger).toContainText(name);

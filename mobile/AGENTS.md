@@ -125,6 +125,7 @@ null`, `null` in a browser so every caller keeps its web behaviour:
 platform: "android" | "ios"
 openExternal(url)          notify({ id, title, body, path })      share({ title, text, url })
 setStatusBar({ dark })     onResume(callback)                    onBack(callback): () => void
+connectGateway(url)        // HuiGateway.connect(): remembers the address and rebuilds the bridge on its origin
 forgetGateway()            // clears the remembered gateway: HuiGateway.forget() on Android
 ```
 

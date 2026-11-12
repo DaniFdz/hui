@@ -879,6 +879,14 @@ preflight with 403, so the probe fails and nothing is stored. The route takes no
 credentials and sends no cookies; `*` is refused by a browser for a request made
 with them, which is why it is safe here.
 
+Switching loads the chosen gateway's own UI; it does not make the old page a
+cross-origin API client. A browser navigates that page. The phone calls its
+existing `HuiGateway.connect({ url })` handoff so the shell remembers the chosen
+address and rebuilds its bridge on that origin. An unavailable or refused
+handoff reports an error in HUI instead of silently opening an external browser.
+The phone still remembers one connected address; its native saved-gateway
+chooser is separate from the page's origin-local list.
+
 ### macOS power
 
 ### `GET /__hui/power`
