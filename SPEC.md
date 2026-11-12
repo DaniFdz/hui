@@ -4037,15 +4037,25 @@ faster."
   ChatGPT login: the gateway keeps the credential and sets each call up, the
   browser carries the audio and the call's data channel. GPT-Live's one tool
   (client delegation) asks the bot.
+- **A handoff before it speaks.** Each call starts with a note the bot's utility
+  model writes for it, from the bot's soul, its memory, the newest messages of its
+  chat verbatim and the operator's saved knowledge: what is active, the last
+  decisions, what waits on the operator and what they may ask about today. It is
+  written inside the call's start request, bounded to six seconds and 1,600
+  characters; a note no model writes leaves the call starting without one, and
+  the newest messages of the chat ride along in its place. So a handoff given
+  minutes before the call reaches it, which the memory's summaries alone lost.
 - **The tool runs on a faster model.** A call helper on the bot's utility model,
-  at low thinking, answers from the bot's soul (its SOUL.md), its memory and the call
-  so far. It never queues behind the bot's own turn. What needs tools goes to the
-  bot's chat as a `[call task]` message on the bot's own model; its reply is
-  spoken if the call is still up and stays in the chat either way. The limits
-  follow OpenDots': 25 s per question (then GPT-Live offers to hand it off), six
-  questions and four hand-offs per call, and calls of at most 15 minutes. The
-  helper has no tools yet: a restricted tool set would need new runtime
-  plumbing, so it hands off anything that needs one.
+  at low thinking, answers from the bot's soul (its SOUL.md), its memory, the
+  newest messages of its chat and the call so far. It never queues behind the
+  bot's own turn. What needs tools, or is not in those, goes to the bot's chat as
+  a `[call task]` message on the bot's own model: the helper is told never to
+  answer that it does not know, an unknown being a hand-off. Its reply is spoken
+  if the call is still up and stays in the chat either way. A call keeps no
+  per-call count: 25 s per question (then GPT-Live offers to hand it off), every
+  question answered or handed off, and calls of at most 15 minutes. The helper
+  has no tools yet: a restricted tool set would need new runtime plumbing, so it
+  hands off anything that needs one.
 - **What happened, at hang-up.** No chat message per utterance. When a call
   ends (hang-up, 90 s without a heartbeat, or 15 minutes), the utility model
   writes a summary in the bot's language: what was discussed, confirmed

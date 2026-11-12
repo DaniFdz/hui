@@ -1030,14 +1030,23 @@ Nothing is translated.
 
 The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):
 
+- **It starts with a handoff.** Before the call connects, the bot's utility model
+  writes a short handoff note from its soul, its memory, the newest messages of
+  its chat and the knowledge you saved: what is active, the last decisions, what
+  waits on you and what you may ask about today. The call shows *Connecting…*
+  while it is written (at most six seconds) and starts without it if no model
+  answers. GPT-Live speaks from that note, the memory and the newest messages of
+  the chat, so a handoff you gave the bot minutes earlier is there.
 - **GPT-Live talks.** It answers greetings, small talk and what the bot's
-  soul and recent memory already say, about a second after you stop.
+  soul, the handoff and recent memory already say, about a second after you
+  stop.
 - **Quick questions go to the bot's helper.** When GPT-Live needs to know
   something, it asks the bot: a helper on the bot's utility model answers from
-  the bot's soul (its SOUL.md), the newest part of its memory and the call so far, in
-  a few seconds. What it cannot see there (older memory, files) it hands to the
-  bot's chat instead of saying it does not know. It never waits for the bot's
-  own turn. It has 25 seconds per question; past
+  the bot's soul (its SOUL.md), the newest part of its memory, the newest
+  messages of its chat and the call so far, in a few seconds. What it cannot
+  answer from those (older memory, files, an action) it hands to the bot's chat
+  instead of saying it does not know: the bot never tells you it does not know.
+  It never waits for the bot's own turn. It has 25 seconds per question; past
   them GPT-Live says it is taking long and offers to hand it off.
 - **Real work goes to the bot's chat.** What needs tools, files or current
   information arrives in the chat as a message starting with `[call task]`,
@@ -1053,9 +1062,10 @@ The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):
   page vanishes is summarized after 90 seconds without news from it; if the
   summary fails, the card keeps the transcript and says so.
 
-A call ends after 15 minutes. The helper answers six questions per call (then
-everything goes to the chat), a call hands off at most four tasks, and two calls
-can run at once on the gateway. The route is the one ChatGPT's own voice mode
+A call ends after 15 minutes. Every question is answered or handed to the chat
+(there is no per-call count: the helper has 25 seconds per question, and the
+call's own limit ends the talk), and two calls can run at once on the gateway.
+The route is the one ChatGPT's own voice mode
 uses, not a public API: it may change, and calls count against your ChatGPT
 plan's voice usage.
 

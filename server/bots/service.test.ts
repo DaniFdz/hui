@@ -1754,6 +1754,12 @@ test("a call's record goes to the bot's conversation as one write, its context c
   assert.equal(context.bot.id, bot.id);
   assert.equal(context.soul, "Be brief.", "the call gets its SOUL.md");
   assert.equal(context.view, "<chat>\n0+1|user: hi\n</chat>");
+  // A handoff given minutes before the call is newer than the memory's summaries: the call reads it verbatim.
+  const chat = await h.chat(bot.sessionId);
+  chat.history.push({ kind: "message", role: "user", text: "[from agent: Kickoff · reply-to agent:s-9] The meeting moved to 15:00." });
+  chat.answer("Noted: 15:00.");
+  assert.equal((await h.service.callContext(bot.handle)).recent,
+    "user: [from agent: Kickoff · reply-to agent:s-9] The meeting moved to 15:00.\nAda: Noted: 15:00.");
   const plain = await harness(t, { memoryReadable: false });
   const other = await plain.service.create({ soul: SOUL, name: "Bob" });
   assert.equal((await plain.service.callContext(other.id)).view, undefined, "a call goes on without a memory it cannot read");
