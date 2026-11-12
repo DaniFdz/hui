@@ -4,7 +4,7 @@
  */
 import { workers } from "./workers.ts";
 import { readHuiSettings } from "./hui-settings.ts";
-import { liveSessions } from "./sessions/live-sessions.ts";
+import { liveSessions, retryableRunFailure } from "./sessions/live-sessions.ts";
 import { mirrorDiagnosticLogs, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { stopAgentToolBridge } from "./agent-tools/bridge.ts";
@@ -33,6 +33,8 @@ import {
 } from "./services.ts";
 
 let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+/** When the heartbeat last ran, so a tick that arrives far late can tell the Mac slept. */
+let lastHeartbeatAt = Date.now();
 
 durableHost().storeFailed = async () => reattachAfterStoreFailure(await readRegistry());
 
@@ -109,6 +111,24 @@ export async function startBackend(): Promise<void> {
   }));
   void secretFiles.sweep();
   await workers.list().catch(() => undefined);
+  // The staff pack's skills in the Chief of Staff and in every group chief: seeded once, then kept current except for
+  // what the operator edited. Installed before the Durable store resumes its runs, so a chief that resumes cannot be
+  // editing a skill while the pack writes it.
+  await staff.ensure().then((outcome) => {
+    if (!outcome.seeded && !outcome.bots.length && !outcome.routesAdded.length) return;
+    const written = outcome.bots.reduce((total, bot) => total + bot.written.length, 0);
+    const kept = outcome.bots.reduce((total, bot) => total + bot.kept.length, 0);
+    recordDiagnosticEvent({
+      area: "session", level: "info", action: "staff_pack_installed",
+      summary: outcome.seeded
+        ? `Seeded the Chief of Staff bot; ${written} skills installed and ${outcome.routesAdded.length} routes added`
+        : `Staff pack checked; ${written} skills written, ${kept} kept, ${outcome.routesAdded.length} routes added`,
+    });
+  }, (error: unknown) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "staff_pack_failed",
+    summary: "The staff pack could not be installed; HUI tries again at its next start",
+    detail: error instanceof Error ? error.message : String(error),
+  }));
   // Opening the Durable store resumes its interrupted runs, including those of
   // sessions no browser has reopened yet, once those sessions have loaded their
   // PI extensions again. Another gateway owning it is reported.
@@ -119,20 +139,7 @@ export async function startBackend(): Promise<void> {
     detail: error instanceof Error ? error.message : String(error),
   }));
   recoverInterruptedSessions(await readRegistry());
-  // The staff pack's one bot and its skills: seeded once, then kept current except for what the operator edited.
-  await staff.ensure().then((outcome) => {
-    if (!outcome.seeded && !outcome.written.length && !outcome.kept.length && !outcome.routesAdded.length) return;
-    recordDiagnosticEvent({
-      area: "session", level: "info", action: "staff_pack_installed",
-      summary: outcome.seeded
-        ? `Seeded the Chief of Staff bot; ${outcome.written.length} skills installed and ${outcome.routesAdded.length} routes added`
-        : `Staff pack checked; ${outcome.written.length} skills written, ${outcome.kept.length} kept, ${outcome.routesAdded.length} routes added`,
-    });
-  }, (error: unknown) => recordDiagnosticEvent({
-    area: "session", level: "warning", action: "staff_pack_failed",
-    summary: "The staff pack could not be installed; HUI tries again at its next start",
-    detail: error instanceof Error ? error.message : String(error),
-  }));
+  void resumeSessionsWithFailedRuns(await readRegistry());
   // The gateway heartbeat replaces the routines #482 put in bot chats: no bot turn, no context.
   await removeLegacyHeartbeatRoutines(automation).then((removed) => {
     if (!removed.length) return;
@@ -145,22 +152,45 @@ export async function startBackend(): Promise<void> {
     summary: "The old heartbeat routines could not be removed; HUI tries again at its next start",
     detail: error instanceof Error ? error.message : String(error),
   }));
-  const scanHeartbeat = () => void heartbeat.scan().then((outcome) => {
-    if (!outcome.continued.length) return;
-    recordDiagnosticEvent({
-      area: "session", level: "info", action: "heartbeat_continued",
-      summary: `Continued ${outcome.continued.length} watched session${outcome.continued.length === 1 ? "" : "s"}`,
-    });
-  }, (error: unknown) => recordDiagnosticEvent({
-    area: "session", level: "warning", action: "heartbeat_failed",
-    summary: "The gateway heartbeat could not check watched sessions",
-    detail: error instanceof Error ? error.message : String(error),
-  }));
+  const scanHeartbeat = () => {
+    // A tick far later than its interval means the Mac slept: runs that failed
+    // while it did get the same fresh chance a restart gives them.
+    const now = Date.now();
+    const slept = now - lastHeartbeatAt > HEARTBEAT_INTERVAL_MS * 2;
+    lastHeartbeatAt = now;
+    if (slept) void readRegistry().then(resumeSessionsWithFailedRuns).catch(() => undefined);
+    void heartbeat.scan().then((outcome) => {
+      if (!outcome.continued.length) return;
+      recordDiagnosticEvent({
+        area: "session", level: "info", action: "heartbeat_continued",
+        summary: `Continued ${outcome.continued.length} watched session${outcome.continued.length === 1 ? "" : "s"}`,
+      });
+    }, (error: unknown) => recordDiagnosticEvent({
+      area: "session", level: "warning", action: "heartbeat_failed",
+      summary: "The gateway heartbeat could not check watched sessions",
+      detail: error instanceof Error ? error.message : String(error),
+    }));
+  };
   scanHeartbeat();
   heartbeatTimer = setInterval(scanHeartbeat, HEARTBEAT_INTERVAL_MS);
   heartbeatTimer.unref();
   // Auto-star the HUI repo when GitHub is connected.
   void githubCli.starHuiRepo().catch(() => {}); // best-effort, non-blocking
+}
+
+/** Sessions whose last run ended on a retryable failure before this gateway
+ * started, or while the Mac slept: opening one retries it, so a shutdown does
+ * not leave work stopped until the operator continues each session by hand. */
+export async function resumeSessionsWithFailedRuns(records: readonly SessionRecord[]): Promise<number> {
+  let started = 0;
+  for (const record of records) {
+    if (record.worker || record.archived || !retryableRunFailure(record)) continue;
+    if (liveSessions.ensure(record)) started += 1;
+  }
+  if (started) {
+    recordDiagnosticEvent({ area: "session", level: "info", action: "failed_runs_resumed", summary: `Retrying ${started} run${started === 1 ? "" : "s"} that failed while HUI was away` });
+  }
+  return started;
 }
 
 /** The sessions of Durable conversations with unfinished work, whose runs
