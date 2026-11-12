@@ -897,6 +897,29 @@ test("continue after a failed answer restates the request the run was handling",
   manager.disposeAll();
 });
 
+test("a session whose run failed before this gateway started retries when it opens", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started), undefined, undefined, [0]);
+  manager.ensure({ ...recordFor("restart-retry"), runFailedAt: new Date().toISOString() });
+  await waitForBoot(manager, "restart-retry");
+  const runtime = started[0]!;
+  runtime.history = [
+    { kind: "message", role: "user", text: "Use pup" },
+    { kind: "message", role: "assistant", text: "" },
+  ];
+  runtime.emit({ type: "history" });
+  await waitFor("the failed run to retry itself", () => runtime.prompts.length === 1);
+  assert.equal(
+    runtime.prompts[0],
+    "The previous run was interrupted while handling this request:\n\nUse pup\n\nReview the latest transcript and workspace state, finish the unfinished task, and avoid repeating work that is already complete.",
+  );
+  const retried = (await readRegistry()).find((session) => session.id === "restart-retry");
+  assert.equal(retried?.runFailedAt, undefined, "the retry clears the recorded failure");
+  runtime.history = [...runtime.history, { kind: "message", role: "assistant", text: "done" }];
+  runtime.emit({ type: "settled" });
+  manager.disposeAll();
+});
+
 test("a run that ends on a dropped connection retries itself, and one that ends on a refusal waits for the operator", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started), undefined, undefined, [0]);
