@@ -3090,8 +3090,12 @@ arrive turned off), the previous owner's own onboarding body when there was one,
 that its memory never travels, and the instructions the imported bot follows in its
 first conversation (`## How to run this`: greet, go through the points one or two at
 a time, ask rather than answer for them, write the answers to USER.md, MEMORY.md and
-SOUL.md). It is bounded (`BOT_SETUP_CHARACTERS`, 8,000): over it items are left out
-and counted, never cut. Then `bot.json`, `SOUL.md` and `skills/<name>/…`, scripts
+SOUL.md). It is bounded (`BOT_SETUP_CHARACTERS`, the bot's own `BOOTSTRAP.md`
+limit, 6,000): over it items are left out
+and counted, never cut, and the previous owner's own onboarding body goes
+first, so the points, needs and schedules stay. The build says how full it is
+and what it left out (`setup: { characters, limit, dropped }`), which the dialog
+shows. Then `bot.json`, `SOUL.md` and `skills/<name>/…`, scripts
 picked `remove` left out. No export date: every entry is
 dated 1980-01-01 (a local date would tell the time zone), and the file is named
 from the bot's final name (`botExportFileName`, `{{user}}` left out).

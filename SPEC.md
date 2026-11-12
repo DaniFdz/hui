@@ -4522,8 +4522,12 @@ imported bot walks the new owner through it.
   answer for the operator, write what they say to USER.md, MEMORY.md and SOUL.md.
   The import carries the whole document in the imported bot's first turn, so the
   bot needs no file tool and the operator's chat shows only "<name> was created",
-  as before. Bounded at 8,000 characters: over it items are left out and counted,
-  never cut.
+  as before. Bounded at 6,000 characters, a bot's own BOOTSTRAP.md limit, so an
+  export always imports: over it items are left out and counted, never cut, and
+  the previous owner's onboarding body goes first, so the points, needs and
+  schedules stay. The export dialog says how full the document is and what it
+  left out, and the import cuts what `{{user}}` filled in with a longer name
+  makes too long, with a note, rather than refusing the bot.
 - **No live link, no updating copies.** Grok publishes a template and can push
   changes to every copy; HUI has no accounts or hosting, and a served template
   would have to be reviewed again on every publish. The zip is reviewed once,

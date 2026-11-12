@@ -10,7 +10,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { live } from "lit/directives/live.js";
 import { buildExport, changeGroups, withAdditions, type BotExportBuild } from "../lib/bots/export-preview.ts";
 import type { BotExportAddition, BotExportGroup, BotExportReview, BotImportPreview } from "../api/schema/bot-templates.ts";
-import type { BotView } from "../lib/bots/bots.ts";
+import { BOT_LIMITS, type BotView } from "../lib/bots/bots.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportTab, type PickedSource } from "../lib/bots/templates.ts";
 import { botTriggerFilterSummary, cooldownLabel } from "../lib/bots/triggers.ts";
 import { icons } from "../lib/icons.ts";
@@ -127,7 +127,7 @@ function renderPreviewStep(props: BotImportDialogProps, preview: BotImportPrevie
   const facts: [string, string][] = [
     ["Soul", preview.soul ? `${preview.soul.length.toLocaleString()} characters` : "None: it starts with its first conversation"],
     ["Memory", preview.memory ? `${preview.memory.length.toLocaleString()} characters, never exported` : "None"],
-    ...(preview.bootstrap ? [["Onboarding", `${preview.bootstrap.length.toLocaleString()} characters`] as [string, string]] : []),
+    ...(preview.bootstrap ? [["Onboarding", `${preview.bootstrap.length.toLocaleString()} of ${BOT_LIMITS.bootstrap.toLocaleString()} characters`] as [string, string]] : []),
     ["Model", preview.model ?? "Gateway default"],
     ["Skills", preview.skills.length ? `${preview.skills.length} of its own, on` : "None of its own"],
     ["Routines", preview.routines.length ? `${preview.routines.length}, disabled` : "None"],
@@ -300,6 +300,7 @@ function renderReview(props: BotExportDialogProps, held: BotExportReview) {
     ["Changes", String(review.changes.length + review.files.length)],
     ["Cleaned", cleaned ? `${cleaned} automatically` : "Nothing"],
     ["Open points", build.open.length ? `${build.open.length} for the new owner` : "None"],
+    ["Setup", `${build.setup.characters.toLocaleString()} of ${build.setup.limit.toLocaleString()} characters`],
     ["Files", String(build.files.length)],
   ];
   return html`<div class="bot-import__who">
@@ -313,6 +314,8 @@ function renderReview(props: BotExportDialogProps, held: BotExportReview) {
       ? html`<p class="bot-import__untrusted" role="note"><span aria-hidden="true">${icons.alertTriangle}</span><span>${review.warning}</span></p>`
       : html`<p class="bot-import__hint">HUI cleaned it, then ${review.model} read every part. Nothing leaves until you download, and only what the files below hold.</p>`}
     <dl class="bot-import__facts">${facts.map(([term, value]) => html`<div><dt>${term}</dt><dd>${value}</dd></div>`)}</dl>
+    ${build.setup.dropped.length ? html`<p class="bot-import__untrusted" role="note"><span aria-hidden="true">${icons.alertTriangle}</span><span>Its setup (BOOTSTRAP.md) is full at ${build.setup.limit.toLocaleString()} characters: ${plural(build.setup.dropped.length, "item")} stayed behind. They are listed below, and the new owner never sees them.</span></p>` : nothing}
+    ${build.setup.dropped.length ? section("Left out of its setup", String(build.setup.dropped.length), html`<p class="bot-import__hint">A bot's BOOTSTRAP.md holds at most ${build.setup.limit.toLocaleString()} characters, and these didn't fit. The document counts them, and the new owner never sees them: share them yourself if they matter.</p><ul class="bot-import__lines">${build.setup.dropped.map((line) => html`<li>${line}</li>`)}</ul>`, { name: "export-setup", open: true }) : nothing}
     ${SECTIONS.map(([group, title, about]) => {
       const changes = review.changes.filter((change) => pick(change.id, change.group) === group);
       return changes.length ? section(title, String(changes.length), html`<p class="bot-import__hint">${about}</p><ul class="bot-import__list">${changes.map((change) => html`<li class="bot-export__change" data-change=${change.id}>
@@ -333,7 +336,7 @@ function renderReview(props: BotExportDialogProps, held: BotExportReview) {
     ${review.cleanup.length ? section("Cleaned automatically", String(cleaned), html`<p class="bot-import__hint">Done before any model read it, and always applied.</p><ul class="bot-import__lines">${review.cleanup.map((hit) => html`<li>${label(hit.part)}: ${hit.kind}${hit.count > 1 ? ` ×${hit.count}` : ""} <span class="bot-import__muted">(${hit.sample})</span></li>`)}</ul>`, { name: "export-cleanup" }) : nothing}
     ${unread.length ? section("Not read by the model", String(unread.length), html`<ul class="bot-import__lines">${unread.map((part) => html`<li>${part.label}: ${part.unread ?? "not read"}</li>`)}</ul>`, { name: "export-unread", open: review.parts.length > unread.length }) : nothing}
     ${review.leftOut.length ? section("Stays behind", String(review.leftOut.length), html`<ul class="bot-import__lines">${review.leftOut.map((line) => html`<li>${line}</li>`)}</ul>`, { name: "export-left-out" }) : nothing}
-    ${section("Files as they will be saved", String(build.files.length), html`<ul class="bot-import__list">${build.files.map((file) => html`<li><details><summary><code>${file.path}</code></summary>${textBlock(file.text)}</details></li>`)}</ul>`, { name: "export-files" })}`;
+    ${section("Files as they will be saved", String(build.files.length), html`<ul class="bot-import__list">${build.files.map((file) => html`<li><details><summary><code>${file.path}</code>${file.path === "BOOTSTRAP.md" ? html` <span class="bot-import__muted">${build.setup.characters.toLocaleString()} of ${build.setup.limit.toLocaleString()} characters</span>` : nothing}</summary>${textBlock(file.text)}</details></li>`)}</ul>`, { name: "export-files" })}`;
 }
 
 export function renderBotExportDialog(props: BotExportDialogProps) {
