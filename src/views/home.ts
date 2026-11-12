@@ -1346,9 +1346,8 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     const lastText = row.sender && last ? attributedMessage(last.text)?.body ?? last.text : last?.text;
     // History refreshed from PI carries entry ids; a prompt sent this run has
     // none yet. A prompt PI refused (failed) was never persisted: no rewind.
-    // A bot's chat is permanent: the gateway refuses rewinds, so none is offered.
     // Someone else's message was never the operator's to edit and send again.
-    const rewindTo: RewindTarget | undefined = props.connection !== "live" || row.role !== "user" || sender || !last || last.failed || props.session?.bot ? undefined
+    const rewindTo: RewindTarget | undefined = props.connection !== "live" || row.role !== "user" || sender || !last || last.failed ? undefined
       : last.entryId ?? { userFromEnd: new Set(props.transcript.slice(props.transcript.indexOf(last) + 1)
           .flatMap((item) => item.kind === "message" && item.role === "user" && !item.failed ? [item.entryId ?? item.id] : [])).size };
     const rewindTooltipId = sessionControlId(props, `rewind-tooltip-${row.id}`);

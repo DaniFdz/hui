@@ -52,8 +52,12 @@ type OptChatState = { enabled: boolean; name: string; model?: string; thinking?:
 | `model` | the compactor's model as `provider/id`; default: HUI's utility model, else the conversation's own |
 | `thinking` | the compactor's thinking level; default `medium` (the reference's choice), or the nearest level below it that the model has |
 
-The document is `latest` and `fork: "initial"`: a fork, such as a rewind, starts
-without OptChat. Change it only with the helpers, which also select OptChat's
+The document is `latest` and `fork: "current"`: a fork, such as a bot's rewind,
+keeps OptChat on, and the fork's memory holds only the entries the fork carries
+(the abandoned branch's memory is forgotten). A clear (`reset`) starts the memory
+over at the reset: `cutoff.json` in the memory's directory names the latest
+reset the memory is built after, and an abandoned memory is marked there. Change
+the document only with the helpers, which also select OptChat's
 tools for the conversation in the same commit:
 
 ```ts
@@ -254,6 +258,7 @@ Each memory lives in `<HUI_DURABLE_DIR>/optchat/<conversation id>/` (by default
 | `runs.jsonl` | the frozen view of each run: `{run, entry, t0, parts}` |
 | `usage.json` | the compactor's totals: `{version: 1, usage: {calls, input, output, cacheRead, cacheWrite, cost}}` |
 | `view.json` | the chat view and the compaction view: `{version: 1, chat: {parts, batch}, compaction: {parts, batch}}`, parts as `[level, index]`, `batch` true while a batch is under way |
+| `cutoff.json` | the latest reset (a clear) the memory is built after, `{entry}`, and `{abandoned: true}` for the memory of a branch a rewind left behind; a record written whole, absent until a reset or a rewind. A memory with no log starts projecting from `entry` |
 
 A line goes to the file of the local day it is written on; ids are global. Each
 line is one write and an fsync before the append resolves. A torn line is reported
@@ -346,7 +351,8 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
 
 ## Limits
 
-- Only bots' chats enable it; ordinary sessions have no switch for it.
+- Only bots' chats enable it; ordinary sessions have no switch for it. A bot's chat can be
+  cleared and rewound (its memory follows both), but not compacted or forked.
 - PI extension messages written outside a run (`before_agent_start` context,
   `sendMessage`) and a reset's handoff message are neither logged nor sent in
   an OptChat turn.

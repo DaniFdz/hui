@@ -261,6 +261,9 @@ export type DurableBots = {
   promptContributions: Readonly<Record<string, Contribution>>;
   /** The `skills` section of a bot's chat that loads its skills with `load_skill`; undefined while PI's own lists them. */
   skillsPrompt(skills: readonly Skill[], selectedTools: readonly string[]): string | undefined;
+  /** Gives up a conversation a rewind left behind: it stops being a bot's chat (no bot sections, tools or skills), so
+   * deleting the bot later leaves nothing that still names it. A conversation that is not a bot's chat is untouched. */
+  release?(conversationId: ConversationId): Promise<void>;
 };
 
 /** Registry fallback: the HUI session whose resume reference names this conversation. */

@@ -104,7 +104,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-012",
     title: "Keep a bot's chat permanent",
-    behaviour: "A bot's chat never offers /clear, /compact, Compact now or Rewind, so its conversation can't be reset, shortened or forked. Its model and thinking level can still change.",
+    behaviour: "A bot's chat lists and runs /clear, which empties its transcript and its memory, and offers Rewind to here on the operator's messages, which keeps the bot and its memory to the kept branch. It never offers /compact or Compact now, and Fork from here is not offered, so the chat is never compacted or forked by hand. Its model and thinking level can still change.",
     spec: ["SPEC.md#bots", "docs/api.md#a-forever-chat"],
     surfaces: [],
     journeys: ["bots"],
