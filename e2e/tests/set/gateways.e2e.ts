@@ -145,6 +145,7 @@ test("Edit changes a saved gateway's name and address, and only the current gate
   await expect(page.getByText(here.origin, { exact: true })).toBeVisible();
 
   // Every surface that names this gateway shows the saved name, including the sidebar footer.
+  await hui.settingsPages();
   await screen.getByRole("button", "Exit Settings").tap();
   await hui.sessionList();
   await expect(screen.getByTestId("sidebar-gateway")).toContainText("Studio Mac");

@@ -92,6 +92,7 @@ test("a chief's session follows its group's New session defaults", { tags: ["BOT
     expect(repo.git("-C", created!.cwd, "rev-parse", "HEAD")).toBe(repo.git("rev-parse", "release/1.0^{commit}"));
 
     await hui.open("/");
+    await hui.sessionList();
     await expect(screen.getByLabel(/^Agent on group defaults, status/u)).toBeVisible();
     await hui.open(`/sessions/${created!.id}`);
     await expect(screen.getByTestId("transcript").getByText("Work in the group's checkout.")).toBeVisible();

@@ -31,7 +31,8 @@ test("the sidebar footer lists the gateways this device knows, marks the current
   await expect(dialog).toBeHidden();
   expect(await hui.url()).toBe(before);
 
-  // The new gateway joins the list under the name chosen in the dialog.
+  // The new gateway joins the list under the name chosen in the dialog, back in the phone's drawer too.
+  await hui.sessionList();
   await trigger.tap();
   await expect(screen.getByText("Loft", { exact: true })).toBeVisible();
   await expect(screen.getByText("Current", { exact: true })).toBeVisible();
