@@ -596,6 +596,69 @@ test('a page asking for a new window keeps its own gateway in the browser and an
   assert.deepEqual(state.externals, ['http://studio.local:8787/__hui/media/one.png', 'https://example.com/docs']);
 });
 
+test('a gateway this window only met through a handshake cannot steer it further', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.answerGateway('http://192.168.1.4:8787');
+  assert.equal(state.follow('http://192.168.1.4:8787/sessions/a'), true);
+  await state.settle();
+  assert.equal(state.windows[0].url, 'http://192.168.1.4:8787/sessions/a');
+
+  // Its page is on screen, but this device never listed it: it can neither report a gateway nor ask for one.
+  state.reportGateways(['https://example.com']);
+  assert.equal(await state.openGateway('https://example.com'), false);
+  assert.equal(state.follow('https://example.com/'), true);
+  await state.settle();
+  assert.deepEqual(state.externals, ['https://example.com/'], 'the public site stayed the browser\'s');
+  assert.equal(state.windows[0].url, 'http://192.168.1.4:8787/sessions/a');
+});
+
+test('a switch to a page under a gateway keeps that gateway, not the page, as the window\'s own', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.answerGateway('http://192.168.1.4:8787');
+  assert.equal(await state.openGateway('http://192.168.1.4:8787/sessions/a'), true);
+  await state.settle();
+  assert.equal(state.windows[0].url, 'http://192.168.1.4:8787/sessions/a');
+
+  // The chat a `hui://` link names is built on the gateway, not on the page the switch landed on.
+  state.follow('hui://bots/scout');
+  assert.equal(state.windows[0].url, 'http://192.168.1.4:8787/bots/scout');
+  assert.equal(state.follow('http://192.168.1.4:8787/settings'), false, 'a sibling page is its own gateway\'s');
+});
+
+test('a switch whose page never loads leaves the window on the gateway it was showing', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  const window = state.windows[0];
+  state.reportGateways(['http://studio.local:8787']);
+  state.failNextLoad(new Error('ERR_NAME_NOT_RESOLVED'));
+  assert.equal(await state.openGateway('http://studio.local:8787'), true);
+  await state.settle();
+  assert.equal(window.url, 'http://127.0.0.1:5174/', 'the window still shows the gateway it had');
+  assert.equal(state.errors.length, 1);
+
+  // That gateway is still the one the window belongs to: its clipboard writes are its own.
+  let granted;
+  window.webContents.session.permission(window.webContents, 'clipboard-sanitized-write', (value) => { granted = value; });
+  assert.equal(granted, true);
+});
+
+test('a banner from another gateway this device lists opens that gateway\'s chat in the window', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.reportGateways(['http://studio.local:8787']);
+  state.openUrl(notificationUrl({ title: 'Ready', message: 'Open.', url: 'http://studio.local:8787/sessions/a', replyTo: receipt }));
+  assert.equal(state.notifications.length, 1);
+  assert.deepEqual(state.notificationReceipts, [`${receipt}queued`]);
+  state.notifications[0].emit('click');
+  assert.equal(state.windows[0].url, 'http://studio.local:8787/sessions/a');
+});
+
 test('permissions follow the gateway the window is showing', async (t) => {
   const state = await shell(t);
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));

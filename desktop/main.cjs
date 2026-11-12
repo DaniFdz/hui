@@ -34,9 +34,9 @@ let window;
 let url;
 /**
  * The gateways this window may show itself. `listed` is what the page last reported from this device's list, replaced
- * whole each time so a gateway the operator removed stops being trusted; `verified` holds the gateway the CLI started,
- * the ones an identity probe accepted and the ones this window has shown, evicted oldest first. A page of one of them
- * stays in the window; every other link is the browser's.
+ * whole each time; `verified` holds the gateway the CLI started, the ones an identity probe accepted and the ones this
+ * window has shown, evicted oldest first. A gateway this device removed stops being listed at once, but one the window
+ * has already shown stays here until the cap evicts it, so Back and that gateway's own pages keep working.
  */
 let listedGateways = new Set();
 const verifiedGateways = new Set();
@@ -236,12 +236,16 @@ function stepHistory(step) {
   }
 }
 
-/** Shows a page in this window, which becomes the gateway it belongs to. */
+/** Shows a page in this window, which becomes the gateway it belongs to until a load that fails leaves the old one. */
 function loadInWindow(target, base) {
   if (!window || window.isDestroyed()) return;
+  const previous = currentGateway;
   currentGateway = rememberGateway(base) ?? base;
   void window.loadURL(target).catch((error) => {
-    if (error.code !== 'ERR_ABORTED') dialog.showErrorBox('HUI could not open the page', error.message);
+    if (error.code === 'ERR_ABORTED') return;
+    // The window still shows the page it had, so it still belongs to the gateway it had.
+    currentGateway = previous;
+    dialog.showErrorBox('HUI could not open the page', error.message);
   });
 }
 
@@ -336,6 +340,19 @@ function fromWindow(event) {
   return Boolean(window && !window.isDestroyed() && event.sender === window.webContents);
 }
 
+/**
+ * Whether a caller is HUI's own page on a gateway this device trusts: the one the CLI started, or one this device
+ * listed. A gateway the window only met through an identity handshake shows its own page but gets no bridge: it cannot
+ * report gateways or ask the window to go anywhere, so a page that merely answered one request cannot steer the app.
+ */
+function trustedFrame(event) {
+  if (!fromWindow(event)) return false;
+  const frame = event.senderFrame?.url ?? window.webContents.getURL();
+  const managed = gatewayBase(url);
+  if (managed && isGatewayPage(frame, managed)) return true;
+  return [...listedGateways].some((base) => isGatewayPage(frame, base));
+}
+
 /** The chat a banner names, when it belongs to a gateway this window may show: a banner is never a way out of HUI. */
 function bannerChat(id) {
   const target = typeof id === 'string' && chatUrl(id.split('#')[0]);
@@ -420,16 +437,15 @@ async function start() {
   });
   // The gateways this device lists: a switch to one of them, or a link to one, then stays in this window.
   ipcMain.on(GATEWAY_CHANNEL, (event, links) => {
-    if (!fromWindow(event) || !Array.isArray(links)) return;
+    if (!trustedFrame(event) || !Array.isArray(links)) return;
     reportedGateways(links);
   });
   // A switch, asked for by the page and answered before it navigates. It is placed by the same rule a link follows:
   // a gateway this window knows, or one on this device's own network that answers as HUI.
   ipcMain.handle(OPEN_GATEWAY_CHANNEL, async (event, link) => {
-    if (!fromWindow(event) || typeof link !== 'string') return false;
-    const base = gatewayBase(link);
+    if (!trustedFrame(event) || typeof link !== 'string') return false;
+    const base = knownGateway(link) ?? await detectGateway(link);
     if (!base) return false;
-    if (!knownGateway(base) && !(await detectGateway(base))) return false;
     loadInWindow(isGatewayPage(link, base) ? link : base, base);
     return true;
   });
