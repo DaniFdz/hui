@@ -1,7 +1,8 @@
 /**
- * HUI's heartbeat: a gateway-side check of the sessions a bot watches. It prompts an idle watched session to
- * continue when its watcher is not running, so the check costs no bot turn and never enters a bot's conversation
- * context. Also removes the Heartbeat routines a previous build provisioned in bot chats.
+ * HUI's gateway heartbeat: a gateway-side check of the sessions a bot watches. It never prompts a watched session
+ * itself. An idle or blocked watched session is reported to the session that watches it, and the chief decides the
+ * next step; the heartbeat costs no turn in a bot's chat and cannot send a generic "continue". Also removes the
+ * Heartbeat routines a previous build provisioned in bot chats.
  */
 import type { AutomationService, AutomationTask } from "./automation.ts";
 import type { SessionGoalStatus, SessionStatus } from "./api/sessions.ts";
@@ -9,7 +10,6 @@ import type { SessionRecord } from "./sessions/sessions.ts";
 import type { WatcherState } from "./api/watchers.ts";
 
 export const HEARTBEAT_INTERVAL_MS = 15 * 60_000;
-export const HEARTBEAT_PROMPT = "Continue the task and report progress; do not start new work.";
 
 /** The description on the routines a previous HUI build added to every chief; only those are removed. */
 export const LEGACY_HEARTBEAT_DESCRIPTION = "HUI's check of the sessions this chief watches.";
@@ -18,65 +18,63 @@ export type HeartbeatDeps = {
   records(): Promise<readonly SessionRecord[]>;
   status(id: string): SessionStatus;
   watchers(id: string): readonly { state: WatcherState }[];
-  prompt(id: string, text: string): Promise<void>;
-  /** The newest assistant message, for deciding whether an idle session is waiting for a decision. */
+  /** The newest assistant message, for the chief to judge what the session last said. */
   lastAssistant(id: string): string | undefined;
-  /** Deliver a status to the session that watches a target; the watcher can read it and answer or escalate. */
+  /** Deliver the status to the session that watches a target. The watcher decides; this never prompts the target. */
   notify(id: string, text: string): Promise<void>;
   now?(): number;
 };
 
-export type HeartbeatOutcome = { continued: string[] };
+export type HeartbeatOutcome = { notified: string[] };
 
 const DECISION = /\?\s*$|\b(should i|do you want|would you like|which|choose|decide|let me know|need (your|a)|waiting for|confirm|approve|shall i|your call|blocked|permission)\b/iu;
 
 /** A conservative read of the newest reply: a question mark at the end or a decision phrase means the session is
- * waiting for someone, so the heartbeat must not send it another task. */
+ * waiting for someone, so the chief must judge it rather than send another task. */
 export function looksLikeDecision(text: string | undefined): boolean {
   const last = text?.trim().split(/\n\s*\n/u).at(-1)?.trim() ?? "";
   return last.length > 0 && DECISION.test(last);
 }
 
-function statusMessage(title: string, id: string, state: HeartbeatState, last: string | undefined): string {
-  const detail = last?.trim().slice(0, 1_000);
-  const status = state === "error" ? "Blocked: error" : state === "waiting" ? "Waiting on you: an answer" : "Waiting on you: a decision";
+type HeartbeatState = "decision" | "waiting" | "error";
+
+function table(title: string, id: string, status: string): string[] {
   return [
-    `[routine: Heartbeat] Watched session "${title}" is ${state === "error" ? "in error" : state === "waiting" ? "waiting for an answer" : "idle and waiting for a decision"}.`,
     "| Session | Pull request | Status / blockers |",
     "| --- | --- | --- |",
     `| [${title}](/sessions/${id}?open=app) | — | ${status} |`,
-    ...(detail ? ["", detail] : []),
-    "Report this to the operator with the status table, then ask the one decision if it waits on them. Read it with sessions_history; answer it, ask the operator, or remove the watch. Do not start unrelated work.",
-  ].join("\n");
+  ];
 }
 
-function completedMessage(title: string, id: string, last: string | undefined): string {
+function detail(last: string | undefined): string[] {
+  return last?.trim() ? ["", last.trim().slice(0, 1_000)] : [];
+}
+
+function idleMessage(title: string, id: string, last: string | undefined, done: boolean): string {
   return [
-    `[routine: Heartbeat] Watched session "${title}" reached done.`,
-    "| Session | Pull request | Status / blockers |",
-    "| --- | --- | --- |",
-    `| [${title}](/sessions/${id}?open=app) | — | Done |`,
-    ...(last?.trim() ? ["", last.trim().slice(0, 1_000)] : []),
-    "Read the final report. Nothing is waiting to continue.",
+    `[routine: Heartbeat] Watched session "${title}" is ${done ? "done" : "idle"}; decide the next step.`,
+    ...table(title, id, done ? "Done" : "Idle: needs the chief's decision"),
+    ...detail(last),
+    done
+      ? "Read the final report and remove the watch when you have settled its ledger row. Nothing is waiting to continue."
+      : "Read it with sessions_history. Send one specific followup with sessions_send, or remove the watch if nothing is left. Do not send a generic continue.",
   ].join("\n");
 }
 
-function continuedMessage(title: string, id: string): string {
+function blockedMessage(title: string, id: string, state: HeartbeatState, last: string | undefined): string {
+  const status = state === "error" ? "Blocked: error" : state === "waiting" ? "Waiting on you: an answer" : "Waiting on you: a decision";
   return [
-    `[routine: Heartbeat] Continued watched session "${title}" after it was idle.`,
-    "| Session | Pull request | Status / blockers |",
-    "| --- | --- | --- |",
-    `| [${title}](/sessions/${id}?open=app) | — | Running: continued by heartbeat |`,
-    "Report this status to the operator with the status table; ask one question only if it waits on them.",
+    `[routine: Heartbeat] Watched session "${title}" is ${state === "error" ? "in error" : state === "waiting" ? "waiting for an answer" : "idle and waiting for a decision"}.`,
+    ...table(title, id, status),
+    ...detail(last),
+    "Read it with sessions_history; decide or escalate to the operator, then send the answer with sessions_send. Do not start unrelated work.",
   ].join("\n");
 }
 
-type HeartbeatState = "decision" | "waiting" | "error";
-
-/** A watched session is due when it is live, not archived, its goal is not paused/complete, it is idle, and no
- * watcher is running. Each idle span is prompted or notified once: a later status update makes it due again. */
+/** A watched session is due when it is live, not archived, its goal is not paused/complete, and its status is idle,
+ * waiting or error. Each state change is sent once; an idle session is a request for the chief's judgment, never a
+ * command to continue. */
 export function createHeartbeat(deps: HeartbeatDeps) {
-  const promptedAt = new Map<string, number>();
   const notifiedAt = new Map<string, number>();
 
   async function scan(): Promise<HeartbeatOutcome> {
@@ -87,58 +85,43 @@ export function createHeartbeat(deps: HeartbeatDeps) {
       if (watcher.archived) continue;
       for (const id of watcher.watches ?? []) watchedBy.set(id, [...(watchedBy.get(id) ?? []), watcher.id]);
     }
-    const continued: string[] = [];
+    const notified: string[] = [];
     for (const [id, watcherIds] of watchedBy) {
       const target = byId.get(id);
       if (!target || target.archived || target.bot) continue;
-      const at = deps.now?.() ?? Date.now();
-      if (target.stage === "done") {
-        if (deps.status(id) !== "idle") continue;
-        const previous = notifiedAt.get(id);
-        if (previous !== undefined && Date.parse(target.updatedAt) <= previous) continue;
-        let sent = false;
-        for (const watcherId of watcherIds) {
-          await deps.notify(watcherId, completedMessage(target.title, id, deps.lastAssistant(id))).catch(() => undefined);
-          sent = true;
-        }
-        if (sent) notifiedAt.set(id, at);
-        continue;
-      }
-      const goal: SessionGoalStatus | undefined = target.goal?.status;
-      if (goal !== undefined && goal !== "active") continue;
       const status = deps.status(id);
-      const state = status === "waiting" || status === "error" ? status : looksLikeDecision(deps.lastAssistant(id)) ? "decision" : undefined;
-      if (state) {
-        const previous = notifiedAt.get(id);
-        if (previous !== undefined && Date.parse(target.updatedAt) <= previous) continue;
-        let sent = false;
-        for (const watcherId of watcherIds) {
-          try {
-            await deps.notify(watcherId, statusMessage(target.title, id, state, deps.lastAssistant(id)));
-            sent = true;
-          } catch {
-            // A busy watcher is retried on the next scan.
-          }
-        }
-        if (sent) notifiedAt.set(id, at);
-        continue;
+      const at = deps.now?.() ?? Date.now();
+      if (status !== "idle" && status !== "waiting" && status !== "error") continue;
+      if (target.stage !== "done") {
+        const goal: SessionGoalStatus | undefined = target.goal?.status;
+        if (goal !== undefined && goal !== "active") continue;
       }
-      if (status !== "idle") continue;
-      if (deps.watchers(id).some((watcher) => watcher.state === "running")) continue;
-      const previous = promptedAt.get(id);
+      if (status === "idle" && target.stage !== "done" && deps.watchers(id).some((watcher) => watcher.state === "running")) continue;
+      const previous = notifiedAt.get(id);
       if (previous !== undefined && Date.parse(target.updatedAt) <= previous) continue;
-      try {
-        await deps.prompt(id, HEARTBEAT_PROMPT);
-        promptedAt.set(id, at);
-        continued.push(id);
-        for (const watcherId of watcherIds) {
-          await deps.notify(watcherId, continuedMessage(target.title, id)).catch(() => undefined);
+      const last = deps.lastAssistant(id);
+      const message = target.stage === "done"
+        ? idleMessage(target.title, id, last, true)
+        : status === "waiting" || status === "error"
+          ? blockedMessage(target.title, id, status, last)
+          : looksLikeDecision(last)
+            ? blockedMessage(target.title, id, "decision", last)
+            : idleMessage(target.title, id, last, false);
+      let sent = false;
+      for (const watcherId of watcherIds) {
+        try {
+          await deps.notify(watcherId, message);
+          sent = true;
+        } catch {
+          // A busy watcher is retried on the next scan.
         }
-      } catch {
-        // A session that went busy between the status read and the prompt is retried on the next scan.
+      }
+      if (sent) {
+        notifiedAt.set(id, at);
+        notified.push(id);
       }
     }
-    return { continued };
+    return { notified };
   }
 
   return { scan };

@@ -571,11 +571,11 @@ A status answer uses the `status` skill: one table row per session
 question only if it waits on you. HUI's heartbeat changes use the same shape.
 
 Each session the chief creates is **watched** by default. HUI runs the
-**heartbeat** itself, every 15 minutes, without a turn in the bot's chat: it
-continues a watched session that is idle and has no running watcher, and leaves
-a running one alone. If the watched session is waiting for a decision, an answer
-or is errored, the heartbeat tells the watching bot instead of prompting it.
-Nothing from the heartbeat enters the bot's context.
+**heartbeat** itself, every 15 minutes, without a turn in a bot's chat. It reports
+a watched session that is idle, waiting, errored or done to the chief; it never
+prompts the watched session. The chief reads the last reply and decides: send
+one specific followup with `sessions_send`, or remove the watch if nothing is
+left. A generic continue is never sent.
 
 After a task that failed, drifted, or needed a step the pack did not know, the chief adds one evidence-backed entry to its own **`lessons`** skill. It never edits the pack's skills: an edited pack file stops taking pack updates. The `lessons` skill is the bot's, and `hui doctor` reports it.
 

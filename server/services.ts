@@ -380,12 +380,11 @@ export const watchers = new WatcherService({
   onChange: (id) => liveSessions.notifySnapshot(id),
 });
 export const watcherRoutes = createWatcherRoutes({ watchers, readRegistry });
-/** HUI's gateway heartbeat: no bot turn, just the watched sessions that stopped. */
+/** HUI's gateway heartbeat: it reports a watched session that needs judgment; the chief decides, not the gateway. */
 export const heartbeat = createHeartbeat({
   records: readRegistry,
   status: (id) => liveSessions.status(id),
   watchers: (id) => watchers.list(id),
-  prompt: (id, text) => liveSessions.prompt(id, text),
   lastAssistant: (id) => {
     const entries = liveSessions.transcript(id);
     for (let index = entries.length - 1; index >= 0; index -= 1) {

@@ -68,8 +68,9 @@ protocol. Choose its model for orchestration; it runs the phases end to end: an 
 `worker` in a worktree, then a fresh `verifier`, then a different-family `reviewer`. There is no go
 between phases; it stops only for a real decision, reports its final evidence, and I take the
 decision or escalate. Never create another session for a phase. A model-less route inherits the lead's model; set route models to change a
-phase's model. It is watched by default; HUI's gateway heartbeat continues it, and `watch_session`
-lists it. No heartbeat routine lives in this chat. Call `worker_stats` at the start
+phase's model. It is watched by default; HUI's gateway heartbeat reports it when idle, waiting,
+errored or done, and `watch_session` lists it. I read its last reply, then send one specific
+followup or remove the watch. No heartbeat routine lives in this chat. Call `worker_stats` at the start
 and state the machine plan. `machines` owns the choice: a session gets a connected machine with
 headroom, independent pieces spread across machines, and no worker is filled. `local` is this
 machine. Do not spawn a lead for it. The session owns the work;

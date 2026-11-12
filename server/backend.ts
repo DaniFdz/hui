@@ -160,10 +160,10 @@ export async function startBackend(): Promise<void> {
     lastHeartbeatAt = now;
     if (slept) void readRegistry().then(resumeSessionsWithFailedRuns).catch(() => undefined);
     void heartbeat.scan().then((outcome) => {
-      if (!outcome.continued.length) return;
+      if (!outcome.notified.length) return;
       recordDiagnosticEvent({
-        area: "session", level: "info", action: "heartbeat_continued",
-        summary: `Continued ${outcome.continued.length} watched session${outcome.continued.length === 1 ? "" : "s"}`,
+        area: "session", level: "info", action: "heartbeat_notified",
+        summary: `Reported ${outcome.notified.length} watched session${outcome.notified.length === 1 ? "" : "s"} to the chief`,
       });
     }, (error: unknown) => recordDiagnosticEvent({
       area: "session", level: "warning", action: "heartbeat_failed",

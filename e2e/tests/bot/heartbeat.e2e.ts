@@ -15,9 +15,10 @@ test("the gateway heartbeat continues an idle watched session", { tags: ["BOT-07
   await hui.prompt(watcher, call("watch_session", { action: "add", session: target.id }));
   await expect.poll(async () => (await sessions()).find((session) => session.id === watcher.id)?.status, { timeout: 30_000 }).toBe("idle");
 
-  const run = await hui.api<{ continued: string[] }>("POST", "/__hui/heartbeat");
-  expect(run.continued).toContain(target.id);
-  await expect.poll(async () => (await hui.stored("Continue the task and report progress; do not start new work.")).length, { timeout: 30_000 }).toBeGreaterThan(0);
+  const run = await hui.api<{ notified: string[] }>("POST", "/__hui/heartbeat");
+  expect(run.notified).toContain(target.id);
+  await expect.poll(async () => (await hui.stored("is idle; decide the next step")).length, { timeout: 30_000 }).toBeGreaterThan(0);
+  expect(await hui.stored("Continue the task and report progress")).toHaveLength(0);
 });
 
 test("an idle decision is sent to the watcher, not continued", { tags: ["BOT-077"], platforms: ["web"] }, async ({ hui }) => {
@@ -30,7 +31,7 @@ test("an idle decision is sent to the watcher, not continued", { tags: ["BOT-077
   await hui.prompt(watcher, call("watch_session", { action: "add", session: target.id }));
   await expect.poll(async () => (await sessions()).find((session) => session.id === watcher.id)?.status, { timeout: 30_000 }).toBe("idle");
 
-  const run = await hui.api<{ continued: string[] }>("POST", "/__hui/heartbeat");
-  expect(run.continued).not.toContain(target.id);
+  const run = await hui.api<{ notified: string[] }>("POST", "/__hui/heartbeat");
+  expect(run.notified).toContain(target.id);
   await expect.poll(async () => (await hui.stored("is idle and waiting for a decision")).length, { timeout: 30_000 }).toBeGreaterThan(0);
 });
