@@ -21,6 +21,7 @@ const {
   reattachAfterStoreFailure,
   recoverInterruptedSessions,
   reopenDurableSessions,
+  resumeSessionsWithFailedRuns,
 } = await import("./backend.ts");
 const { sessionMutationErrorStatus } = await import("./routes/sessions.ts");
 const { readAttachments, storeAttachmentFile } = await import("./sessions/attachments.ts");
@@ -69,6 +70,19 @@ test("gateway startup eagerly opens only interrupted sessions", () => {
 
   assert.equal(count, 1);
   assert.deepEqual(opened, ["interrupted"]);
+});
+
+test("gateway startup only retries sessions whose own runs failed recently", async () => {
+  const now = new Date();
+  const base: SessionRecord = { id: "idle", title: "Idle", group: "", cwd: tmpdir(), tool: "durable", createdAt: now.toISOString(), updatedAt: now.toISOString() };
+  const retried = await resumeSessionsWithFailedRuns([
+    base,
+    { ...base, id: "failed-now", runFailedAt: now.toISOString() },
+    { ...base, id: "failed-yesterday", runFailedAt: new Date(now.getTime() - 36 * 60 * 60_000).toISOString() },
+    { ...base, id: "failed-and-archived", archived: true, runFailedAt: now.toISOString() },
+    { ...base, id: "failed-on-a-worker", worker: "w1", runFailedAt: now.toISOString() },
+  ]);
+  assert.equal(retried, 1);
 });
 
 test("interrupted Durable work waits for its owning sessions to open", async () => {
