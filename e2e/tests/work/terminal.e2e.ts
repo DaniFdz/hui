@@ -52,7 +52,6 @@ test("Open terminal in the chat header shows the conversation's terminal in the 
   const pane = screen.getByLabel("Work pane");
   const open = screen.getByRole("button", "Open terminal");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await open.tap();
 

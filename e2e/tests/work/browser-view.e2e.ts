@@ -13,7 +13,6 @@ test("the browser view says no page is open before the agent browses, then shows
   const header = screen.getByTestId("chat-header").getByRole("button", "Open browser view");
   const preview = transcript.getByRole("button", "Open browser view");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await openWork(screen, "Browser");
 
