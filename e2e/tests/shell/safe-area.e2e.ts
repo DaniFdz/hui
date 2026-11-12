@@ -1,22 +1,28 @@
 /**
- * A phone's own chrome — the status bar, the notch, the home indicator — never covers HUI's: the header a phone draws
- * starts below the top inset, so its menu button is a tap and not a guess, and the composer ends above the bottom
- * one (SHELL-050).
- *
- * The insets are the ones a device reports; an emulator reports zero. The fixture states them (`hui.insets`) the way the
- * installed app's shell does, and the page is read where the cutout would be. The rule under test pads only in a browser
- * (`display-mode: browser`): the installed app pads the page's frame natively and a standalone page pads `body`, so
- * neither counts the inset twice — which is why this is a web-target case with a phone's insets, not a device capture.
+ * SHELL-050: the header, tappable menu and composer clear the display's unsafe bands on every target.
+ * Browsers retain exact synthetic 47/34 CSS insets; Android uses a real system cutout overlay and independently
+ * measured system-bar bounds and native WebView origin. Native page tokens stay shell-owned (zero), not injected.
+ * Effective before/after bounds account for Android's already-fitted bars and its unchanged navigation-bar inset.
  */
-import { expect } from "e2e";
+import { expect, type Locator } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import type { DisplayArea } from "../../fixtures/display-area.ts";
 
 const TOP = 47;
 const BOTTOM = 34;
 
+const contained = async (area: DisplayArea, target: Locator) => {
+  const box = await area.box(target);
+  expect(box.x).toBeGreaterThanOrEqual(area.left - 1);
+  expect(box.y).toBeGreaterThanOrEqual(area.top - 1);
+  expect(box.x + box.width).toBeLessThanOrEqual(area.right + 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(area.bottom + 1);
+  return box;
+};
+
 test("the phone's status bar and home indicator never cover HUI's header or composer", { tags: ["SHELL-050"], platforms: ["web"] }, async ({ screen, hui }) => {
   const session = await hui.createSession({ title: "Clear of the cutout" });
-  const viewport = await hui.phoneScreen();
+  await hui.phoneScreen();
   await hui.open(`/sessions/${session.id}`);
 
   const header = screen.getByTestId("chat-header");
@@ -26,48 +32,42 @@ test("the phone's status bar and home indicator never cover HUI's header or comp
   await expect(menu).toBeVisible();
   await expect(composer).toBeVisible();
 
-  /** Where an element sits now, read once it is laid out. */
-  const box = async (target: typeof header) => {
-    const measured = await target.boundingBox();
-    if (!measured) throw new Error("nothing was laid out to measure");
-    return measured;
-  };
+  const plainArea = await hui.safeDisplay();
+  const plain = { header: await contained(plainArea, header), menu: await contained(plainArea, menu), composer: await contained(plainArea, composer) };
+  expect(plain.header.y - plainArea.top).toBeLessThan(TOP);
+  expect(plainArea.bottom - (plain.composer.y + plain.composer.height)).toBeLessThan(BOTTOM + 40);
 
-  // A screen with no cutout: the header is at the top of the page and the composer near the bottom.
-  const plain = { header: await box(header), menu: await box(menu), composer: await box(composer) };
-  expect(plain.header.y).toBeLessThan(TOP);
-  expect(viewport.height - (plain.composer.y + plain.composer.height)).toBeLessThan(BOTTOM + 40);
+  const cutout = await hui.safeDisplay({ top: TOP, bottom: BOTTOM });
+  // A positive change at the top is mandatory, including on Android: an ineffective overlay cannot pass.
+  const topChange = cutout.top - plainArea.top;
+  const bottomChange = plainArea.bottom - cutout.bottom;
+  expect(topChange).toBeGreaterThan(0);
+  expect(cutout.height - cutout.bottom).toBeGreaterThan(0);
+  await expect.poll(async () => Math.round((await cutout.box(header)).y)).toBeGreaterThanOrEqual(Math.round(cutout.top));
+  const cutoutHeader = await contained(cutout, header);
+  const cutoutMenu = await contained(cutout, menu);
+  expect(Math.round(cutoutHeader.y)).toBeGreaterThanOrEqual(Math.round(cutout.top));
+  expect(cutoutMenu.y).toBeGreaterThanOrEqual(cutout.top);
+  expect(plain.menu.y).toBeLessThan(cutout.top);
+  // Exact effective movement also catches double-padding; browsers still require the original 47px movement.
+  expect(cutoutHeader.y - plain.header.y).toBeGreaterThanOrEqual(topChange - 1);
+  expect(cutoutHeader.y - plain.header.y).toBeLessThanOrEqual(topChange + 1);
 
-  await hui.insets({ top: TOP, bottom: BOTTOM });
-
-  // The header starts below the status bar, and its menu button is entirely inside the tappable area below it: the
-  // button's own box is what a tap lands on, so a menu drawn under the clock would leave its top at 14. The promise is
-  // that the inset cleared, so a pixel of layout rounding either way is not a failure.
-  await expect.poll(async () => Math.round((await box(header)).y)).toBeGreaterThanOrEqual(TOP);
-  const cutoutHeader = await box(header);
-  const cutoutMenu = await box(menu);
-  expect(Math.round(cutoutHeader.y)).toBeGreaterThanOrEqual(TOP);
-  expect(cutoutMenu.y).toBeGreaterThanOrEqual(TOP);
-  // It really moved: the button used to sit inside the band the status bar draws over.
-  expect(plain.menu.y).toBeLessThan(TOP);
-
-  // The composer ends above the home indicator rather than under it. The room it gives back is the inset plus or minus a
-  // pixel of layout rounding, so the promise is that it cleared the inset, not that it cleared it exactly.
   await expect.poll(async () => {
-    const now = await box(composer);
+    const now = await cutout.box(composer);
     return Math.round((plain.composer.y + plain.composer.height) - (now.y + now.height));
-  }).toBeGreaterThanOrEqual(BOTTOM - 1);
-  const cutoutComposer = await box(composer);
+  }).toBeGreaterThanOrEqual(bottomChange - 1);
+  const cutoutComposer = await contained(cutout, composer);
   const gaveBack = (plain.composer.y + plain.composer.height) - (cutoutComposer.y + cutoutComposer.height);
-  expect(gaveBack).toBeLessThanOrEqual(BOTTOM + 2);
-  expect(cutoutComposer.y + cutoutComposer.height).toBeLessThanOrEqual(viewport.height - BOTTOM + 1);
+  expect(gaveBack).toBeLessThanOrEqual(bottomChange + 2);
+  expect(cutoutComposer.y + cutoutComposer.height).toBeLessThanOrEqual(cutout.bottom + 1);
+  expect(await hui.overflowsSideways()).toBe(false);
+  expect(await hui.reachable(menu)).toBe(true);
+  expect(await hui.reachable(composer)).toBe(true);
 });
 
 test("every route's own chrome starts below the status bar, not only the shell's", { tags: ["SHELL-050"], platforms: ["web"] }, async ({ screen, hui }) => {
-  // Two layout roots: a route renders the shell (home, sessions, kanban, usage, a chat) or the settings shell, which
-  // draws its own mobile top bar. The inset is applied per root, so each route is read where it draws its own chrome.
   await hui.phoneScreen();
-
   const starts = [
     { route: "/", chrome: "Open navigation" },
     { route: "/sessions", chrome: "Open navigation" },
@@ -77,16 +77,14 @@ test("every route's own chrome starts below the status bar, not only the shell's
     { route: "/settings/integrations", chrome: "Open settings navigation" },
   ];
   for (const { route, chrome } of starts) {
-    // The token is set on the document, so it is stated again after each navigation: a route load is a new document.
     await hui.open(route);
-    await hui.insets({ top: TOP });
+    const area = await hui.safeDisplay({ top: TOP });
+    expect(area.top).toBeGreaterThan(0);
     const control = screen.getByRole("button", chrome).first();
     await expect(control).toBeVisible();
-    const top = async () => {
-      const measured = await control.boundingBox();
-      if (!measured) throw new Error(`${route}: the ${chrome} button was not laid out`);
-      return Math.round(measured.y);
-    };
-    await expect.poll(top).toBeGreaterThanOrEqual(TOP);
+    await expect.poll(async () => Math.round((await area.box(control)).y)).toBeGreaterThanOrEqual(Math.round(area.top));
+    await contained(area, control);
+    expect(await hui.overflowsSideways()).toBe(false);
+    expect(await hui.reachable(control)).toBe(true);
   }
 });
