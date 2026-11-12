@@ -77,7 +77,7 @@ test("forgetting the saved conversations keeps the draft and stops restoring the
   await expect(screen.getByRole("button", "Forget saved conversations")).toBeHidden();
 
   await hui.reload();
-  await expect(screen.getByText("Could not reach HUI. Check the connection and try again.")).toBeVisible();
+  await expect(screen.getByText("Could not reach HUI. Check the connection and try again. Retrying…")).toBeVisible();
   await expect(screen.getByLabel("Sessions").getByText("Forgotten offline", { exact: true })).toBeHidden();
   await expect(screen.getByText(MESSAGE)).toBeHidden();
 });

@@ -13,7 +13,7 @@ import type { CallRecord } from "./schema/calls.ts";
 import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionThinkingResponse, SideQuestionResult, SubagentTaskView } from "./schema/session-events.ts";
 import type { TaskSuggestion } from "./schema/task-suggestions.ts";
 import type { Watcher } from "./schema/watchers.ts";
-import { CLIENT_HEADERS, fetchJson, RESPONSE_TIMEOUT_MS, trackedFetch } from "./request.ts";
+import { CLIENT_HEADERS, fetchJson, fetchWithResponseDeadline, RESPONSE_TIMEOUT_MS, trackedFetch } from "./request.ts";
 import { decodeSseFrame, reconnectDelay } from "../lib/event-stream.ts";
 import { OutdatedBuildError } from "./offline.ts";
 import { GatewayHttpError, isGatewayUnavailable } from "./gateway-error.ts";
@@ -826,11 +826,12 @@ async function connectStatusesOnce(
   let response: Response;
   try {
     const held = handlers.heldRevision?.();
-    response = await fetcher(held ? `${SESSION_STATUSES_URL}?revision=${held}` : SESSION_STATUSES_URL, {
+    // The deadline covers the answer's headers only, and a gateway that never
+    // starts answering must not leave this stream unretried forever.
+    response = await fetchWithResponseDeadline(fetcher, held ? `${SESSION_STATUSES_URL}?revision=${held}` : SESSION_STATUSES_URL, {
       headers: { ...CLIENT_HEADERS, accept: "text/event-stream" },
       cache: "no-store",
-      signal,
-    });
+    }, RESPONSE_TIMEOUT_MS, signal);
   } catch {
     return { kind: "dropped" };
   }

@@ -14,6 +14,7 @@ import { deleteSession, loadSessions, renameSession, searchSessionTranscripts, s
 import { loadWorktrees, removeWorktrees } from "../api/worktrees.ts";
 import { isGatewayUnavailable } from "../api/request.ts";
 import { forgetConversation, reconcileSavedConversations, savedConversationGroups } from "../lib/session/offline-store.ts";
+import { reconnectDelay } from "../lib/event-stream.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import { mergeSessionStatuses } from "../lib/session/ui-state.ts";
 import { sessionTreeIds } from "../lib/session/tree.ts";
@@ -50,6 +51,8 @@ type SessionsDeps = {
 export class SessionsController {
   groups: readonly SessionGroup[] = [];
   loading = true;
+  /** True while HUI reads the list again after the gateway failed to answer. */
+  retrying = false;
   error = "";
   /** Revision of the gateway session list in `groups`; older lists lose. */
   revision = 0;
@@ -89,6 +92,10 @@ export class SessionsController {
   #archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
   #actionToastTimer: ReturnType<typeof setTimeout> | undefined;
   #worktreePoll: ReturnType<typeof setTimeout> | undefined;
+  /** A read of the list while HUI holds no list yet: a page that loaded while
+   * the gateway was stalled reads again on its own once the gateway answers. */
+  #retryTimer: ReturnType<typeof setTimeout> | undefined;
+  #retryAttempt = 0;
   #worktreeRemovalQueue: Promise<unknown> = Promise.resolve();
 
   constructor(host: SessionsHost, deps: SessionsDeps) {
@@ -114,6 +121,7 @@ export class SessionsController {
     this.#streamWanted = false;
     clearTimeout(this.#worktreePoll);
     clearTimeout(this.#actionToastTimer);
+    this.#cancelRetry();
     this.#statusStreamStop?.();
     this.#statusStreamStop = undefined;
   }
@@ -133,7 +141,6 @@ export class SessionsController {
     const showSaved = (groups: SessionGroup[]) => {
       if (this.revision || this.groups.length || !groups.length) return;
       this.groups = groups;
-      this.loading = false;
       this.#host.requestUpdate();
     };
     void saved.then((groups) => { if (!settled) showSaved(groups); });
@@ -153,11 +160,13 @@ export class SessionsController {
         this.groups = [];
       }
       const message = error instanceof Error ? error.message : "Could not read sessions.";
-      if (this.groups.length === 0) {
-        this.error = message;
-      } else if (this.revision) {
+      if (this.revision) {
         this.#deps.reportError(error, message);
+      } else {
+        // Saved copies may stand in for the list; the note says they are stale.
+        this.error = message;
       }
+      if (!this.revision && isGatewayUnavailable(error)) this.#retry();
     } finally {
       if (!background) this.loading = false;
       this.#host.requestUpdate();
@@ -166,9 +175,29 @@ export class SessionsController {
     }
   }
 
+  /** Reads the list again after a failed first read, backing off like the streams.
+   * Nothing else retries it: a reload would only repeat the same read. */
+  #retry(): void {
+    clearTimeout(this.#retryTimer);
+    this.retrying = true;
+    this.#retryTimer = setTimeout(() => {
+      this.#retryTimer = undefined;
+      this.#retryAttempt += 1;
+      void this.refresh(true);
+    }, reconnectDelay(this.#retryAttempt + 1));
+  }
+
+  #cancelRetry(): void {
+    clearTimeout(this.#retryTimer);
+    this.#retryTimer = undefined;
+    this.#retryAttempt = 0;
+    this.retrying = false;
+  }
+
   /** Full lists and stream changes both land here, in revision order. */
   receive(revision: number, groups: readonly SessionGroup[]): void {
     if (revision < this.revision) return;
+    this.#cancelRetry();
     this.revision = revision;
     this.groups = groups;
     void reconcileSavedConversations(groups);

@@ -6,6 +6,7 @@ import { test, vi } from "vitest";
 import { WebSocketServer } from "ws";
 
 import { reconnectDelay } from "../lib/event-stream.ts";
+import { RESPONSE_TIMEOUT_MS } from "./request.ts";
 import {
   STATUS_STREAM_STALL_MS,
   subscribeSessionStatuses,
@@ -85,6 +86,37 @@ test("the browser demultiplexes lifecycle snapshot and status frames, however th
   assert.deepEqual(snapshots, [[{ id: "a", status: "running" }]]);
   assert.deepEqual(updates, [{ id: "a", status: "idle" }]);
   assert.deepEqual(lists, [{ revision: 2, upserts: [] }]);
+});
+
+test("a status stream whose gateway never answers is retried", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  let attempts = 0;
+  const fetcher = ((_url: RequestInfo | URL, init?: RequestInit) => {
+    attempts += 1;
+    if (attempts === 1) {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    }
+    return Promise.resolve(new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode('event: snapshot\ndata: {"statuses":[]}\n\n')); },
+    }), { status: 200, headers: { "content-type": "text/event-stream" } }));
+  }) as typeof fetch;
+  const stop = subscribeSessionStatuses({ onSnapshot: () => {}, onStatus: () => {} }, fetcher);
+  t.onTestFinished(stop);
+  const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise(setImmediate); };
+
+  await settle();
+  assert.equal(attempts, 1);
+  await vi.advanceTimersByTimeAsync(RESPONSE_TIMEOUT_MS - 1);
+  await settle();
+  assert.equal(attempts, 1, "a slow-but-answering gateway is not cut off early");
+  await vi.advanceTimersByTimeAsync(1);
+  await settle();
+  await vi.advanceTimersByTimeAsync(reconnectDelay(1, () => 1));
+  await settle();
+  assert.equal(attempts, 2, "a gateway that never starts answering must not leave the stream waiting forever");
 });
 
 test("a status stream that goes silent reconnects to resync", async (t) => {

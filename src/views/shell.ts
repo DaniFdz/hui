@@ -158,6 +158,8 @@ export type ShellProps = {
   toggledSessionTrees: ReadonlySet<string>;
   onToggleSessionTree: (id: string) => void;
   loading: boolean;
+  /** Reading the list again after a failed read, which the note says. */
+  retrying: boolean;
   error: string;
   importNote: string;
   importFailed: boolean;
@@ -737,6 +739,11 @@ function renderSessionPlaceholder() {
   </div>`;
 }
 
+/** A failed read, and why it is not the end: the list reads again by itself. */
+function renderSessionsNote(error: string, retrying: boolean) {
+  return html`<p class="sidebar-list__note is-error" role="status">${error}${retrying ? " Retrying…" : ""}</p>`;
+}
+
 function renderImportNote(props: ShellProps) {
   if (!props.importNote) {
     return nothing;
@@ -934,18 +941,19 @@ export function renderSidebar(props: ShellProps) {
             })}
           </div>` : html`<div class="sidebar-list sidebar-recent-sessions" aria-label="Sessions">
         ${
-          props.error
-            ? html`<p class="sidebar-list__note is-error">${props.error}</p>`
-            : props.loading
-              ? renderSessionPlaceholder()
-            : visibleGroups.length === 0
-              ? html`
+          props.loading || (props.retrying && visibleGroups.length === 0)
+            ? html`${renderSessionPlaceholder()}${props.error ? renderSessionsNote(props.error, props.retrying) : nothing}`
+          : html`
+                  ${props.error ? renderSessionsNote(props.error, props.retrying) : nothing}
+                  ${visibleGroups.length === 0
+                    ? html`
                     <div class="sidebar-empty">
                       <p class="sidebar-list__note" role="status">${filtering ? "No matching sessions." : "No sessions yet."}</p>
                       ${filtering ? nothing : renderImportNote(props)}
                     </div>
                   `
-                : html`${visibleGroups.map((group) => groupSection(group, props, filtering))}`
+                    : html`${visibleGroups.map((group) => groupSection(group, props, filtering))}`}
+                `
         }
           </div>`}
           </div>
