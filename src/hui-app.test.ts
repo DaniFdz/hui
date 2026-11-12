@@ -71,6 +71,8 @@ type Shell = {
   handleSystemBack: () => boolean;
   closeSettings: () => void;
   scrollToBottom: () => void;
+  showEarlierRows: (start: number) => Promise<void>;
+  transcriptWindowStart: number | undefined;
   continueRun: () => void;
   rename: (title: string) => void;
 };
@@ -350,6 +352,61 @@ test("the composer textarea is observed, remeasured when code replaces its draft
   current = null;
   app.updated(new Map());
   assert.deepEqual(textarea.calls.slice(3), ["disconnect first"]);
+});
+
+test("showing earlier rows preserves the retained row's fractional position, including native scroll anchoring", async () => {
+  for (const nativeAdjustment of [0, 239.375]) {
+    let insertedHeight = 0;
+    class Scroller {
+      scrollTop = 14.25;
+      get scrollHeight() { return Math.round(1000.125 + insertedHeight); }
+      querySelector() { return row; }
+    }
+    const scroller = new Scroller();
+    const row = { getBoundingClientRect: () => ({ top: 152.375 + insertedHeight - scroller.scrollTop }) };
+    vi.stubGlobal("HTMLElement", Scroller);
+    const app = shell();
+    app.renderRoot = { querySelector: () => scroller };
+    let finishUpdate!: (value: boolean) => void;
+    Object.defineProperty(app, "updateComplete", { value: new Promise<boolean>((resolve) => { finishUpdate = resolve; }) });
+    const before = row.getBoundingClientRect().top;
+    const expanding = app.showEarlierRows(0);
+    assert.equal(app.autoFollow, false);
+    assert.equal(app.transcriptWindowStart, 0);
+    assert.equal(scroller.scrollTop, 14.25);
+    insertedHeight = 239.375;
+    scroller.scrollTop += nativeAdjustment;
+    finishUpdate(true);
+    await expanding;
+    assert.equal(row.getBoundingClientRect().top, before);
+    assert.equal(scroller.scrollTop, 253.625);
+  }
+});
+
+test("showing earlier rows uses the nearest visual position when an engine quantizes scroll offsets", async () => {
+  const cases = [
+    { quantize: Math.trunc, height: 169.6875, offset: 170 },
+    { quantize: Math.round, height: 169.1875, offset: 169 },
+    { quantize: (value: number) => Math.round(value * 4) / 4, height: 169.1875, offset: 169.25 },
+  ];
+  for (const { quantize, height, offset } of cases) {
+    let insertedHeight = 0;
+    class Scroller {
+      #scrollTop = 0;
+      get scrollTop() { return this.#scrollTop; }
+      set scrollTop(value: number) { this.#scrollTop = quantize(value); }
+      querySelector() { return row; }
+    }
+    const scroller = new Scroller();
+    const row = { getBoundingClientRect: () => ({ top: 121.3125 + insertedHeight - scroller.scrollTop }) };
+    vi.stubGlobal("HTMLElement", Scroller);
+    const app = shell();
+    app.renderRoot = { querySelector: () => scroller };
+    Object.defineProperty(app, "updateComplete", { get: () => { insertedHeight = height; return Promise.resolve(true); } });
+    await app.showEarlierRows(0);
+    assert.equal(scroller.scrollTop, offset);
+    assert.equal(row.getBoundingClientRect().top, 121.3125 + height - offset);
+  }
 });
 
 test("the thread follows the live compaction divider like new transcript rows", () => {
