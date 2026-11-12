@@ -136,9 +136,13 @@ page and the native title bar track the OS live. The page reports the mode to th
 shell, which keeps the last one it heard in Electron's `userData` so the next
 launch paints its window in that mode before the page exists. The shell never
 asks the gateway.
-External web and mail links open in the default browser. The renderer is
-sandboxed without Node integration. Browser-local drafts have a separate Electron
-profile; HUI/PI storage remains shared through the existing gateway.
+External web and mail links open in the default browser. A link to a gateway this
+device knows opens in the HUI window instead: switching gateway from the sidebar
+footer or Settings → Gateway keeps the window, a link to another gateway you
+added or to one on your own network opens there too, and View → Back returns to
+the one you left. The renderer is sandboxed without Node integration.
+Browser-local drafts have a separate Electron profile; HUI/PI storage remains
+shared through the existing gateway.
 
 The app also claims the `hui://` scheme, so a chat can be handed to it. A link
 carrying `?open=app`, which bots can mint, asks the gateway to open that chat in

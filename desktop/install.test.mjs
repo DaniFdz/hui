@@ -129,8 +129,8 @@ test('only the app HUI installed for this installation, on another version, is r
 
 test('desktop navigation remains local and external launching rejects executable protocols', () => {
   const origin = 'http://127.0.0.1:5174';
-  assert.equal(policy.isInternal(`${origin}/sessions`, origin), true);
-  for (const url of ['http://127.0.0.1:5175/', 'https://127.0.0.1:5174', 'https://example.com', 'file:///etc/passwd', 'javascript:alert(1)', 'not a URL']) assert.equal(policy.isInternal(url, origin), false);
+  assert.equal(policy.isGatewayPage(`${origin}/sessions`, origin), true);
+  for (const url of ['http://127.0.0.1:5175/', 'https://127.0.0.1:5174', 'https://example.com', 'file:///etc/passwd', 'javascript:alert(1)', 'not a URL']) assert.equal(policy.isGatewayPage(url, origin), false);
   for (const url of ['https://example.com', 'http://example.com', 'mailto:user@example.com', 'vscode://file/Users/me/skill/SKILL.md']) assert.equal(policy.isExternal(url), true);
   for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'data:text/html,test', 'hui:run', 'vscode://vscode.git/clone?url=x', 'not a URL']) assert.equal(policy.isExternal(url), false);
 });

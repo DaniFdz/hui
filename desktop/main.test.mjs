@@ -29,6 +29,12 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
   const errors = [];
   const notifications = [];
   const notificationReceipts = [];
+  /** Every link the shell handed to the system browser. */
+  const externals = [];
+  /** Every identity request the shell made. */
+  const probes = [];
+  /** What the fixture gateway at an address answers the identity handshake. */
+  const gatewayAnswers = new Map();
   const config = { root: '/fixture/package', node: '/fixture/node', searchPath: '/fixture/bin' };
   let launchArgs;
   let complete;
@@ -57,7 +63,17 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
   class Window extends EventEmitter {
     constructor(options) {
       super(); this.options = options; this.webContents = new EventEmitter();
-      this.webContents.setWindowOpenHandler = () => {};
+      // The window's own history, which the View menu steps back and forward through: a step shows that page again
+      // and reports it the way Electron does, because the shell follows `did-navigate` to know its gateway.
+      this.entries = [];
+      this.at = -1;
+      this.webContents.navigationHistory = {
+        canGoBack: () => this.at > 0,
+        canGoForward: () => this.at >= 0 && this.at < this.entries.length - 1,
+        goBack: () => { if (this.at > 0) this.at -= 1; this.showPage(); },
+        goForward: () => { if (this.at < this.entries.length - 1) this.at += 1; this.showPage(); },
+      };
+      this.webContents.setWindowOpenHandler = (handler) => { this.webContents.windowOpenHandler = handler; };
       this.webContents.setVisualZoomLevelLimits = async (...limits) => { this.webContents.zoomLimits = limits; };
       this.webContents.session = { setPermissionRequestHandler(handler) { this.permission = handler; } };
       this.webContents.getURL = () => this.url ?? '';
@@ -69,9 +85,17 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
     focus() { this.focused = true; }
     isFocused() { return this.focused === true; }
     blur() { this.focused = false; }
+    /** The page this window shows now, and the report Electron sends whenever that changes. */
+    showPage() {
+      this.url = this.entries[this.at];
+      this.webContents.emit('did-navigate', { preventDefault() {} }, this.url);
+    }
     async loadURL(url) {
-      this.url = url;
       if (loadFailure) { const error = loadFailure; loadFailure = undefined; throw error; }
+      this.entries = this.entries.slice(0, this.at + 1);
+      this.entries.push(url);
+      this.at = this.entries.length - 1;
+      this.showPage();
     }
   }
   class NativeNotification extends EventEmitter {
@@ -85,7 +109,7 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
     on: (channel, handler) => { ipcChannels.set(channel, { kind: 'on', handler }); },
     handle: (channel, handler) => { ipcChannels.set(channel, { kind: 'handle', handler }); },
   };
-  const electron = { app, BrowserWindow: Window, Notification: NativeNotification, dialog, ipcMain, session: { defaultSession: downloads }, Menu: { buildFromTemplate: (menu) => menu, setApplicationMenu(menu) { applicationMenu = menu; } }, nativeTheme, shell: { openExternal: async () => {} } };
+  const electron = { app, BrowserWindow: Window, Notification: NativeNotification, dialog, ipcMain, session: { defaultSession: downloads }, Menu: { buildFromTemplate: (menu) => menu, setApplicationMenu(menu) { applicationMenu = menu; } }, nativeTheme, shell: { openExternal: async (target) => { externals.push(target); } } };
   // The shell's own userData, in memory: a path it writes survives into the next launch this test starts.
   const files = saved;
   const missing = (name) => Object.assign(new Error(`ENOENT: ${name}`), { code: 'ENOENT' });
@@ -97,9 +121,18 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
   t.onTestFinished(() => {});
   vm.runInNewContext(await readFile(new URL('./main.cjs', import.meta.url), 'utf8'), {
     require: (name) => modules[name], URL, AbortSignal, __dirname: '/fixture/desktop',
-    fetch: async (url, init) => {
+    fetch: async (url, init = {}) => {
       if (init.method === 'POST') { notificationReceipts.push(String(url)); return { ok: true }; }
-      settingsRequests.push({ url: String(url), headers: init.headers });
+      const target = String(url);
+      // The identity handshake a gateway answers: what a probe reads. Everything else is a settings read.
+      if (target.endsWith('/__hui/update')) {
+        probes.push({ url: target, headers: init.headers });
+        const body = gatewayAnswers.get(target);
+        if (body === 'unreachable') throw new Error('connect ECONNREFUSED');
+        if (body === 'html') return { ok: true, json: async () => { throw new Error('Unexpected token <'); } };
+        return body ? { ok: true, json: async () => body } : { ok: false, json: async () => ({ error: 'not found' }) };
+      }
+      settingsRequests.push({ url: target, headers: init.headers });
       if (settings instanceof Error) throw settings;
       return { ok: true, json: async () => settings };
     },
@@ -110,6 +143,27 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
   const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate); };
   return {
     app, windows, errors, notifications, notificationReceipts, launchArgs, nativeTheme, settingsRequests, settle, files, themeReports,
+    externals, probes,
+    /** What the fixture gateway at `base` answers the identity handshake. */
+    answerGateway: (base, body = { currentVersion: '0.1.6', job: null, name: 'Elsewhere' }) => gatewayAnswers.set(`${base}/__hui/update`, body),
+    /** An address nothing answers at all: a machine that is off, or not on this network. */
+    unreachableGateway: (base) => gatewayAnswers.set(`${base}/__hui/update`, 'unreachable'),
+    /** An address that answers with something that is not HUI at all. */
+    otherApp: (base) => gatewayAnswers.set(`${base}/__hui/update`, 'html'),
+    /** This device's gateway list, as the page reports it, and whether the window was the sender. */
+    reportGateways: (links, sender = windows.at(-1)?.webContents) => ipcChannels.get('hui:gateways')?.handler({ sender }, links),
+    /** The page asking the shell to switch, and what the shell answers. */
+    openGateway: async (url, sender = windows.at(-1)?.webContents) => await ipcChannels.get('hui:open-gateway').handler({ sender }, url),
+    /** The page following a link itself: a navigation on the window, and whether the shell blocked it. */
+    follow: (target, event = 'will-navigate') => {
+      let prevented = false;
+      windows.at(-1).webContents.emit(event, { preventDefault() { prevented = true; } }, target);
+      return prevented;
+    },
+    /** A link the page asks a new window for. */
+    openInNewWindow: (target) => windows.at(-1).webContents.windowOpenHandler({ url: target }),
+    /** A menu entry the operator chose, by its label. */
+    clickMenu: (label) => applicationMenu.find((menu) => menu.label === 'View').submenu.find((item) => item.label === label).click(),
     /** The page reporting its mode, as `preload.cjs` sends it: from the window the shell opened. */
     reportThemeMode: (mode, sender = windows.at(-1)?.webContents) => ipcChannels.get('hui:theme-mode').handler({ sender }, mode),
     ipcChannel: () => [...ipcChannels.keys()].join(','),
@@ -304,6 +358,262 @@ test('hui:// chat paths keep the id they name and nothing else', () => {
   }
 });
 
+test('a gateway page is its own origin under the path it is served at', () => {
+  assert.equal(policy.gatewayBase('http://127.0.0.1:5174/'), 'http://127.0.0.1:5174');
+  assert.equal(policy.gatewayBase('https://Example.test/hui///'), 'https://example.test/hui');
+  for (const value of ['ftp://example.test', 'http://user:pass@example.test/', 'mailto:a@b', 'hui://sessions/a', 'not an address']) {
+    assert.equal(policy.gatewayBase(value), undefined, value);
+  }
+  assert.equal(policy.isGatewayPage('http://127.0.0.1:5174/sessions/a', 'http://127.0.0.1:5174'), true);
+  assert.equal(policy.isGatewayPage('http://127.0.0.1:5175/sessions/a', 'http://127.0.0.1:5174'), false);
+  assert.equal(policy.isGatewayPage('https://example.test/hui/sessions/a', 'https://example.test/hui'), true);
+  assert.equal(policy.isGatewayPage('https://example.test/huix', 'https://example.test/hui'), false, 'a path is not a prefix of a name');
+  assert.equal(policy.isGatewayPage('https://example.test/', 'https://example.test/hui'), false);
+});
+
+test('only an address on this device\'s own network is asked whether it is a gateway', () => {
+  for (const address of [
+    'http://127.0.0.1:5174/sessions/a', 'http://192.168.1.4:8787', 'http://10.1.2.3:8787', 'http://172.16.4.2:8787',
+    'http://100.64.0.10:8787', 'http://[::1]:5174/', 'http://[fd7a:115c:a1e0::1]:5174/',
+    'http://studio:8787', 'https://studio.local/x', 'https://studio.local./x', 'https://build-box.tail1234.ts.net/sessions/a',
+  ]) {
+    assert.equal(policy.mayBeGateway(address), true, address);
+  }
+  // A public site is the browser's, including a public IP and a link-local metadata endpoint: nothing is asked there.
+  for (const address of [
+    'https://example.com/', 'https://hui.example.com/sessions/a', 'http://example.com/x', 'http://8.8.8.8/x',
+    'http://169.254.169.254/latest/meta-data', 'http://[2606:4700::1111]/x',
+    'mailto:a@b', 'hui://sessions/a', 'about:blank', 'file:///tmp/x',
+  ]) {
+    assert.equal(policy.mayBeGateway(address), false, address);
+  }
+});
+
+test('a gateway served under a path is looked for behind the addresses above it', () => {
+  assert.deepEqual(policy.gatewayCandidates('http://127.0.0.1:5174/sessions/a'), [
+    'http://127.0.0.1:5174', 'http://127.0.0.1:5174/sessions', 'http://127.0.0.1:5174/sessions/a',
+  ]);
+  assert.deepEqual(policy.gatewayCandidates('https://example.test/hui/sessions/a', 3), [
+    'https://example.test', 'https://example.test/hui', 'https://example.test/hui/sessions',
+  ]);
+  assert.deepEqual(policy.gatewayCandidates('not an address'), []);
+});
+
+test('only HUI\'s own update snapshot counts as a gateway handshake', () => {
+  assert.equal(policy.isGatewayHandshake({ currentVersion: '0.1.6', job: null }), true);
+  assert.equal(policy.isGatewayHandshake({ currentVersion: null, job: null, name: 'Studio' }), true);
+  for (const body of [{ currentVersion: 6, job: null }, { job: null }, { currentVersion: '0.1.6' }, '<html>', null, [{ currentVersion: '0.1.6', job: null }]]) {
+    assert.equal(policy.isGatewayHandshake(body), false, JSON.stringify(body));
+  }
+});
+
+test('a switch is placed by the same rule as a link: a gateway this window knows, or one that answers', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  const window = state.windows[0];
+
+  // A page asking for a site this window cannot vouch for gets a no, and the page navigates itself instead.
+  assert.equal(await state.openGateway('https://example.com/'), false);
+  assert.equal(await state.openGateway('ftp://studio.local:8787'), false);
+  assert.equal(await state.openGateway(42), false);
+  assert.equal(await state.openGateway('https://example.com/', 'another frame'), false);
+  assert.equal(window.url, 'http://127.0.0.1:5174/');
+  assert.deepEqual(state.probes, [], 'a public site is not asked about, even when a page asks for it');
+
+  // A gateway this device saved needs no identity request, and one on this network is asked once.
+  state.reportGateways(['https://gateway.example/']);
+  assert.equal(await state.openGateway('https://gateway.example'), true);
+  assert.deepEqual(state.probes, []);
+  state.answerGateway('http://192.168.1.4:8787');
+  assert.equal(await state.openGateway('http://192.168.1.4:8787'), true);
+  assert.deepEqual(state.probes.map((probe) => probe.url), ['http://192.168.1.4:8787/__hui/update']);
+  assert.equal(window.url, 'http://192.168.1.4:8787');
+  assert.deepEqual(state.externals, [], 'nothing here left the app');
+});
+
+test('switching gateway keeps the app\'s window, and both gateways stay HUI', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  const window = state.windows[0];
+  state.reportGateways(['http://studio.local:8787']);
+
+  // The picker's switch asks the shell, which answers before the page would have navigated itself.
+  assert.equal(await state.openGateway('http://studio.local:8787'), true);
+  await state.settle();
+  assert.equal(window.url, 'http://studio.local:8787');
+  assert.deepEqual(state.externals, [], 'the browser is not asked');
+  assert.deepEqual(state.probes, [], 'a gateway the page asked for needs no identity request');
+
+  // A link to another gateway this device lists stays in the window too.
+  state.reportGateways(['http://studio.local:8787', 'http://loft.local:8787']);
+  assert.equal(state.follow('http://loft.local:8787/settings/connection'), true, 'the shell places the link itself');
+  await state.settle();
+  assert.equal(window.url, 'http://loft.local:8787/settings/connection');
+  assert.deepEqual(state.probes, []);
+
+  // The window is that gateway now, so its own pages navigate as usual.
+  assert.equal(state.follow('http://loft.local:8787/sessions/a'), false);
+  // And the gateways it came from are still its own.
+  assert.equal(state.follow('http://127.0.0.1:5174/sessions/b'), true);
+  await state.settle();
+  assert.equal(window.url, 'http://127.0.0.1:5174/sessions/b');
+  assert.deepEqual(state.externals, []);
+});
+
+test('only the window this shell opened may switch it or teach it a gateway', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  assert.equal(await state.openGateway('http://studio.local:8787', 'another frame'), false);
+  state.reportGateways(['http://studio.local:8787'], 'another frame');
+  assert.equal(state.follow('http://studio.local:8787/sessions/a'), true);
+  await state.settle();
+  assert.deepEqual(state.externals, ['http://studio.local:8787/sessions/a'], 'that gateway was never this window\'s to show');
+  assert.equal(state.windows[0].url, 'http://127.0.0.1:5174/');
+});
+
+test('a gateway this device has not met yet is asked once, and a public site never is', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  const window = state.windows[0];
+  state.answerGateway('http://192.168.1.4:8787');
+
+  assert.equal(state.follow('http://192.168.1.4:8787/sessions/a'), true);
+  await state.settle();
+  assert.equal(window.url, 'http://192.168.1.4:8787/sessions/a', 'it answered as HUI, so the window shows it');
+  assert.deepEqual(state.probes.map((probe) => probe.url), ['http://192.168.1.4:8787/__hui/update']);
+  assert.equal(state.probes[0].headers['x-hui'], '1');
+  assert.deepEqual(state.externals, []);
+
+  // Answered once, it is one of the gateways this window knows: a link back to it is placed without asking again.
+  state.follow('http://127.0.0.1:5174/');
+  await state.settle();
+  assert.equal(state.follow('http://192.168.1.4:8787/bots/scout'), true);
+  await state.settle();
+  assert.equal(state.probes.length, 1);
+  assert.equal(window.url, 'http://192.168.1.4:8787/bots/scout');
+
+  // A public site is the browser's, and is never asked whether it is a gateway.
+  assert.equal(state.follow('https://example.com/docs'), true);
+  assert.equal(state.follow('http://example.com/insecure'), true);
+  await state.settle();
+  assert.deepEqual(state.externals, ['https://example.com/docs', 'http://example.com/insecure']);
+  assert.equal(state.probes.length, 1);
+  assert.equal(window.url, 'http://192.168.1.4:8787/bots/scout', 'the window stayed where it was');
+});
+
+test('an address nothing answers at opens in the browser, and is not asked again right away', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.unreachableGateway('http://192.168.1.9:8787');
+  assert.equal(state.follow('http://192.168.1.9:8787/sessions/a'), true);
+  await state.settle();
+  assert.deepEqual(state.externals, ['http://192.168.1.9:8787/sessions/a']);
+  assert.deepEqual(state.probes.map((probe) => probe.url), ['http://192.168.1.9:8787/__hui/update'], 'one request, not one per path');
+
+  // The refusal stands a while, so a click on a page that is not a gateway does not ask again.
+  state.follow('http://192.168.1.9:8787/sessions/b');
+  await state.settle();
+  assert.equal(state.probes.length, 1);
+  assert.deepEqual(state.externals, ['http://192.168.1.9:8787/sessions/a', 'http://192.168.1.9:8787/sessions/b']);
+});
+
+test('a site that answers but is not HUI is left to the browser after its paths refuse', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  // A live machine with something else on every port HUI could be served at.
+  assert.equal(state.follow('http://10.0.0.5:8000/app'), true);
+  await state.settle();
+  assert.deepEqual(state.externals, ['http://10.0.0.5:8000/app']);
+  assert.deepEqual(state.probes.map((probe) => probe.url), [
+    'http://10.0.0.5:8000/__hui/update', 'http://10.0.0.5:8000/app/__hui/update',
+  ]);
+});
+
+test('a gateway served under a path is found behind another app on the same origin', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.otherApp('http://10.0.0.7:8080');
+  state.answerGateway('http://10.0.0.7:8080/apps');
+  assert.equal(state.follow('http://10.0.0.7:8080/apps/sessions/a'), true);
+  await state.settle();
+  assert.equal(state.windows[0].url, 'http://10.0.0.7:8080/apps/sessions/a');
+  assert.deepEqual(state.externals, []);
+  assert.deepEqual(state.probes.map((probe) => probe.url), [
+    'http://10.0.0.7:8080/__hui/update', 'http://10.0.0.7:8080/apps/__hui/update',
+  ]);
+
+  // The gateway the window now shows is the one under the path, so its own pages navigate as usual.
+  assert.equal(state.follow('http://10.0.0.7:8080/apps/settings'), false);
+});
+
+test('a hui:// link followed inside the window opens its chat there, on the gateway it shows', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  const window = state.windows[0];
+  assert.equal(state.follow('hui://sessions/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f'), true);
+  assert.equal(window.url, 'http://127.0.0.1:5174/sessions/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f');
+
+  // A switch moves the chat links with the window: they name the gateway it is showing.
+  state.reportGateways(['http://studio.local:8787']);
+  state.follow('http://studio.local:8787/');
+  await state.settle();
+  state.follow('hui://bots/scout');
+  assert.equal(window.url, 'http://studio.local:8787/bots/scout');
+  assert.deepEqual(state.externals, []);
+});
+
+test('a page asking for a new window keeps its own gateway in the browser and another gateway in the app', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.reportGateways(['http://studio.local:8787']);
+  state.follow('http://studio.local:8787/sessions/a');
+  await state.settle();
+
+  // "Open in new tab" on a page of the gateway on screen is still a browser tab, as it always was.
+  assert.equal(state.openInNewWindow('http://studio.local:8787/__hui/media/one.png').action, 'deny');
+  await state.settle();
+  assert.deepEqual(state.externals, ['http://studio.local:8787/__hui/media/one.png']);
+  assert.equal(state.windows.length, 1, 'no second window');
+  assert.equal(state.windows[0].url, 'http://studio.local:8787/sessions/a', 'the app keeps the page it was showing');
+
+  // A link to another gateway this device lists is placed in this window instead.
+  assert.equal(state.openInNewWindow('http://127.0.0.1:5174/sessions/b').action, 'deny');
+  await state.settle();
+  assert.equal(state.windows.length, 1);
+  assert.equal(state.windows[0].url, 'http://127.0.0.1:5174/sessions/b');
+
+  state.openInNewWindow('https://example.com/docs');
+  await state.settle();
+  assert.deepEqual(state.externals, ['http://studio.local:8787/__hui/media/one.png', 'https://example.com/docs']);
+});
+
+test('permissions follow the gateway the window is showing', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.reportGateways(['http://studio.local:8787']);
+  state.follow('http://studio.local:8787/sessions/a');
+  await state.settle();
+  const contents = state.windows[0].webContents;
+  for (const permission of ['clipboard-sanitized-write', 'fullscreen']) {
+    let granted;
+    contents.session.permission(contents, permission, (value) => { granted = value; });
+    assert.equal(granted, true, permission);
+  }
+  let granted;
+  contents.session.permission({ getURL: () => 'https://example.com' }, 'clipboard-sanitized-write', (value) => { granted = value; });
+  assert.equal(granted, false);
+});
+
 test('clicking a banner left by a crashed HUI launches HUI on its chat, but only on the same gateway', async (t) => {
   const [botBanner] = await bannerIds(t, 'http://127.0.0.1:5174/bots/stable-bot');
   for (const [identifier, gateway, opened] of [
@@ -447,7 +757,7 @@ test('the window chrome follows the mode the page reports, and the next launch s
   assert.equal(state.nativeTheme.themeSource, 'system', 'nothing kept yet');
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
   await state.settle();
-  assert.equal(state.ipcChannel(), 'hui:theme-mode,hui:appearance-seed,hui:appearance-seed-consumed', 'the bridges the preload exposes');
+  assert.equal(state.ipcChannel(), 'hui:theme-mode,hui:appearance-seed,hui:appearance-seed-consumed,hui:gateways,hui:open-gateway', 'the bridges the preload exposes');
   assert.equal(state.windows[0].options.webPreferences.preload, path.join('/fixture/desktop', 'preload.cjs'));
   assert.equal(state.windows[0].options.webPreferences.sandbox, true, 'the preload does not lift the sandbox');
   assert.equal(state.windows[0].options.backgroundColor, '#fafaf9');
@@ -532,8 +842,34 @@ test('a userData directory that refuses the write still lets the page set the ch
   assert.deepEqual(state.errors, []);
 });
 
-test('zoom follows macOS conventions: Cmd+= zooms in and trackpad pinch is enabled', async (t) => {
+test('the window can step back from a gateway it was switched to, and back again', async (t) => {
   const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  const window = state.windows[0];
+  state.reportGateways(['http://studio.local:8787']);
+  assert.equal(await state.openGateway('http://studio.local:8787'), true);
+  await state.settle();
+  assert.equal(window.url, 'http://studio.local:8787');
+
+  state.clickMenu('Back');
+  assert.equal(window.url, 'http://127.0.0.1:5174/', 'the gateway it came from is a page to go back to');
+  // The window belongs to the gateway it is showing again: its clipboard writes are its own.
+  let granted;
+  window.webContents.session.permission(window.webContents, 'clipboard-sanitized-write', (value) => { granted = value; });
+  assert.equal(granted, true);
+
+  state.clickMenu('Forward');
+  assert.equal(window.url, 'http://studio.local:8787');
+  state.clickMenu('Forward');
+  assert.equal(window.url, 'http://studio.local:8787', 'nothing forward of the newest page');
+  state.clickMenu('Back');
+  state.clickMenu('Back');
+  assert.equal(window.url, 'http://127.0.0.1:5174/', 'nothing back of the oldest page');
+  assert.deepEqual(state.errors, []);
+});
+
+test('zoom follows macOS conventions: Cmd+= zooms in and trackpad pinch is enabled', async (t) => {  const state = await shell(t);
   const view = state.menu().find((menu) => menu.label === 'View');
   const zoomIn = view.submenu.filter((item) => item.role === 'zoomIn');
   assert.equal(zoomIn.filter((item) => item.visible !== false).length, 1, 'one visible Zoom In entry');

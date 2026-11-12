@@ -1,12 +1,14 @@
 /**
  * `GatewaysController` owns this device's gateway list for the page: the saved entries, the current gateway's own name
  * from its health route, which saved gateways this page could not reach, and the add field's probe. Settings → Gateway
- * and the sidebar's footer both read it, and switching navigates this page to the chosen address. The rules and the
- * storage are in `lib/gateways/`; this controller only sequences them and reports what to show.
+ * and the sidebar's footer both read it, and switching navigates this page to the chosen address — in HUI's desktop app
+ * that is the same window, because the shell is told which gateways this device lists. The rules and the storage are in
+ * `lib/gateways/`; this controller only sequences them and reports what to show.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { loadGatewayHealth } from "../api/control-surfaces.ts";
 import { probeGateway } from "../api/gateways.ts";
+import { reportGatewaysToShell, switchGateway } from "../lib/gateways/desktop-gateways.ts";
 import {
   GATEWAY_IS_CURRENT,
   GATEWAY_NOT_AN_ADDRESS,
@@ -33,12 +35,16 @@ export class GatewaysController implements ReactiveController {
   constructor(host: ReactiveControllerHost, store = new GatewayStore()) {
     this.#host = host;
     this.store = store;
-    this.#unsubscribe = store.subscribe(() => this.#changed());
+    this.#unsubscribe = store.subscribe(() => {
+      this.#report();
+      this.#changed();
+    });
     host.addController(this);
   }
 
   hostConnected(): void {
     void this.loadCurrentName();
+    this.#report();
   }
 
   hostDisconnected(): void {
@@ -133,9 +139,15 @@ export class GatewaysController implements ReactiveController {
     this.store.remove(url);
   }
 
-  /** Switching opens the chosen gateway in this page: its own address, its own state. */
+  /** Switching opens the chosen gateway in this page: its own address, its own state. HUI's desktop app shows it in
+   * the window it already has, so the mode it was switched in stays the window the operator is looking at. */
   switchTo(url: string): void {
-    window.location.assign(url);
+    switchGateway(url);
+  }
+
+  /** Tells HUI's desktop app which gateways this device lists, so switching to one keeps the app's window. */
+  #report(): void {
+    reportGatewaysToShell([this.store.current, ...this.store.list().map((entry) => entry.url)]);
   }
 
   #changed(): void {

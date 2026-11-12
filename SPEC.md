@@ -4546,6 +4546,38 @@ offers the file's name. Cancelling the dialog cancels the download. A presented
 file's download, an attachment card's open link and the Files view's
 **Download** all go through it; the browser keeps its own download behaviour.
 
+### The window belongs to the gateways this device knows
+
+The desktop window is not confined to one origin. Switching gateway — from the
+sidebar footer or Settings → Gateway — loads the chosen gateway in the same
+window, with its own sessions, settings and name, and the window's clipboard and
+fullscreen permission follow the gateway it is showing. A page of that gateway
+then navigates as usual; nothing about it leaves the app. The switch asks the
+window to take it and the window answers before the page moves, so it is placed
+by the same rule a link follows: a gateway this window knows opens there, and an
+address it cannot vouch for falls back to the page's own navigation, exactly as
+a link does.
+
+A link to another gateway is shown in the same window when the window can tell it
+is HUI's. The page reports the gateways this device saved, so a saved one opens
+there even when it is down today, and an address in this network's own ranges — a
+private or loopback address, a single machine name, or a name under a local or
+tailnet suffix — is asked the identity handshake `GET /__hui/update` first, the
+one route a gateway answers cross-origin. A link to another gateway that asks for
+a new window is placed in this window; a link on the gateway on screen that asks
+for one keeps the browser tab it always got. Everything else — a public web
+address, mail, a file — still goes to the system browser, and such an address is
+never asked about. A `hui://` chat link opens its chat on the gateway the window
+shows, whether it was followed inside the window or handed over by macOS.
+**View → Back** and **Forward** step through the gateways the window was switched
+between, so one that does not answer is a page to leave rather than a dead end.
+
+The report is the device's own shortcut, as in the browser: it carries addresses
+only, no session, transcript, credential or setting, and only the page the window
+is showing can add to it. A gateway found by the handshake is trusted the way the
+page's own list trusts one it probes — the window's faith in an address is the
+same judgement the operator made when they added it.
+
 ### Clickable desktop notifications
 
 The explicit `notify_user` agent tool takes a title, an optional subtitle, an

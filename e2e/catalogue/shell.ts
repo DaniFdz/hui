@@ -478,6 +478,19 @@ const cases: UseCase[] = [
     journeys: ["gateway-settings"],
     web: "required",
   },
+  {
+    id: "SHELL-050",
+    title: "Keep gateway links and switches inside the desktop window",
+    behaviour:
+      "In HUI's desktop app, switching to another gateway — **Switch** in Settings → Gateway, or choosing it in the sidebar footer — loads that gateway in the same window, and so does a link to a gateway this device lists or to one on this device's own network that answers as HUI. A `hui://` chat link opens its chat on the gateway the window shows. A page of the gateway on screen that asks for a new tab still opens in the browser, and a public web or mail link still opens in the system browser. View → Back returns to the gateway left behind.",
+    spec: ["SPEC.md#the-window-belongs-to-the-gateways-this-device-knows", "SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11"],
+    surfaces: [],
+    web: {
+      excluded:
+        "Switching gateways happens in the page on the web, but keeping the window belongs to HUI's Electron shell, which the web runner cannot drive; desktop/main.test.mjs covers the switch, the gateways this device lists, the identity handshake and the links left to the browser.",
+      decision: "SPEC.md#the-window-belongs-to-the-gateways-this-device-knows",
+    },
+  },
 ];
 
 export default cases;
