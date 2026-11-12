@@ -781,6 +781,15 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:extensions"],
     web: "required",
   },
+  {
+    id: "SET-092",
+    title: "Name a gateway and see its name",
+    behaviour: "Settings → Gateway has “Gateway name”, empty on a fresh gateway, which shows this machine's hostname as the name it reports until it is named. Typing a name and pressing **Save** keeps it after a reload, and About's Runtime list shows it as “Name” in place of the hostname; clearing the field and saving goes back to the hostname.",
+    spec: ["SPEC.md#a-gateway-carries-a-name-2026-11-11", "docs/api.md#get-__huihealth", "docs/api.md#hui-owned-presentation-state"],
+    surfaces: ["settings-page:connection", "setting:name", "page:about", "route:GET /__hui/health", "route:GET /__hui/settings", "route:PUT /__hui/settings"],
+    journeys: ["gateway-settings"],
+    web: "required",
+  },
 ];
 
 export default cases;

@@ -38,6 +38,8 @@ type OriginalSettings = {
   profileName: string;
   profileHandle: string;
 
+  name: string;
+
   branchPrefix: string;
 
   browser: OriginalBrowserSettings;

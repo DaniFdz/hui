@@ -40,7 +40,10 @@ export const Settings = Type.Object({
     toolMarks: Type.Record(Type.String(), Type.String()),
     toolIcons: Type.Record(Type.String(), Type.String()),
   }),
-  profileName: Type.String(), profileHandle: Type.String(), branchPrefix: Type.String(),
+  profileName: Type.String(), profileHandle: Type.String(),
+  /** The operator's name for this gateway; empty means the machine's hostname, which `GET /__hui/health` reports. */
+  name: Type.String(),
+  branchPrefix: Type.String(),
   browser: BrowserSettings, codemode: Type.Object({ enabled: Type.Boolean() }), questions: Type.Object({ timeoutMinutes: Type.Number() }),
   vscode: VscodeSettings, power: Type.Object({ keepAwake: Type.Boolean() }),
   notifications: Type.Object({ tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean() }),
