@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
 import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotQuestion, type BotsUpdate, type BotView } from "../bots-format.ts";
@@ -890,6 +890,53 @@ test("a session a chief starts opens with its brief tagged from the chief, never
   await settledWith(child.id, says("user", brief));
   assert.deepEqual(liveSessions.transcript(child.id).flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []),
     [`[from @${chief.handle}] ${brief}`]);
+});
+
+test("a chief's session follows its group's New session defaults", { timeout: 120_000 }, async () => {
+  // A real checkout: the group's Worktree default must create one of its own.
+  const repo = join(dir, "group-defaults-repo");
+  await mkdir(repo);
+  execFileSync("git", ["init", "-q", "-b", "main", repo]);
+  execFileSync("git", ["-C", repo, "config", "user.email", "e2e@example.com"]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "E2E"]);
+  await writeFile(join(repo, "README.md"), "# Group defaults\n");
+  execFileSync("git", ["-C", repo, "add", "README.md"]);
+  execFileSync("git", ["-C", repo, "commit", "-q", "-m", "init"]);
+
+  const group = "Group defaults E2E";
+  assert.equal((await call("/__hui/session-groups", "POST", { name: group })).status, 200);
+  const saved = await call(`/__hui/session-groups/${encodeURIComponent(group)}`, "PATCH", {
+    cwd: repo, workspaceMode: "worktree", baseRef: "main",
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group, cwd: repo }));
+
+  // The chief's own directory, machine and "no worktree" cannot move the session off the group's defaults.
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "create_session", input: {
+      prompt: "Work in the group's checkout.",
+      title: "Group defaults child",
+      cwd: workspace,
+      worker: "local",
+      worktree: false,
+      branchName: "e2e-group-defaults",
+    } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  const child = (await readRegistry()).find((record) => record.title === "Group defaults child");
+  assert.ok(child, JSON.stringify(asked.body));
+  assert.equal(child.group, group);
+  assert.equal(child.cwd.startsWith(`${join(dir, "config", "hui", "worktrees")}${sep}`), true, child.cwd);
+  assert.notEqual(child.cwd, repo);
+  assert.equal(execFileSync("git", ["-C", child.cwd, "branch", "--show-current"], { encoding: "utf8" }).trim(), "feature/e2e-group-defaults");
+  assert.equal(
+    execFileSync("git", ["-C", child.cwd, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+    execFileSync("git", ["-C", repo, "rev-parse", "main"], { encoding: "utf8" }).trim(),
+    "the group's base ref is the worktree's base",
+  );
+  await settledWith(child.id, says("user", "Work in the group's checkout."));
 });
 
 test("one of a bot's own skills is read and replaced through the guarded routes", async () => {

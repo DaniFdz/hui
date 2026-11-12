@@ -1859,7 +1859,10 @@ than half its cores); when every machine is over a limit it returns a
 machine. `create_session`
 creates an ordinary top-level session instead: a group, a title, its first
 prompt and optionally a fresh worktree, a worker, a model and thinking. The
-caller's cwd, group, worker, model and thinking are defaults. The brief reaches
+target group's stored New session defaults decide its directory, machine, Git
+environment and base ref; the call fills in only what the group leaves unset. A
+group chief's own group is the default, then the caller's cwd, group, worker,
+model and thinking. The brief reaches
 the new chat tagged from the calling bot, like every message a bot sends into a
 chat, so the new session's own chat shows it under that bot's name rather than
 as the operator's words. It writes no

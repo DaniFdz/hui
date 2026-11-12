@@ -11,8 +11,9 @@ A child is for fast iteration: read-only, one command, one small check, one repl
 owns a branch or a pull request.
 
 A session is for everything else: more than one step, writes, a long build, test or e2e, or
-anything that owns a branch or a pull request. Write the same brief, name the worktree branch
-and the worker when one is available, and create it with `create_session`. Do not spawn it.
+anything that owns a branch or a pull request. Write the same brief and create it with
+`create_session`. The group's New session defaults decide the worktree and the worker; name
+one only where the group leaves it unset. Do not spawn it.
 
 If you cannot name the one reply a child returns, it is a session.
 
