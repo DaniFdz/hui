@@ -1366,7 +1366,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     // Only Pi Durable copies a history into a new conversation; a bot's chat is never forked.
     const forkAt = props.connection === "live" && props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
     const forkTooltipId = sessionControlId(props, `fork-tooltip-${row.id}`);
-    return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-chat-row-key=${row.id}
+    return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-testid="message-row" data-chat-row-key=${row.id}
       style=${sender?.color ? `--chat-sender-color: ${sender.color}` : nothing}>
       ${sender ? html`<span class="chat-sender-avatar" aria-hidden="true">${sender.avatar}</span>` : nothing}
       <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, props.connection === "live" && withEmbeds.includes(item), row.sender ? attributedMessage(item.text) : undefined))}</div>

@@ -9,6 +9,7 @@
  */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { reopenWork } from "../work/work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited" };
 
@@ -37,7 +38,6 @@ test("another Terminal font reaches a terminal that is already open: the same sh
   const session = await hui.createSession({ title: "Terminal font" });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", { name: "Open terminal" }).tap();
   await expect(pane.getByRole("tab", { name: "Terminal 1" })).toHaveAttribute("aria-selected", "true");
@@ -66,6 +66,7 @@ test("another Terminal font reaches a terminal that is already open: the same sh
 
   // The same terminal is still there, its shell is the same process, and it keeps what it printed…
   await hui.open(`/sessions/${session.id}`);
+  await reopenWork(screen, "Terminal 1");
   await expect(pane.getByRole("tab", { name: "Terminal 1" })).toHaveAttribute("aria-selected", "true");
   await expect(pane.getByText(/^Shared · Connected/u)).toBeVisible();
   const [reopened] = await terminals(hui, session.id);

@@ -692,7 +692,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
   const row = (id: string) => html.slice(html.indexOf(`data-chat-row-key=${id}`), html.indexOf("data-chat-row-key=", html.indexOf(`data-chat-row-key=${id}`) + 1));
 
   const bot = row("g");
-  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-chat-row-key=g style=--chat-sender-color: #2fc49a>/u);
+  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-testid="message-row" data-chat-row-key=g style=--chat-sender-color: #2fc49a>/u);
   assert.match(bot, /<span class="chat-sender-avatar" aria-hidden="true"><span class="bot-avatar bot-avatar--sm bot-avatar--face"/u);
   assert.match(bot, /<div class="chat-text">.*PR #7 review needs your decision\./u);
   assert.match(bot, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u);
@@ -710,7 +710,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
   assert.match(child, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u, "a bot subagent's parent is its bot's chat in the Bots tab");
   assert.match(row("r"), /<div class="chat-text chat-text--plain">Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
   assert.match(row("u"), /<span class="chat-sender-name">You<\/span>/u);
-  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-chat-row-key=w /u, "a header a bot wrote before HUI tagged the brief still reads as its message");
+  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-testid="message-row" data-chat-row-key=w /u, "a header a bot wrote before HUI tagged the brief still reads as its message");
   assert.match(row("w"), /<p>PR #167221 is mine\.<\/p>.*>Grace<\/a>/u);
   assert.doesNotMatch(row("w"), /\[from grace|>You</u);
 

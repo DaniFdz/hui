@@ -26,9 +26,11 @@ test("a bot's chat header and overview profile offer Call with a ChatGPT login a
   const header = screen.getByTestId("chat-header");
 
   await hui.open(`/bots/${bot.id}`);
+  // Read the chat before the phone's panel covers it.
+  await expect(header).toBeVisible();
+  await expect(header.getByRole("button", "Call Juno")).toHaveCount(0);
   const panel = await panelOverview(screen, "Juno");
   // No ChatGPT login: neither the chat nor the profile offers a call.
-  await expect(header.getByRole("button", "Call Juno")).toHaveCount(0);
   await expect(panel.getByRole("button", "Call Juno")).toHaveCount(0);
 
   // The bot's Settings tab says what a call needs, so the missing button has a reason.
@@ -41,6 +43,7 @@ test("a bot's chat header and overview profile offer Call with a ChatGPT login a
   const signedIn = await hui.answerAll("GET", /\/__hui\/calls$/u, SIGNED_IN);
   await hui.reload();
   await expect(header.getByRole("button", "Call Juno")).toBeVisible();
+  await panelOverview(screen, "Juno");
   await expect(panel.getByRole("button", "Call Juno")).toBeVisible();
   await expect(panel.getByText("Needs a ChatGPT login")).toHaveCount(0);
   await signedIn.stop();
@@ -48,8 +51,9 @@ test("a bot's chat header and overview profile offer Call with a ChatGPT login a
   // A login status that cannot be read offers no call either, and no note claims a login is missing.
   const unreadable = await hui.answerAll("GET", /\/__hui\/calls$/u, JSON.stringify({ error: "The ChatGPT login could not be read." }), 500);
   await hui.reload();
-  await expect(panel.getByLabel("About Juno")).toBeVisible();
+  await expect(header).toBeVisible();
   await expect(header.getByRole("button", "Call Juno")).toHaveCount(0);
+  await panelOverview(screen, "Juno");
   await expect(panel.getByRole("button", "Call Juno")).toHaveCount(0);
   await screen.getByRole("button", /^Calls /u).tap();
   await expect(panel.getByLabel("Settings")).toBeVisible();

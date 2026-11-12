@@ -43,6 +43,7 @@ test("Link Jira work item… lists the recently viewed items, finds one by key, 
   await option("CI-2").tap();
   await expect(dialog).toBeHidden();
   await expect(screen.getByText("Linked Jira work item CI-2.")).toBeVisible();
-  // The row carries the item it was linked to, with its status and summary.
+  // The row carries the item it was linked to, with its status and summary, in the phone's drawer too.
+  await hui.sessionList();
   await expect(screen.getByRole("link", { name: /Jira CI-2, to do: Developer tooling polish$/u })).toBeVisible();
 });

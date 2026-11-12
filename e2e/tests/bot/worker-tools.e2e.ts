@@ -51,7 +51,7 @@ test("a worker bot's Tools & skills reads the worker's own list, a switch saves 
   await expect(page.getByText("Disconnected", { exact: true })).toBeVisible();
   await hui.open(`/bots/${bot.id}`);
   await hui.reload();
-  await expect(screen.getByLabel("About Sentinel")).toBeVisible();
+  await panelOverview(screen, "Sentinel");
   await screen.getByText("Tools & skills", { exact: true }).tap();
   await expect(screen.getByRole("alert")).toHaveText(/^Far box, where this bot runs, is offline: HUI is not connected to it\. Connect it in Settings → Workers, then try again\./u);
   await expect(screen.getByRole("button", "Retry")).toBeVisible();

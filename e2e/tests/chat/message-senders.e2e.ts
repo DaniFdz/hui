@@ -31,27 +31,30 @@ test("a bot's message sits on the left under its name, opens its chat, copies an
   // The bubble is the rendered message itself, without the [from @grace] header the model wrote.
   await expect(transcript.getByText("Grace reports back")).toBeVisible();
   await expect(transcript.getByText(/\[from @/u)).toHaveCount(0);
-  // The rail names who it came from, and only the operator's own prompt offers a rewind.
-  await expect(screen.getByRole("button", { name: /^From @grace, marker \d+ of \d+$/u })).toBeVisible();
+  // Only the operator's own prompt offers a rewind. The wide-only rail label has its own case (CHAT-087).
   await expect(screen.getByLabel("Rewind to here")).toHaveCount(1);
+  const row = transcript.getByTestId("message-row").filter({ hasText: "Grace reports back" });
+  await expect(row).toHaveCount(1);
+  await expect(row.getByRole("link", { name: "Grace" })).toBeVisible();
+  await expect(row.getByRole("button", "Rewind to here")).toHaveCount(0);
 
   // Copy and Reply take the bot's own words, never its return address.
   await hui.messageActions(transcript.getByText("Grace reports back"));
   await screen.getByRole("button", "Copy message").tap();
   await expect.poll(() => hui.copied()).toBe(report);
-  // The reply that belongs to the bot's message is the one drawn on the line its name is under: every row has its own.
-  const line = (await name.boundingBox())!.y;
-  const replies = await screen.getByRole("button", "Reply to message").all();
-  const onBotsLine = [];
-  for (const [at, reply] of replies.entries()) if (Math.abs((await reply.boundingBox())!.y - line) < 30) onBotsLine.push(at);
-  expect(onBotsLine).toHaveLength(1);
-  await replies[onBotsLine[0]!]!.tap();
+  // Reply belongs to the message row, regardless of how the phone wraps its footer.
+  const reply = row.getByRole("button", "Reply to message");
+  await expect(reply).toHaveCount(1);
+  await reply.tap();
   await expect(screen.getByLabel("Message")).toHaveValue(/^> Grace reports back\n> \n> ```\n> const answer = 42;\n> ```/u);
 
   // A new color reaches the open chat without a reload.
   const before = (await hui.look(name)).color;
   await hui.api("PATCH", `/__hui/bots/${bot.id}`, { avatar: { color: "#8a7cf0" } });
   await expect.poll(async () => (await hui.look(name)).color).not.toEqual(before);
+  await name.tap();
+  await expect.poll(() => hui.url()).toMatch(new RegExp(`/bots/${bot.id}$`, "u"));
+  await expect(screen.getByTestId("chat-header")).toContainText("Grace");
 });
 
 test("a bot's chat shows a session's message under its chat icon and title, a routine's under its name and Routine, and a trigger's under its name and summary", { tags: ["CHAT-057"], platforms: ["web"] }, async ({ screen, hui }) => {

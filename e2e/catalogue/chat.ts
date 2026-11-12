@@ -717,7 +717,7 @@ const cases: UseCase[] = [
     id: "CHAT-056",
     title: "See who sent a bot's message",
     behaviour:
-      "A message a bot delivers shows on the left with the bot's face, a bubble in its color and its name, which opens the bot's chat; a bot HUI no longer knows shows its @handle. The bubble shows the rendered Markdown without the [from @…] header, Copy and Reply take that text, no Rewind is offered, the position rail labels it \"From @<handle>\" and a color change to the bot shows without a reload.",
+      "A message a bot delivers shows on the left with the bot's face, a bubble in its color and its name, which opens the bot's chat; a bot HUI no longer knows shows its @handle. The bubble shows the rendered Markdown without the [from @…] header, Copy and Reply take that text, no Rewind is offered, and a color change to the bot shows without a reload.",
     spec: ["SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
     surfaces: ["row:messages"],
     journeys: ["chat-senders"],
@@ -1043,6 +1043,16 @@ const cases: UseCase[] = [
     journeys: ["position-rail"],
     web: "required",
     phone: "backlog",
+  },
+  {
+    id: "CHAT-087",
+    title: "Name a bot sender on the wide position rail",
+    behaviour: 'On the wide transcript, the position rail labels a bot-delivered message "From @<handle>". The rail stays hidden in the narrow phone layout; the message itself still identifies its sender (CHAT-056).',
+    spec: ["SPEC.md#behaviour", "SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
+    surfaces: [],
+    journeys: ["position-rail"],
+    web: "required",
+    phone: { excluded: "The conversation-position rail is a wide-transcript control, hidden on phones; the sender on the message is shared as CHAT-056.", decision: "SPEC.md#behaviour" },
   },
 ];
 
