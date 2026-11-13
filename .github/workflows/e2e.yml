@@ -22,8 +22,11 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
+      # A shard runs its tests serially (`workers: 1` in e2e.config.ts), so the
+      # count sets the feedback wait: eight contiguous slices of about fifty
+      # tests keep the slowest shard near ten minutes instead of fifteen.
       matrix:
-        shard: ["1/4", "2/4", "3/4", "4/4"]
+        shard: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -33,6 +36,13 @@ jobs:
       # Match the npm major used to generate the committed lockfile.
       - run: npm install -g npm@11
       - run: npm ci --ignore-scripts
+      # The headless shell `e2e-web install` downloads is pinned by
+      # playwright-core, so the lockfile hash names the build; a hit skips that
+      # download and leaves only the system libraries to `--with-deps`.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npx e2e-web install chromium --with-deps
       - run: npm run e2e -- --shard ${{ matrix.shard }}
       # Retain partial traces/screenshots and fixture logs even when a shard reaches its deadline or is cancelled.
