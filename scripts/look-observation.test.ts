@@ -21,10 +21,10 @@ function anchor(patch: Partial<LookTarget> = {}) {
     matches: () => false, parentElement: null,
   };
 }
-function page(links: ReturnType<typeof anchor>[]) {
+function page(links: ReturnType<typeof anchor>[], hosts: { shadowRoot: { querySelectorAll: (selector: string) => unknown[] } }[] = []) {
   const hitTest = vi.fn(() => []);
   vi.stubGlobal("document", {
-    querySelectorAll: (selector: string) => selector === "a[href]" ? links : [],
+    querySelectorAll: (selector: string) => selector === "a[href]" ? links : selector === "*" ? hosts : [],
     elementsFromPoint: hitTest,
     fonts: Object.assign([], { check: () => false }),
   });
@@ -44,6 +44,22 @@ test("a real anchor moved from the old box retains its identity and live color, 
   assert.deepEqual(readLook(target).color, [138, 124, 240]);
   assert.equal(hitTest.mock.calls.length, 0);
   assert.throws(() => readLook({ ...target, href: null }), /no uniquely named control/u, "the old box-only observer fails this counterexample");
+});
+
+test("template whitespace between a link's parts is formatting, not identity", () => {
+  const spaced = anchor({ text: " \n    \n                  Appearance\n                " });
+  page([spaced]);
+  assert.deepEqual(readLook({ ...target, text: "Appearance" }).color, [60, 179, 113]);
+  assert.throws(() => readLook({ ...target, text: "Notifications" }), /expected one visible link.*found 0/u);
+});
+
+test("a link inside a shadow root is matched by the same identity, and a duplicate across roots still fails", () => {
+  const inside = anchor();
+  const hitTest = page([], [{ shadowRoot: { querySelectorAll: (selector) => selector === "a[href]" ? [inside] : [] } }]);
+  assert.deepEqual(readLook(target).color, [60, 179, 113]);
+  assert.equal(hitTest.mock.calls.length, 0, "the shadow match is semantic, not a geometry fallback");
+  page([anchor()], [{ shadowRoot: { querySelectorAll: (selector) => selector === "a[href]" ? [inside] : [] } }]);
+  assert.throws(() => readLook(target), /expected one visible link.*found 2/u, "an ambiguous identity across roots is refused");
 });
 
 test("duplicate matching links fail rather than selecting the first or falling back to a box", () => {

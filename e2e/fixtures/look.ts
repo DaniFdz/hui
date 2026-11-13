@@ -7,23 +7,36 @@ export type LookTarget = {
 /** Serialized into the page by the fixture; all dependencies must remain inside this function. */
 export function readLook({ x, y, width, height, label, href, className, text }: LookTarget) {
   const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+  // HUI renders most controls inside Lit's shadow roots; a document-only lookup would miss the real element.
+  const inAllRoots = (selector: string): Element[] => {
+    const roots: ParentNode[] = [document];
+    const found: Element[] = [];
+    for (let root = roots.pop(); root; root = roots.pop()) {
+      found.push(...root.querySelectorAll(selector));
+      for (const host of root.querySelectorAll("*")) if (host.shadowRoot) roots.push(host.shadowRoot);
+    }
+    return found;
+  };
   let element: Element | undefined;
+  // Playwright reports an element's rendered text; Lit templates also carry the whitespace between their parts.
+  const sameText = (node: Element | null) => (node?.textContent ?? "").replace(/\s+/gu, " ").trim() === (text ?? "").replace(/\s+/gu, " ").trim();
   if (href !== null && !label) {
     // An implicit-name link has no aria-label. Its old box can move while the real keyboard resizes the page.
     // Match the actual anchor, not a same-text child or avatar, and refuse ambiguous identities.
-    const links = [...document.querySelectorAll("a[href]")].filter((node) =>
-      node.getAttribute("href") === href && node.getAttribute("class") === className && node.textContent === text
+    const links = inAllRoots("a[href]").filter((node) =>
+      node.getAttribute("href") === href && node.getAttribute("class") === className && sameText(node)
       && node.getClientRects().length > 0 && getComputedStyle(node).visibility === "visible");
-    if (links.length !== 1) throw new Error(`look: expected one visible link with the target's identity, found ${links.length}`);
+    if (links.length !== 1) {
+      const anchors = inAllRoots("a[href]");
+      const nearby = anchors.map((node) => JSON.stringify([node.getAttribute("href"), node.getAttribute("class"), node.textContent,
+        node.getClientRects().length, getComputedStyle(node).visibility]).slice(0, 200)).slice(0, 4).join(" | ");
+      throw new Error(`look: expected one visible link with the target's identity, found ${links.length} of ${anchors.length};`
+        + ` wanted ${JSON.stringify([href, className, text]).slice(0, 200)}; near ${nearby}`);
+    }
     element = links[0];
   } else if (label) {
     // A terminal's tiny input moves with its cursor and is not pointer-hit-testable.
-    const roots: ParentNode[] = [document];
-    const named: Element[] = [];
-    for (let root = roots.pop(); root; root = roots.pop()) {
-      named.push(...[...root.querySelectorAll("[aria-label]")].filter((node) => node.getAttribute("aria-label") === label && node.getClientRects().length > 0));
-      for (const host of root.querySelectorAll("*")) if (host.shadowRoot) roots.push(host.shadowRoot);
-    }
+    const named = inAllRoots("[aria-label]").filter((node) => node.getAttribute("aria-label") === label && node.getClientRects().length > 0);
     if (named.length === 1) element = named[0];
   }
   element ??= document.elementsFromPoint(x + width / 2, y + height / 2).find((candidate) => {
