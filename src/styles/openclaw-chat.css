@@ -375,6 +375,21 @@
 .chat-skeleton__row .skeleton { height: 12px; border-radius: 6px; }
 .chat-skeleton__row--user .skeleton { height: 14px; }
 .chat-starting { display: flex; align-items: center; gap: 7px; margin: 2px 0 14px; color: var(--muted); font-size: var(--control-ui-text-sm); }
+.chat-cached-tail {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 2px;
+  --skeleton-base: color-mix(in srgb, var(--muted) 14%, transparent);
+  --skeleton-highlight: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.chat-cached-tail__rows { display: grid; gap: 8px; width: 100%; }
+.chat-cached-tail .skeleton { height: 12px; border-radius: 6px; }
+.chat-cached-tail__line { width: 72%; }
+.chat-cached-tail__line--short { width: 44%; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-cached-tail .skeleton::after { animation: none; }
+}
+.chat-starting { display: flex; align-items: center; gap: 7px; margin: 2px 0 14px; color: var(--muted); font-size: var(--control-ui-text-sm); }
 .chat-starting .hui-orbit { width: 14px; height: 14px; }
 @media (prefers-reduced-motion: reduce) {
   .chat-skeleton .skeleton::after { animation: none; }

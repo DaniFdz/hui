@@ -464,7 +464,7 @@ const cases: UseCase[] = [
     id: "SHELL-044",
     title: "Open a saved conversation without the gateway",
     behaviour:
-      "Once a production build's offline files are ready, reloading a previously opened conversation with the gateway unreachable shows that conversation again: its saved message text, the sidebar row for it, and a note reading Saved conversation · <time>. Message text is saved on this device. The composer keeps its draft, Send message stays disabled, and the band under it spins with the live connection note (for example Reconnecting; your draft stays on this device.).",
+      "Once a production build's offline files are ready, reloading a previously opened conversation with the gateway unreachable shows that conversation again: its saved message text, the sidebar row for it, and a note reading Saved conversation · <time>. Message text is saved on this device. The last saved row is followed by a placeholder saying newer messages may follow. The composer keeps its draft, Send message stays disabled, and the band under it spins with the live connection note (for example Reconnecting; your draft stays on this device.).",
     spec: [OFFLINE],
     surfaces: [],
     web: "required",

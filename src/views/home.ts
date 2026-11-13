@@ -1434,7 +1434,7 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
       ? html`<div class="agent-chat__empty bot-chat-empty" data-face-stage>${renderBotAvatar(props.bot.bot, "lg", { state: botFaceState(props) })}<strong>Say hi to ${props.bot.bot.name}</strong>${props.bot.bot.title ? html`<span>${props.bot.bot.title}</span>` : nothing}</div>`
       : html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
-  return html`${renderTranscriptRows(props, rows, start)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+  return html`${renderTranscriptRows(props, rows, start)}${renderCachedTail(props)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
 }
 
 /** The conversation's place before its first rows arrive, or while its runtime starts. Full-width rows
@@ -1458,6 +1458,17 @@ function renderConversationSkeleton(label: string, note: string) {
         <span class="skeleton skeleton-line"></span>
         <span class="skeleton skeleton-line skeleton-line--long"></span>
       </div>
+    </div>
+  </div>`;
+}
+
+/** Under the last row of a cached copy: the live conversation may have more than was saved. */
+function renderCachedTail(props: HomeProps) {
+  if (!props.savedCopy || props.connection !== "saved") return nothing;
+  return html`<div class="chat-cached-tail" role="status" aria-label="The live conversation may have newer messages">
+    <div class="chat-cached-tail__rows" aria-hidden="true">
+      <span class="skeleton chat-cached-tail__line"></span>
+      <span class="skeleton chat-cached-tail__line chat-cached-tail__line--short"></span>
     </div>
   </div>`;
 }

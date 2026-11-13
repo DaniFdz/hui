@@ -630,6 +630,10 @@ test("a saved offline copy keeps its transcript, spins and says when the live re
   assert.match(saved, /<button type="button" class="btn btn--sm" @click=>Forget saved conversations<\/button>/u);
   assert.equal(saved.match(/Reconnecting; your draft stays on this device\./gu)?.length, 1, "the status lives once under the composer");
   assert.doesNotMatch(saved, /transcript__note--status/u, "nothing sits above the transcript");
+  assert.match(saved, /<div class="chat-cached-tail" role="status" aria-label="The live conversation may have newer messages">/u, "a placeholder under the last saved row says more may follow");
+  assert.ok(saved.indexOf("long task") < saved.indexOf("chat-cached-tail"), "the placeholder sits after the last cached row");
+  const live = await renderWorkerSession("idle");
+  assert.doesNotMatch(live, /chat-cached-tail/u, "a live conversation has no cached-tail placeholder");
 
 });
 
