@@ -35,6 +35,7 @@ test("selecting a row loads its conversation with its header and models, a faile
   await expect(screen.getByLabel("Model: HUI SDK Fixture", { visible: true })).toBeVisible();
 
   await hui.open(`/sessions/${other.id}`);
+  await hui.sessionList();
   const refusedRow = screen.getByLabel(/^Refused once, status idle, tool durable, stage investigation/u);
   await expect(refusedRow).toBeVisible();
   const refusal = await hui.intercept("POST", new RegExp(`/__hui/sessions/${refused.id}/open$`, "u"));
