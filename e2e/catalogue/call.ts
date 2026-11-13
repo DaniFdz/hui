@@ -227,7 +227,7 @@ const cases: UseCase[] = [
   {
     id: "CALL-027",
     title: "Choose the language a bot speaks on calls",
-    behaviour: "Calls → *Language* offers *Auto (detect)* and Whisper's languages, searchable by name or code under *Search languages*; a choice saves at once and persists. On the next call the bot speaks that language and the call's summary is written in it; Auto answers in the language the caller speaks, and nothing is translated.",
+    behaviour: "Calls → *Language* offers *Auto (detect)* and Whisper's languages, searchable by name or code under *Search languages*; the search and results stay inside the visible viewport while a phone's keyboard is open. A choice saves at once and persists. On the next call the bot speaks that language and the call's summary is written in it; Auto answers in the language the caller speaks, and nothing is translated.",
     spec: ["SPEC.md#bots", API],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup"],
