@@ -1427,7 +1427,7 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
       ? html`<div class="agent-chat__empty bot-chat-empty" data-face-stage>${renderBotAvatar(props.bot.bot, "lg", { state: botFaceState(props) })}<strong>Say hi to ${props.bot.bot.name}</strong>${props.bot.bot.title ? html`<span>${props.bot.bot.title}</span>` : nothing}</div>`
       : html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
-  return html`${props.session?.status === "starting" ? renderStartingSession() : nothing}${renderTranscriptRows(props, rows, start)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+  return html`${renderTranscriptRows(props, rows, start)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
 }
 
 /** The conversation's place before its first rows arrive, or while its runtime starts. Full-width rows
@@ -1819,6 +1819,7 @@ function renderComposer(props: HomeProps) {
           <button type="button" class="btn btn--sm" ?disabled=${props.sending || disconnected} @click=${props.onContinueInterrupted}>Continue run</button>
         </div>
       ` : nothing}
+      ${props.session?.status === "starting" && props.transcript.length ? renderStartingSession() : nothing}
       ${renderTaskProgress(props)}
       ${renderQueue(props)}
       ${renderGoalPill(props)}
