@@ -123,6 +123,26 @@ test("one status stream keeps the registry current until it stops", async () => 
   assert.equal(fake.streams[1]!.handlers.heldRevision(), 2);
 });
 
+test("a refresh keeps the list the sidebar already shows instead of collapsing it to placeholders", async () => {
+  const { sessions } = controller();
+  fake.list = { revision: 1, groups: [group(session("a"))] };
+  const first = sessions.refresh();
+  assert.equal(sessions.loading, true, "the first read has nothing to show yet");
+  await first;
+  assert.equal(sessions.loading, false);
+
+  let release = () => {};
+  fake.gate = new Promise<void>((resolve) => { release = resolve; });
+  fake.list = { revision: 2, groups: [group(session("b"))] };
+  const refreshing = sessions.refresh();
+  assert.equal(sessions.loading, false, "rows stay while a refresh reads, so the sidebar keeps its scroll");
+  assert.deepEqual(sessions.groups.flatMap((group) => group.sessions.map(({ id }) => id)), ["a"]);
+  release();
+  await refreshing;
+  assert.deepEqual(sessions.groups.flatMap((group) => group.sessions.map(({ id }) => id)), ["b"]);
+  assert.equal(sessions.loading, false);
+});
+
 test("collapsed groups are remembered in the browser", () => {
   const { sessions } = controller();
   sessions.toggleGroup("repo");
