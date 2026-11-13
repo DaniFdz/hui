@@ -13,6 +13,8 @@ on:
       - "src/lib/native-shell-boot.ts"
       - "package.json"
       - "package-lock.json"
+      - "scripts/ios-smoke.swift"
+      - "scripts/ios-smoke.test.mjs"
       - ".github/workflows/ios.yml"
   push:
     branches: [main, "mobile/**"]
@@ -24,6 +26,8 @@ on:
       - "src/lib/native-shell-boot.ts"
       - "package.json"
       - "package-lock.json"
+      - "scripts/ios-smoke.swift"
+      - "scripts/ios-smoke.test.mjs"
       - ".github/workflows/ios.yml"
 permissions:
   contents: read
@@ -61,7 +65,12 @@ jobs:
           xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/iosbuild" CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/xcodebuild.log" | tail -20
-      - name: Launch it against a fixture gateway and capture the screens
+      - name: Compile and self-test the rendered-readiness oracle
+        run: |
+          set -euo pipefail
+          xcrun swiftc scripts/ios-smoke.swift -o "$RUNNER_TEMP/ios-smoke"
+          "$RUNNER_TEMP/ios-smoke" self-test
+      - name: Launch it against a fixture gateway and capture the ready screens
         run: |
           set -euo pipefail
           # A CI checkout is detached, so the launcher is told HEAD: it records the exact commit instead of a branch name.
@@ -83,22 +92,14 @@ jobs:
           mkdir -p "$RUNNER_TEMP/shots"
           # Connect to HUI first: a launch with no gateway argument and no remembered one.
           xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app
-          # Poll for a page instead of sleeping: S3 saw the splash at 3 s and the page by 8 s.
-          for i in $(seq 1 12); do
-            sleep 2
-            xcrun simctl io "$HUI_IOS_UDID" screenshot "$RUNNER_TEMP/shots/connect-$i.png" >/dev/null 2>&1 || true
-          done
+          # Vision must read "Connect to HUI" AND "GATEWAY URL" in an actual frame, within 24 s.
+          "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" connect
           xcrun simctl terminate "$HUI_IOS_UDID" dev.hui.app || true
           xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app -HUIGatewayURL http://127.0.0.1:47500
-          for i in $(seq 1 12); do
-            sleep 2
-            xcrun simctl io "$HUI_IOS_UDID" screenshot "$RUNNER_TEMP/shots/gateway-$i.png" >/dev/null 2>&1 || true
-          done
+          # Both seeded titles must render. A changing clock, splash or error is not readiness.
+          # This is boot visual proof only: a startup permission modal may remain; no taps are proved here.
+          "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" gateway
           ls -la "$RUNNER_TEMP/shots"
-          # The session list must be on screen: the last frame has to differ from the first (a blank or stuck splash does not).
-          if cmp -s "$RUNNER_TEMP/shots/gateway-1.png" "$RUNNER_TEMP/shots/gateway-12.png"; then
-            echo "::error::the app never left its first frame after the gateway launch"; exit 1
-          fi
       - if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
