@@ -354,6 +354,50 @@
   .agent-chat__creating wa-progress-bar::part(indicator) { transition-duration: 0ms; }
   .agent-chat__creating wa-progress-bar[indeterminate]::part(indicator) { inset-inline-start: 0; width: 100%; animation: none; opacity: .45; }
 }
+/* The transcript's place while a session opens or its runtime starts. The rows
+   take the conversation's own width, so watcher and activity cards below stay
+   in their column instead of following a centered empty state. */
+.chat-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  padding: 6px 0 2px;
+  --skeleton-base: color-mix(in srgb, var(--muted) 14%, transparent);
+  --skeleton-highlight: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.chat-skeleton__status { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--text-strong); font-size: var(--control-ui-text-sm); }
+.chat-skeleton__status .hui-orbit { width: 14px; height: 14px; }
+.chat-skeleton__note { margin: -8px 0 0; color: var(--muted); font-size: var(--control-ui-text-sm); text-align: center; }
+.chat-skeleton__rows { display: grid; gap: 20px; width: 100%; }
+.chat-skeleton__row { display: grid; gap: 8px; width: 84%; }
+.chat-skeleton__row--user { justify-self: end; width: 38%; }
+.chat-skeleton__row .skeleton { height: 12px; border-radius: 6px; }
+.chat-skeleton__row--user .skeleton { height: 14px; }
+.chat-starting { display: flex; align-items: center; gap: 7px; margin: 2px 0 14px; color: var(--muted); font-size: var(--control-ui-text-sm); }
+.chat-cached-tail {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 2px;
+  --skeleton-base: color-mix(in srgb, var(--muted) 14%, transparent);
+  --skeleton-highlight: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.chat-cached-tail__rows { display: grid; gap: 8px; width: 100%; }
+.chat-cached-tail .skeleton { height: 12px; border-radius: 6px; }
+.chat-cached-tail__line { width: 72%; }
+.chat-cached-tail__line--short { width: 44%; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-cached-tail .skeleton::after { animation: none; }
+}
+.chat-starting { display: flex; align-items: center; gap: 7px; margin: 2px 0 14px; color: var(--muted); font-size: var(--control-ui-text-sm); }
+.chat-starting .hui-orbit { width: 14px; height: 14px; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-skeleton .skeleton::after { animation: none; }
+}
+@media (max-width: 640px) {
+  .chat-skeleton__row { width: 88%; }
+  .chat-skeleton__row--user { width: 52%; }
+}
 .chat-session-rail { display: flex; flex: 0 0 min(360px, 36vw); min-width: 280px; min-height: 0; flex-direction: column; border-left: 1px solid var(--border); background: var(--panel); }
 .chat-pane__header-actions { display: flex; flex: none; align-items: center; gap: 4px; }
 .session-history-action { gap: 6px; }
