@@ -18,11 +18,17 @@ const disconnect = (hui: Hui) => hui.api("DELETE", `/__hui/providers/${PROVIDER}
 const labels = (models: Provider["models"]) => models.map((model) =>
   `${model.name} ${model.id} Context: ${model.contextWindow?.toLocaleString() ?? "reported during the session"} · Max output: ${model.maxTokens?.toLocaleString() ?? "CLI-managed"}`);
 
-/** Opens Settings → Models once its own settings have loaded, which its provider section waits for. */
-const openModels = async (screen: Screen, hui: Hui) => {
-  await hui.open("/settings/models");
+/** The PI-ready page replaces the loading page's provider section, folding its disclosures. */
+const modelsReady = async (screen: Screen) => {
   await expect(screen.getByText(/^Saved by HUI\./u)).toBeVisible({ timeout: 60_000 });
   await expect(screen.getByRole("button", "Add provider")).toBeVisible();
+  await expect(screen.getByRole("button", "Add provider")).toBeEnabled();
+};
+
+/** Opens Settings → Models once both PI and the final provider section have loaded. */
+const openModels = async (screen: Screen, hui: Hui) => {
+  await hui.open("/settings/models");
+  await modelsReady(screen);
 };
 
 /** Signs one account in with an API key in the dialog the page has open. */
@@ -153,8 +159,14 @@ test("a provider's Models disclosure lists its models with their limits, filters
     await expect(search).toBeHidden();
     expect((await configured(hui))!.selected).toEqual([first!.id, second!.id]);
 
-    // The choice survives a reload, which folds the provider configuration again.
+    // The provider card can arrive before PI. Wait for the final page before opening its disclosure.
+    const piRead = await hui.intercept("GET", /\/__hui\/pi$/u);
     await hui.reload();
+    await piRead.arrived();
+    await expect(screen.getByText("Provider configuration · 1 provider", { exact: true })).toBeVisible();
+    await expect(screen.getByText("Reading pi configuration…", { exact: true })).toBeVisible();
+    await piRead.deliver();
+    await modelsReady(screen);
     await disclose();
     await expect(screen.getByText("Models 2 selected", { exact: true })).toBeVisible();
     expect((await configured(hui))!.selected).toEqual([first!.id, second!.id]);
