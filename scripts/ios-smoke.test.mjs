@@ -36,7 +36,9 @@ test("iOS warms the real capture transport before launch without reusing it as p
 test("iOS shares one 90 s infrastructure bound for admissions, completed text and the watchdog", () => {
   const watchdog = oracle.slice(oracle.indexOf("final class InfrastructureWatchdog"), oracle.indexOf("// Both preparation"));
   const wait = oracle.slice(oracle.indexOf("func waitForReady("), oracle.indexOf("\ndo {"));
-  assert.ok(watchdog.includes("deadline = startedAt + 90"));
+  assert.ok(watchdog.includes("let phaseStart = ProcessInfo.processInfo.systemUptime"));
+  assert.ok(watchdog.includes("self.startedAt = phaseStart"));
+  assert.ok(watchdog.includes("self.deadline = phaseStart + 90"));
   assert.ok(watchdog.includes("timer.schedule(deadline: .now() + max(0, deadline - ProcessInfo.processInfo.systemUptime))"));
   assert.ok(wait.includes("let startedAt = watchdog.startedAt"));
   assert.ok(wait.includes("let deadline = watchdog.deadline"));

@@ -127,8 +127,9 @@ final class InfrastructureWatchdog {
     init(phase: String, directory: URL) {
         self.phase = phase
         self.directory = directory
-        startedAt = ProcessInfo.processInfo.systemUptime
-        deadline = startedAt + 90
+        let phaseStart = ProcessInfo.processInfo.systemUptime
+        self.startedAt = phaseStart
+        self.deadline = phaseStart + 90
         // Schedule the watchdog against the same absolute bound used by capture admission and acceptance.
         timer.schedule(deadline: .now() + max(0, deadline - ProcessInfo.processInfo.systemUptime))
         timer.setEventHandler { [weak self] in self?.expire() }
