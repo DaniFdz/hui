@@ -12,9 +12,10 @@
  * denied. What the fake device cannot do is carry a real conversation: GPT-Live still needs a ChatGPT login and the
  * gateway's realtime route, so a call reaches its pre-connect surface and no further.
  *
- * The browser is launched by the engine's own Playwright (`launchServer`), so it keeps every default a normal launch
- * has — the headless shell, the fonts, the sRGB colour profile, the sandbox decisions — with only the switches this
- * module adds on top, and it answers a raw CDP endpoint beside Playwright's: `--remote-debugging-port` is what the
+ * The browser is launched by the engine's own Playwright (`launchServer`), explicitly using its full Chromium
+ * executable in headless mode: Chromium 156's headless shell rejects even a granted fake microphone with
+ * `NotSupportedError`. The fonts, sRGB colour profile and sandbox decisions keep Playwright's defaults, and the browser
+ * answers a raw CDP endpoint beside Playwright's: `--remote-debugging-port` is what the
  * engine attaches to. `release` closes the browser, and a process that ends without releasing leaves nothing behind.
  *
  * It always launches headless: a browser this module started is not what `--headed` reaches, and a run that wants a
@@ -85,7 +86,7 @@ export function localChromium({ name, args }: { name: string; args: readonly str
         throw new Error(`${name}: this machine has no Playwright Chromium at ${executable}. The engine installs the browser it launches itself, and this one is launched here, so run "npx e2e-web install chromium" first.`);
       }
       const port = await freePort();
-      const server = await playwright.chromium.launchServer({ headless: true, args: [...args, `--remote-debugging-port=${port}`], timeout: ENDPOINT_DEADLINE_MS });
+      const server = await playwright.chromium.launchServer({ executablePath: executable, headless: true, args: [...args, `--remote-debugging-port=${port}`], timeout: ENDPOINT_DEADLINE_MS });
       const id = `${request.targetName}-${request.slot + 1}-${(counter += 1)}`;
       launched.set(id, server);
       try {
