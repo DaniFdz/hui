@@ -53,6 +53,10 @@ test("helpers wait in one Parallel tasks card that counts them and details them,
   await expect(screen.getByLabel("Session status: Running")).toBeVisible();
   await hui.provider.release();
   await expect(swarm.getByText("2 completed")).toBeVisible({ timeout: 90_000 });
+  // Success folds the batch into its summary; reopen it before reading the outcome kept under that disclosure.
+  const completedFirst = swarm.getByRole("button", { name: /^Open subagent First helper(?:, .+)?$/u });
+  if (!(await completedFirst.isVisible())) await swarm.getByText("2 completed").tap();
+  await expect(completedFirst).toBeVisible();
   await expect(swarm.getByText("Child runs finished. Check the conversation for the final response.")).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(transcript.getByLabel(/subagents? finished/iu)).toHaveCount(0);
@@ -63,5 +67,6 @@ test("helpers wait in one Parallel tasks card that counts them and details them,
   await expect(swarm.getByText("0 completed · 1 failed or stopped")).toBeVisible({ timeout: 90_000 });
   const timedOut = swarm.getByRole("button", { name: /^Open subagent Timed out helper(, .+)?$/u });
   if (!(await timedOut.isVisible())) await swarm.getByText("0 completed · 1 failed or stopped").tap();
+  await expect(timedOut).toBeVisible();
   await expect(timedOut).toContainText("The subagent exceeded 1 seconds.");
 });

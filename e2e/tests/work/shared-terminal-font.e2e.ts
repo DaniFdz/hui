@@ -1,7 +1,8 @@
 /** Choosing another Terminal font leaves every open shared terminal attached to the same shell, with what it showed:
  * the same terminals, the same shell processes and their output, and a shell that still answers (SET-084). */
-import { expect, type Locator, type Screen } from "e2e";
+import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { reopenWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -16,15 +17,12 @@ const run = async (hui: Hui, screen: Screen, command: string) => {
 };
 /** A shell's own pid, printed by that shell: the number survives only if the shell is never restarted. */
 const pidIn = (data: string) => Number(/SHELL (\d+)/u.exec(data)?.[1] ?? 0);
-/** A + menu entry, found by the shortcut only that kind shows. */
-const item = (screen: Pick<Locator, "getByText">, key: string) => screen.getByText(new RegExp(`(?:⌥⇧⌘|Ctrl\\+Alt\\+Shift\\+|Alt\\+Shift\\+Ctrl\\+)${key}`, "u"));
 
 test("choosing another Terminal font keeps every open shared terminal on its own shell, with its output, without a restart", { tags: ["SET-084"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Terminal font", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByText("Shared · Connected", { visible: true })).toBeVisible();
@@ -36,9 +34,10 @@ test("choosing another Terminal font keeps every open shared terminal on its own
   expect(firstPid).toBeGreaterThan(1);
 
   // A second terminal is open too: the preference redraws every one of them, not just the visible tab.
-  await screen.getByRole("button", "Open Work view").tap();
-  await item(screen, "T").first().tap();
-  await expect(pane.getByRole("tab", "Terminal 2")).toHaveAttribute("aria-selected", "true");
+  await hui.openWorkView("Terminal");
+  // The selected tab is the wide layout's cue; the same selected view names the phone's panel chooser.
+  await expect.poll(async () => (await pane.getByRole("tab", { name: "Terminal 2", selected: true }).isVisible())
+    || (await screen.getByRole("button", { name: /^Active panel: Terminal 2/u }).isVisible())).toBe(true);
   const second = (await terminals(hui, session.id))[1]!;
   await expect.poll(async () => (await replay(hui, session.id, second.id)).trim(), { timeout: 60_000 }).not.toBe("");
   await run(hui, screen, "printf 'SHELL %s\\n' \"$$\"; printf 'KEPT %s\\n' second");
@@ -63,7 +62,7 @@ test("choosing another Terminal font keeps every open shared terminal on its own
   expect((await terminals(hui, session.id)).map((terminal) => terminal.id)).toEqual([first.id, second.id]);
   for (const [terminal, marker, pid] of [[first, "first", firstPid], [second, "second", secondPid]] as const) {
     // Each tab is the same pane it was: connected to that terminal, still holding what it printed.
-    await pane.getByRole("tab", terminal.title).tap();
+    await reopenWork(screen, terminal.title);
     await expect(pane.getByText("Shared · Connected", { visible: true })).toBeVisible();
     const kept = await replay(hui, session.id, terminal.id);
     expect(kept).toContain(`KEPT ${marker}`);

@@ -9,26 +9,29 @@ test("the Agents | Bots switch swaps the list, keeps the navigation ending with 
 
   try {
     await hui.open("/");
+    await hui.sessionList();
     const navigation = screen.getByTestId("primary-navigation");
     await expect(navigation).toBeVisible();
-    await expect(navigation).toHaveText("Dashboard Contributions Kanban Sessions Usage Settings");
+    await expect.poll(() => hui.textOf(navigation)).toBe("Dashboard Contributions Kanban Sessions Usage Settings");
     await expect(screen.getByRole("tab", "Agents")).toHaveAttribute("aria-selected", "true");
 
     // Bots swaps the session list for the roster and keeps the destinations.
     await screen.getByRole("tab", "Bots").tap();
     await expect(screen.getByRole("tab", "Bots")).toHaveAttribute("aria-selected", "true");
     await expect(navigation).toBeVisible();
-    await expect(navigation).toHaveText("Dashboard Contributions Kanban Sessions Usage Settings");
+    await expect.poll(() => hui.textOf(navigation)).toBe("Dashboard Contributions Kanban Sessions Usage Settings");
     await expect(screen.getByPlaceholder("Search bots")).toBeVisible();
     await expect(screen.getByText("Tab Bot")).toBeVisible();
 
     // The browser remembers the tab.
     await hui.reload();
+    await hui.sessionList();
     await expect(screen.getByRole("tab", "Bots")).toHaveAttribute("aria-selected", "true");
     await expect(navigation).toBeVisible();
 
     // A bot's address opens on the Bots tab, with the same navigation.
     await hui.open(`/bots/${bot.id}`);
+    await hui.sessionList();
     await expect(screen.getByRole("tab", { name: "Bots", selected: true })).toBeVisible();
     await expect(navigation).toBeVisible();
   } finally {
