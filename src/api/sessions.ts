@@ -13,7 +13,7 @@ import type { CallRecord } from "./schema/calls.ts";
 import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionThinkingResponse, SideQuestionResult, SubagentTaskView } from "./schema/session-events.ts";
 import type { TaskSuggestion } from "./schema/task-suggestions.ts";
 import type { Watcher } from "./schema/watchers.ts";
-import { CLIENT_HEADERS, fetchJson, RESPONSE_TIMEOUT_MS, trackedFetch } from "./request.ts";
+import { CLIENT_HEADERS, fetchEventStream, fetchJson, RESPONSE_TIMEOUT_MS, trackedFetch } from "./request.ts";
 import { decodeSseFrame, reconnectDelay } from "../lib/event-stream.ts";
 import { OutdatedBuildError } from "./offline.ts";
 import { GatewayHttpError, isGatewayUnavailable } from "./gateway-error.ts";
@@ -584,6 +584,8 @@ export type SessionStatusesHandlers = {
   onStatus: (update: SessionStatusUpdate) => void;
   /** The gateway's shared session list: full on connect unless it is still `heldRevision`, then only changes. */
   onSessions?: (update: SessionListUpdate) => void;
+  /** The stream ended and will not reconnect by itself (a refusal or this client's stop). */
+  onStop?: () => void;
   heldRevision?: () => number;
 };
 
@@ -597,13 +599,17 @@ export function subscribeSessionStatuses(
   let attempt = 0;
 
   void (async () => {
-    while (!abort.signal.aborted) {
-      const outcome = await connectStatusesOnce(handlers, abort.signal, fetcher, () => {
-        attempt = 0;
-      });
-      if (abort.signal.aborted || outcome.kind === "refused") return;
-      attempt += 1;
-      await sleep(reconnectDelay(attempt), abort.signal);
+    try {
+      while (!abort.signal.aborted) {
+        const outcome = await connectStatusesOnce(handlers, abort.signal, fetcher, () => {
+          attempt = 0;
+        });
+        if (abort.signal.aborted || outcome.kind === "refused") return;
+        attempt += 1;
+        await sleep(reconnectDelay(attempt), abort.signal);
+      }
+    } finally {
+      handlers.onStop?.();
     }
   })();
 
@@ -826,7 +832,7 @@ async function connectStatusesOnce(
   let response: Response;
   try {
     const held = handlers.heldRevision?.();
-    response = await fetcher(held ? `${SESSION_STATUSES_URL}?revision=${held}` : SESSION_STATUSES_URL, {
+    response = await fetchEventStream(fetcher, held ? `${SESSION_STATUSES_URL}?revision=${held}` : SESSION_STATUSES_URL, {
       headers: { ...CLIENT_HEADERS, accept: "text/event-stream" },
       cache: "no-store",
       signal,

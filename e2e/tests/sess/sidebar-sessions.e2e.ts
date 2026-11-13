@@ -13,6 +13,7 @@ test("selecting a row loads its conversation with its header and models, a faile
   const target = await hui.createSession({ title: "Open from the sidebar", group: "Inbox" });
   await hui.prompt(target, "Hello from the sidebar");
   const other = await hui.createSession({ title: "Start elsewhere" });
+  const refused = await hui.createSession({ title: "Refused once" });
 
   await hui.open(`/sessions/${other.id}`);
   await expect(heading).toHaveText("Start elsewhere");
@@ -25,15 +26,25 @@ test("selecting a row loads its conversation with its header and models, a faile
   await expect(screen.getByText("Loading the conversation…")).toBeVisible();
   await expect.poll(() => hui.url()).toMatch(new RegExp(`/sessions/${target.id}$`, "u"));
   await load.reject(503, "The runtime is not ready yet.");
-  await expect(screen.getByText("Could not load this conversation")).toBeVisible();
-  await expect(screen.getByText("The runtime is not ready yet.")).toBeVisible();
-
-  await screen.getByRole("button", "Try again").tap();
+  // A gateway that stops answering is retried without the operator reloading or pressing anything.
+  await expect(screen.getByText("HUI did not answer. Trying again…")).toBeVisible();
   await expect(transcript.getByText("Hello from the sidebar")).toBeVisible();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
   await expect(heading).toHaveText("Open from the sidebar");
   await expect(screen.getByText("durable · INBOX · Idle", { visible: true })).toBeVisible();
   await expect(screen.getByLabel("Model: HUI SDK Fixture", { visible: true })).toBeVisible();
+
+  await hui.open(`/sessions/${other.id}`);
+  const refusedRow = screen.getByLabel(/^Refused once, status idle, tool durable, stage investigation/u);
+  await expect(refusedRow).toBeVisible();
+  const refusal = await hui.intercept("POST", new RegExp(`/__hui/sessions/${refused.id}/open$`, "u"));
+  await refusedRow.tap();
+  await refusal.arrived();
+  await refusal.reject(400, "This session cannot be opened.");
+  await expect(screen.getByText("Could not load this conversation")).toBeVisible();
+  await expect(screen.getByText("This session cannot be opened.")).toBeVisible();
+  await screen.getByRole("button", "Try again").tap();
+  await expect(heading).toHaveText("Refused once");
 
   await hui.open(`/sessions/${target.id}`);
   await expect(heading).toHaveText("Open from the sidebar");

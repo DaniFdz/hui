@@ -145,7 +145,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-016",
     title: "Open a session from the sidebar",
-    behaviour: "Selecting a row opens /sessions/:id, shows \"Loading the conversation…\" and then the transcript, with the title and \"<runtime> · <GROUP> · <status>\" in the header; the model list loads once the runtime is ready. Loading the same URL directly opens the same session. A load failure shows \"Could not load this conversation\" with Try again.",
+    behaviour: "Selecting a row opens /sessions/:id, shows \"Loading the conversation…\" and then the transcript, with the title and \"<runtime> · <GROUP> · <status>\" in the header; the model list loads once the runtime is ready. Loading the same URL directly opens the same session. A load the gateway never answered is retried by itself while the loading screen says \"HUI did not answer. Trying again…\"; a load failure shows \"Could not load this conversation\" with Try again.",
     spec: ["docs/api.md#post-__huisessionsidopen"],
     surfaces: ["nav:session", "route:POST /__hui/sessions/:id/open", "route:GET /__hui/sessions/:id/models"],
     journeys: ["session-lifecycle", "session-registry"],

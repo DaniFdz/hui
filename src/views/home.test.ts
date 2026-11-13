@@ -607,6 +607,8 @@ test("a conversation still downloading shows progress, and one that failed to lo
   const loading = await renderWorkerSession("idle", { transcript: [], opening: true });
   assert.match(loading, /role="status" aria-live="polite"> <span>Loading the conversation…<\/span> <wa-progress-bar label="Loading the conversation" indeterminate>/u);
   assert.doesNotMatch(loading, /Start a conversation/u);
+  const retrying = await renderWorkerSession("idle", { transcript: [], opening: true, connectionNote: "HUI did not answer. Trying again…" });
+  assert.match(retrying, /<span>Loading the conversation…<\/span> <span>HUI did not answer\. Trying again…<\/span> <wa-progress-bar/u, "a retried open says it is still trying");
 
   const failed = await renderWorkerSession("idle", { transcript: [], openError: "HUI did not answer within 20 s. Check the connection and try again." });
   assert.match(failed, /<div class="agent-chat__empty" role="alert"> <strong>Could not load this conversation<\/strong> <span>HUI did not answer within 20 s\. Check the connection and try again\.<\/span> <button type="button" class="btn btn--sm retry-session" @click=>Try again<\/button>/u);

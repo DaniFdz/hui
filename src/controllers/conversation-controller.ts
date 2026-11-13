@@ -8,10 +8,11 @@
  */
 import type { LitElement, ReactiveController, ReactiveControllerHost } from "lit";
 import { loadModels, openSession, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
-import { isGatewayUnavailable } from "../api/request.ts";
+import { isGatewayUnavailable, GatewayHttpError } from "../api/request.ts";
 import { OutdatedBuildError } from "../api/offline.ts";
 import { forgetConversation, readSavedConversation, saveConversation, type SavedConversation } from "../lib/session/offline-store.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
+import { reconnectDelay } from "../lib/event-stream.ts";
 import { announceTurnEnd } from "../lib/session/turn-end.ts";
 import { emptySessionPresentation, isCurrentSessionRequest, isSelectedSession, modelRequestMarkerAfterFailure, shouldRequestModels, streamingAfterEvent, streamingForStatus } from "../lib/session/ui-state.ts";
 import { FINISHED_BATCH_VISIBLE_MS, isSubagentActive } from "../lib/subagent-activity.ts";
@@ -32,6 +33,35 @@ type ConversationDeps = {
 };
 
 type ConversationHost = ReactiveControllerHost & Pick<LitElement, "renderRoot">;
+
+/** A stalled gateway usually answers the next attempt, so navigating retries before asking for an error. */
+const OPEN_ATTEMPTS = 3;
+
+/** A refusal stays refused; a request the gateway never answered may pass on the next attempt. A saved copy needs
+ * no retry: it is already on screen and its stream owns the reconnection. */
+function openFailureMayPass(error: unknown): boolean {
+  if (error instanceof GatewayHttpError) return [502, 503, 504].includes(error.status);
+  return isTimeoutFailure(error);
+}
+
+function isTimeoutFailure(error: unknown): boolean {
+  if (error instanceof DOMException) return error.name === "TimeoutError";
+  return error instanceof Error && error.cause !== undefined && error.cause !== error && isTimeoutFailure(error.cause);
+}
+
+/** Resolves after `ms`, or at once when the view was cancelled. */
+function waitForRetry(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
+}
 
 export class ConversationController implements ReactiveController {
   selected: SessionView | undefined;
@@ -166,17 +196,18 @@ export class ConversationController implements ReactiveController {
     }
     const abort = new AbortController();
     this.#readAbort = abort;
-    const pending = openSession(id, abort.signal);
     let settled = false;
     const saved = readSavedConversation(id);
     void saved.then((copy) => {
       if (!settled && copy && isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) this.#showSaved(copy);
     });
     try {
-      const opened = await pending;
+      const opened = await this.#openWithRetry(id, abort.signal, () =>
+        isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken));
       settled = true;
       if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) return;
       this.savedCopy = undefined;
+      this.connectionNote = "";
       this.selected = opened.session;
       this.applySnapshot(opened.snapshot, true);
       this.thinking = opened.snapshot.thinking ?? opened.session.thinking ?? "medium";
@@ -186,6 +217,7 @@ export class ConversationController implements ReactiveController {
       this.requestModelsWhenReady(id, opened.session.status);
     } catch (error) {
       settled = true;
+      this.connectionNote = "";
       const copy = await readSavedConversation(id);
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
         if (error instanceof OutdatedBuildError) {
@@ -208,6 +240,26 @@ export class ConversationController implements ReactiveController {
         this.opening = false;
         this.#host.requestUpdate();
         this.#deps.flushLaunchPrompt();
+      }
+    }
+  }
+
+  /** Opens the session, retrying an answer the gateway never gave or a transient server failure. A refusal, a
+   * cancelled view or a session that is no longer selected stops at once. */
+  async #openWithRetry(
+    id: string,
+    signal: AbortSignal,
+    current: () => boolean,
+  ): Promise<Awaited<ReturnType<typeof openSession>>> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await openSession(id, signal);
+      } catch (error) {
+        if (signal.aborted || !current() || attempt >= OPEN_ATTEMPTS || this.savedCopy || !openFailureMayPass(error)) throw error;
+        this.connectionNote = "HUI did not answer. Trying again…";
+        this.#host.requestUpdate();
+        await waitForRetry(reconnectDelay(attempt), signal);
+        if (signal.aborted || !current()) throw error;
       }
     }
   }

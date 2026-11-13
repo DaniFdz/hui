@@ -1408,6 +1408,7 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
   if (props.opening) {
     return html`<div class="agent-chat__empty agent-chat__creating" role="status" aria-live="polite">
       <span>Loading the conversation…</span>
+      ${props.connectionNote ? html`<span>${props.connectionNote}</span>` : nothing}
       <wa-progress-bar label="Loading the conversation" indeterminate></wa-progress-bar>
     </div>`;
   }

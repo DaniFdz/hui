@@ -1332,9 +1332,15 @@ keep downloading a response nobody will use.
 An opening request has a 20-second response-header deadline. A JSON download
 may take longer while bytes keep arriving; 40 seconds without body progress
 fails the read and shows the existing **Try again** action instead of leaving
-the conversation loading forever. Session-stream ticket acquisition and the
+the conversation loading forever. An open the gateway never answered, or a
+transient 502, 503 or 504, is tried again with the existing reconnect backoff
+(three attempts in total) while the loading state says it is trying again; a
+refusal is not retried. A failed session-list read is also retried on that
+backoff while the shell wants the list, so a stall does not need a page reload.
+Session-stream ticket acquisition and the
 WebSocket handshake each have a 20-second deadline and use the existing retry
-backoff. The handshake deadline ends when the socket opens, not when its first
+backoff. The multiplexed session-status and bot-roster streams fail a connection
+whose response headers do not arrive within 20 seconds and reconnect too. The handshake deadline ends when the socket opens, not when its first
 snapshot finishes downloading. A socket may take up to 60 seconds to deliver its
 first frame, so a connection lost immediately after the handshake cannot wait
 forever. A heartbeat before any state bounds the wait for state to 20 seconds

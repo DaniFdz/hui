@@ -6,6 +6,7 @@ import { test, vi } from "vitest";
 import { WebSocketServer } from "ws";
 
 import { reconnectDelay } from "../lib/event-stream.ts";
+import { RESPONSE_TIMEOUT_MS } from "./request.ts";
 import {
   STATUS_STREAM_STALL_MS,
   subscribeSessionStatuses,
@@ -85,6 +86,35 @@ test("the browser demultiplexes lifecycle snapshot and status frames, however th
   assert.deepEqual(snapshots, [[{ id: "a", status: "running" }]]);
   assert.deepEqual(updates, [{ id: "a", status: "idle" }]);
   assert.deepEqual(lists, [{ revision: 2, upserts: [] }]);
+});
+
+test("a status stream whose response headers never arrive retries instead of holding the list loading", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  let connections = 0;
+  const fetcher = ((_input: RequestInfo | URL, init?: RequestInit) => {
+    connections += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    });
+  }) as typeof fetch;
+  const stop = subscribeSessionStatuses({ onSnapshot: () => {}, onStatus: () => {} }, fetcher);
+  t.onTestFinished(stop);
+
+  await vi.advanceTimersByTimeAsync(RESPONSE_TIMEOUT_MS);
+  assert.equal(connections, 1, "the first answer is still pending");
+  await vi.advanceTimersByTimeAsync(2_000);
+  assert.equal(connections, 2, "the unanswered connection is replaced by a retry");
+});
+
+test("a status stream that ends on a refusal says so", async () => {
+  let stopped = 0;
+  const stop = subscribeSessionStatuses({
+    onSnapshot: () => {}, onStatus: () => {}, onStop: () => { stopped += 1; },
+  }, async () => new Response("{}", { status: 403 }));
+  for (let index = 0; index < 10 && !stopped; index += 1) await new Promise(setImmediate);
+  assert.equal(stopped, 1, "the shell can subscribe again after a refusal");
+  stop();
 });
 
 test("a status stream that goes silent reconnects to resync", async (t) => {
