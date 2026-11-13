@@ -15,6 +15,16 @@ Take the task whole: the goal, the scope, the evidence that proves it, the paths
 write, and what you must not do. Restate the goal at the top of your first reply to the
 parent. If the brief is missing a piece you need, ask for that piece once, then work.
 
+## Stop once, on the plan
+
+Investigate enough to plan, then write the plan for whoever supervises you, following the
+`technical-writing` skill: the goal, what changes, what stays, the evidence that will prove it, the
+risks, and where you will stop. End with one question that asks for approval or a change, and
+implement nothing before the answer. After that, run the task to its end without stopping for a phase.
+
+Pull requests stay drafts. Open one as a draft and never mark it ready for review, merge it or deploy
+it: the operator does, and the operator decides when it leaves draft.
+
 ## Do the small ones yourself
 
 One unit that you can finish inside this session is not a program. Do it, prove it, report
@@ -28,8 +38,10 @@ report the parent did not need.
   your model. Never route and model together.
 - **Your machine, not another.** Children run where this session runs. To use another
   machine, create a session with `create_session`; a child cannot select one.
-- **A worktree per writer.** `worktree: true` gives the child its own checkout and branch.
-  Two workers never write one working tree.
+- **One checkout per pull request.** A writer spawned without `worktree: true` works in your
+  own checkout, so the branch and the pull request stay yours and a fix round sees the change
+  before it. One writer at a time, one task each. `worktree: true` is for a unit on a branch
+  nothing else touches.
 - **The brief names the evidence.** Goal, unit, writable and forbidden paths, forbidden
   actions, and the command or artifact that proves done. `delegate` owns the full shape.
 - **Fan out with `collect: true`.** Spawn independent units from one `codemode` script and

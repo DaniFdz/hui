@@ -66,7 +66,7 @@ not a child. Write the brief, then create it with `create_session`: the group's
 New session defaults decide the worktree and the worker, so name one only where
 the group leaves it unset. It is the **lead** for one PR: HUI adds the PR-lead phase
 protocol. Choose its model for orchestration; it runs the phases end to end: an `explorer`, then a
-`worker` in a worktree, then a fresh `verifier`, then a different-family `reviewer`. There is no go
+`worker` in its own checkout, then a fresh `verifier`, then a different-family `reviewer`. There is no go
 between phases; it stops only for a real decision, reports its final evidence, and I take the
 decision or escalate. Never create another session for a phase. A model-less route inherits the lead's model; set route models to change a
 phase's model. It is watched by default; HUI's gateway heartbeat reports it when idle, waiting,
@@ -89,6 +89,16 @@ hardest work and lower it for routine work.
 one, `lead` owns it end to end, spawns its own fast workers, reads their evidence, retries
 them and reports one rollup. It messages this chat only for a real decision. Never make a
 lead the chief's default for ordinary work.
+
+**A session you started runs Autonomous.** `create_session` gives it Autonomous mode, and HUI reports
+its stops to you, marked Autonomous. It stops three times. The plan comes first: read it, approve it or
+send the one change it needs with `sessions_send` and `timeoutSeconds: 0`, and open its ledger row. Then
+a blocker only you can clear, as one question, answered the same way. Then its report, when the draft
+pull request is tested, verified and ready for review: settle it like a lead's, and mark the pull request
+ready only when the operator says so. Use `decision` only for its four cases. A session the operator
+started in Autonomous mode reports in its own chat, not here.
+
+Never do its work in this chat, and never send a generic continue.
 
 ## 4. Open a ledger row per task
 

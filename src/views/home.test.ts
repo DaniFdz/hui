@@ -559,6 +559,20 @@ test("Effort offers the model's own levels up to Maximum, and Speed only where f
   assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: { ...opus, fast: undefined }, thinking: "high", fast: false }), /chat-controls__speed-panel/u);
 });
 
+test("Autonomy sits under Speed with Supervised or Autonomous, names the mode on the trigger, and needs a session that carries it", async () => {
+  const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max"], fast: true };
+  const on = await renderWorkerSession("idle", { currentModel: opus, thinking: "high", fast: true, autonomous: true });
+  assert.match(on, /aria-label=Thinking: high, fast, autonomous/u);
+  assert.match(on, /aria-label="Speed".*<span class="chat-controls__effort-heading">Autonomy<\/span> <div class="chat-controls__speed-options" role="radiogroup" aria-label="Autonomy">/u);
+  assert.match(on, /aria-checked=false[^>]*>Supervised<\/button>.*aria-checked=true[^>]*>Autonomous<\/button>/u);
+
+  const off = await renderWorkerSession("idle", { currentModel: opus, thinking: "high", autonomous: false });
+  assert.match(off, /aria-label=Thinking: high /u);
+  assert.match(off, /aria-checked=true[^>]*>Supervised<\/button>.*aria-checked=false[^>]*>Autonomous<\/button>/u);
+
+  assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: opus, thinking: "high" }), /Autonomy/u);
+});
+
 test("Ultra is the stop above Maximum where the runtime offers it, and both glow", async () => {
   const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] };
   const ultra = await renderWorkerSession("idle", { currentModel: opus, thinking: "ultra" });

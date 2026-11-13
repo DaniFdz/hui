@@ -250,6 +250,8 @@ export type HomeProps = {
   thinking: string;
   /** Fast mode; absent while the runtime cannot change speed. */
   fast?: boolean;
+  /** Autonomous mode; absent while the session cannot carry it. */
+  autonomous?: boolean;
   question: RuntimeQuestion | undefined;
   connection: SessionConnection;
   copiedId: string;
@@ -277,7 +279,7 @@ export type HomeProps = {
   savedCopy?: { savedAt: number; truncated: boolean };
   offlineSupported?: boolean;
   onForgetSaved?: () => void;
-  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
+  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; autonomous?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
   onSelectSession: (session: SessionView) => void;
   /** Pane identity keeps controls unique when the same session is split twice. */
   controlScope?: string;
@@ -334,6 +336,7 @@ export type HomeProps = {
   onSelectModel: (provider: string, modelId: string) => void;
   onSelectThinking: (level: string) => void;
   onSelectFast: (fast: boolean) => void;
+  onSelectAutonomous: (autonomous: boolean) => void;
   onAbort: () => void;
   onContinue: () => void;
   /** Rewind to before a user message, restoring its text and attachments to the composer. */
@@ -376,9 +379,11 @@ export type HomeProps = {
   launchModel: RuntimeModel | undefined;
   launchThinking: string;
   launchFast: boolean;
+  launchAutonomous: boolean;
   onSelectLaunchModel: (provider: string, modelId: string) => void;
   onSelectLaunchThinking: (level: string) => void;
   onSelectLaunchFast: (fast: boolean) => void;
+  onSelectLaunchAutonomous: (autonomous: boolean) => void;
   directorySuggestions: readonly string[];
   onDirectoryInput: (value: string) => void;
   branchPrefix: string;
@@ -480,6 +485,7 @@ function onSubmit(props: HomeProps) {
       ...(props.launchModel ? { model: modelValue(props.launchModel) } : {}),
       ...(props.launchThinking ? { thinking: props.launchThinking } : {}),
       ...(props.launchFast && props.launchModel?.fast ? { fast: true } : {}),
+      ...(props.launchAutonomous ? { autonomous: true } : {}),
       ...(props.launchWorker ? { worker: props.launchWorker } : {}),
       ...(props.workspaceWorktree ? {
         worktree: true,
@@ -818,6 +824,7 @@ function renderLaunchForm(props: HomeProps) {
                     disabled: props.launching,
                     onSelect: props.onSelectLaunchThinking,
                     ...(props.launchModel?.fast ? { fast: { on: props.launchFast, onSelect: props.onSelectLaunchFast } } : {}),
+                    autonomy: { on: props.launchAutonomous, onSelect: props.onSelectLaunchAutonomous },
                     onToggle: positionComposerPicker,
                     onKeydown: closeComposerPicker,
                     onOpen: prepareComposerPicker,
@@ -1864,6 +1871,7 @@ function renderComposer(props: HomeProps) {
             disabled: disconnected || props.streaming || props.opening,
             onSelect: props.onSelectThinking,
             ...(props.fast !== undefined && props.currentModel?.fast ? { fast: { on: props.fast, onSelect: props.onSelectFast } } : {}),
+            ...(props.autonomous === undefined ? {} : { autonomy: { on: props.autonomous, onSelect: props.onSelectAutonomous } }),
             onToggle: positionComposerPicker,
             onKeydown: closeComposerPicker,
             onOpen: prepareComposerPicker,
