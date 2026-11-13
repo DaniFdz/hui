@@ -5,7 +5,7 @@
  * mounted but hidden, in a stable DOM order, so terminals and frames keep their state. The state and its transitions
  * belong to the caller (`lib/work-pane.ts`, applied by hui-app); each view belongs to its kind.
  */
-import { html, nothing, svg } from "lit";
+import { html, nothing, svg, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { HuiElement } from "../lit/hui-element.ts";
@@ -13,7 +13,7 @@ import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { ariaShortcut, formatShortcut } from "../lib/shortcut-binding.ts";
 import { requestOpenSettings, settingsHref } from "../lib/open-settings.ts";
 import {
-  clampWorkPaneWidth, closingLastWorkView, sessionWorkPane, workPaneFits, workViewKey, workViewKind, workViewKinds,
+  clampWorkPaneWidth, closingLastWorkView, listedWorkViewKinds, sessionWorkPane, workPaneFits, workViewKey, workViewKind, workViewKinds,
   workPaneMaximized, WORK_PANE_LABEL, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_MIN_WIDTH, WORK_PANE_OPEN_VIEW, WORK_PANE_SHOW,
   WORK_PANE_TOGGLE_SHORTCUT,
   type WorkPaneStore, type WorkViewKind, type WorkViewRef, type WorkViewResource, type WorkViewSettingsLink,
@@ -88,12 +88,16 @@ export class WorkPane extends HuiElement {
   private drag: { startX: number; startWidth: number; width: number } | undefined;
   private draggingKey = "";
 
-  /** Unsubscribes from the kinds' availability changes (a launcher's reason appears or goes away). */
+  /** Unsubscribes from the kinds' availability changes (a launcher's reason appears or goes away) and from a caption
+   * that arrives after the tab was restored (a terminal's name). */
   private stopAvailability: (() => void)[] = [];
 
   override connectedCallback() {
     super.connectedCallback();
-    this.stopAvailability = workViewKinds().flatMap((kind) => kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.requestUpdate())] : []);
+    this.stopAvailability = workViewKinds().flatMap((kind) => [
+      ...(kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.requestUpdate())] : []),
+      ...(kind.onTitleChange ? [kind.onTitleChange(() => this.requestUpdate())] : []),
+    ]);
     this.resizeObserver = new ResizeObserver(() => {
       const width = this.parentElement?.clientWidth ?? 0;
       if (width !== this.available) this.available = width;
@@ -158,9 +162,12 @@ export class WorkPane extends HuiElement {
     return this.shown();
   }
 
-  override willUpdate() {
+  override willUpdate(changed: PropertyValues) {
     // Once there is room again the pane simply fits; a later squeeze collapses it again.
     if (this.squeezedOpen && (this.fits() || this.squeezedOpen !== this.sessionId)) this.squeezedOpen = "";
+    // A reload keeps each tab's ref and not the name its terminal carries, so the conversation's terminals are read once
+    // per focus: `existing` remembers every name, and a tab that has not connected to its shell yet keeps its own.
+    if (changed.has("sessionId") && this.sessionId) void this.loadReopenable();
   }
 
   private readonly keydown = (event: KeyboardEvent) => {
@@ -321,7 +328,7 @@ export class WorkPane extends HuiElement {
           data-hui-tooltip=${title}
           @click=${() => this.activate(view.key)}
           @keydown=${(event: KeyboardEvent) => this.tabKeydown(event, views, index)}
-        >${view.kind.icon}<span class="work-pane__tab-label">${title}</span></button>
+        >${view.kind.tabIcon?.(view.ref) ?? view.kind.icon}<span class="work-pane__tab-label">${title}</span></button>
         <button type="button" class="work-pane__tab-close" tabindex="-1" aria-label=${`Close ${title}`} data-hui-tooltip="Close tab"
           @click=${(event: Event) => { event.stopPropagation(); this.close(this.sessionId, view.key); }}>${closeIcon}</button>
       </div>`;
@@ -331,7 +338,7 @@ export class WorkPane extends HuiElement {
   private renderLauncherMenu() {
     return html`<wa-dropdown class="work-pane__launcher" placement="bottom-end" @wa-show=${this.loadReopenable} @wa-select=${this.selectMenu}>
       <button slot="trigger" type="button" class="btn btn--ghost btn--icon work-pane__icon-btn" aria-label=${WORK_PANE_OPEN_VIEW} data-hui-tooltip="Open Work view">${plusIcon}</button>
-      ${workViewKinds().map((kind) => {
+      ${listedWorkViewKinds().map((kind) => {
         const reason = kind.unavailable?.(this.sessionId);
         return html`<wa-dropdown-item value=${`launch:${kind.kind}`} class="session-menu__item work-pane__menu-item" ?disabled=${Boolean(reason) || this.launching === kind.kind}>
           <span slot="icon" class="session-menu__icon" aria-hidden="true">${kind.icon}</span>
@@ -369,7 +376,7 @@ export class WorkPane extends HuiElement {
   private renderEmpty() {
     return html`<div class="work-pane__empty">
       <p class="work-pane__empty-lead">Open a view beside this conversation.</p>
-      <ul class="work-pane__empty-launchers">${workViewKinds().map((kind) => {
+      <ul class="work-pane__empty-launchers">${listedWorkViewKinds().map((kind) => {
         const reason = kind.unavailable?.(this.sessionId);
         return html`<li>
           <button type="button" class="work-pane__empty-launcher" ?disabled=${Boolean(reason) || this.launching === kind.kind}
@@ -396,7 +403,7 @@ export class WorkPane extends HuiElement {
         const title = view.kind.title(view.ref);
         return html`<button type="button" class="btn btn--ghost btn--icon work-pane__icon-btn" aria-label=${`Show ${title}`} data-hui-tooltip=${title}
           aria-current=${view.key === active ? "true" : nothing}
-          @click=${() => { this.reveal(); this.activate(view.key); this.pendingFocus = { tab: view.key }; }}>${view.kind.icon}</button>`;
+          @click=${() => { this.reveal(); this.activate(view.key); this.pendingFocus = { tab: view.key }; }}>${view.kind.tabIcon?.(view.ref) ?? view.kind.icon}</button>`;
       })}
     </div>`;
   }

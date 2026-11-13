@@ -24,6 +24,7 @@ test("split view opens from the header and a row menu, the split and pane menus 
   await expect(panes).toHaveCount(2);
   await expect(titles("Left chat")).toHaveCount(2);
 
+  await hui.sessionList();
   await (await hui.sessionMenu("Right chat")).getByText("Open in split pane", { visible: true }).tap();
   await expect(panes).toHaveCount(3);
   await expect(panes.nth(2).getByTestId("session-title")).toHaveText("Right chat");

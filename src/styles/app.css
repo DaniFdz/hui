@@ -306,6 +306,15 @@ hui-session-multiplexer {
     color: var(--muted);
   }
 
+  /* The shell's own 20px menu glyph, so the two headers draw one icon rather than two sizes of it. */
+  .settings-mobile-topbar__icon svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8px;
+  }
+
   .settings-mobile-topbar strong {
     overflow: hidden;
     color: var(--muted);

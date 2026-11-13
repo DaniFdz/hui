@@ -11,7 +11,8 @@ test("New session in a group selects it and its directory, and the Group picker 
   const chooser = screen.getByLabel("Choose session group");
 
   await hui.open("/");
-  await hui.peek(screen.getByText("ALPHA", { exact: true, visible: true }));
+  await hui.sessionList();
+  // Group actions are drawn at every width; the phone reaches them in its drawer without a hover.
   await screen.getByRole("button", "New session in ALPHA").tap();
   await expect(chooser).toContainText("ALPHA");
   await expect(screen.getByLabel("Project directory")).toHaveValue(hui.workspace);
@@ -25,6 +26,7 @@ test("New session in a group selects it and its directory, and the Group picker 
   await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();
   await expect(screen.getByText("durable · BETA · Idle", { visible: true })).toBeVisible();
   const rows = () => screen.getByLabel(/^.+, status \w+, tool durable, stage \w+/u).allTextContents();
+  await hui.sessionList();
   await expect.poll(async () => (await rows()).length).toBe(3);
   await screen.getByRole("button", "BETA").tap();
   await expect.poll(rows).toEqual(["Alpha anchor"]);
@@ -51,14 +53,14 @@ test("a group's Git defaults are saved, survive a reload and a cancel, start ses
   const choosePath = (path: string) => choose(path, "Choose where sessions created from this group start.");
   const launchFrom = (path: string) => choose(path, "Pick where this session works, then say what to do.");
   const openDefaults = async () => {
-    await hui.peek(screen.getByText("DEFAULTS", { exact: true, visible: true }));
+    await hui.sessionList();
     await screen.getByRole("button", "Group options for Defaults").tap();
     await screen.getByText("New session defaults", { visible: true }).tap();
     await expect(screen.getByText("New session defaults for “DEFAULTS”")).toBeVisible();
     await screen.getByText("Choose where sessions created from this group start.").tap();
   };
   const startFromGroup = async (prompt: string) => {
-    await hui.peek(screen.getByText("DEFAULTS", { exact: true, visible: true }));
+    await hui.sessionList();
     await screen.getByRole("button", "New session in DEFAULTS").tap();
     await expect(directory).toHaveValue(repository.path);
     await screen.getByPlaceholder("What should this session work on?").fill(prompt);
@@ -104,7 +106,8 @@ test("a group's Git defaults are saved, survive a reload and a cancel, start ses
   await expect(screen.getByLabel("Checkout: New worktree from release/1.0")).toBeVisible();
   await checkout.tap();
   await screen.getByPlaceholder("Generated from the prompt").fill("e2e-release");
-  await screen.getByText("Pick where this session works, then say what to do.").tap();
+  // The popover covers the hint below it on a phone; its own trigger is outside it and closes it either way.
+  await screen.getByLabel("Checkout: New worktree from release/1.0").tap();
   await expect(screen.getByPlaceholder("Generated from the prompt")).toBeHidden();
   await screen.getByRole("button", "Start session").tap();
   await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();

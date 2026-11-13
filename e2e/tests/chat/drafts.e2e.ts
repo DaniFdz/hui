@@ -1,4 +1,4 @@
-/** Each session keeps its own unsent draft, text and attachments, across switching chats and a reload, and the sidebar marks it (CHAT-011). */
+/** Each session keeps its own unsent draft, text and attachments, across switching chats and a reload, and the sidebar marks it: on a phone the sidebar is the drawer, opened with `hui.sessionList()` before a row is read or tapped (CHAT-011). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -14,16 +14,20 @@ test("a session's draft and attachment stay with it across switching and a reloa
   await message.fill("Draft for one");
   await hui.attach(screen.getByLabel("Choose files"), ["notes.txt"]);
   await expect(attached).toBeVisible();
+  // A phone shows one screen at a time, so the sidebar's rows are read with the drawer open; a wide layout is always there.
+  await hui.sessionList();
   await expect(row("Draft one", true)).toBeVisible();
 
   await row("Draft two", false).tap();
   await expect(message).toHaveValue("");
   await expect(attached).toBeHidden();
   await message.fill("Draft for two");
+  await hui.sessionList();
   await expect(row("Draft two", true)).toBeVisible();
 
   await hui.reload();
   await expect(message).toHaveValue("Draft for two");
+  await hui.sessionList();
   await expect(row("Draft one", true)).toBeVisible();
   await row("Draft one", true).tap();
   await expect(message).toHaveValue("Draft for one");
@@ -32,6 +36,7 @@ test("a session's draft and attachment stay with it across switching and a reloa
   await screen.getByRole("button", "Send message", { visible: true }).tap();
   await expect(screen.getByTestId("transcript", { visible: true }).getByText("Fixture response.")).toBeVisible();
   await expect(message).toHaveValue("");
+  await hui.sessionList();
   await expect(row("Draft one", false)).toBeVisible();
   await expect(row("Draft two", true)).toBeVisible();
   await expect(attached).toBeHidden();

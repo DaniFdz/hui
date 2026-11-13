@@ -7,6 +7,7 @@ const STATE = "Keyed session, status idle, tool durable, stage investigation";
 test("a session menu's single keys pin, rename, mark unread, delete and archive", { tags: ["SESS-040"], platforms: ["web"] }, async ({ screen, hui }) => {
   const state = (...flags: string[]) => screen.getByLabel([STATE, ...flags].join(", "));
   const press = async (key: string) => {
+    await hui.sessionList();
     await hui.sessionMenu("Keyed session");
     await screen.getByRole("menuitem", "Rename…").press(key);
   };
@@ -47,6 +48,7 @@ test("modified keys, held-key repeats, text fields and submenus keep their usual
   const session = await hui.createSession({ title: "Keyed session" });
   await hui.open(`/sessions/${session.id}`);
 
+  await hui.sessionList();
   await hui.sessionMenu("Keyed session");
   await archive.press("Alt+a");
   await expect(archive).toBeVisible();
@@ -54,6 +56,7 @@ test("modified keys, held-key repeats, text fields and submenus keep their usual
   await expect(archive).toBeHidden();
 
   await hui.keyboard.down("a");
+  await hui.sessionList();
   await hui.sessionMenu("Keyed session");
   await hui.keyboard.down("a");
   await hui.keyboard.up("a");

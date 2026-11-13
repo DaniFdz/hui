@@ -1,7 +1,7 @@
 # Documentation Guide
 
-This directory owns implementation planning, API contracts, and measured OpenClaw
-surface coverage. Product direction remains in `SPEC.md`; onboarding stays in
+This directory owns HUI's product contracts and measured OpenClaw surface
+coverage. Product direction remains in `SPEC.md`; onboarding stays in
 `README.md`.
 
 - `guide.md` holds user reference too long for the README landing page (Nix,
@@ -11,14 +11,15 @@ surface coverage. Product direction remains in `SPEC.md`; onboarding stays in
   message. Update it when ownership moves or a source directory is added.
 - `api.md` is the normative browser/server session contract. Update it with any route,
   event, ownership, status, or lifecycle change.
-- `implementation-roadmap.md` tracks iterative work and dependencies. Mark work done
-  only after its implementation and required tests, including Browser-tool E2E proof
-  for user-visible behavior.
-- `native-ios-plan.md` is the plan for the native iOS app and the shared web and iOS
-  e2e suite (roadmap item HUI-22). It records intentions; as parts ship, move what
-  they verify into `SPEC.md`, `api.md` and the owning guides.
+- `extensions.md` is the operator reference for gateway extensions: what a
+  manifest declares, what the gateway runs, and what `hui doctor` reports.
 - `control-ui-coverage.md` records measured parity with the referenced OpenClaw version.
   Distinguish cloned structure from implemented PI-backed functionality.
+- No plan, goal, roadmap, status ledger or task list. Those describe one run and
+  go stale: the conversation holds them and `work/` holds a run's scratch files
+  (`AGENTS.md`, "Repository state rules and what enforces them"). When a change
+  ships, its contract goes into `SPEC.md` and `api.md`, and its proof into the
+  owning guide or an `e2e/*.browser.md` note.
 - Document current verified behavior, not intentions as facts. Include commands and
   proof limits when they materially affect reproducibility; never include credentials,
   private paths/data, or generated bundle dumps.

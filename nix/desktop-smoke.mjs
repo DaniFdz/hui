@@ -94,10 +94,15 @@ try {
     new Promise((resolve, reject) => {
       const deadline = Date.now() + 10000;
       const text = root => root.textContent + [...root.querySelectorAll('*')].map(el => el.shadowRoot ? text(el.shadowRoot) : '').join('');
+      // The shell renders, its primary navigation is there, and Settings is its last
+      // destination with its own href.
       const check = () => {
         const app = document.querySelector('hui-app');
-        const content = app ? text(app.shadowRoot ?? app) : '';
-        if (content.includes('Contributions') && content.includes('Settings')) resolve({ title: document.title, url: location.href });
+        const shell = app?.querySelector('.hui-application');
+        const nav = shell?.querySelector('[aria-label="Primary navigation"]');
+        const settings = nav?.querySelector('a[data-testid="nav-settings"]');
+        const content = app ? text(app) : '';
+        if (shell && nav && settings?.getAttribute('href') === '/settings/appearance' && content.includes('Contributions')) resolve({ title: document.title, url: location.href });
         else if (Date.now() > deadline) reject(new Error('HUI shell did not render'));
         else requestAnimationFrame(check);
       };

@@ -4,6 +4,7 @@
  * load on first use, follow the current theme, and a failed render shows its error in place of the block.
  */
 import { parseSafeChartSpec } from "../lib/markdown/chart-spec.ts";
+import { viewBoxHolding } from "../lib/media-viewer.ts";
 import { openMediaViewer } from "./media-viewer.ts";
 
 type TwitterWidgets = {
@@ -30,6 +31,23 @@ function prefersDark(): boolean {
   return mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 }
 
+/**
+ * Mermaid declares the box it drew in the SVG's viewBox, from measurements its renderer took before it drew. An engine
+ * that measures and lays out differently leaves what it drew outside that box (`viewBoxHolding`), where the embed
+ * scrolls sideways to reach it and the viewer fits the empty box instead of the drawing.
+ */
+function holdDrawnContent(svg: SVGSVGElement): void {
+  let drawn: DOMRect;
+  try {
+    drawn = svg.getBBox();
+  } catch {
+    // An SVG that the engine does not lay out (a hidden panel, a detached document) reports no box to hold.
+    return;
+  }
+  const viewBox = viewBoxHolding(svg.getAttribute("viewBox"), drawn);
+  if (viewBox) svg.setAttribute("viewBox", viewBox);
+}
+
 function renderMermaid(code: string, target: HTMLElement): Promise<void> {
   const task = mermaidQueue.catch(() => undefined).then(async () => {
     const { default: mermaid } = await import("mermaid");
@@ -52,7 +70,10 @@ function renderMermaid(code: string, target: HTMLElement): Promise<void> {
     // mermaid.run leaves its SVG inside the holder. The viewer reads a direct child, and the original renderer
     // placed it there, so lift it out and drop the holder.
     const diagram = holder.querySelector("svg");
-    if (diagram) target.append(diagram);
+    if (diagram) {
+      holdDrawnContent(diagram);
+      target.append(diagram);
+    }
     holder.remove();
     for (const status of target.querySelectorAll(".markdown-rich-embed__status")) status.remove();
   });

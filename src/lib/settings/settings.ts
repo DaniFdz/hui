@@ -1,12 +1,11 @@
 /**
- * Shape, defaults and normalisation of HUI's user settings. Every value passes through here on the way in and
- * out, so a stale or hand-edited file degrades to defaults instead of reaching CSS or the gateway. Loading
- * and saving them through the gateway is `settings/settings-store.ts`'s job.
+ * Shape, defaults and normalisation of the settings the gateway owns. Every value passes through here on the way in
+ * and out, so a stale or hand-edited file degrades to defaults instead of reaching the gateway. This device's
+ * appearance (theme, colour mode, accent, typefaces, text size and chat preferences) is not here: it belongs to the
+ * screen that shows it, in `appearance/store.ts`. Loading and saving these through the gateway is
+ * `settings/settings-store.ts`'s job.
  */
 import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice } from "../voice/calls.ts";
-import { normalizeAppearance, DEFAULT_APPEARANCE } from "../theme/appearance.ts";
-import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "../terminal/font.ts";
-import { normalizeThemeMode } from "../theme/theme.ts";
 import { PI_THINKING_LEVELS } from "../thinking.ts";
 import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../../api/schema/settings.ts";
 
@@ -15,29 +14,17 @@ export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreferenc
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 
 export const DEFAULT_BRANCH_PREFIX = "feature/";
-export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "claw",
-  themeMode: "system",
-  accent: "",
-  fontUi: DEFAULT_APPEARANCE.fontUi,
-  fontChat: DEFAULT_APPEARANCE.fontChat,
-  fontTerminal: DEFAULT_TERMINAL_FONT,
-  textScale: DEFAULT_APPEARANCE.textScale,
-  chat: {
-    messageWidth: "comfortable",
-    collapseTaskProgress: false,
-    sendShortcut: "enter",
-    githubEmbeds: true,
-    datadogEmbeds: true,
-    toolMarks: {},
-    toolIcons: {},
-  },
+  // A tool's own mark and icon file stay here: the files live in the gateway's config directory, so every device
+  // that draws a tool call reads them from the gateway that serves it.
+  chat: { toolMarks: {}, toolIcons: {} },
   profileName: "HUI Operator",
   profileHandle: "",
+  name: "",
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
   codemode: { enabled: true },
@@ -45,29 +32,21 @@ export const DEFAULT_SETTINGS: Settings = {
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
-  models: { primary: "", fallback: "", utility: "", thinking: "", routes: [] },
+  models: { primary: "", fallback: "", utility: "", thinking: "", retryAttempts: 3, routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
-  labs: { denseObservability: false, detailedDebug: false, dashboard: false },
+  labs: { denseObservability: false, detailedDebug: false },
 };
 
 export function normalizeSettings(raw: unknown): Settings {
   const source = isRecord(raw) ? raw : {};
-  const appearance = normalizeAppearance(source["fontUi"], source["fontChat"], source["textScale"]);
-  const theme = source["theme"];
-  const normalizedTheme = typeof theme === "string" ? theme.trim() : "";
   return {
-    theme: normalizedTheme || DEFAULT_SETTINGS.theme,
-    themeMode: normalizeThemeMode(source["themeMode"]),
-    accent: normalizeAccent(source["accent"]),
-    fontUi: appearance.fontUi,
-    fontChat: appearance.fontChat,
-    fontTerminal: normalizeTerminalFont(source["fontTerminal"]),
-    textScale: appearance.textScale,
     chat: normalizeChat(source["chat"]),
     profileName: boundedText(source["profileName"], DEFAULT_SETTINGS.profileName, 80),
     profileHandle: boundedText(source["profileHandle"], "", 80),
+    // Empty is not a name: the gateway reports this machine's hostname until the operator sets one.
+    name: boundedText(source["name"], "", 60),
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
     codemode: { enabled: !isRecord(source["codemode"]) || source["codemode"]["enabled"] !== false },
@@ -94,6 +73,19 @@ export function normalizeCalls(value: unknown): Settings["calls"] {
 /** Both switches are opt-out: only an explicit false changes the default. The
  * path is kept as typed (bounded, no control characters); the gateway validates
  * and reports it rather than guessing. */
+/** Trimmed, lowercased, deduplicated: the gateway validates what a pattern means when a page is checked. */
+function originPatterns(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const patterns: string[] = [];
+  for (const entry of value.slice(0, 50)) {
+    if (typeof entry !== "string") continue;
+    const text = entry.trim().toLowerCase();
+    if (!text || text.length > 200 || /\s|[\p{Cc}]/u.test(text) || patterns.includes(text)) continue;
+    patterns.push(text);
+  }
+  return patterns;
+}
+
 export function normalizeBrowserSettings(value: unknown): BrowserSettings {
   const source = isRecord(value) ? value : {};
   const path = typeof source["executablePath"] === "string" ? source["executablePath"].trim() : "";
@@ -102,6 +94,7 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
     headless: source["headless"] !== false,
     executablePath: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
     mirrorState: source["mirrorState"] === true,
+    allowedOrigins: originPatterns(source["allowedOrigins"]),
   };
 }
 
@@ -144,12 +137,14 @@ function normalizeModelRef(value: unknown): string {
 
 function normalizeModels(value: unknown): Settings["models"] {
   const source = isRecord(value) ? value : {};
+  const attempts = Number(source["retryAttempts"]);
   return {
     primary: normalizeModelRef(source["primary"]),
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
     // Empty follows PI's own defaultThinkingLevel.
     thinking: PI_THINKING_LEVELS.find((level) => level === source["thinking"]) ?? "",
+    retryAttempts: Number.isFinite(attempts) ? Math.min(5, Math.max(0, Math.trunc(attempts))) : 3,
     routes: normalizeSubagentRoutes(source["routes"]),
   };
 }
@@ -164,9 +159,11 @@ function normalizeSubagentRoutes(value: unknown): Settings["models"]["routes"] {
   for (const item of value) {
     if (!isRecord(item)) continue;
     const name = typeof item["name"] === "string" ? item["name"].trim() : "";
-    const model = normalizeModelRef(item["model"]);
+    const rawModel = typeof item["model"] === "string" ? item["model"].trim() : "";
+    const model = normalizeModelRef(rawModel);
     const thinking = PI_THINKING_LEVELS.find((level) => level === item["thinking"]);
-    if (!routeNameIsValid(name) || !model || routes.has(name)) continue;
+    // A route with no model inherits the caller's model and thinking; a model that is present but malformed drops the route.
+    if (!routeNameIsValid(name) || (rawModel && !model) || routes.has(name)) continue;
     routes.set(name, {
       name,
       description: boundedText(item["description"], "", 200).replace(/\s+/gu, " ").trim(),
@@ -207,17 +204,11 @@ function normalizeDisabledSkills(value: unknown): Settings["disabledSkills"] {
   return [...skills.values()];
 }
 
+/** A file saved before this device owned its chat preferences still carries the ones that moved: they are not read,
+ * so the next save leaves them out (`cli/doctor-appearance.ts` reports the file until then). */
 function normalizeChat(value: unknown): Settings["chat"] {
   const source = isRecord(value) ? value : {};
-  const width = source["messageWidth"];
-  const shortcut = source["sendShortcut"];
   return {
-    messageWidth: width === "compact" || width === "wide" ? width : "comfortable",
-    collapseTaskProgress: source["collapseTaskProgress"] === true,
-    sendShortcut: shortcut === "modifierEnter" ? shortcut : "enter",
-    // Opt-out: only an explicit false disables previews.
-    githubEmbeds: source["githubEmbeds"] !== false,
-    datadogEmbeds: source["datadogEmbeds"] !== false,
     toolMarks: normalizeToolMarks(source["toolMarks"]),
     toolIcons: normalizeToolIcons(source["toolIcons"]),
   };
@@ -275,12 +266,6 @@ export function normalizeBranchPrefix(value: unknown): string {
   return prefix;
 }
 
-function normalizeAccent(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const normalized = value.trim().toLowerCase();
-  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : "";
-}
-
 function boundedText(value: unknown, fallback: string, maximum: number): string {
   if (typeof value !== "string") return fallback;
   return value.trim().slice(0, maximum);
@@ -292,7 +277,6 @@ function normalizeLabs(value: unknown): Settings["labs"] {
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
-    dashboard: source["dashboard"] === true,
   };
 }
 

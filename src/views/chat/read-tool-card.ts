@@ -4,7 +4,7 @@
 import { html, nothing } from "lit";
 import { icons } from "../../lib/icons.ts";
 import { openMessageContextMenu } from "../../lib/message-context-menu.ts";
-import { displayToolValue, readToolPresentation } from "../../lib/tool-cards.ts";
+import { displayToolValue, readToolPresentation, toolCardOutcome } from "../../lib/tool-cards.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
 
 type Tool = Extract<TranscriptItem, { kind: "tool" }>;
@@ -46,7 +46,6 @@ export function renderReadToolCard(item: Tool, options: {
 export function renderReadToolBody(item: Tool, options: { onCopy: (text: string) => Promise<boolean> }) {
   const view = readToolPresentation(item);
   if (!view) return html``;
-  const running = (item.status ?? "running") === "running";
   const failed = item.failed || item.status === "failed";
   const output = item.output?.trim() ? item.output : failed ? "No output — tool failed." : "";
   const copy = (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, item.output ?? "", options.onCopy);
@@ -59,6 +58,6 @@ export function renderReadToolBody(item: Tool, options: { onCopy: (text: string)
       ${failed ? html`<div class="chat-tool-card__block-header"><span class="chat-tool-card__block-icon">${icons.zap}</span><span class="chat-tool-card__block-label">Tool error</span></div>` : nothing}
       <pre class="chat-tool-card__block-content"><code>${output}</code></pre>
     </div>` : nothing}
-    <div class="chat-tool-card__outcome">${failed ? "failed" : running ? "Running" : "Completed"}</div>
+    <div class="chat-tool-card__outcome">${toolCardOutcome(item)}</div>
   </div></div>`;
 }

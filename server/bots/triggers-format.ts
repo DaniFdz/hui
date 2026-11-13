@@ -1,5 +1,5 @@
 /**
- * Triggers (HUI-18): what wakes a bot when something happens elsewhere, beside its routines, which wake it on a
+ * Triggers: what wakes a bot when something happens elsewhere, beside its routines, which wake it on a
  * schedule. Every trigger is a listener's: a program the operator runs outside HUI watches something (a Slack, a Jira
  * board, a repo) and reports what it found to the trigger's URL; when an event matches the trigger's filter, HUI
  * delivers `[trigger: <name> · <summary>] <prompt>` plus the event's details into the bot's chat, as a routine's message

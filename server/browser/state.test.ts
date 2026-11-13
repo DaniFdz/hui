@@ -15,7 +15,7 @@ import { ManagedBrowser } from "./manager.ts";
 import { EMPTY_BROWSER_STATE, mergeBrowserState, sizeOf, trimBrowserState, type BrowserState, type StoredCookie } from "./state.ts";
 
 const detected = await resolveBrowserExecutable("");
-const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+const settings: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
 
 const cookie = (name: string, value: string, at: number): StoredCookie => ({ name, value, domain: "example.test", path: "/", at });
 

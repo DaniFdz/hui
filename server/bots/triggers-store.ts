@@ -1,5 +1,5 @@
 /**
- * Where triggers live (HUI-18), beside `bots.json` and only written by HUI:
+ * Where triggers live, beside `bots.json` and only written by HUI:
  *
  *   ~/.config/hui/bot-triggers.json        { version: 1, triggers, runs, pending, deliveries, seen }
  *

@@ -1,5 +1,5 @@
 /**
- * Triggers (HUI-18): what wakes a bot when something happens elsewhere. Each bot has its own triggers beside its
+ * Triggers: what wakes a bot when something happens elsewhere. Each bot has its own triggers beside its
  * routines, in `bot-triggers.json` (`bot-triggers-store.ts`), and every one is a listener's: a program the operator runs
  * outside HUI reports what it watches to the trigger's URL (`bot-triggers-listener.ts`), and the pull requests its
  * events link to are read as their delivery goes out (`bot-triggers-prs.ts`).

@@ -12,7 +12,7 @@ import type { ImageContent, Message, ModelThinkingLevel, TextContent } from "@ea
 import {
   CompactionEntry, InboxDoc, LiveDoc, ResetEntry, SystemEntry, UserEntry,
   type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
-  type EntryId, type EntryRecord, type Harness, type SubmissionRecord, type TaskId, type ToolRegistration,
+  type EntryId, type EntryRecord, type Harness, type SubmissionRecord, type TaskId, type ToolRegistration, type Tx,
 } from "@earendil-works/pi-durable";
 import { watchEvents, type AgentEvent } from "./durable-events.ts";
 import { CODEMODE_TOOL_NAME, type CodemodeNestedCall } from "@earendil-works/pi-durable/codemode";
@@ -355,7 +355,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     // on, and only there. Each is selected per conversation; every other conversation's selection stays as it was.
     const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
     const botTools = bot ? await this.#host.botToolsFor(this.#conversation.id) : undefined;
-    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : []), ...(tag ? [tag] : [])];
+    const gateway = this.#host.gatewayExtension();
+    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(gateway ? [gateway] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : []), ...(tag ? [tag] : [])];
     let withCodemode = codemode.enabled;
     const remove = [...inactive.values()];
     this.#botOffer = [];
@@ -364,6 +365,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       const offered = this.#composed([
         [this.#host.codingTools, () => ({ kind: "coding" })],
         [this.#host.huiTools, () => ({ kind: "hui" })],
+        [gateway?.tools ?? [], () => ({ kind: "hui" })],
         [withCodemode ? modelCallable(this.#host.codemode) : [], () => ({ kind: "coding" })],
         [this.#extensions?.extension.tools ?? [], (tool) => ({ kind: "extension", ...this.#extensions!.describe(tool.name) })],
         [optchat?.tools ?? [], () => ({ kind: "hui" })],
@@ -1398,7 +1400,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   /** Durable history is append-only, so a rewind forks the conversation at that point and continues in the fork; the
    * abandoned branch stays stored. The fork holds the history up to that point and nothing placed after it, a later
    * summary included, so the model reads the original turns again and Durable compacts the fork when it needs to. A
-   * compaction still running beside the conversation finishes on the abandoned branch. */
+   * compaction still running beside the conversation finishes on the abandoned branch. A bot's chat keeps its bot and
+   * OptChat in the fork: its memory is rebuilt from the kept branch and the abandoned branch's memory is forgotten, and
+   * the abandoned branch stops being a bot's chat. A rewind to before the first message of an OptChat chat is a clear
+   * instead, so the chat stays the bot's. */
   async rewind(target: RuntimeRewindTarget, options?: RuntimeRewindOptions): Promise<void> {
     if (this.#streaming) throw new Error("Wait for the current run to finish before rewinding.");
     await this.#read();
@@ -1419,6 +1424,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     }
     const at = options?.excludeUserMessage === true && isUser ? this.#history[before - 1]?.entry.id : row.entry.id;
     const optchat = await this.#host.optchat.enabled(this.#conversation.id);
+    if (!at && optchat) {
+      await this.clear();
+      return;
+    }
     const next = at
       ? await this.#conversation.fork(at, { ownership: { kind: "ownerless" } }, context)
       : await this.#harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
@@ -1426,6 +1435,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
           ...(this.#agent.thinkingLevel ? { thinkingLevel: this.#agent.thinkingLevel } : {}),
           cwd: this.#cwd,
         } }, context);
+    const abandoned = this.#conversation.id;
     await this.#stop?.();
     this.#host.bindCallerLike(this.#conversation.id, next.id);
     this.#conversation = next;
@@ -1433,15 +1443,22 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     this.#nestedCalls.clear();
     this.#changedCalls.clear();
     await this.attach();
-    // A fork keeps its parent's agent; a conversation started over needs the session's extensions and tools again, and
-    // a fork of an OptChat conversation, which starts without OptChat, gives up its tools.
+    // The branch a rewind leaves is forgotten by OptChat, and it stops being a bot's chat; the fork keeps the bot's
+    // document and OptChat on. A failure to give up the old one leaves a stale record, never a broken chat, so the rewind
+    // goes on.
+    if (optchat) {
+      await this.#host.bots?.release?.(abandoned).catch(() => undefined);
+      await this.#host.optchat.abandon(abandoned);
+    }
+    // A fork keeps its parent's agent, and a conversation started over needs the session's extensions and tools again.
     if (!at || optchat) await this.applyTools();
     this.#extensions?.rewound();
   }
 
   /** A fork into another session: the history up to one entry (the latest point a fork can carry on from when absent)
    * copied into a new conversation of the same harness. This conversation is not touched and may keep running. The
-   * copy keeps the agent (model, thinking, tools) as of that entry and, like a rewind's fork, starts without OptChat.
+   * copy keeps the agent (model, thinking, tools) as of that entry and its documents, OptChat included; a bot's chat is
+   * never forked (the route refuses it), so only a conversation without OptChat is copied this way.
    * `cwd` moves the copy's agent to another directory, such as a worktree made for it. */
   async fork(entryId?: string, options?: { cwd?: string }): Promise<string> {
     await this.#read();
@@ -1528,11 +1545,17 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
     const known = model ? host.models.getModel(model.provider, model.modelId) : undefined;
     const requestedThinking = options.thinking ?? defaultThinking(host, options.cwd);
     const thinking = requestedThinking && known ? fitThinking(known, requestedThinking) : undefined;
-    conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
-      cwd: options.cwd,
-      ...(model ? { model } : {}),
-      ...(thinking ? { thinkingLevel: thinking } : {}),
-    } }, context);
+    const bots = host.bots;
+    conversation = await harness.createConversation({
+      ownership: { kind: "ownerless" },
+      agent: {
+        cwd: options.cwd,
+        ...(model ? { model } : {}),
+        ...(thinking ? { thinkingLevel: thinking } : {}),
+      },
+      // A bot's subagent loads the bot's own skills from its first request, and nothing of the bot's chat besides them.
+      ...(options.botSkills && bots ? { init: (tx: Tx, conversationId: ConversationId) => bots.writeSkills(tx, conversationId, options.botSkills!) } : {}),
+    }, context);
   }
   host.bindCaller(conversation.id, options.huiSessionId);
   if (options.huiSessionId) host.setUltra(options.huiSessionId, options.thinking === "ultra");
@@ -1554,5 +1577,6 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
 
 export const durableRuntime = {
   id: "durable",
+  resumesInterruptedRuns: true,
   start: (options: StartOptions) => startDurable(options),
 } satisfies AgentRuntime;

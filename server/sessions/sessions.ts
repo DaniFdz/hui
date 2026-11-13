@@ -57,6 +57,10 @@ export type SessionRecord = {
   /** Failed automatic restart admissions for the current interrupted run.
    * Cleared once a replacement backend turn starts or the run settles. */
   runRecoveryAttempts?: number;
+  /** When the last run ended on a failure HUI retries by itself. It outlives
+   * the gateway, so a run a shutdown or a slept Mac cut off is retried on the
+   * next start instead of waiting for the operator to continue each session. */
+  runFailedAt?: string;
   /** Pinned sessions sort to the top of their group. Persisted like the rest,
    * so a pin survives a gateway restart. */
   pinned?: boolean;
@@ -65,6 +69,10 @@ export type SessionRecord = {
   archived?: boolean;
   unread?: boolean;
   icon?: string;
+  /** A session created by a chief for one pull request: its prompt carries the PR-lead phase protocol. */
+  lead?: true;
+  /** Other sessions this session watches: they become visible to its sessions_list, sessions_history and sessions_send, so a heartbeat can read and continue them. Only HUI's session tools write this field. */
+  watches?: string[];
   /** Session that spawned this one through HUI's agent tools. Kept optional so
    * existing version-2 registries remain valid without a migration. */
   parentId?: string;
@@ -75,6 +83,10 @@ export type SessionRecord = {
    * `parentId`, so existing version-2 registries need no migration. The bot
    * registry decides: a record whose bot is gone is an ordinary session. */
   bot?: string;
+  /** For a subagent under a bot's chat: the bot whose own skills its prompt
+   * loads (`botSkillsDoc`), so the staff pack reaches the workers that need it
+   * without loading into every session. */
+  botSkills?: string;
   /** Jira work items created for this session from HUI, oldest first. Only
    * the reference is stored; Jira facts are fetched and cached in memory. */
   jiraIssues?: { key: string; url: string }[];
@@ -125,7 +137,8 @@ export type SubagentRecord = {
   /** Absent on legacy tasks; pending until observed in the parent transcript. */
   completionDelivery?: "pending" | "delivered";
   /** Spawned with `collect: true`: the parent collects the result with `agents_wait`. A collected child waiting for
-   * a free slot is saved as `starting`; its queue is in memory, so a restart interrupts it like any active task. */
+   * a free slot is saved as `starting`; its queue is rebuilt at startup, in spawn order, for a runtime that continues
+   * its runs. */
   collect?: true;
 };
 
@@ -240,8 +253,10 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     && raw["runRecoveryAttempts"] >= 0
       ? raw["runRecoveryAttempts"]
       : undefined;
+  const runFailedAt = str(raw["runFailedAt"]).trim();
   const parentId = str(raw["parentId"]).trim();
   const bot = str(raw["bot"]).trim();
+  const botSkills = str(raw["botSkills"]).trim();
   const subagent = raw["subagent"] === undefined ? undefined : toSubagent(raw["subagent"]);
   if (raw["subagent"] !== undefined && !subagent) return undefined;
   const jiraIssues = Array.isArray(raw["jiraIssues"])
@@ -254,6 +269,10 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     : [];
   const source = str(raw["source"]);
   const icon = str(raw["icon"]).trim();
+  const lead = raw["lead"] === true;
+  const watches = Array.isArray(raw["watches"])
+    ? raw["watches"].filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 200).slice(0, 50)
+    : [];
   const stage = isSessionStage(raw["stage"]) ? raw["stage"] : undefined;
   const stageSource = stage && isSessionStageSource(raw["stageSource"]) ? raw["stageSource"] : undefined;
   const stagePullRequests = Array.isArray(raw["stagePullRequests"])
@@ -276,14 +295,18 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(runStartedAt ? { runStartedAt } : {}),
     ...(runPrompt ? { runPrompt } : {}),
     ...(runRecoveryAttempts !== undefined ? { runRecoveryAttempts } : {}),
+    ...(runFailedAt ? { runFailedAt } : {}),
     ...(raw["pinned"] === true ? { pinned: true } : {}),
     ...(raw["archived"] === true ? { archived: true } : {}),
     ...(raw["unread"] === true ? { unread: true } : {}),
     ...(icon ? { icon } : {}),
+    ...(lead ? { lead: true } : {}),
+    ...(watches.length ? { watches } : {}),
     ...(parentId ? { parentId } : {}),
     ...(progress ? { progress } : {}),
     ...(subagent ? { subagent } : {}),
     ...(bot ? { bot } : {}),
+    ...(botSkills ? { botSkills } : {}),
     ...(jiraIssues.length ? { jiraIssues } : {}),
     ...(stage ? { stage, stageSource: stageSource ?? "agent" } : {}),
     ...(stagePullRequests.length ? { stagePullRequests } : {}),

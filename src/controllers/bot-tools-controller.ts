@@ -5,7 +5,7 @@
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotCatalog, BotSkillRef, BotView } from "../api/schema/bots.ts";
-import { loadBotCatalog } from "../api/bot-tools.ts";
+import { loadBotCatalog, loadBotSkill, saveBotSkill } from "../api/bot-tools.ts";
 import { updateBot } from "../api/bots.ts";
 import { answerQuestion } from "../api/sessions.ts";
 import { botToolsKey, skillsAfter, toolsAfter, type BotAccessAnswer, type BotToolsActions, type BotToolsState } from "../lib/bots/tools.ts";
@@ -14,12 +14,16 @@ export type BotToolsApi = {
   load: (id: string) => Promise<BotCatalog>;
   save: (id: string, change: { disabledTools?: string[]; disabledSkills?: BotSkillRef[] }) => Promise<unknown>;
   answer: (sessionId: string, questionId: string, value: BotAccessAnswer) => Promise<void>;
+  loadSkill: (id: string, name: string) => Promise<{ name: string; text: string }>;
+  saveSkill: (id: string, name: string, text: string) => Promise<unknown>;
 };
 
 const API: BotToolsApi = {
   load: loadBotCatalog,
   save: (id, change) => updateBot(id, change),
   answer: (sessionId, questionId, value) => answerQuestion(sessionId, questionId, { value }),
+  loadSkill: loadBotSkill,
+  saveSkill: saveBotSkill,
 };
 
 const errorText = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
@@ -50,7 +54,7 @@ export class BotToolsController implements ReactiveController {
   reset(botId: string): void {
     this.#request += 1;
     this.#seen = "";
-    this.state = { botId, loading: false, error: "", saving: false, saveError: "", answering: false, query: "" };
+    this.state = { botId, loading: false, error: "", saving: false, saveError: "", answering: false, query: "", editing: undefined };
     this.#host.requestUpdate();
   }
 
@@ -101,6 +105,33 @@ export class BotToolsController implements ReactiveController {
     }
   }
 
+  /** Reads one of its own skills and opens the editor for it. */
+  async #editSkill(bot: BotView, name: string): Promise<void> {
+    if (this.state.editing?.saving) return;
+    this.#set({ editing: { name, text: "", saving: false, error: "" }, saveError: "" });
+    try {
+      const skill = await this.#api.loadSkill(bot.id, name);
+      if (this.state.editing?.name !== name) return;
+      this.#set({ editing: { name: skill.name, text: skill.text, saving: false, error: "" } });
+    } catch (error) {
+      if (this.state.editing?.name !== name) return;
+      this.#set({ editing: { name, text: "", saving: false, error: errorText(error, "Could not read the skill.") } });
+    }
+  }
+
+  async #saveSkill(bot: BotView): Promise<void> {
+    const editing = this.state.editing;
+    if (!editing || editing.saving) return;
+    this.#set({ editing: { ...editing, saving: true, error: "" } });
+    try {
+      await this.#api.saveSkill(bot.id, editing.name, editing.text);
+      this.#set({ editing: undefined });
+      await this.refresh(bot);
+    } catch (error) {
+      this.#set({ editing: { ...editing, saving: false, error: errorText(error, "Could not save the skill.") } });
+    }
+  }
+
   /** The tab's view state and callbacks for `bot`. */
   props(bot: BotView): { state: BotToolsState } & BotToolsActions {
     const state = this.state.botId === bot.id ? this.state : { ...this.state, botId: bot.id, loading: true, catalog: undefined, error: "" };
@@ -117,6 +148,13 @@ export class BotToolsController implements ReactiveController {
       onSearch: (query) => { this.#set({ query }); },
       onAnswer: (value) => { void this.#answer(bot, value); },
       onRetry: () => { void this.refresh(bot); },
+      onEditSkill: (name) => { void this.#editSkill(bot, name); },
+      onSkillText: (text) => {
+        const editing = this.state.editing;
+        if (editing && !editing.saving) this.#set({ editing: { ...editing, text } });
+      },
+      onSaveSkill: () => { void this.#saveSkill(bot); },
+      onCancelSkill: () => { if (!this.state.editing?.saving) this.#set({ editing: undefined }); },
     };
   }
 }

@@ -14,9 +14,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 |---|---|
 | `sidebar-agent-card` — identity card at the top | removed; HUI has no agent identity selector |
 | `sidebar-brand` — brand line with actions | the collapse toggle at the top-left (wide layout), then the Agents and Bots switch; session search is the field below it |
-| `sidebar-nav` — page destinations | Contributions, Kanban, Sessions, then Settings; no Home entry. Automations, Plugins and Skills live in Settings. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
+| `sidebar-nav` — page destinations | Contributions, Kanban, Sessions, Usage, then Settings; no Home entry. Both the Agents and Bots lists show it. Automations, Plugins and Skills live in Settings. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
 | `sidebar-online` / session sections — collapsible groups of rows | groups, flattened, with session rows |
-| `sidebar-footer-bar` — identity + connection state | removed; Settings is the last sidebar destination |
+| `sidebar-footer-bar` — identity + connection state | keeps the gateway serving this page, whose menu lists the others; Settings is the last sidebar destination |
 | main region — header, body, composer | session header, transcript, composer |
 
 ## Behaviour
@@ -39,16 +39,20 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the restore control appears while the sidebar is collapsed, so toggling needs
   no mouse travel, and then the Agents and Bots switch (the owner dropped the
   header's New session and Search buttons on 2026-10-06; new sessions start from
-  a group's +). Settings is the last primary-navigation destination, not a
-  header button.
+  a group's +). Settings is the last primary-navigation destination, below
+  Usage, not a header button, and both the Agents and Bots lists show it.
 - The wide layout's sidebar can be widened or narrowed by dragging the boundary
   at its right edge, between 200px and 460px, and the browser keeps that width
-  for the next visit. The boundary is a separator named *Resize sidebar* that
+  for the next visit. Settings' rail is the same sidebar at the same width, with
+  the same boundary, so moving between the two never changes the column. The
+  boundary is a separator named *Resize sidebar* that
   the arrow keys also move, 16px a press and 48px with Shift. Narrow screens
   show the drawer at its own width, with no boundary.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
-  system modes. Theme, accent, interface-font and chat-prose-font preferences
-  persist in HUI settings. A custom or imported theme's colors must read where
+  system modes. Theme, color mode, accent, interface font, chat-prose font,
+  terminal font, text size and the chat preferences persist per device, in the
+  storage of the browser, app or phone that shows them — not in the gateway's
+  settings. A custom or imported theme's colors must read where
   they meet: text, muted text, the accent and errors reach 4.5:1 on the page and
   cards (and menus for text), focus rings and primary fills 3:1, and the text on
   each fill 4.5:1. A color that falls short keeps its hue and moves only its
@@ -338,7 +342,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
   panes and shows the Work views of the focused conversation: its terminals and
   its browser view, its Files views (see *Files*), its VS Code view (see
-  *VS Code*) and its Diff views (see *Diff*), each a kind registered through one contract
+  *VS Code*), its Diff views (see *Diff*) and its Side chat (see *Chat* below),
+  each a kind registered through one contract
   (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
   focus to another chat pane or conversation switches the contents. One view is
   visible at a time, chosen from a tab strip (icon, title, close; drag or
@@ -435,7 +440,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   entry tree, moves the active leaf to the point before the selected user
   message, removes that message from the active transcript and restores its
   full text to the focused composer for editing. The abandoned branch remains
-  recoverable from PI's tree. The transcript is the whole active branch (PI's,
+  recoverable from PI's tree. In a bot's chat a rewind keeps the bot and its
+  OptChat memory, which then holds only the kept branch (the abandoned branch is
+  forgotten by the memory, and stays stored in Durable); a rewind before the
+  chat's first message clears it. The transcript is the whole active branch (PI's,
   or a Durable conversation's history since its latest `/clear`): a
   compaction appears as a divider with its expandable summary and never hides
   earlier messages. On PI, rewinding inside the window the summary kept
@@ -765,6 +773,91 @@ is added, and source-development servers do not query GitHub automatically.
 There is no npm publication or boot-service registration in this iteration.
 Browser and package proof is in `e2e/package.browser.md` and `e2e/update.browser.md`.
 
+### A gateway carries a name (2026-11-11)
+
+A gateway can be named, and every client sees that name. It is the operator's
+label for one gateway, saved as `name` in HUI's own settings beside the profile
+fields (the current gateway's Edit dialog in Settings → Gateways) and reported on
+`GET /__hui/health`, so a client that keeps several gateways can tell them
+apart without knowing each machine's path, port or hostname. Empty is the
+normal state of a fresh install and means the hostname of the machine the
+gateway runs on, falling back to `HUI` when the machine reports none; the
+effective name is computed per read and never written into the saved setting,
+so renaming the machine renames an unnamed gateway. The name is presentation
+only: it changes no PI configuration, credential, session or transcript, and
+About shows it beside the runtime facts it already lists. Choosing among saved
+gateways is not part of this change.
+
+### A device keeps a list of gateways (2026-11-11)
+
+A client remembers the gateways it has used. The browser keeps a list under one
+`localStorage` key: an address and the name this device shows for it — the one
+typed when it was added, else the name the gateway gives for itself — plus when
+this device last reached it. The gateway that served the
+page is the current one: it is named by its own `GET /__hui/health`, and it is
+never stored, renamed or removed, because the list is about the others. Adding a
+gateway asks that address for `GET /__hui/update` with `x-hui: 1` — the one route
+a gateway answers cross-origin, carrying a version, a job id and its own name,
+never user data. An address that answers that handshake is stored under the name
+typed in the dialog, or the name in the answer when that field is empty; one
+that refuses, hangs or answers with something else shows HUI's own wording in
+the dialog and is not stored. The stored name is this device's own label: a later
+reach refreshes when the gateway was last seen, never what it calls itself today.
+An address with no scheme means `http`, a query, fragment or credentials are
+refused rather than dropped, and duplicate addresses collapse into one row.
+Corrupt or absent storage reads as an empty list.
+
+Adding and editing use one dialog with a name and an address. **Add gateway**
+opens it empty. Every row has **Edit**: a saved gateway's name and address are
+both editable, and a rename that does not move the address needs no handshake,
+so a gateway that is down today can still be renamed. Moving a saved gateway
+to another address probes it first and refuses one already in the list. The
+gateway serving the page is the current one, so its Edit fixes the address to
+where the page came from and saves only the name, which every client that
+connects sees.
+
+Switching navigates: the page opens the chosen gateway's own address, so
+everything on screen afterwards belongs to that gateway, with that gateway's
+sessions, settings and name. A saved gateway this page cannot reach reads as
+offline, with Retry, and it is kept rather than dropped: a gateway that is down
+today may be the one this device wants tomorrow. The list is presentation only —
+a per-device shortcut — and changes no PI configuration, credential, session or
+transcript. The sidebar footer shows the current gateway's name and opens the
+list, whose **Add a gateway…** opens that same dialog in place.
+
+### Appearance belongs to the device that shows it (2026-11-16)
+
+Every control on the Appearance page is kept by the client, not the gateway: the
+theme, the color mode, the accent, the interface, chat-prose and terminal fonts,
+the text size and the chat preferences (message width, collapsed task progress,
+the send shortcut and the two link-preview switches). They live under one
+versioned `localStorage` key on the web and in the desktop app's page, which is
+the same store, and a phone's WebView keeps its own per app install, so a phone
+needs no work to join in. A device that stored nothing starts from HUI's
+defaults: the gateway's old values are not copied into it, so everyone resets
+once. The desktop app's native window chrome follows the mode this device chose:
+the page reports it and the shell keeps the last one in its own `userData`,
+because the window's background is painted before the page loads. Nothing asks
+the gateway what appearance to use.
+
+The reason is the same one that keeps Text size off the iPhone: one gateway
+serves many screens and people, and a preference about how a screen looks is the
+screen's. Two clients on one gateway must be able to disagree — a light laptop
+beside a dark desktop, a large text size on a phone and a small one on a
+monitor — and a value in `settings.json` cannot say which client it is for. It
+is also where the iPhone's text size argument already pointed: the app draws at
+the phone's own type size instead of reading `textScale` from the gateway,
+because a setting the phone's user cannot see or change there is a setting
+imposed on them. A tool's own mark and icon stay on the gateway, in `chat`:
+their files live in its config directory, so every device that draws a tool call
+reads the same maps. `hui doctor` reports a `settings.json` that still carries
+the moved keys and rewrites it without them under `--fix`; before dropping them
+it exports the look alone — theme, color mode, accent, the typefaces, the
+terminal font and the text size, never the chat preferences — to
+`desktop-appearance.json`, which HUI's desktop app applies once to a device that
+never stored an appearance of its own and then marks consumed, so the look
+someone already had is not silently lost.
+
 ## Ownership
 
 Two stores, with one writer each:
@@ -958,6 +1051,51 @@ out the other, since a missing cookie cannot be told apart from one never set.
 These documents hold live credentials: mirroring is the one thing HUI writes on
 a worker on purpose, and it is off until the operator turns it on.
 
+**An origin allowlist, if the operator sets one.** Settings → Tools → Browser →
+*Allowed origins* (empty by default, so agents may browse anywhere) lists the
+pages the managed browser may reach: `example.com`, `example.com:8443`,
+`https://app.example.com`, or `*.example.com` for subdomains only. An agent's
+`open`, `navigate` or history move onto a page outside the list is refused
+before a tab goes there, with an error naming the list. A link, redirect or
+popup that leaves it is stopped, its tab left on `about:blank`, and the reason
+appears in the tool result that follows and in the live view's action; a popup
+that committed its document before HUI attached to it is checked where it
+landed, and `tabs` marks it `blocked: not in the allowed origins` until that is
+reported. A local
+file is refused while a list is set, and a private, loopback or link-local
+address needs its exact host: a wildcard never covers one. The list covers
+where a tab's document goes, not the subresources that document loads; and host
+names are not resolved, so a name that turns out to point at a private address
+after the check is outside this model. A pattern that cannot be parsed matches
+nothing, so a typo locks pages out loudly instead of opening them quietly.
+
+**A sequence in one call.** `steps` runs 1–20 `act` steps in order on one tab:
+type, click, press, hover, select, scroll and wait, each validated exactly as
+`act` validates it, with refs from the latest snapshot. It exists because a
+dependent interaction is transient — an open menu, a hover, a selected row — and
+one round trip per step loses it, while a flow that takes several actions costs
+a model turn each. The result lists each step with what it did, in order; a
+failing step names itself and every step that already ran, and a navigation
+inside the sequence retires the refs, as any page change does.
+
+**Site secrets, if the operator stores them.** Settings → Tools → Browser → *Site
+secrets* keeps values under a name and an exact http(s) origin in
+`browser-secrets.json` (mode 0600, separate from `settings.json`, which is
+mirrored to workers and echoed by the settings API). The list shows names,
+origins and when each was stored — never a value — and Delete removes one. The
+agent's `secret` action names a secret and an element ref; the gateway resolves
+the element's own frame, refuses unless that page's origin is the secret's, and
+types the value with the same CDP input path `act type` uses. Its result and
+`details` say only that it typed, where and on which origin, so the value never
+enters PI's transcript, a log or the live view. Once typed the value is in the
+page, where script on that origin can read it: the origin check keeps it away
+from other origins and frames, and is strongest paired with an origin allowlist.
+A frame in the same renderer is part of the tab's snapshot: one level of child
+frames is read by frame id and hung under its Iframe node, and a ref from inside
+a frame carries that frame, so its origin is checked and its field typed into in
+place. A frame the browser runs out of process is not inlined, so an embedded
+sign-in form it holds still needs a handoff.
+
 It is **headless by default**: no window, Dock icon or focus change, so it never
 interrupts the operator. Settings → Tools → Browser can turn the tool off, switch
 to a visible window for watching the agent work, set the executable, start or
@@ -992,13 +1130,98 @@ preview, or the globe button in the conversation header, opens the conversation'
 **browser view** in its Work pane (at most one per conversation; also launched
 from the pane's **+** menu, Ctrl+Alt+Shift+B / ⌥⇧⌘B): a larger live view beside the chat
 that follows the agent's tab or watches another of the conversation's tabs until
-Follow agent. Both are
-read-only. Frames come from a CDP screencast that runs only while someone
+Follow agent. Both only watch, except while the agent has handed a tab over (see
+below). Frames come from a CDP screencast that runs only while someone
 watches and only when the page repaints (at most about ten frames a second).
 Headless tabs each get their own window, so conversations never hide each
 other's pages. A browser on a worker is not streamed here: its tabs stay on that
 machine, no preview or browser view shows them, and what the agent sees arrives
 as tool results, a screenshot included (which `present_media` shows in the chat).
+
+**Page content is marked, and the loop is cheap.** Every result that carries
+something a page said — a snapshot, `text`, console entries, `get text|html` —
+puts it between `--- HUI_PAGE_CONTENT nonce=… origin=… ---` and
+`--- END_HUI_PAGE_CONTENT nonce=… ---`, with a nonce minted for that result, so
+a caller can tell HUI's own words from a page's even when the page imitates the
+format. `get` reads one property (`text`, `html`, `value`, `attr`, `box`,
+`title`, `url`, `count`) and `is` checks one state (`visible`, `hidden`,
+`enabled`, `disabled`, `checked`, `focused`, `editable`, `attached`), so
+verifying an action costs a line rather than a snapshot; a password field's
+`value` is refused rather than read, because the operator's secrets are typed by
+the gateway and must not come back through the transcript. `snapshot` takes
+`selector` to start at one element and `depth` to stop after some levels (marking
+where it stopped); `act wait` takes `state` with the selector. A click fails
+with the reason when its target is disabled, hidden or covered instead of
+reporting success, and a ref whose node was replaced keeps working when exactly
+one laid-out element still has its role and name — otherwise it fails as stale
+or ambiguous rather than acting on the wrong element.
+
+**What a page keeps is listed without its contents.** `storage` reads the
+cookies for the tab's URL (name, flags, SameSite, expiry, size, path) or the
+keys of `localStorage` and `sessionStorage` (name and value size). Values are
+never read or printed, because a cookie or storage value is usually a session
+token and the transcript outlives the tab. A `filter` narrows by name, and an
+empty result says so.
+**What a page costs is measured, not guessed.** `performance` with
+`operation: "metrics"` reads the renderer's own counters (JS heap used and
+total, DOM nodes, documents, frames, JS listeners, layout and style-recalculation
+counts and durations, and script time as a share of task time) and
+`operation: "timings"` reads the document's navigation entry (first byte,
+DOMContentLoaded, load, transferred and decoded bytes, navigation type), its
+paint marks, the number and weight of subresources, and the five slowest ones
+over 500 ms. Counters accumulate from the tab's first performance call, which
+the result says; a page still loading says so instead of reporting zeroes.
+**A form that only accepts a file can be completed.** `act` with `kind: "upload"`
+puts one to ten local files (relative to the session directory or absolute,
+each up to 25 MB) into a page's file input, addressed by the ref of the input
+or its label, or by a `selector` when the page hides it behind a styled button.
+The page's own `change` handler runs, so what the site shows afterwards is the
+proof; a directory, a missing file, a non-file element, a disabled input and
+several files into a single-file input are refused with the reason.
+**A snapshot can say what changed.** `snapshot` with `diff: true` compares the
+tab's current whole snapshot with the last one it took in the same document and
+returns only the changed lines, marked `+` and `-` with two lines of context,
+plus a count (`Page changed since the previous snapshot: 2 lines added, 1
+removed.`). A line that did not change keeps its ref, so the conversation can
+act straight from a diff; a first diff in a tab, a new document, or a change
+too large to match reports that and returns the whole snapshot instead. The
+diff is capped at 400 lines, and a page's own `- ` line prefix is separated
+from the marker by a space so the two never blur.
+**Requests can be watched and kept.** With `network` a conversation can capture
+the tab's requests (`start`, then `requests`, `request`, `clear`, `stop`) and
+write a HAR for a person (`har` with a path, beside the session's files). The
+log keeps method, URL, status, type, size and timing for at most 200 requests,
+and credential headers (`authorization`, `cookie`, `set-cookie`, and the like) and
+secret query values are `[redacted]` in the log and the HAR, because that
+artifact outlives the session. Bodies are not captured.
+**A picture can carry the refs.** `screenshot` with `annotate: true` draws a
+numbered box on each element the latest snapshot bound to a ref, so the image
+and the outline line up: the number is the ref without its `e` (`3` is `e3`).
+Only what the capture can show is numbered (the viewport, or the full page), at
+most 40 elements, and the labels are removed from the page again before the
+call returns, whether or not the capture succeeded. Annotated labels are
+pointers, not a new source of truth: the snapshot's refs are.
+**Frames are part of the page.** A snapshot reads one level of child frames by
+frame id and hangs each under its Iframe node, so a form inside a frame is
+visible and its refs work for `act`, `get`, `is`, screenshots and the secret
+origin check. A frame the browser isolates in its own process is not inlined;
+the snapshot lists the Iframe node and nothing inside it, and that embedded
+sign-in needs a handoff.
+
+**A handoff is the operator's turn.** When only a person can continue — a
+password, 2FA, a passkey, a payment or a bot check — the agent calls `handoff`
+with one sentence saying what to do and waits: ten minutes by default, at most
+thirty. That tab is the operator's until they continue. It stays open, the
+live view shows Your turn with the message and a Continue button, and every
+other agent action on the browser is refused. The browser view forwards the
+operator's pointer, wheel and keys to that one tab over the existing live-view
+socket; nothing else about a view becomes interactive, and input is ignored once
+the wait ends. Continue returns the page as it is then — title, URL and a fresh
+snapshot — so the agent acts on current refs rather than guessing whether the
+human step worked. A wait nobody answers ends with the tab back in the agent's
+control and a result saying the operator may be away; a tab that closes or a
+browser that stops ends it too. The chat's preview card carries the same
+message and opens the browser view where the operator can act.
 
 No new dependency is added: HUI speaks CDP directly. Browser settings are an
 additive `browser` block in `settings.json`; the browser view is a
@@ -1062,6 +1285,12 @@ file — and states that it does not use the trash; the gateway deletes a
 non-empty folder only with that confirmation, and never the root. On narrow
 screens the navigator is a drawer and the editor takes the full width with a
 16 px font, so iOS does not zoom.
+
+The navigator is 260px wide by default and never takes the room that leaves the
+editor less than 240px. Its right edge is a separator named **Resize files
+navigator**: dragging it, or pressing the arrow keys (16px a press and 48px with
+Shift), widens or narrows it, and the browser keeps the chosen width for the
+next visit. A name cut short shows its full path on hover or focus.
 
 **File references in the chat.** When the agent names a file in its reply —
 an inline code span or a Markdown link whose text or target is a path such as
@@ -1129,7 +1358,12 @@ On the left a filterable list of changed files shows each one's status (A, M, D,
 R with its old path, C, T, U), its added and removed line counts and the totals;
 on the right the selected file's diff, unified, or **Side by side** when the view
 is at least 900px wide (narrower, the toggle is disabled and says *Side by side
-needs a wider pane*). Lines are coloured with the file's CodeMirror language from
+needs a wider pane*). The list is 280px wide by default and never takes the room
+that leaves the diff less than 320px; its right edge is a separator named
+**Resize changed files** that drags it between 220px and 640px and takes the
+arrow keys, 16px a press and 48px with Shift, and the browser keeps the chosen
+width for the next visit. A path cut short shows its full path on hover or
+focus. Lines are coloured with the file's CodeMirror language from
 the Files editor, hunk by hunk. A rename reads *old → new*; binary files say so;
 a patch over 1,500 lines opens collapsed with **Show diff**; a missing final
 newline and, in files that mix them, CRLF endings are marked. Clicking the file's
@@ -1526,11 +1760,19 @@ rather than forwarding them to the model.
 Skills/templates can use the existing queue; extension commands run when idle.
 An extension that completes without a model turn must also unlock the composer.
 
-`/btw <question>` and its `/side` alias open an ephemeral side rail. HUI sends a
-bounded visible transcript snapshot to the configured utility model with tools and
-thinking disabled. The question and answer never enter PI's durable session or
-the main transcript, so they cannot influence later turns. Examples include
-`/btw which file are we editing?` and `/btw summarize the current task in one sentence`.
+`/btw <question>` and its `/side` alias open the conversation's **Side chat**
+Work view, a single view that `/btw` opens and the pane's launcher does not
+list (the question is typed in the composer, so a launcher would only open a
+placeholder): it resizes, maximizes, collapses and takes a place in the tab strip
+like every other view, instead of pinning a rail of its own beside the chat. The question is typed in the composer; the view keeps focus there for the
+next one. A new question replaces the previous exchange, `/clear` clears it, and
+closing the tab only hides it; the tab is not saved, so a reload never restores a
+Side chat it could not fill. A bot's chat has no Work pane, so it draws the same exchange in an
+inline rail. HUI sends a bounded visible transcript snapshot to the configured
+utility model with tools and thinking disabled. The question and answer never
+enter PI's durable session or the main transcript, so they cannot influence
+later turns. Examples include `/btw which file are we editing?` and
+`/btw summarize the current task in one sentence`.
 
 HUI keeps each conversation's Task progress card itself, not the agent. A
 session's turn settling, and every five minutes while one is still running, send
@@ -1618,8 +1860,28 @@ bundled `visualize` skill.
 ## Session-born subagents
 
 HUI supplies regular PI sessions with the OpenClaw-style coordination tools
-`sessions_spawn`, `sessions_list`, `sessions_history`, `sessions_send` and
-`subagents` (`list`, `steer`, `kill`). A spawn creates an ordinary HUI session
+`create_session`, `sessions_spawn`, `sessions_list`, `sessions_history`,
+`sessions_send` and `subagents` (`list`, `steer`, `kill`). `watch_session`
+records sessions a session watches, in its group; a watched session becomes
+visible to `sessions_list`, `sessions_history` and `sessions_send`, so a
+gateway heartbeat can read its status and continue it. `worker_stats`
+reports this machine and every configured worker with CPU, memory, disk, GPU,
+connection state and running sessions, and names the least loaded connected
+machine within headroom (CPU 70%, memory 80%, disk 85%, fewer running sessions
+than half its cores); when every machine is over a limit it returns a
+`leastLoaded` fallback instead of a recommendation. `local` is the gateway's
+machine. `create_session`
+creates an ordinary top-level session instead: a group, a title, its first
+prompt and optionally a fresh worktree, a worker, a model and thinking. The
+target group's stored New session defaults decide its directory, machine, Git
+environment and base ref; the call fills in only what the group leaves unset. A
+group chief's own group is the default, then the caller's cwd, group, worker,
+model and thinking. The brief reaches
+the new chat tagged from the calling bot, like every message a bot sends into a
+chat, so the new session's own chat shows it under that bot's name rather than
+as the operator's words. It writes no
+parent or task metadata, so the caller's subagent tools do not see it and the
+operator opens it from the sidebar. Only a Chief of Staff bot may call `create_session`; every other agent is refused and uses `sessions_spawn`. A spawn creates an ordinary HUI session
 with its own PI process and transcript, plus optional parent/task metadata in
 HUI's registry. The child runs independently and its terminal result is sent
 back automatically as a marked, non-user completion event (result wrapped as
@@ -1633,9 +1895,15 @@ ordinary descendants may be active in one tree.
 A spawn picks the child's model in one of three ways: a **route** name from the
 operator's configured routes, a raw `provider/id`, or neither, which inherits the
 caller's model and reasoning level. A route carries a name, a one-line
-description and a model, and may pin a PI reasoning level through `max`; the
-spawn's own `thinking` overrides it. HUI's Ultra delegation mode is not a route
+description and, optionally, a model, and may pin a PI reasoning level through
+`max`; a route without a model runs the child on the caller's model and
+reasoning level, so a seeded default route never goes stale. The spawn's own
+`thinking` overrides it. HUI's Ultra delegation mode is not a route
 reasoning level. The route block in the prompt lists names and descriptions, not model ids.
+A spawn with `worktree: true` gets its own checkout: HUI creates a worktree off the caller's directory (on the worker that runs the caller), with Settings' branch prefix and the child's title, and the child's `cwd` is that worktree. A checkout that cannot be made refuses the spawn before a child exists, and a registry write that fails puts the worktree and its branch back. Parallel workers never share one working tree.
+
+A bot's subagent carries the bot whose skills it loads (`botSkills`), in its `hui.botSkills` conversation document, so the staff pack reaches the workers that need it and no other session sees it. Its own children inherit the same bot. That document grants skills only: the bot's soul, memory and tools stay its chat's.
+
 Routes are shortcuts, not an allowlist: the tool still accepts a raw `model`. Route and model together are refused, because the route already
 names one. An unknown route is refused before any child exists, naming the
 configured routes or pointing at Settings → Models → Subagent routes when there
@@ -1670,7 +1938,8 @@ spawn collected children. Nothing is lost: a result no wait returned is delivere
 as an ordinary completion event once the parent is no longer busy, and a returned
 result is never delivered again. The operator's Stop on the parent also cancels
 its queued and running collected children, and those cancellations are not
-reported back. A restart interrupts queued ones like any active task.
+reported back. A restart keeps queued ones with the runtimes that resume their
+runs, in spawn order, and interrupts the rest like any active task.
 
 Visibility is the current session tree, not the whole registry: parent, child
 and sibling sessions can exchange bounded messages and history, while unrelated
@@ -1703,8 +1972,11 @@ only when the task ID appears in the parent transcript. Per-parent single-flight
 delivery and transcript IDs suppress ordinary retries and the crash-before-ack
 window; this is at-least-once recovery, not exactly-once processing or proof that
 the parent completed its work. Legacy terminal tasks without a delivery marker
-are not replayed. A gateway restart marks unfinished
-subagents interrupted instead of pretending they are still running. After a
+are not replayed. A subagent on Pi Durable keeps its running status across a gateway
+restart, because Durable resumes the run itself: HUI waits for that run to end and
+reports its answer as any other result, without the run timeout the spawn once
+passed. Any other unfinished subagent, one on PI's SDK worker included, is marked
+interrupted instead of pretending it is still running. After a
 task reaches a terminal state and its result has been delivered, HUI closes the
 child's live runtime (after its current browser reader leaves, if any) while
 retaining its session row and PI transcript; opening that session later resumes
@@ -1873,8 +2145,9 @@ terminal. The call names the secret (`label`) and says why it is needed
 (`reason`); both stay in the conversation, so they must not hold the secret.
 The call waits for the operator.
 
-The open conversation shows the request in the question dock above the
-composer, in OpenClaw's question card: *Secret*, the label, the reason, a line
+The open conversation shows the request in the question card at the end of the
+transcript, the conversation's last row above the composer, in OpenClaw's
+question card: *Secret*, the label, the reason, a line
 saying the value stays out of the conversation, a masked field and *Cancel* /
 *Submit*. Escape does not cancel it: password managers close their menus over
 the field with Escape. Meanwhile the session reads *Waiting*, like a session
@@ -1902,40 +2175,65 @@ a restart.
 
 An agent that cannot go on without decisions from the operator asks for them
 with HUI's `ask_user_question` tool: one to four questions in a single call,
-each with a short header, the question and two to four options with a label
-and a description. A question may allow several answers (`multiSelect`), and
-the options of a single-select question may carry a Markdown preview (a
-mockup, a snippet, a config) to compare. HUI's tool takes the place of any PI
+each with a short header, the question and one of three inputs. An `options`
+question (the default) takes two to four options with a label and a
+description; it may allow several answers (`multiSelect`), and the options of
+a single-select question may carry a Markdown preview (a mockup, a snippet, a
+config) to compare. A `slider` question takes a number over `min`–`max`, with
+an optional `step` and a `unit` (a budget, hours, a percentage). A `text`
+question takes a longer written answer, with an optional `placeholder`. HUI's
+tool takes the place of any PI
 extension tool of the same name, such as `@juicesharp/rpiv-ask-user-question`,
 whose plain select and input dialogs it replaces.
 
-The open conversation shows the questions in one card in the question dock
-above the composer, and the session reads *Waiting*. With several questions a
-row of header chips leads the card, ticked once answered; one question shows at
-a time with its progress (*2/4*). Options are radio rows, or checkbox rows for
-a multi-select question, each with its label, description and number; every
-question ends with a *Type something…* row for the operator's own answer, which
+The open conversation shows the questions in one card at the end of the
+transcript, the conversation's last row above the composer, and the session
+reads *Waiting*. The card scrolls with the conversation, so reading earlier
+context neither hides nor moves it. With several questions the card is
+stepped like ChatGPT's questionnaire: a segmented progress bar and *Step n of
+m*, one question at a time, and a sticky footer with *Back* and *Next*
+(*Submit* on the last question). Options are radio rows, or checkbox rows for
+a multi-select question, each with its label, description and number; an
+options question ends with a *Type something…* row for the operator's own
+answer, which
 replaces a single-select choice or adds to a multi-select one. When options
 carry previews, the focused option's preview shows beside them, or under them
-on a narrow screen. Picks are kept while moving between questions.
+on a narrow screen. A slider shows its value large with its unit above the
+range input and its bounds beneath it; a long-text question is a multi-line
+field. Picks, slider values and typed text are kept while moving between
+questions.
 
 The keyboard drives the whole card: number keys choose a row, arrows move
 between rows (↑/↓) and questions (←/→), Space toggles a checkbox, Enter moves
 to the next question (choosing the focused single-select option first) and on
 the last one submits, Ctrl/⌘+Enter always moves on, and Escape cancels the
 card (the first Escape in typed text only leaves the field). The pointer does
-the same with the chips, rows, *Back*, *Next*, *Submit* and *Cancel*; the
-actions stay in reach when the card scrolls. *Submit* needs at least one
-answer; a question left blank is left out.
+the same with the rows, the slider, the text field, *Back*, *Next*, *Submit*
+and *Cancel*; the actions stay in reach when the card scrolls. *Submit* needs
+at least one answer; a question left blank is left out. A slider always has an
+answer: it starts in the middle of its range.
+
+The card can cover most of the conversation it is asked about. Its top line,
+which carries the card's title and the progress, is also its fold control:
+clicking it, or Enter or Space on it, folds the card to one row above the
+composer with the same title, the progress (*2/3*), how many questions are
+already answered once one is (*1 answered*) and an up chevron, so the
+transcript takes back the room the card was using. Every pick and the current
+question are kept, and the card stays folded while the operator writes in the
+composer. The folded row, Enter on it or Escape opens the card again where the
+operator left it; Escape on the folded row opens it rather than declining the
+questions. A new call's card, and a reload, open unfolded.
 
 The agent learns each answer as `"question"="answer"` (several joined by
-commas, a chosen option's preview after it), or that the operator declined:
+commas, a chosen option's preview after it; a slider's value as it reads, such
+as `5,050 €`), or that the operator declined:
 *Cancel*, Escape, Stop and a gateway stop all decline. Once answered, the
 transcript keeps a short summary of the answers by header in place of the card.
 A call the card could not show (more than four questions, a reserved label such
 as *Other*, duplicate labels, a header over 16 characters, a preview on a
-multi-select question) fails back to the agent with the reason, and no card
-opens. Questions from parallel calls show one after another. A reload shows a
+multi-select question, a slider without a numeric range, a long text with
+options, a unit over 16 characters) fails back to the agent with the reason,
+and no card opens. Questions from parallel calls show one after another. A reload shows a
 pending card again from its first question. Pending questionnaires live in
 gateway memory and do not survive a restart.
 
@@ -2252,7 +2550,7 @@ leaves worker records unchanged.
 
 A **bot** is a named, persistent agent: a role, a persona it writes itself
 (SOUL.md), its own model, a working directory and **one chat that never ends**,
-whose memory is OptChat (HUI-18). Sessions keep everything they have (worktrees, rewind,
+whose memory is OptChat. Sessions keep everything they have (worktrees, rewind,
 `/compact`); bots are for assistants the operator returns to every day. The
 sidebar splits into **Agents | Bots**, and the `hui bot` CLI can do
 everything the Bots tab can, through the same routes.
@@ -2273,9 +2571,9 @@ everything the Bots tab can, through the same routes.
   with its `write_soul` tool, which only bots' chats have (no file tools
   needed). It changes SOUL.md when the operator asks, and says so. Only the
   operator's turns (and HUI's kickoff) can rewrite it: SOUL.md steers every
-  later turn, so a turn that took a message from a routine, a trigger or
+  later turn, so a turn that took a message from a routine, a trigger,
   another bot (the one that started it, or one that joined it while it ran)
-  can't, as it can't rename the bot. The operator can also replace it with
+  or a subagent's completion report can't, as it can't rename the bot. The operator can also replace it with
   `hui bot soul`; the bot's panel doesn't show it (decision below). A bot without a
   model of its own runs on Settings' primary model, like a new session.
 - **Named by talking.** A bot created without a name is *New Bot*; its first
@@ -2283,8 +2581,10 @@ everything the Bots tab can, through the same routes.
   `set_profile` tool (only in turns the operator started that took no message
   from a routine, a trigger or another bot). A handle derived
   from the old name follows the new one; a chosen handle stays.
-- **Forever, until deleted.** Clearing, compacting, rewinding or deleting a bot's chat is
-  refused; archiving the bot deletes nothing, disables its routines and stops a
+- **Forever, until deleted.** Compacting, forking or deleting a bot's chat is
+  refused. Clearing it empties its transcript and its memory, and rewinding it
+  keeps the bot and its memory to the kept branch: the abandoned branch is
+  forgotten. Archiving the bot deletes nothing, disables its routines and stops a
   running turn, and restoring it brings it back with its routines still off.
 - **Messages.** A message to a bot is a prompt when it is idle and a follow-up
   when it is busy; a caller may wait for the reply of the turn that answers it,
@@ -2359,12 +2659,14 @@ everything the Bots tab can, through the same routes.
   kept word for word and condensed into a summary tree a fresh turn reads, so
   the chat is never compacted. Bots reach it only through one interface, so its
   engine stays separate; `hui bot memory` and the memory routes show its
-  status, its view, any line zoomed down to a message, and a browse page.
+  status, its view, any line zoomed down to a message, and a browse page. Its
+  tools are `zoom`, `date` and `search_chat`, which finds the messages that
+  mention a word in the log the view no longer names.
 - **Always on.** Bots have no switch (decision below).
 - **The Bots tab**: an **Agents | Bots** switch fills the sidebar's top
   row after the collapse toggle (arrow keys, Home/End; the browser remembers the
-  tab): Agents is the sidebar as before, and Bots shows only the roster, without
-  the navigation. Bot
+  tab): Agents is the sidebar as before, and Bots swaps the session list for the
+  roster. Both lists keep the primary navigation, ending with Settings. Bot
   chats, the subagents a bot spawns and their own subagents never appear in the Sessions list, its search, Kanban, the Sessions page, the command palette or session
   pickers; a message from one still names and links it; Automations labels their routines
   *Bot · name* and words
@@ -2396,8 +2698,9 @@ everything the Bots tab can, through the same routes.
   `/bots/<id>` as its one chat in the ordinary session pane, its header
   showing face, name, role, the worker it runs on (if any) and status and a ⋯
   menu with Edit bot…, Archive… and Delete…;
-  assistant turns carry the bot's name, `/clear`, `/compact`, Compact now and
-  rewind are not offered. A new bot speaks first: its chat opens on a small
+  assistant turns carry the bot's name. `/clear` is listed and runs, and
+  Rewind to here is offered on the operator's messages; `/compact`, Compact now
+  and Fork from here are not offered. A new bot speaks first: its chat opens on a small
   centered note, *<name> was created*, where HUI started its first turn, then
   the bot's questions (an empty chat says *Say hi to <name>*). Opening it
   marks it read. A **panel** docks beside the chat (open or closed and its
@@ -2469,7 +2772,128 @@ everything the Bots tab can, through the same routes.
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
+## Gateway extensions
+
+HUI's first extendability seam beside PI's own packages, extensions and skills: a
+trusted local module can answer JSON routes on the gateway.
+
+- **Local and packaged.** An extension is a directory holding `extension.json`
+  (`apiVersion: 1`, `name`, `description`, relative `main`) and an ESM entry
+  module exporting `routes`. The operator's extensions live in
+  `$XDG_CONFIG_HOME/hui/extensions/<id>/`; HUI ships packaged ones beside
+  `skills/`, and `extensions/defaults.json` lists the page ids enabled until the
+  operator's `extensions.json` exists (the list is empty until P8 ships a page).
+  A config extension with the same id overrides the packaged one.
+- **Path-confined namespace.** The status route is `GET /__hui/ext`; the enable
+  switch is `PUT /__hui/ext/:id` with `{ "enabled": boolean }`; an extension's own
+  routes live below `/__hui/ext/<id>/` and can never shadow a HUI route. A route
+  path is one to four clean segments; a handler receives
+  `{ method, path, query, body, signal, extension, hui }` and answers
+  `{ status?, body }`.
+- **Generic payloads on purpose.** An extension route answers `PluginPayload` (a
+  JSON object HUI does not type) or `PluginError`; only the two fixed routes join
+  the build-time generated browser types. Extension payloads never enter
+  `docs/api.schema.json`. No headers, files, redirects, SSE or WebSocket; request
+  bodies keep the ordinary 64 KiB JSON limit and an answer is at most 256 KiB.
+- **The ordinary gate and diagnostics.** Every extension route sits behind the
+  `x-hui` header and the diagnostics hook. A handler that throws or answers with
+  something that is not a JSON object produces `500 { "error": "extension
+  failed" }`; a failing extension never affects another route or the gateway.
+- **Enablement is data.** `$XDG_CONFIG_HOME/hui/extensions.json`
+  (`{ "version": 1, "enabled": [] }`) records the choice; enabling imports the
+  module and registers its routes without a restart, disabling withdraws them at
+  once while Node keeps the module cached. A missing directory reads `missing`, a
+  bad manifest or import reads `failed` with its error and one warning diagnostic.
+- **Trusted code, stated plainly.** An extension runs in the gateway process with
+  the gateway's access to the machine, its credentials and its data, exactly like
+  a PI extension: no sandbox, no permission prompt, no timeout. `apiVersion`
+  refuses anything but `1`.
+- **Operator surface.** Settings → Extensions lists every installed extension with
+  its state, its routes and any error; the switch calls the enable route and the
+  row shows the state that came back. `hui extension list|enable|disable` does the
+  same from a terminal against the running gateway. The page is web-only; the
+  iPhone has no extension surface.
+- **Out-of-process mode.** A manifest may set `mode: "process"`: the extension
+  runs in one gateway-supervised child (at most eight), its routes and streams
+  forwarded over a versioned newline protocol, its prompt text read at start and its
+  tools refused. A crash restarts it after 1/2/4 s while routes answer 503; three
+  crashes in five minutes leave it `failed` until a reload. The child runs as the
+  same user with the same file access: crash isolation, not a sandbox. Settings shows
+  the mode and restart count.
+- **Packaged extensions.** HUI ships extensions beside `skills/`; `extensions/defaults.json`
+  lists the packaged page ids a fresh config enables until `extensions.json` exists.
+  A config extension with the same id overrides the packaged one, and `hui extension
+  eject <id>` copies a packaged extension into the config directory for editing.
+  `hui doctor` reports an invalid override, a stale copy and a failed default.
+- **Lifecycle.** A manifest may declare its `version` and the HUI `engines.hui`
+  range; a gateway outside it refuses to load with a named reason. `POST
+  /__hui/ext/:id/reload` re-imports a changed module (routes and panel files at
+  once, prompt text next assembly, tools next new Durable session), and a failed
+  reload withdraws the routes and reports `failed`. `hui extension add <path>
+  [--link]` validates and installs a local module (enabling it now when a gateway
+  runs, else at the next start); `hui extension remove <id> [--delete]` requires it
+  disabled and only deletes with `--delete`; `hui doctor` reports enabled
+  extensions that cannot load, without a `--fix`.
+- **Gateway context.** A route handler receives `context.hui`, a read-only facade
+  for gateway data: `github.contributions` first, with sessions and host metrics
+  following. It returns plain JSON, never a service handle; in-process handlers call
+  the gateway's own services, and a process-mode handler asks the supervising gateway
+  over the host protocol. The facade is additive within `apiVersion: 1`.
+- **Streaming.** A route may declare `stream: true` and return an async iterable of
+  events; HUI writes them as server-sent events with a heartbeat, caps (ten
+  minutes, 5 000 events, 256 KiB each, 5 MiB total), an `error` event on a throw or
+  cap, and the handler's `signal` aborted when the client leaves. The route's
+  metadata says `stream: true`.
+- **Agent contributions.** An extension may declare static `prompt` sections and
+  agent `tools` in its manifest, with each tool's handler exported under the same
+  name by the entry module. Enabled contributions reach every new Durable
+  conversation: its prompt text after the goal, its tool under the namespaced
+  `ext_<id>_<name>` with its snippet and guidelines, its arguments checked against
+  the declared schema, and its failure an `isError` result rather than a failed
+  turn. Sessions on the older PI worker and already-running Durable conversations
+  keep what they started with. Settings → Extensions shows each section and tool.
+- **Sandboxed panels.** An extension may ship `ui/` with an entry page; its files
+  are served before the `x-hui` gate at `/__hui/ext-ui/<id>/` (public, contained,
+  typed and size-capped) and the page renders in a Work pane iframe whose CSP makes
+  it an opaque origin with no network. It cannot call HUI: only a `postMessage`
+  bridge may ask the parent for that extension's own declared routes, with the
+  browser's session, under fixed size, count and time limits. An optional
+  `ui.icon` (`package`, `github` or `pull-request`) is the Work pane tab and rail
+  mark; absent, it is the package. **A page** is the same sandboxed document in a
+  full routed surface: `ui.page` names its title, its entry inside `ui/` and an
+  icon, the sidebar lists it while the extension is loaded, and `/ext/<id>`
+  renders it. Its bridge adds `navigate` for allowlisted HUI conversation paths
+  only; it cannot reach another HUI route. Extension pages are web-only. Settings →
+  Extensions
+  opens a panel in the current conversation's Work pane, and the Work pane's
+  launcher opens the first enabled panel. HUI ships a **build-hui-extension**
+  skill that scaffolds and verifies one; it is on by default and the operator can
+  turn it off in Settings → Skills. Per-extension generated types, SSE routes and
+  an out-of-process host are follow-ups.
+
 ## Decisions
+
+### Gateway extensions are path-confined and payload-silent (2026-11-04)
+
+The owner asked how far HUI could open its harness to people, and chose the
+gateway route seam as the first step. The shape follows from HUI's own contracts:
+the browser's payload types are generated at build time, the `/__hui/` dispatch is
+hand-ordered and pinned by tests, and every route needs a schema and a documented
+heading. So an extension is confined to a namespace HUI names, answers a generic
+JSON envelope instead of adding generated types, and reaches the operator as
+`extensions.json` plus two fixed routes rather than a new UI surface.
+
+- **No privileged placement.** Path confinement replaces ordering negotiation: a
+  plugin cannot claim `/__hui/settings` or race another route, so the dispatch
+  chain and `routes/order.test.ts` stay meaningful.
+- **Scriptable without a build step.** A plugin payload is untyped on purpose;
+  its own schemas stay in the extension and out of `docs/api.schema.json`, so a
+  third-party route can never break the generated browser contract.
+- **Trust before breadth.** Extensions are trusted code in the gateway process,
+  documented as such. The alternative — a sandbox or a child process — would need
+  its own IPC contract, streaming and supervision before it could carry a first
+  route, and was deliberately left to a later decision.
+
 
 ### A bot's prompt is four files, and only two of them travel (2026-10-25)
 
@@ -2529,6 +2953,8 @@ set up like Grok Bot](#bots-are-set-up-like-grok-bot-2026-10-06) where it says
 the soul holds preferences.
 
 ### Dashboard page behind Labs → Dashboard, to iterate on it (2026-10-23)
+
+Superseded by [The Dashboard is on for everyone](#the-dashboard-is-on-for-everyone-2026-11-06).
 
 The owner wants one page that shows what every session is doing and how the
 gateway's machine is holding up, to spot bottlenecks, and to iterate on it
@@ -2609,6 +3035,47 @@ nothing needs me".
   when every session is running, starting or reconnecting; the page no longer
   says *Every session is idle.*
 
+### The phone apps wrap the web UI (2026-11-09)
+
+The owner replaced the fully native Android app with one cross-platform shell: "what if we use a framework that
+works in ios and android even if its not native? Would that allow us to build only one?", then "lets try the
+capacitor solution". A native app for each phone would have meant building every feature three times, and the iOS
+one cannot be built or tested without a Mac.
+
+- **One UI.** The Android and iOS apps are Capacitor shells that load the connected gateway's own web UI, as the
+  Electron app does. They bundle only a Connect page. The native side adds what a browser can't: the remembered
+  gateway, the back button, other origins in the system browser, downloads, the status bar, notifications, sharing
+  and permissions. `mobile/AGENTS.md` is the plan.
+- **Lockstep through the web.** A use case required on the web is required on the phone unless excluded with a
+  reason. The suite proves it inside the Android app's WebView and in mobile WebKit, on Linux, in every PR's CI.
+  The iOS shell is built and smoke-tested on a macOS runner, so nobody needs a Mac to work on HUI.
+- **What carries over.** The decision below still records why iOS was dropped as a separate native client. Its
+  phone-app decisions (keyboard and wide-layout mechanics stay on the web, a tap opens a preview, one gateway at a
+  time) apply to the phone apps. Kotlin/Compose as the Android client does not.
+
+### Android replaces the iOS app as HUI's native client (2026-11-09)
+
+The owner moves from an iPhone to Android: "I will be moving to android, can we
+drop the changes we did of the ios app", and asked for an app "that implements
+all the features that we have in HUI" so that "whatever change we do we also
+implement it for android".
+
+- **The iOS app is dropped.** Its SwiftUI code never reached `main` (draft
+  PR #347 stays unmerged as an archive), and `main` loses the iOS target, the
+  iOS status of every use case and the iOS fixture steps.
+- **The native client is a Kotlin and Jetpack Compose Android app**, not a
+  WebView shell around the web UI.
+- **Lockstep starts with the Android target.** Until the shared suite has an
+  Android target, use cases carry only a web status. The PR that adds the
+  target gives every use case an Android status, with existing ones in a
+  backlog that only shrinks, and from then on a new or changed use case passes
+  on the web and on Android in the same PR.
+- **The phone-app decisions below carry over.** Where an earlier decision names
+  the iPhone or the iOS app (keyboard and wide-layout mechanics stay on the
+  web, a tap opens a preview, the app follows the phone's text size, the app
+  connects to one gateway, the web's upload progress, a secondary click), it
+  now applies to the Android app until the owner revisits it.
+
 ### Use cases live in one catalogue (2026-10-21)
 
 The owner wants a native iOS app with the web UI's capabilities, and a way to
@@ -2652,6 +3119,15 @@ layout HUI shows from 1100px, such as collapsing the sidebar. The iPhone app
 ships its code, uses the system clipboard, has no tabs, has no older version and
 is always narrow, so these are web-only use cases.
 
+### A file list's boundary and hover path stay on the web (2026-11-08)
+
+The Files navigator and the Diff view's changed-file list sit beside their
+content in HUI's wide layout. Dragging their boundary and seeing a cut-off
+name's full path on hover are browser affordances: the iPhone app is always
+narrow, where the Files navigator is a drawer with no boundary, and a touch
+screen has no hover. The list still scrolls, and a tap opens the file or its
+diff, so only the boundary and the hover path are web use cases.
+
 ### Usage is proven in the browser (2026-11-04)
 
 `/usage` is a page of the gateway's web UI: it reads the gateway's own recorded
@@ -2667,7 +3143,7 @@ A Files upload in the web app can take a long time: the body streams to the
 gateway and a video may be a gigabyte. Only the browser knows how much of it it
 has sent, so the navigator draws **Upload progress** and **Cancel upload** while
 a file is in flight. The iPhone app imports files through its native file
-importer (`fileImporter`, `docs/native-ios-plan.md`), which draws the system's
+importer (`fileImporter`), which draws the system's
 own progress and has no in-app Cancel; a second progress bar there would
 reproduce a control the phone already shows. Watching a web upload and stopping
 it is therefore a web-only use case, while the gateway's larger cap applies to
@@ -2718,7 +3194,11 @@ popover, and if they click on the popover they navigate to the link".
 
 The iPhone app is a client of one HUI gateway at a time. Its address comes from
 the Connect screen or the `-HUIGatewayURL` launch argument, and the app
-remembers the last one that answered. Before it shows the session list, it asks
+remembers the last one that answered. The Connect screen also offers the
+gateway's own **Name**, the name every client sees: an empty field keeps the
+name the gateway reports, and a typed name is saved through
+`PUT /__hui/settings` (after reading the current document) before the gateway
+loads. Before it shows the session list, it asks
 the gateway for its version: a gateway older or newer than the app gets a notice
 naming both versions, and a development gateway, which has no version, gets
 "Development gateway: its version is unverified." An address that answers with
@@ -2826,10 +3306,13 @@ behalf now shows as theirs, in group-chat style:
   the agents write it (routine and trigger prompts stay plain); Copy and Reply
   take that text. Rewind is not offered: the message was never the operator's
   to edit and send again.
-- **The same senders the gateway trusts.** The chat attributes exactly the
-  headers `botTurnOrigin` reads (plus `sessions_send` and a subagent's task),
-  so a message shows as someone else's when the bot's gated tools refuse to
-  treat it as the operator's.
+- **The same senders the gateway trusts, and one it does not.** The chat
+  attributes exactly the headers `botTurnOrigin` reads (plus `sessions_send` and
+  a subagent's task), so a message shows as someone else's when the bot's gated
+  tools refuse to treat it as the operator's. A header a bot wrote itself, when
+  HUI delivered the text untagged (the handle without its `@`, or a
+  `· <note>` after it), shows as that bot's too: presentation only, since the
+  gateway still reads a turn by HUI's own headers, never by one a bot wrote.
 - **What an agent hands a bot stays in sight.** Its `message_bot` call keeps a
   row of its own after the turn folds: *Sent to <bot>* (or to the calling
   agent's session) with the bot's face and the message's first paragraph, the
@@ -3435,6 +3918,62 @@ whatever the user's account can, and `message_bot` lets it ask a better-equipped
 bot to act (turning `message_bot` off prevents that). Isolation means running the
 bot on a worker in a container.
 
+### A staff pack seeds one Chief of Staff (2026-11-06)
+
+The owner asked for Lauren Tan's poteto workflow adapted to HUI: the operator
+talks mostly to one coordinator, the coordinator routes work to opinionated
+subagents, and the method lives in skills that load on demand instead of
+filling every conversation. HUI ships it as a **staff pack** (`staff/`) and
+seeds it once:
+
+- **One bot, seeded once, idle.** A fresh gateway creates *Chief of Staff*
+  with the pack's SOUL.md and skills, and no kickoff turn: it costs nothing
+  until it is messaged. HUI records the seed in `staff.json`; deleting the bot
+  is the opt-out and HUI never creates another. Its skills live in its own
+  `skills/` folder, so only its chat and its workers see them.
+- **Hash-based upgrades.** The record holds the hash of every file HUI wrote.
+  A start replaces a skill whose files all still match, keeps an edited skill
+  whole, and adds only routes missing by name. SOUL.md, USER.md, MEMORY.md and
+  BOOTSTRAP.md are never written after creation. `hui doctor` reports both;
+  `--fix` installs the untouched updates.
+- **Every chief has a heartbeat.** HUI runs the heartbeat in the gateway, every 15 minutes, without a turn in any bot's chat. It checks each session a bot watches. An idle, waiting, errored or done watched session is reported to the watcher session; the target is never prompted. The chief reads the last reply and decides whether to send one specific followup or remove the watch, so the gateway never sends a generic continue. The heartbeat itself never starts new work, and the watch is what makes a session a candidate; no routine lives in the bot's context.
+- **Workers carry the pack, nothing else.** A spawn from a bot's chat records
+  `botSkills`, written as the `hui.botSkills` document in the child's creating
+  commit; `skillDirsFor` loads that bot's skill folder for the child and its
+  descendants. The document grants skills only: no soul, memory or bot tools.
+- **Routes and checkouts.** The seed adds `planner`, `explorer`, `worker`,
+  `reviewer` and `verifier`, with no model, so they inherit the chief's.
+  `sessions_spawn({ worktree: true })` creates a worktree off the caller's
+  checkout (on its worker) and makes it the child's cwd; a failed registry
+  write rolls it back.
+- **Global skills stay opt-out.** `automate-me` (shaped for HUI bots),
+  `create-formal-verification-skill`, `maintain-formal-verification-skill` and
+  `maintain-verification-skill` ship as bundled skills beside
+  `create-verification-skill`, listed for every chat and turned off in
+  Settings → Skills. They are not part of the pack.
+
+### A PR session is its lead (2026-11-11)
+
+A session a Chief of Staff creates with `create_session` owns one pull request and carries HUI's
+PR-lead section. It does not write product code itself: it spawns an `explorer` for investigation,
+a `worker` in a worktree for implementation, a fresh `verifier`, then a `reviewer`, and creates no
+second session for a phase. Its own model is the orchestrator and stays fixed; each child's model
+comes from its route or explicit model. A route with no model inherits the lead's model, so the
+operator sets route models to make the phases use different models.
+
+### A custom group's chief is its own bot (2026-11-08)
+
+The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label and project directory, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its home, sets the bot's `group`, and puts its chat in that directory; the pack's routes are merged by name. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
+
+A group chief's skills are installed at creation and recorded, and every later pack update reaches it the same way as the
+seeded chief: `staff.json` keeps a per-bot manifest (`{ version: 2, bots: { <bot id>: { packVersion, installedAt, files } } }`),
+a version 1 record is read as the seeded bot's, and the installer writes a skill only where every file it recorded is
+still unchanged and the folder holds nothing it did not write. A chief HUI never recorded (one created before per-bot
+records) is adopted on the next start when it carries the pack's text: what matches the shipped text byte for byte is
+recorded, a missing skill is installed, and a skill that differs is kept and reported, because there the text could be
+the operator's or an older pack's. The operator can edit any of its skills in Tools & skills; the pack keeps an edited
+skill whole and `hui doctor` reports it per chief.
+
 ### Bots write their own SOUL.md in a first conversation (2026-10-06)
 
 Reviewing the Bots stack, the owner asked for bots to have a SOUL.md "like
@@ -3479,13 +4018,25 @@ gateway only (remote workers are a later follow-up).
 
 On 2026-10-06 the owner asked for Hermes's layout: the switch moved to the top
 of the sidebar and its first tab is named **Agents**. Agents is the same session
-sidebar, not an Agents page or agent selector; Bots shows only the roster.
+sidebar, not an Agents page or agent selector; Bots swaps the session list for
+the roster (both lists have kept the navigation since 2026-11-12).
 Later that day he asked for it above everything else, the header buttons
 included, because the two tabs work differently: it is now a full-width tab bar
 over a divider in the sidebar's top row. He then dropped the header's New
 session and Search buttons, which he never used, and asked for the collapse
 toggle to stay put: it now starts that top row, and the restore control appears
 on the same spot while the sidebar is collapsed.
+
+### The sidebar's destinations and width hold in both shells (2026-11-12)
+
+The owner asked for Settings to sit under Usage instead of in the sidebar's
+header, for the primary navigation to stay visible on the Bots tab, and for the
+Settings shell to keep the sidebar's width. Contributions, Kanban, Sessions,
+Usage and Settings are one scrolling list, and the Agents and Bots lists both
+draw it; the footer below them keeps this page's gateway. The Settings rail and
+the main sidebar are one column at one stored width, each with the same *Resize
+sidebar* boundary, so choosing a width anywhere applies everywhere the wide
+layout shows a sidebar.
 
 ### Bots have animated faces (2026-10-06)
 
@@ -3537,15 +4088,31 @@ faster."
   ChatGPT login: the gateway keeps the credential and sets each call up, the
   browser carries the audio and the call's data channel. GPT-Live's one tool
   (client delegation) asks the bot.
+- **A handoff before it speaks.** Each call starts with a note the bot's utility
+  model writes for it, from the bot's soul, its memory, the newest messages of its
+  chat verbatim and the operator's saved knowledge: what is active, the last
+  decisions, what waits on the operator and what they may ask about today. It is
+  written inside the call's start request, bounded to six seconds and 1,600
+  characters; a note no model writes leaves the call starting without one, and
+  the newest messages of the chat ride along in its place. So a handoff given
+  minutes before the call reaches it, which the memory's summaries alone lost.
+  While it is written the browser plays a ringback tone (425 Hz, 1.5 s on and 3 s
+  off) and the call shows *Connecting…*, so the wait sounds like a call being
+  placed; the tone stops when the call is answered, fails or is hung up.
+- **It opens as the bot.** The greeting cue GPT-Live receives names the bot and
+  forbids introducing itself as ChatGPT, where the model is certain to read it,
+  not only in the session's instructions.
 - **The tool runs on a faster model.** A call helper on the bot's utility model,
-  at low thinking, answers from the bot's soul (its SOUL.md), its memory and the call
-  so far. It never queues behind the bot's own turn. What needs tools goes to the
-  bot's chat as a `[call task]` message on the bot's own model; its reply is
-  spoken if the call is still up and stays in the chat either way. The limits
-  follow OpenDots': 25 s per question (then GPT-Live offers to hand it off), six
-  questions and four hand-offs per call, and calls of at most 15 minutes. The
-  helper has no tools yet: a restricted tool set would need new runtime
-  plumbing, so it hands off anything that needs one.
+  at low thinking, answers from the bot's soul (its SOUL.md), its memory, the
+  newest messages of its chat and the call so far. It never queues behind the
+  bot's own turn. What needs tools, or is not in those, goes to the bot's chat as
+  a `[call task]` message on the bot's own model: the helper is told never to
+  answer that it does not know, an unknown being a hand-off. Its reply is spoken
+  if the call is still up and stays in the chat either way. A call keeps no
+  per-call count: 25 s per question (then GPT-Live offers to hand it off), every
+  question answered or handed off, and calls of at most 15 minutes. The helper
+  has no tools yet: a restricted tool set would need new runtime plumbing, so it
+  hands off anything that needs one.
 - **What happened, at hang-up.** No chat message per utterance. When a call
   ends (hang-up, 90 s without a heartbeat, or 15 minutes), the utility model
   writes a summary in the bot's language: what was discussed, confirmed
@@ -3956,10 +4523,11 @@ currently configured PI source on the server. A skill operation is successful
 only when a fresh PI inventory discovers a new `SKILL.md`; process exit alone
 is not success. HUI never edits PI's settings or skill directories itself.
 
-HUI also ships `create-verification-skill`, a portable generator for project-local
-verification workflows, and `git-selective-staging`, which commits only a
-session's own hunks when a shared or reused checkout already holds other
-uncommitted work, both with the **good practices** tag. Each is available by
+HUI also ships `build-hui-extension`, a v1-aware guide and working reference for
+local gateway extensions; `create-verification-skill`, a portable generator for
+project-local verification workflows; and `git-selective-staging`, which commits
+only a session's own hunks when a shared or reused checkout already holds other
+uncommitted work, all with the **good practices** tag. Each is available by
 default in new SDK and CLI runtimes, not automatically executed. Their read-only
 files live in HUI's installed package; no installation agent, provider call or PI
 configuration write is needed. Skills and Settings → Skills expose the same
@@ -3988,8 +4556,9 @@ The browser addresses only opaque inventory ids. The server revalidates each id
 against current PI settings, never executes the resource, never accepts a path,
 and limits returned text to 256 KiB.
 
-The ordered implementation tasks and accepted capability matrix are in
-`docs/implementation-roadmap.md`.
+The accepted capability matrix is the use-case catalogue in `e2e/catalogue/`,
+where `backlog` means the capability exists and its shared test does not yet
+pass.
 
 ## Desktop distribution
 
@@ -4117,8 +4686,12 @@ imported bot walks the new owner through it.
   answer for the operator, write what they say to USER.md, MEMORY.md and SOUL.md.
   The import carries the whole document in the imported bot's first turn, so the
   bot needs no file tool and the operator's chat shows only "<name> was created",
-  as before. Bounded at 8,000 characters: over it items are left out and counted,
-  never cut.
+  as before. Bounded at 6,000 characters, a bot's own BOOTSTRAP.md limit, so an
+  export always imports: over it items are left out and counted, never cut, and
+  the previous owner's onboarding body goes first, so the points, needs and
+  schedules stay. The export dialog says how full the document is and what it
+  left out, and the import cuts what `{{user}}` filled in with a longer name
+  makes too long, with a note, rather than refusing the bot.
 - **No live link, no updating copies.** Grok publishes a template and can push
   changes to every copy; HUI has no accounts or hosting, and a served template
   would have to be reviewed again on every publish. The zip is reviewed once,
@@ -4160,3 +4733,20 @@ web page: the iOS app has no screen for them. Its outcomes are therefore web use
 cases, and PAGE-044 and PAGE-045 are excluded on iOS rather than left on its
 backlog, as the Usage page is. When the iPhone app gets a Dashboard of its own,
 that screen is its own use case with its own shared test.
+
+### The Dashboard is on for everyone (2026-11-06)
+
+The owner asked for the Dashboard out of Labs once the page had settled, so it
+is one of HUI's pages everywhere.
+
+- **No switch turns it on.** *Dashboard* sits at the top of the sidebar and in
+  the command palette on every install, so the primary navigation reads
+  Dashboard, Contributions, Kanban, Sessions and Usage, and `/dashboard` opens
+  it. The *Dashboard* switch is gone from the Labs page.
+- **An older settings file is read, not rewritten.** `settings.labs.dashboard`
+  is no longer a setting: a file that still holds it loads without it, and the
+  next save leaves it out, as with any key HUI does not know. The stale value
+  can no longer hide the page.
+
+This supersedes the *behind Labs* part of [Dashboard page behind Labs →
+Dashboard, to iterate on it](#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23).

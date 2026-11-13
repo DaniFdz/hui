@@ -8,7 +8,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { brandMarks, icons } from "../../lib/icons.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
 import { readToolPresentation, commandToolPresentation, codemodeToolPresentation, toolFilePath } from "../../lib/tool-cards.ts";
-import { renderReadToolBody } from "./read-tool-card.ts";
+import { renderReadToolBody, renderToolFileReference } from "./read-tool-card.ts";
 import { renderCommandToolBody } from "./command-tool-card.ts";
 import { renderCodemodeToolBody } from "./codemode-tool-card.ts";
 
@@ -21,7 +21,7 @@ const TOOL_ICON_BASE = "/__hui/tool-icons/";
 const READ_TOOLS = new Set(["read", "read_file", "readfile", "notebookread", "notebook_read"]);
 const EDIT_TOOLS = new Set(["edit", "edit_file", "apply_patch", "multiedit", "multi_edit"]);
 const WRITE_TOOLS = new Set(["write", "write_file", "create_file", "file_write"]);
-const SEARCH_TOOLS = new Set(["grep", "glob", "find", "search", "code_search", "ripgrep", "rg"]);
+const SEARCH_TOOLS = new Set(["grep", "glob", "find", "search", "code_search", "ripgrep", "rg", "search_chat"]);
 const COMMAND_TOOLS = new Set(["bash", "shell", "exec", "run_command", "run_terminal_cmd", "command", "terminal"]);
 const FETCH_TOOLS = new Set(["web_fetch", "webfetch", "fetch"]);
 const WEB_SEARCH_TOOLS = new Set(["web_search", "websearch"]);
@@ -106,6 +106,11 @@ export function toolCallMeta(item: ToolItem): string | undefined {
   }
   const output = item.output?.trimEnd() ?? "";
   if (!output) return undefined;
+  // A bot's chat search answers in lines of its memory, `id+1|…`: its header and limit notes are not results.
+  if (name === "search_chat") {
+    const hits = output.split("\n").filter((line) => /^\d+\+1\|/u.test(line)).length;
+    return hits ? `${hits} result${hits === 1 ? "" : "s"}` : undefined;
+  }
   const lines = output.split("\n").filter((line) => line.trim()).length;
   // Only a read's output is the file; an edit or write returns a confirmation, whose line count says nothing.
   if (READ_TOOLS.has(name)) return `${lines} line${lines === 1 ? "" : "s"}`;
@@ -255,8 +260,9 @@ export function renderToolBody(item: ToolItem, onCopy: (text: string, key: strin
   if (readToolPresentation(item)) return renderReadToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
   if (commandToolPresentation(item)) return renderCommandToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
   if (codemodeToolPresentation(item)) return renderCodemodeToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
+  const path = toolFilePath(item);
   return html`<div class="chat-tool-msg-body"><div class="chat-tool-card">
-    <div class="chat-tool-card__header"><span class="chat-tool-card__detail">${item.name}</span>
+    <div class="chat-tool-card__header"><span class="chat-tool-card__detail">${item.name}${path ? html` · ${renderToolFileReference(path)}` : nothing}</span>
       ${item.output !== undefined ? html`<div class="chat-tool-card__actions"><button type="button" class="chat-copy-btn" aria-label="Copy output" title="Copy output" @click=${() => onCopy(item.output ?? "", `tool-${item.id}`)}>${icons.copy}</button></div>` : nothing}
     </div>
     ${item.args !== undefined ? html`<section class="chat-tool-card__block"><div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Input</span></div><pre class="chat-tool-card__block-content"><code>${typeof item.args === "string" ? item.args : JSON.stringify(item.args, null, 2)}</code></pre></section>` : nothing}

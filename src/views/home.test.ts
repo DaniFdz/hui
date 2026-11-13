@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 
 test("effort preview owns a textContent property without destroying Lit child markers", () => {
   const source = readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8");
@@ -167,7 +167,7 @@ test("the primary chat uses the OpenClaw transcript and composer hierarchy", () 
   assert.match(source, /class="chat-tool-card__block-content"/);
   assert.doesNotMatch(styles, /\.chat-tool-msg-body pre\s*\{/);
   assert.match(source, /class="chat-group \$\{row\.role\} chat-group--with-footer \$\{row\.id === latestAssistantRowId/);
-  assert.match(source, /<div class="agent-chat__composer-shell \$\{props\.question \? "agent-chat__composer-shell--question-composer" : ""\}"/);
+  assert.match(source, /<div class="agent-chat__composer-shell"/);
   assert.match(source, /<form class="agent-chat__input agent-chat__input--chat/);
   assert.match(source, /agent-chat__input--chat agent-chat__input--mobile-toolbar/);
   assert.match(source, /chat-send-control chat-mobile-primary-action chat-desktop-primary-action/);
@@ -326,6 +326,16 @@ test("the composer shows context usage and only offers compaction on a live idle
   assert.doesNotMatch(await renderWorkerSession("idle", { usage, session: { id: "bot", title: "Bot", tool: "pi", status: "idle", bot: "bot" } }), /Compact now/u);
 });
 
+test("a bot's own message offers Rewind to here, and a bot's chat offers no fork or compaction", async () => {
+  const bot = { id: "bot", title: "Bot", group: "", cwd: "/repo", displayCwd: "repo", tool: "durable", status: "idle", bot: { id: "b", handle: "ada", name: "Ada" } };
+  const transcript = [{ kind: "message", id: "u1", role: "user", text: "Plan the week", entryId: 7 }, { kind: "message", id: "a1", role: "assistant", text: "Here it is." }];
+  const usage = { percent: 10, contextTokens: 2_000, contextWindow: 200_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.01, sessionCost: { usd: 0.1, source: "Metered", asOf: new Date().toISOString() } };
+  const html = await renderWorkerSession("idle", { session: bot, transcript, usage });
+  assert.match(html, /class="chat-group-rewind" aria-label=Rewind to here/u, "the bot's user message offers the rewind");
+  assert.doesNotMatch(html, /Fork into a new session from here/u);
+  assert.doesNotMatch(html, /Compact now/u);
+});
+
 test("a saved PI conversation cannot continue or open a terminal", async () => {
   const html = await renderWorkerSession("disconnected", {
     connection: "saved", session: { id: "s", title: "Saved", tool: "pi", status: "disconnected" },
@@ -347,6 +357,25 @@ test("PI questions use the inline OpenClaw card instead of a modal", () => {
   assert.doesNotMatch(source, /class="question-dialog"/);
   assert.match(styles, /\.chat-question-panel\s*\{[^}]*gap: 12px;[^}]*padding: 14px;/s);
   assert.match(styles, /\.chat-question-panel__option\s*\{[^}]*padding: 10px 11px;/s);
+});
+
+test("a pending question is the transcript's last row, not a dock in the composer", async () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const styles = readStyles("../styles/openclaw-chat.css");
+  const waiting = await renderWorkerSession("waiting", { question: { id: "q", method: "input", title: "Name?" } });
+  const thread = waiting.indexOf('class="chat-thread-inner"');
+  const dock = waiting.indexOf('class="chat-question-dock"');
+  const composer = waiting.indexOf('class="agent-chat__composer-shell"');
+  assert.ok(thread >= 0 && dock > thread && composer > dock, "the card is the transcript's last content, above the composer");
+  assert.match(styles, /\.chat-question-dock\s*\{[^}]*min-width: 0;/s);
+  assert.doesNotMatch(source, /agent-chat__composer-shell--question-composer/u);
+});
+
+test("the pending question card blurs nothing behind it, in the transcript", () => {
+  const styles = readStyles("../styles/openclaw-chat.css").replace(/\/\*[\s\S]*?\*\//gu, "");
+  const rules = styles.match(/(?<=^|[{}])[^{}]*\.chat-question-dock[^{}]*\{[^}]*\}/gu) ?? [];
+  assert.ok(rules.length > 0);
+  assert.ok(rules.some((rule) => /\.chat-question-dock \.chat-question-panel\s*\{[^}]*backdrop-filter: none;/su.test(rule)), "the transcript card cancels the dock's blur");
 });
 
 test("New Session uses the dedicated PI mascot", () => {
@@ -658,11 +687,12 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
     { kind: "message", id: "s", role: "user", text: "[from agent: Implement retry fix · reply-to agent:s-fix] Please babysit PR #7." },
     { kind: "message", id: "h", role: "user", text: "[Inter-session message from Context lane (s-helper)]\nAlert history attached." },
     { kind: "message", id: "r", role: "user", text: "[routine: Daily standup] Summarize yesterday." },
+    { kind: "message", id: "w", role: "user", text: "[from grace · relayed from Dani's Slack instruction] PR #167221 is mine." },
   ] });
   const row = (id: string) => html.slice(html.indexOf(`data-chat-row-key=${id}`), html.indexOf("data-chat-row-key=", html.indexOf(`data-chat-row-key=${id}`) + 1));
 
   const bot = row("g");
-  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-chat-row-key=g style=--chat-sender-color: #2fc49a>/u);
+  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-testid="message-row" data-chat-row-key=g style=--chat-sender-color: #2fc49a>/u);
   assert.match(bot, /<span class="chat-sender-avatar" aria-hidden="true"><span class="bot-avatar bot-avatar--sm bot-avatar--face"/u);
   assert.match(bot, /<div class="chat-text">.*PR #7 review needs your decision\./u);
   assert.match(bot, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u);
@@ -680,6 +710,9 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
   assert.match(child, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u, "a bot subagent's parent is its bot's chat in the Bots tab");
   assert.match(row("r"), /<div class="chat-text chat-text--plain">Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
   assert.match(row("u"), /<span class="chat-sender-name">You<\/span>/u);
+  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-testid="message-row" data-chat-row-key=w /u, "a header a bot wrote before HUI tagged the brief still reads as its message");
+  assert.match(row("w"), /<p>PR #167221 is mine\.<\/p>.*>Grace<\/a>/u);
+  assert.doesNotMatch(row("w"), /\[from grace|>You</u);
 
   const handoff = row("m");
   assert.match(handoff, /<details class="chat-tool-msg-collapse chat-handoff" data-status=succeeded style=--chat-sender-color: #2fc49a/u);
@@ -880,4 +913,38 @@ test("a presented file from the working directory offers to open in Files", asyn
   assert.doesNotMatch(outside, /chat-presented-media__reveal/u, "a file outside the working directory has nothing in Files to open");
 
   assert.match(readStyles("../styles/openclaw-chat.css"), /hui-file-ref\.chat-presented-media__reveal:not\(\.is-linked\) \{ display: none; \}/u);
+});
+
+test("a message's action row offers the phone's Share sheet only where a shell answers", async () => {
+  const transcript = [
+    { kind: "message", id: "u", role: "user", text: "Ship the release" },
+    { kind: "message", id: "a", role: "assistant", text: "Shipped." },
+    { kind: "message", id: "b", role: "user", text: "[from @grace] PR #7 needs you." },
+  ];
+
+  // A browser: no injected bridge, so `nativeShell()` answers nothing and the row is what it drew before the sheet.
+  vi.stubGlobal("window", undefined);
+  const web = await renderWorkerSession("idle", { transcript });
+  assert.match(web, /aria-label="Reply to message"/u, "the web keeps the actions it has");
+  assert.match(web, /aria-label=Copy prompt/u);
+  assert.doesNotMatch(web, /chat-group-share|Share prompt|Share response|Share message/u);
+  // Capacitor's own browser build injects a bridge that is not a shell either.
+  vi.stubGlobal("window", { location: { href: "https://gateway.test/sessions/s" }, Capacitor: { isNativePlatform: () => false, getPlatform: () => "web", Plugins: {} } });
+  assert.doesNotMatch(await renderWorkerSession("idle", { transcript }), /chat-group-share/u);
+
+  // The app: Capacitor's bridge, on a page the gateway served.
+  vi.stubGlobal("window", {
+    location: { href: "https://gateway.test/sessions/s" },
+    Capacitor: { isNativePlatform: () => true, getPlatform: () => "android", Plugins: {} },
+  });
+  const phone = await renderWorkerSession("idle", { transcript });
+  const row = (id: string) => phone.slice(phone.indexOf(`data-chat-row-key=${id}`), phone.indexOf("data-chat-row-key=", phone.indexOf(`data-chat-row-key=${id}`) + 1));
+  assert.match(row("u"), /class="chat-copy-btn chat-group-share" aria-label=Share prompt/u, "the operator's own words");
+  assert.match(row("a"), /class="chat-copy-btn chat-group-share" aria-label=Share response/u, "and the reply's");
+  assert.match(row("b"), /class="chat-copy-btn chat-group-share" aria-label=Share message/u, "a sender's message, named as Copy names it");
+  // HUI's own tooltip card, never the browser's `title`.
+  assert.match(row("a"), /role="tooltip">Share</u);
+  assert.doesNotMatch(phone, /title="Share/u);
+  // Beside Copy and Reply, in the one footer row, so the phone draws one action row and not two.
+  assert.match(row("a"), /aria-label="Reply to message"[^>]*>.*aria-label=Copy response.*aria-label=Share response/u);
 });

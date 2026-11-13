@@ -139,9 +139,9 @@
 .bot-avatar__badge svg { width: 10px; height: 10px; stroke-width: 2.2px; }
 
 /* ── roster rows (session row anatomy, two lines) ── */
-/* The Bots tab has no navigation above its list, so the list starts right under
- * the tab row, and its header lines up with the avatars, as Show archived and
- * the archived rows do, rather than with the Agents tab's nav labels. */
+/* The Bots list follows the same navigation as Agents, and its header lines up
+ * with the avatars, as Show archived and the archived rows do, rather than
+ * with the Agents tab's nav labels. */
 .app-shell .sidebar-sessions--bots { margin-top: 4px; }
 .app-shell .sidebar-sessions--bots > .sidebar-recent-sessions__toolbar { padding-inline-start: 14px; }
 /* The + menu (New bot on Local or a worker) sits in the toolbar: its items read as menu items, not as the toolbar's

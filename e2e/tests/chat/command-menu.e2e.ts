@@ -61,10 +61,13 @@ test("the / menu groups commands, narrows as you type, inserts a reference witho
   await expect(menu.getByText("/menu-template", { exact: true })).toBeHidden();
   await expect(menu.getByText("/clear", { exact: true })).toBeHidden();
 
-  const phone = await hui.phoneScreen();
+  await hui.phoneScreen();
   await message.fill("/menu-skill-");
   const first = menu.getByText("$menu-skill-01", { exact: true });
   const last = menu.getByText("$menu-skill-12", { exact: true });
+  await expect(first).toBeVisible();
+  // Filling focuses the composer and can resize a real WebView for the IME; setup's earlier size is not its viewport.
+  const phone = await hui.viewportSize();
   const composer = (await message.boundingBox())!.y;
   const top = (await first.boundingBox())!;
   expect(top.y).toBeGreaterThanOrEqual(0);
