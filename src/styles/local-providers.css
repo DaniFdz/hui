@@ -44,7 +44,7 @@
   .hui-local-provider-row__actions { justify-content: flex-start; }
 }
 
-.hui-model-metrics-dialog { width: min(640px, calc(100vw - 32px)); }
+.hui-model-metrics-dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; }
 .hui-model-metrics__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; color: var(--muted); font-size: 12px; }
 .hui-model-metrics__meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; margin-bottom: 10px; }
 .hui-model-metrics__last { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
@@ -66,4 +66,5 @@
 @media (max-width: 560px) {
   .hui-model-metrics__last { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hui-model-metrics__toolbar { align-items: flex-start; flex-direction: column; }
+  .hui-model-metrics__recent th:nth-child(2), .hui-model-metrics__recent td:nth-child(2) { display: none; }
 }
