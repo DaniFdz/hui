@@ -92,7 +92,8 @@ jobs:
   android-e2e:
     if: inputs.ios_ipa != 'true'
     runs-on: ubuntu-latest
-    # A shard's boot, its share of the suite (~100 tests at ~12 s each, each relaunching the app) and the gateway build.
+    # Four slices exhausted this budget on a1c06535: one ran 104 passing tests in 42m11s, before setup/upload costs.
+    # Six isolated runners keep every selected test once while leaving headroom; each runner still owns one emulator.
     timeout-minutes: 45
     # Advisory until the phone backlog closes (mobile/AGENTS.md, owner decision O2: required after 20 green runs).
     # It runs the whole suite so the failures ARE the backlog a WP7 area works from; the traces say which.
@@ -101,7 +102,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ["1/4", "2/4", "3/4", "4/4"]
+        shard: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6"]
     steps:
       # These fixed fixture ports lie inside Linux's ephemeral range. An OS-assigned listener or client socket must
       # not claim them before Vite binds; reservation changes no explicit bind and preserves the runner's other ports.
