@@ -85,7 +85,8 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     await hui.open(`/sessions/${session.id}`);
     await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
     await expect.poll(async () => (await hui.api<LocalProviderSnapshot>("GET", "/__hui/local-providers")).providers.find((provider) => provider.id === "local-e2e")?.status).toBe("starting");
-    await hui.prompt(session, "Hello local model");
+    await screen.getByLabel("Message").fill("Hello local model");
+    await screen.getByRole("button", { name: "Send message" }).tap();
     await expect(screen.getByText("Waiting for Local fixture to start…", { exact: true })).toBeVisible();
     await writeFile(release, "");
     await expect(screen.getByText("Fixture response.", { exact: true })).toBeVisible({ timeout: 30_000 });
