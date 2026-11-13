@@ -5,6 +5,7 @@ import { fetchProviderQuota } from "../server/pi/provider-quota.ts";
 import { quotaFixture } from "./fixtures/provider-quota-fixture.mjs";
 import { huiConfig } from "../server/vite-plugin.ts";
 import { readFile } from "node:fs/promises";
+import { createAutomationClock } from "./fixtures/automation-clock.ts";
 
 const identity = JSON.parse(process.env.HUI_VERIFICATION_IDENTITY);
 const token = process.env.HUI_VERIFICATION_TOKEN;
@@ -15,6 +16,28 @@ delete process.env.HUI_VERIFICATION_TOKEN;
 const production = process.env.HUI_VERIFICATION_PRODUCTION === "1";
 
 let network = "online";
+// Parent state arrives before huiConfig starts the real scheduler, including after a child restart.
+const initialNow = await new Promise((resolve) => {
+  const initialize = (message) => {
+    if (message.type !== "automation-clock-init") return;
+    process.off("message", initialize);
+    resolve(message.now);
+  };
+  process.on("message", initialize);
+  process.send({ type: "automation-clock-ready" });
+});
+const automationClock = createAutomationClock(initialNow);
+let clockRequest = 0;
+const rememberClock = () => new Promise((resolve) => {
+  const id = ++clockRequest;
+  const acknowledge = (message) => {
+    if (message.type !== "automation-clock-ack" || message.id !== id) return;
+    process.off("message", acknowledge);
+    resolve();
+  };
+  process.on("message", acknowledge);
+  process.send({ type: "automation-clock-state", id, now: automationClock.state() });
+});
 
 async function verification(request, response) {
   response.setHeader("content-type", "application/json");
@@ -25,6 +48,22 @@ async function verification(request, response) {
   }
   if (request.url === "/__verification" && request.method === "GET") {
     return response.end(JSON.stringify({ ...identity, serverPid: process.pid, cwd: process.cwd() }));
+  }
+  if (request.url === "/__verification/automation-clock" && request.method === "POST") {
+    try {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const { action, ms } = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+      if (action === "freeze") automationClock.freeze();
+      else if (action === "advance") automationClock.advance(ms);
+      else if (action === "resume") automationClock.resume();
+      else throw new Error("clock action must be freeze, advance or resume");
+      await rememberClock();
+      return response.end(JSON.stringify({ now: automationClock.state() }));
+    } catch (error) {
+      response.statusCode = 400;
+      return response.end(JSON.stringify({ error: error.message }));
+    }
   }
   if (request.url === "/__verification/network" && request.method === "POST") {
     const chunks = [];
@@ -89,7 +128,7 @@ const server = production
       configFile: false,
       logLevel: "warn",
       preview: { host: "127.0.0.1", port, strictPort: true },
-      plugins: [plugin, huiConfig()],
+      plugins: [plugin, huiConfig({ automationClock: automationClock.clock })],
     })
   : await createServer({
       root: identity.checkout.root,
@@ -98,7 +137,7 @@ const server = production
       cacheDir: process.env.HUI_VERIFICATION_CACHE,
       logLevel: "warn",
       server: { host: "127.0.0.1", port, strictPort: true, hmr: false },
-      plugins: [plugin, huiConfig()],
+      plugins: [plugin, huiConfig({ automationClock: automationClock.clock })],
     });
 server.httpServer.prependListener("upgrade", (request, socket) => {
   if (!(request.url ?? "").startsWith("/__hui/")) return;
@@ -121,6 +160,7 @@ async function stop() {
   await server.close();
   // Only the dev server reaches huiConfig's closeBundle; preview would leave the backend's store open.
   if (production) await stopBackend().catch(() => undefined);
+  automationClock.dispose();
   process.exit(0);
 }
 process.once("SIGINT", stop);
