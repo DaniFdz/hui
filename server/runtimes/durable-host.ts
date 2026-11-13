@@ -318,6 +318,8 @@ export class DurableHost implements ExtensionHost {
   #fast = new Set<string>();
   /** HUI sessions on Ultra, whose prompt asks the agent to plan, delegate and verify. */
   #ultra = new Set<string>();
+  /** HUI sessions in Autonomous mode, whose prompt makes the agent the lead of its own task. */
+  #autonomous = new Set<string>();
   /** Each attributed request's identity, by its task invocation's abort signal. */
   #requestIdentities = new WeakMap<AbortSignal, string>();
   /** Each attributed request's HUI session, for its PI extensions' provider callbacks. */
@@ -399,6 +401,7 @@ export class DurableHost implements ExtensionHost {
     };
     this.prompt.skillDirsFor = (conversationId) => this.skillDirsFor(conversationId);
     this.prompt.ultraFor = (conversationId) => this.#ultra.has(this.#callers.get(conversationId) ?? "");
+    this.prompt.autonomousFor = (conversationId) => this.#autonomous.has(this.#callers.get(conversationId) ?? "");
     const goalFor = options.goalFor;
     if (goalFor) {
       this.prompt.goalFor = async (conversationId) => {
@@ -595,6 +598,13 @@ export class DurableHost implements ExtensionHost {
   setUltra(huiSessionId: string, on: boolean): void {
     if (on) this.#ultra.add(huiSessionId);
     else this.#ultra.delete(huiSessionId);
+  }
+
+  isAutonomous(huiSessionId: string): boolean { return this.#autonomous.has(huiSessionId); }
+
+  setAutonomous(huiSessionId: string, on: boolean): void {
+    if (on) this.#autonomous.add(huiSessionId);
+    else this.#autonomous.delete(huiSessionId);
   }
 
   #extensionsOf(conversationId: ConversationId): DurableExtensions | undefined {

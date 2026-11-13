@@ -3980,6 +3980,43 @@ second session for a phase. Its own model is the orchestrator and stays fixed; e
 comes from its route or explicit model. A route with no model inherits the lead's model, so the
 operator sets route models to make the phases use different models.
 
+### Autonomous mode drives a session to a draft pull request (2026-11-12)
+
+The owner wanted the PR lead without having to ask a chief for it, with the plan approved once and the pull request
+left as a draft. It is an **Autonomy** choice beside Speed in the thinking picker (**Supervised** or **Autonomous**),
+not a reasoning level, so it combines with any Effort. It is offered for Durable sessions in the composer and on New
+Session, never in a bot's chat or a subagent, and persists as `autonomous: true`.
+
+- **The session drives.** Its prompt carries `hui_autonomous`: investigate, then stop on the plan, written with the
+  `technical-writing` skill and ending with one question that asks its supervisor to approve or correct it, and
+  implement nothing before the answer. After approval, give every step to a subagent, one task each, spawn them
+  without `worktree: true` so they share the session's checkout, branch and pull request (which is what lets a fix
+  round see the change before it), verify, review with another model family where the routes offer one, and open the
+  pull request as a draft. It decides technical matters itself and stops three times: the plan, a blocker only its
+  supervisor can clear as one question at the end of its reply, and the report that the draft pull request is tested,
+  verified and ready for review. The operator's own messages always come first, and where Ultra, a PR lead's phases or
+  an active goal say otherwise, these steps win.
+- **Pull requests stay drafts.** The session never marks one ready for review, never merges it and never deploys it:
+  the operator does, and the operator decides when it leaves draft.
+- **Who supervises depends on who started it.** `create_session` gives a chief's session Autonomous mode, and HUI
+  reports its stops to that chief: the chief of its group, else the Chief of Staff of no group (not an archived bot),
+  which starts watching it when a run ends and gets the stop through the gateway heartbeat at once, marked
+  `Autonomous session`, queued behind a running turn and opening a sleeping chat. The chief answers with
+  `sessions_send`, which starts the session's next turn; no bot hop or hourly limit applies, and a session on a worker
+  works the same way. A session the operator started in Autonomous mode is given to no chief: its stops are reported
+  in its own chat, with the desktop notification HUI already sends when one of its runs ends.
+- **What is not reported at once.** A stop while the session's subagents or watchers still work and its reply does
+  not end on a question (they wake it), a run the operator stopped and a failed run (it retries or shows its error).
+  Scans run one at a time so a stop is reported once, and the heartbeat skips a session not open in this gateway, so
+  a restart does not report every watched session again. An active goal does not continue by itself in this mode: the
+  session's supervisor takes the next step.
+- **The chief's method is in the pack.** `chief-mode` (pack 16) tells a chief a session it started runs Autonomous,
+  to approve or correct its plan with `timeoutSeconds` 0, to use `decision` only for its four cases, and to settle
+  its report like a lead's.
+- Turning the mode off removes the section and takes back the watch HUI gave the chief (not a chief's own, and not one
+  given before the gateway last restarted), so the operator has the session back. HUI does not refuse a merge command
+  in this mode: the stop before a merge is the prompt's and the repository's rule.
+
 ### A custom group's chief is its own bot (2026-11-08)
 
 The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label and project directory, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its home, sets the bot's `group`, and puts its chat in that directory; the pack's routes are merged by name. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.

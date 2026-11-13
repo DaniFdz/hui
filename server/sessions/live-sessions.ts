@@ -104,6 +104,8 @@ export type SessionSnapshot = {
   thinking?: string;
   /** Fast mode; absent when the runtime cannot change speed. */
   fast?: boolean;
+  /** Autonomous mode; absent when the session cannot carry it (a bot's chat, a runtime without the mode). */
+  autonomous?: boolean;
   queue: RuntimeQueue;
   /** The runtime's questions, then HUI's own pending ones. */
   questions: readonly (RuntimeQuestion | HuiQuestion)[];
@@ -126,6 +128,7 @@ export type SessionStreamMessage =
   | { kind: "model"; model: RuntimeModel }
   | { kind: "thinking"; level: string }
   | { kind: "fast"; fast: boolean }
+  | { kind: "autonomous"; autonomous: boolean }
   | { kind: "closed" };
 
 /** Lightweight gateway-wide lifecycle update. Detailed transcript/runtime
@@ -199,6 +202,7 @@ type Live = {
   transcript: TranscriptEntry[];
   thinking?: string;
   fast?: boolean;
+  autonomous?: boolean;
   queue: RuntimeQueue;
   /** Follow-ups not yet handed to the runtime. Keeping them here is what makes
    * OpenClaw-style edit, remove, and reorder operations truthful. */
@@ -311,6 +315,7 @@ export class LiveSessions {
   #revisions = Date.now() * 1000;
   #statusSubscribers = new Set<StatusSubscriber>();
   #runEnds = new Set<(end: RunEnd) => void>();
+  #autonomy = new Set<(id: string, on: boolean) => void>();
   /** Deleted ids stay tombstoned for this gateway lifetime so a request that
    * read the old row before DELETE committed cannot start it afterwards. */
   #deletions = new Map<string, DeletionState>();
@@ -581,6 +586,7 @@ export class LiveSessions {
       ...(usage ? { usage } : {}),
       ...(live.thinking ? { thinking: live.thinking } : {}),
       ...(live.fast === undefined ? {} : { fast: live.fast }),
+      ...(live.autonomous === undefined ? {} : { autonomous: live.autonomous }),
       queue: this.#queueSnapshot(live),
       questions: [...live.questions.values(), ...this.#huiQuestions(id)],
       subagents: [...this.#subagentSnapshot(id)],
@@ -655,6 +661,11 @@ export class LiveSessions {
 
   watchRunEnds(listener: (end: RunEnd) => void): void {
     this.#runEnds.add(listener);
+  }
+
+  /** Told after a session's Autonomous mode changed and was saved. */
+  watchAutonomy(listener: (id: string, on: boolean) => void): void {
+    this.#autonomy.add(listener);
   }
 
   /** Listeners are held even before the runtime exists, so a stream opened
@@ -1261,6 +1272,10 @@ export class LiveSessions {
     return this.#live.get(id)?.thinking;
   }
 
+  isAutonomous(id: string): boolean {
+    return this.#live.get(id)?.autonomous === true;
+  }
+
   async setThinking(id: string, level: string): Promise<void> {
     const live = this.#ready(id);
     if (!live.runtime?.setThinking) throw new Error(`${live.record.tool} cannot change thinking in this build.`);
@@ -1308,6 +1323,25 @@ export class LiveSessions {
       this.#broadcast(live, { kind: "fast", fast: live.fast === true });
     }
     return live.fast === true;
+  }
+
+  async setAutonomous(id: string, on: boolean): Promise<boolean> {
+    const live = this.#ready(id);
+    if (live.record.bot || live.record.subagent) throw new Error("A bot's chat or a subagent has no Autonomous mode.");
+    if (!live.runtime?.setAutonomous) throw new Error(`${live.record.tool} cannot run autonomously in this build.`);
+    const previous = live.runtime.currentAutonomous?.() === true;
+    await live.runtime.setAutonomous(on);
+    try {
+      await this.#save(live, { autonomous: on || undefined });
+    } catch (persistenceError) {
+      await live.runtime.setAutonomous(previous).catch(() => undefined);
+      throw new SessionRegistryError("HUI could not save the mode, so the session keeps its previous one.", { cause: persistenceError });
+    } finally {
+      live.autonomous = live.runtime.currentAutonomous?.() ?? live.autonomous;
+      this.#broadcast(live, { kind: "autonomous", autonomous: live.autonomous === true });
+    }
+    if (previous !== (live.autonomous === true)) for (const listener of this.#autonomy) listener(id, live.autonomous === true);
+    return live.autonomous === true;
   }
 
   async respondQuestion(id: string, questionId: string, response: RuntimeQuestionResponse): Promise<void> {
@@ -1496,6 +1530,7 @@ export class LiveSessions {
         huiSessionId: live.record.id,
       });
       if (live.record.fast) await runtime.setFast?.(true);
+      if (live.record.autonomous && !live.record.bot && !live.record.subagent) await runtime.setAutonomous?.(true);
       // Deletion or gateway shutdown can happen while a runtime takes several
       // seconds to boot. Never attach or persist a process nobody owns.
       if (live.closed || this.#live.get(live.record.id) !== live) {
@@ -1509,6 +1544,7 @@ export class LiveSessions {
       live.thinking = runtime.currentThinking?.();
       // Only a runtime that can change speed reports one.
       live.fast = runtime.setFast ? runtime.currentFast?.() === true : undefined;
+      live.autonomous = runtime.setAutonomous && !live.record.bot && !live.record.subagent ? runtime.currentAutonomous?.() === true : undefined;
       live.queue = runtime.pendingQueue?.() ?? { steering: [], followUp: [] };
       live.questions = new Map((runtime.pendingQuestions?.() ?? []).map((question) => [question.id, question]));
       live.unsubscribe = runtime.subscribe((event) => this.#onEvent(live, runtime!, event));
@@ -1779,9 +1815,10 @@ export class LiveSessions {
   }
 
   /** An active goal whose turn ended cleanly gets the next one from the queue. A stop, a failed run, an open
-   * question or input already waiting ends the pursuit here: the operator's next message picks it up. */
+   * question or input already waiting ends the pursuit here: the operator's next message picks it up. An Autonomous
+   * session's chief takes its next step instead. */
   async #queueGoalContinuation(live: Live): Promise<void> {
-    if (live.runFailed || live.stopped || live.questions.size || live.followUps.length || live.record.worker) return;
+    if (live.runFailed || live.stopped || live.questions.size || live.followUps.length || live.record.worker || live.autonomous) return;
     const text = await this.#goalContinuation(live.record.id).catch(() => undefined);
     if (!text || live.closed) return;
     live.followUps.push({ id: crypto.randomUUID(), text, mode: "followUp" });

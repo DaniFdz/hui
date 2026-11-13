@@ -2351,6 +2351,84 @@ test("fast mode is saved with the session and turned back on when it boots again
   restarted.disposeAll();
 });
 
+test("Autonomous mode is saved with the session, turned back on when it boots again, and never offered in a bot's chat", async () => {
+  class AutonomousSession extends FakeSession {
+    autonomous = false;
+    currentAutonomous(): boolean { return this.autonomous; }
+    async setAutonomous(on: boolean): Promise<void> { this.autonomous = on; }
+  }
+  const started: AutonomousSession[] = [];
+  const runtime: AgentRuntime = { id: "pi", start: async () => { const session = new AutonomousSession(); started.push(session); return session; } };
+  const manager = new LiveSessions(runtime);
+  const changes: Array<[string, boolean]> = [];
+  manager.watchAutonomy((id, on) => changes.push([id, on]));
+  manager.ensure(recordFor("autonomous"));
+  await waitForBoot(manager, "autonomous");
+  const messages: SessionStreamMessage[] = [];
+  manager.subscribe("autonomous", (message) => messages.push(message));
+  assert.equal(manager.snapshot("autonomous").autonomous, false);
+
+  assert.equal(await manager.setAutonomous("autonomous", true), true);
+  assert.equal(manager.isAutonomous("autonomous"), true);
+  assert.equal(await manager.setAutonomous("autonomous", true), true);
+  assert.deepEqual(changes, [["autonomous", true]], "only a change is told");
+  assert.equal((await stored("autonomous"))?.autonomous, true);
+  assert.ok(messages.some((message) => message.kind === "autonomous" && message.autonomous));
+  manager.disposeAll();
+
+  const restarted = new LiveSessions(runtime);
+  restarted.ensure((await stored("autonomous"))!);
+  await waitForBoot(restarted, "autonomous");
+  assert.equal(started[1]?.autonomous, true);
+  assert.equal(restarted.snapshot("autonomous").autonomous, true);
+  await restarted.setAutonomous("autonomous", false);
+  assert.equal((await stored("autonomous"))?.autonomous, undefined);
+
+  restarted.ensure({ ...recordFor("chief-chat"), bot: "chief" });
+  await waitForBoot(restarted, "chief-chat");
+  assert.equal(restarted.snapshot("chief-chat").autonomous, undefined);
+  await assert.rejects(restarted.setAutonomous("chief-chat", true), /A bot's chat or a subagent has no Autonomous mode/u);
+  const now = new Date().toISOString();
+  restarted.ensure({ ...recordFor("worker-child"), parentId: "autonomous", subagent: { taskId: "task", task: "Check it", status: "running", startedAt: now, updatedAt: now } });
+  await waitForBoot(restarted, "worker-child");
+  assert.equal(restarted.snapshot("worker-child").autonomous, undefined);
+  await assert.rejects(restarted.setAutonomous("worker-child", true), /A bot's chat or a subagent has no Autonomous mode/u);
+  restarted.disposeAll();
+});
+
+test("an Autonomous session's goal waits for its chief instead of continuing by itself", async () => {
+  class AutonomousSession extends FakeSession {
+    autonomous = false;
+    currentAutonomous(): boolean { return this.autonomous; }
+    async setAutonomous(on: boolean): Promise<void> { this.autonomous = on; }
+  }
+  const started: AutonomousSession[] = [];
+  const runtime: AgentRuntime = { id: "pi", start: async () => { const session = new AutonomousSession(); started.push(session); return session; } };
+  const manager = new LiveSessions(runtime);
+  let claims = 0;
+  manager.setGoalContinuation(async () => (claims += 1) === 1 ? "Continue the goal." : undefined);
+  const ends: import("./sessions/live-sessions.ts").RunEnd[] = [];
+  manager.watchRunEnds((end) => ends.push(end));
+  const id = `autonomous-goal-${crypto.randomUUID()}`;
+  manager.ensure(recordFor(id));
+  await waitForBoot(manager, id);
+  const session = started[0]!;
+
+  await manager.prompt(id, "first");
+  session.emit({ type: "settled" });
+  await waitFor("the goal to continue by itself", () => session.prompts.at(-1) === "Continue the goal.");
+  session.emit({ type: "settled" });
+  await waitFor("that run to end", () => ends.length === 1);
+
+  await manager.setAutonomous(id, true);
+  await manager.prompt(id, "second");
+  session.emit({ type: "settled" });
+  await waitFor("the autonomous run to end", () => ends.length === 2, { state: () => ends });
+  assert.deepEqual(session.prompts, ["first", "Continue the goal.", "second"]);
+  assert.equal(claims, 2, "the autonomous run never asked for a continuation");
+  manager.disposeAll();
+});
+
 test("queue, thinking and questions share the reconnect snapshot and delegate commands", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

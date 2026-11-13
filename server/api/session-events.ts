@@ -104,6 +104,7 @@ export const SessionSnapshot = Type.Object({
   usage: Type.Optional(RuntimeUsage),
   thinking: Type.Optional(Type.String()),
   fast: Type.Optional(Type.Boolean()),
+  autonomous: Type.Optional(Type.Boolean()),
   queue: RuntimeQueue,
   questions: Type.Immutable(Type.Array(SessionQuestion)),
   subagents: Type.Immutable(Type.Array(SubagentTaskView)),
@@ -152,6 +153,7 @@ export const SessionStreamFrame = Type.Union([
   Type.Object({ event: Type.Literal("model"), data: RuntimeModel }),
   Type.Object({ event: Type.Literal("thinking_level"), data: Type.Object({ level: Type.String() }) }),
   Type.Object({ event: Type.Literal("fast"), data: Type.Object({ fast: Type.Boolean() }) }),
+  Type.Object({ event: Type.Literal("autonomous"), data: Type.Object({ autonomous: Type.Boolean() }) }),
   Type.Object({ event: Type.Literal("heartbeat"), data: Type.Object({}) }),
   Type.Object({ event: Type.Literal("closed"), data: Type.Object({}) }),
 ], { $id: "SessionStreamFrame" });

@@ -43,7 +43,7 @@ Pass one route name to `sessions_spawn`, never a route and a model together.
 | --- | --- |
 | `planner` | Decide a shape or a sequence. Read only. |
 | `explorer` | Answer how or where something works. Read only. |
-| `worker` | Implement one small change in its worktree and return it; no push or PR. |
+| `worker` | Implement one small change, in your checkout unless it needs a branch of its own, and return it; no push or PR. |
 | `reviewer` | Read a diff and report defects. Read only. |
 | `verifier` | Run the checks independently. Read only. |
 

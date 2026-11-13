@@ -176,8 +176,12 @@ async function createSession(
     throw new Error("Fast mode must be true or false.");
   }
   const fast = body["fast"] === true;
+  if (body["autonomous"] !== undefined && typeof body["autonomous"] !== "boolean") {
+    throw new Error("Autonomous mode must be true or false.");
+  }
   // A worker runs the same runtime a local session would.
   const runtimeTool = tool || defaultSessionTool();
+  const autonomous = body["autonomous"] === true && runtimeTool === "durable";
   const settings = await readHuiSettings();
   // Sessions started without a choice (suggestions, backlog items) use the
   // primary route rather than whatever PI currently treats as its default.
@@ -197,6 +201,7 @@ async function createSession(
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
     ...(fast ? { fast } : {}),
+    ...(autonomous ? { autonomous } : {}),
     ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
     ...(seed.bot ? { bot: seed.bot.id, piSessionFile: seed.bot.piSessionFile } : {}),
     ...(seed.piSessionFile ? { piSessionFile: seed.piSessionFile } : {}),

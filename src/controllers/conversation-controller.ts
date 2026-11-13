@@ -1,13 +1,13 @@
 /**
  * `ConversationController` owns the open conversation outside `hui-app.ts`: the session on screen, its transcript,
  * subagents, opening and connection state, with the request that opens it and the event stream that keeps it current;
- * the models it can switch to and the one it runs on, its context usage, thinking level and fast mode, with the
+ * the models it can switch to and the one it runs on, its context usage, thinking level, fast and Autonomous modes, with the
  * requests that change them and the once-per-selection model list request; the pending question with the focus it
  * returns to; the live compaction; and the copied-message mark. The shell reads its props and receives the stream's
  * frames that belong to the composer, the backlog and the sidebar.
  */
 import type { LitElement, ReactiveController, ReactiveControllerHost } from "lit";
-import { loadModels, openSession, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
+import { loadModels, openSession, setSessionAutonomous, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
 import { loadSessionModelMetric } from "../api/model-metrics.ts";
 import type { ModelMetric } from "../api/schema/model-metrics.ts";
 import { isGatewayUnavailable } from "../api/request.ts";
@@ -60,6 +60,8 @@ export class ConversationController implements ReactiveController {
   thinking = "medium";
   /** Fast mode; undefined while the runtime cannot change speed. */
   fast: boolean | undefined;
+  /** Autonomous mode; undefined while the session cannot carry it. */
+  autonomous: boolean | undefined;
   question: RuntimeQuestion | undefined;
   compaction: RuntimeCompaction | undefined;
   readonly #host: ConversationHost;
@@ -298,6 +300,12 @@ export class ConversationController implements ReactiveController {
           this.#host.requestUpdate();
         }
       },
+      onAutonomous: (autonomous) => {
+        if (current()) {
+          this.autonomous = autonomous;
+          this.#host.requestUpdate();
+        }
+      },
       onConnection: (state, detail) => {
         if (!current()) {
           return;
@@ -491,6 +499,7 @@ export class ConversationController implements ReactiveController {
     this.compaction = snapshot.compaction;
     if (snapshot.thinking) this.thinking = snapshot.thinking;
     this.fast = snapshot.fast;
+    this.autonomous = snapshot.autonomous;
     this.#host.requestUpdate();
   }
 
@@ -618,10 +627,28 @@ export class ConversationController implements ReactiveController {
       });
   };
 
-  props(): Pick<HomeProps, "thinking" | "fast" | "models" | "currentModel" | "usage" | "modelMetric" | "onSelectModel" | "onSelectThinking" | "onSelectFast"> {
+  #selectAutonomous = (autonomous: boolean) => {
+    const session = this.selected;
+    if (!session || this.streaming || this.connection !== "live") return;
+    void setSessionAutonomous(session.id, autonomous)
+      .then((authoritative) => {
+        if (isSelectedSession(session.id, this.selected?.id)) {
+          this.autonomous = authoritative;
+          this.#host.requestUpdate();
+        }
+      })
+      .catch((error: unknown) => {
+        if (!isSelectedSession(session.id, this.selected?.id)) return;
+        // The gateway broadcasts the mode the session kept.
+        this.#deps.showError(error instanceof Error ? error.message : "Could not change the mode.");
+      });
+  };
+
+  props(): Pick<HomeProps, "thinking" | "fast" | "autonomous" | "models" | "currentModel" | "usage" | "modelMetric" | "onSelectModel" | "onSelectThinking" | "onSelectFast" | "onSelectAutonomous"> {
     return {
       thinking: this.thinking,
       ...(this.fast === undefined ? {} : { fast: this.fast }),
+      ...(this.autonomous === undefined ? {} : { autonomous: this.autonomous }),
       models: this.models,
       currentModel: this.currentModel,
       usage: this.usage,
@@ -629,6 +656,7 @@ export class ConversationController implements ReactiveController {
       onSelectModel: this.#selectModel,
       onSelectThinking: this.#selectThinking,
       onSelectFast: this.#selectFast,
+      onSelectAutonomous: this.#selectAutonomous,
     };
   }
 }
