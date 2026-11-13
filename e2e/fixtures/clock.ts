@@ -19,16 +19,22 @@
 type PageClock = { now(): number; advance(ms: number): number };
 
 /** Installs the clock in a page (once), and answers the time it starts at. Runs in the page, so it closes over nothing. */
-export const installClock = () => {
+export const installClock = (start?: number) => {
   const page = window as unknown as { huiClock?: PageClock };
-  if (page.huiClock) return page.huiClock.now();
+  if (page.huiClock) {
+    if (start !== undefined) {
+      if (start < page.huiClock.now()) throw new Error("The page clock cannot move backwards");
+      page.huiClock.advance(start - page.huiClock.now());
+    }
+    return page.huiClock.now();
+  }
   const native = {
     setTimeout: window.setTimeout.bind(window),
     clearTimeout: window.clearTimeout.bind(window),
     now: Date.now.bind(Date),
   };
   type Entry = { at: number; every?: number; run: () => void; armed?: number };
-  let time = native.now();
+  let time = start ?? native.now();
   let nextId = 1;
   const entries = new Map<number, Entry>();
   // A timer due at once is a task the app expects on the loop's next turn — a render flush, a boot step — and running

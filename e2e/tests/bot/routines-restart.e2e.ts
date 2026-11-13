@@ -15,24 +15,25 @@ import { test } from "../../fixtures/hui.ts";
 import { hideBotPanel, panelOverview } from "./bot-panel.ts";
 
 type Task = { id: string; name: string; sessionId: string; until?: string; runsLeft?: number; nextRunAt?: string | null };
-type Run = { sessionId: string; taskName: string; status: string };
+type Run = { sessionId: string; taskName: string; status: string; createdAt: string };
 
 const base64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 
 test("a temporary routine keeps its limits and runs at its time across a gateway restart, and its prompt reaches the chat once", { tags: ["BOT-044"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const clock = await hui.automationClock();
   const bot = (await hui.api<{ bot: { id: string; name: string; handle: string; sessionId: string } }>("POST", "/__hui/bots",
     { name: "Clerk", soul: "# Who I am\nA terse fixture bot.\n" })).bot;
   const tasks = async () => (await hui.api<{ tasks: Task[] }>("GET", "/__hui/automation")).tasks.filter((task) => task.sessionId === bot.sessionId);
   const runs = async () => (await hui.api<{ runs: Run[] }>("GET", "/__hui/automation")).runs.filter((run) => run.sessionId === bot.sessionId);
   const transcript = screen.getByTestId("transcript");
-  const due = new Date(Date.now() + 20_000).toISOString();
+  const due = new Date(clock.now + 20_000).toISOString();
 
   // The bot schedules its own temporary routine: two runs at a set time, ending a while after.
   await hui.open(`/bots/${bot.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await screen.getByLabel("Message").fill(`E2E_CALL:${base64({ name: "routines", input: {
     action: "add", name: "Due soon", prompt: "Check the build.", at: due,
-    until: new Date(Date.now() + 600_000).toISOString(), runs: 2,
+    until: new Date(clock.now + 600_000).toISOString(), runs: 2,
   } })} check the build once, at a set time`);
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText(/^tool answered: Added the routine "Due soon"/u)).toBeVisible();
@@ -40,6 +41,7 @@ test("a temporary routine keeps its limits and runs at its time across a gateway
     .toEqual([{ name: "Due soon", runsLeft: 2 }]);
   const scheduled = (await tasks())[0]!;
   expect(Date.parse(scheduled.until!)).toBeGreaterThan(Date.parse(due));
+  expect(scheduled.nextRunAt).toBe(due);
 
   // The gateway restarts before the routine is due.
   await hui.restartGateway();
@@ -59,9 +61,16 @@ test("a temporary routine keeps its limits and runs at its time across a gateway
   await expect(row.getByText(/^until /u)).toBeVisible();
   await expect(row.getByText("2 runs left")).toBeVisible();
 
+  // Inspection and restart take no scheduler time. Its actual timer, not Run now, crosses the deadline.
+  expect((await tasks())[0]).toMatchObject({ runsLeft: 2, until: scheduled.until, nextRunAt: due });
+  await clock.advance(19_999);
+  expect(await runs()).toEqual([]);
+  await clock.advance(1);
+
   // It runs at the time it was given, and its prompt arrives in the chat once.
   await expect.poll(async () => (await runs()).map((run) => `${run.taskName} ${run.status}`), { timeout: 120_000 })
     .toEqual(["Due soon completed"]);
+  expect((await runs())[0]?.createdAt).toBe(due);
   await hui.open(`/bots/${bot.id}`);
   await expect(transcript.getByText("Check the build.")).toHaveCount(1);
   await expect(transcript.getByText("Routine")).toBeVisible();

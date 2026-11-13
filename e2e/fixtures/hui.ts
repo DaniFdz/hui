@@ -18,7 +18,9 @@
  * the web, and on the phone the file the shell wrote into `Downloads`), the other tabs the page asks for (the engine
  * drives one page, so a `window.open` or a `target="_blank"` press is recorded as the address it asked for instead of
  * being followed), a controllable clock a test advances so a timer's deadline can be read on both sides of it
- * (`clock.ts`), the browser's permission for the fake camera and microphone the web target's Chromium carries
+ * (`clock.ts`), an independently controlled gateway automation clock whose state the launcher retains across child
+ * restarts (only its real scheduler's timers move, and Node-side controls stay behind the verification token),
+ * the browser's permission for the fake camera and microphone the web target's Chromium carries
  * (`web-browser.ts`), a native dialog the page asks to confirm, a subagent's conversation opened from the card
  * its parent's chat draws, a tool call held while it runs so its row and the working indicator can be read in flight, and
  * a fixture world started for one test (`world.ts`). The web page never opens Vite's development socket, whose client
@@ -217,6 +219,8 @@ export type Hui = {
   /** Advances the controlled clock by `ms`, running every timer that falls due in order, and answers the time it now
    * reads. Needs `controllableClock()` first. */
   advanceClock(ms: number): Promise<number>;
+  /** Freezes only this fixture gateway's automation scheduler; its clock survives gateway-child restarts. */
+  automationClock(): Promise<{ now: number; advance(ms: number): Promise<number> }>;
   /**
    * Grants the open page the microphone and the camera, as an operator allowing them in the browser's permission prompt.
    * The web target's Chromium carries a fake camera and microphone (`web-browser.ts`), so `getUserMedia` then answers with
@@ -257,7 +261,7 @@ export type Hui = {
 };
 
 /** The steps whose gesture or reading differs per platform; each target fills its own table of them. */
-type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "createChief" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "holdTool" | "openSubagent" | "world" | "gatewayStub">;
+type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "createChief" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "holdTool" | "openSubagent" | "world" | "gatewayStub" | "automationClock">;
 
 /** A tap at the middle of where a target is at the moment of the press. */
 const tapAt = async (target: Locator) => {
@@ -549,6 +553,15 @@ function huiTest(offline: boolean) {
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
     // The shared receipt is safe to print, so the harness token stays in the private one it names.
     const token = (async () => (JSON.parse(await readFile(receipt.receipt, "utf8")) as { token: string }).token)();
+    let automationFrozen = false;
+    const automationClockControl = async (action: "freeze" | "advance" | "resume", ms?: number): Promise<number | null> => {
+      const response = await fetch(`${receipt.url}/__verification/automation-clock`, {
+        method: "POST", headers: { "x-hui-verification": await token, "content-type": "application/json" },
+        body: JSON.stringify({ action, ms }),
+      });
+      if (!response.ok) throw new Error(`automation clock ${action} answered ${response.status}: ${await response.text()}`);
+      return (await response.json() as { now: number | null }).now;
+    };
     const network = async (mode: "online" | "offline" | "silent") => {
       const response = await fetch(`${receipt.url}/__verification/network`, {
         method: "POST",
@@ -1258,6 +1271,28 @@ function huiTest(offline: boolean) {
     try {
     await use({
       ...steps,
+      automationClock: async () => {
+        const alignPage = async (now: number) => {
+          await browser().addInitScript(installClock, now);
+          await browser().evaluate(installClock, now);
+        };
+        // This control belongs only to the isolated fixture, never an unauthenticated browser or product API.
+        const denied = await fetch(`${receipt.url}/__verification/automation-clock`, {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "advance", ms: 0 }),
+        });
+        expect(denied.status).toBe(403);
+        const now = await automationClockControl("freeze");
+        if (now === null) throw new Error("The automation clock did not freeze");
+        automationFrozen = true;
+        await alignPage(now);
+        return { now, advance: async (ms) => {
+          const next = await automationClockControl("advance", ms);
+          if (next === null) throw new Error("The automation clock is not frozen");
+          await alignPage(next);
+          return next;
+        } };
+      },
       workspace: receipt.workspace,
       configDir: receipt.huiConfig,
       gateway: receipt.url,
@@ -1356,8 +1391,12 @@ function huiTest(offline: boolean) {
     // A test that failed while offline must not leave the fixture unreachable.
     await network("online");
     await control("POST", "/control/release-replay");
-    for (const id of await taskIds()) {
-      if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
+    try {
+      for (const id of await taskIds()) {
+        if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
+      }
+    } finally {
+      if (automationFrozen) await automationClockControl("resume");
     }
     for (const id of await botIds()) {
       if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);

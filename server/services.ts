@@ -52,6 +52,7 @@ import { WorktreeService } from "./git/worktree-inventory.ts";
 import { liveSessions } from "./sessions/live-sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { AutomationService, automationStoreFailure, executeAutomationTask } from "./automation.ts";
+import { createAutomationClockBinding } from "./automation-clock.ts";
 import { BotRoutines } from "./bots/routines.ts";
 import { ROUTINES_TOOL } from "./bots/durable-routines.ts";
 import { resolveWorkingDirectory } from "./git/working-directories.ts";
@@ -896,7 +897,8 @@ export const sessionActionRoutes = createSessionActionRoutes({
   questionnaires,
 });
 
-export const automation = new AutomationService(AUTOMATION_FILE, (task, signal, context) => executeAutomationTask(task, signal, context, { liveSessions, bots }));
+export const automationClockBinding = createAutomationClockBinding();
+export const automation = new AutomationService(AUTOMATION_FILE, (task, signal, context) => executeAutomationTask(task, signal, context, { liveSessions, bots }), automationClockBinding.clock);
 export const automationRoutes = createAutomationRoutes({ automation });
 /** A bot's `routines` tool: its own chat's Automation tasks, behind its guards. */
 const botRoutines = new BotRoutines({

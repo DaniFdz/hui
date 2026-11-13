@@ -413,6 +413,8 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
     if (process.argv.includes("--usage-fixture")) {
       execFileSync(process.execPath, [join(repo, "e2e", "fixtures", "usage-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
     }
+    // The launcher, not the disposable gateway child, owns a frozen automation clock across restarts.
+    let automationNow = null;
     const serve = async () => {
       const server = start("visual-verification-server.mjs", {
         ...serverEnv,
@@ -423,7 +425,14 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
         HUI_VERIFICATION_PORT: String(port ?? 0),
       }, true);
       receipt.serverPid = server.pid;
-      server.on("message", (message) => { if (message.type === "shutdown") void stop(); });
+      server.on("message", (message) => {
+        if (message.type === "shutdown") void stop();
+        if (message.type === "automation-clock-ready") server.send({ type: "automation-clock-init", now: automationNow });
+        if (message.type === "automation-clock-state") {
+          automationNow = message.now;
+          server.send({ type: "automation-clock-ack", id: message.id });
+        }
+      });
       receipt.url = await ready(server, (done) => {
         const onMessage = (message) => { if (message.type === "ready") done(message.url); };
         server.on("message", onMessage);
