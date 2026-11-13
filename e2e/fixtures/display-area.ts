@@ -149,6 +149,8 @@ export function androidDisplay(run = adb, targets = nativeTargets) {
     },
     prepare() {
       requireEmulator();
+      // parseDisplay's safe-area oracle supports portrait top/bottom bars only. Refuse rather than rotate a caller.
+      if (rotationOf(displayState()) !== 0) throw new Error("native safe display measurement requires portrait rotation; prepare preserves the selected orientation");
       if (!baseline) {
         rememberRotation();
         refreshConfiguration(0);

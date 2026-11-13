@@ -102,6 +102,26 @@ test("ordinary portrait setup does not round trip even when the display is alrea
   } finally { vi.unstubAllEnvs(); }
 });
 
+test("safe-display preparation refuses selected landscape without rotating it or capturing a portrait baseline", () => {
+  vi.stubEnv("ANDROID_SERIAL", "emulator-5554");
+  try {
+    for (const prepared of [false, true]) {
+      const native = emulator();
+      const display = androidDisplay(native.run);
+      if (prepared) display.prepare();
+      display.rotate("landscape");
+      const before = native.calls.length;
+      assert.throws(() => display.prepare(), /requires portrait rotation/u);
+      assert.deepEqual(native.calls.slice(before), ["shell dumpsys window displays"], "refusal only observes rotation");
+      assert.match(native.run("shell", "dumpsys", "window", "displays"), /mRotation=1\b/u);
+      display.restore();
+      assert.deepEqual(native.calls.slice(-2), ["shell settings put system accelerometer_rotation 1", "shell settings put system user_rotation 0"]);
+      assert.equal(native.calls.includes("shell dumpsys activity top"), prepared,
+        "refusal preserves an existing portrait restoration baseline and never supplies a new one");
+    }
+  } finally { vi.unstubAllEnvs(); }
+});
+
 test("current viewport observes the attached IME frame without changing native state or requiring portrait CSS", async () => {
   const calls: string[] = [];
   let height = 2274;
