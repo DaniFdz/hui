@@ -1331,6 +1331,16 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     this.#host.setFast(this.#huiSessionId, on);
   }
 
+  currentAutonomous(): boolean {
+    return this.#huiSessionId !== undefined && this.#host.isAutonomous(this.#huiSessionId);
+  }
+
+  /** Kept per HUI session by the host, whose prompt carries the mode for that session. */
+  async setAutonomous(on: boolean): Promise<void> {
+    if (this.#huiSessionId === undefined) throw new Error("Autonomous mode needs a HUI session.");
+    this.#host.setAutonomous(this.#huiSessionId, on);
+  }
+
   pendingQueue(): RuntimeQueue {
     return { steering: [...this.#queue.steering], followUp: [...this.#queue.followUp] };
   }

@@ -1916,7 +1916,7 @@ export class HuiApp extends HuiElement {
     });
   };
 
-  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => {
+  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; autonomous?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => {
     if (input.prompt && this.handleUpdateCommand(input.prompt)) return;
     if (this.launching) return;
     this.launching = true;

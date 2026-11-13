@@ -51,6 +51,9 @@ export function watchSessionEvents(
       case "fast":
         send("fast", { fast: message.fast });
         break;
+      case "autonomous":
+        send("autonomous", { autonomous: message.autonomous });
+        break;
       case "closed":
         send("closed", {});
         break;

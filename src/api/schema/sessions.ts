@@ -17,6 +17,8 @@ export type QuestionnaireQuestion = { "header": string; "question": string; "mul
 
 export type QuestionnaireResult = { "cancelled": boolean; "answers": Array<QuestionnaireAnswer>; "timedOut"?: true; "timeoutMinutes"?: number; };
 
+export type SessionAutonomousResponse = { "autonomous": boolean; };
+
 export type SessionConnectResponse = { "url": string; };
 
 export type SessionError = { "error": string; };
