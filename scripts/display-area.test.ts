@@ -44,6 +44,74 @@ test("native origin is taken from the one app WebView, not a calculated safe ins
   assert.throws(() => parseWebView(view("[0,220][1080,220]")), /empty/u);
 });
 
+const CUTOUT = "com.android.internal.emulation.pixel_3_xl";
+const emulator = () => {
+  let rotation = 0;
+  let top = 171; // Resources were restored, but the previous run left the effective SystemUI frame stale.
+  let enabled = false;
+  const calls: string[] = [];
+  const run = (...args: string[]) => {
+    const command = args.join(" ");
+    calls.push(command);
+    if (command === "shell dumpsys window displays") return `mRotation=${rotation} mDeferredRotationPauseCount=0\n${state(enabled ? 171 : 0, top)}`;
+    if (command === "shell dumpsys activity top") return `com.getcapacitor.CapacitorWebView{abc V. 0,${top}-1080,2337 #id}`;
+    if (command === "shell settings get system accelerometer_rotation") return "1";
+    if (command === "shell settings get system user_rotation") return "0";
+    if (command.startsWith("shell settings put system user_rotation ")) {
+      rotation = Number(args.at(-1));
+      top = enabled ? 171 : 63;
+    }
+    if (command === "shell cmd overlay list") return `[${enabled ? "x" : " "}] ${CUTOUT}`;
+    if (command === `shell cmd overlay enable ${CUTOUT}`) { enabled = true; top = 171; }
+    if (command === `shell cmd overlay disable ${CUTOUT}`) enabled = false; // Deliberately retain the stale native frame.
+    if (command === "shell cat /sdcard/hui-safe-display.xml") return view(`[0,${top}][1080,2337]`);
+    return "";
+  };
+  return { run, calls, top: () => top, enabled: () => enabled };
+};
+
+test("a stale native baseline and cutout cleanup both need a real configuration round trip", () => {
+  vi.stubEnv("ANDROID_SERIAL", "emulator-5554");
+  try {
+    const native = emulator();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const display = androidDisplay(native.run);
+      display.rotate("portrait");
+      display.prepare();
+      assert.equal(native.top(), 63);
+      assert.equal(display.cutout(), true);
+      assert.equal(native.top(), 171);
+      display.restore();
+      assert.equal(native.enabled(), false);
+      assert.equal(native.top(), 63);
+    }
+    const disabled = native.calls.indexOf(`shell cmd overlay disable ${CUTOUT}`);
+    const rebuilt = native.calls.indexOf("shell settings put system user_rotation 1", disabled);
+    const restored = native.calls.indexOf("shell settings put system accelerometer_rotation 1", rebuilt);
+    assert.ok(disabled < rebuilt && rebuilt < restored, "resources rebuild before the original rotation flags are restored");
+    assert.ok(native.calls.includes("shell dumpsys activity top"), "cleanup checks the effective native WebView, not only flags");
+  } finally { vi.unstubAllEnvs(); }
+});
+
+test("a failed configuration refresh still restores both original rotation settings and every overlay", () => {
+  vi.stubEnv("ANDROID_SERIAL", "emulator-5554");
+  try {
+    const native = emulator();
+    let fail = false;
+    const display = androidDisplay((...args) => {
+      if (fail && args.join(" ") === "shell settings put system user_rotation 1") throw new Error("configuration failed");
+      return native.run(...args);
+    });
+    display.rotate("portrait");
+    display.prepare();
+    display.cutout();
+    fail = true;
+    assert.throws(() => display.restore(), /configuration failed/u);
+    assert.equal(native.enabled(), false);
+    assert.deepEqual(native.calls.slice(-2), ["shell settings put system accelerometer_rotation 1", "shell settings put system user_rotation 0"]);
+  } finally { vi.unstubAllEnvs(); }
+});
+
 test("display injection cannot alter a physical handset's settings", () => {
   vi.stubEnv("ANDROID_SERIAL", "physical-handset");
   try {
