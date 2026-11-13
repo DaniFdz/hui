@@ -519,7 +519,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:session", "nav:home"],
     journeys: ["phone", "shell-navigation"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-049",

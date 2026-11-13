@@ -284,8 +284,8 @@ const cases: UseCase[] = [
     spec: SUBAGENTS,
     surfaces: [],
     journeys: ["subagent-tree-collapse"],
-    web: "backlog",
-    phone: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "AGENT-031",

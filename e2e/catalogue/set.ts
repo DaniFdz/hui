@@ -94,7 +94,7 @@ const cases: UseCase[] = [
     surfaces: ["appearance:fontTerminal"],
     journeys: ["terminal-font"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-096",
@@ -287,7 +287,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/github", "route:POST /__hui/github/login", "route:DELETE /__hui/github/login", "settings-page:integrations"],
     journeys: ["github-integration"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-026",
@@ -898,7 +898,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:connection", "setting:name", "page:about", "route:GET /__hui/health", "route:GET /__hui/settings", "route:PUT /__hui/settings"],
     journeys: ["gateway-settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-093",

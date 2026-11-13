@@ -722,7 +722,7 @@ const cases: UseCase[] = [
     surfaces: ["row:messages"],
     journeys: ["chat-senders"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-057",
