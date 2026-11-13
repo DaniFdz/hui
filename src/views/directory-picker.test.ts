@@ -2,7 +2,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test, vi } from "vitest";
+import WaPopup from "@awesome.me/webawesome/dist/components/popup/popup.js";
 import { renderDirectoryPicker } from "./directory-picker.ts";
+
+vi.mock("@awesome.me/webawesome/dist/components/popup/popup.js", () => ({ default: class {} }));
 
 const props = { id: "folder", label: "Folder", value: "/repo", suggestions: ["/repo"], inputClass: "field", onInput: vi.fn() };
 
@@ -13,6 +16,29 @@ test("directory completion stays outside the centered dialog's flow", () => {
   const css = readFileSync(new URL("../styles/openclaw-launch.css", import.meta.url), "utf8");
   assert.match(css, /\.new-session-page__directory-menu \{[^}]*position: static;/);
   assert.doesNotMatch(css, /\.group-action-dialog \.new-session-page__directory-menu\s*\{/);
+});
+
+test("a newly inserted popup locates its input after Lit attaches it, including suggestions arriving after typing", async () => {
+  const template = renderDirectoryPicker(props);
+  const suggestions = template.values.at(-1) as { values: { values: [(element: unknown) => void] }[] };
+  const configure = suggestions.values[0]!.values[0];
+  const popup = new WaPopup();
+  let parent: unknown = null;
+  let complete!: (value: boolean) => void;
+  Object.defineProperties(popup, {
+    updateComplete: { value: new Promise<boolean>((resolve) => { complete = resolve; }) },
+    parentElement: { get: () => parent },
+    isConnected: { get: () => parent !== null },
+  });
+  configure(popup);
+  const input = { getAttribute: () => "true" };
+  parent = { querySelector: () => input };
+  complete(true);
+  await Promise.resolve();
+  assert.equal(popup.anchor, input);
+  assert.equal(popup.active, true);
+  assert.equal(popup.sync, "width");
+  assert.equal(popup.boundary, "viewport");
 });
 
 test("leaving completion closes its popup without changing a valid typed folder; option focus keeps it open", () => {

@@ -15,11 +15,15 @@ function setDirectoryExpanded(input: HTMLInputElement, expanded: boolean) {
 
 function configureDirectoryPopup(element: Element | undefined) {
   if (!(element instanceof WaPopup)) return;
-  const input = element.parentElement?.querySelector("input");
-  if (!input) return;
-  configureAnchoredPopup(element, input, "bottom");
-  element.sync = "width";
-  element.active = input.getAttribute("aria-expanded") === "true";
+  // Lit's ref runs before a newly created popup is inserted beside its input.
+  void element.updateComplete.then(() => {
+    if (!element.isConnected) return;
+    const input = element.parentElement?.querySelector("input");
+    if (!input) return;
+    configureAnchoredPopup(element, input, "bottom");
+    element.sync = "width";
+    element.active = input.getAttribute("aria-expanded") === "true";
+  });
 }
 
 function openDirectorySuggestions(event: FocusEvent | InputEvent, onInput: (value: string) => void) {
