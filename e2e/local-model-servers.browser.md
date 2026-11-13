@@ -2,9 +2,9 @@
 
 The shared test `e2e/tests/set/local-model-server.e2e.ts` proves SET-088 in the
 default web world. It adds a custom PI provider whose base URL points at a test
-HTTP server that answers 503 until released, and drives Settings → Models → Local
-model servers: the provider starts Offline, a start command that waits for a
-release file is saved, Start shows Starting…, a chat on that model shows
+HTTP server that answers 503 until released, and drives Settings → Models → Model providers → the folded Local
+model servers group: the provider starts Offline, a start command that waits for a
+release file is saved in its dialog, Start shows Starting…, a chat on that model shows
 **Waiting for Local fixture to start…**, and once the file exists the health check
 answers and the turn completes with **Fixture response.**. It then checks Online
 in Settings and the `GET /__hui/local-providers` snapshot, and exercises the
@@ -23,6 +23,6 @@ Remove command confirmation.
 ## Manual reproduction
 
 Seed a disposable PI agent `models.json` with a custom provider whose `baseUrl`
-is a local HTTP server that is off, add its start command and health URL in
-Settings → Models, press Start, and open a chat on one of its models while the
+is a local HTTP server that is off, add its start command and health URL in the provider's dialog under
+Settings → Models → Model providers → Local model servers, press Start, and open a chat on one of its models while the
 start runs. Keep the command non-interactive (SSH keys, not a password prompt).

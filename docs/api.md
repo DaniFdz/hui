@@ -596,9 +596,11 @@ Account-specific quota with the same response shape below.
 ### Local model servers
 
 A custom provider in PI's `models.json` may live on a machine that is asleep or
-whose server is stopped. Settings → Models → Local model servers lists every
-such provider HUI does not manage (a HUI connection with the same id wins) and
-shows **Online**, **Offline**, **Starting…**, **Failed** or **Unknown**.
+whose server is stopped. Under Settings → Models → Model providers, the folded
+**Local model servers** group lists every such provider HUI does not manage (a
+HUI connection with the same id wins) as a compact row and shows **Online**,
+**Offline**, **Starting…**, **Failed** or **Unknown**. **Set up start command**
+or **Edit command** opens a dialog for the command, health URL and timeout.
 
 Each provider can save one start command, an optional health URL and a ready
 timeout. The command is HUI-owned state in `providers/local-providers.json`

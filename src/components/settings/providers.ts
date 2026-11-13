@@ -1,7 +1,8 @@
 /**
  * Settings → Models → Providers: the model providers the gateway can sign in to, their login prompts, the models
  * chosen per provider, account priority and quotas, all through `/__hui/providers`. A sign-in or sign-out is
- * announced with a `providers-changed` event so sections that depend on a login can refresh.
+ * announced with a `providers-changed` event so sections that depend on a login can refresh. The folded local
+ * model servers group shares this section, so the Models page has one provider area.
  */
 import { LitElement, html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
@@ -37,7 +38,7 @@ export class HuiProviderSettings extends LitElement {
   override createRenderRoot() { return this; }
   override connectedCallback() { super.connectedCallback(); void this.#refresh(); }
   override disconnectedCallback() { super.disconnectedCallback(); this.#endDrag(false); clearTimeout(this.#poll); this.#generation++; }
-  #dialog() { return this.querySelector<HTMLDialogElement>(".hui-provider-dialog"); }
+  #dialog() { return this.querySelector<HTMLDialogElement>(".hui-provider-dialog:not(.hui-local-provider-dialog)"); }
   override updated() {
     const dialog = this.#dialog();
     // Step changes replace the focused button. Keep keyboard input (including
@@ -361,8 +362,7 @@ export class HuiProviderSettings extends LitElement {
   }
   override render() {
     const providers = this.#snapshot?.providers.filter((provider) => provider.configured) ?? [];
-    return html`<section class="settings-section hui-providers">
-      <div class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Model providers</h2><p class="settings-section__desc">Connect an account, check its limits and choose your models.</p></div><button class="btn primary" ?disabled=${this.#busy || !this.#snapshot} @click=${() => this.#open()}>Add provider</button></div>
+    return html`<div class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Model providers</h2><p class="settings-section__desc">Connect an account and choose models, or start a custom local server when you need its models.</p></div><button class="btn primary" ?disabled=${this.#busy || !this.#snapshot} @click=${() => this.#open()}>Add provider</button></div>
       ${this.#error && !this.#dialog()?.open ? html`<p role="alert" class="hui-provider-error">${this.#error}</p><button class="btn" @click=${() => this.#refresh()}>Retry loading providers</button>` : nothing}
       ${this.#notice ? html`<p role="status" class="hui-provider-notice">${this.#notice}</p>` : nothing}
       <span class="hui-account-drag-status" role="status">${this.#dragNotice}</span>
@@ -371,8 +371,7 @@ export class HuiProviderSettings extends LitElement {
         <summary>${`Provider configuration · ${providers.length} provider${providers.length === 1 ? "" : "s"}`}</summary>
         <div class="hui-provider-cards">${repeat(providers, (provider) => provider.id, (provider) => this.#provider(provider))}</div>
       </details>
-      ${this.#modal()}
-    </section>`;
+      ${this.#modal()}`;
   }
 }
 if (typeof customElements !== "undefined" && !customElements.get("hui-provider-settings")) customElements.define("hui-provider-settings", HuiProviderSettings);

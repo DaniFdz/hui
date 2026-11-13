@@ -814,8 +814,9 @@ normal sessions, **fallback** retries a primary failure only when no useful outp
 or tool activity has occurred, then returns the session to its own model, and **utility** runs cheap, fast, tool-free calls
 for concise (3–6 word, at most 60 character) new-session names in the prompt's language, generated worktree branch names and `/btw`. These settings never rewrite PI files.
 **Local model servers.** Custom PI providers may live on a machine that is off.
-Settings → Models → Local model servers lists each custom provider (a HUI-managed
-connection with the same id wins) with its reachability and saves one operator
+Settings → Models → Model providers contains a folded **Local model servers**
+group; opening it lists each custom provider (a HUI-managed connection with the
+same id wins) as a compact row with its reachability. Each row saves one operator
 start command, an optional health URL and a ready timeout (default three
 minutes) in HUI's `providers/local-providers.json`. Start is always manual and
 runs the command once as the gateway's user with stdin closed; HUI never starts

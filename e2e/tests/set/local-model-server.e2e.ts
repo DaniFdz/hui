@@ -59,15 +59,23 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
   try {
     await writeFile(modelsPath, JSON.stringify(local, null, 2));
     await hui.open("/settings/models");
-    await expect(screen.getByText("Local model servers", { exact: true })).toBeVisible();
+    // The Models page renders its provider area before the PI snapshot settles;
+    // wait for the routing section so the page does not replace the group mid-edit.
+    await expect(screen.getByText("HUI model routing", { exact: true })).toBeVisible();
+    const group = screen.getByText("Local model servers", { exact: true });
+    await expect(group).toBeVisible();
+    await group.tap();
     const card = screen.getByTestId("local-provider").filter({ hasText: "local-e2e" });
     await expect(card.getByText("Offline", { exact: true })).toBeVisible();
 
     await card.getByRole("button", "Set up start command").tap();
-    await card.getByLabel(/Start command/u).fill(`while [ ! -e '${release}' ]; do sleep 0.05; done`);
-    await card.getByLabel(/Health URL/u).fill(`http://127.0.0.1:${address.port}`);
-    await card.getByLabel(/Ready timeout/u).fill("30");
-    await card.getByRole("button", "Save command").tap();
+    const dialog = screen.getByTestId("local-provider-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", "Close start command dialog")).toBeVisible();
+    await dialog.getByLabel(/Start command/u).fill(`while [ ! -e '${release}' ]; do sleep 0.05; done`);
+    await dialog.getByLabel(/Health URL/u).fill(`http://127.0.0.1:${address.port}`);
+    await dialog.getByLabel(/Ready timeout/u).fill("30");
+    await dialog.getByRole("button", "Save command").tap();
     await expect(screen.getByText("Start command saved for Local fixture.", { exact: true })).toBeVisible();
 
     await card.getByRole("button", "Start server").tap();
@@ -83,6 +91,10 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
 
     await hui.open("/settings/models");
+    await expect(screen.getByText("HUI model routing", { exact: true })).toBeVisible();
+    const reopened = screen.getByText("Local model servers", { exact: true });
+    await expect(reopened).toBeVisible();
+    await reopened.tap();
     const online = screen.getByTestId("local-provider").filter({ hasText: "local-e2e" });
     await expect(online.getByText("Online", { exact: true })).toBeVisible();
     const snapshot = await hui.api<LocalProviderSnapshot>("GET", "/__hui/local-providers");

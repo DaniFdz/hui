@@ -1,7 +1,9 @@
 /**
- * Settings → Models → Local model servers: the custom providers PI's models.json defines, whether their machine
- * answers, and the operator's one start command per provider. The command runs only when Start is pressed here;
- * model requests never start a machine. While a start runs, the section polls so Starting becomes Online or Failed.
+ * Settings → Models → Model providers → Local model servers: the custom providers PI's models.json defines,
+ * whether their machine answers, and the operator's one start command per provider. The group is folded with the
+ * other model provider configuration; each provider is a compact row and the command form opens in a dialog. The
+ * command runs only when Start is pressed here; model requests never start a machine. While a start runs, the group
+ * polls so Starting becomes Online or Failed.
  */
 import { LitElement, html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
@@ -30,6 +32,7 @@ export class HuiLocalProviderSettings extends LitElement {
   #busy = "";
   #editing?: string;
   #draft?: Draft;
+  #dialogError = "";
   #confirm = "";
   #poll?: ReturnType<typeof setTimeout>;
   #generation = 0;
@@ -37,6 +40,8 @@ export class HuiLocalProviderSettings extends LitElement {
   override createRenderRoot() { return this; }
   override connectedCallback() { super.connectedCallback(); void this.#refresh(); }
   override disconnectedCallback() { super.disconnectedCallback(); clearTimeout(this.#poll); this.#generation++; }
+
+  #dialog() { return this.querySelector<HTMLDialogElement>(".hui-local-provider-dialog"); }
 
   #schedule() {
     clearTimeout(this.#poll);
@@ -53,7 +58,7 @@ export class HuiLocalProviderSettings extends LitElement {
       this.#snapshot = next;
       this.#error = "";
       // A provider that disappeared from the list closes its editor.
-      if (this.#editing && !next.providers.some((provider) => provider.id === this.#editing)) this.#closeEditor();
+      if (this.#editing && !next.providers.some((provider) => provider.id === this.#editing)) this.#closeDialog();
     } catch (error) {
       if (generation === this.#generation) this.#error = error instanceof Error ? error.message : "Local model servers could not be loaded.";
     } finally {
@@ -67,27 +72,48 @@ export class HuiLocalProviderSettings extends LitElement {
       : { providers: [provider] };
   }
 
-  #edit(provider: LocalProvider) {
+  async #edit(provider: LocalProvider) {
+    if (this.#busy || !provider.inPi) return;
     this.#editing = provider.id;
     this.#draft = { startCommand: provider.startCommand ?? "", healthUrl: provider.healthUrl ?? "", timeout: String(timeoutSeconds(provider)) };
+    this.#dialogError = "";
     this.#error = "";
     this.#notice = "";
     this.#confirm = "";
     this.requestUpdate();
+    await this.updateComplete;
+    const dialog = this.#dialog();
+    if (dialog && !dialog.open) dialog.showModal();
+    dialog?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
   }
 
-  #closeEditor() { this.#editing = undefined; this.#draft = undefined; this.requestUpdate(); }
+  #closeDialog() {
+    const id = this.#editing;
+    this.#dialog()?.close();
+    this.#editing = undefined;
+    this.#draft = undefined;
+    this.#dialogError = "";
+    this.requestUpdate();
+    if (id) void this.updateComplete.then(() => {
+      if (this.isConnected) this.querySelector<HTMLButtonElement>(`[data-edit="${id}"]`)?.focus();
+    });
+  }
 
   async #start(provider: LocalProvider) {
-    if (this.#busy) return;
-    this.#busy = provider.id; this.#error = ""; this.#notice = ""; this.requestUpdate();
+    if (this.#busy || !provider.configured || !provider.inPi || provider.status === "online" || provider.status === "starting") return;
+    this.#busy = provider.id;
+    this.#error = "";
+    this.#notice = "";
+    this.requestUpdate();
     try {
       this.#replace(await startLocalProvider(provider.id));
       this.#notice = `Starting ${provider.name}…`;
     } catch (error) {
       this.#error = error instanceof Error ? error.message : "The start command could not run.";
     } finally {
-      this.#busy = ""; this.#schedule(); this.requestUpdate();
+      this.#busy = "";
+      this.#schedule();
+      this.requestUpdate();
     }
   }
 
@@ -98,36 +124,43 @@ export class HuiLocalProviderSettings extends LitElement {
     if (!draft) return;
     const seconds = Number(draft.timeout);
     if (!Number.isInteger(seconds) || seconds < MIN_TIMEOUT_SECONDS || seconds > MAX_TIMEOUT_SECONDS) {
-      this.#error = `Use a ready timeout from ${MIN_TIMEOUT_SECONDS} seconds to ${MAX_TIMEOUT_SECONDS / 60} minutes.`;
+      this.#dialogError = `Use a ready timeout from ${MIN_TIMEOUT_SECONDS} seconds to ${MAX_TIMEOUT_SECONDS / 60} minutes.`;
       this.requestUpdate();
       return;
     }
     const startCommand = draft.startCommand.trim();
     if (!startCommand) {
-      this.#error = "Enter a start command.";
+      this.#dialogError = "Enter a start command.";
       this.requestUpdate();
       return;
     }
     const healthUrl = draft.healthUrl.trim();
-    this.#busy = provider.id; this.#error = ""; this.#notice = ""; this.requestUpdate();
+    this.#busy = provider.id;
+    this.#dialogError = "";
+    this.requestUpdate();
     try {
       this.#replace(await saveLocalProvider(provider.id, {
         startCommand,
         ...(healthUrl ? { healthUrl } : {}),
         readyTimeoutMs: seconds * 1_000,
       }));
-      this.#editing = undefined; this.#draft = undefined;
       this.#notice = `Start command saved for ${provider.name}.`;
+      this.#closeDialog();
     } catch (error) {
-      this.#error = error instanceof Error ? error.message : "The start command could not be saved.";
+      this.#dialogError = error instanceof Error ? error.message : "The start command could not be saved.";
     } finally {
-      this.#busy = ""; this.#schedule(); this.requestUpdate();
+      this.#busy = "";
+      this.#schedule();
+      this.requestUpdate();
     }
   }
 
   async #remove(provider: LocalProvider) {
     if (this.#busy) return;
-    this.#busy = provider.id; this.#error = ""; this.#notice = ""; this.requestUpdate();
+    this.#busy = provider.id;
+    this.#error = "";
+    this.#notice = "";
+    this.requestUpdate();
     try {
       await removeLocalProvider(provider.id);
       this.#confirm = "";
@@ -136,7 +169,8 @@ export class HuiLocalProviderSettings extends LitElement {
     } catch (error) {
       this.#error = error instanceof Error ? error.message : "The start command could not be removed.";
     } finally {
-      this.#busy = ""; this.requestUpdate();
+      this.#busy = "";
+      this.requestUpdate();
     }
   }
 
@@ -144,12 +178,29 @@ export class HuiLocalProviderSettings extends LitElement {
     return status === "online" ? "Online" : status === "offline" ? "Offline" : status === "starting" ? "Starting…" : status === "failed" ? "Failed" : "Unknown";
   }
 
-  #message(provider: LocalProvider): string {
-    if (provider.message) return provider.message;
-    if (provider.status === "online") return "The server answers.";
-    if (provider.status === "offline") return "The server did not answer.";
-    if (provider.status === "starting") return "Starting the server…";
-    return "Set a health URL, or a baseUrl for this provider in PI's models.json, to check the server.";
+  #note(provider: LocalProvider): string {
+    const checked = provider.checkedAt && provider.status !== "starting" ? `Checked ${new Date(provider.checkedAt).toLocaleTimeString()}` : "";
+    const message = provider.message
+      ?? (provider.status === "offline" ? "The server did not answer."
+        : provider.status === "starting" ? "Starting the server…"
+          : provider.status === "failed" ? "The start command failed."
+            : provider.status === "unknown" ? "Set a health URL, or a baseUrl for this provider in PI's models.json, to check the server."
+              : "");
+    return [message, checked].filter(Boolean).join(" · ");
+  }
+
+  #summary(providers: readonly LocalProvider[]): string {
+    if (!this.#snapshot) return "Loading…";
+    if (!providers.length) return "No custom providers";
+    const online = providers.filter((provider) => provider.status === "online").length;
+    const starting = providers.filter((provider) => provider.status === "starting").length;
+    const failed = providers.filter((provider) => provider.status === "failed").length;
+    return [
+      `${providers.length} provider${providers.length === 1 ? "" : "s"}`,
+      online ? `${online} online` : "",
+      starting ? `${starting} starting` : "",
+      failed ? `${failed} failed` : "",
+    ].filter(Boolean).join(" · ");
   }
 
   #form(provider: LocalProvider) {
@@ -177,52 +228,71 @@ export class HuiLocalProviderSettings extends LitElement {
       </label>
       <div class="hui-provider-actions">
         <button class="btn primary" type="submit" ?disabled=${busy}>Save command</button>
-        <button class="btn" type="button" ?disabled=${busy} @click=${() => this.#closeEditor()}>Cancel</button>
+        <button class="btn" type="button" ?disabled=${busy} @click=${() => this.#closeDialog()}>Cancel</button>
       </div>
     </form>`;
   }
 
-  #card(provider: LocalProvider) {
+  #dialogTemplate() {
+    const provider = this.#snapshot?.providers.find((entry) => entry.id === this.#editing);
+    if (!provider || !this.#draft) return nothing;
     const busy = this.#busy === provider.id;
-    const startable = provider.configured && provider.status !== "online" && provider.status !== "starting";
-    return html`<article class="hui-local-provider" data-testid="local-provider" data-status=${provider.status} aria-label=${provider.name}>
+    return html`<dialog class="hui-provider-dialog hui-local-provider-dialog" data-testid="local-provider-dialog" aria-labelledby="hui-local-provider-dialog-title"
+      @cancel=${(event: Event) => { event.preventDefault(); this.#closeDialog(); }}>
       <div class="hui-provider-heading">
-        <div>
-          <h3>${provider.name}</h3>
-          <p><code>${provider.id}</code> · ${modelCount(provider.models)} · ${provider.inPi ? "From PI's models.json" : "Not in PI's models.json"}</p>
+        <h3 id="hui-local-provider-dialog-title">${provider.configured ? `Start command · ${provider.name}` : `Set up ${provider.name}`}</h3>
+        <button class="btn" aria-label="Close start command dialog" ?disabled=${busy} @click=${() => this.#closeDialog()}>✕</button>
+      </div>
+      <p class="settings-section__desc">HUI runs this once when you press Start server; it never starts a machine from a model request.</p>
+      ${this.#dialogError ? html`<p role="alert" class="hui-provider-error">${this.#dialogError}</p>` : nothing}
+      ${this.#form(provider)}
+    </dialog>`;
+  }
+
+  #entry(provider: LocalProvider) {
+    const busy = this.#busy === provider.id;
+    const startable = provider.configured && provider.inPi && provider.status !== "online" && provider.status !== "starting";
+    return html`<div class="hui-local-provider-entry" role="listitem" data-testid="local-provider" data-status=${provider.status}>
+      <div class="hui-local-provider-row">
+        <div class="hui-local-provider-row__name">
+          <strong>${provider.name}</strong>
+          <small><code>${provider.id}</code> · ${modelCount(provider.models)}</small>
         </div>
-        <span class="hui-local-provider-status" data-status=${provider.status}>${this.#statusLabel(provider.status)}</span>
+        <div class="hui-local-provider-row__status" role="status">
+          <span class="hui-local-provider-status" data-status=${provider.status}>${this.#statusLabel(provider.status)}</span>
+          <small class="hui-local-provider-note">${this.#note(provider)}</small>
+        </div>
+        <div class="hui-local-provider-row__actions">
+          <button class="btn primary" ?disabled=${!startable || busy} @click=${() => void this.#start(provider)}>${provider.status === "starting" ? "Starting…" : provider.status === "online" ? "Running" : "Start server"}</button>
+          <button class="btn" data-edit=${provider.id} ?disabled=${busy || !provider.inPi} @click=${() => void this.#edit(provider)}>${provider.configured ? "Edit command" : "Set up start command"}</button>
+          ${provider.configured ? html`<button class="btn" ?disabled=${busy} @click=${() => { this.#confirm = provider.id; this.#error = ""; this.requestUpdate(); }}>Remove command</button>` : nothing}
+        </div>
       </div>
-      <p class="hui-local-provider-message" role="status">${this.#message(provider)}</p>
-      ${provider.checkedAt && provider.status !== "starting" ? html`<small class="hui-local-provider-checked">Checked ${new Date(provider.checkedAt).toLocaleTimeString()}</small>` : nothing}
-      ${!provider.inPi ? html`<p class="hui-provider-error">This provider is not in PI's models.json. Add it there for its models to run, or remove this command.</p>` : nothing}
-      <div class="hui-provider-actions">
-        <button class="btn primary" ?disabled=${!startable || busy} @click=${() => void this.#start(provider)}>${provider.status === "starting" ? "Starting…" : provider.status === "online" ? "Running" : "Start server"}</button>
-        <button class="btn" ?disabled=${busy} @click=${() => this.#edit(provider)}>${provider.configured ? "Edit command" : "Set up start command"}</button>
-        ${provider.configured ? html`<button class="btn" ?disabled=${busy} @click=${() => { this.#confirm = provider.id; this.#error = ""; this.requestUpdate(); }}>Remove command</button>` : nothing}
-      </div>
+      ${!provider.inPi ? html`<p class="hui-provider-error hui-local-provider-warning">This provider is not in PI's models.json. Add it there for its models to run, or remove this command.</p>` : nothing}
       ${this.#confirm === provider.id ? html`<div class="hui-local-provider-confirm">
         <p>Remove the start command? ${provider.name} and its models stay configured in PI.</p>
         <div class="hui-provider-actions"><button class="btn" ?disabled=${busy} @click=${() => void this.#remove(provider)}>Confirm removal</button> <button class="btn" ?disabled=${busy} @click=${() => { this.#confirm = ""; this.requestUpdate(); }}>Keep command</button></div>
       </div>` : nothing}
-      ${this.#editing === provider.id ? this.#form(provider) : nothing}
-    </article>`;
+    </div>`;
   }
 
   override render() {
     const providers = this.#snapshot?.providers ?? [];
-    return html`<section class="settings-section hui-local-providers">
-      <div class="settings-section__header">
-        <div class="settings-section__copy">
-          <h2 class="settings-section__heading">Local model servers</h2>
+    return html`<details class="hui-provider-configuration hui-local-servers">
+      <summary><span>Local model servers</span><span class="hui-local-servers__count">${this.#summary(providers)}</span></summary>
+      <div class="hui-local-servers__body">
+        <div class="hui-local-servers__head">
           <p class="settings-section__desc">Custom providers from PI's models.json. Save how to start one, then start it here before using its models; a request waits while a start is in progress but never starts one.</p>
+          <button class="btn" ?disabled=${this.#busy !== "" || !this.#snapshot} @click=${() => void this.#refresh()}>Check again</button>
         </div>
-        <button class="btn" ?disabled=${this.#busy !== "" || !this.#snapshot} @click=${() => void this.#refresh()}>Check again</button>
+        ${this.#error ? html`<p role="alert" class="hui-provider-error">${this.#error}</p>` : nothing}
+        ${this.#notice ? html`<p role="status" class="hui-provider-notice">${this.#notice}</p>` : nothing}
+        ${!this.#snapshot ? html`<p>Loading local model servers…</p>` : providers.length
+          ? html`<div class="hui-local-provider-list" role="list">${repeat(providers, (provider) => provider.id, (provider) => this.#entry(provider))}</div>`
+          : html`<p class="hui-local-provider-empty">No custom providers yet. Add one with its base URL and models to PI's <code>models.json</code> (usually <code>~/.pi/agent/models.json</code>), then come back here to give it a start command.</p>`}
       </div>
-      ${this.#error ? html`<p role="alert" class="hui-provider-error">${this.#error}</p>` : nothing}
-      ${this.#notice ? html`<p role="status" class="hui-provider-notice">${this.#notice}</p>` : nothing}
-      ${!this.#snapshot ? html`<p>Loading local model servers…</p>` : providers.length ? html`<div class="hui-local-provider-cards">${repeat(providers, (provider) => provider.id, (provider) => this.#card(provider))}</div>` : html`<p class="hui-local-provider-empty">No custom providers yet. Add one with its base URL and models to PI's <code>models.json</code> (usually <code>~/.pi/agent/models.json</code>), then come back here to give it a start command.</p>`}
-    </section>`;
+    </details>
+    ${this.#dialogTemplate()}`;
   }
 }
 

@@ -291,10 +291,11 @@ configuration. HUI-managed connections require the default PI SDK backend.
 
 A local model can run on another machine that is normally asleep. Define the
 provider once in PI's `models.json` with its `baseUrl` and models, then open
-**Settings → Models → Local model servers**. HUI lists each custom provider from
-that file, shows whether its server answers, and lets you save one **Start
-command** for it. The command is yours: for example, send a wake-on-LAN packet,
-wait, then start the server over SSH. Use SSH keys or another non-interactive
+**Settings → Models → Model providers → Local model servers**. The group is
+folded; opening it shows one compact row per custom provider from that file, with
+its reachability and one **Start command**. **Set up start command** opens a
+dialog for the command, health URL and timeout. The command is yours: for
+example, send a wake-on-LAN packet, wait, then start the server over SSH. Use SSH keys or another non-interactive
 method; the command runs as your user on the machine that runs the gateway and
 is never given input.
 
