@@ -1,0 +1,22 @@
+{
+  "format": "hui-bot",
+  "version": 2,
+  "bot": {
+    "name": "Reviewer",
+    "title": "Fixture reviewer",
+    "description": "Reviews what its owner asks it to before anyone reads it.",
+    "thinking": "low"
+  },
+  "routines": [
+    { "name": "Morning sweep", "prompt": "Sweep the queue and report what is red.", "schedule": { "kind": "every", "everyMs": 86400000 } }
+  ],
+  "triggers": [
+    { "name": "Inbox watch", "prompt": "Read what arrived and say whether it is ready.", "cooldownSeconds": 300 }
+  ],
+  "disabledTools": [],
+  "disabledSkills": [],
+  "open": [
+    { "kind": "ask", "where": "SOUL.md", "question": "Which repositories should I watch for pull requests, {{user}}?" }
+  ],
+  "needs": ["The GitHub CLI signed in, with access to the repositories it reviews"]
+}

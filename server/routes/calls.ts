@@ -1,5 +1,5 @@
 /**
- * GPT-Live call routes (HUI-18); see docs/api.md#calls. `:id` is a bot's id or
+ * GPT-Live call routes; see docs/api.md#calls. `:id` is a bot's id or
  * handle; `:callId` is HUI's id for the call (never the provider's). The
  * gateway sets each call up with the bot's identity and memory, keeps the
  * ChatGPT credential to itself, writes what is said into the bot's chat and
@@ -45,10 +45,18 @@ const DELEGATION_ID = /^[\w-]{1,200}$/u;
  */
 export type CallDelegate = (input: { bot: BotRecord; call: ActiveCall; request: string }, signal?: AbortSignal) => Promise<CallDelegationResult>;
 
+/**
+ * The note a call starts with, written by the bot's utility model from its soul, memory, newest messages and saved
+ * knowledge. It resolves undefined when no model answered in time; the call then starts without one.
+ */
+export type CallHandoff = (input: { bot: BotRecord; view?: string; soul?: string; recent?: string; now?: Date; timeZone?: string }) => Promise<string | undefined>;
+
 export type CallRouteDeps = {
   broker: CallBroker;
   bots: Pick<BotService, "callContext" | "resolve">;
   delegate: CallDelegate;
+  /** The call-start handoff note; absent: calls start without one. */
+  handoff?: CallHandoff;
   settings(): Promise<Settings>;
   /** The gateway's time zone, for the date a call's instructions give. */
   timeZone?: () => string | undefined;
@@ -114,9 +122,15 @@ export function createCallRoutes(deps: CallRouteDeps) {
     const body = fields(await json(request, OFFER_BODY_BYTES), ["sdp"], "A call");
     const settings = await deps.settings();
     const sdp = checkOffer(body["sdp"]);
-    const { bot, view, soul } = await bots.callContext(id);
+    const { bot, view, soul, recent } = await bots.callContext(id);
     const timeZone = deps.timeZone?.();
-    const { instructions, memoryBytes } = buildCallInstructions({ bot, operator: settings.profileName, ...(soul ? { soul } : {}), ...(view ? { view } : {}), ...(timeZone ? { timeZone } : {}) });
+    // The handoff note the call starts with: written while the browser shows Connecting…, never awaited past its budget.
+    const handoff = await deps.handoff?.({
+      bot, ...(view ? { view } : {}), ...(soul ? { soul } : {}), ...(recent ? { recent } : {}), now: new Date(now()), ...(timeZone ? { timeZone } : {}),
+    }).catch(() => undefined);
+    const { instructions, memoryBytes } = buildCallInstructions({
+      bot, operator: settings.profileName, ...(soul ? { soul } : {}), ...(view ? { view } : {}), ...(handoff ? { handoff } : {}), ...(recent ? { recent } : {}), ...(timeZone ? { timeZone } : {}),
+    });
     const voice = sessionVoice(bot, settings.calls.voice);
     const started = await broker.start({ botId: bot.id, sdp, session: buildCallSession(instructions, voice), signal: request.signal });
     return reply(CallStarted, {

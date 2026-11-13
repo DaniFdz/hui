@@ -63,7 +63,7 @@ export const CallDelegationRequest = Type.Object({ id: Type.String(), request: T
 export type CallDelegationRequest = Static<typeof CallDelegationRequest>;
 
 export const CallDelegationResult = Type.Object({
-  status: Type.Union([Type.Literal("answered"), Type.Literal("handed-off"), Type.Literal("failed"), Type.Literal("timeout"), Type.Literal("limit")]),
+  status: Type.Union([Type.Literal("answered"), Type.Literal("handed-off"), Type.Literal("failed"), Type.Literal("timeout")]),
   speak: Type.String(),
   task: Type.Optional(Type.String()),
 }, { $id: "CallDelegationResult" });

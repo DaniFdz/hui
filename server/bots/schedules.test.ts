@@ -133,7 +133,7 @@ test("a bot schedules a temporary routine for itself with its routines tool, and
   const end = Date.parse(watch.until!);
   assert.ok(end > asked + 2.9 * 3_600_000 && end < Date.now() + 3.1 * 3_600_000, "it ends in three hours, as the bot said");
   assert.equal(((await call("/__hui/bots/ada")).body["bot"] as BotView).routines, 1);
-  assert.match(await hui("list"), new RegExp(`^Watch #82 {2}every 5m {2}next \\S+ {2}@ada {2}made by @ada · until \\S+ · 3 runs left {2}${watch.id}\\n$`, "u"));
+  assert.match(await hui("list"), new RegExp(`^Watch #82 {2}every 5m {2}next \\S+ {2}@ada {2}made by @ada · until \\S+ · 3 runs left {2}${watch.id}$`, "mu"), "the CLI lists the bot routine beside the seeded chief heartbeat");
 
   // Its run comes; the routine's own turn removes it and finishes.
   const started = await call(`/__hui/automation/tasks/${watch.id}/run`, "POST", {});

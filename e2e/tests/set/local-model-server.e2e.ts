@@ -1,4 +1,4 @@
-/** Settings → Models starts a custom PI provider's machine on demand, and a chat sent meanwhile waits for it (SET-088). */
+/** Settings → Models starts a custom PI provider's machine on demand, and a chat sent meanwhile waits for it (SET-098). */
 import { expect } from "e2e";
 import { createServer } from "node:http";
 import { once } from "node:events";
@@ -16,7 +16,7 @@ function body(request: AsyncIterable<Buffer>): Promise<Buffer> {
   })();
 }
 
-test("a local model server starts on demand and a chat waits for it", { tags: ["SET-088"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a local model server starts on demand and a chat waits for it", { tags: ["SET-098"], platforms: ["web"] }, async ({ screen, hui }) => {
   const release = join(hui.workspace, "local-model-ready");
   const modelsPath = join(hui.piAgentDir, "models.json");
   const original = await readFile(modelsPath, "utf8");

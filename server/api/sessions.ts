@@ -155,8 +155,21 @@ export const QuestionnaireOption = Type.Object({
 }, { $id: "QuestionnaireOption" });
 export type QuestionnaireOption = Static<typeof QuestionnaireOption>;
 
+/** How a question takes its answer: options (radios, or checkboxes for a
+ * multi-select question), a slider over a numeric range, or a long text. */
+export const QuestionnaireInput = Type.Union([
+  Type.Literal("options"), Type.Literal("slider"), Type.Literal("text"),
+], { $id: "QuestionnaireInput" });
+export type QuestionnaireInput = Static<typeof QuestionnaireInput>;
+
 export const QuestionnaireQuestion = Type.Object({
   header: Type.String(), question: Type.String(), multiSelect: Type.Boolean(), options: Type.Array(QuestionnaireOption),
+  input: QuestionnaireInput,
+  /** The slider's range and step, and what its value counts in. */
+  min: Type.Optional(Type.Number()), max: Type.Optional(Type.Number()), step: Type.Optional(Type.Number()),
+  unit: Type.Optional(Type.String()),
+  /** The long-text field's prompt. */
+  placeholder: Type.Optional(Type.String()),
 }, { $id: "QuestionnaireQuestion" });
 export type QuestionnaireQuestion = Static<typeof QuestionnaireQuestion>;
 

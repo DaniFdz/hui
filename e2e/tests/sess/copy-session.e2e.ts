@@ -4,6 +4,7 @@ import { test } from "../../fixtures/hui.ts";
 
 test("Copy puts the session link, the session ID and the open conversation on the clipboard", { tags: ["SESS-038"] }, async ({ screen, hui }) => {
   const copy = async (choice: string) => {
+    await hui.sessionList();
     const menu = await hui.sessionMenu("Copy source");
     await menu.getByText("Copy", { exact: true, visible: true }).tap();
     await menu.getByText(choice, { exact: true, visible: true }).tap();
@@ -31,6 +32,7 @@ test("a refused clipboard write reports that it could not copy", { tags: ["SESS-
   const session = await hui.createSession({ title: "Copy refused" });
   await hui.clipboard({ refuse: true });
   await hui.open(`/sessions/${session.id}`);
+  await hui.sessionList();
   await hui.sessionMenu("Copy refused");
   await screen.getByText("Copy", { exact: true, visible: true }).tap();
   await screen.getByText("Session ID", { exact: true, visible: true }).tap();

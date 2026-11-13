@@ -6,13 +6,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openWork } from "./work-views.ts";
 
 test("Upload files writes them into the folder, and an existing file is replaced only after Replace", { tags: ["WORK-054"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Upload files", cwd: repository.path });
   const navigator = screen.getByLabel("Files navigator");
   await hui.open(`/sessions/${session.id}`);
-  await hui.openWorkView("Files");
+  await openWork(screen, "Files");
   await expect(navigator.getByRole("button", "Upload files")).toBeVisible();
 
   await hui.attach(screen.getByTestId("files-upload-input"), [{ name: "notes.txt", bytes: 16 }]);
@@ -34,7 +35,7 @@ test("an upload shows its progress and Cancel upload leaves the folder unchanged
   const session = await hui.createSession({ title: "Cancel an upload", cwd: repository.path });
   const navigator = screen.getByLabel("Files navigator");
   await hui.open(`/sessions/${session.id}`);
-  await hui.openWorkView("Files");
+  await openWork(screen, "Files");
   await expect(navigator.getByRole("button", "Upload files")).toBeVisible();
 
   // The gateway never sees this body: the request is held open so the state the browser shows while uploading stays put.

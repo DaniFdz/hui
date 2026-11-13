@@ -1,10 +1,12 @@
 /**
  * The chat view and the New Session form, as render functions of `HomeProps`: launch form, transcript (with who sent
  * each message HUI delivered from a bot, a session, a routine or a trigger, and what the agent handed a bot),
- * composer and its pickers, queue, questions, session header and bot identity. All state arrives in props and changes
- * leave through callbacks; the app element owns that state, and the chat projection decides the transcript's rows.
+ * composer and its pickers, queue, the pending question at the transcript's end, session header and bot identity. All state
+ * arrives in props and changes leave through callbacks; the app element owns that state, and the chat projection decides
+ * the transcript's rows.
  */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
+import { messageShare, nativeShell, type NativeShell } from "../lib/native-shell.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
@@ -64,11 +66,12 @@ import { expandedSkillText, splitSkillBlock } from "../lib/skill-block.ts";
 import { activityLabel, attributedMessage, questionnaireSummary, type QuestionnaireSummary, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../lib/chat-projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
+import { stickyPrompt } from "./chat/sticky-prompt.ts";
 import { renderReadToolCard, renderToolFileReference } from "./chat/read-tool-card.ts";
 import { renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
 import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
-import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath } from "../lib/tool-cards.ts";
+import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath, toolTiming } from "../lib/tool-cards.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { renderWatcherActivity, renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
@@ -99,9 +102,6 @@ if (typeof document !== "undefined") {
       if (event.target instanceof Node && !picker.contains(event.target)) picker.open = false;
     });
   });
-  window.addEventListener("resize", () => {
-    document.querySelectorAll<HTMLDetailsElement>(".agent-chat__input details[open]").forEach(positionNativePicker);
-  });
 }
 
 const SEND_LONG_PRESS_MS = 450;
@@ -117,6 +117,8 @@ const checkIcon = icons.check;
 const circleIcon = icons.circle;
 const stopIcon = icons.stop;
 const copyIcon = icons.copy;
+/** Lucide "share": the phone's own sheet, which a browser never draws (see `renderShare`). */
+const shareIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" x2="12" y1="2" y2="15"></line></svg>`;
 const rewindIcon = icons.rotateCcw;
 const continueIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 5 11 7-11 7Z"></path></svg>`;
 const queueIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 5H3"></path><path d="M16 12H3"></path><path d="M9 19H3"></path><path d="m16 16-3 3 3 3"></path><path d="M21 5v12a2 2 0 0 1-2 2h-6"></path></svg>`;
@@ -267,14 +269,8 @@ export type HomeProps = {
   launching: boolean;
   note: string;
   noteLevel: NoteLevel;
-  sideChat?: {
-    question: string;
-    answer: string;
-    model: string;
-    loading: boolean;
-    error: string;
-  };
-  onCloseSideChat: () => void;
+  /** The chat draws the inline side chat rail: it has no Work pane to put the Side chat view in (a bot's chat). */
+  sideChatRail?: boolean;
   onDismissNote: () => void;
   /** The composer status line under the editor: why the stream stopped, when it is not simply reconnecting. */
   connectionNote: string;
@@ -896,6 +892,13 @@ function renderCopy(props: HomeProps, text: string, id: string, label = "Copy") 
   </button>`);
 }
 
+/** Offers the phone's own sheet beside Copy, and is drawn only where `nativeShell()` answers a shell: a browser keeps
+ * exactly the action row it had. The row's words are what Copy hands over, so both actions share what is on screen. */
+function renderShare(sheet: NativeShell, props: HomeProps, text: string, id: string, label: string) {
+  const tooltipId = sessionControlId(props, `share-tooltip-${id}`);
+  return renderActionTooltip(tooltipId, "Share", html`<button type="button" class="chat-copy-btn chat-group-share" aria-label=${label} aria-describedby=${tooltipId} @click=${() => void sheet.share(messageShare({ text, session: props.session }, window.location.href))}>${shareIcon}</button>`);
+}
+
 /** Long prompts collapse by default, like ChatGPT; expansion is session-scoped UI state. */
 export function isLongPrompt(text: string): boolean {
   return text.length > 700 || text.split("\n").length > 10;
@@ -999,7 +1002,7 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
       onCopy: (text) => props.onCopy(text, `tool-${item.id}`),
     });
   }
-  const statusLabel = status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed";
+  const statusLabel = `${status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed"}${toolTiming(item)}`;
   const summary = item.name === "browser" ? browserToolSummary(item.args) : "";
   const filePath = toolFilePath(item);
   return html`<details class="chat-tool-msg-collapse ${status === "running" ? "chat-tool-row--running" : ""}"
@@ -1271,6 +1274,8 @@ function renderCompaction(row: Extract<ChatProjectionRow, { kind: "compaction" }
 
 function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow[], start: number): TemplateResult {
   const latestAssistantRowId = rows.findLast((row) => row.kind === "messages" && row.role === "assistant")?.id;
+  // Asked once per draw rather than once per row: a browser answers `null`, and its action rows are what they were.
+  const sheet = nativeShell();
   const latestSent = (role: ChatMessage["role"]) => rows.flatMap((row) => row.kind === "messages" && row.role === role ? row.messages : []).findLast((item) => !item.pending && !item.failed);
   const withEmbeds = [latestSent("user"), latestSent("assistant")];
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
@@ -1350,16 +1355,15 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     const lastText = row.sender && last ? attributedMessage(last.text)?.body ?? last.text : last?.text;
     // History refreshed from PI carries entry ids; a prompt sent this run has
     // none yet. A prompt PI refused (failed) was never persisted: no rewind.
-    // A bot's chat is permanent: the gateway refuses rewinds, so none is offered.
     // Someone else's message was never the operator's to edit and send again.
-    const rewindTo: RewindTarget | undefined = props.connection !== "live" || row.role !== "user" || sender || !last || last.failed || props.session?.bot ? undefined
+    const rewindTo: RewindTarget | undefined = props.connection !== "live" || row.role !== "user" || sender || !last || last.failed ? undefined
       : last.entryId ?? { userFromEnd: new Set(props.transcript.slice(props.transcript.indexOf(last) + 1)
           .flatMap((item) => item.kind === "message" && item.role === "user" && !item.failed ? [item.entryId ?? item.id] : [])).size };
     const rewindTooltipId = sessionControlId(props, `rewind-tooltip-${row.id}`);
     // Only Pi Durable copies a history into a new conversation; a bot's chat is never forked.
     const forkAt = props.connection === "live" && props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
     const forkTooltipId = sessionControlId(props, `fork-tooltip-${row.id}`);
-    return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-chat-row-key=${row.id}
+    return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-testid="message-row" data-chat-row-key=${row.id}
       style=${sender?.color ? `--chat-sender-color: ${sender.color}` : nothing}>
       ${sender ? html`<span class="chat-sender-avatar" aria-hidden="true">${sender.avatar}</span>` : nothing}
       <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, props.connection === "live" && withEmbeds.includes(item), row.sender ? attributedMessage(item.text) : undefined))}</div>
@@ -1368,7 +1372,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
         ${last && lastText ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
           <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, lastText)}>${icons.messageSquare}</button>
-        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
+        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}${sheet ? renderShare(sheet, props, lastText, `message-${last.id}`, sender ? "Share message" : row.role === "assistant" ? "Share response" : "Share prompt") : nothing}</div>` : nothing}
         ${rewindTo ? html`<div class="chat-group-footer-actions">
           ${renderActionTooltip(rewindTooltipId, props.rewindPending ? "Rewinding…" : "Rewind", html`
             <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "", last?.attachments)}>${rewindIcon}</button>
@@ -1761,7 +1765,7 @@ function renderComposer(props: HomeProps) {
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
   return html`
-    <div class="agent-chat__composer-shell ${props.question ? "agent-chat__composer-shell--question-composer" : ""}"
+    <div class="agent-chat__composer-shell"
       @dragenter=${onComposerDragEnter}
       @dragleave=${onComposerDragLeave}
       @dragover=${(event: DragEvent) => {
@@ -1776,7 +1780,6 @@ function renderComposer(props: HomeProps) {
         if (surface instanceof HTMLElement) clearComposerDrag(surface);
         if (!props.sending && event.dataTransfer?.files.length) props.onAddAttachments(Array.from(event.dataTransfer.files));
       }}>
-      ${renderQuestion(props)}
       ${renderRunError(props, booting || disconnected)}
       ${renderSavedNotice(props)}
       ${props.session?.interrupted && !booting ? html`
@@ -2082,18 +2085,68 @@ function positionComposerPicker(event: Event) {
   if (picker instanceof HTMLDetailsElement) positionNativePicker(picker);
 }
 
-function positionNativePicker(picker: HTMLDetailsElement) {
+const composerPickerLifecycles = new WeakMap<HTMLDetailsElement, () => void>();
+
+/** Track only an open picker: native resize can precede the composer's relayout by a frame. */
+export function positionNativePicker(picker: HTMLDetailsElement) {
   const trigger = picker.querySelector<HTMLElement>("summary");
   const menu = picker.querySelector<HTMLElement>(".chat-controls__inline-select-menu, .agent-chat__attach-popup, .context-usage__popover");
   if (!trigger || !menu) return;
-  if (!picker.open) { menu.hidePopover?.(); return; }
+  if (!picker.open || !picker.isConnected) {
+    composerPickerLifecycles.get(picker)?.();
+    menu.hidePopover?.();
+    return;
+  }
+  if (composerPickerLifecycles.has(picker)) return;
+  const viewport = window.visualViewport;
+  let frame = 0;
+  const setStyle = (name: string, value: string) => {
+    if (menu.style.getPropertyValue(name) !== value) menu.style.setProperty(name, value);
+  };
+  const stop = () => {
+    window.cancelAnimationFrame(frame);
+    window.removeEventListener("resize", schedule);
+    window.removeEventListener("scroll", schedule, true);
+    viewport?.removeEventListener("resize", schedule);
+    viewport?.removeEventListener("scroll", schedule);
+    composerPickerLifecycles.delete(picker);
+    menu.hidePopover?.();
+  };
+  const schedule = () => {
+    if (!frame) frame = window.requestAnimationFrame(update);
+  };
+  const update = () => {
+    frame = 0;
+    if (!picker.open || !picker.isConnected) { stop(); return; }
+    const rect = trigger.getBoundingClientRect();
+    const left = viewport?.offsetLeft ?? 0;
+    const top = viewport?.offsetTop ?? 0;
+    const right = left + (viewport?.width ?? window.innerWidth);
+    const bottom = top + (viewport?.height ?? window.innerHeight);
+    const above = Math.max(top + 12, Math.min(rect.top - 8, bottom - 12));
+    const below = Math.min(bottom - 12, Math.max(top + 12, rect.bottom + 8));
+    const aboveHeight = Math.max(0, above - top - 12);
+    const belowHeight = Math.max(0, bottom - 12 - below);
+    const opensAbove = aboveHeight >= 80 || aboveHeight >= belowHeight;
+    setStyle("--auto-size-available-height", `${opensAbove ? aboveHeight : belowHeight}px`);
+    setStyle("max-width", `${Math.max(0, right - left - 24)}px`);
+    const size = menu.getBoundingClientRect();
+    setStyle("left", `${Math.max(left + 12, Math.min(rect.right - size.width, right - size.width - 12))}px`);
+    setStyle("top", `${opensAbove ? Math.max(top + 12, above - size.height) : below}px`);
+    // A keyboard can move the anchor without another viewport event. Read once per open frame;
+    // unchanged frames write nothing, and closing/removing the picker cancels the lane entirely.
+    schedule();
+  };
+  composerPickerLifecycles.set(picker, stop);
+  setStyle("position", "fixed");
+  setStyle("right", "auto");
+  setStyle("bottom", "auto");
   menu.showPopover?.();
-  const rect = trigger.getBoundingClientRect();
-  menu.style.position = "fixed";
-  menu.style.right = "auto";
-  menu.style.left = `${Math.max(12, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 12))}px`;
-  menu.style.bottom = `${window.innerHeight - rect.top + 8}px`;
-  menu.style.setProperty("--auto-size-available-height", `${Math.max(80, rect.top - 20)}px`);
+  window.addEventListener("resize", schedule);
+  window.addEventListener("scroll", schedule, true);
+  viewport?.addEventListener("resize", schedule);
+  viewport?.addEventListener("scroll", schedule);
+  update();
 }
 
 function closeComposerPicker(event: KeyboardEvent) {
@@ -2324,7 +2377,7 @@ function renderQuestion(props: HomeProps) {
   if (!question) return nothing;
   if (question.method === "questionnaire") {
     // Its previews' code blocks copy and wrap as the transcript's do.
-    return html`<div class="agent-chat__question-dock" aria-live="polite">
+    return html`<div class="chat-question-dock" aria-live="polite">
       <hui-questionnaire-card .prompt=${question} .onAnswer=${props.onAnswerQuestion} .idPrefix=${sessionControlId(props, "questionnaire")}></hui-questionnaire-card>
     </div>`;
   }
@@ -2354,7 +2407,7 @@ function renderQuestion(props: HomeProps) {
   const secret = question.method === "secret";
   const titleId = sessionControlId(props, "question-title");
   const reasonId = sessionControlId(props, "question-reason");
-  return html`<div class="agent-chat__question-dock" aria-live="polite">
+  return html`<div class="chat-question-dock" aria-live="polite">
     <form class="session-question-card chat-question-panel" data-testid="question-card" aria-labelledby=${titleId} @submit=${submit}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key === "Escape") {
@@ -2541,7 +2594,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
       </div>
       <div class="chat-pane__header-trailing">
         <div class="chat-pane__actions chat-pane__header-actions">
-          ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall }) : nothing}
+          ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall, labelled: Boolean(props.mobileNavLayout) }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
             aria-label=${props.bot.panelOpen ? "Hide the bot panel" : "Show the bot panel"} title="Bot panel"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
@@ -2594,6 +2647,7 @@ function projectedRows(transcript: readonly TranscriptItem[]): readonly ChatProj
 function renderTranscript(props: HomeProps, session: SessionView) {
   const rows = projectedRows(props.transcript);
   const start = transcriptWindowStart(rows.length, props.transcriptWindowStart);
+  const markers = props.opening || session.status === "starting" ? [] : conversationMarkers(rows);
   const reveal = (messageId: string) => {
     const row = rowOfMessage(rows, messageId);
     return row >= 0 && row < start ? props.onShowEarlier(row) : undefined;
@@ -2613,10 +2667,11 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                   : nothing}
                 <div class="chat-main__conversation">
                   ${props.taskSuggestions?.suggestions.length ? html`<div class="chat-gutter-stack">${renderTaskSuggestionCard(props.taskSuggestions)}</div>` : nothing}
+                  ${stickyPrompt({ prompts: markers.filter((marker) => marker.role === "user"), onNavigate: props.onTranscriptNavigate })}
                   <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript" data-window-start=${start}
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}>
-                    ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
-                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
+                    ${positionRail({ sessionId: session.id, markers, onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
+                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}${renderQuestion(props)}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>
@@ -2624,23 +2679,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                 ${renderComposer(props)}
               </div>
             </div>
-            ${props.sideChat ? html`
-              <aside class="chat-session-rail" aria-label="Side chat">
-                <header class="chat-session-rail__header">
-                  <div><strong>Side chat</strong><span>Ephemeral · ${props.sideChat.model || "utility model"}</span></div>
-                  <button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Close side chat" @click=${props.onCloseSideChat}>${icons.close}</button>
-                </header>
-                <div class="chat-session-rail__thread" role="status" aria-live="polite">
-                  <div class="chat-session-rail__question">${props.sideChat.question}</div>
-                  ${props.sideChat.loading
-                    ? html`<div class="chat-working-indicator"><span class="chat-working-indicator__mark" aria-hidden="true"><i></i><i></i><i></i></span><span>Asking utility model…</span></div>`
-                    : props.sideChat.error
-                      ? html`<div class="chat-session-rail__error" role="alert">${props.sideChat.error}</div>`
-                      : html`<div class="chat-session-rail__answer">${renderMarkdown(props.sideChat.answer)}</div>`}
-                </div>
-                <p class="chat-session-rail__note">This exchange is not added to the main transcript.</p>
-              </aside>
-            ` : nothing}
+            ${props.sideChatRail ? html`<hui-side-chat-view class="chat-session-rail" rail role="complementary" aria-label="Side chat" .sessionId=${session.id}></hui-side-chat-view>` : nothing}
           </div>
         </div>
       </div>

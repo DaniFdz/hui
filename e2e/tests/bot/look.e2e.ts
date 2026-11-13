@@ -65,8 +65,8 @@ test("Look offers thirteen shapes, ears and a colour, each saves at once and the
   await expect(summary).toHaveAttribute("aria-label", "Look: Star, Bunny ears, Mint");
 
   await screen.getByRole("button", "Hide the bot panel").tap();
-  await expect.poll(async () => (await hui.faces()).map((face) => face.size)).toEqual(["sm", "md", "lg"]);
-  expect(await hui.faces()).toEqual([
+  await expect.poll(async () => (await hui.faces()).filter((face) => face.shape === "star").map((face) => face.size)).toEqual(["sm", "md", "lg"]);
+  expect((await hui.faces()).filter((face) => face.shape === "star")).toEqual([
     { size: "sm", shape: "star", ears: "bunny", emoji: "", color: "#2fc49a" },
     { size: "md", shape: "star", ears: "bunny", emoji: "", color: "#2fc49a" },
     { size: "lg", shape: "star", ears: "bunny", emoji: "", color: "#2fc49a" },

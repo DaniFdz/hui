@@ -11,8 +11,8 @@ const post = (body: unknown = {}) => ({ method: "POST", headers: { "content-type
 export async function listTerminals(owner: string): Promise<TerminalView[]> {
   return (await fetchJson<TerminalsResponse>(url(owner))).terminals;
 }
-export async function createTerminal(owner: string): Promise<TerminalView> {
-  return (await fetchJson<TerminalResponse>(url(owner), post())).terminal;
+export async function createTerminal(owner: string, title?: string): Promise<TerminalView> {
+  return (await fetchJson<TerminalResponse>(url(owner), post(title === undefined ? {} : { title }))).terminal;
 }
 export async function endTerminal(owner: string, id: string): Promise<void> {
   await fetchJson(url(owner, id), post({ action: "close" }));

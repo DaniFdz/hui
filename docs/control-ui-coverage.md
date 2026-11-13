@@ -109,8 +109,7 @@ matrix, corrected defects, screenshots and remaining downstream-patch limits.
 This is strong, bounded component evidence, **not a 100% whole-application
 pixel-diff claim**. The same-DOM stylesheet probe cannot prove original DOM
 equivalence, and PI/HUI content and native transports are explicitly adapted.
-The stricter [visual goal](visual-parity-goal.md) stays open until its independent
-visual acceptance gate is met.
+The stricter visual acceptance gate stays open until it is independently met.
 
 Full journeys, failed attempts, test environment and proof limits:
 [Browser E2E report](../e2e/visual-parity-2026-09-24.browser.md).

@@ -54,6 +54,14 @@ test.for(runtimes)("Stop ends a request whose key command is still running (%s)"
   assert.deepEqual(keys, []);
 });
 
+test.for(runtimes)("a key command that fails once is tried again before the request gives up (%s)", async (kind, t) => {
+  const { runtime, model, keys } = await runtimeWithKeyCommand(t, kind, (dir) =>
+    `n=$(cat '${dir}/tries' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${dir}/tries'; [ $n -ge 2 ] && echo sk-second`);
+  const reply = await runtime.completeSimple(model, { messages: [] });
+  assert.equal(reply.stopReason, "stop", String(reply.errorMessage));
+  assert.deepEqual(keys, ["sk-second"]);
+});
+
 test.for(runtimes)("a stored credential still wins over the key command, and a failed command fails the request as PI's does (%s)", async (kind, t) => {
   const stored = await runtimeWithKeyCommand(t, kind, (dir) => `touch '${dir}/started'; echo sk-command`, "sk-stored");
   await stored.runtime.completeSimple(stored.model, { messages: [] });
@@ -93,7 +101,7 @@ async function runtimeWithLocalGate(t: TestContext, gate: LocalGate) {
   await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { local: {
     baseUrl: "http://127.0.0.1:9/v1", api: "openai-completions", apiKey: "fixture", models: [{ id: "m" }],
   } } }));
-  const runtime = await createSessionModelRuntime(agentDir, join(dir, "hui"), gate);
+  const runtime = await createSessionModelRuntime(agentDir, join(dir, "hui"), { gate });
   const calls: string[] = [];
   runtime.registerNativeProvider({ ...runtime.getProvider("local")!, streamSimple: (_model, _context, options) => {
     calls.push(options?.headers?.["x-fixture"] ?? "called");

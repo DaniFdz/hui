@@ -26,9 +26,14 @@ export type BrowserStatus = Static<typeof BrowserStatus>;
 export const BrowserViewTab = Type.Object({ id: Type.String(), title: Type.String(), url: Type.String() }, { $id: "BrowserViewTab" });
 export type BrowserViewTab = Static<typeof BrowserViewTab>;
 
+/** A tab the agent handed to the operator: the agent waits until they continue. */
+export const BrowserHandoff = Type.Object({ tabId: Type.String(), message: Type.String(), since: Type.String() }, { $id: "BrowserHandoff" });
+export type BrowserHandoff = Static<typeof BrowserHandoff>;
+
 export const BrowserViewState = Type.Object({
   running: Type.Boolean(), mode: Type.Optional(Type.Union([Type.Literal("headless"), Type.Literal("windowed")])), tabs: Type.Array(BrowserViewTab),
   current: Type.Union([Type.String(), Type.Null()]), watching: Type.Union([Type.String(), Type.Null()]), following: Type.Boolean(),
+  handoff: Type.Union([BrowserHandoff, Type.Null()]),
 }, { $id: "BrowserViewState" });
 export type BrowserViewState = Static<typeof BrowserViewState>;
 
@@ -43,8 +48,33 @@ export const BrowserViewMessage = Type.Union([
 ], { $id: "BrowserViewMessage" });
 export type BrowserViewMessage = Static<typeof BrowserViewMessage>;
 
-export const BrowserViewControl = Type.Object({ action: Type.Literal("select"), tabId: Type.Union([Type.String(), Type.Null()]) }, { $id: "BrowserViewControl" });
+/** What a browser view sends back: pick a tab, or drive a tab the agent handed over. Input is only
+ * applied while that tab's handoff waits, and only by the conversation that owns it. */
+export const BrowserViewControl = Type.Union([
+  Type.Object({ action: Type.Literal("select"), tabId: Type.Union([Type.String(), Type.Null()]) }),
+  Type.Object({
+    action: Type.Literal("pointer"), tabId: Type.String(),
+    kind: Type.Union([Type.Literal("move"), Type.Literal("down"), Type.Literal("up")]),
+    x: Type.Number(), y: Type.Number(), button: Type.Union([Type.Literal("left"), Type.Literal("right")]),
+  }),
+  Type.Object({ action: Type.Literal("wheel"), tabId: Type.String(), x: Type.Number(), y: Type.Number(), deltaX: Type.Number(), deltaY: Type.Number() }),
+  Type.Object({ action: Type.Literal("key"), tabId: Type.String(), key: Type.String() }),
+  Type.Object({ action: Type.Literal("continue"), tabId: Type.String() }),
+], { $id: "BrowserViewControl" });
 export type BrowserViewControl = Static<typeof BrowserViewControl>;
+
+/** A stored site secret as any route may see it: never its value. */
+export const BrowserSecretView = Type.Object({ name: Type.String(), origin: Type.String(), createdAt: Type.String() }, { $id: "BrowserSecretView" });
+export type BrowserSecretView = Static<typeof BrowserSecretView>;
+
+export const BrowserSecrets = Type.Object({ secrets: Type.Array(BrowserSecretView) }, { $id: "BrowserSecrets" });
+export type BrowserSecrets = Static<typeof BrowserSecrets>;
+
+export const BrowserSecretInput = Type.Object({ name: Type.String(), origin: Type.String(), value: Type.String() }, { $id: "BrowserSecretInput" });
+export type BrowserSecretInput = Static<typeof BrowserSecretInput>;
+
+export const BrowserSecretRemoval = Type.Object({ name: Type.String() }, { $id: "BrowserSecretRemoval" });
+export type BrowserSecretRemoval = Static<typeof BrowserSecretRemoval>;
 
 export const BrowserControl = Type.Object({ action: Type.Union([Type.Literal("start"), Type.Literal("stop")]) }, { $id: "BrowserControl" });
 export type BrowserControl = Static<typeof BrowserControl>;
@@ -61,6 +91,9 @@ export type BrowserError = Static<typeof BrowserError>;
 export const routeSchemas = [
   { method: "GET", path: "/__hui/browser", response: BrowserStatus },
   { method: "POST", path: "/__hui/browser", request: BrowserControl, response: BrowserStatus },
+  { method: "GET", path: "/__hui/browser/secrets", response: BrowserSecrets },
+  { method: "POST", path: "/__hui/browser/secrets", request: BrowserSecretInput, response: BrowserSecrets },
+  { method: "POST", path: "/__hui/browser/secrets/remove", request: BrowserSecretRemoval, response: BrowserSecrets },
   { method: "GET", path: "/__hui/browser/tabs/:tab/preview", response: BrowserPreview },
   { method: "POST", path: "/__hui/sessions/:id/browser/connect", response: BrowserViewConnection },
   { method: "WS", path: "/__hui/browser-stream", request: BrowserViewControl, response: BrowserViewMessage, events: BrowserViewMessage },

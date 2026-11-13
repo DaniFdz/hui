@@ -62,7 +62,6 @@ npm run typecheck
 npm run build
 npm run test:package
 npm run e2e
-npm run e2e:ios
 ```
 
 The Test workflow runs `npm run typecheck` and `npm test` on every pull request
@@ -79,21 +78,10 @@ The E2E workflow runs the suite on every pull request and push to `main`, and
 Nightly and Release run it before publishing. `e2e/AGENTS.md` has the rules for
 writing a test.
 
-`npm run e2e:ios` runs the same tests on the iOS app, on a simulator named "HUI
-iPhone". It needs Xcode 27.1 with the iOS 27.0 simulator runtime and the app
-installed. Add `--tag <ID>` to run one use case's tests.
-
-To debug a failing iOS test, open `trace.md` in its directory under
-`.e2e/results/`. It lists each step with the screen the app showed, and links the
-screenshot and the screen dump taken at the failure. Add
-`--video retain-on-failure` to keep a recording of a failed test. The app's own
-log is in
-`xcrun simctl spawn "HUI iPhone" log show --last 1h --predicate 'process == "HUI"'`.
-
-While the iOS app is being built, the E2E workflow's `ios` job runs only when
-started by hand (`gh workflow run e2e.yml --ref <branch>`), so run
-`npm run e2e:ios` locally for an iOS change. Nightly and Release run the iOS
-suite before publishing.
+Add `--tag <ID>` to run one use case's tests. To debug a failing test, open
+`trace.md` in its directory under `.e2e/results/`. It lists each step with the
+screen the app showed, and links the screenshot and the screen dump taken at the
+failure. Add `--video retain-on-failure` to keep a recording of a failed test.
 
 User-visible changes also need a real Browser-tool E2E check. Documentation-only
 changes need at least `git diff --check` and verification that commands and links
@@ -296,7 +284,7 @@ No new token or PAT is needed: publication uses the workflow's `GITHUB_TOKEN`.
 
 The Nightly workflow runs on every push to `main`, as parallel jobs so one slow
 proof cannot hold the others or outgrow a single budget: typecheck and the full
-test suite, the web suite in four shards, the smoke tests three times over with
+test suite, the web suite in eight shards, the smoke tests three times over with
 retries off, and the installed-package proof on Linux and again on macOS, where
 the installation, desktop and update paths differ. It stamps the package with
 `scripts/nightly-version.mjs` (a prerelease of the next patch, such as

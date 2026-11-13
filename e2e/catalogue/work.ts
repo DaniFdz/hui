@@ -1,9 +1,6 @@
 /** The WORK use cases: the Work pane and its views (terminals, the browser view, Files, Diff and VS Code), file links in the chat and the terminal font. */
 import type { UseCase } from "./types.ts";
 
-const KEYBOARD = "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21";
-const chord = (what: string) => ({ excluded: `${what} is a keyboard chord; an iPhone has no keyboard to press it.`, decision: KEYBOARD });
-
 const cases: UseCase[] = [
   {
     id: "WORK-001",
@@ -13,7 +10,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: { excluded: "The rail and the pane's own empty state are the wide split workspace's: \"Below 1100px the pane is a full-screen destination\", whose Active panel selector lists the same launchers with their shortcuts (WORK-010).", decision: "SPEC.md#behaviour" },
   },
   {
     id: "WORK-002",
@@ -23,7 +20,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-003",
@@ -33,7 +30,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-004",
@@ -42,8 +39,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "WORK-005",
@@ -53,7 +50,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: chord("Moving between, reordering and closing tabs with the arrow keys and Delete"),
+    phone: { excluded: "Moving between, reordering and closing tabs with the arrow keys and Delete is a keyboard chord; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "WORK-006",
@@ -63,7 +60,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: { excluded: "The rail, and a chat widening beside the pane, are the wide split workspace's: \"Below 1100px the pane is a full-screen destination\" and Back to chat returns to the conversation, with its views still mounted.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "WORK-007",
@@ -73,7 +70,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "WORK-008",
@@ -83,7 +80,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: { excluded: "\"Maximized is per conversation and desktop only\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
+    phone: { excluded: "\"Maximized is per conversation and desktop only\"; the phone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "WORK-009",
@@ -93,17 +90,17 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: { excluded: "\"Below 1100px the pane is a full-screen destination\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
+    phone: { excluded: "\"Below 1100px the pane is a full-screen destination\"; the phone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "WORK-010",
     title: "Open a Work view from the narrow panel selector",
-    behaviour: "On a narrow screen the Active panel selector lists the chat panes (Chat, or \"1 · Chat\" and so on with several), each open view (\"Terminal 1 · Work\") and the launchers (\"New terminal · Open\"), leaving out the Browser and VS Code launchers while their view is open and disabling, with the reason, a launcher that cannot act. Choosing a view or launcher shows the full-screen Work destination with its tab strip and +, and Back to chat returns to the chat with its draft kept.",
+    behaviour: "On a narrow screen the Active panel selector lists the chat panes (Chat, or \"1 · Chat\" and so on with several), each open view (\"Terminal 1 · Work\") and the launchers (\"New terminal · Open\"), leaving out the Browser and VS Code launchers while their view is open and disabling, with the reason, a launcher that cannot act. Choosing a view or launcher shows the full-screen Work destination with its tab strip and +, and Back to chat returns to the chat with its draft kept. On a phone the chooser sits in the conversation's own header, in place of its title, and the destination keeps it in a row of its own.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane", "shared-terminal"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-011",
@@ -113,7 +110,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: { excluded: "An open or collapsed, maximized or sized pane is the wide split workspace's: \"Below 1100px the pane is a full-screen destination\", which a reload leaves on the chat, its open views still in the Active panel selector (WORK-010).", decision: "SPEC.md#behaviour" },
   },
   {
     id: "WORK-012",
@@ -123,7 +120,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-013",
@@ -133,7 +130,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:browser.enabled"],
     journeys: ["work-pane"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "WORK-014",
@@ -143,7 +140,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-015",
@@ -153,7 +150,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "required",
-    ios: { excluded: "Escape to leave the pane is a keyboard key; an iPhone has no keyboard to press it.", decision: KEYBOARD },
+    phone: { excluded: "Escape to leave the pane is a keyboard key; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "WORK-016",
@@ -163,7 +160,7 @@ const cases: UseCase[] = [
     surfaces: ["shortcut:togglePane"],
     journeys: ["work-pane"],
     web: "required",
-    ios: chord("Showing or hiding the Work pane with Ctrl+Alt+Shift+P"),
+    phone: { excluded: "Showing or hiding the Work pane with Ctrl+Alt+Shift+P is a keyboard chord; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "WORK-017",
@@ -173,7 +170,7 @@ const cases: UseCase[] = [
     surfaces: ["shortcut:maximizePane"],
     journeys: ["work-pane"],
     web: "required",
-    ios: { excluded: "\"Maximized is per conversation and desktop only\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
+    phone: { excluded: "\"Maximized is per conversation and desktop only\"; the phone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "WORK-018",
@@ -183,7 +180,7 @@ const cases: UseCase[] = [
     surfaces: ["shortcut:terminal"],
     journeys: ["work-pane"],
     web: "required",
-    ios: chord("Opening a terminal with Ctrl+Alt+Shift+T"),
+    phone: { excluded: "Opening a terminal with Ctrl+Alt+Shift+T is a keyboard chord; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "WORK-019",
@@ -193,7 +190,7 @@ const cases: UseCase[] = [
     surfaces: ["shortcut:browser"],
     journeys: ["work-pane"],
     web: "required",
-    ios: chord("Opening the browser view with Ctrl+Alt+Shift+B"),
+    phone: { excluded: "Opening the browser view with Ctrl+Alt+Shift+B is a keyboard chord; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "WORK-020",
@@ -203,7 +200,7 @@ const cases: UseCase[] = [
     surfaces: ["shortcut:files"],
     journeys: ["work-pane", "files-view"],
     web: "required",
-    ios: chord("Opening a Files view with Ctrl+Alt+Shift+F"),
+    phone: { excluded: "Opening a Files view with Ctrl+Alt+Shift+F is a keyboard chord; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "WORK-021",
@@ -213,7 +210,7 @@ const cases: UseCase[] = [
     surfaces: ["shortcut:vscode"],
     journeys: ["work-pane", "vscode-view"],
     web: "backlog",
-    ios: chord("Opening VS Code with Ctrl+Alt+Shift+C"),
+    phone: { excluded: "Opening VS Code with Ctrl+Alt+Shift+C is a keyboard chord; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "WORK-022",
@@ -223,7 +220,7 @@ const cases: UseCase[] = [
     surfaces: ["shortcut:diff"],
     journeys: ["diff-view"],
     web: "required",
-    ios: chord("Opening a Diff view with Ctrl+Alt+Shift+D"),
+    phone: { excluded: "Opening a Diff view with Ctrl+Alt+Shift+D is a keyboard chord; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "WORK-023",
@@ -233,7 +230,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "backlog",
-    ios: { excluded: "Layouts an older version saved in the browser; the iOS app has no older version.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
+    phone: { excluded: "Layouts an older version saved in the browser; the iOS app has no older version.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
 
   {
@@ -244,7 +241,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:terminal", "route:GET /__hui/sessions/:owner/terminals", "route:POST /__hui/sessions/:owner/terminals", "route:POST /__hui/sessions/:owner/terminals/:id/connect"],
     journeys: ["shared-terminal", "work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-025",
@@ -254,7 +251,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:terminal", "route:POST /__hui/sessions/:owner/terminals/:id/connect"],
     journeys: ["shared-terminal", "work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-026",
@@ -264,7 +261,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:terminal", "route:POST /__hui/sessions/:owner/terminals"],
     journeys: ["shared-terminal", "work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-027",
@@ -274,7 +271,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:terminal"],
     journeys: ["shared-terminal"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-028",
@@ -284,7 +281,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:owner/terminals"],
     journeys: ["shared-terminal", "work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-029",
@@ -294,7 +291,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:owner/terminals/:id"],
     journeys: ["shared-terminal", "work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-030",
@@ -303,8 +300,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals", "docs/api.md#shared-terminal-api-and-tool"],
     surfaces: ["route:POST /__hui/sessions/:owner/terminals/:id/connect"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "WORK-031",
@@ -313,8 +310,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: [],
     journeys: ["shared-terminal"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-032",
@@ -324,7 +321,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["shared-terminal"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-033",
@@ -334,7 +331,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["shared-terminal"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-034",
@@ -343,8 +340,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: [],
     journeys: ["shared-terminal"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "WORK-035",
@@ -354,7 +351,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["shared-terminal"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "WORK-036",
@@ -364,7 +361,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["shared-terminal"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "WORK-037",
@@ -374,7 +371,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["shared-terminal"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
 
   {
@@ -384,8 +381,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["work-view:browser", "route:POST /__hui/sessions/:id/browser/connect", "route:WS /__hui/browser-stream"],
     journeys: ["work-pane", "browser-tool"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-040",
@@ -394,8 +391,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser"],
     surfaces: ["work-view:browser"],
     journeys: ["work-pane"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-041",
@@ -404,8 +401,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["route:POST /__hui/sessions/:id/browser/connect", "route:WS /__hui/browser-stream"],
     journeys: ["work-pane"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
 
   {
@@ -416,7 +413,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:files", "route:GET /__hui/sessions/:id/files", "route:GET /__hui/sessions/:id/files/list"],
     journeys: ["files-view", "work-pane"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "WORK-043",
@@ -426,7 +423,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:files", "route:GET /__hui/sessions/:id/files/file"],
     journeys: ["files-view", "work-pane"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-044",
@@ -435,8 +432,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:PUT /__hui/sessions/:id/files/file"],
     journeys: ["files-view", "work-pane"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-045",
@@ -445,8 +442,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:PUT /__hui/sessions/:id/files/file", "route:GET /__hui/sessions/:id/files/file"],
     journeys: ["files-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-046",
@@ -455,8 +452,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view", "work-pane"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-047",
@@ -465,8 +462,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: ["route:GET /__hui/sessions/:id/files/list", "route:GET /__hui/sessions/:id/files/file"],
     journeys: ["files-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "WORK-048",
@@ -476,7 +473,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["files-view"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-049",
@@ -485,8 +482,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/files/raw"],
     journeys: ["files-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-050",
@@ -496,7 +493,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:id/files/search"],
     journeys: ["files-view"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "WORK-051",
@@ -506,7 +503,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["files-view"],
     web: "required",
-    ios: { excluded: "Escape to clear the filter is a keyboard key; an iPhone has no keyboard to press it.", decision: KEYBOARD },
+    phone: { excluded: "Escape to clear the filter is a keyboard key; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "WORK-052",
@@ -516,7 +513,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/files/entry"],
     journeys: ["files-view"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "WORK-053",
@@ -526,7 +523,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id/files/entry"],
     journeys: ["files-view"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "WORK-054",
@@ -536,7 +533,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/files/upload"],
     journeys: ["files-view"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-055",
@@ -546,7 +543,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["files-view"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-056",
@@ -555,8 +552,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view", "work-pane"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-057",
@@ -565,8 +562,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/files"],
     journeys: ["files-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
 
   {
@@ -576,8 +573,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:POST /__hui/sessions/:id/files/resolve"],
     journeys: ["chat-file-links"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-059",
@@ -586,8 +583,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: ["work-view:files"],
     journeys: ["chat-file-links"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "WORK-060",
@@ -596,8 +593,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["chat-file-links"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-061",
@@ -606,8 +603,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["chat-file-links"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-062",
@@ -616,8 +613,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["chat-file-links"],
-    web: "backlog",
-    ios: { excluded: "Tabbing to a link is keyboard navigation; an iPhone has no keyboard to press it.", decision: KEYBOARD },
+    web: "required",
+    phone: { excluded: "Tabbing to a link is keyboard navigation; a phone has no keyboard to press it.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
 
   {
@@ -628,7 +625,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:diff", "route:GET /__hui/sessions/:id/diff", "route:GET /__hui/sessions/:id/diff/changes", "route:GET /__hui/sessions/:id/diff/file"],
     journeys: ["diff-view"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-064",
@@ -637,8 +634,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/diff/changes"],
     journeys: ["diff-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-065",
@@ -647,8 +644,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/diff", "route:GET /__hui/sessions/:id/diff/changes"],
     journeys: ["diff-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-066",
@@ -658,7 +655,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["diff-view"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "WORK-067",
@@ -667,8 +664,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff", "docs/api.md#diff-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/diff/file"],
     journeys: ["diff-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-068",
@@ -678,7 +675,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["diff-view"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-069",
@@ -687,8 +684,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "WORK-070",
@@ -697,8 +694,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: ["route:GET /__hui/sessions/:id/diff/changes"],
     journeys: ["diff-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-071",
@@ -707,8 +704,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-072",
@@ -717,8 +714,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-073",
@@ -728,7 +725,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:id/diff"],
     journeys: ["diff-view"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
 
   {
@@ -739,7 +736,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:vscode", "route:POST /__hui/sessions/:id/vscode/connect", "route:GET /__hui/vscode-server"],
     journeys: ["vscode-view", "work-pane"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "WORK-075",
@@ -749,7 +746,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/vscode-server", "route:GET /__hui/vscode-server"],
     journeys: ["vscode-view"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "WORK-076",
@@ -759,7 +756,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/vscode-server", "setting:vscode.licenseAcceptedAt"],
     journeys: ["vscode-view"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "WORK-077",
@@ -769,7 +766,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:vscode", "route:POST /__hui/sessions/:id/vscode/connect"],
     journeys: ["vscode-view", "work-pane"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "WORK-078",
@@ -778,7 +775,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#vs-code", "docs/api.md#vs-code-view-api"],
     surfaces: ["route:POST /__hui/sessions/:id/vscode/connect"],
     web: "backlog",
-    ios: { excluded: "Opens another browser tab; the iOS app has no tabs.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
+    phone: { excluded: "Opens another browser tab; the iOS app has no tabs.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
     id: "WORK-079",
@@ -788,7 +785,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/vscode/connect"],
     journeys: ["vscode-view"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "WORK-080",
@@ -796,8 +793,8 @@ const cases: UseCase[] = [
     behaviour: "The VS Code view of a conversation on a remote worker shows \"VS Code is not available here\" with the reason that its files are not on this machine.",
     spec: ["SPEC.md#vs-code"],
     surfaces: [],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "WORK-081",
@@ -807,7 +804,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:files"],
     journeys: ["files-view"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "WORK-082",
@@ -817,7 +814,36 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/files/upload"],
     journeys: ["files-view"],
     web: "required",
-    ios: { excluded: "The iPhone app imports files through its native file importer, which shows the system's own progress and offers no in-app Cancel upload; the gateway's larger cap still applies to it.", decision: "SPEC.md#the-webs-upload-progress-and-cancel-stay-on-the-web-2026-11-03" },
+    phone: "required",
+  },
+  {
+    id: "WORK-083",
+    title: "Widen the Files navigator and read a cut-off name",
+    behaviour: "Dragging the boundary at the navigator's right edge widens it up to the room that leaves the editor 240px, and narrows it to 200px; the boundary is a separator named Resize files navigator that also takes the arrow keys, 16px a press and 48px with Shift. The browser keeps the width after a reload, and a name cut short shows its full path on hover.",
+    spec: ["SPEC.md#files", "SPEC.md#a-file-lists-boundary-and-hover-path-stay-on-the-web-2026-11-08"],
+    surfaces: ["work-view:files"],
+    journeys: ["files-view"],
+    web: "required",
+    phone: { excluded: "The phone app is always narrow: its Files navigator is a drawer with no boundary, and a touch screen has no hover for the full path.", decision: "SPEC.md#a-file-lists-boundary-and-hover-path-stay-on-the-web-2026-11-08" },
+  },
+  {
+    id: "WORK-084",
+    title: "Widen the changed-file list and read a cut-off path",
+    behaviour: "Dragging the boundary at the changed-file list's right edge widens it up to the room that leaves the diff 320px, and narrows it to 220px; the boundary is a separator named Resize changed files that also takes the arrow keys, 16px a press and 48px with Shift. The browser keeps the width after a reload, and a path cut short shows its full path on hover.",
+    spec: ["SPEC.md#diff", "SPEC.md#a-file-lists-boundary-and-hover-path-stay-on-the-web-2026-11-08"],
+    surfaces: ["work-view:diff"],
+    journeys: ["diff-view"],
+    web: "required",
+    phone: { excluded: "The Diff view's changed-file list has no side-by-side boundary on a narrow iPhone screen, and a touch screen has no hover for the full path; the list and a tap's diff stay.", decision: "SPEC.md#a-file-lists-boundary-and-hover-path-stay-on-the-web-2026-11-08" },
+  },
+  {
+    id: "WORK-085",
+    title: "Open an extension panel in the Work pane",
+    behaviour: "An enabled gateway extension that ships a ui entry adds Extension panel to the Work pane's + menu. Choosing it opens the extension's title bar and a sandboxed frame in the conversation's Work pane; the frame cannot reach HUI or the network directly and calls only that extension's own routes through HUI. Settings → Extensions' Open panel opens the same view, and a saved panel returns with the conversation.",
+    spec: ["SPEC.md#gateway-extensions"],
+    surfaces: ["work-view:extension", "settings-page:extensions"],
+    web: "required",
+    phone: "backlog",
   },
 ];
 

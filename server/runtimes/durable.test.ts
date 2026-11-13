@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getImageDimensions } from "@earendil-works/pi-tui";
 import { afterAll, test, type TestContext } from "vitest";
 import { normalizeSettings } from "../hui-settings.ts";
@@ -25,7 +26,7 @@ const root = await mkdtemp(join(tmpdir(), "hui-durable-home-"));
 process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 afterAll(() => rm(root, { recursive: true, force: true }));
-const { DurableHost, durableContext, registryCaller } = await import("./durable-host.ts");
+const { DurableHost, durableContext, harnessSettings, registryCaller } = await import("./durable-host.ts");
 const { createDurableBots } = await import("../bots/durable-access.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
@@ -35,6 +36,7 @@ const { durableConversationId, durableReference, expandSkill, startDurable } = a
 const { importPiSession } = await import("./pi-import.ts");
 const { searchTranscripts } = await import("./transcript-search.ts");
 const { aggregateUsage } = await import("../observability.ts");
+const { createExtensionsService } = await import("../extensions/service.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
 const settings = normalizeSettings(undefined);
@@ -243,6 +245,19 @@ test("an image larger than the provider accepts reaches it shrunk, on every turn
   assert.equal((await session.attachmentImage(0, 0))?.data.toString("base64"), tall);
 });
 
+test("a session the provider refuses for the size of its images carries fewer of them on the next turn", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-image-size" }, f.host());
+  const shots = Array.from({ length: 5 }, () => solidPng(2, 2).toString("base64"));
+  await session.prompt("E2E_TOO_LONG look at these", shots.map((dataBase64, index) => ({ kind: "image" as const, mimeType: "image/png", dataBase64, name: `shot-${index}.png` })), { requestId: "too-long" });
+  await assert.rejects(session.waitForTrackedPrompt("too-long"), /model_error: .*Input is too long/u);
+  await turns(session, ["and now"]);
+  const requests = await providerRequests(f.log);
+  const images = requests.map((request) => [...JSON.stringify(request.messages).matchAll(/"data":"([^"]+)"/gu)].length);
+  assert.deepEqual(images, [5, 2], "the refused request carried every image, the next the half the refusal taught");
+  assert.match(JSON.stringify(requests.at(-1)?.messages), /3 earlier images left out: this model takes at most 2 images per request/u);
+});
+
 test("fast mode asks a Claude Opus model for speed: fast, while the session has it on", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t, { models: ["fixture", "claude-opus-5-5"] });
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fast", model: "hui-e2e/claude-opus-5-5" }, f.host());
@@ -410,6 +425,37 @@ test("a provider retry is announced as a recovery notice", { timeout: 45_000 }, 
   await session.prompt("E2E_ERROR retried");
   const notice = await notified;
   assert(notice.type === "notice" && notice.level === "warning" && notice.recovery === true, JSON.stringify(notice));
+});
+
+test("HUI's retry setting and a fresh provider hint shape the harness retry", async (t) => {
+  const f = await fixture(t);
+  const manager = SettingsManager.create(f.agentDir, f.agentDir);
+  const now = Date.now();
+  const hinted = harnessSettings(manager, [], { attempts: () => 2, hint: () => ({ at: now, ms: 30_000 }) }).retry;
+  assert(hinted);
+  assert.equal(hinted.maxRetries, 2);
+  assert.equal(hinted.baseDelayMs, 30_000);
+  assert.equal(hinted.maxAgentDelayMs, 30_000);
+  const stale = harnessSettings(manager, [], { attempts: () => 2, hint: () => ({ at: now - 60_000, ms: 30_000 }) }).retry;
+  assert(stale);
+  assert.equal(stale.baseDelayMs, manager.getRetrySettings().baseDelayMs);
+  assert.equal(stale.maxAgentDelayMs, manager.getRetrySettings().maxAgentDelayMs);
+});
+
+test("a capacity 429 retries the same model before the fallback, as often as HUI allows", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { settings: { retry: { enabled: true, maxRetries: 9, baseDelayMs: 1, maxAgentDelayMs: 10 } } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-capacity-retry" },
+    f.host({ huiSettings: normalizeSettings({ models: { retryAttempts: 1 } }) }));
+  const notices: RuntimeEvent[] = [];
+  session.subscribe((event) => { if (event.type === "notice") notices.push(event); });
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("E2E_CAPACITY please");
+  await settled;
+  const requests = (await readFile(f.log, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>)
+    .filter((body) => JSON.stringify(body).includes("E2E_CAPACITY") && !JSON.stringify(body).includes("Generate a concise session title"));
+  assert.equal(requests.length, 2, "one request plus HUI's single retry, not PI's maxRetries of 9");
+  assert(notices.some((notice) => notice.type === "notice" && notice.recovery === true && /attempt 1/.test(notice.message)));
+  assert.equal((session.transcript().at(-1) as { kind?: string } | undefined)?.kind, "error");
 });
 
 test("a skill turned off in HUI is refused with a notice and never reaches the model", { timeout: 45_000 }, async (t) => {
@@ -1249,6 +1295,45 @@ test("an extension sees when a projected entry was recorded, not when the gatewa
   const projections = (await readFile(seen, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as number[]);
   assert.deepEqual(projections.at(-1), stored, "each entry keeps the time its message was recorded");
   reopened.dispose();
+});
+
+test("a gateway extension's prompt text and tool reach a Durable session", { timeout: 45_000 }, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "hui-gateway-extension-"));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const directory = join(root, "extensions", "hello");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "extension.json"), JSON.stringify({
+    apiVersion: 1, name: "Hello", description: "Fixture.", main: "index.mjs",
+    prompt: [{ id: "greeting", title: "Greeting", text: "GATEWAY_PROMPT_MARKER: greet by name." }],
+    tools: [{
+      name: "greet", description: "Greets a person.",
+      parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+      promptSnippet: "Greets a person", promptGuidelines: ["Use greet for greetings."],
+    }],
+  }));
+  await writeFile(join(directory, "index.mjs"), `
+export const routes = [{ method: "GET", path: "ping", handle: async () => ({ body: { ok: true } }) }];
+export const tools = { greet: async ({ name }) => "hello, " + name };
+`);
+  const service = createExtensionsService({ dir: join(root, "extensions"), file: join(root, "extensions.json") });
+  await service.setEnabled("hello", true);
+
+  assert.deepEqual(service.agentTools().map((entry) => entry.name), ["ext_hello_greet"]);
+  const f = await fixture(t);
+  const host = f.host();
+  host.configureGatewayExtensions(service);
+  assert.ok(host.gatewayExtension()?.tools?.length, "the host builds the gateway extension");
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "gateway-extension" }, host);
+  await session.applyTools();
+  const inspection = await session.inspect();
+  const tools: string[] = [];
+  session.subscribe((event) => { if (event.type === "tool_end") tools.push(event.name); });
+  await settledAfter(session, "E2E_GATEWAY_TOOL please");
+  assert.deepEqual(tools, ["ext_hello_greet"], `the model calls the namespaced tool (${JSON.stringify(inspection.tools.map((tool) => tool.name))})`);
+  assert.match(JSON.stringify(session.transcript()), /hello, Ada/u, "the extension's handler answered");
+  const request = JSON.stringify((await providerRequests(f.log))[0]);
+  assert.match(request, /GATEWAY_PROMPT_MARKER/u, "its prompt section reaches the model");
+  assert.match(request, /ext_hello_greet: Greets a person/u, "its snippet is in the active-tool list");
 });
 
 test("Durable sessions load PI extensions: their tools, hooks and prompt additions reach the model", { timeout: 45_000 }, async (t) => {

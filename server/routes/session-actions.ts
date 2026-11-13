@@ -68,8 +68,9 @@ export function createSessionActionRoutes(deps: {
           error: pending ? pending.error ?? "The Git worktree is still being created." : `unknown session: ${id}`,
         }, pending ? 409 : 404);
       }
-      // A bot's chat never ends: what would reset, shorten or fork it is refused here; the model stays switchable.
-      if (record.bot && method === "POST" && (action[2] === "clear" || action[2] === "compact" || action[2] === "rewind" || action[2] === "fork")) {
+      // A bot's chat never ends: compacting or forking it is refused here. A clear empties its memory and a rewind keeps
+      // it to the kept branch, so both are allowed; the model stays switchable.
+      if (record.bot && method === "POST" && (action[2] === "compact" || action[2] === "fork")) {
         // The bot registry decides; one that cannot be read refuses rather than risk the chat.
         const owner = await bots.botForSession(record.id).then((bot) => bot ? { handle: bot.handle } : undefined, () => ({ handle: undefined }));
         if (owner) {

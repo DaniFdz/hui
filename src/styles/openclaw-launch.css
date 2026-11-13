@@ -6,10 +6,10 @@
 .new-session-page__group-picker { position: relative; min-width: 0; }
 .new-session-page__group-value { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .new-session-page__directory-menu, .new-session-page__group-menu { position: absolute; z-index: 100; top: calc(100% + 6px); left: 0; width: max-content; min-width: 180px; max-width: min(380px, calc(100vw - 24px)); max-height: min(280px, 42vh); padding: var(--menu-padding); overflow: auto; border: 1px solid var(--overlay-border); border-radius: var(--menu-radius); background: var(--bg-elevated); box-shadow: var(--overlay-shadow); }
-.new-session-page__directory-menu { display: none; }
-.new-session-page__directory-picker:focus-within > input[aria-expanded="true"] ~ .new-session-page__directory-menu { display: grid; }
+/* Completion is a top-layer anchored popup, never dialog flow: closing it on blur must not move a pressed control. */
+.new-session-page__directory-picker > wa-popup::part(popup) { z-index: 100; max-width: calc(100vw - 24px); }
+.new-session-page__directory-menu { display: grid; position: static; width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; max-height: min(280px, 42vh, var(--auto-size-available-height, 280px)); }
 .group-action-dialog .new-session-page__directory-picker { flex: none; }
-.group-action-dialog .new-session-page__directory-menu { position: relative; top: auto; margin-top: 6px; width: 100%; min-width: 0; max-width: 100%; }
 .new-session-page__group-menu { display: grid; }
 .new-session-page__directory-menu button, .new-session-page__group-menu button { min-width: 0; min-height: var(--menu-item-height); padding: 6px 9px; overflow: hidden; border: 0; border-radius: var(--menu-item-radius); background: transparent; color: var(--text); font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .new-session-page__directory-menu button:hover, .new-session-page__directory-menu button:focus-visible, .new-session-page__group-menu button:hover, .new-session-page__group-menu button[aria-checked="true"] { background: var(--menu-selected); outline: 0; }

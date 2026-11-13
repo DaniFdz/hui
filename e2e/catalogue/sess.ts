@@ -1,9 +1,6 @@
 /** The SESS use cases: starting, finding, organizing and arranging sessions in the sidebar, New Session, split chats and the Sessions page. */
 import type { UseCase } from "./types.ts";
 
-const KEYBOARD = "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21";
-const DESKTOP_ONLY = "Moving is desktop-only, like edge splitting; narrow screens retain the active-pane presentation and do not expose an unusable drag handle.";
-
 const cases: UseCase[] = [
   {
     id: "SESS-001",
@@ -13,7 +10,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions", "nav:session"],
     journeys: ["session-lifecycle", "session-launch", "session-groups"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-002",
@@ -23,7 +20,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions"],
     journeys: ["session-launch"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-003",
@@ -32,8 +29,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huidirectoriesqprefixworkerid"],
     surfaces: ["page:new-session", "route:GET /__hui/directories"],
     journeys: ["session-launch", "checkout-selector"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "SESS-004",
@@ -43,7 +40,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["session-launch"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-005",
@@ -53,7 +50,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["session-groups", "session-registry"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-006",
@@ -62,7 +59,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:new-session", "nav:session"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-008",
@@ -72,7 +69,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/local-paths"],
     journeys: ["local-path-autocomplete"],
     web: "required",
-    ios: { excluded: "Arrow, Enter and Tab completion is a keyboard path; choosing an option is the visible equivalent.", decision: KEYBOARD },
+    phone: { excluded: "Arrow, Enter and Tab completion is a keyboard path; choosing an option is the visible equivalent.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SESS-009",
@@ -82,7 +79,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/git-checkout", "route:POST /__hui/sessions"],
     journeys: ["checkout-selector"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-010",
@@ -92,7 +89,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/git-checkout", "setting:branchPrefix"],
     journeys: ["checkout-selector", "worktree-progress"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-011",
@@ -102,7 +99,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:worktrees", "setting:branchPrefix"],
     journeys: ["checkout-selector"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-012",
@@ -112,7 +109,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/sessions/events", "route:DELETE /__hui/sessions/:id"],
     journeys: ["worktree-progress"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-013",
@@ -120,8 +117,8 @@ const cases: UseCase[] = [
     behaviour: "When workers exist, \"Choose where the session runs\" offers Local and each remote worker with its state. Choosing a worker hides the Checkout picker and suggests that worker's folders; the directory must be absolute or start with ~/. The session is created without waiting for a connection and its header names the worker.",
     spec: ["SPEC.md#remote-workers", "docs/api.md#get-__huiworkers"],
     surfaces: ["route:GET /__hui/workers", "route:GET /__hui/directories", "route:POST /__hui/sessions"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-014",
@@ -130,7 +127,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#post-__huiworkersidconnect"],
     surfaces: ["route:POST /__hui/workers/:id/connect"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-015",
@@ -139,8 +136,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessions", "docs/api.md#get-__huisessionsevents"],
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/sessions/events"],
     journeys: ["session-title-generation"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "SESS-016",
@@ -150,7 +147,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:session", "route:POST /__hui/sessions/:id/open", "route:GET /__hui/sessions/:id/models"],
     journeys: ["session-lifecycle", "session-registry"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-017",
@@ -160,7 +157,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions", "route:GET /__hui/sessions/events"],
     journeys: ["session-lifecycle", "session-registry"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SESS-018",
@@ -170,7 +167,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-parity", "session-menu-shortcuts"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SESS-019",
@@ -180,7 +177,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-groups", "session-registry", "sidebar-toolbar"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-020",
@@ -190,7 +187,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-groups"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-021",
@@ -200,7 +197,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session"],
     journeys: ["session-groups"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-022",
@@ -210,7 +207,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-groups"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-023",
@@ -220,7 +217,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/session-groups"],
     journeys: ["session-groups", "session-registry"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-024",
@@ -230,7 +227,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/session-groups/:name"],
     journeys: ["session-registry"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-025",
@@ -240,7 +237,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/session-groups/:name"],
     journeys: ["session-registry"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-026",
@@ -249,7 +246,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#put-__huisession-groups"],
     surfaces: ["route:PUT /__hui/session-groups"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-027",
@@ -259,7 +256,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-registry"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-028",
@@ -269,7 +266,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/session-groups/:name", "route:GET /__hui/git-checkout", "route:GET /__hui/directories"],
     journeys: ["session-groups", "session-registry"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-029",
@@ -279,7 +276,7 @@ const cases: UseCase[] = [
     surfaces: ["page:new-session", "route:POST /__hui/sessions", "route:GET /__hui/git-checkout"],
     journeys: ["session-groups"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-030",
@@ -289,7 +286,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-move", "session-menu-parity", "kanban"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-031",
@@ -299,7 +296,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-registry", "session-menu-shortcuts"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SESS-032",
@@ -309,7 +306,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-registry", "session-menu-shortcuts"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SESS-033",
@@ -319,7 +316,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-parity"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SESS-034",
@@ -329,7 +326,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-tree-lifecycle", "session-menu-shortcuts", "session-menu-parity"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-035",
@@ -339,7 +336,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-shortcuts"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-036",
@@ -349,7 +346,7 @@ const cases: UseCase[] = [
     surfaces: ["page:sessions", "route:PATCH /__hui/sessions/:id"],
     journeys: ["session-tree-lifecycle", "session-menu-parity"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-037",
@@ -359,7 +356,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-lifecycle", "session-registry", "session-tree-lifecycle", "session-menu-shortcuts"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SESS-038",
@@ -369,7 +366,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-menu-parity"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SESS-039",
@@ -379,7 +376,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:session"],
     journeys: ["session-menu-parity"],
     web: "backlog",
-    ios: { excluded: "Opens another browser tab or window, or a desktop VS Code; the iOS app has neither.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
+    phone: { excluded: "Opens another browser tab or window, or a desktop VS Code; the iOS app has neither.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SESS-040",
@@ -389,7 +386,7 @@ const cases: UseCase[] = [
     surfaces: ["shortcut:session-menu.pin", "shortcut:session-menu.rename", "shortcut:session-menu.unread", "shortcut:session-menu.archive", "shortcut:session-menu.delete"],
     journeys: ["session-menu-shortcuts"],
     web: "required",
-    ios: { excluded: "Single-key menu mnemonics need a hardware keyboard; each menu item is its own visible use case.", decision: KEYBOARD },
+    phone: { excluded: "Single-key menu mnemonics need a hardware keyboard; each menu item is its own visible use case.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SESS-041",
@@ -399,7 +396,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-registry", "session-groups"],
     web: "backlog",
-    ios: { excluded: "Arrow, Home, End and Escape navigation is keyboard-only; the menus' visible items are separate use cases.", decision: KEYBOARD },
+    phone: { excluded: "Arrow, Home, End and Escape navigation is keyboard-only; the menus' visible items are separate use cases.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "SESS-042",
@@ -408,8 +405,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#session-list-progress"],
     surfaces: [],
     journeys: ["session-hovercard"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-043",
@@ -419,7 +416,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions"],
     journeys: ["session-progress", "session-hovercard"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-044",
@@ -428,8 +425,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#session-list-progress"],
     surfaces: ["route:GET /__hui/sessions"],
     journeys: ["session-pr-badges", "github-integration"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-045",
@@ -438,8 +435,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#session-list-progress"],
     surfaces: [],
     journeys: ["session-pr-badges", "github-integration"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-046",
@@ -448,8 +445,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"],
     surfaces: [],
     journeys: ["session-tree-lifecycle", "session-header-overflow", "subagent-tree-collapse"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-047",
@@ -459,7 +456,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:session"],
     journeys: ["session-multiplexing", "session-header-overflow", "pane-reposition"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-048",
@@ -469,7 +466,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-multiplexing"],
     web: "backlog",
-    ios: { excluded: DESKTOP_ONLY, decision: "SPEC.md#behaviour" },
+    phone: { excluded: "Moving is desktop-only, like edge splitting; narrow screens retain the active-pane presentation and do not expose an unusable drag handle.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "SESS-049",
@@ -478,8 +475,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-composer-drafts"],
     surfaces: [],
     journeys: ["session-multiplexing", "pane-reposition"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-050",
@@ -489,7 +486,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-multiplexing", "session-header-overflow"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-051",
@@ -499,7 +496,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-multiplexing", "pane-reposition"],
     web: "required",
-    ios: { excluded: "\"Below 1100px only the active pane is visible\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
+    phone: { excluded: "\"Below 1100px only the active pane is visible\"; the phone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "SESS-052",
@@ -509,7 +506,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-multiplexing", "session-header-overflow"],
     web: "required",
-    ios: { excluded: "\"Below 1100px only the active pane is visible\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
+    phone: { excluded: "\"Below 1100px only the active pane is visible\"; the phone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "SESS-053",
@@ -519,7 +516,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-multiplexing", "pane-reposition"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-054",
@@ -529,7 +526,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["pane-reposition"],
     web: "backlog",
-    ios: { excluded: DESKTOP_ONLY, decision: "SPEC.md#behaviour" },
+    phone: { excluded: "Moving is desktop-only, like edge splitting; narrow screens retain the active-pane presentation and do not expose an unusable drag handle.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "SESS-055",
@@ -539,7 +536,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["pane-reposition"],
     web: "required",
-    ios: { excluded: DESKTOP_ONLY, decision: "SPEC.md#behaviour" },
+    phone: { excluded: "Moving is desktop-only, like edge splitting; narrow screens retain the active-pane presentation and do not expose an unusable drag handle.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "SESS-056",
@@ -548,8 +545,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-header-overflow"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-057",
@@ -559,7 +556,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/connect", "route:GET /__hui/sessions/events"],
     journeys: ["session-registry"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-058",
@@ -569,7 +566,7 @@ const cases: UseCase[] = [
     surfaces: ["page:sessions", "route:GET /__hui/sessions", "nav:session"],
     journeys: ["session-registry", "session-tree-lifecycle"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-059",
@@ -578,7 +575,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:sessions", "route:GET /__hui/sessions"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-060",
@@ -587,7 +584,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huisessionssearch"],
     surfaces: ["page:sessions", "route:GET /__hui/sessions/search"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-061",
@@ -596,7 +593,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#worktrees", "docs/api.md#delete-__huisessionsid"],
     surfaces: ["page:sessions", "route:DELETE /__hui/sessions/:id", "route:GET /__hui/worktrees", "route:POST /__hui/worktrees/remove"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-062",
@@ -606,7 +603,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["session-lifecycle"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SESS-063",
@@ -616,7 +613,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/session-groups/:name", "route:GET /__hui/workers", "page:new-session"],
     journeys: ["session-groups"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-064",
@@ -626,7 +623,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/git-checkout", "page:new-session"],
     journeys: ["checkout-selector", "worktree-progress", "session-launch"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-065",
@@ -635,8 +632,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#remote-workers", "docs/api.md#get-__huiworkers"],
     surfaces: ["route:GET /__hui/workers"],
     journeys: ["session-lifecycle"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-066",
@@ -646,7 +643,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-registry"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-067",
@@ -655,8 +652,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-menu-shortcuts"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-068",
@@ -666,7 +663,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-tree-lifecycle"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SESS-069",
@@ -676,7 +673,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-lifecycle"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-070",
@@ -685,7 +682,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "SESS-071",
@@ -695,7 +692,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["kanban"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-072",
@@ -705,7 +702,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-move", "session-menu-parity"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-073",
@@ -714,7 +711,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "SESS-074",
@@ -722,8 +719,8 @@ const cases: UseCase[] = [
     behaviour: "The Search sessions field also matches a session's linked pull requests (repository#number and title) and Jira work items (key and summary).",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-075",
@@ -732,7 +729,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisessionsevents"],
     surfaces: ["route:GET /__hui/sessions/events"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "SESS-076",
@@ -741,7 +738,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisessions"],
     surfaces: ["route:GET /__hui/sessions"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "SESS-077",
@@ -751,7 +748,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-menu-parity"],
     web: "required",
-    ios: { excluded: "A touch screen has no secondary click; the iPhone app opens the same row menu by long-pressing the row.", decision: "SPEC.md#a-secondary-click-is-the-webs-way-into-a-rows-menu-2026-11-04" },
+    phone: { excluded: "A touch screen has no secondary click; the phone app opens the same row menu by long-pressing the row.", decision: "SPEC.md#a-secondary-click-is-the-webs-way-into-a-rows-menu-2026-11-04" },
   },
 ];
 

@@ -1,7 +1,7 @@
 /**
- * Pure model for the conversation position rail: which messages get a marker, which one is current at a scroll
- * position, and how keys move between markers. It reads projected rows and measured positions only; the view does
- * the measuring and scrolling.
+ * Pure model for the conversation's position controls: which messages get a marker, which one is current at a scroll
+ * position, which prompt the sticky bar has scrolled past, and how keys move between markers. It reads projected rows
+ * and measured positions only; the views do the measuring and scrolling.
  */
 import { attributedMessage, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../../lib/chat-projection.ts";
 
@@ -9,6 +9,7 @@ export type ConversationMarker = {
   id: string;
   label: string;
   preview: string;
+  role: ChatMessage["role"];
 };
 
 /** A message HUI delivered from someone else, by who sent it. */
@@ -35,6 +36,7 @@ function messageMarker(message: ChatMessage, sender: MessageSender | undefined):
     id: message.id,
     label: sender ? senderLabel(sender) : message.role === "user" ? "User message" : "Assistant message",
     preview: preview.length < text.length ? `${preview}…` : preview,
+    role: message.role,
   };
 }
 
@@ -52,6 +54,13 @@ export function conversationPosition(
     ? positions.at(-1)?.id
     : (positions.findLast((p) => p.top <= scrollTop + viewportHeight / 2) ?? positions[0])?.id;
   return { activeId, visibleIds };
+}
+
+/** The prompt the reader has scrolled past: the last one starting above `line`, shown once no more than `covered` of it
+ * still pokes out below the line, where the bar hides it anyway. `positions` ascend by `top`. */
+export function scrolledPastPrompt(positions: readonly MessagePosition[], line: number, covered = 0): MessagePosition | undefined {
+  const owner = positions.findLast((position) => position.top <= line);
+  return owner && owner.bottom - line <= covered ? owner : undefined;
 }
 
 export function conversationFocusIndex(key: string, index: number, count: number): number | undefined {

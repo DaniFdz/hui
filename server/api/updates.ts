@@ -17,6 +17,9 @@ export const UpdateJob = Type.Object({
 export type UpdateJob = Static<typeof UpdateJob>;
 
 export const UpdateSnapshot = Type.Object({
+  /** The name this gateway answers to, the same one `GET /__hui/health` reports; the update probe carries it so a
+   * client can add a gateway by address without opening its health route to another origin. */
+  name: Type.String(),
   currentVersion: Type.Union([Type.String(), Type.Null()]), check: Type.Union([UpdateCheck, Type.Null()]), job: Type.Union([UpdateJob, Type.Null()]),
 }, { $id: "UpdateSnapshot" });
 export type UpdateSnapshot = Static<typeof UpdateSnapshot>;

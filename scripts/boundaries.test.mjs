@@ -93,6 +93,7 @@ function rule(from, to, specifier, type) {
   const production = !TEST.test(from);
   if (to === undefined) {
     if (under(from, "src") && production && builtin(specifier)) return "R1";
+    if (under(from, "src") && /^@capacitor\//u.test(specifier)) return "R18";
     if (under(from, "server/api") && !/^typebox(?:\/|$)/u.test(specifier)) return "R15";
     return undefined;
   }
@@ -218,6 +219,7 @@ test.each([
   ["src/lib/voice/calls.fixture.json", "server/calls-format.fixture.json"],
   ["src/lib/voice/languages.fixture.json", "server/bots/voice-languages.fixture.json"],
   ["src/lib/widgets.fixture.json", "server/agent-tools/widget-sandbox.fixture.json"],
+  ["src/lib/appearance/look.fixture.json", "cli/desktop-appearance-seed.fixture.json"],
 ])("runtime fixtures stay byte-identical: %s and %s", async (browser, server) => {
   assert.equal(await readFile(join(root, browser), "utf8"), await readFile(join(root, server), "utf8"));
 });

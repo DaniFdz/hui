@@ -5,6 +5,8 @@ import { SessionStatus, SessionView } from "./sessions.ts";
 
 export const GatewayHealth = Type.Object({
   status: Type.Literal("online"), transport: Type.Literal("HTTP + SSE"), uptimeSeconds: Type.Number(), access: Type.Literal("Full Access"),
+  /** The operator's name for this gateway, or the hostname of the machine it runs on when none is saved. */
+  name: Type.String(),
   sessions: Type.Record(Type.Union([SessionStatus, Type.Literal("registered"), Type.Literal("processes")]), Type.Number()),
 }, { $id: "GatewayHealth" });
 export type GatewayHealth = Static<typeof GatewayHealth>;

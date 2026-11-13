@@ -43,8 +43,7 @@ test("Task progress follows the work, folds, and survives a reload", { tags: ["A
   await expect(card).toContainText("the plan moved on");
 
   // Collapse task progress starts it folded even with work left.
-  const current = await hui.api<Settings>("GET", "/__hui/settings");
-  await hui.api("PUT", "/__hui/settings", { ...current, chat: { ...current.chat, collapseTaskProgress: true } });
+  await hui.saveAppearance({ chat: { collapseTaskProgress: true } });
   await hui.reload();
   await expect(screen.getByText("2/3")).toBeVisible();
   await expect(card).toBeHidden();

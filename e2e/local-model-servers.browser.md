@@ -1,6 +1,6 @@
 # Browser journey: local model servers
 
-The shared test `e2e/tests/set/local-model-server.e2e.ts` proves SET-088 in the
+The shared test `e2e/tests/set/local-model-server.e2e.ts` proves SET-098 in the
 default web world. It adds a custom PI provider whose base URL points at a test
 HTTP server that answers 503 until released, and drives Settings → Models → Model providers → the folded Local
 model servers group: the provider starts Offline, a start command that waits for a

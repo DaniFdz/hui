@@ -5,18 +5,22 @@
  * ticket, from `browser-transport.ts`). `hui.ts` applies the `x-hui` guard before dispatching here.
  */
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
-import { BrowserError, BrowserPreview, BrowserStatus, BrowserViewConnection } from "../api/browser.ts";
+import { BrowserError, BrowserPreview, BrowserSecrets, BrowserStatus, BrowserViewConnection } from "../api/browser.ts";
 export { routeSchemas } from "../api/browser.ts";
 import { browserViewTicket } from "../browser/transport.ts";
 import { BrowserToolError, type ManagedBrowser } from "../browser/manager.ts";
+import { SiteSecretError, type SiteSecrets } from "../browser/secrets.ts";
 import type { SessionRecord } from "../sessions/sessions.ts";
 
 const BROWSER_ROUTE = "/__hui/browser";
+const BROWSER_SECRETS_ROUTE = "/__hui/browser/secrets";
+const BROWSER_SECRET_REMOVE_ROUTE = "/__hui/browser/secrets/remove";
 const BROWSER_TAB_PREVIEW = /^\/__hui\/browser\/tabs\/(t\d{1,6})\/preview$/u;
 const BROWSER_VIEW_ROUTE = /^\/__hui\/sessions\/([^/]+)\/browser\/connect$/u;
 
 export function createBrowserRoutes(deps: {
   managedBrowser: ManagedBrowser;
+  secrets: SiteSecrets;
   browserStatus(): Promise<BrowserStatus>;
   readRegistry(): Promise<SessionRecord[]>;
 }) {
@@ -34,7 +38,22 @@ export function createBrowserRoutes(deps: {
   }
 
   async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
-    const { managedBrowser, browserStatus } = deps;
+    const { managedBrowser, browserStatus, secrets } = deps;
+    if (request.path === BROWSER_SECRETS_ROUTE || request.path === BROWSER_SECRET_REMOVE_ROUTE) {
+      const removing = request.path === BROWSER_SECRET_REMOVE_ROUTE;
+      try {
+        if (removing ? request.method !== "POST" : request.method !== "GET" && request.method !== "POST") {
+          return reply(BrowserError, { error: "method not allowed" }, 405);
+        }
+        if (request.method === "GET") return reply(BrowserSecrets, { secrets: await secrets.list() });
+        let body: unknown;
+        try { body = await request.json(); } catch { throw new SiteSecretError("The secret request body must be JSON."); }
+        const record = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+        return reply(BrowserSecrets, { secrets: removing ? await secrets.remove(record["name"]) : await secrets.save({ name: record["name"], origin: record["origin"], value: record["value"] }) });
+      } catch (error) {
+        return reply(BrowserError, { error: error instanceof Error ? error.message : "The secret request failed." }, error instanceof SiteSecretError ? 400 : 500);
+      }
+    }
     if (request.path === BROWSER_ROUTE) {
       try {
         if (request.method === "GET") return reply(BrowserStatus, await browserStatus());

@@ -1,5 +1,5 @@
 /**
- * The Durable side of bots' chats (HUI-18): creating a bot's conversation in
+ * The Durable side of bots' chats: creating a bot's conversation in
  * one commit with its agent, its `hui.bot` document and OptChat; changing its
  * directory (or clearing the instructions a bot had before SOUL.md); what the
  * operator turned off in it and what they can turn off; the model and thinking
@@ -99,6 +99,8 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       if (id === undefined) return;
       const harness = await host.open();
       if (!await harness.conversation(id, durableContext)) return;
+      // An OptChat document an older HUI wrote is rewritten before this commit reads it (`docs/optchat.md`).
+      await host.optchat.adopt(id);
       await harness.commit(async (tx) => {
         const doc = await tx.doc(BotDoc, id);
         doc.bot = "";
@@ -138,7 +140,7 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       const skills = chat ? await chat.availableSkills() : (await host.prompt.loader(cwd, own)).getSkills().skills;
       return {
         tools: chat ? [...chat.botOffer()] : await builtinBotOffer(host),
-        skills: skills.map((skill) => own.some((dir) => skill.filePath.startsWith(`${dir}/`)) ? { ...offeredSkill(skill), source: BOT_OWN_SKILLS_SOURCE } : offeredSkill(skill)),
+        skills: skills.map((skill) => own.some((dir) => skill.filePath.startsWith(`${dir}/`)) ? { ...offeredSkill(skill), source: BOT_OWN_SKILLS_SOURCE, own: true } : offeredSkill(skill)),
         alwaysOn: [...BOT_ALWAYS_ON],
         live: Boolean(chat),
       };

@@ -10,9 +10,9 @@
  * latest state; the next open appends the messages logged after the saved one,
  * which costs one cache miss at worst and never a wrong view.
  */
-import { open, readFile, rename } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { syncDirectory } from "./store.ts";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { JsonFile } from "./json-file.ts";
 import { endOf, label, startOf, type Part, type Tree } from "./tree.ts";
 import type { ViewState } from "./view.ts";
 
@@ -75,59 +75,11 @@ export function checkViews(value: unknown, log: number, tree: Tree): SavedViews 
 }
 
 /** Writes a memory's views whenever they change, one write at a time, the latest state each time. */
-export class ViewFile {
-  readonly #path: string;
-  readonly #snapshot: () => SavedViews;
-  readonly #report: (problem: string, error?: unknown) => void;
-  #dirty = false;
-  #writing: Promise<void> | undefined;
-  #failing = false;
-
+export class ViewFile extends JsonFile {
   constructor(dir: string, snapshot: () => SavedViews, report: (problem: string, error?: unknown) => void) {
-    this.#path = join(dir, VIEW_FILE);
-    this.#snapshot = snapshot;
-    this.#report = report;
-  }
-
-  /** The views changed: they are written once the work in progress (a batch, say) is done, after any write in flight. */
-  changed(): void {
-    this.#dirty = true;
-    this.#writing ??= Promise.resolve().then(() => this.#drain());
-  }
-
-  /** Resolves once every change so far is on disk, or failed. */
-  async flush(): Promise<void> {
-    while (this.#writing) await this.#writing;
-  }
-
-  async #drain(): Promise<void> {
-    try {
-      while (this.#dirty) {
-        this.#dirty = false;
-        await this.#write(this.#snapshot());
-      }
-    } finally {
-      this.#writing = undefined;
-    }
-  }
-
-  async #write(views: SavedViews): Promise<void> {
-    const temp = `${this.#path}.tmp`;
-    try {
-      const handle = await open(temp, "w", 0o600);
-      try {
-        await handle.writeFile(`${JSON.stringify({ version: VERSION, chat: views.chat, compaction: views.compaction })}\n`);
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-      await rename(temp, this.#path);
-      await syncDirectory(dirname(this.#path));
-      this.#failing = false;
-    } catch (error) {
-      // The live views stay right; a lost write costs the next open a cache miss at most. Said once per failing spell.
-      if (!this.#failing) this.#report(`OptChat could not save ${this.#path}`, error);
-      this.#failing = true;
-    }
+    super(join(dir, VIEW_FILE), () => {
+      const views = snapshot();
+      return { version: VERSION, chat: views.chat, compaction: views.compaction };
+    }, report);
   }
 }
