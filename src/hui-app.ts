@@ -291,6 +291,7 @@ export class HuiApp extends HuiElement {
       this.note = message;
       this.noteLevel = "error";
     },
+    notified: (message, failed) => this.sessions.notify(message, failed),
   });
   private updatingSelectedId: string | undefined;
   private renderedSelected: SessionView | undefined;

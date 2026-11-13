@@ -35,6 +35,7 @@ import * as staff from "./staff.ts";
 import * as themes from "./themes.ts";
 import * as extensions from "./extensions.ts";
 import * as heartbeat from "./heartbeat.ts";
+import * as notifications from "./notifications.ts";
 
 export type RouteSchema = {
   method: string;
@@ -44,7 +45,7 @@ export type RouteSchema = {
   events?: TSchema;
 };
 
-export const apiAreas = { "api-schema": apiSchema, app, power, host, github, datadog, jira, settings, pi, providers, tools, sessions, "session-events": sessionEvents, automation, updates, workers, terminals, files, diff, browser, bots, "bot-triggers": botTriggers, backlog, "task-suggestions": taskSuggestions, worktrees, watchers, "bot-templates": botTemplates, vscode, calls, diagnostics, "local-paths": localPaths, themes, staff, heartbeat, extensions };
+export const apiAreas = { "api-schema": apiSchema, app, power, host, github, datadog, jira, settings, pi, providers, tools, sessions, "session-events": sessionEvents, automation, updates, workers, terminals, files, diff, browser, bots, "bot-triggers": botTriggers, backlog, "task-suggestions": taskSuggestions, worktrees, watchers, "bot-templates": botTemplates, vscode, calls, diagnostics, "local-paths": localPaths, themes, staff, heartbeat, extensions, notifications };
 
 export function buildApiSchema(version: string) {
   const definitions = new Map<string, unknown>();

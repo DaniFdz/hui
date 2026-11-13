@@ -4647,9 +4647,11 @@ Tools turns it on for every conversation, and a bot's own tool settings can
 still turn it off for that bot. Priority `low` shows the banner without a
 sound, `normal` (the default) plays the default sound, and `high` also bounces
 HUI's Dock icon until the operator opens HUI. macOS gives an app no way to
-break through Focus or keep a banner on screen. The first version requires a
-managed macOS gateway and a current, registered HUI desktop app. It does not
-provide browser push or iPhone notifications.
+break through Focus or keep a banner on screen. The desktop channel requires a
+managed macOS gateway and a current, registered HUI desktop app; the ntfy relay
+(below, [Notifications reach the phone through
+ntfy](#notifications-reach-the-phone-through-ntfy-2026-11-13)) carries the same
+notification to a phone, and HUI provides no browser push or APNs.
 
 The banner belongs to HUI, not Script Editor. Delivery does not change the
 active chat or open a window. Clicking a banner opens and focuses its own chat,
@@ -4698,10 +4700,42 @@ The banner's title is the chat's name, and its subtitle is "Finished", "Run
 failed" or "Needs your input". Its body is the first question's title, and is
 empty for finished and failed runs, so agent output never reaches the lock
 screen. Needs-your-input banners play the default sound; finished and failed
-ones are silent. A gateway on another platform sends none. On macOS, when the
-gateway isn't the managed one or the desktop app can't show a notification,
-HUI skips it and records why in diagnostics. Scheduled tasks you set up in a
-regular session count as runs you started; a bot's routines don't.
+ones are silent. A gateway on another platform sends none unless its ntfy relay
+is set (below). When a channel can't show a notification, HUI skips it, keeps the
+other channels working and records why in diagnostics. Scheduled tasks you set
+up in a regular session count as runs you started; a bot's routines don't.
+
+### Notifications reach the phone through ntfy (2026-11-13)
+
+The owner, using the iPhone app, reported that notifications never arrived: with
+the app backgrounded, locked or closed — or open on another screen — nothing
+reached the phone. HUI's phone app could only ask iOS for a local notification
+while its own page was alive, and iOS suspends that page seconds after the app
+leaves the foreground; a closed app cannot be woken without push. Asked how the
+phone should hear a gateway it is connected to, the owner chose "ntfy relay for
+everything"; APNs would need a paid Apple Developer account the free SideStore
+signing does not have.
+
+- **One relay, both kinds of alert.** Settings → Notifications → *Phone (ntfy)*
+takes an ntfy server (default `https://ntfy.sh`) and a topic. HUI's own run
+finished, run failed and needs-your-input events and every `notify_user` call
+publish one ntfy message there, as does one test message the page can ask for.
+The ntfy app on the phone shows it while HUI is closed, locked or in the
+background, and its tap opens the chat's gateway address. The switches above
+choose the events for every channel.
+- **The topic is a password.** An empty topic turns the relay off. HUI generates
+a long random one, never prints it in an error or diagnostic, and only
+`HUI_NTFY_TOKEN` in the gateway's environment authenticates a protected server.
+Chat names and question titles reach the ntfy server and the operator's phone,
+never anything else from the transcript.
+- **A channel is a fallback, not a gate.** The macOS desktop app and the relay
+deliver independently: one failing does not stop the other, and a notification
+is reported as sent when either accepted it. A gateway with neither skips HUI's
+own events without an error and tells an agent's `notify_user` caller how to set
+one up.
+- **No APNs, no browser push.** The relay is the phone channel: it needs the
+ntfy app installed and subscribed, and it carries no promise about delivery
+timing beyond ntfy's own queue. The HUI app itself is unchanged.
 
 ### An export is a setup document (2026-11-04)
 

@@ -22,6 +22,28 @@ const parameters = Type.Object({
 export type DesktopNotification = Static<typeof parameters>;
 export type NotificationChat = { id: string; bot?: string };
 
+/** The subtitles HUI's own session notifications use: the desktop app and the ntfy relay show the same words, and the
+ * relay's tags are chosen by them. */
+export const NOTIFICATION_SUBTITLES = {
+  finished: "Finished",
+  failed: "Run failed",
+  needsInput: "Needs your input",
+} as const;
+
+/** The chat's own address on this gateway, or nothing when this process is not the managed gateway whose address
+ * `cli/state.ts` records. Callers that can fall back (the ntfy relay) use it for their link; the desktop app requires
+ * the managed gateway and fails without it. */
+export async function notificationChatUrl(chat: NotificationChat): Promise<string | undefined> {
+  const state = await readState();
+  if (!state || state.pid !== process.pid) return undefined;
+  return chatUrl(state.url, chat);
+}
+
+function chatUrl(base: string, chat: NotificationChat): string {
+  const path = chat.bot ? `/bots/${encodeURIComponent(chat.bot)}` : `/sessions/${encodeURIComponent(chat.id)}`;
+  return new URL(path, base).href;
+}
+
 export async function deliverDesktopNotification(
   chat: NotificationChat,
   notification: DesktopNotification,
@@ -37,8 +59,7 @@ export async function deliverDesktopNotification(
   if (owner !== "org.harnessui.desktop" || capability !== "3") {
     throw new Error("Install the current HUI desktop app with `hui install-app` to enable clickable chat notifications.");
   }
-  const path = chat.bot ? `/bots/${encodeURIComponent(chat.bot)}` : `/sessions/${encodeURIComponent(chat.id)}`;
-  const url = new URL(path, state.url).href;
+  const url = chatUrl(state.url, chat);
   signal?.throwIfAborted();
   const token = randomBytes(32).toString("hex");
   const deadline = signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000);
@@ -79,21 +100,33 @@ export async function deliverDesktopNotification(
   }
 }
 
+export type NotificationDispatch = (
+  chat: NotificationChat,
+  notification: DesktopNotification,
+  signal?: AbortSignal,
+) => Promise<{ status: "queued" | "in-view"; url?: string; channels?: readonly string[] }>;
+
+/** `notify_user`'s delivery: the desktop app by default, or the composed desktop-and-ntfy delivery `services.ts`
+ * passes in. The result names the channels that accepted it so the tool can say where the notification went. */
 export async function notifyUser(
   caller: NotificationChat,
   params: Record<string, unknown>,
   signal?: AbortSignal,
-): Promise<{ status: "queued" | "in-view"; url: string; message: string }> {
+  deliver: NotificationDispatch = (chat, notification, deadline) => deliverDesktopNotification(chat, notification, deadline),
+): Promise<{ status: "queued" | "in-view"; url?: string; message: string }> {
   if (!Value.Check(parameters, params) || !params.title.trim()) {
     throw new Error("notify_user requires a title (1–120 characters). Subtitle (up to 120), message (up to 1000) and priority (low, normal or high) are optional, and it takes no destination.");
   }
-  const { status, url } = await deliverDesktopNotification(caller, {
+  const { status, url, channels = ["desktop"] } = await deliver(caller, {
     title: params.title.trim(),
     ...(params.subtitle?.trim() ? { subtitle: params.subtitle.trim() } : {}),
     ...(params.message?.trim() ? { message: params.message.trim() } : {}),
     priority: params.priority ?? "normal",
   }, signal);
+  if (channels.includes("ntfy")) {
+    return { status, ...(url ? { url } : {}), message: "HUI sent the notification to your phone or another device through ntfy." };
+  }
   return status === "in-view"
-    ? { status, url, message: "The operator has this chat in front in the HUI app, so HUI showed no banner." }
-    : { status, url, message: "HUI queued a notification for this chat. macOS notification settings may suppress the banner." };
+    ? { status, ...(url ? { url } : {}), message: "The operator has this chat in front in the HUI app, so HUI showed no banner." }
+    : { status, ...(url ? { url } : {}), message: "HUI queued a notification for this chat. Your device's notification settings may suppress the banner." };
 }

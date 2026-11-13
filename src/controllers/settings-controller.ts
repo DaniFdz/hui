@@ -16,6 +16,7 @@ import {
   type WorkspaceInspection,
 } from "../api/control-surfaces.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
+import { sendTestNotification } from "../api/notifications.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import type { HuiPage } from "../lib/pages.ts";
 import { skillPreferencePath, type PiMutationKind, type PiMutationResult, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
@@ -43,6 +44,8 @@ type SettingsHost = ReactiveControllerHost & { renderRoot: ParentNode };
 type SettingsEvents = {
   piLoaded: (snapshot: PiSnapshot) => void;
   copyFailed: (message: string) => void;
+  /** An outcome the operator should see, such as the ntfy test notification's result. */
+  notified: (message: string, failed: boolean) => void;
 };
 
 export class SettingsController implements ReactiveController {
@@ -115,10 +118,56 @@ export class SettingsController implements ReactiveController {
     this.#changed();
   }
 
+  /**
+   * Saves the ntfy relay that Settings → Notifications → Phone (ntfy) edits. The topic is what the phone subscribes to,
+   * so a save that does not land must not be followed by a test that reports the old one.
+   */
+  saveNtfy = async (ntfy: Settings["notifications"]["ntfy"]): Promise<boolean> => {
+    const revision = ++this.#saveRevision;
+    const saved = await patchSettings({ notifications: { ...this.settings.notifications, ntfy } });
+    if (revision !== this.#saveRevision) return saved;
+    this.saveFailed = !saved;
+    this.settings = currentSettings();
+    this.#changed();
+    return saved;
+  };
+
+  /** Publishes one test message to the saved topic, then says where it went. */
+  testNtfyNotification = async (ntfy: Settings["notifications"]["ntfy"]): Promise<void> => {
+    if (!(await this.saveNtfy(ntfy))) {
+      this.#events.notified("Could not save the notification settings.", true);
+      return;
+    }
+    if (!this.settings.notifications.ntfy.topic) {
+      this.#events.notified("Set an ntfy topic first.", true);
+      return;
+    }
+    try {
+      await sendTestNotification();
+      this.#events.notified("Test notification sent. Check the ntfy app on your phone.", false);
+    } catch (error) {
+      this.#events.notified(error instanceof Error ? error.message : "The test notification failed.", true);
+    }
+  };
+
+  copyNtfyAddress = (): void => {
+    const { server, topic } = this.settings.notifications.ntfy;
+    if (!topic) {
+      this.#events.notified("Set an ntfy topic first.", true);
+      return;
+    }
+    void writeClipboardText(`${server}/${topic}`).then((copied) => {
+      if (!copied) {
+        this.#events.copyFailed("Could not copy the ntfy address to the clipboard.");
+        return;
+      }
+      this.#events.notified("Copied the ntfy address.", false);
+    });
+  };
+
   saveSubagentRoute = async (route: Settings["models"]["routes"][number], originalName?: string): Promise<boolean> => {
     const revision = ++this.#saveRevision;
-    const saved = await saveSubagentRoute(route, originalName);
-    if (revision === this.#saveRevision) this.saveFailed = !saved;
+    const saved = await saveSubagentRoute(route, originalName);    if (revision === this.#saveRevision) this.saveFailed = !saved;
     this.settings = currentSettings();
     this.#changed();
     return saved;
@@ -493,6 +542,9 @@ export class SettingsController implements ReactiveController {
       onChangeVscode: (vscode) => this.save({ vscode }),
       onChangeCodemode: (codemode) => void this.save({ codemode }),
       onChangeNotifications: (notifications) => void this.save({ notifications }),
+      onSaveNtfy: this.saveNtfy,
+      onTestNtfy: this.testNtfyNotification,
+      onCopyNtfyAddress: this.copyNtfyAddress,
       onChangeQuestions: (questions) => void this.save({ questions }),
       onChangeCalls: (calls) => void this.save({ calls }),
       onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),

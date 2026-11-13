@@ -2,6 +2,7 @@
  * that finished or failed, and a conversation that starts waiting for the operator. Delivery, and which chat a banner
  * opens, belong to agent-tools/notifications.ts. */
 import type { DesktopNotification, NotificationChat } from "../agent-tools/notifications.ts";
+import { NOTIFICATION_SUBTITLES } from "../agent-tools/notifications.ts";
 import { INTER_SESSION_TAG } from "../agent-tools/subagents.ts";
 import type { SessionStatus } from "../api/sessions.ts";
 import type { Settings } from "../api/settings.ts";
@@ -41,7 +42,7 @@ export function watchSessionNotifications(deps: {
     if (status !== "waiting" || before === "waiting") return;
     void send(id, (settings) => settings.needsInput, (chat) => {
       const question = deps.sessions.questions(id)[0]?.title.trim();
-      return { title: chat.title, subtitle: "Needs your input", ...(question ? { message: question.slice(0, 1_000) } : {}), priority: "normal" };
+      return { title: chat.title, subtitle: NOTIFICATION_SUBTITLES.needsInput, ...(question ? { message: question.slice(0, 1_000) } : {}), priority: "normal" };
     });
   });
   for (const { id, status } of watched.statuses) statuses.set(id, status);
@@ -49,7 +50,7 @@ export function watchSessionNotifications(deps: {
     if (!startedByOperator(prompt)) return;
     void send(id, (settings) => (failed ? settings.runFailed : settings.runFinished), (chat) => {
       const subagentsBusy = deps.sessions.subagents(id).some(({ status }) => ["queued", "starting", "running"].includes(status));
-      return chat.subagent || (!failed && subagentsBusy) ? undefined : { title: chat.title, subtitle: failed ? "Run failed" : "Finished", priority: "low" };
+      return chat.subagent || (!failed && subagentsBusy) ? undefined : { title: chat.title, subtitle: failed ? NOTIFICATION_SUBTITLES.failed : NOTIFICATION_SUBTITLES.finished, priority: "low" };
     });
   });
 }

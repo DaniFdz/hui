@@ -127,10 +127,11 @@ sound, normal plays the default sound, and high also bounces HUI's Dock icon
 until the operator opens HUI. It is offered only while
 `Settings.notifications.tool` is `true` (default `false`); a call reaching the
 gateway while it is off fails. The gateway binds it to the authenticated caller,
-using a stable bot URL when that caller is a bot's chat. The initial
-implementation requires the managed macOS gateway and a current HUI-owned
-desktop bundle. Unsupported or outdated installations fail instead of falling
-back to Script Editor. No public browser API is added.
+using a stable bot URL when that caller is a bot's chat. On the managed macOS
+gateway it goes through the current HUI-owned desktop bundle; anywhere else, and
+as well as the bundle, it can go through the ntfy relay described below. With
+neither channel it fails and names both, instead of falling back to Script
+Editor. No public browser API is added.
 
 The native app receives a validated same-gateway chat URL and a one-use
 loopback acknowledgement address in a `hui-notification:` URL, which the
@@ -145,16 +146,36 @@ output.
 Clicking the banner opens its originating conversation, creating a window if
 needed. Delivery alone does not change focus. macOS settings may suppress the
 banner, and queued is not proof the operator read it. Notification calls are
-not replayed after a crash. Browser and phone push are outside this version.
+not replayed after a crash. The phone channel is the ntfy relay, not APNs or
+browser push.
 
 `Settings.notifications` also chooses HUI's own notifications, sent through the
-same app on a macOS gateway: `runFinished` (default `false`) and `runFailed`
+same delivery: `runFinished` (default `false`) and `runFailed`
 (default `true`) for a run the operator started, and `needsInput` (default
 `true`) when any conversation starts waiting for the operator. Their title is
 the chat's name, their subtitle `Finished`, `Run failed` or `Needs your input`,
 and a waiting chat's body is its first question's title. Needs-your-input
-banners are `normal` priority and the others `low`. A notification the app
-can't show is skipped and recorded as a `notification_skipped` diagnostic.
+banners are `normal` priority and the others `low`. A channel that can't show a
+notification is skipped and recorded as a `notification_skipped` diagnostic.
+
+#### The ntfy relay for phones
+
+`Settings.notifications.ntfy` (`{ server, topic }`) adds a second channel: HUI
+publishes the same notification as one JSON message to `{server}/{topic}`, and
+the ntfy app on the operator's phone shows it even when the HUI app is closed or
+the phone is locked. `server` defaults to `https://ntfy.sh` and accepts only an
+`http(s)` base address with no credentials, query or fragment; `topic` is
+`[-_A-Za-z0-9]{1,64}` and an empty topic turns the relay off. A gateway with
+`HUI_NTFY_TOKEN` in its environment sends it as a bearer token; the token never
+enters settings or any `/__hui/` payload. The topic is a capability: HUI never
+prints it in an error or diagnostic.
+
+A notification is `queued` when at least one channel accepted it, `in-view` only
+when the desktop app is the sole channel and it reports the chat already in
+front, and a failure only when every configured channel failed. The desktop
+app's failure does not stop the relay, and vice versa. HUI's own events are
+skipped entirely when no channel exists; `notify_user` asks explicitly, so its
+caller gets the reason instead.
 
 ## Gateway lifecycle boundary
 
@@ -4412,6 +4433,13 @@ Normalizes and saves the supplied settings, then returns the saved `Settings`.
 Missing or invalid fields use their defaults rather than the previous values.
 The gateway applies the settings to its running services. Neither route changes
 PI's configuration, and neither carries this device's appearance.
+
+### `POST /__hui/notifications/test`
+
+Publishes one test message to `Settings.notifications.ntfy` and answers
+`NotificationTestResponse` (`{ "sent": true }`). A blank or malformed topic, an
+unreachable server, or a refusal answers 400 `{ "error": string }`; the message
+never names the topic. Any method but POST is 405.
 
 ### `GET /__hui/ext`
 
