@@ -4,7 +4,14 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Locator } from "e2e";
-import { CDP_PORT } from "./phone.ts";
+import { CDP_PORT, refusePhoneNotificationPrompt } from "./phone.ts";
+import { attachedNativeTarget, type NativeTarget } from "../../scripts/phone-native-target.ts";
+
+const nativeTargets = async (): Promise<NativeTarget[]> => {
+  const response = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`, { signal: AbortSignal.timeout(5_000) });
+  if (!response.ok) throw new Error(`native target discovery failed: ${response.status}`);
+  return response.json() as Promise<NativeTarget[]>;
+};
 
 export type Box = { x: number; y: number; width: number; height: number };
 export type Insets = { top?: number; right?: number; bottom?: number; left?: number };
@@ -56,6 +63,20 @@ export function parseWebView(xml: string): Box {
   return rect(nodes[0]!.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/u), "WebView bounds");
 }
 
+/** Android WebView DevTools reports the attached native View's physical screen frame, not emulated CSS metrics. */
+export function nativeFrame(targets: NativeTarget[]): Box {
+  const target = attachedNativeTarget(targets);
+  if (!target) throw new Error("display measurement: no attached native WebView");
+  const info = JSON.parse(target.description!) as Record<string, unknown>;
+  const values = [info["screenX"], info["screenY"], info["width"], info["height"]];
+  if (!values.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)
+    || !(Number(info["width"]) > 0 && Number(info["height"]) > 0)) {
+    throw new Error(`display measurement: malformed native frame: ${target.description}`);
+  }
+  const [x, y, width, height] = values as [number, number, number, number];
+  return { x, y, width, height };
+}
+
 export function displayBox(box: Box, frame: Box, ratio: number): Box {
   return { ...box, x: frame.x / ratio + box.x, y: frame.y / ratio + box.y };
 }
@@ -72,7 +93,7 @@ export function validateNativeFrame(safe: ReturnType<typeof parseDisplay>, frame
 }
 
 /** A test owns its cutout overlays and rotation; cleanup restores effective frames, not just settings flags. */
-export function androidDisplay(run = adb) {
+export function androidDisplay(run = adb, targets = nativeTargets) {
   let original: { name: string; enabled: boolean }[] | undefined;
   let evidence: string | undefined;
   let captures = 0;
@@ -131,20 +152,12 @@ export function androidDisplay(run = adb) {
         }
         baseline = parseDisplay(displayState());
       }
-      run("shell", "uiautomator", "dump", "/sdcard/hui-safe-display.xml");
-      const xml = run("shell", "cat", "/sdcard/hui-safe-display.xml");
-      // The fresh app asks about notifications. Dismiss that real system dialog rather than measuring a covered page.
-      if (xml.includes("Allow HUI to send you notifications?")) {
-        const deny = xml.match(/<node\b[^>]*resource-id="com\.android\.permissioncontroller:id\/permission_deny(?:_and_dont_ask_again)?_button"[^>]*>/u)?.[0];
-        const box = rect(deny?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/u) ?? null, "notification refusal");
-        run("shell", "input", "tap", String(Math.round(box.x + box.width / 2)), String(Math.round(box.y + box.height / 2)));
-      }
+      refusePhoneNotificationPrompt(run);
     },
     async target(): Promise<string> {
-      const pages = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`, { signal: AbortSignal.timeout(5_000) }).then((response) => response.json()) as { type: string; id: string }[];
-      const targets = pages.filter(({ type }) => type === "page");
-      if (targets.length !== 1) throw new Error(`expected one live native page, got ${targets.length}`);
-      return targets[0]!.id;
+      const target = attachedNativeTarget(await targets());
+      if (!target) throw new Error("display measurement: no attached native WebView");
+      return target.id;
     },
     cutout() {
       requireEmulator();
@@ -169,7 +182,7 @@ export function androidDisplay(run = adb) {
           if (baseline && originalRotation === 0) {
             waitFor("the original safe display", (state) => JSON.stringify(parseDisplay(state)) === JSON.stringify(baseline));
             // Activity's native hierarchy is available even while Chromium's accessibility root reconnects.
-            // This is a cleanup barrier only; test evidence still uses the independent UIAutomator bounds.
+            // This cleanup barrier is independent of DevTools' physical frame used by test evidence.
             waitFor("the original native WebView frame", () => {
               const hierarchy = run("shell", "dumpsys", "activity", "top");
               const bounds = hierarchy.match(/com\.getcapacitor\.CapacitorWebView\{[^\n]* (\d+),(\d+)-(\d+),(\d+) /u);
@@ -187,19 +200,18 @@ export function androidDisplay(run = adb) {
       if (failures.length) throw new AggregateError(failures, `could not restore native display settings: ${failures.map(String).join("; ")}`);
     },
     ready(metrics: PageMetrics): boolean {
-      const safe = parseDisplay(adb("shell", "dumpsys", "window", "displays"));
+      const safe = parseDisplay(displayState());
       if (original && safe.cutoutTop <= 0) return false;
       if (Math.abs(metrics.height * metrics.ratio - (safe.bottom - safe.top)) >= 3) {
         throw new Error(`waiting for actual native viewport: ${JSON.stringify({ safe, metrics })}`);
       }
       return true;
     },
-    measure(metrics: PageMetrics): DisplayArea {
-      const state = adb("shell", "dumpsys", "window", "displays");
+    async measure(metrics: PageMetrics): Promise<DisplayArea> {
+      const state = displayState();
       const safe = parseDisplay(state);
       if (original && safe.cutoutTop <= 0) throw new Error("the requested native cutout is not effective yet");
-      adb("shell", "uiautomator", "dump", "/sdcard/hui-safe-display.xml");
-      const frame = parseWebView(adb("shell", "cat", "/sdcard/hui-safe-display.xml"));
+      const frame = nativeFrame(await targets());
       const { ratio } = metrics;
       validateNativeFrame(safe, frame, metrics);
       evidence ??= mkdtempSync(join(tmpdir(), "hui-safe-display-"));

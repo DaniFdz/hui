@@ -1,7 +1,7 @@
 /** Guards independent native-frame parsing and CSS-to-display mapping, including failures that must not look safe. */
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { androidDisplay, displayBox, parseDisplay, parseWebView, validateNativeFrame } from "../e2e/fixtures/display-area.ts";
+import { androidDisplay, displayBox, nativeFrame, parseDisplay, parseWebView, validateNativeFrame } from "../e2e/fixtures/display-area.ts";
 
 const state = (cutout = 0, status = 63) => `mDisplayFrame=Rect(0, 0 - 1080, 2400)
  mDisplayCutout=DisplayCutout{insets=Rect(0, ${cutout} - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0}}
@@ -44,6 +44,23 @@ test("native origin is taken from the one app WebView, not a calculated safe ins
   assert.throws(() => parseWebView(view("[0,220][1080,220]")), /empty/u);
 });
 
+const nativeTarget = (id: string, info: Record<string, unknown> = {}) => ({ id, type: "page", url: "http://127.0.0.1:47400/",
+  description: JSON.stringify({ attached: true, visible: true, screenX: 0, screenY: 63, width: 1080, height: 2274, ...info }) });
+
+test("physical frame selection ignores detached outgoing pages and rejects malformed or ambiguous native views", async () => {
+  const current = nativeTarget("current");
+  const outgoing = nativeTarget("outgoing", { attached: false });
+  const frame = { x: 0, y: 63, width: 1080, height: 2274 };
+  assert.deepEqual(nativeFrame([outgoing, current]), frame);
+  assert.equal(await androidDisplay(() => { throw new Error("no accessibility dump"); }, async () => [outgoing, current]).target(), "current");
+  assert.throws(() => nativeFrame([outgoing]), /no attached/u);
+  assert.throws(() => nativeFrame([current, nativeTarget("second")]), /ambiguous/u);
+  for (const info of [{ screenX: undefined }, { screenY: -1 }, { screenY: "63" }, { width: "1080" }]) {
+    assert.throws(() => nativeFrame([nativeTarget("bad", info)]), /frame|metadata/u);
+  }
+  assert.throws(() => validateNativeFrame(parseDisplay(state()), frame, { width: 390, height: 844, ratio: 1, scale: 1 }), /viewport mismatch/u);
+});
+
 const CUTOUT = "com.android.internal.emulation.pixel_3_xl";
 const emulator = () => {
   let rotation = 0;
@@ -64,7 +81,8 @@ const emulator = () => {
     if (command === "shell cmd overlay list") return `[${enabled ? "x" : " "}] ${CUTOUT}`;
     if (command === `shell cmd overlay enable ${CUTOUT}`) { enabled = true; top = 171; }
     if (command === `shell cmd overlay disable ${CUTOUT}`) enabled = false; // Deliberately retain the stale native frame.
-    if (command === "shell cat /sdcard/hui-safe-display.xml") return view(`[0,${top}][1080,2337]`);
+    if (command === "shell dumpsys window") return "mCurrentFocus=Window{abc u0 dev.hui.app.debug/dev.hui.app.MainActivity}";
+    if (command.includes("uiautomator")) throw new Error("busy live UI never becomes accessibility-idle");
     return "";
   };
   return { run, calls, top: () => top, enabled: () => enabled };
@@ -79,6 +97,7 @@ test("a stale native baseline and cutout cleanup both need a real configuration 
       display.rotate("portrait");
       display.prepare();
       assert.equal(native.top(), 63);
+      assert.ok(!native.calls.some((call) => call.includes("uiautomator")));
       assert.equal(display.cutout(), true);
       assert.equal(native.top(), 171);
       display.restore();
