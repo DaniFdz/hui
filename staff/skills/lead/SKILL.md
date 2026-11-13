@@ -15,6 +15,16 @@ Take the task whole: the goal, the scope, the evidence that proves it, the paths
 write, and what you must not do. Restate the goal at the top of your first reply to the
 parent. If the brief is missing a piece you need, ask for that piece once, then work.
 
+## Stop once, on the plan
+
+Investigate enough to plan, then write the plan for whoever supervises you, following the
+`technical-writing` skill: the goal, what changes, what stays, the evidence that will prove it, the
+risks, and where you will stop. End with one question that asks for approval or a change, and
+implement nothing before the answer. After that, run the task to its end without stopping for a phase.
+
+Pull requests stay drafts. Open one as a draft and never mark it ready for review, merge it or deploy
+it: the operator does, and the operator decides when it leaves draft.
+
 ## Do the small ones yourself
 
 One unit that you can finish inside this session is not a program. Do it, prove it, report

@@ -3974,21 +3974,24 @@ second session for a phase. Its own model is the orchestrator and stays fixed; e
 comes from its route or explicit model. A route with no model inherits the lead's model, so the
 operator sets route models to make the phases use different models.
 
-### Autonomous mode drives a session to a reviewed pull request (2026-11-12)
+### Autonomous mode drives a session to a draft pull request (2026-11-12)
 
-The owner wanted the PR lead without having to ask a chief for it, and without a plan to approve: a session that
-keeps working, gives every step to a subagent, and stops only on a blocker or when the pull request is ready for
-review. It is an **Autonomy** choice beside Speed in the thinking picker (**Supervised** or **Autonomous**), not a
-reasoning level, so it combines with any Effort. It is offered for Durable sessions in the composer and on New
+The owner wanted the PR lead without having to ask a chief for it, with the plan approved once and the pull request
+left as a draft. It is an **Autonomy** choice beside Speed in the thinking picker (**Supervised** or **Autonomous**),
+not a reasoning level, so it combines with any Effort. It is offered for Durable sessions in the composer and on New
 Session, never in a bot's chat or a subagent, and persists as `autonomous: true`.
 
-- **The session drives.** Its prompt carries `hui_autonomous`: plan for itself and start, with nobody's approval;
-  give every step to a subagent, one task each, and spawn them without `worktree: true` so they share the session's
-  checkout, branch and pull request, which is what lets a fix round see the change before it; verify, review with
-  another model family where the routes offer one, and ship through the pull request's gates. It decides technical
-  matters itself and stops twice: a blocker only its supervisor can clear, as one question at the end of its reply,
-  and the report that its pull request is ready for review, tested and verified. The operator's own messages always
-  come first, and where Ultra, a PR lead's phases or an active goal say otherwise, these steps win.
+- **The session drives.** Its prompt carries `hui_autonomous`: investigate, then stop on the plan, written with the
+  `technical-writing` skill and ending with one question that asks its supervisor to approve or correct it, and
+  implement nothing before the answer. After approval, give every step to a subagent, one task each, spawn them
+  without `worktree: true` so they share the session's checkout, branch and pull request (which is what lets a fix
+  round see the change before it), verify, review with another model family where the routes offer one, and open the
+  pull request as a draft. It decides technical matters itself and stops three times: the plan, a blocker only its
+  supervisor can clear as one question at the end of its reply, and the report that the draft pull request is tested,
+  verified and ready for review. The operator's own messages always come first, and where Ultra, a PR lead's phases or
+  an active goal say otherwise, these steps win.
+- **Pull requests stay drafts.** The session never marks one ready for review, never merges it and never deploys it:
+  the operator does, and the operator decides when it leaves draft.
 - **Who supervises depends on who started it.** `create_session` gives a chief's session Autonomous mode, and HUI
   reports its stops to that chief: the chief of its group, else the Chief of Staff of no group (not an archived bot),
   which starts watching it when a run ends and gets the stop through the gateway heartbeat at once, marked
@@ -4001,9 +4004,9 @@ Session, never in a bot's chat or a subagent, and persists as `autonomous: true`
   Scans run one at a time so a stop is reported once, and the heartbeat skips a session not open in this gateway, so
   a restart does not report every watched session again. An active goal does not continue by itself in this mode: the
   session's supervisor takes the next step.
-- **The chief's method is in the pack.** `chief-mode` (pack 15) tells a chief a session it started runs Autonomous, to
-  answer its one blocker with `timeoutSeconds` 0, to use `decision` only for its four cases, and to settle its report
-  like a lead's.
+- **The chief's method is in the pack.** `chief-mode` (pack 16) tells a chief a session it started runs Autonomous,
+  to approve or correct its plan with `timeoutSeconds` 0, to use `decision` only for its four cases, and to settle
+  its report like a lead's.
 - Turning the mode off removes the section and takes back the watch HUI gave the chief (not a chief's own, and not one
   given before the gateway last restarted), so the operator has the session back. HUI does not refuse a merge command
   in this mode: the stop before a merge is the prompt's and the repository's rule.

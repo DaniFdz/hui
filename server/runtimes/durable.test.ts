@@ -327,6 +327,9 @@ test("Autonomous mode makes the session the lead of its task, at the level it ch
   assert.deepEqual([session.currentAutonomous(), session.currentThinking()], [true, "high"]);
   await turns(session, ["hello autonomous"]);
   assert.ok((await system()).includes(JSON.stringify(autonomousSection(true)).slice(1, -1)));
+  // The plan is a stop, the plan is written with the technical-writing skill, and pull requests stay drafts.
+  assert.match(JSON.stringify(autonomousSection(true)), /stop for approval.*`technical-writing` skill.*End with one question/su);
+  assert.match(JSON.stringify(autonomousSection(true)), /Never mark it ready for review, never merge it, never deploy/su);
 
   await session.setAutonomous(false);
   await turns(session, ["hello again"]);

@@ -105,7 +105,7 @@ test("an Autonomous session's stop is reported as one, its blocker as a decision
   assert.deepEqual(await createHeartbeat(f.deps).scan(), { notified: ["target"] });
   assert.match(f.notifications[0]?.text ?? "", /^\[routine: Heartbeat\] Autonomous session "target" is idle and waiting for a decision\./u);
   assert.match(f.notifications[0]?.text ?? "", /Can you add it\?/u);
-  assert.match(f.notifications[0]?.text ?? "", /It runs Autonomous and reports to you: clear its blocker or settle its report/u);
+  assert.match(f.notifications[0]?.text ?? "", /It runs Autonomous and reports to you: approve or correct its plan, clear its blocker or settle its report/u);
 });
 
 test("an idle session whose subagents still work waits for them, unless it asks something", async () => {

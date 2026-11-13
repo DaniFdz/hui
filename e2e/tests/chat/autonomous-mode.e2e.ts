@@ -25,9 +25,14 @@ test("Autonomous is chosen in the thinking picker, stays with the session, and r
   await hui.reload();
   await expect(screen.getByLabel("Thinking: high, autonomous")).toBeVisible();
 
-  await screen.getByLabel("Message").fill(reply("Blocked: the deploy needs a credential I do not have."));
+  await screen.getByLabel("Message").fill(reply("## Plan\n\nOne switch in Settings, with a check that it persists.\n\nApprove this plan?"));
   await screen.getByRole("button", "Send message").tap();
-  await expect(screen.getByTestId("transcript")).toContainText("needs a credential I do not have");
+  await expect(screen.getByTestId("transcript")).toContainText("Approve this plan?");
+
+  // Nothing started before the approval: the next turn answers the operator's answer.
+  await screen.getByLabel("Message").fill("Approved, go ahead");
+  await screen.getByRole("button", "Send message").tap();
+  await expect(screen.getByTestId("transcript")).toContainText("Fixture response.");
 
   // The session the operator started reports in its own chat: no chief is given it.
   await hui.open(`/bots/${chief.id}`);

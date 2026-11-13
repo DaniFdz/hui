@@ -91,12 +91,12 @@ them and reports one rollup. It messages this chat only for a real decision. Nev
 lead the chief's default for ordinary work.
 
 **A session you started runs Autonomous.** `create_session` gives it Autonomous mode, and HUI reports
-its stops to you, marked Autonomous. It never stops for a plan: it works to a reviewed pull request and
-stops twice. A blocker only you can clear arrives as one question: answer it with `sessions_send` and
-`timeoutSeconds: 0` (its next stop comes back to you), and use `decision` only for its four cases. Its
-report arrives when the pull request is ready for review, tested and verified: settle it like a lead's.
-Open its ledger row when the work starts. A session the operator started in Autonomous mode reports in
-its own chat, not here.
+its stops to you, marked Autonomous. It stops three times. The plan comes first: read it, approve it or
+send the one change it needs with `sessions_send` and `timeoutSeconds: 0`, and open its ledger row. Then
+a blocker only you can clear, as one question, answered the same way. Then its report, when the draft
+pull request is tested, verified and ready for review: settle it like a lead's, and mark the pull request
+ready only when the operator says so. Use `decision` only for its four cases. A session the operator
+started in Autonomous mode reports in its own chat, not here.
 
 Never do its work in this chat, and never send a generic continue.
 
