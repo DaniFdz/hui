@@ -102,9 +102,6 @@ if (typeof document !== "undefined") {
       if (event.target instanceof Node && !picker.contains(event.target)) picker.open = false;
     });
   });
-  window.addEventListener("resize", () => {
-    document.querySelectorAll<HTMLDetailsElement>(".agent-chat__input details[open]").forEach(positionNativePicker);
-  });
 }
 
 const SEND_LONG_PRESS_MS = 450;
@@ -2088,18 +2085,68 @@ function positionComposerPicker(event: Event) {
   if (picker instanceof HTMLDetailsElement) positionNativePicker(picker);
 }
 
-function positionNativePicker(picker: HTMLDetailsElement) {
+const composerPickerLifecycles = new WeakMap<HTMLDetailsElement, () => void>();
+
+/** Track only an open picker: native resize can precede the composer's relayout by a frame. */
+export function positionNativePicker(picker: HTMLDetailsElement) {
   const trigger = picker.querySelector<HTMLElement>("summary");
   const menu = picker.querySelector<HTMLElement>(".chat-controls__inline-select-menu, .agent-chat__attach-popup, .context-usage__popover");
   if (!trigger || !menu) return;
-  if (!picker.open) { menu.hidePopover?.(); return; }
+  if (!picker.open || !picker.isConnected) {
+    composerPickerLifecycles.get(picker)?.();
+    menu.hidePopover?.();
+    return;
+  }
+  if (composerPickerLifecycles.has(picker)) return;
+  const viewport = window.visualViewport;
+  let frame = 0;
+  const setStyle = (name: string, value: string) => {
+    if (menu.style.getPropertyValue(name) !== value) menu.style.setProperty(name, value);
+  };
+  const stop = () => {
+    window.cancelAnimationFrame(frame);
+    window.removeEventListener("resize", schedule);
+    window.removeEventListener("scroll", schedule, true);
+    viewport?.removeEventListener("resize", schedule);
+    viewport?.removeEventListener("scroll", schedule);
+    composerPickerLifecycles.delete(picker);
+    menu.hidePopover?.();
+  };
+  const schedule = () => {
+    if (!frame) frame = window.requestAnimationFrame(update);
+  };
+  const update = () => {
+    frame = 0;
+    if (!picker.open || !picker.isConnected) { stop(); return; }
+    const rect = trigger.getBoundingClientRect();
+    const left = viewport?.offsetLeft ?? 0;
+    const top = viewport?.offsetTop ?? 0;
+    const right = left + (viewport?.width ?? window.innerWidth);
+    const bottom = top + (viewport?.height ?? window.innerHeight);
+    const above = Math.max(top + 12, Math.min(rect.top - 8, bottom - 12));
+    const below = Math.min(bottom - 12, Math.max(top + 12, rect.bottom + 8));
+    const aboveHeight = Math.max(0, above - top - 12);
+    const belowHeight = Math.max(0, bottom - 12 - below);
+    const opensAbove = aboveHeight >= 80 || aboveHeight >= belowHeight;
+    setStyle("--auto-size-available-height", `${opensAbove ? aboveHeight : belowHeight}px`);
+    setStyle("max-width", `${Math.max(0, right - left - 24)}px`);
+    const size = menu.getBoundingClientRect();
+    setStyle("left", `${Math.max(left + 12, Math.min(rect.right - size.width, right - size.width - 12))}px`);
+    setStyle("top", `${opensAbove ? Math.max(top + 12, above - size.height) : below}px`);
+    // A keyboard can move the anchor without another viewport event. Read once per open frame;
+    // unchanged frames write nothing, and closing/removing the picker cancels the lane entirely.
+    schedule();
+  };
+  composerPickerLifecycles.set(picker, stop);
+  setStyle("position", "fixed");
+  setStyle("right", "auto");
+  setStyle("bottom", "auto");
   menu.showPopover?.();
-  const rect = trigger.getBoundingClientRect();
-  menu.style.position = "fixed";
-  menu.style.right = "auto";
-  menu.style.left = `${Math.max(12, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 12))}px`;
-  menu.style.bottom = `${window.innerHeight - rect.top + 8}px`;
-  menu.style.setProperty("--auto-size-available-height", `${Math.max(80, rect.top - 20)}px`);
+  window.addEventListener("resize", schedule);
+  window.addEventListener("scroll", schedule, true);
+  viewport?.addEventListener("resize", schedule);
+  viewport?.addEventListener("scroll", schedule);
+  update();
 }
 
 function closeComposerPicker(event: KeyboardEvent) {
