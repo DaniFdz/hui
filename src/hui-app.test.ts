@@ -383,10 +383,11 @@ test("showing earlier rows preserves the retained row's fractional position, inc
   }
 });
 
-test("showing earlier rows uses the nearest visual position when an engine quantizes scroll offsets", async () => {
+test("showing earlier rows chooses the closest position within the retained pixel when an engine quantizes scroll offsets", async () => {
   const cases = [
     { quantize: Math.trunc, height: 169.6875, offset: 170 },
-    { quantize: Math.round, height: 169.1875, offset: 169 },
+    // Offset 169 is closer but moves 121.3125 to 121.5, crossing the rendered pixel.
+    { quantize: Math.round, height: 169.1875, offset: 170 },
     { quantize: (value: number) => Math.round(value * 4) / 4, height: 169.1875, offset: 169.25 },
     { quantize: (value: number) => Math.trunc(value * 2) / 2, height: 169.875, offset: 170 },
     // A scaled integer engine can return a non-integral floating-point readback.
@@ -414,10 +415,74 @@ test("showing earlier rows uses the nearest visual position when an engine quant
     app.renderRoot = { querySelector: () => scroller };
     Object.defineProperty(app, "updateComplete", { get: () => { insertedHeight = height; return Promise.resolve(true); } });
     await app.showEarlierRows(0);
+    const after = row.getBoundingClientRect().top;
+    assert.equal(Math.round(after), Math.round(121.3125));
     assert.equal(scroller.scrollTop, offset);
-    assert.equal(row.getBoundingClientRect().top, 121.3125 + height - offset);
+    assert.equal(after, 121.3125 + height - offset);
     assert.ok(geometryReads <= 8, `quantized correction read geometry ${geometryReads} times`);
   }
+});
+
+test("showing earlier rows preserves the rendered pixel when the nearest attainable offset crosses its boundary", async () => {
+  for (const { quantize, top, height, offset, after } of [
+    { quantize: Math.trunc, top: 138.484375, height: 170.078125, offset: 171, after: 137.5625 },
+    { quantize: (value: number) => Math.trunc(value * 4) / 4, top: 138.484375, height: 170.078125, offset: 170.25, after: 138.3125 },
+    { quantize: Math.round, top: 138.515625, height: 169.875, offset: 169, after: 139.390625 },
+    { quantize: Math.round, top: 138.5, height: 169.5, offset: 169, after: 139 },
+  ]) {
+    let insertedHeight = 0;
+    let geometryReads = 0;
+    class Scroller {
+      #scrollTop = 0;
+      scrollHeight = 2000;
+      get scrollTop() { return this.#scrollTop; }
+      set scrollTop(value: number) { this.#scrollTop = quantize(value); }
+      querySelector() { return row; }
+    }
+    const scroller = new Scroller();
+    const content = {
+      getClientRects: () => [{}],
+      getBoundingClientRect: () => { geometryReads++; return { top: top + insertedHeight - scroller.scrollTop }; },
+    };
+    const row = { querySelector: () => content };
+    vi.stubGlobal("HTMLElement", Scroller);
+    const app = shell();
+    app.renderRoot = { querySelector: () => scroller };
+    Object.defineProperty(app, "updateComplete", { get: () => { insertedHeight = height; return Promise.resolve(true); } });
+    await app.showEarlierRows(0);
+    const actual = content.getBoundingClientRect().top;
+    assert.equal(Math.round(actual), Math.round(top));
+    assert.equal(actual, after);
+    assert.equal(scroller.scrollTop, offset);
+    assert.ok(geometryReads <= 8, `pixel-preserving correction read geometry ${geometryReads} times`);
+  }
+});
+
+test("showing earlier rows falls back to the closest measured position when the original pixel is unattainable", async () => {
+  let insertedHeight = 0;
+  let geometryReads = 0;
+  class Scroller {
+    #scrollTop = 0;
+    scrollHeight = 2000;
+    get scrollTop() { return this.#scrollTop; }
+    set scrollTop(value: number) { this.#scrollTop = Math.trunc(value / 2) * 2; }
+    querySelector() { return row; }
+  }
+  const scroller = new Scroller();
+  const content = {
+    getClientRects: () => [{}],
+    getBoundingClientRect: () => { geometryReads++; return { top: 138.484375 + insertedHeight - scroller.scrollTop }; },
+  };
+  const row = { querySelector: () => content };
+  vi.stubGlobal("HTMLElement", Scroller);
+  const app = shell();
+  app.renderRoot = { querySelector: () => scroller };
+  Object.defineProperty(app, "updateComplete", { get: () => { insertedHeight = 170.078125; return Promise.resolve(true); } });
+  await app.showEarlierRows(0);
+  assert.equal(scroller.scrollTop, 170);
+  assert.equal(content.getBoundingClientRect().top, 138.5625);
+  assert.equal(Math.round(content.getBoundingClientRect().top), 139);
+  assert.ok(geometryReads <= 8, `fallback correction read geometry ${geometryReads} times`);
 });
 
 test("showing earlier rows preserves retained text when the group's internal offset changes", async () => {
