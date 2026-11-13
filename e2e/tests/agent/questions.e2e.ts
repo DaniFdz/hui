@@ -232,14 +232,17 @@ const MOCKUPS = ask([{
   ],
 }]);
 
-test("the focused option's preview shows beside the options and scrolls on its own", { tags: ["AGENT-004"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the focused option's preview shows beside or under the options and scrolls on its own", { tags: ["AGENT-004"], platforms: ["web"] }, async ({ screen, hui }) => {
   const card = screen.getByTestId("question-card");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
   const preview = card.getByLabel("Preview");
   await asked(hui, screen, "Previews", PREVIEWS);
 
   await expect(preview.getByText("Sidebar layout")).toBeVisible();
-  expect((await box(preview)).x).toBeGreaterThanOrEqual((await box(option("Sidebar"))).x + (await box(option("Sidebar"))).width);
+  const sidebar = await box(option("Sidebar"));
+  const first = await box(preview);
+  // Wide cards put the preview beside the options; narrow ones stack it underneath.
+  expect(first.x >= sidebar.x + sidebar.width || first.y >= sidebar.y + sidebar.height).toBe(true);
   await option("Tabs").tap();
   await expect(preview.getByText("Tabs layout")).toBeVisible();
   await expect(preview.getByText("Sidebar layout")).toBeHidden();
@@ -255,7 +258,9 @@ test("the focused option's preview shows under the options on a phone and reache
   await hui.phoneScreen();
   await asked(hui, screen, "Previews on a phone", PREVIEWS);
 
-  await card.getByTestId("question-option").filter({ hasText: "Tabs" }).tap();
+  const tabs = card.getByTestId("question-option").filter({ hasText: "Tabs" });
+  await tabs.tap();
+  await expect(tabs).toBeChecked();
   await expect(preview.getByText("Tabs layout")).toBeVisible();
   const typed = card.getByPlaceholder("Type something…");
   expect((await box(preview)).y).toBeGreaterThanOrEqual((await box(typed)).y + (await box(typed)).height);
