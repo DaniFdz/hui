@@ -102,6 +102,13 @@ function appPid(): number {
 const launch = (gateway: string) => adb("shell", "am", "start", "-S", "-W", "-n", `${PACKAGE}/${ACTIVITY}`, "--es", "huiGatewayUrl", gateway);
 let activeGateway: string | undefined;
 
+/** A gateway stub or world runs on the host, not the emulator's own loopback interface. */
+export function forwardPhoneGateway(gateway: string): void {
+  const port = new URL(gateway).port;
+  if (!port) throw new Error("A native fixture gateway needs an explicit host port.");
+  adb("reverse", `tcp:${port}`, `tcp:${port}`);
+}
+
 /** A fixture world is another real gateway. Let the debug activity rebuild its bridge on that origin, as a Connect
  * handoff does, without force-stopping the app's process or replacing its persistent browser context. */
 export async function openPhoneGateway(gateway: string): Promise<void> {
@@ -109,8 +116,7 @@ export async function openPhoneGateway(gateway: string): Promise<void> {
   if (current) activeGateway = new URL(current.url).origin;
   if (activeGateway === gateway) return;
   if (REUSE) throw new Error("Switching fixture gateways needs per-attempt app launches; unset E2E_PHONE_REUSE.");
-  const port = new URL(gateway).port;
-  adb("reverse", `tcp:${port}`, `tcp:${port}`);
+  forwardPhoneGateway(gateway);
   adb("shell", "am", "start", "-W", "-n", `${PACKAGE}/${ACTIVITY}`, "--es", "huiGatewayUrl", gateway);
   activeGateway = gateway;
   forwardDevTools();

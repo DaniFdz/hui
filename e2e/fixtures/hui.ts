@@ -36,7 +36,7 @@ import { addWorkerOnThisMachine } from "./worker.ts";
 import { startGatewayStub, type GatewayStub } from "./gateway-stub.ts";
 import { advanceClock, installClock } from "./clock.ts";
 import { allowMedia } from "./web-browser.ts";
-import { clearAppStorage, deviceBytes, deviceFiles, onPhone, openPhoneGateway, PHONE_DOWNLOADS } from "./phone.ts";
+import { clearAppStorage, deviceBytes, deviceFiles, forwardPhoneGateway, onPhone, openPhoneGateway, PHONE_DOWNLOADS } from "./phone.ts";
 import { onWebKitPhone, webkitServiceWorkers } from "./phone-webkit.ts";
 import { startWorld, type World, type WorldName } from "./world.ts";
 import { storedContent } from "./stored-content.ts";
@@ -1082,6 +1082,9 @@ function huiTest(offline: boolean) {
       : onPhone(fixtures.app.baseUrl)
         ? {
             ...web,
+            // Page.url() is cached after its physical WebView closes. A real main-window read makes the engine
+            // recover the owned native window before observing a user-initiated bridge/gateway handoff.
+            url: () => browser().evaluate(() => location.href),
             phoneScreen: async (orientation = "portrait") => {
               nativeDisplay!.rotate(orientation);
               const size = () => browser().evaluate(() => ({ width: innerWidth, height: innerHeight }));
@@ -1242,6 +1245,7 @@ function huiTest(offline: boolean) {
       gatewayStub: async (name) => {
         const stub = await startGatewayStub(name);
         gatewayStubs.push(stub);
+        if (onPhone(fixtures.app.baseUrl)) forwardPhoneGateway(stub.url);
         return stub;
       },
       restartGateway: async () => {
