@@ -45,3 +45,13 @@ test("an invalid address is refused before either navigation path", async () => 
   await assert.rejects(controller().switchTo("file:///private"), /http:\/\/ or https:\/\//u);
   assert.equal(assign.mock.calls.length, 0);
 });
+
+test("a phone outranks HUI's desktop bridge: its shell rebuilds the bridge instead", async () => {
+  const connectGateway = vi.fn().mockResolvedValue(undefined);
+  const openGateway = vi.fn().mockResolvedValue(true);
+  vi.stubGlobal("huiDesktop", { openGateway });
+  vi.mocked(nativeShell).mockReturnValue({ connectGateway } as unknown as NativeShell);
+  await controller().switchTo("https://loft.test/");
+  assert.deepEqual(connectGateway.mock.calls, [["https://loft.test"]]);
+  assert.equal(openGateway.mock.calls.length, 0, "the desktop bridge is not asked on a phone");
+});
