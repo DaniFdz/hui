@@ -1,6 +1,7 @@
-/** macOS notifications for one chat, delivered by the installed HUI app rather than Script Editor: the notify_user
- * tool's alerts for its authenticated caller, and HUI's own session notifications. The native app acknowledges
- * delivery, or that the chat is already in front; macOS controls whether its banner stays visible. */
+/** One notification for one chat: its `notify_user` payloads, its chat address, HUI's own subtitle words, and delivery
+ * through the installed HUI app rather than Script Editor (the native app acknowledges delivery, or that the chat is
+ * already in front). `services.ts` composes this channel with the ntfy relay in `server/notifications/delivery.ts`, so
+ * a phone hears the same notification while HUI is closed. */
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
