@@ -82,6 +82,21 @@ test("the plugin's connect refuses an address the app would refuse, and remember
   assert.ok(plugin.includes("Gateway.remember("), "an accepted address is remembered");
 });
 
+test("both apps open the composer's camera, and iOS explains why it wants one", async () => {
+  // The composer's "Take photo" is an image input with `capture`: Android hands it to the camera app through the
+  // intents its <queries> names, and WebKit on iOS opens a UIImagePickerController camera in the app's own process.
+  // iOS terminates an app that reaches the camera without a usage string, so the plist entry is the crash fix, not a
+  // nicety. The simulator has no camera, which is why the contract keeps this rather than a tapped journey.
+  const manifest = await read("mobile/android/app/src/main/AndroidManifest.xml");
+  const plist = await read("mobile/ios/App/App/Info.plist");
+  const composer = await read("src/views/home.ts");
+  assert.match(composer, /accept="image\/\*" capture="environment"/u, "the composer's Take photo input asks for a camera");
+  for (const action of ["IMAGE_CAPTURE", "VIDEO_CAPTURE"]) {
+    assert.match(manifest, new RegExp(`android\\.media\\.action\\.${action}`), `the Android shell can resolve ${action}`);
+  }
+  assert.match(plist, /<key>NSCameraUsageDescription<\/key>\s*<string>[^<]{20,}<\/string>/u, "the iOS shell explains why it wants the camera");
+});
+
 test("both apps declare the microphone a call needs, and iOS explains it", async () => {
   // A call is the one capability the page cannot grant itself: the WebView asks, the app answers. Capacitor's chrome
   // client requests RECORD_AUDIO and its iOS delegate grants the capture, so an undeclared permission is a refusal

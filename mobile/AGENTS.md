@@ -367,6 +367,12 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   gateway the app is on, ignored without a gateway, refused if it carries `://`, a backslash or whitespace.
 - **Cleartext is loopback only** (`NSExceptionDomains` for `127.0.0.1` and `localhost`), the same rule as Android's
   network security config and owner decision O3. A tailnet gateway needs HTTPS (`tailscale serve`).
+- **The camera needs its usage string.** The composer's "Take photo" is an image input with `capture`, and WebKit's
+  file-upload panel opens that as a `UIImagePickerController` camera in the app's process. iOS shows
+  `NSCameraUsageDescription` in the prompt and terminates an app that reaches the camera without one, so the plist entry
+  is the difference between a camera and a crash. The "Photo" input is WebKit's `PHPickerViewController`, which needs no
+  photo-library string. The simulator has no camera, so `ios-smoke` cannot tap this: `scripts/mobile-contract.test.mjs`
+  keeps the usage string beside the Android manifest's camera `<queries>`.
 - **What iOS does not have:** no App-Bound Domains, so the service worker's offline cache does not run (everything else
   works online); no microphone or resume hooks yet (WP10), the share sheet being `@capacitor/share`'s; and `ios-smoke`
   proves the Connect page and the gateway's UI load, not a tapped journey.
