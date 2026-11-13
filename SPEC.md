@@ -4735,7 +4735,9 @@ finished, run failed and needs-your-input events and every `notify_user` call
 publish one ntfy message there, as does one test message the page can ask for.
 The ntfy app on the phone shows it while HUI is closed, locked or in the
 background, and its tap opens the chat's gateway address. The switches above
-choose the events for every channel.
+choose the events for every channel. The server is an address, not a service:
+the operator can run ntfy on the gateway's own machine and keep every message
+inside their network (`docs/guide.md`, "Run your own ntfy server").
 - **The topic is a password.** An empty topic turns the relay off. HUI generates
 a long random one, never prints it in an error or diagnostic, and only
 `HUI_NTFY_TOKEN` in the gateway's environment authenticates a protected server.

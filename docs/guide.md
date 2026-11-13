@@ -302,6 +302,26 @@ first question go to the ntfy server; nothing else from the transcript does. A
 protected ntfy server reads its bearer token from `HUI_NTFY_TOKEN` in the
 gateway's environment, never from settings.
 
+### Run your own ntfy server
+
+`https://ntfy.sh` is the public instance. The server field takes your own, and
+then no notification leaves your network. ntfy is one process: install the
+`ntfy` package or run the `binwiederhier/ntfy` container with `serve` as its
+command, and set `listen-http: :2586` in `server.yml` so it needs neither root
+nor port 80.
+
+The phone has to reach that address. On a tailnet, publish the relay with
+`tailscale serve` (`tailscale serve --bg 2586`) and use the
+`https://<machine>.<tailnet>.ts.net` address it prints, both in HUI and in the
+ntfy app; Tailscale supplies the certificate and keeps the traffic inside the
+tailnet. Without a tailnet, put HTTPS in front of it (Caddy, nginx) or configure
+ntfy's own TLS: iOS wants HTTPS for a server that is not loopback.
+
+Then set that address under **Phone (ntfy)**, generate a topic, save it, and
+subscribe the ntfy app to `<address>/<topic>` as above. The topic stays the
+password on your own server too; a protected one reads its bearer token from
+`HUI_NTFY_TOKEN` in the gateway's environment.
+
 ## Shell completion
 
 `hui` completes its commands, its subcommands and its flags in bash and zsh.
