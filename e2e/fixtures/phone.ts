@@ -26,6 +26,7 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { attachmentInitScripts, type InitScript } from "../../scripts/phone-init-scripts.ts";
+import { attachedNativeTarget, nativeTransportGate, nativeWindowIdentity, type NativeTarget } from "../../scripts/phone-native-target.ts";
 
 /** The debug app the plan's launch line names (`mobile/AGENTS.md`, "Launch, ports and target names"). */
 export const PACKAGE = "dev.hui.app.debug";
@@ -101,6 +102,21 @@ function appPid(): number {
 
 const launch = (gateway: string) => adb("shell", "am", "start", "-S", "-W", "-n", `${PACKAGE}/${ACTIVITY}`, "--es", "huiGatewayUrl", gateway);
 let activeGateway: string | undefined;
+/** Each native attachment sample reconciles the currently bound transport before the fixture dispatches again. */
+let observeNativeWindow: ((target: NativeTarget) => void) | undefined;
+
+/** Decline only the isolated app's real startup notification prompt, using its native refusal control, not a grant. */
+export function refusePhoneNotificationPrompt(): void {
+  adb("shell", "uiautomator", "dump", "/sdcard/hui-notification-consent.xml");
+  const xml = adb("shell", "cat", "/sdcard/hui-notification-consent.xml");
+  if (!xml.includes("Allow HUI to send you notifications?")) return;
+  const deny = xml.match(/<node\b[^>]*resource-id="com\.android\.permissioncontroller:id\/permission_deny(?:_and_dont_ask_again)?_button"[^>]*>/u)?.[0];
+  const bounds = deny?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/u);
+  if (!bounds) throw new Error("the real notification prompt has no native refusal button");
+  const [left, top, right, bottom] = bounds.slice(1).map(Number) as [number, number, number, number];
+  adb("shell", "input", "tap", String(Math.round((left + right) / 2)), String(Math.round((top + bottom) / 2)));
+  console.log("Declined the isolated app's native startup notification prompt");
+}
 
 /** A gateway stub or world runs on the host, not the emulator's own loopback interface. */
 export function forwardPhoneGateway(gateway: string): void {
@@ -112,8 +128,11 @@ export function forwardPhoneGateway(gateway: string): void {
 /** A fixture world is another real gateway. Let the debug activity rebuild its bridge on that origin, as a Connect
  * handoff does, without force-stopping the app's process or replacing its persistent browser context. */
 export async function openPhoneGateway(gateway: string): Promise<void> {
-  const current = (await nativeTargets()).find((page) => page.type === "page" && /^https?:\/\//u.test(page.url));
-  if (current) activeGateway = new URL(current.url).origin;
+  const current = attachedNativeTarget(await nativeTargets());
+  if (current) {
+    observeNativeWindow?.(current);
+    activeGateway = new URL(current.url).origin;
+  }
   if (activeGateway === gateway) return;
   if (REUSE) throw new Error("Switching fixture gateways needs per-attempt app launches; unset E2E_PHONE_REUSE.");
   forwardPhoneGateway(gateway);
@@ -130,12 +149,10 @@ function forwardDevTools(): void {
   adb("forward", `tcp:${CDP_PORT}`, `localabstract:webview_devtools_remote_${appPid()}`);
 }
 
-type Target = { url: string; type: string; id: string; webSocketDebuggerUrl?: string };
-
-async function nativeTargets(): Promise<Target[]> {
+async function nativeTargets(): Promise<NativeTarget[]> {
   return fetch(`http://127.0.0.1:${CDP_PORT}/json/list`, { signal: AbortSignal.timeout(5_000) })
-    .then((response) => response.ok ? response.json() as Promise<Target[]> : [])
-    .catch(() => [] as Target[]);
+    .then((response) => response.ok ? response.json() as Promise<NativeTarget[]> : [])
+    .catch(() => [] as NativeTarget[]);
 }
 
 /** A launch must reach its requested gateway. A reconnect follows the app's current main window, including a gateway
@@ -146,9 +163,11 @@ async function waitForGatewayPage(gateway: string | undefined, timeoutMs = 60_00
   for (;;) {
     const pages = await nativeTargets();
     listed = pages.map((page) => page.url);
-    const page = pages.find((page) => page.type === "page" && /^https?:\/\//u.test(page.url)
-      && (gateway === undefined || new URL(page.url).origin === gateway));
-    if (page) return new URL(page.url).origin;
+    const page = attachedNativeTarget(pages);
+    if (page && (gateway === undefined || new URL(page.url).origin === gateway)) {
+      observeNativeWindow?.(page);
+      return new URL(page.url).origin;
+    }
     if (Date.now() > deadline) {
       throw new Error(`the WebView never showed ${gateway} within ${Math.round(timeoutMs / 1000)} s: its DevTools target lists ${JSON.stringify(listed)}`);
     }
@@ -185,13 +204,16 @@ let attempts = 0;
 let owningPid = 0;
 let lastTargetId = "";
 let recovering = false;
+let attachmentSignal: AbortSignal | undefined;
 let initScripts: InitScript[] = [];
 
 /**
  * Prepares the app for one CDP attach and resolves the endpoint to attach to. `relaunch` is what a fresh attempt needs
  * (a new process, and so a new WebView and default context); a transport drop reattaches to the same app instead.
  */
-async function prepare({ relaunch, gateway }: { relaunch: boolean; gateway: string }): Promise<string> {
+async function prepare({ relaunch, gateway, signal }: { relaunch: boolean; gateway: string; signal?: AbortSignal }): Promise<string> {
+  signal?.throwIfAborted();
+  attachmentSignal = signal;
   gateway = relaunch ? gateway : activeGateway ?? gateway;
   activeGateway = gateway;
   adb("reverse", `tcp:${new URL(gateway).port}`, `tcp:${new URL(gateway).port}`);
@@ -221,7 +243,7 @@ async function prepare({ relaunch, gateway }: { relaunch: boolean; gateway: stri
   // A transport reconnect resumes this attempt's context; its identity must not change merely because it reattaches.
   forwardDevTools();
   activeGateway = await waitForGatewayPage(relaunch ? gateway : undefined);
-  if (relaunch) lastTargetId = (await nativeTargets()).find((page) => page.type === "page" && /^https?:\/\//u.test(page.url) && new URL(page.url).origin === activeGateway)?.id ?? "";
+  if (relaunch) lastTargetId = attachedNativeTarget(await nativeTargets())?.id ?? "";
   recovering = !relaunch;
   await webViewProtocol();
   prepared = { port: PHONE_PORT };
@@ -229,10 +251,10 @@ async function prepare({ relaunch, gateway }: { relaunch: boolean; gateway: stri
 }
 
 /** The endpoint a fresh attempt gets: it owns a relaunched app, and so a new WebView and a new default context. */
-export const phoneCdpEndpoint = (gateway: string) => () => prepare({ relaunch: true, gateway });
+export const phoneCdpEndpoint = (gateway: string) => (signal?: AbortSignal) => prepare({ relaunch: true, gateway, signal });
 
-/** The endpoint a dropped transport reattaches through: the same app process, so the same page target. */
-export const phoneReconnectEndpoint = (gateway: string) => () => prepare({ relaunch: false, gateway });
+/** The endpoint a dropped transport reattaches through: the same app process and logical main window. */
+export const phoneReconnectEndpoint = (gateway: string) => (signal?: AbortSignal) => prepare({ relaunch: false, gateway, signal });
 
 /**
  * Teaches Playwright the two things an Android WebView does that a Chromium browser does not. Both are gaps on the
@@ -267,46 +289,133 @@ function webViewProtocol(): Promise<void> {
     const chromium = module.chromium ?? module.default.chromium;
     const connectOverCDP = chromium.connectOverCDP.bind(chromium);
     chromium.connectOverCDP = async (endpoint: string, options: Record<string, unknown> = {}) => {
-      const browser = await connectOverCDP(endpoint, { ...options, noDefaults: true, isWebView: true });
+      const deadline = Date.now() + (typeof options["timeout"] === "number" ? options["timeout"] : 30_000);
+      const signal = attachmentSignal;
+      signal?.throwIfAborted();
       const resume = recovering;
+      const scripts = initScripts;
+      const logicalContextId = contextId;
       recovering = false;
-      const target = (await nativeTargets()).find((page) => page.type === "page" && /^https?:\/\//u.test(page.url));
-      for (const context of browser.contexts()) {
-        context.addInitScript = attachmentInitScripts(context.addInitScript.bind(context), initScripts);
-        if (resume && target && target.id !== lastTargetId) {
-          // A replacement document did not run the engine's closed-shadow tracking or this attempt's init scripts.
-          // Install those real scripts and reload it before recovery verifies tracking; never manufacture its marker.
-          for (const entry of [...initScripts]) await context.addInitScript(entry.script, entry.argument);
-          const page = context.pages()[0] ?? await context.waitForEvent("page", { predicate: (page) => !page.isClosed(), timeout: 30_000 });
-          if (context.pages().length !== 1) throw new Error(`the replacement Android window must have one live page, found ${context.pages().length}`);
-          await page.reload({ waitUntil: "domcontentloaded" });
-          lastTargetId = target.id;
-        }
-        // An activity rebuild replaces the physical WebView, not the app's logical main window. Detach a stale CDP
-        // connection when its page closes so the engine reattaches to the replacement. A PID guard above refuses an
-        // unrelated/restarted app; this adapter never leases another browser or invents a second page.
-        const watch = (page: Page) => page.on("close", () => { void browser.close().catch(() => undefined); });
-        for (const page of context.pages()) watch(page);
-        context.on("page", watch);
+      const browser = await connectOverCDP(endpoint, { ...options, noDefaults: true, isWebView: true });
+      // The engine cannot own cancellation until this adapter returns. Own and reap the candidate meanwhile.
+      const cancel = () => { void browser.close().catch(() => undefined); };
+      const expiry = setTimeout(cancel, Math.max(0, deadline - Date.now()));
+      signal?.addEventListener("abort", cancel, { once: true });
+      const check = () => {
+        signal?.throwIfAborted();
+        if (Date.now() >= deadline) throw new Error("native attachment exceeded the CDP connection deadline");
+      };
+      try {
+        check();
+        if (browser.contexts().length !== 1) throw new Error("the Android app must have one default context");
+        const context = browser.contexts()[0]!;
+        const physicalPages = context.pages.bind(context);
         const openSession = context.newCDPSession.bind(context);
-        context.newCDPSession = async (page) => {
-          const session = await openSession(page);
+        // CDP's page-created event can precede View attachment. Match raw physical identity to native attachment,
+        // never page order or URL: an outgoing WebView can remain readable at exactly the same address indefinitely.
+        context.addInitScript = attachmentInitScripts(context.addInitScript.bind(context), scripts);
+        let bound: { page: Page; target: NativeTarget; rawTargetInfo: Record<string, unknown> } | undefined;
+        while (!bound) {
+          check();
+          const target = attachedNativeTarget(await nativeTargets());
+          if (target) {
+            for (const page of physicalPages()) {
+              if (page.isClosed()) continue;
+              let session: CdpSession | undefined;
+              try {
+                session = await openSession(page);
+                const { targetInfo } = await session.send("Target.getTargetInfo") as { targetInfo: { targetId: string } };
+                if (targetInfo.targetId === target.id && attachedNativeTarget(await nativeTargets())?.id === target.id) {
+                  bound = { page, target, rawTargetInfo: targetInfo }; break;
+                }
+              } catch (error) {
+                if (!page.isClosed()) throw error;
+              } finally { await session?.detach().catch(() => undefined); }
+            }
+          }
+          if (bound) {
+            try {
+              if (resume && bound.target.id !== lastTargetId) {
+                // Replay actual scripts, never manufacture the engine's closed-shadow marker.
+                for (const entry of [...scripts]) { check(); await context.addInitScript(entry.script, entry.argument); }
+                await bound.page.reload({ waitUntil: "domcontentloaded", timeout: Math.max(1, deadline - Date.now()) });
+              }
+            } catch (error) {
+              if (!bound.page.isClosed()) throw error;
+              bound = undefined;
+            }
+            check();
+            // An unpublished candidate can be replaced during script installation: resample actual attachment.
+            if (bound && attachedNativeTarget(await nativeTargets())?.id !== bound.target.id) bound = undefined;
+          }
+          if (!bound) {
+            if (Date.now() > deadline) throw new Error("the attached native main window has no matching Playwright page");
+            await new Promise((done) => setTimeout(done, 100));
+          }
+        }
+        const { page, target } = bound;
+        console.log(`Native main window: ${JSON.stringify(target)} raw TargetInfo: ${JSON.stringify(bound.rawTargetInfo)}`);
+        // Exclude obsolete detached windows, without closing native views or constructing a substitute Page.
+        context.pages = () => page.isClosed() ? [] : [page];
+        context.newCDPSession = async (candidate) => {
+          const session = await openSession(candidate);
           const send = session.send.bind(session);
           session.send = async (method, params) => {
             const result = await send(method, params);
-            if (method !== "Target.getTargetInfo") return result;
+            if (method !== "Target.getTargetInfo" || candidate !== page) return result;
             const info = result as { targetInfo: Record<string, unknown> };
-            return { ...info, targetInfo: { ...info.targetInfo, targetId: `${contextId}:main-window` } };
+            return { ...info, targetInfo: nativeWindowIdentity(info.targetInfo, target.id, logicalContextId) };
           };
           return session;
         };
+        check();
+        lastTargetId = target.id;
+        // Native attachment, not old Page.close, is the handoff boundary. Poll even when page-created arrived before
+        // attachment. Publish obsolescence first; retire only at the engine's isConnected operation boundary, so an
+        // in-flight click/read is not interrupted by our monitor. Closing CDP detaches, not the native app.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let stopped = false;
+        const retire = () => { stopped = true; clearTimeout(timer); void browser.close().catch(() => undefined); };
+        const gate = nativeTransportGate(browser.isConnected.bind(browser), retire);
+        browser.isConnected = gate.isConnected;
+        const reconcile = (current: NativeTarget) => {
+          if (current.id !== target.id) gate.invalidate();
+        };
+        observeNativeWindow = reconcile;
+        const observeAttachment = async () => {
+          try {
+            const current = attachedNativeTarget(await nativeTargets());
+            if (current && current.id !== target.id) {
+              console.log(`Native main window handoff: ${target.id} -> ${current.id} ${current.description}`);
+              reconcile(current);
+              return;
+            }
+          } catch (error) {
+            console.error("Native attachment verification failed", error);
+            gate.invalidate();
+            return;
+          }
+          if (!stopped) timer = setTimeout(() => { void observeAttachment(); }, 100);
+        };
+        browser.on("disconnected", () => {
+          stopped = true; clearTimeout(timer);
+          if (observeNativeWindow === reconcile) observeNativeWindow = undefined;
+        });
+        page.on("close", retire);
+        void observeAttachment();
+      } catch (error) {
+        await browser.close().catch(() => undefined);
+        throw error;
+      } finally {
+        clearTimeout(expiry);
+        signal?.removeEventListener("abort", cancel);
       }
       const openBrowserSession = browser.newBrowserCDPSession.bind(browser);
       browser.newBrowserCDPSession = async () => {
         const session = await openBrowserSession();
         const send = session.send.bind(session);
         session.send = ((method: string, params?: Record<string, unknown>) => method === "Target.getBrowserContexts"
-          ? Promise.resolve({ browserContextIds: [], defaultBrowserContextId: contextId || `webview-${appPid()}` })
+          ? Promise.resolve({ browserContextIds: [], defaultBrowserContextId: logicalContextId })
           : send(method, params)) as typeof session.send;
         return session;
       };
@@ -316,7 +425,7 @@ function webViewProtocol(): Promise<void> {
   return patched;
 }
 
-type Page = { isClosed(): boolean; on(event: "close", listener: () => void): unknown; reload(options: { waitUntil: "domcontentloaded" }): Promise<unknown> };
+type Page = { isClosed(): boolean; on(event: "close", listener: () => void): unknown; reload(options: { waitUntil: "domcontentloaded"; timeout?: number }): Promise<unknown> };
 type Context = {
   pages(): Page[];
   addInitScript(script: unknown, argument?: unknown): Promise<void>;
@@ -324,8 +433,8 @@ type Context = {
   on(event: "page", listener: (page: Page) => void): unknown;
   waitForEvent(event: "page", options: { predicate: (page: Page) => boolean; timeout: number }): Promise<Page>;
 };
-type Browser = { newBrowserCDPSession(): Promise<CdpSession>; contexts(): Context[]; close(): Promise<void> };
-type CdpSession = { send(method: string, params?: Record<string, unknown>): Promise<unknown> };
+type Browser = { newBrowserCDPSession(): Promise<CdpSession>; contexts(): Context[]; isConnected(): boolean; close(): Promise<void>; on(event: "disconnected", listener: () => void): unknown };
+type CdpSession = { send(method: string, params?: Record<string, unknown>): Promise<unknown>; detach(): Promise<void> };
 type Chromium = { connectOverCDP(endpoint: string, options?: Record<string, unknown>): Promise<Browser> };
 
 /**
