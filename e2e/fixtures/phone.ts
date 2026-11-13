@@ -112,25 +112,75 @@ export async function phoneLayoutFrame() {
   return layoutFrame();
 }
 
-/** Decline only the isolated app's real startup notification prompt, using its native refusal control, not a grant. */
-export function refusePhoneNotificationPrompt(run = adb): void {
-  // A live WebView need not become accessibility-idle. Inspect only the focused system permission activity;
-  // the XML below still has to identify HUI's notification question before any native control is touched.
-  const windows = run("shell", "dumpsys", "window");
-  if (!/^\s*mCurrentFocus=Window\{[^\n]*\bcom\.(?:android|google\.android)\.permissioncontroller\/[^\s}]*GrantPermissionsActivity\}/mu.test(windows)) return;
-  const dumped = run("shell", "uiautomator", "dump", "/sdcard/hui-notification-consent.xml");
-  // Some Android builds print an idle failure yet exit zero. Never consume a previous prompt's XML on that path.
-  if (!/^UI hierchary dumped to: \/sdcard\/hui-notification-consent\.xml\s*$/mu.test(dumped)) {
-    throw new Error(`native notification inspection failed: ${dumped}`);
+/** An inspection race may return only to the exact app process and attached page this engine owns. */
+function ownsNotificationReturn(): boolean {
+  if (!lastTargetId || owningPid <= 0 || Number(adb("shell", "pidof", PACKAGE).split(/\s+/u)[0]) !== owningPid) return false;
+  // This helper's callers are synchronous. Only a failed permission inspection pays for this fresh, bounded read.
+  const listed = execFileSync(process.execPath, ["--input-type=module", "-e",
+    'const r = await fetch(process.argv[1], { signal: AbortSignal.timeout(5000) }); if (!r.ok) throw new Error(`target discovery: ${r.status}`); process.stdout.write(await r.text());',
+    `http://127.0.0.1:${CDP_PORT}/json/list`,
+  ], { encoding: "utf8", timeout: 5_000, stdio: ["ignore", "pipe", "pipe"] });
+  return attachedNativeTarget(JSON.parse(listed) as NativeTarget[])?.id === lastTargetId;
+}
+
+/** Require a complete hierarchy of balanced native nodes, not a partial or previous dump. */
+function completeNotificationHierarchy(xml: string): boolean {
+  const body = xml.trim().replace(/^<\?xml[^?]*\?>\s*/u, "").match(/^<hierarchy(?:\s+[\w:-]+="[^"<]*")*\s*>([\s\S]*)<\/hierarchy>$/u)?.[1];
+  if (!body) return false;
+  let depth = 0;
+  let end = 0;
+  for (const match of body.matchAll(/<node(?:\s+[\w:-]+="[^"<]*")*\s*\/?>|<\/node>/gu)) {
+    if (body.slice(end, match.index).trim()) return false;
+    const tag = match[0];
+    if (tag === "</node>") { if (--depth < 0) return false; }
+    else if (!tag.endsWith("/>")) depth++;
+    end = match.index + tag.length;
   }
-  const xml = run("shell", "cat", "/sdcard/hui-notification-consent.xml");
-  if (!xml.includes("Allow HUI to send you notifications?")) return;
-  const deny = xml.match(/<node\b[^>]*resource-id="com\.android\.permissioncontroller:id\/permission_deny(?:_and_dont_ask_again)?_button"[^>]*>/u)?.[0];
-  const bounds = deny?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/u);
-  if (!bounds) throw new Error("the real notification prompt has no native refusal button");
-  const [left, top, right, bottom] = bounds.slice(1).map(Number) as [number, number, number, number];
-  if (right <= left || bottom <= top) throw new Error("the real notification prompt has an empty native refusal button");
-  run("shell", "input", "tap", String(Math.round((left + right) / 2)), String(Math.round((top + bottom) / 2)));
+  return end > 0 && depth === 0 && !body.slice(end).trim();
+}
+
+/** Decline only the isolated app's real startup notification prompt, using its native refusal control, not a grant. */
+export function refusePhoneNotificationPrompt(run = adb, ownsReturn = ownsNotificationReturn): void {
+  const focus = (windows: string) => windows.match(/^\s*mCurrentFocus=(Window\{[^\n]+\})/mu)?.[1] ?? "none";
+  const before = focus(run("shell", "dumpsys", "window"));
+  // A busy, focused WebView must never wait for accessibility idle.
+  if (!/\bcom\.(?:android|google\.android)\.permissioncontroller\/[^\s}]*GrantPermissionsActivity\}/u.test(before)) return;
+  let dumped = "";
+  let xml = "";
+  let after: string | undefined;
+  let tap: [string, string];
+  try {
+    const path = "/sdcard/hui-notification-consent.xml";
+    run("shell", "rm", "-f", path);
+    dumped = run("shell", "uiautomator", "dump", path);
+    if (dumped && !/^UI hierchary dumped to: \/sdcard\/hui-notification-consent\.xml\s*$/u.test(dumped)) {
+      throw new Error(`dump did not complete: ${JSON.stringify(dumped)}`);
+    }
+    xml = run("shell", "cat", path);
+    if (!completeNotificationHierarchy(xml)) throw new Error(`incomplete fresh hierarchy (${xml.length} bytes)`);
+    after = focus(run("shell", "dumpsys", "window"));
+    if (after !== before) throw new Error("permission window changed during inspection");
+    if (!xml.includes('text="Allow HUI to send you notifications?"')) return;
+    const deny = xml.match(/<node\b[^>]*resource-id="com\.android\.permissioncontroller:id\/permission_deny(?:_and_dont_ask_again)?_button"[^>]*>/u)?.[0];
+    const bounds = deny?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/u);
+    if (!bounds) throw new Error("the real notification prompt has no native refusal button");
+    const [left, top, right, bottom] = bounds.slice(1).map(Number) as [number, number, number, number];
+    if (right <= left || bottom <= top) throw new Error("the real notification prompt has an empty native refusal button");
+    tap = [String(Math.round((left + right) / 2)), String(Math.round((top + bottom) / 2))];
+  } catch (error) {
+    // No retry and no fallback tap: an already gone OS dialog needs no refusal, but only our exact page may resume.
+    let ownership = "not checked";
+    try {
+      after = focus(run("shell", "dumpsys", "window"));
+      if (/\bdev\.hui\.app\.debug\/dev\.hui\.app\.MainActivity\}/u.test(after)) {
+        const owned = ownsReturn();
+        ownership = String(owned);
+        if (owned) { console.log("Native notification prompt disappeared before inspection; no control was tapped"); return; }
+      }
+    } catch (reconcileError) { ownership = String(reconcileError); }
+    throw new Error(`native notification inspection failed: ${String(error)}; dump=${JSON.stringify(dumped)}; freshXmlBytes=${xml.length}; focusBefore=${before}; focusAfter=${after ?? "unavailable"}; ownedTarget=${ownership}`);
+  }
+  run("shell", "input", "tap", ...tap);
   console.log("Declined the isolated app's native startup notification prompt");
 }
 
