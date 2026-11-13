@@ -50,9 +50,12 @@ jobs:
       - name: Boot a simulator in the background
         run: |
           set -euo pipefail
-          device=$(xcrun simctl list devices available | grep -E "iPhone [0-9]+" | head -1 | sed -E 's/^ +//; s/ \(.*//')
-          runtime=$(xcrun simctl list runtimes | grep -E "iOS [0-9]+" | tail -1 | sed -E 's/.*iOS ([0-9]+)\..*/iOS \1/')
-          udid=$(xcrun simctl list devices available | grep -F "$device (" | head -1 | grep -oE '[0-9A-F-]{36}')
+          # One `simctl list`: on a cold CoreSimulator each call costs tens of seconds, and the device
+          # listing already carries its runtime as the `-- iOS <version> --` section headers.
+          devices=$(xcrun simctl list devices available)
+          device=$(printf '%s\n' "$devices" | grep -E "iPhone [0-9]+" | head -1 | sed -E 's/^ +//; s/ \(.*//')
+          runtime=$(printf '%s\n' "$devices" | grep -oE '^-- iOS [0-9.]+ --$' | tail -1 | sed -E 's/^-- (.*) --$/\1/')
+          udid=$(printf '%s\n' "$devices" | grep -F "$device (" | head -1 | grep -oE '[0-9A-F-]{36}')
           echo "device=$device udid=$udid runtime=$runtime"
           echo "HUI_IOS_UDID=$udid" >> "$GITHUB_ENV"
           (xcrun simctl boot "$udid" || true)
