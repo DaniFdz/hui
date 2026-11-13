@@ -562,7 +562,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:models", "route:GET /__hui/local-providers", "route:PUT /__hui/local-providers/:provider", "route:DELETE /__hui/local-providers/:provider", "route:POST /__hui/local-providers/:provider/start"],
     journeys: ["local-model-servers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-050",
