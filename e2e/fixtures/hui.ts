@@ -36,7 +36,7 @@ import { addWorkerOnThisMachine } from "./worker.ts";
 import { startGatewayStub, type GatewayStub } from "./gateway-stub.ts";
 import { advanceClock, installClock } from "./clock.ts";
 import { allowMedia } from "./web-browser.ts";
-import { clearAppStorage, deviceBytes, deviceFiles, forwardPhoneGateway, onPhone, openPhoneGateway, PHONE_DOWNLOADS } from "./phone.ts";
+import { clearAppStorage, deviceBytes, deviceFiles, forwardPhoneGateway, onPhone, openPhoneGateway, refusePhoneNotificationPrompt, PHONE_DOWNLOADS } from "./phone.ts";
 import { onWebKitPhone, webkitServiceWorkers } from "./phone-webkit.ts";
 import { startWorld, type World, type WorldName } from "./world.ts";
 import { storedContent } from "./stored-content.ts";
@@ -1158,6 +1158,7 @@ function huiTest(offline: boolean) {
               const destination = new URL(path, receipt.url);
               await openPhoneGateway(destination.origin);
               await fixtures.app.open(destination.href);
+              refusePhoneNotificationPrompt();
             },
             // CDP routes and attempt-scoped page scripts work in the app's persistent context just as in Chromium.
             // Only context replacement, native downloads and genuinely unavailable desktop gestures need overrides.
