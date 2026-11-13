@@ -25,10 +25,10 @@ func isReady(_ text: String, for phase: String) -> Bool {
     return phrases.allSatisfy { text.contains(" " + normalized($0) + " ") }
 }
 
-// The budget admits observations, not render-time SLA measurements. Completion may be later.
+// One infrastructure deadline bounds both admission and completed evidence. This is not a UI render-latency SLA.
 func acceptsObservation(_ text: String, for phase: String, startedAt: TimeInterval,
                         finishedAt: TimeInterval, deadline: TimeInterval) -> Bool {
-    startedAt < deadline && finishedAt >= startedAt && isReady(text, for: phase)
+    startedAt < deadline && finishedAt >= startedAt && finishedAt < deadline && isReady(text, for: phase)
 }
 
 func recognize(_ image: CGImage) throws -> String {
@@ -88,35 +88,49 @@ func selfTest() throws {
     // CI's cold first capture arrived after the deadline, but the matcher was already correct.
     let ciConnectOCR = "3:52\nC\nConnect to HUI\nThe address of the gateway you want this\napp to show.\nGATEWAY URL\nhttps://my-machine.example.ts.net\nConnect"
     try check(isReady(ciConnectOCR, for: "connect"), "CI Connect OCR did not match")
-    // Exact 6d timing regression: admitted before the deadline; real processing finished 1.943 s later.
-    try check(acceptsObservation(ciConnectOCR, for: "connect", startedAt: 504.3934927916667,
-        finishedAt: 512.0349127916667, deadline: 510.09199558333336), "late completion rejected an admitted observation")
-    for start in [510.09199558333336, 511.0] {
+    // Run 43377600459, artifact 14015289270: shots/connect-1.png and .txt are a real blank first frame.
+    // C165 spent 26.678 s in capture/OCR; it proves no ready Connect page or native cold-render cause.
+    let phaseStart = 620.0932430833334
+    let infrastructureDeadline = phaseStart + 90
+    let firstFinishedAt = 646.771619375
+    try check(!acceptsObservation("6:26", for: "connect", startedAt: 620.1418623750001,
+        finishedAt: firstFinishedAt, deadline: infrastructureDeadline), "C165 blank first frame passed")
+    try check(firstFinishedAt < infrastructureDeadline, "C165 first observation exhausted infrastructure")
+    // Pure matcher scenario only: a later matching observation is hypothetical, NOT a C165 screenshot or app proof.
+    try check(acceptsObservation(ciConnectOCR, for: "connect", startedAt: firstFinishedAt + 0.01,
+        finishedAt: firstFinishedAt + 8, deadline: infrastructureDeadline), "later in-bound content rejected")
+    for start in [infrastructureDeadline, infrastructureDeadline + 1] {
         try check(!acceptsObservation(ciConnectOCR, for: "connect", startedAt: start,
-            finishedAt: 512.0349127916667, deadline: 510.09199558333336), "out-of-budget observation passed")
+            finishedAt: start + 1, deadline: infrastructureDeadline), "late admission passed")
     }
-    try check(!acceptsObservation(wrong, for: "connect", startedAt: 23, finishedAt: 26, deadline: 24),
-        "late splash/error observation passed")
-    try check(!acceptsObservation(wrong, for: "connect", startedAt: 23, finishedAt: 23.5, deadline: 24),
-        "in-budget splash/error observation passed")
+    for finish in [infrastructureDeadline, infrastructureDeadline + 1] {
+        try check(!acceptsObservation(ciConnectOCR, for: "connect", startedAt: infrastructureDeadline - 2,
+            finishedAt: finish, deadline: infrastructureDeadline), "late completion passed")
+    }
+    try check(!acceptsObservation(wrong, for: "connect", startedAt: phaseStart,
+        finishedAt: firstFinishedAt, deadline: infrastructureDeadline), "in-bound splash/error observation passed")
     print("Vision oracle self-test passed (synthetic images only; not app proof or a render-latency SLA)")
 }
 
-// A separate hard infrastructure ceiling bounds even a stuck native capture or Vision call.
+// This owns the single whole-phase infrastructure ceiling, including a stuck capture or Vision call.
 // This is NOT a 90 s UI SLA. The workflow's existing 30 minute job ceiling also remains in force.
 final class InfrastructureWatchdog {
     private let lock = NSLock()
     private var active = true
     private var capture: Process?
     private let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-    private let startedAt = ProcessInfo.processInfo.systemUptime
+    let startedAt: TimeInterval
+    let deadline: TimeInterval
     private let phase: String
     private let directory: URL
 
     init(phase: String, directory: URL) {
         self.phase = phase
         self.directory = directory
-        timer.schedule(deadline: .now() + 90)
+        startedAt = ProcessInfo.processInfo.systemUptime
+        deadline = startedAt + 90
+        // Schedule the watchdog against the same absolute bound used by capture admission and acceptance.
+        timer.schedule(deadline: .now() + max(0, deadline - ProcessInfo.processInfo.systemUptime))
         timer.setEventHandler { [weak self] in self?.expire() }
         timer.resume()
     }
@@ -155,8 +169,8 @@ final class InfrastructureWatchdog {
 }
 
 // Both preparation and proof use this exact native capture path. A warm-up frame is never ready evidence.
-func captureScreenshot(udid: String, path: URL, label: String, watchdog: InfrastructureWatchdog,
-                       before deadline: TimeInterval? = nil) throws -> (startedAt: TimeInterval, completedAt: TimeInterval)? {
+func captureScreenshot(udid: String, path: URL, label: String, watchdog: InfrastructureWatchdog)
+    throws -> (startedAt: TimeInterval, completedAt: TimeInterval)? {
     let capture = Process()
     capture.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
     capture.arguments = ["simctl", "io", udid, "screenshot", path.path]
@@ -164,7 +178,7 @@ func captureScreenshot(udid: String, path: URL, label: String, watchdog: Infrast
     defer { watchdog.track(nil) }
     let started = ProcessInfo.processInfo.systemUptime
     // Admission is checked again immediately before invoking the opaque transport, not just at loop entry.
-    if let deadline, started >= deadline { return nil }
+    if started >= watchdog.deadline { return nil }
     do {
         try capture.run()
     } catch {
@@ -207,11 +221,11 @@ func waitForReady(udid: String, directory: URL, phase: String) throws {
     let watchdog = InfrastructureWatchdog(phase: phase, directory: directory)
     defer { watchdog.cancel() }
     let ready = directory.appendingPathComponent("\(phase)-ready.png")
-    // The former 12 * (sleep 2 + capture) loop never specified a 24 s end-to-end UI SLA.
-    // Admit observations for 24 s; an admitted capture/OCR may finish later, bounded by infrastructure at 90 s.
-    let startedAt = ProcessInfo.processInfo.systemUptime
-    let deadline = startedAt + 24
-    print("\(phase) observation-start deadline at uptime=\(deadline); render latency unmeasured")
+    // Poll actual frames until content is proved or this one 90 s infrastructure ceiling expires.
+    // A slow blank first observation must not prevent a later fresh observation within the same ceiling.
+    let startedAt = watchdog.startedAt
+    let deadline = watchdog.deadline
+    print("\(phase) infrastructure deadline at uptime=\(deadline) (90 s whole phase); render latency unmeasured")
     var lastText = ""
     var attempt = 0
     while ProcessInfo.processInfo.systemUptime < deadline {
@@ -222,8 +236,8 @@ func waitForReady(udid: String, directory: URL, phase: String) throws {
             try "\(phase) attempt=\(attempt), admission pending at uptime=\(ProcessInfo.processInfo.systemUptime)\n"
                 .write(to: record, atomically: true, encoding: .utf8)
             guard let capture = try captureScreenshot(udid: udid, path: latest, label: phase,
-                watchdog: watchdog, before: deadline) else {
-                try "\(phase) attempt=\(attempt) not admitted: observation-start deadline passed at uptime=\(ProcessInfo.processInfo.systemUptime)\n"
+                watchdog: watchdog) else {
+                try "\(phase) attempt=\(attempt) not admitted: infrastructure deadline passed at uptime=\(ProcessInfo.processInfo.systemUptime)\n"
                     .write(to: record, atomically: true, encoding: .utf8)
                 break
             }
@@ -233,12 +247,12 @@ func waitForReady(udid: String, directory: URL, phase: String) throws {
             lastText = try autoreleasepool { try recognizeFile(latest) }
             let observedAt = ProcessInfo.processInfo.systemUptime
             let matches = isReady(lastText, for: phase)
-            let evidence = "\(phase) attempt=\(attempt), capture-start=\(capture.startedAt), capture-end=\(capture.completedAt), OCR-start=\(ocrStarted), OCR-end=\(observedAt), matches=\(matches), observation-start-deadline=\(deadline), elapsed=\(observedAt - startedAt) s, beyond-start-budget=\(max(0, observedAt - deadline)) s; render latency unmeasured\nOCR:\n\(lastText)\n"
+            let evidence = "\(phase) attempt=\(attempt), capture-start=\(capture.startedAt), capture-end=\(capture.completedAt), OCR-start=\(ocrStarted), OCR-end=\(observedAt), matches=\(matches), infrastructure-deadline=\(deadline), elapsed=\(observedAt - startedAt) s, beyond-infrastructure-bound=\(max(0, observedAt - deadline)) s; render latency unmeasured\nOCR:\n\(lastText)\n"
             try evidence.write(to: record, atomically: true, encoding: .utf8)
             print(evidence)
             if acceptsObservation(lastText, for: phase, startedAt: capture.startedAt, finishedAt: observedAt, deadline: deadline) {
                 try FileManager.default.copyItem(at: latest, to: ready)
-                print("\(phase) rendered boot content ready: \(ready.path); not a <=24 s render/observation SLA")
+                print("\(phase) rendered boot content ready: \(ready.path); 90 s infrastructure bound, not a UI render-latency SLA")
                 return
             }
         } catch let observationError {
@@ -251,7 +265,7 @@ func waitForReady(udid: String, directory: URL, phase: String) throws {
             throw observationError
         }
     }
-    throw Failure(description: "\(phase) no admitted observation proved \(required[phase]!) (24 s observation-start budget, deadline uptime=\(deadline), now=\(ProcessInfo.processInfo.systemUptime)). Last OCR:\n\(lastText)")
+    throw Failure(description: "\(phase) no completed observation proved \(required[phase]!) before the 90 s infrastructure deadline (uptime=\(deadline), now=\(ProcessInfo.processInfo.systemUptime)); render latency unmeasured. Last OCR:\n\(lastText)")
 }
 
 do {

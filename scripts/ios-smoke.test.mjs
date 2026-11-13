@@ -33,19 +33,31 @@ test("iOS warms the real capture transport before launch without reusing it as p
   assert.ok(wait.indexOf("captureScreenshot(") < wait.indexOf("try recognizeFile(latest)"));
 });
 
-test("iOS admits observations for 24 s, bounds infrastructure separately, and retains every real observation", () => {
-  assert.ok(oracle.includes("let deadline = startedAt + 24"));
-  assert.ok(oracle.includes("while ProcessInfo.processInfo.systemUptime < deadline"));
+test("iOS shares one 90 s infrastructure bound for admissions, completed text and the watchdog", () => {
+  const watchdog = oracle.slice(oracle.indexOf("final class InfrastructureWatchdog"), oracle.indexOf("// Both preparation"));
+  const wait = oracle.slice(oracle.indexOf("func waitForReady("), oracle.indexOf("\ndo {"));
+  assert.ok(watchdog.includes("deadline = startedAt + 90"));
+  assert.ok(watchdog.includes("timer.schedule(deadline: .now() + max(0, deadline - ProcessInfo.processInfo.systemUptime))"));
+  assert.ok(wait.includes("let startedAt = watchdog.startedAt"));
+  assert.ok(wait.includes("let deadline = watchdog.deadline"));
+  assert.ok(wait.includes("while ProcessInfo.processInfo.systemUptime < deadline"));
+  assert.doesNotMatch(wait, /deadline\s*=.*\+/u, "the observation loop must not invent or restart a second clock");
   const capture = oracle.slice(oracle.indexOf("func captureScreenshot("), oracle.indexOf("func warmUp("));
-  assert.ok(capture.indexOf("if let deadline, started >= deadline { return nil }") < capture.indexOf("try capture.run()"));
-  assert.ok(oracle.includes("watchdog: watchdog, before: deadline) else {"));
-  assert.ok(oracle.includes("not admitted: observation-start deadline passed"));
-  assert.ok(oracle.includes("startedAt < deadline && finishedAt >= startedAt && isReady(text, for: phase)"));
-  assert.doesNotMatch(oracle, /observedAt < deadline|finishedAt < deadline/u, "completion is not a render-latency SLA");
-  assert.ok(oracle.includes("finishedAt: 512.0349127916667, deadline: 510.09199558333336"), "macOS self-test includes exact late 6d completion");
-  assert.ok(oracle.includes("for start in [510.09199558333336, 511.0]"), "deadline equality and later admissions are rejected");
-  assert.ok(oracle.includes('"late splash/error observation passed"'), "late completion never waives required content");
-  assert.ok(oracle.includes("timer.schedule(deadline: .now() + 90)"));
+  const admission = capture.indexOf("if started >= watchdog.deadline { return nil }");
+  assert.notEqual(admission, -1, "the final native-capture admission guard is required");
+  assert.ok(admission < capture.indexOf("try capture.run()"));
+  assert.ok(oracle.includes("not admitted: infrastructure deadline passed"));
+  assert.ok(oracle.includes("startedAt < deadline && finishedAt >= startedAt && finishedAt < deadline && isReady(text, for: phase)"));
+  assert.ok(wait.includes("startedAt: capture.startedAt, finishedAt: observedAt, deadline: deadline)"));
+  assert.ok(oracle.includes('acceptsObservation("6:26", for: "connect", startedAt: 620.1418623750001,'));
+  assert.ok(oracle.includes("let firstFinishedAt = 646.771619375"), "macOS self-test retains the actual slow blank C165 timing");
+  assert.ok(oracle.includes('"C165 first observation exhausted infrastructure"'), "a slow first observation does not end admission");
+  assert.ok(oracle.includes("startedAt: firstFinishedAt + 0.01,"));
+  assert.ok(oracle.includes('"later in-bound content rejected"'), "a hypothetical subsequent matching observation can pass before the same bound");
+  assert.ok(oracle.includes("for start in [infrastructureDeadline, infrastructureDeadline + 1]"));
+  assert.ok(oracle.includes("for finish in [infrastructureDeadline, infrastructureDeadline + 1]"));
+  assert.ok(oracle.includes('"in-bound splash/error observation passed"'));
+  assert.doesNotMatch(oracle, /\b24\b|observation-start|beyond-start/u, "no unsupported admission cutoff remains");
   assert.ok(oracle.includes("timer.setEventHandler { [weak self] in self?.expire() }"));
   assert.ok(oracle.includes("kill(child.processIdentifier, SIGKILL)"));
   const expiry = oracle.slice(oracle.indexOf("private func expire()"), oracle.indexOf("// Both preparation"));
@@ -58,9 +70,10 @@ test("iOS admits observations for 24 s, bounds infrastructure separately, and re
   assert.ok(oracle.includes("try evidence.write(to: record, atomically: true, encoding: .utf8)"));
   assert.ok(oracle.includes("OCR pending"), "capture timings survive an OCR hang");
   assert.ok(oracle.includes('"\\(phase)-\\(attempt)-error.txt"'));
-  assert.ok(oracle.includes("beyond-start-budget="));
+  assert.ok(oracle.includes("beyond-infrastructure-bound="));
   assert.ok(oracle.includes("render latency unmeasured"));
-  assert.ok(workflow.includes("NOT a <=24 s launch/render/observation SLA"));
+  assert.ok(workflow.includes("NOT a UI render-latency SLA"));
+  assert.ok(workflow.includes("ONE 90 s infrastructure bound for capture admission AND completed OCR"));
 });
 
 test("iOS readiness requires known rendered content, never elapsed sleep or changed bytes", () => {
