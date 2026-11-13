@@ -1,0 +1,27 @@
+/* Settings → Models → Local model servers: one card per custom PI provider, its reachability and start command. */
+.hui-local-providers { min-width: 0; }
+.hui-local-provider-cards { display: grid; gap: 16px; }
+.hui-local-provider { border: 1px solid var(--border); border-radius: 12px; padding: 20px; min-width: 0; }
+.hui-local-provider h3 { overflow-wrap: anywhere; }
+.hui-local-provider .hui-provider-heading p { margin: 4px 0 0; }
+.hui-local-provider .hui-provider-heading code { font-size: 12px; }
+.hui-local-provider-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.hui-local-provider-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.hui-local-provider-status[data-status="online"]::before { background: var(--ok); }
+.hui-local-provider-status[data-status="starting"]::before { background: var(--warn); }
+.hui-local-provider-status[data-status="failed"]::before { background: var(--danger); }
+.hui-local-provider-message { margin: 12px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.hui-local-provider-checked { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+.hui-local-provider-form { margin-top: 16px; padding-top: 4px; border-top: 1px solid var(--border); }
+.hui-local-provider-form textarea { width: 100%; min-height: 84px; box-sizing: border-box; resize: vertical; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 12px; line-height: 1.55; }
+.hui-local-provider-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hui-local-provider-help { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.hui-local-provider-optional { color: var(--muted); font-weight: 400; }
+.hui-local-provider-confirm { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.hui-local-provider-confirm p { margin: 0; font-size: 13px; }
+.hui-local-provider-empty { padding: 32px 16px; margin: 0; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); font-size: 13px; line-height: 1.7; text-align: center; }
+.hui-local-provider-empty code { font-size: 12px; }
+@media (max-width: 600px) {
+  .hui-local-provider { padding: 12px; }
+  .hui-local-provider .hui-provider-heading { align-items: flex-start; }
+}

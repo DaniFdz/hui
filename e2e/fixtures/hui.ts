@@ -62,6 +62,8 @@ export type Hui = {
   workspace: string;
   /** The gateway's own config directory, where its settings and tool icons live. */
   configDir: string;
+  /** This disposable gateway's PI agent directory, where models.json and settings.json live. */
+  piAgentDir: string;
   gateway: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
@@ -448,7 +450,7 @@ export const test = base.extend<{ hui: Hui }>({
       }
       const directories: string[] = [];
 
-      const webSteps: Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
+      const webSteps: Omit<Hui, "workspace" | "configDir" | "piAgentDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
         url: () => browser().url(),
         clipboard: ({ refuse = false, legacyCopy = false } = {}) => browser().addInitScript(({ refused, legacy }: { refused: boolean; legacy: boolean }) => {
           const page = window as unknown as { huiCopied: string };
@@ -1034,6 +1036,7 @@ export const test = base.extend<{ hui: Hui }>({
         ...(web ? {} : iosSteps),
         workspace: receipt.workspace,
         configDir: receipt.huiConfig,
+        piAgentDir: join(dirname(receipt.workspace), "agent"),
         gateway: receipt.url,
         api,
         createSession: async (input) =>

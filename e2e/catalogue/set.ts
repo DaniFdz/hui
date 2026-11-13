@@ -516,6 +516,16 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
+    id: "SET-088",
+    title: "Start a local model server before using its model",
+    behaviour: "Settings → Models → Local model servers lists each custom provider in PI's models.json that HUI does not manage, with Online, Offline, Starting…, Failed or Unknown. “Set up start command” opens a form for the command, an optional health URL and a ready timeout; “Save command” stores it, “Cancel” discards it, and “Remove command” asks to confirm and removes only HUI's command. “Start server” shows Starting… and then Online once the health endpoint answers; a model request sent meanwhile shows “Waiting for <name> to start…” in its chat and runs after the server is ready. A failed start reads Failed with its reason. Starting is manual: a model request never runs the command.",
+    spec: ["docs/api.md#local-model-servers", "docs/api.md#get-__huilocal-providers", "docs/api.md#put-__huilocal-providersprovider", "docs/api.md#delete-__huilocal-providersprovider", "docs/api.md#post-__huilocal-providersproviderstart", "SPEC.md#behaviour"],
+    surfaces: ["settings-page:models", "route:GET /__hui/local-providers", "route:PUT /__hui/local-providers/:provider", "route:DELETE /__hui/local-providers/:provider", "route:POST /__hui/local-providers/:provider/start"],
+    journeys: ["local-model-servers"],
+    web: "required",
+    ios: "backlog",
+  },
+  {
     id: "SET-050",
     title: "Inspect the model catalog without PI configuration panels",
     behaviour: "Below HUI model routing, Subagent routes and Calls, Models keeps the collapsed “Available catalog · N models”. Opening it lists each model's provider/id and context/output limits, with PI's read-only settings path below. PI defaults, Cycling models and PI credential sources are not shown on this page, including after a reload.",

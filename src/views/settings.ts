@@ -31,6 +31,7 @@ import "../components/settings/calls.ts";
 import "../components/settings/github.ts";
 import "../components/settings/datadog.ts";
 import "../components/settings/providers.ts";
+import "../components/settings/local-providers.ts";
 import "../components/settings/subagent-routes.ts";
 import "../components/settings/workers.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
@@ -664,7 +665,7 @@ function renderCallsSection(props: SettingsProps) {
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
   if (!pi) {
-    return html`<hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>${renderCallsSection(props)}${renderPiMissing(props)}`;
+    return html`<hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings><hui-local-provider-settings></hui-local-provider-settings>${renderCallsSection(props)}${renderPiMissing(props)}`;
   }
   const model = pi.model;
   const modelOptions = [
@@ -705,6 +706,7 @@ function renderModelsPage(props: SettingsProps) {
       Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
     </p>
     <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
+    <hui-local-provider-settings></hui-local-provider-settings>
     ${renderSection(
       "HUI model routing",
       "Saved by HUI and applied to new sessions.",

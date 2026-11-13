@@ -1,5 +1,5 @@
-/** HUI connections overlay PI's runtime without writing PI configuration, and its models.json `!command` keys run
- * without blocking the process. */
+/** HUI connections overlay PI's runtime without writing PI configuration, its models.json `!command` keys run
+ * without blocking the process, and a request for a local model server waits while a manual start is in progress. */
 import { exec } from "node:child_process";
 import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -9,10 +9,11 @@ import { ModelsError } from "@earendil-works/pi-ai";
 import { ModelRuntime, type ModelRuntimeAuthOverrides } from "@earendil-works/pi-coding-agent";
 import { credentialStore, type CredentialStore, ProviderAccounts } from "../pi/provider-accounts.ts";
 import { accountRouting } from "./provider-account-routing.ts";
-import { CONFIG_DIR } from "../paths.ts";
+import { PROVIDERS_DIR } from "../paths.ts";
+import { localProviders, type LocalModelGate } from "../pi/local-providers.ts";
 
 /** A remote worker points its PI processes at the mirrored HUI providers. */
-export const PROVIDERS_DIR = process.env["HUI_PROVIDERS_DIR"] || join(CONFIG_DIR, "providers");
+export { PROVIDERS_DIR };
 export type ProviderSelections = Record<string, { models: string[] }>;
 export async function readProviderSelections(dir = PROVIDERS_DIR): Promise<ProviderSelections> {
   let raw: unknown;
@@ -84,14 +85,45 @@ export function createHuiModelRuntime(dir = PROVIDERS_DIR) {
   return ModelRuntime.create({ authPath: join(dir, "auth.json"), modelsPath: null, allowModelNetwork: false });
 }
 
+/** Model requests whose options carry `transformHeaders`; the gate uses it because it is awaited before the provider
+ * dispatches, while `stream` itself must return synchronously. */
+const MODEL_REQUESTS = new Set<PropertyKey>(["stream", "streamSimple", "complete", "completeSimple", "streamDeferred", "fetchDeferred"]);
+
+/** A model request for a provider whose manual start is running waits for that start, then proceeds. Nothing here
+ * begins a start: starting is the operator's action in Settings → Models. A failed start rejects with its reason, so
+ * the request reports what happened instead of a bare connection error. */
+export function withLocalModelGate(runtime: ModelRuntime, gate: LocalModelGate = localProviders): ModelRuntime {
+  return new Proxy(runtime, {
+    get(target, key) {
+      const value: unknown = Reflect.get(target, key, target);
+      if (typeof value !== "function") return value;
+      if (!MODEL_REQUESTS.has(key)) return value.bind(target);
+      return (...args: unknown[]) => {
+        const model = args[0] as { provider?: unknown } | undefined;
+        const provider = model && typeof model.provider === "string" ? model.provider : undefined;
+        if (!provider || !gate.isStarting(provider)) return value.apply(target, args);
+        const options = (args[2] ?? {}) as { signal?: AbortSignal; transformHeaders?: (headers: Record<string, string>) => unknown };
+        args[2] = {
+          ...options,
+          transformHeaders: async (headers: Record<string, string>) => {
+            await gate.waitWhileStarting(provider, options.signal);
+            return options.transformHeaders ? await options.transformHeaders(headers) : headers;
+          },
+        };
+        return value.apply(target, args);
+      };
+    },
+  }) as ModelRuntime;
+}
+
 /** Compose the already-resolved PI providers with managed built-ins in a clean
  * registry. Re-registering into PI's original registry would reapply models.json
  * overrides, potentially routing HUI credentials to the wrong endpoint. */
-export async function createSessionModelRuntime(agentDir: string, dir = PROVIDERS_DIR) {
+export async function createSessionModelRuntime(agentDir: string, dir = PROVIDERS_DIR, gate: LocalModelGate = localProviders) {
   const selections = await readProviderSelections(dir);
   const pi = await ModelRuntime.create({ credentials: credentialStore(join(agentDir, "auth.json")), modelsPath: join(agentDir, "models.json") });
   const commands = await keyCommands(agentDir, selections);
-  if (!Object.keys(selections).length) return runKeyCommandsAsync(pi, commands);
+  if (!Object.keys(selections).length) return withLocalModelGate(runKeyCommandsAsync(pi, commands), gate);
   const managed = await createHuiModelRuntime(dir);
   const accounts = new ProviderAccounts(dir);
   const routing = await accountRouting(accounts);
@@ -118,5 +150,5 @@ export async function createSessionModelRuntime(agentDir: string, dir = PROVIDER
   }
   routing.install(combined, new Set(Object.keys(selections)));
   await combined.refresh({ allowNetwork: false });
-  return runKeyCommandsAsync(combined, commands);
+  return withLocalModelGate(runKeyCommandsAsync(combined, commands), gate);
 }

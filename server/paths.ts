@@ -7,6 +7,10 @@ import { join } from "node:path";
 export const CONFIG_DIR = process.env["HUI_CONFIG_DIR"]
   || (process.env["XDG_CONFIG_HOME"] ? join(process.env["XDG_CONFIG_HOME"], "hui") : join(homedir(), ".config", "hui"));
 
+/** HUI-managed provider connections: credentials, model selections and the local servers HUI can start. PI's own
+ * models.json stays in PI's agent directory. */
+export const PROVIDERS_DIR = process.env["HUI_PROVIDERS_DIR"] || join(CONFIG_DIR, "providers");
+
 export const USER_THEME_DIR = join(CONFIG_DIR, "themes");
 
 /** Custom marks for tool rows (`chat.toolIcons` maps a CLI or tool to one of

@@ -813,6 +813,18 @@ provider/model selection using the `model-name` extension's rules. HUI owns thre
 normal sessions, **fallback** retries a primary failure only when no useful output
 or tool activity has occurred, then returns the session to its own model, and **utility** runs cheap, fast, tool-free calls
 for concise (3–6 word, at most 60 character) new-session names in the prompt's language, generated worktree branch names and `/btw`. These settings never rewrite PI files.
+**Local model servers.** Custom PI providers may live on a machine that is off.
+Settings → Models → Local model servers lists each custom provider (a HUI-managed
+connection with the same id wins) with its reachability and saves one operator
+start command, an optional health URL and a ready timeout (default three
+minutes) in HUI's `providers/local-providers.json`. Start is always manual and
+runs the command once as the gateway's user with stdin closed; HUI never starts
+or stops a machine because of traffic. The health check uses the saved URL, else
+the provider's `baseUrl`; any HTTP answer except 502, 503 and 504 is ready, and
+no endpoint leaves the result Unknown. While a start is running, a model request
+for that provider waits and its chat shows **Waiting for <name> to start…**; a
+failed start fails the request with its reason. PI's base URL and credentials
+are never returned to the browser.
 The same page saves the **default reasoning** new sessions and bots start on:
 PI's levels from Off through Maximum, or **Use PI default** (the default), which
 follows PI's own `defaultThinkingLevel` at the runtime. A model that supports
