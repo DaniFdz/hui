@@ -10,6 +10,7 @@ type Handlers = {
   onSnapshot: (updates: readonly SessionStatusUpdate[]) => void;
   onStatus: (update: SessionStatusUpdate) => void;
   onSessions: (update: { revision: number; groups?: { label: string; ids: string[] }[]; upserts: SessionView[] }) => void;
+  onStop?: () => void;
   heldRevision: () => number;
 };
 /** A call the page made on a plugin of the fake phone bridge. */
@@ -24,9 +25,11 @@ const fake = vi.hoisted(() => ({
   loadError: undefined as unknown,
   gate: undefined as Promise<void> | undefined,
   saved: async () => [] as SessionGroup[],
+  loads: 0,
 }));
 vi.mock("../api/sessions.ts", () => ({
   loadSessions: async () => {
+    fake.loads += 1;
     await fake.gate;
     if (fake.loadError) throw fake.loadError;
     return fake.list;
@@ -63,6 +66,7 @@ beforeEach(() => {
   fake.loadError = undefined;
   fake.gate = undefined;
   fake.saved = async () => [];
+  fake.loads = 0;
 });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -336,6 +340,63 @@ test("an unreachable gateway lists the saved conversations instead of an error",
   assert.equal(sessions.error, "");
   assert.equal(sessions.loading, false);
   assert.ok(calls.settled > 0, "a saved list still settles the sidebar");
+});
+
+test("a list read the gateway never answered is asked again instead of needing a reload", async () => {
+  vi.useFakeTimers();
+  const { sessions } = controller();
+  sessions.start();
+  fake.loadError = new TypeError("Failed to fetch");
+  await sessions.refresh();
+  assert.equal(sessions.error, "Failed to fetch");
+  assert.equal(fake.loads, 1);
+
+  fake.loadError = undefined;
+  fake.list = { revision: 1, groups: [group(session("live"))] };
+  await vi.advanceTimersByTimeAsync(2_000);
+  assert.equal(fake.loads, 2, "the stalled read is repeated by itself");
+  assert.ok(sessions.listed("live"));
+  assert.equal(sessions.error, "");
+  assert.equal(sessions.loading, false);
+  sessions.stop();
+});
+
+test("a refused or stopped list read is not retried", async () => {
+  vi.useFakeTimers();
+  for (const failure of [new GatewayHttpError(403, "refused 403"), new GatewayHttpError(404, "refused 404"), new GatewayHttpError(500, "refused 500")]) {
+    fake.loads = 0;
+    fake.loadError = failure;
+    const { sessions } = controller();
+    sessions.start();
+    await sessions.refresh();
+    await vi.advanceTimersByTimeAsync(2_000);
+    assert.equal(fake.loads, 1, `${failure.message} is a refusal, not an outage`);
+    sessions.stop();
+  }
+
+  fake.loads = 0;
+  fake.loadError = new TypeError("Failed to fetch");
+  const { sessions } = controller();
+  sessions.start();
+  await sessions.refresh();
+  sessions.stop();
+  await vi.advanceTimersByTimeAsync(2_000);
+  assert.equal(fake.loads, 1, "a disposed shell keeps no retry");
+});
+
+test("a stopped status stream is opened again by a later refresh", async () => {
+  fake.list = { revision: 1, groups: [group(session("live"))] };
+  const { sessions } = controller();
+  await sessions.refresh();
+  sessions.start();
+  assert.equal(fake.streams.length, 1);
+  fake.streams[0]?.handlers.onStop?.();
+  assert.equal(sessions.revision, 1, "the list it loaded stays");
+
+  fake.loadError = new TypeError("Failed to fetch");
+  await sessions.refresh();
+  assert.equal(fake.streams.length, 2, "a refusal that ended the old stream does not disable the next one");
+  sessions.stop();
 });
 
 test("a gateway that refuses the list shows its error, not the saved conversations", async () => {

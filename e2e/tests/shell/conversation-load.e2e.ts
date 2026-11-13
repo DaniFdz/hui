@@ -43,7 +43,7 @@ test("a connection lost while opening a conversation shows its reason and Try ag
   await expect(retry).toBeHidden();
 });
 
-test("a long conversation opened over a slow link shows the loading state with its bar and arrives whole", { tags: ["SHELL-023"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a long conversation opened over a slow link shows its skeleton and arrives whole", { tags: ["SHELL-023"], platforms: ["web"] }, async ({ screen, hui }) => {
   const session = await hui.createSession({ title: "Long conversation" });
   const prompts = Array.from({ length: 10 }, (_, index) => `Saved turn ${index + 1}`);
   for (const text of prompts) await hui.prompt(session, text);
@@ -53,14 +53,14 @@ test("a long conversation opened over a slow link shows the loading state with i
   await expect(row).toBeVisible();
 
   const loading = screen.getByText("Loading the conversation…");
-  const bar = screen.getByLabel("Loading the conversation");
+  const skeleton = screen.getByTestId("conversation-skeleton");
   const empty = screen.getByText("Start a conversation", { exact: true });
   const toast = screen.getByRole("button", "Dismiss notification");
   const load = await hui.intercept("POST", new RegExp(`/__hui/sessions/${session.id}/open$`, "u"));
   await row.tap();
   await load.arrived();
   await expect(loading).toBeVisible();
-  await expect(bar).toBeVisible();
+  await expect(skeleton).toBeVisible();
   await expect(empty).toBeHidden();
   await expect(toast).toBeHidden();
 
@@ -69,7 +69,7 @@ test("a long conversation opened over a slow link shows the loading state with i
   for (const text of prompts) await expect(transcript.getByText(text, { exact: true })).toBeVisible();
   await expect(transcript.getByText("Fixture response.", { exact: true })).toHaveCount(prompts.length);
   await expect(loading).toBeHidden();
-  await expect(bar).toBeHidden();
+  await expect(skeleton).toBeHidden();
   await expect(empty).toBeHidden();
   await expect(toast).toBeHidden();
 });

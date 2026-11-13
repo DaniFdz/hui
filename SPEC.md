@@ -1576,16 +1576,34 @@ token to the browser. Closing a view releases its subscription, not its runtime.
 unfinished reads of that view, so an evicted or replaced conversation does not
 keep downloading a response nobody will use.
 
-An opening request has a 20-second response-header deadline. A JSON download
-may take longer while bytes keep arriving; 40 seconds without body progress
-fails the read and shows the existing **Try again** action instead of leaving
-the conversation loading forever. Session-stream ticket acquisition and the
-WebSocket handshake each have a 20-second deadline and use the existing retry
-backoff. The handshake deadline ends when the socket opens, not when its first
-snapshot finishes downloading. A socket may take up to 60 seconds to deliver its
-first frame, so a connection lost immediately after the handshake cannot wait
-forever. A heartbeat before any state bounds the wait for state to 20 seconds
-from socket establishment.
+An opening request must start answering within five seconds. Its JSON body may
+take longer while bytes keep arriving; 40 seconds without body progress fails
+the read and shows the existing **Try again** action instead of leaving the
+conversation loading forever. An open the gateway never answered, or a transient
+502, 503 or 504, is tried again after ten seconds and then after thirty seconds
+(three attempts in total). While a retry waits, the loading skeleton says
+**HUI did not answer. Trying again in ten seconds…** (or thirty); a refusal is not
+retried. A failed session-list read is retried on the existing reconnect backoff
+while the shell wants the list, so a stall does not need a page reload.
+Session-stream ticket acquisition and the WebSocket handshake each have a
+20-second deadline and use the existing retry backoff. The multiplexed
+session-status and bot-roster streams fail a connection whose response headers
+do not arrive within 20 seconds and reconnect too. The handshake deadline ends
+when the socket opens, not when its first snapshot finishes downloading. A
+socket may take up to 60 seconds to deliver its first frame, so a connection lost
+immediately after the handshake cannot wait forever. A heartbeat before any
+state bounds the wait for state to 20 seconds from socket establishment.
+
+The transcript shows a skeleton of rows, never a centered empty state, while a
+session opens or its runtime starts with no history yet. A resumed conversation
+keeps its transcript and a compact *Preparing the session…* line above the
+composer while the runtime starts. Watchers stay out of the thread while a
+session opens or starts, so they do not jump from the middle to the bottom when
+the transcript arrives; they return at its end once the session is live. Task
+progress and queue cards stay in the composer's column. A cached reading copy
+shows its transcript and saved-copy notice with a placeholder under the last
+saved row, while the band under the composer spins with its live connection note
+instead of showing the skeleton.
 
 The Sessions page also projects ephemeral runtime cost: loaded runtime count,
 best-effort process-tree RSS, measured startup duration and the heaviest loaded

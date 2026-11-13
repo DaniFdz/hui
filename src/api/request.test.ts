@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { fetchJson, fetchWithResponseDeadline, GatewayHttpError, gatewayRequestError, isGatewayUnavailable } from "./request.ts";
+import { fetchEventStream, fetchJson, fetchWithResponseDeadline, GatewayHttpError, gatewayRequestError, isGatewayUnavailable } from "./request.ts";
 
 /** Answers after `headersMs`; its body then streams for `bodyMs` more. */
 function slowGateway(headersMs: number, bodyMs: number) {
@@ -132,6 +132,47 @@ test("cancelling a view does not replace the response-header deadline", async ()
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("an event stream whose response headers never arrive is abandoned at the deadline", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    let requestSignal: AbortSignal | null | undefined;
+    const fetcher = (_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      requestSignal = init?.signal;
+      requestSignal?.addEventListener("abort", () => reject(requestSignal?.reason), { once: true });
+    });
+    const view = new AbortController();
+    const reading = fetchEventStream(fetcher, "/__hui/sessions/events", { signal: view.signal });
+    const failed = assert.rejects(reading, /HUI did not answer within 20 s/u);
+    await vi.advanceTimersByTimeAsync(20_000);
+    await failed;
+    assert.equal(view.signal.aborted, false, "the view's own cancellation stays untouched");
+    assert.equal(requestSignal?.aborted, true, "the unanswered connection is released for the retry");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("an event stream that answers keeps streaming past the header deadline", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  let body!: ReadableStreamDefaultController<Uint8Array>;
+  const fetcher = (async () => new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      body = controller;
+      controller.enqueue(new TextEncoder().encode("event: snapshot\ndata: {\"statuses\":[]}\n\n"));
+    },
+  }), { headers: { "content-type": "text/event-stream" } })) as typeof fetch;
+  const response = await fetchEventStream(fetcher, "/__hui/sessions/events");
+  assert.ok(response.body);
+  const reader = response.body.getReader();
+  await reader.read();
+  await vi.advanceTimersByTimeAsync(60_000);
+  body.enqueue(new TextEncoder().encode("event: status\ndata: {}\n\n"));
+  const next = await reader.read();
+  assert.match(new TextDecoder().decode(next.value), /event: status/u, "an open stream has no total deadline");
+  reader.releaseLock();
 });
 
 test("connection failures read as such; deliberate cancellation passes through", () => {
