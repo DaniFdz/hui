@@ -363,7 +363,7 @@ test("showing earlier rows preserves the retained row's fractional position, inc
       querySelector() { return row; }
     }
     const scroller = new Scroller();
-    const row = { getBoundingClientRect: () => ({ top: 152.375 + insertedHeight - scroller.scrollTop }) };
+    const row = { querySelector: () => null, getBoundingClientRect: () => ({ top: 152.375 + insertedHeight - scroller.scrollTop }) };
     vi.stubGlobal("HTMLElement", Scroller);
     const app = shell();
     app.renderRoot = { querySelector: () => scroller };
@@ -388,17 +388,27 @@ test("showing earlier rows uses the nearest visual position when an engine quant
     { quantize: Math.trunc, height: 169.6875, offset: 170 },
     { quantize: Math.round, height: 169.1875, offset: 169 },
     { quantize: (value: number) => Math.round(value * 4) / 4, height: 169.1875, offset: 169.25 },
+    { quantize: (value: number) => Math.trunc(value * 2) / 2, height: 169.875, offset: 170 },
+    // A scaled integer engine can return a non-integral floating-point readback.
+    { quantize: (value: number) => Math.trunc(value) * (1 - Number.EPSILON), height: 169.6875, offset: 170 * (1 - Number.EPSILON) },
+    { quantize: (value: number) => Math.trunc(value * 64) / 64, height: 169.7, offset: 169.703125 },
   ];
   for (const { quantize, height, offset } of cases) {
     let insertedHeight = 0;
+    let geometryReads = 0;
     class Scroller {
       #scrollTop = 0;
+      scrollHeight = 2000;
+      clientHeight = 600;
       get scrollTop() { return this.#scrollTop; }
       set scrollTop(value: number) { this.#scrollTop = quantize(value); }
       querySelector() { return row; }
     }
     const scroller = new Scroller();
-    const row = { getBoundingClientRect: () => ({ top: 121.3125 + insertedHeight - scroller.scrollTop }) };
+    const row = {
+      querySelector: () => null,
+      getBoundingClientRect: () => { geometryReads++; return { top: 121.3125 + insertedHeight - scroller.scrollTop }; },
+    };
     vi.stubGlobal("HTMLElement", Scroller);
     const app = shell();
     app.renderRoot = { querySelector: () => scroller };
@@ -406,7 +416,95 @@ test("showing earlier rows uses the nearest visual position when an engine quant
     await app.showEarlierRows(0);
     assert.equal(scroller.scrollTop, offset);
     assert.equal(row.getBoundingClientRect().top, 121.3125 + height - offset);
+    assert.ok(geometryReads <= 8, `quantized correction read geometry ${geometryReads} times`);
   }
+});
+
+test("showing earlier rows preserves retained text when the group's internal offset changes", async () => {
+  let inserted = false;
+  class Scroller {
+    scrollTop = 0;
+    querySelector() { return row; }
+  }
+  const scroller = new Scroller();
+  const content = { getClientRects: () => [{}], getBoundingClientRect: () => ({ top: 138.3125 + (inserted ? 170.25 : 0) - scroller.scrollTop }) };
+  const row = {
+    querySelector: () => content,
+    getBoundingClientRect: () => ({ top: 121.3125 + (inserted ? 169.6875 : 0) - scroller.scrollTop }),
+  };
+  vi.stubGlobal("HTMLElement", Scroller);
+  const app = shell();
+  app.renderRoot = { querySelector: () => scroller };
+  Object.defineProperty(app, "updateComplete", { get: () => { inserted = true; return Promise.resolve(true); } });
+  await app.showEarlierRows(0);
+  assert.equal(content.getBoundingClientRect().top, 138.3125);
+  assert.equal(scroller.scrollTop, 170.25);
+});
+
+test("showing earlier rows reads the native-anchored offset after the layout that applies it", async () => {
+  let inserted = false;
+  let pendingAnchor = false;
+  class Scroller {
+    scrollTop = 0;
+    querySelector() { return row; }
+  }
+  const scroller = new Scroller();
+  const row = {
+    querySelector: () => null,
+    getBoundingClientRect: () => {
+      if (pendingAnchor) { scroller.scrollTop += 239.375; pendingAnchor = false; }
+      return { top: 138.3125 + (inserted ? 239.375 : 0) - scroller.scrollTop };
+    },
+  };
+  vi.stubGlobal("HTMLElement", Scroller);
+  const app = shell();
+  app.renderRoot = { querySelector: () => scroller };
+  Object.defineProperty(app, "updateComplete", { get: () => { inserted = pendingAnchor = true; return Promise.resolve(true); } });
+  await app.showEarlierRows(0);
+  assert.equal(row.getBoundingClientRect().top, 138.3125);
+  assert.equal(scroller.scrollTop, 239.375);
+});
+
+test("showing earlier rows falls back to the visible row when its text is folded", async () => {
+  let inserted = false;
+  class Scroller {
+    scrollTop = 0;
+    querySelector() { return row; }
+  }
+  const scroller = new Scroller();
+  const row = {
+    querySelector: () => ({ getClientRects: () => [], getBoundingClientRect: () => ({ top: 0 }) }),
+    getBoundingClientRect: () => ({ top: 138.3125 + (inserted ? 239.375 : 0) - scroller.scrollTop }),
+  };
+  vi.stubGlobal("HTMLElement", Scroller);
+  const app = shell();
+  app.renderRoot = { querySelector: () => scroller };
+  Object.defineProperty(app, "updateComplete", { get: () => { inserted = true; return Promise.resolve(true); } });
+  await app.showEarlierRows(0);
+  assert.equal(row.getBoundingClientRect().top, 138.3125);
+});
+
+test("showing earlier rows measures the attainable fractional edge instead of rounding the maximum down", async () => {
+  let inserted = false;
+  class Scroller {
+    #scrollTop = 0;
+    scrollHeight = 2000;
+    clientHeight = 600;
+    get scrollTop() { return this.#scrollTop; }
+    set scrollTop(value: number) { this.#scrollTop = Math.min(1400.375, Math.trunc(value * 4) / 4); }
+    querySelector() { return row; }
+  }
+  const scroller = new Scroller();
+  const row = {
+    querySelector: () => null,
+    getBoundingClientRect: () => ({ top: 138.3125 + (inserted ? 1400.2 : 0) - scroller.scrollTop }),
+  };
+  vi.stubGlobal("HTMLElement", Scroller);
+  const app = shell();
+  app.renderRoot = { querySelector: () => scroller };
+  Object.defineProperty(app, "updateComplete", { get: () => { inserted = true; return Promise.resolve(true); } });
+  await app.showEarlierRows(0);
+  assert.equal(scroller.scrollTop, 1400.25);
 });
 
 test("the thread follows the live compaction divider like new transcript rows", () => {

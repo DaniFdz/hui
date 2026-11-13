@@ -1722,20 +1722,67 @@ export class HuiApp extends HuiElement {
   private showEarlierRows = async (start: number) => {
     const scroller = this.renderRoot.querySelector?.(TRANSCRIPT_SCROLLER_SELECTOR);
     if (!(scroller instanceof HTMLElement)) return;
-    const anchor = scroller.querySelector<HTMLElement>(".chat-thread-inner > .chat-history-boundary + *");
-    if (!anchor) return;
-    // This row survives the prepend. scrollHeight rounds fractional geometry;
-    // measure its actual movement, including any native scroll anchoring.
+    const row = scroller.querySelector<HTMLElement>(".chat-thread-inner > .chat-history-boundary + *");
+    if (!row) return;
+    // Preserve the content, not its outer grid: a retained first row can acquire
+    // a different internal offset when earlier groups are inserted.
+    const content = row.querySelector<HTMLElement>(".chat-text");
+    const anchor = content?.getClientRects().length ? content : row;
     const top = anchor.getBoundingClientRect().top;
     this.autoFollow = false;
     this.transcriptWindowStart = start;
     await this.updateComplete;
-    const target = scroller.scrollTop + anchor.getBoundingClientRect().top - top;
-    scroller.scrollTop = target;
-    // WebKit can truncate scroll offsets to whole CSS pixels. Use the nearest
-    // offset there; leave engines that retain fractional offsets alone.
-    const roundedTarget = Math.round(target);
-    if (Number.isInteger(scroller.scrollTop) && scroller.scrollTop !== roundedTarget) scroller.scrollTop = roundedTarget;
+    // Flush layout BEFORE reading scrollTop: layout can apply native anchoring.
+    const movement = anchor.getBoundingClientRect().top - top;
+    const target = scroller.scrollTop + movement;
+    let best = target;
+    let bestError = Infinity;
+    const measured = new Map<number, number>();
+    const measure = (candidate: number) => {
+      scroller.scrollTop = candidate;
+      // This is one synchronous correction with no intervening DOM update.
+      // Repeated attainable offsets reuse their measured content geometry.
+      let error = measured.get(scroller.scrollTop);
+      if (error === undefined) {
+        error = anchor.getBoundingClientRect().top - top;
+        measured.set(scroller.scrollTop, error);
+      }
+      if (Math.abs(error) < bestError) {
+        best = candidate;
+        bestError = Math.abs(error);
+      }
+      return error;
+    };
+    const error = measure(target);
+    if (error === 0) return;
+
+    // Quantized offsets need not read back as integers. Bracket the original
+    // content position locally, expanding only if the engine has a wider step.
+    // Ask beyond rounded scrollHeight at the edge, letting the engine clamp.
+    const limit = error > 0 ? scroller.scrollHeight + 1 : 0;
+    const bounded = (value: number) => error > 0 ? Math.min(value, limit) : Math.max(value, limit);
+    let edge = bounded(target + 2 * error);
+    let edgeError = measure(edge);
+    while (edgeError * error > 0 && edge !== limit) {
+      const next = bounded(target + 2 * (edge - target));
+      edge = next === edge ? limit : next;
+      edgeError = measure(edge);
+    }
+    if (edgeError * error <= 0 && edgeError !== 0) {
+      let lower = Math.min(target, edge);
+      let upper = Math.max(target, edge);
+      // End at adjacent floating-point requests, not a guessed pixel quantum:
+      // the nearer of the two measured positions is then provably nearest.
+      while (lower < upper) {
+        const candidate = lower + (upper - lower) / 2;
+        if (candidate === lower || candidate === upper) break;
+        const residual = measure(candidate);
+        if (residual === 0) break;
+        if (residual > 0) lower = candidate;
+        else upper = candidate;
+      }
+    }
+    scroller.scrollTop = best;
   };
 
   private navigateTranscript = (element: HTMLElement, top: number) => {
