@@ -84,6 +84,8 @@ test("Rename… opens the session's title as a Session name field that saves on 
   await expect(row("Renamed on leaving")).toBeVisible();
 
   await hui.open(`/sessions/${session.id}`);
+  await expectChatTitle(screen, "Renamed on leaving");
+  await expect(screen.getByTestId("chat-header")).toBeVisible();
   await rename("Renamed on leaving");
   await name.fill("   ");
   await screen.getByLabel("Message", { visible: true }).tap();
