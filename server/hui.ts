@@ -62,6 +62,7 @@ import {
   jiraRoutes,
   localPathRoutes,
   managedBrowser,
+  localProviderRoutes,
   extensions,
   piRoutes,
   powerRoutes,
@@ -442,6 +443,8 @@ async function handleRequest(
   }
 
   if (answered(response, path, await providerRoutes.handle(routed))) return;
+
+  if (answered(response, path, await localProviderRoutes.handle(routed))) return;
 
   if (answered(response, path, await powerRoutes.handle(routed))) return;
 
