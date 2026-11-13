@@ -1,5 +1,5 @@
 /** The thinking picker's Autonomy choice stays with the session, starts New Session in it, reaches a worker, and a
- * session a Chief of Staff starts runs Autonomous and reports its stops to that chief (CHAT-087). */
+ * session a Chief of Staff starts runs Autonomous and reports its stops to that chief (CHAT-088). */
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
@@ -13,7 +13,7 @@ type Bots = { bots: Array<{ id: string; name: string; sessionId: string }> };
 const chiefIdle = (hui: Hui, chief: { sessionId: string }) => expect.poll(async () => (await hui.api<Listed>("GET", "/__hui/sessions"))
   .groups.flatMap((group) => group.sessions).find((session) => session.id === chief.sessionId)?.status, { timeout: 30_000 }).toBe("idle");
 
-test("Autonomous is chosen in the thinking picker, stays with the session, and reports in its own chat", { tags: ["CHAT-087"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Autonomous is chosen in the thinking picker, stays with the session, and reports in its own chat", { tags: ["CHAT-088"], platforms: ["web"] }, async ({ screen, hui }) => {
   const chief = (await hui.api<Bots>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
   const { id } = await hui.createSession({ title: "Autonomy plan" });
   await hui.open(`/sessions/${id}`);
@@ -37,7 +37,7 @@ test("Autonomous is chosen in the thinking picker, stays with the session, and r
   await expect(screen.getByLabel("Thinking: high")).toBeVisible();
 });
 
-test("New Session starts a session on Supervised each time", { tags: ["CHAT-087"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("New Session starts a session on Supervised each time", { tags: ["CHAT-088"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/");
   await screen.getByPlaceholder("~/").fill(hui.workspace);
   await screen.getByPlaceholder("What should this session work on?").fill("Start on Autonomous");
@@ -56,7 +56,7 @@ test("New Session starts a session on Supervised each time", { tags: ["CHAT-087"
   await expect(screen.getByLabel("Autonomy").getByText("Supervised")).toHaveAttribute("aria-checked", "true");
 });
 
-test("Autonomous mode reaches a session on a worker, and stays with it", { tags: ["CHAT-087"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Autonomous mode reaches a session on a worker, and stays with it", { tags: ["CHAT-088"], platforms: ["web"] }, async ({ screen, hui }) => {
   const worker = await hui.addWorker("autonomy-box");
   const { session } = await hui.api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: worker.home, title: "Worker autonomy", worker: worker.id });
   await hui.open(`/sessions/${session.id}`);
@@ -67,7 +67,7 @@ test("Autonomous mode reaches a session on a worker, and stays with it", { tags:
   await expect(screen.getByLabel(/^Thinking: .+, autonomous$/u)).toBeVisible({ timeout: 60_000 });
 });
 
-test("a session a Chief of Staff starts runs Autonomous and its stop reaches that chief", { tags: ["CHAT-087"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a session a Chief of Staff starts runs Autonomous and its stop reaches that chief", { tags: ["CHAT-088"], platforms: ["web"] }, async ({ screen, hui }) => {
   const chief = (await hui.api<Bots>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
   const find = async () => (await hui.api<Listed>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions)
     .find((session) => session.title === "Autonomous lead");
