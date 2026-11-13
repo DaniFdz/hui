@@ -3977,8 +3977,7 @@ compaction left, each with its estimated `tokens` and, for tools and messages, t
 covers. The prompt and tools come from the system entries the conversation's context stores,
 so a conversation a restarted gateway or a fork reopened still splits, and a model that takes
 system messages mid-conversation reads every one of them where another reads only the replayed
-prompt. The browser fits those estimates to the measured `contextTokens` and labels them as
-estimates. A runtime that cannot split its context omits the field and the meter draws the
+prompt. The browser fits those estimates to the reported `contextTokens` and labels them as estimates. A runtime that cannot split its context omits the field and the meter draws the
 plain bar: so does an OptChat conversation, whose request carries its memory's view of the chat
 rather than the history this split describes.
 `usage.sessionCost` is separate from that per-run figure: an extension that measured

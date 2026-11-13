@@ -19,8 +19,9 @@ const LABELS: Record<ContextUsagePart["id"], string> = {
 
 /**
  * The rows to draw, in the runtime's order. The runtime's parts are estimates of each kind of content, so they are
- * fitted to the total it measured by rounding where each part's share ends, one part at a time: the rows then add up
- * to the figure the meter shows, and their widths to its share of the window. A part with no tokens is left out.
+ * fitted to the total it reported by rounding where each part's share ends, one part at a time: the rows then add up to
+ * the figure the meter shows. Each share is of the window, or of the total when the context holds more than the window,
+ * which is what the bar draws. A part with no tokens is left out.
  */
 export function contextBreakdown(parts: readonly ContextUsagePart[], total: number, window: number): ContextBreakdownRow[] {
   const shown = parts.filter((part) => part.tokens > 0);
@@ -37,7 +38,7 @@ export function contextBreakdown(parts: readonly ContextUsagePart[], total: numb
       id: part.id,
       label: LABELS[part.id],
       tokens,
-      percent: window > 0 ? (tokens / window) * 100 : 0,
+      percent: (tokens / Math.max(total, window)) * 100,
       ...(part.count === undefined ? {} : { detail: part.id === "tools" ? `${part.count.toLocaleString()} tools` : `${part.count.toLocaleString()} messages` }),
     };
   });

@@ -315,6 +315,7 @@ test("an OptChat turn starts fresh from the view: system messages, then the view
   assert.match(JSON.stringify(second.system), /You are Grok, an AI agent that works for one user in a single chat/u);
   assert.match(JSON.stringify(second.system), /zoom\(id, 1\) gives message id in full/u);
   assert(toolNames(second).includes("zoom") && toolNames(second).includes("date") && toolNames(second).includes("search_chat"), JSON.stringify(toolNames(second)));
+  assert.equal(session.currentUsage()?.breakdown, undefined, "the meter keeps the plain bar: this history is not what the request carries");
   // The view goes in blocks, its last whole one marked (the first turn's view was empty: nothing more to find).
   assert.deepEqual(marks(pieces), [["<chat>\n0+1|user: FIXTURE_MEMORY OPT_ONE", false], ["\n1+1|talk: Fixture response.", true], ["\n</chat>", false]]);
   assert.equal(rest[0]!.cache_control !== undefined, true, "pi-ai's own breakpoint at the request end");

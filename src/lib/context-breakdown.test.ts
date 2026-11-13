@@ -27,6 +27,11 @@ test("rounding never gives more than the total it fits, in the order the parts c
   assert.deepEqual(tiny.map((row) => row.tokens).reduce((sum, tokens) => sum + tokens, 0), 2, "four equal parts of a two-token total still add up");
 });
 
+test("a context holding more than the window keeps each row's share of the bar", () => {
+  const rows = contextBreakdown([{ id: "system", tokens: 1 }, { id: "conversation", tokens: 1 }], 150_000, 100_000);
+  assert.deepEqual(rows.map((row) => row.percent), [50, 50], "half the bar each, not three quarters");
+});
+
 test("without a measured total or any estimate there is no breakdown", () => {
   assert.deepEqual(contextBreakdown([{ id: "system", tokens: 5 }], 0, 1_000), []);
   assert.deepEqual(contextBreakdown([{ id: "system", tokens: 0 }], 100, 1_000), []);
