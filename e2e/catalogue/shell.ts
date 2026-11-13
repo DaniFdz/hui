@@ -530,7 +530,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/update", "route:GET /__hui/health", "nav:settings"],
     journeys: ["gateway-settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SHELL-051",

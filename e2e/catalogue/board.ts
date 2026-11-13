@@ -310,7 +310,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/jira/issues", "route:POST /__hui/sessions/:id/jira/link"],
     journeys: ["jira-integration"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "BOARD-037",
