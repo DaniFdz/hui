@@ -180,9 +180,22 @@ jobs:
           # is how a shard once spent its whole 45-minute budget in this loop without a single diagnostic.
           adb_sh() { timeout 20 adb -s "$ANDROID_SERIAL" shell "$@" 2>/dev/null | tr -d '\r'; }
           start_emulator() {
-            "$ANDROID_HOME/emulator/emulator" -avd "$avd" -port 5554 -no-window -no-audio -no-boot-anim \
-              -gpu swiftshader_indirect -feature -Vulkan -no-snapshot -no-metrics > "$RUNNER_TEMP/emulator.log" 2>&1 &
-            emulator_pid=$!
+            # software is the supported automatic software backend; indirect modes are deprecated since 36.4.9.
+            # read returns after the PID line, not VM exit. The supervisor owns/waits for the real child, while
+            # alive/recovery retain that child's PID, never the supervisor's. No restart or keepalive is added.
+            read -r emulator_pid < <(
+              "$ANDROID_HOME/emulator/emulator" -avd "$avd" -port 5554 -no-window -no-audio -no-boot-anim \
+                -gpu software -feature -Vulkan -no-snapshot -no-metrics > "$RUNNER_TEMP/emulator.log" 2>&1 &
+              child=$!
+              printf '%s\n' "$child"
+              # Drop the step's output pipes before waiting, so this observer cannot keep the boot step open.
+              exec >> "$RUNNER_TEMP/emulator-exits.log" 2>&1
+              set +e
+              wait "$child"
+              status=$?
+              # Recovery may deliberately produce 143/137; record status without inventing a crash cause.
+              printf 'pid=%s status=%s exitedAt=%s\n' "$child" "$status" "$(date -u +%FT%TZ)"
+            ) || { echo '::error::emulator supervisor gave no PID'; exit 1; }
             printf '%s\n' "$emulator_pid" > "$RUNNER_TEMP/emulator.pid"
           }
           alive() { kill -0 "$emulator_pid" 2>/dev/null; }
@@ -269,6 +282,22 @@ jobs:
             else
               echo 'no owned emulator PID record'
             fi
+            # The postmortem's current free RAM cannot rule out an earlier OOM. Preserve bounded cgroup counters/peak.
+            cgroup=$(awk -F: '$1 == "0" && $2 == "" { print $3 }' /proc/self/cgroup)
+            if [[ "$cgroup" = /* && "$cgroup" != *..* ]]; then
+              for metric in memory.events memory.peak; do
+                path="/sys/fs/cgroup${cgroup%/}/$metric"
+                if [ -r "$path" ]; then
+                  printf '%s (%s):\n' "$metric" "$cgroup"
+                  head -c 4096 "$path"
+                  printf '\n'
+                else
+                  printf '%s unavailable\n' "$metric"
+                fi
+              done
+            else
+              echo 'cgroup v2 memory evidence unavailable'
+            fi
             echo 'Kernel OOM evidence (if permitted):'
             if kernel_log=$(timeout 5 dmesg --level=emerg,alert,crit,err,warn 2>&1); then
               printf '%s\n' "$kernel_log" | grep -Ei 'out of memory|oom-kill|killed process' | tail -20 || true
@@ -287,6 +316,7 @@ jobs:
             /tmp/hui-visual-*/artifacts/
             ${{ runner.temp }}/emulator.log
             ${{ runner.temp }}/emulator.pid
+            ${{ runner.temp }}/emulator-exits.log
             ${{ runner.temp }}/emulator-host.txt
           include-hidden-files: true
           if-no-files-found: warn
