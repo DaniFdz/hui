@@ -90,9 +90,13 @@ jobs:
           echo "app=$app"
           xcrun simctl install "$HUI_IOS_UDID" "$app"
           mkdir -p "$RUNNER_TEMP/shots"
+          # The first native screenshot can spend >24 s opening the Simulator transport on a cold runner.
+          # Warm that exact capture/Vision path before launch, without treating its frame as app proof.
+          "$RUNNER_TEMP/ios-smoke" warm-up "$HUI_IOS_UDID" "$RUNNER_TEMP/shots"
           # Connect to HUI first: a launch with no gateway argument and no remembered one.
           xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app
-          # Vision must read "Connect to HUI" AND "GATEWAY URL" in an actual frame, within 24 s.
+          # Vision must read "Connect to HUI" AND "GATEWAY URL" in an actual frame, within 24 s of wait entry.
+          # This unchanged deadline includes each post-launch capture and OCR; late matching frames still fail.
           "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" connect
           xcrun simctl terminate "$HUI_IOS_UDID" dev.hui.app || true
           xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app -HUIGatewayURL http://127.0.0.1:47500

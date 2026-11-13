@@ -19,6 +19,28 @@ test("iOS compiles and self-tests Vision once before either real screenshot wait
   assert.equal(workflow.split('"scripts/ios-smoke.test.mjs"').length - 1, 2, "both filters cover this guard");
 });
 
+test("iOS warms the real capture transport before launch, outside the unchanged readiness deadline", () => {
+  const warmUp = '"$RUNNER_TEMP/ios-smoke" warm-up "$HUI_IOS_UDID" "$RUNNER_TEMP/shots"';
+  const boot = 'xcrun simctl bootstatus "$HUI_IOS_UDID" -b';
+  const launch = 'xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app';
+  assert.equal(workflow.split(warmUp).length - 1, 1, "exactly one fatal native capture warm-up");
+  assert.ok(workflow.indexOf(boot) < workflow.indexOf(warmUp));
+  assert.ok(workflow.indexOf(warmUp) < workflow.indexOf(launch), "cold transport cost precedes app launch");
+  assert.doesNotMatch(workflow, /warm-up[^\n]*\|\|/u, "transport failure must not be ignored");
+  assert.ok(oracle.includes('captureScreenshot(udid: udid, path: latest, label: phase)'));
+  assert.ok(oracle.includes('captureScreenshot(udid: udid, path: frame, label: "warm-up")'), "warm-up uses the identical Simulator transport");
+  assert.ok(oracle.includes('try recognizeFile(frame)'), "warm-up also exercises Vision on the actual native frame size");
+  const wait = oracle.slice(oracle.indexOf("func waitForReady("), oracle.indexOf("\ndo {"));
+  assert.ok(wait.indexOf("systemUptime + 24") < wait.indexOf("while "));
+  assert.ok(wait.indexOf("captureScreenshot(") < wait.indexOf("try recognizeFile(latest)"));
+  assert.ok(wait.includes("observedAt < deadline && matches"), "a matching frame observed late must still fail");
+  assert.ok(wait.includes("OCR completed at uptime="));
+  assert.ok(oracle.includes("screenshot started at uptime="));
+  assert.ok(oracle.includes("screenshot completed at uptime="));
+  assert.ok(oracle.includes("screenshot failed with status"));
+  assert.ok(oracle.includes("CI Connect OCR did not match"), "macOS self-test covers the exact CI OCR that arrived late");
+});
+
 test("iOS readiness requires known rendered content, never elapsed sleep or changed bytes", () => {
   assert.match(oracle, /"connect": \["Connect to HUI", "GATEWAY URL"\]/u);
   assert.match(oracle, /"gateway": \["Plan the Android app", "Fix the flaky upload test"\]/u);
