@@ -23,8 +23,8 @@ test("a repository preselects Branch with its default branch and Start session e
     await screen.getByLabel("Kanban board").getByRole("button", `${title}, local task. Start a session`).tap();
     await screen.getByPlaceholder("~/").fill(repo.path);
     await expect(screen.getByRole("button", { name: /^Branch: /u })).toBeVisible();
-    // The folder's suggestions are open after typing; a tap elsewhere closes them so the next tap reaches the branch picker.
-    await screen.getByText("Work on", { exact: true }).tap();
+    // Blur on the dialog's subtitle above the folder; its completion covers the "Work on" legend below.
+    await screen.getByText(new RegExp(`“${title}” →`, "u")).tap();
   };
   const branch = () => screen.getByRole("button", { name: /^Branch: /u });
   const start = () => screen.getByRole("button", "Start session", { visible: true });
