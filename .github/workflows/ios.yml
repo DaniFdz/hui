@@ -2,7 +2,9 @@ name: iOS
 # The iOS half of the phone shell has no local loop on Linux, so this job is the whole proof: it builds for the simulator,
 # boots one, launches the app on a fixture gateway and captures the screen. Spike S3 measured the runner
 # (macos-26-arm64, Xcode 26.6, iOS 26.x runtimes only), the build (44-64 s), the boot (92-120 s) and a 6m15s job. It has
-# its own workflow so a Linux-only change under mobile/ never spends macOS minutes (the plan, section 7).
+# its own workflow so a Linux-only change under mobile/ never spends macOS minutes (the plan, section 7), and it does not
+# wake for `package.json` or the lockfile: `mobile.yml` builds the same bundle on Linux, and a dependency bump reaches the
+# native proof through the nightly's `ios` job on main.
 on:
   pull_request:
     paths:
@@ -11,8 +13,6 @@ on:
       - "capacitor.config.ts"
       - "src/lib/native-shell.ts"
       - "src/lib/native-shell-boot.ts"
-      - "package.json"
-      - "package-lock.json"
       - "scripts/ios-smoke.swift"
       - "scripts/ios-smoke.test.mjs"
       - ".github/workflows/ios.yml"
@@ -24,8 +24,6 @@ on:
       - "capacitor.config.ts"
       - "src/lib/native-shell.ts"
       - "src/lib/native-shell-boot.ts"
-      - "package.json"
-      - "package-lock.json"
       - "scripts/ios-smoke.swift"
       - "scripts/ios-smoke.test.mjs"
       - ".github/workflows/ios.yml"
@@ -59,12 +57,22 @@ jobs:
           echo "HUI_IOS_UDID=$udid" >> "$GITHUB_ENV"
           (xcrun simctl boot "$udid" || true)
           (xcrun simctl bootstatus "$udid" -b > "$RUNNER_TEMP/boot.log" 2>&1 &)
+      # Derived data survives between runs so a native edit rebuilds incrementally instead of from
+      # scratch; the fallback key keeps a partial hit useful after a project-file change.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/iosbuild
+          key: ios-derived-${{ runner.os }}-${{ hashFiles('mobile/ios/**') }}
+          restore-keys: ios-derived-${{ runner.os }}-
+      # `generic/platform=iOS Simulator` builds every simulator architecture, and this build had grown
+      # from the 44-64 s spike S3 measured to four to eight minutes. The concrete device is the one the
+      # capture phase installs on, so only its architecture is built.
       - name: Build for the simulator
         run: |
           set -euo pipefail
           xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Debug \
-            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/iosbuild" CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/xcodebuild.log" | tail -20
+            -sdk iphonesimulator -destination "id=$HUI_IOS_UDID" ONLY_ACTIVE_ARCH=YES \
+            -derivedDataPath "$HOME/iosbuild" CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/xcodebuild.log" | tail -20
       - name: Compile and self-test the rendered-readiness oracle
         run: |
           set -euo pipefail
@@ -86,7 +94,7 @@ jobs:
           seed "Fix the flaky upload test"
           seed "Plan the Android app"
           xcrun simctl bootstatus "$HUI_IOS_UDID" -b
-          app=$(find "$RUNNER_TEMP/iosbuild/Build/Products" -name "App.app" -maxdepth 3 | head -1)
+          app=$(find "$HOME/iosbuild/Build/Products" -name "App.app" -maxdepth 3 | head -1)
           echo "app=$app"
           xcrun simctl install "$HUI_IOS_UDID" "$app"
           mkdir -p "$RUNNER_TEMP/shots"
