@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Locator } from "e2e";
-import { CDP_PORT, refusePhoneNotificationPrompt } from "./phone.ts";
+import { CDP_PORT, phoneLayoutFrame, refusePhoneNotificationPrompt } from "./phone.ts";
 import { attachedNativeTarget, type NativeTarget } from "../../scripts/phone-native-target.ts";
 
 const nativeTargets = async (): Promise<NativeTarget[]> => {
@@ -95,6 +95,50 @@ export function validateNativeFrame(safe: ReturnType<typeof parseDisplay>, frame
   if (frame.y < safe.top || frame.y + frame.height > safe.bottom || frame.x < safe.left || frame.x + frame.width > safe.right) {
     throw new Error(`WebView overlaps system chrome: ${JSON.stringify({ frame, safe })}`);
   }
+}
+
+/** A native buffer must have reached SurfaceFlinger for the currently focused, drawn HUI window.
+ * Attachment and CSS geometry do not prove this: rotation/activity recreation can expose a blank transition surface. */
+export function nativePaint(windows: string, layers: string, latency: (layer: string) => string, queuedNs = "0") {
+  const window = windows.match(/^\s*mCurrentFocus=Window\{(\w+) u\d+ dev\.hui\.app\.debug\/dev\.hui\.app\.MainActivity\}/mu)?.[1];
+  if (!window) return;
+  const section = windows.split(/(?=^  Window #\d+ Window\{)/mu).find((part) => part.startsWith("  Window #") && part.includes(`Window{${window} `));
+  if (!section || !section.includes("mHasSurface=true isReadyForDisplay()=true")
+    || !/Surface: shown=true\s+mDrawState=HAS_DRAWN\b/u.test(section) || !/^\s*isOnScreen=true$/mu.test(section)) return;
+  // The buffer layer is a child of this exact WindowState, not an outgoing Activity at the same URL.
+  const parent = layers.match(new RegExp(`(?:^|RequestedLayerState\\{)${window} dev\\.hui\\.app\\.debug/dev\\.hui\\.app\\.MainActivity#(\\d+)\\b`, "mu"))?.[1];
+  if (!parent) return;
+  const layer = layers.match(new RegExp(`(?:^|RequestedLayerState\\{)(dev\\.hui\\.app\\.debug/dev\\.hui\\.app\\.MainActivity#\\d+) parentId=${parent}\\b`, "mu"))?.[1];
+  if (!layer) return;
+  let presented = 0n;
+  for (const row of latency(layer).trim().split("\n").slice(1)) {
+    const fields = row.trim().split(/\s+/u);
+    if (fields.length !== 3 || !fields.every((value) => /^\d+$/u.test(value))) continue;
+    const actual = BigInt(fields[1]!);
+    if (actual > presented && actual < 9223372036854775807n) presented = actual;
+  }
+  if (presented > 0n && presented >= BigInt(queuedNs)) return { window, layer, presentedNs: String(presented) };
+}
+
+/** The most recently queued native render must complete; an old frame in latency history cannot satisfy it.
+ * An already idle window may pass without manufacturing another damage frame. gfxinfo is scoped to HUI's process. */
+export function queuedNativeFrame(stats: string): string | undefined {
+  let latest: { vsync: bigint; queued: bigint; completed: bigint } | undefined;
+  for (const block of stats.split("---PROFILEDATA---").filter((_, index) => index % 2 === 1)) {
+    const [header, ...rows] = block.trim().split("\n");
+    const columns = header!.split(",");
+    const field = (row: string[], name: string) => {
+      const value = row[columns.indexOf(name)];
+      return value && /^\d+$/u.test(value) ? BigInt(value) : 0n;
+    };
+    for (const line of rows) {
+      const row = line.split(",");
+      if (row[0] !== "0") continue;
+      const vsync = field(row, "IntendedVsync");
+      if (!latest || vsync > latest.vsync) latest = { vsync, queued: field(row, "SwapBuffers"), completed: field(row, "FrameCompleted") };
+    }
+  }
+  if (latest && latest.queued > 0n && latest.completed >= latest.queued && latest.completed < 9223372036854775807n) return String(latest.queued);
 }
 
 /** A test owns its cutout overlays and rotation; cleanup restores effective frames, not just settings flags. */
@@ -216,6 +260,20 @@ export function androidDisplay(run = adb, targets = nativeTargets) {
       return true;
     },
     async measure(metrics: PageMetrics): Promise<DisplayArea> {
+      // RAF is page layout readiness, not Android presentation. Wait for the latest actual native render to present.
+      const readPaint = (queuedNs = "0") => nativePaint(run("shell", "dumpsys", "window", "-a"), run("shell", "dumpsys", "SurfaceFlinger", "--list"),
+        (layer) => run("shell", "dumpsys", "SurfaceFlinger", "--latency", layer), queuedNs);
+      const layout = await phoneLayoutFrame();
+      const deadline = Date.now() + 10_000;
+      let paint: ReturnType<typeof nativePaint>;
+      let queuedNs: string | undefined;
+      do {
+        queuedNs = queuedNativeFrame(run("shell", "dumpsys", "gfxinfo", PACKAGE, "framestats"));
+        paint = queuedNs ? readPaint(queuedNs) : undefined;
+        if (paint) break;
+      } while (Date.now() < deadline);
+      if (!paint) throw new Error("native display has not presented its latest completed foreground render");
+      if (attachedNativeTarget(await targets())?.id !== layout.target) throw new Error("native window changed during paint readiness");
       const state = displayState();
       const safe = parseDisplay(state);
       if (original && safe.cutoutTop <= 0) throw new Error("the requested native cutout is not effective yet");
@@ -224,11 +282,14 @@ export function androidDisplay(run = adb, targets = nativeTargets) {
       validateNativeFrame(safe, frame, metrics);
       evidence ??= mkdtempSync(join(tmpdir(), "hui-safe-display-"));
       const capture = join(evidence, String(++captures));
-      writeFileSync(`${capture}.json`, JSON.stringify({ safe, frame, metrics }, null, 2));
       writeFileSync(`${capture}.png`, execFileSync(process.env["ADB"] ?? "adb", [
         ...(process.env["ANDROID_SERIAL"] ? ["-s", process.env["ANDROID_SERIAL"]] : []), "exec-out", "screencap", "-p",
       ], { timeout: 30_000 }));
-      console.log(`Native display evidence: ${capture} ${JSON.stringify({ safe, frame, metrics })}`);
+      const after = readPaint();
+      if (!after || after.window !== paint.window || after.layer !== paint.layer
+        || attachedNativeTarget(await targets())?.id !== layout.target) throw new Error("native window changed during the one-shot physical capture");
+      writeFileSync(`${capture}.json`, JSON.stringify({ safe, frame, metrics, readiness: { layout, queuedNs, paint, after } }, null, 2));
+      console.log(`Native display evidence: ${capture} ${JSON.stringify({ safe, frame, metrics, readiness: { layout, queuedNs, paint, after } })}`);
       return { width: safe.width / ratio, height: safe.height / ratio, top: safe.top / ratio, right: safe.right / ratio,
         bottom: safe.bottom / ratio, left: safe.left / ratio, box: async (target) => {
           const box = await target.boundingBox();

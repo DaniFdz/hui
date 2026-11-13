@@ -104,6 +104,13 @@ const launch = (gateway: string) => adb("shell", "am", "start", "-S", "-W", "-n"
 let activeGateway: string | undefined;
 /** Each native attachment sample reconciles the currently bound transport before the fixture dispatches again. */
 let observeNativeWindow: ((target: NativeTarget) => void) | undefined;
+let layoutFrame: (() => Promise<{ target: string; visibility: string; focused: boolean; frameTime: number }>) | undefined;
+
+/** Cross the attached page's post-layout frame boundary without taking a screenshot or changing its geometry. */
+export async function phoneLayoutFrame() {
+  if (!layoutFrame) throw new Error("native paint readiness has no attached page");
+  return layoutFrame();
+}
 
 /** Decline only the isolated app's real startup notification prompt, using its native refusal control, not a grant. */
 export function refusePhoneNotificationPrompt(run = adb): void {
@@ -384,13 +391,35 @@ function webViewProtocol(): Promise<void> {
         // in-flight click/read is not interrupted by our monitor. Closing CDP detaches, not the native app.
         let timer: ReturnType<typeof setTimeout> | undefined;
         let stopped = false;
-        const retire = () => { stopped = true; clearTimeout(timer); void browser.close().catch(() => undefined); };
+        const retire = () => {
+          stopped = true; clearTimeout(timer);
+          if (layoutFrame === readLayoutFrame) layoutFrame = undefined;
+          void browser.close().catch(() => undefined);
+        };
         const gate = nativeTransportGate(browser.isConnected.bind(browser), retire);
         browser.isConnected = gate.isConnected;
         const reconcile = (current: NativeTarget) => {
           if (current.id !== target.id) gate.invalidate();
         };
         observeNativeWindow = reconcile;
+        const readLayoutFrame = async () => {
+          const session = await openSession(page);
+          let expiry: ReturnType<typeof setTimeout> | undefined;
+          try {
+            const result = await Promise.race([session.send("Runtime.evaluate", {
+              expression: "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(frameTime => resolve({visibility: document.visibilityState, focused: document.hasFocus(), frameTime}))))",
+              awaitPromise: true, returnByValue: true,
+            }), new Promise<never>((_, reject) => {
+              expiry = setTimeout(() => reject(new Error("native page did not reach its foreground layout frame")), 10_000);
+            })]) as { result: { value?: { visibility: string; focused: boolean; frameTime: number } }; exceptionDetails?: unknown };
+            const value = result.result.value;
+            if (result.exceptionDetails || !value || value.visibility !== "visible" || !value.focused || !Number.isFinite(value.frameTime)) {
+              throw new Error(`native page is not foreground after layout: ${JSON.stringify(result)}`);
+            }
+            return { target: target.id, ...value };
+          } finally { clearTimeout(expiry); await session.detach().catch(() => undefined); }
+        };
+        layoutFrame = readLayoutFrame;
         const observeAttachment = async () => {
           try {
             const current = attachedNativeTarget(await nativeTargets());
@@ -409,6 +438,7 @@ function webViewProtocol(): Promise<void> {
         browser.on("disconnected", () => {
           stopped = true; clearTimeout(timer);
           if (observeNativeWindow === reconcile) observeNativeWindow = undefined;
+          if (layoutFrame === readLayoutFrame) layoutFrame = undefined;
         });
         page.on("close", retire);
         void observeAttachment();
