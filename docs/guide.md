@@ -273,6 +273,55 @@ the managed gateway and the current app: `hui update` reinstalls an app left on
 an older version, and a window that was already open needs quitting and
 reopening. Quitting HUI clears its notifications from Notification Center.
 
+## Notifications on your phone (ntfy)
+
+The phone app holds the gateway's page while it is open. iOS and Android stop
+that page soon after you leave the app, so a notification for a run that
+finishes later cannot come from the app itself. HUI instead publishes each
+notification to [ntfy](https://ntfy.sh), and the ntfy app on your phone shows
+it while HUI is closed, locked or in the background.
+
+1. Install **ntfy** on the phone (App Store or Play Store), or run your own ntfy
+   server.
+2. In HUI, open **Settings → Notifications → Phone (ntfy)**. Leave the server at
+   `https://ntfy.sh` (or set your own), press **Generate** for a long random
+   topic, then **Save**.
+3. In the ntfy app, add a subscription to the address HUI shows under the
+   fields (`https://ntfy.sh/<topic>`). **Copy address** copies it.
+4. Press **Send test** in HUI: the phone should show the test notification.
+
+After that, the three switches above cover both the macOS app and the phone, and
+`notify_user` alerts reach both as well. Tapping a notification opens its chat on
+the gateway. Clear the topic to turn phone notifications off; an empty topic
+sends nothing.
+
+The address is the password: anyone who knows the topic can read its
+notifications. HUI never prints it in an error or a diagnostic. Chat names,
+their `Finished`/`Run failed`/`Needs your input` subtitle and a waiting chat's
+first question go to the ntfy server; nothing else from the transcript does. A
+protected ntfy server reads its bearer token from `HUI_NTFY_TOKEN` in the
+gateway's environment, never from settings.
+
+### Run your own ntfy server
+
+`https://ntfy.sh` is the public instance. The server field takes your own, and
+then no notification leaves your network. ntfy is one process: install the
+`ntfy` package or run the `binwiederhier/ntfy` container with `serve` as its
+command, and set `listen-http: :2586` in `server.yml` so it needs neither root
+nor port 80.
+
+The phone has to reach that address. On a tailnet, publish the relay with
+`tailscale serve` (`tailscale serve --bg 2586`) and use the
+`https://<machine>.<tailnet>.ts.net` address it prints, both in HUI and in the
+ntfy app; Tailscale supplies the certificate and keeps the traffic inside the
+tailnet. Without a tailnet, put HTTPS in front of it (Caddy, nginx) or configure
+ntfy's own TLS: iOS wants HTTPS for a server that is not loopback.
+
+Then set that address under **Phone (ntfy)**, generate a topic, save it, and
+subscribe the ntfy app to `<address>/<topic>` as above. The topic stays the
+password on your own server too; a protected one reads its bearer token from
+`HUI_NTFY_TOKEN` in the gateway's environment.
+
 ## Shell completion
 
 `hui` completes its commands, its subcommands and its flags in bash and zsh.

@@ -108,6 +108,11 @@ export type SettingsProps = AutomationProps & {
   onChangeVscode: (next: Settings["vscode"]) => Promise<unknown> | void;
   onChangeCodemode: (next: Settings["codemode"]) => void;
   onChangeNotifications: (next: Settings["notifications"]) => void;
+  /** Resolves once the saved ntfy relay lands, so the test button never reports the previous topic. */
+  onSaveNtfy: (ntfy: Settings["notifications"]["ntfy"]) => Promise<boolean>;
+  /** Saves the relay the form names, publishes one test message, and reports through the shell toast. */
+  onTestNtfy: (ntfy: Settings["notifications"]["ntfy"]) => Promise<void>;
+  onCopyNtfyAddress: () => void;
   onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
   onSaveSubagentRoute: (route: Settings["models"]["routes"][number], originalName?: string) => Promise<boolean>;
@@ -946,12 +951,73 @@ function renderNotificationsPage(props: SettingsProps) {
   const toggle = (label: string, key: "runFinished" | "runFailed" | "needsInput") =>
     renderSettingsToggle(label, notifications[key], (on) => props.onChangeNotifications({ ...notifications, [key]: on }));
   return html`
-    <p class="settings-page__intro">The HUI app on macOS shows these notifications. Clicking one opens its chat, and HUI shows none for the chat that is already in front.</p>
+    <p class="settings-page__intro">These notifications reach the HUI app on macOS and, when a topic is set below, the ntfy app on your phone. Clicking one opens its chat, and HUI shows none for the chat that is already in front.</p>
     ${renderSection("Notify me when", "", html`
       ${renderRow("A run finishes", "A run you started has ended and its chat is waiting for you. Subagents, bot routines and triggers don't count. Silent.", toggle("Run finished", "runFinished"))}
       ${renderRow("A run fails", "A run you started has stopped with an error. Silent.", toggle("Run failed", "runFailed"))}
       ${renderRow("A chat needs your input", "Any chat is waiting for you to answer a question, give a secret, allow access or confirm something. Plays a sound.", toggle("Needs your input", "needsInput"))}
-    `)}`;
+    `)}
+    ${renderNtfySection(props)}
+  `;
+}
+
+/** The fields the phone's ntfy app subscribes to, read from the form so a test never runs against an unsaved topic. */
+function ntfyFromForm(form: HTMLFormElement): Settings["notifications"]["ntfy"] {
+  const fields = new FormData(form);
+  return {
+    server: String(fields.get("server") ?? "").trim(),
+    topic: String(fields.get("topic") ?? "").trim(),
+  };
+}
+
+function renderNtfySection(props: SettingsProps) {
+  const ntfy = props.settings.notifications.ntfy;
+  const submit = (event: SubmitEvent) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (form instanceof HTMLFormElement) void props.onSaveNtfy(ntfyFromForm(form));
+  };
+  const test = (event: Event) => {
+    const form = (event.currentTarget as HTMLElement).closest("form");
+    if (form instanceof HTMLFormElement) void props.onTestNtfy(ntfyFromForm(form));
+  };
+  // Any long, unguessable name is ntfy's own capability: it is the password the phone subscribes with.
+  const generate = (event: Event) => {
+    const form = (event.currentTarget as HTMLElement).closest("form");
+    const field = form?.elements.namedItem("topic");
+    if (!(field instanceof HTMLInputElement)) return;
+    const bytes = crypto.getRandomValues(new Uint8Array(12));
+    field.value = `hui-${[...bytes].map((byte) => byte.toString(36).padStart(2, "0")).join("")}`;
+  };
+  return renderSection(
+    "Phone (ntfy)",
+    "HUI publishes each notification to this topic, and the ntfy app on your phone shows it even when the HUI app is closed. Install ntfy, add the address below as a subscription, and treat that address as a password.",
+    html`<form class="settings-ntfy" @submit=${submit}>
+      <div class="settings-row settings-row--stacked">
+        <div class="settings-row__text">
+          <span class="settings-row__title">Server</span>
+          <span class="settings-row__desc">ntfy.sh, or the address of your own ntfy server. The gateway's HUI_NTFY_TOKEN authenticates a protected server.</span>
+        </div>
+        <div class="settings-row__control">
+          <input class="settings-input" name="server" type="url" inputmode="url" autocomplete="off" spellcheck="false" aria-label="ntfy server" placeholder="https://ntfy.sh" .value=${ntfy.server} />
+        </div>
+      </div>
+      <div class="settings-row settings-row--stacked">
+        <div class="settings-row__text">
+          <span class="settings-row__title">Topic</span>
+          <span class="settings-row__desc">A long, unguessable name. Empty turns the phone notifications off.</span>
+        </div>
+        <div class="settings-row__control settings-ntfy__topic">
+          <input class="settings-input" name="topic" autocomplete="off" spellcheck="false" aria-label="ntfy topic" placeholder="hui-…" .value=${ntfy.topic} />
+          <button type="button" class="btn" @click=${generate}>Generate</button>
+          <button type="submit" class="btn">Save</button>
+          <button type="button" class="btn" @click=${test}>Send test</button>
+          <button type="button" class="btn" @click=${props.onCopyNtfyAddress} ?disabled=${!ntfy.topic}>Copy address</button>
+        </div>
+      </div>
+      <p class="settings-page__note settings-page__intro">${ntfy.topic ? `The phone subscribes to ${ntfy.server}/${ntfy.topic}` : "No topic yet: HUI sends nothing to a phone."}</p>
+    </form>`,
+  );
 }
 
 function renderAppearancePage(props: SettingsProps) {

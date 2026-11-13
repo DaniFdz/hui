@@ -7,7 +7,7 @@
  */
 import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice } from "../voice/calls.ts";
 import { PI_THINKING_LEVELS } from "../thinking.ts";
-import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../../api/schema/settings.ts";
+import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference, NtfySettings } from "../../api/schema/settings.ts";
 
 export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../../api/schema/settings.ts";
 
@@ -16,6 +16,9 @@ export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 export const DEFAULT_BRANCH_PREFIX = "feature/";
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
+/** The public ntfy service: a phone subscribes to a topic there, and a gateway that runs its own sets its address. */
+export const DEFAULT_NTFY_SERVER = "https://ntfy.sh";
+export const DEFAULT_NTFY_SETTINGS: NtfySettings = { server: DEFAULT_NTFY_SERVER, topic: "" };
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -31,7 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   questions: { timeoutMinutes: 0 },
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
-  notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
+  notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true, ntfy: DEFAULT_NTFY_SETTINGS },
   models: { primary: "", fallback: "", utility: "", thinking: "", retryAttempts: 3, routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
@@ -126,7 +129,38 @@ function normalizeNotifications(value: unknown): Settings["notifications"] {
     runFinished: source["runFinished"] === true,
     runFailed: source["runFailed"] !== false,
     needsInput: source["needsInput"] !== false,
+    ntfy: normalizeNtfySettings(source["ntfy"]),
   };
+}
+
+/**
+ * The ntfy relay a phone subscribes to. A topic is ntfy's own capability: `[-_A-Za-z0-9]` up to 64 characters, and
+ * nothing else means off. The server is an `http(s)` base address with no credentials, query or fragment, so a saved
+ * address cannot smuggle a token into a URL HUI prints, and anything malformed falls back to the public service with
+ * no topic rather than publishing somewhere else.
+ */
+export function normalizeNtfySettings(value: unknown): NtfySettings {
+  const source = isRecord(value) ? value : {};
+  const server = typeof source["server"] === "string" ? source["server"].trim() : "";
+  const topic = typeof source["topic"] === "string" ? source["topic"].trim() : "";
+  return {
+    server: normalizeNtfyServer(server),
+    topic: /^[A-Za-z0-9_-]{1,64}$/u.test(topic) ? topic : "",
+  };
+}
+
+function normalizeNtfyServer(server: string): string {
+  if (!server) return DEFAULT_NTFY_SERVER;
+  if (server.length > 2_048 || /[\p{Cc}\s]/u.test(server)) return DEFAULT_NTFY_SERVER;
+  try {
+    const url = new URL(server);
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.hostname || url.username || url.password || url.search || url.hash) {
+      return DEFAULT_NTFY_SERVER;
+    }
+    return `${url.origin}${url.pathname}`.replace(/\/+$/u, "") || DEFAULT_NTFY_SERVER;
+  } catch {
+    return DEFAULT_NTFY_SERVER;
+  }
 }
 
 function normalizeModelRef(value: unknown): string {

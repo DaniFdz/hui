@@ -7540,6 +7540,44 @@
         }
       }
     },
+    "NotificationTestError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "NotificationTestResponse": {
+      "type": "object",
+      "required": [
+        "sent"
+      ],
+      "properties": {
+        "sent": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "NtfySettings": {
+      "type": "object",
+      "required": [
+        "server",
+        "topic"
+      ],
+      "properties": {
+        "server": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        }
+      }
+    },
     "ObservabilitySnapshot": {
       "type": "object",
       "required": [
@@ -11042,7 +11080,8 @@
             "tool",
             "runFinished",
             "runFailed",
-            "needsInput"
+            "needsInput",
+            "ntfy"
           ],
           "properties": {
             "tool": {
@@ -11056,6 +11095,9 @@
             },
             "needsInput": {
               "type": "boolean"
+            },
+            "ntfy": {
+              "$ref": "#/$defs/NtfySettings"
             }
           }
         },
@@ -14758,6 +14800,7 @@
     ],
     "settings": [
       "BrowserSettings",
+      "NtfySettings",
       "Settings",
       "SettingsError",
       "SettingsRequest",
@@ -15215,6 +15258,10 @@
       "ExtensionsResponse",
       "PluginError",
       "PluginPayload"
+    ],
+    "notifications": [
+      "NotificationTestError",
+      "NotificationTestResponse"
     ]
   },
   "x-hui-routes": [
@@ -16006,6 +16053,13 @@
       "path": "/__hui/model-metrics/sessions/:session",
       "response": {
         "$ref": "#/$defs/ModelMetricSession"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/notifications/test",
+      "response": {
+        "$ref": "#/$defs/NotificationTestResponse"
       }
     },
     {

@@ -36,7 +36,7 @@ type OriginalSettings = {
     keepAwake: boolean;
   };
 
-  notifications: { tool: boolean; runFinished: boolean; runFailed: boolean; needsInput: boolean };
+  notifications: { tool: boolean; runFinished: boolean; runFailed: boolean; needsInput: boolean; ntfy: OriginalNtfySettings };
 
   models: {
     primary: string;
@@ -83,6 +83,8 @@ type OriginalVscodeSettings = {
 
   licenseAcceptedAt: string;
 };
+
+type OriginalNtfySettings = { server: string; topic: string };
 
 
 expectTypeOf<VscodeProviderPreference>().toEqualTypeOf<OriginalVscodeProviderPreference>();
