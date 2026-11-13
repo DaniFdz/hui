@@ -95,12 +95,13 @@ jobs:
           "$RUNNER_TEMP/ios-smoke" warm-up "$HUI_IOS_UDID" "$RUNNER_TEMP/shots"
           # Connect to HUI first: a launch with no gateway argument and no remembered one.
           xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app
-          # Vision must read "Connect to HUI" AND "GATEWAY URL" in an actual frame, within 24 s of wait entry.
-          # This unchanged deadline includes each post-launch capture and OCR; late matching frames still fail.
+          # Start fresh observations for 24 s; an admitted capture + OCR may complete later (90 s infrastructure cap).
+          # This proves actual rendered text, NOT a <=24 s launch/render/observation SLA. Every frame/OCR is retained.
           "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" connect
           xcrun simctl terminate "$HUI_IOS_UDID" dev.hui.app || true
           xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app -HUIGatewayURL http://127.0.0.1:47500
-          # Both seeded titles must render. A changing clock, splash or error is not readiness.
+          # Both seeded titles must render in the same fresh frame; clocks, splash and errors cannot pass.
+          # The same 24 s observation-start budget / 90 s infrastructure ceiling applies, not a UI latency SLA.
           # This is boot visual proof only: a startup permission modal may remain; no taps are proved here.
           "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" gateway
           ls -la "$RUNNER_TEMP/shots"
