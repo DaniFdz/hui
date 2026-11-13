@@ -681,6 +681,37 @@ Removes only HUI's saved start command; PI's provider and models are untouched. 
 
 Runs the saved command unless the health endpoint already answers. Returns at once with status `starting`; the start continues in the background and a later `GET` reports `online`, `unknown` (no endpoint) or `failed` with a message. A failure kills the command's process group at the ready timeout. Starting is idempotent while one start runs.
 
+### Model metrics
+
+HUI measures every completed model request in a Durable conversation: request
+start to the first streamed content token (`ttftMs`), that token to completion
+(`generationMs`), output throughput (`tokensPerSecond`), and the input/output
+and cache counts PI reports. `promptTokensPerSecond` divides new input tokens by
+the time to first token, so it includes request queueing and prefill and is an
+estimate; it is labelled as such in the UI. Older PI SDK-worker sessions do not
+produce these measurements.
+
+The latest 5,000 samples persist in `$XDG_CONFIG_HOME/hui/model-metrics.jsonl`
+(default `~/.config/hui/model-metrics.jsonl`, mode 0600). A sample carries the
+session id only so the composer can recover after a reload; public payloads omit
+it. The **Metrics** action on a local model server row opens its last 24 hours,
+and a completed request updates the chat composer's speed chip through the
+session stream.
+
+### `GET /__hui/model-metrics/providers/:provider`
+
+A provider's measurements in the window (default 24 hours, at most 7 days):
+`requests`, the latest `last` sample, `average`, `p50` and `p95` for
+`tokensPerSecond`, `ttftMs` and `promptTokensPerSecond`, and up to 80 recent
+`samples` oldest first. Samples have `at` (epoch ms), `provider`, `model`,
+`status` (`ok` or `error`), optional token counts and the timings above.
+
+### `GET /__hui/model-metrics/sessions/:session`
+
+The session's latest sample as `{ metric?: ModelMetric }`; empty when no request
+has completed. The same sample also arrives on the session stream as an event
+`{ type: "model_metric", metric }`.
+
 Credentials use PI's locked auth storage at `$XDG_CONFIG_HOME/hui/providers/auth.json`
 (default `~/.config/hui/providers/auth.json`, mode 0600). Selections use a separate
 0600 `models.json` mapping provider IDs to `{ models: string[] }`; writes are

@@ -112,7 +112,9 @@ import { openChatInApp } from "./desktop-app.ts";
 import { createHostMetricsRoutes } from "./routes/host-metrics.ts";
 import { createProviderRoutes } from "./routes/providers.ts";
 import { createLocalProviderRoutes } from "./routes/local-providers.ts";
+import { createModelMetricRoutes } from "./routes/model-metrics.ts";
 import { localProviders } from "./pi/local-providers.ts";
+import { modelMetrics } from "./model-metrics.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
 import { createWorktreeRoutes } from "./routes/worktrees.ts";
 import { createSettingsRoutes } from "./routes/settings.ts";
@@ -748,6 +750,7 @@ registerAgentToolHandler(async (invocation) => {
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
 export const providerRoutes = createProviderRoutes({ providerService });
 export const localProviderRoutes = createLocalProviderRoutes({ service: localProviders });
+export const modelMetricRoutes = createModelMetricRoutes({ store: modelMetrics });
 
 /** GPT-Live calls with bots over the ChatGPT login: the credential stays here, audio goes browser ↔ ChatGPT.
  * A call's quick questions go to the bot's helper (its utility model); its record goes to the bot's chat at the end. */

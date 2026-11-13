@@ -8,6 +8,8 @@
  */
 import type { LitElement, ReactiveController, ReactiveControllerHost } from "lit";
 import { loadModels, openSession, setSessionAutonomous, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
+import { loadSessionModelMetric } from "../api/model-metrics.ts";
+import type { ModelMetric } from "../api/schema/model-metrics.ts";
 import { isGatewayUnavailable, GatewayHttpError } from "../api/request.ts";
 import { OutdatedBuildError } from "../api/offline.ts";
 import { forgetConversation, readSavedConversation, saveConversation, type SavedConversation } from "../lib/session/offline-store.ts";
@@ -84,6 +86,8 @@ export class ConversationController implements ReactiveController {
   models: readonly RuntimeModel[] = [];
   currentModel: RuntimeModel | undefined;
   usage: RuntimeUsage | undefined;
+  /** HUI's latest completed model request for this session; absent before one completes. */
+  modelMetric: ModelMetric | undefined;
   thinking = "medium";
   /** Fast mode; undefined while the runtime cannot change speed. */
   fast: boolean | undefined;
@@ -100,6 +104,8 @@ export class ConversationController implements ReactiveController {
   #streamStop: (() => void) | undefined;
   /** Monotonic ownership token for open responses from the selected session. */
   #openRequestToken = 0;
+  /** Increments when an event supersedes a pending metric read. */
+  #metricGeneration = 0;
   #readAbort: AbortController | undefined;
   #subagentExpiryTimer: number | undefined;
   #frameUpdate: number | undefined;
@@ -293,10 +299,24 @@ export class ConversationController implements ReactiveController {
     await this.#deps.refreshSessions();
   };
 
+  #loadMetric(id: string): Promise<void> {
+    const generation = ++this.#metricGeneration;
+    return loadSessionModelMetric(id)
+      .then(({ metric }) => {
+        if (generation !== this.#metricGeneration || this.selected?.id !== id) return;
+        this.modelMetric = metric;
+        this.#host.requestUpdate();
+      })
+      .catch(() => {
+        // Metrics are a convenience: an unavailable history never blocks the conversation.
+      });
+  }
+
   #startStream(id: string, heldRevision?: number): void {
     // An older attempt may have installed a stream while a newer open request
     // was pending. Replacing it is an ownership transfer, so close it first.
     this.#streamStop?.();
+    void this.#loadMetric(id);
     const requestToken = this.#openRequestToken;
     const current = () => isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken);
     this.#streamStop = subscribeSession(id, {
@@ -425,6 +445,12 @@ export class ConversationController implements ReactiveController {
       this.#host.requestUpdate();
       return;
     }
+    if (event.type === "model_metric") {
+      this.#metricGeneration++;
+      this.modelMetric = event.metric;
+      this.#host.requestUpdate();
+      return;
+    }
     // Views of what the agent may have changed (the Files view) refresh once its turn is over.
     if (event.type === "settled" && this.selected) announceTurnEnd(this.selected.id);
     switch (event.type) {
@@ -513,6 +539,8 @@ export class ConversationController implements ReactiveController {
     this.models = [];
     this.currentModel = undefined;
     this.usage = undefined;
+    this.modelMetric = undefined;
+    this.#metricGeneration++;
     this.#modelsRequestedFor = "";
   }
 
@@ -606,6 +634,8 @@ export class ConversationController implements ReactiveController {
         }
         if (model) {
           this.currentModel = model;
+          this.modelMetric = undefined;
+          this.#metricGeneration++;
           this.#host.requestUpdate();
         }
         // The record now carries the choice, so the sidebar reflects it too.
@@ -672,7 +702,7 @@ export class ConversationController implements ReactiveController {
       });
   };
 
-  props(): Pick<HomeProps, "thinking" | "fast" | "autonomous" | "models" | "currentModel" | "usage" | "onSelectModel" | "onSelectThinking" | "onSelectFast" | "onSelectAutonomous"> {
+  props(): Pick<HomeProps, "thinking" | "fast" | "autonomous" | "models" | "currentModel" | "usage" | "modelMetric" | "onSelectModel" | "onSelectThinking" | "onSelectFast" | "onSelectAutonomous"> {
     return {
       thinking: this.thinking,
       ...(this.fast === undefined ? {} : { fast: this.fast }),
@@ -680,6 +710,7 @@ export class ConversationController implements ReactiveController {
       models: this.models,
       currentModel: this.currentModel,
       usage: this.usage,
+      modelMetric: this.modelMetric,
       onSelectModel: this.#selectModel,
       onSelectThinking: this.#selectThinking,
       onSelectFast: this.#selectFast,

@@ -91,3 +91,19 @@ test("iOS readiness requires known rendered content, never elapsed sleep or chan
   assert.doesNotMatch(workflow, /\bcmp\b|seq 1 12|screenshot[^\n]*\|\| true/u);
   assert.equal((workflow.match(/\bsleep\s+\d+/gu) ?? []).length, 1, "only the pre-existing receipt state poll may sleep");
 });
+
+test("iOS spends macOS minutes only on a change that can reach the native shell", () => {
+  const triggers = workflow.slice(workflow.indexOf("\non:"), workflow.indexOf("\npermissions:"));
+  assert.doesNotMatch(triggers, /package(-lock)?\.json/u, "a dependency bump is proved by the Linux mobile build and the nightly");
+  for (const path of ["mobile/ios/**", "mobile/connect/**", "capacitor.config.ts", "src/lib/native-shell.ts", "src/lib/native-shell-boot.ts"]) {
+    assert.equal(triggers.split(`      - "${path}"`).length - 1, 2, `${path} wakes both the pull request and the push`);
+  }
+});
+
+test("the simulator build targets the device it captures on, so one architecture is compiled", () => {
+  assert.match(workflow, /-destination "id=\$HUI_IOS_UDID" ONLY_ACTIVE_ARCH=YES/u);
+  assert.doesNotMatch(workflow, /generic\/platform\/iOS Simulator/u);
+  assert.ok(workflow.includes('path: ~/iosbuild'));
+  assert.ok(workflow.includes('-derivedDataPath "$HOME/iosbuild"'));
+  assert.ok(workflow.indexOf("actions/cache@") < workflow.indexOf("-derivedDataPath"));
+});
