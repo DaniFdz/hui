@@ -559,6 +559,20 @@ test("Effort offers the model's own levels up to Maximum, and Speed only where f
   assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: { ...opus, fast: undefined }, thinking: "high", fast: false }), /chat-controls__speed-panel/u);
 });
 
+test("Autonomy sits under Speed with Supervised or Autonomous, names the mode on the trigger, and needs a session that carries it", async () => {
+  const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max"], fast: true };
+  const on = await renderWorkerSession("idle", { currentModel: opus, thinking: "high", fast: true, autonomous: true });
+  assert.match(on, /aria-label=Thinking: high, fast, autonomous/u);
+  assert.match(on, /aria-label="Speed".*<span class="chat-controls__effort-heading">Autonomy<\/span> <div class="chat-controls__speed-options" role="radiogroup" aria-label="Autonomy">/u);
+  assert.match(on, /aria-checked=false[^>]*>Supervised<\/button>.*aria-checked=true[^>]*>Autonomous<\/button>/u);
+
+  const off = await renderWorkerSession("idle", { currentModel: opus, thinking: "high", autonomous: false });
+  assert.match(off, /aria-label=Thinking: high /u);
+  assert.match(off, /aria-checked=true[^>]*>Supervised<\/button>.*aria-checked=false[^>]*>Autonomous<\/button>/u);
+
+  assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: opus, thinking: "high" }), /Autonomy/u);
+});
+
 test("Ultra is the stop above Maximum where the runtime offers it, and both glow", async () => {
   const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] };
   const ultra = await renderWorkerSession("idle", { currentModel: opus, thinking: "ultra" });
@@ -605,16 +619,40 @@ test("a dropped stream says so once under the composer, and a stopped one keeps 
   assert.doesNotMatch(stopped, /session-run-spinner/u, "nothing is retrying, so nothing spins");
 });
 
-test("a saved offline copy says so once and offers no Reconnect it cannot honour", async () => {
+test("a saved offline copy keeps its transcript, spins and says when the live request retries", async () => {
   const saved = await renderWorkerSession("disconnected", { connection: "saved", connectionNote: "Reconnecting; your draft stays on this device.", savedCopy: { savedAt: "2026-10-01T10:00:00.000Z", truncated: true } });
-  assert.match(saved, /<span class="agent-chat__composer-status-text">Saved conversation · draft preserved\. Send waits for a live connection\.<\/span>/u);
-  assert.doesNotMatch(saved, /reconnect-session|session-run-spinner/u, "nothing is retrying and there is no worker to reconnect");
+  assert.match(saved, /<span class="agent-chat__composer-status-text">Reconnecting; your draft stays on this device\.<\/span>/u);
+  assert.match(saved, /agent-chat__composer-status-icon[^>]*><span class="session-run-spinner">/u, "the cached copy says the live connection is still being sought");
+  assert.doesNotMatch(saved, /reconnect-session/u, "there is no worker to reconnect");
   assert.match(saved, /<div class="chat-composer-neighbor-card chat-composer-neighbor-card--info chat-saved-copy-notice" role="status">/u, "the copy is a neighbor card above the composer, not text over the chat");
   assert.match(saved, /<strong>Saved conversation · [^<]+<\/strong>/u);
   assert.match(saved, /<span>Only recent messages are saved\.<\/span>/u, "the reading copy still says how much of it was kept");
   assert.match(saved, /<button type="button" class="btn btn--sm" @click=>Forget saved conversations<\/button>/u);
-  assert.doesNotMatch(saved, /Reconnecting; your draft stays on this device/u, "the band under the composer already says the draft stays");
+  assert.equal(saved.match(/Reconnecting; your draft stays on this device\./gu)?.length, 1, "the status lives once under the composer");
   assert.doesNotMatch(saved, /transcript__note--status/u, "nothing sits above the transcript");
+  assert.match(saved, /<div class="chat-cached-tail" role="status" aria-label="The live conversation may have newer messages">/u, "a placeholder under the last saved row says more may follow");
+  assert.ok(saved.indexOf("long task") < saved.indexOf("chat-cached-tail"), "the placeholder sits after the last cached row");
+  const live = await renderWorkerSession("idle");
+  assert.doesNotMatch(live, /chat-cached-tail/u, "a live conversation has no cached-tail placeholder");
+
+});
+
+test("watchers stay out of the thread while a session loads and return once it is live", async () => {
+  const watchers = {
+    watchers: [{ id: "w1", purpose: "Wait for CI", target: "", outcome: "", command: "sleep 60", logPath: "/tmp/w.log", state: "running", pid: 123, startedAt: new Date().toISOString(), lastLine: "waiting" }],
+    pendingId: "", log: null, expanded: new Set<string>(), onGroupToggle: () => {}, onToggle: () => {}, onStop: () => {}, onRestart: () => {}, onDismiss: () => {},
+  };
+  for (const [label, overrides] of [
+    ["opening", { opening: true, transcript: [], watchers }],
+    ["starting empty", { transcript: [], watchers }],
+    ["starting with history", { watchers }],
+  ] as const) {
+    const html = await renderWorkerSession(label === "opening" ? "idle" : "starting", overrides as Record<string, unknown>);
+    assert.doesNotMatch(html, /Background watchers|Wait for CI/u, `${label} keeps watchers out of the loading thread`);
+  }
+  const live = await renderWorkerSession("idle", { watchers });
+  assert.match(live, /aria-label="Background watchers"/u);
+  assert.match(live, /Wait for CI/u);
 });
 
 test("a saved copy taken today says when, without repeating today's date", async () => {
@@ -632,14 +670,30 @@ test("a reachable worker session shows neither notice, and a failed one keeps it
   assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
 });
 
-test("a conversation still downloading shows progress, and one that failed to load offers a retry instead of an empty chat", async () => {
+test("a conversation still downloading shows its skeleton, and one that failed to load offers a retry instead of an empty chat", async () => {
   const loading = await renderWorkerSession("idle", { transcript: [], opening: true });
-  assert.match(loading, /role="status" aria-live="polite"> <span>Loading the conversation…<\/span> <wa-progress-bar label="Loading the conversation" indeterminate>/u);
-  assert.doesNotMatch(loading, /Start a conversation/u);
+  assert.match(loading, /<div class="chat-skeleton" role="status" aria-live="polite" data-testid="conversation-skeleton">/u);
+  assert.match(loading, /<span>Loading the conversation…<\/span>/u);
+  assert.match(loading, /class="skeleton skeleton-line/u);
+  assert.doesNotMatch(loading, /Start a conversation|agent-chat__empty/u, "the skeleton keeps the conversation's column with no empty-state height");
+  const retrying = await renderWorkerSession("idle", { transcript: [], opening: true, connectionNote: "HUI did not answer. Trying again in 10 seconds…" });
+  assert.match(retrying, /<p class="chat-skeleton__note">HUI did not answer\. Trying again in 10 seconds…<\/p>/u, "a retried open says when it tries again");
 
-  const failed = await renderWorkerSession("idle", { transcript: [], openError: "HUI did not answer within 20 s. Check the connection and try again." });
-  assert.match(failed, /<div class="agent-chat__empty" role="alert"> <strong>Could not load this conversation<\/strong> <span>HUI did not answer within 20 s\. Check the connection and try again\.<\/span> <button type="button" class="btn btn--sm retry-session" @click=>Try again<\/button>/u);
+  const failed = await renderWorkerSession("idle", { transcript: [], openError: "HUI did not answer within 5 s. Check the connection and try again." });
+  assert.match(failed, /<div class="agent-chat__empty" role="alert"> <strong>Could not load this conversation<\/strong> <span>HUI did not answer within 5 s\. Check the connection and try again\.<\/span> <button type="button" class="btn btn--sm retry-session" @click=>Try again<\/button>/u);
   assert.doesNotMatch(failed, /Start a conversation|Send a message below/u, "a failed load never reads as an empty session");
+});
+
+test("a starting session shows its skeleton, and a resumed one keeps its transcript instead of a Starting pi line", async () => {
+  const empty = await renderWorkerSession("starting", { transcript: [] });
+  assert.match(empty, /<div class="chat-skeleton" role="status" aria-live="polite" data-testid="conversation-skeleton">/u);
+  assert.match(empty, /<span>Preparing the session…<\/span>/u);
+  assert.doesNotMatch(empty, /Starting pi/u);
+
+  const resumed = await renderWorkerSession("starting");
+  assert.match(resumed, /<div class="chat-starting" role="status"> <span class="hui-orbit" aria-hidden="true"><i><\/i><i><\/i><i><\/i><\/span> <span>Preparing the session…<\/span>/u);
+  assert.match(resumed, /long task/u, "a resumed conversation keeps its history while the runtime starts");
+  assert.doesNotMatch(resumed, /Starting pi|data-testid="conversation-skeleton"/u);
 });
 
 test("the Parallel tasks card counts the latest batch of subagents and folds a batch that all succeeded", async () => {

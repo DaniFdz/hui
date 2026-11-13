@@ -714,6 +714,17 @@ const cases: UseCase[] = [
     phone: "required",
   },
   {
+    id: "CHAT-088",
+    title: "Let a session run its task autonomously",
+    behaviour:
+      'The thinking picker adds an Autonomy choice under Speed, Supervised or Autonomous, in the composer of a Durable session, one on a worker included, and on New Session. Autonomous reads "Thinking: <level>, autonomous", applies live, stays with the session across a reload, and New Session starts on Supervised again. An Autonomous session stops on its plan and waits for approval before it changes anything. A session a Chief of Staff starts with `create_session` runs Autonomous by default, and its plan reaches that chief\'s chat as "Autonomous session \"<title>\" is …" with its last reply and a line saying it reports to that chief; the session then carries on only once the chief or the operator answers. A session the operator started reports in its own chat, and no chief is given it. Supervised turns the mode off, and pull requests stay drafts until the operator says otherwise.',
+    spec: ["docs/api.md#post-__huisessionsidautonomous", "SPEC.md#autonomous-mode-drives-a-session-to-a-draft-pull-request-2026-11-12"],
+    surfaces: ["route:POST /__hui/sessions/:id/autonomous"],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: "required",
+  },
+  {
     id: "CHAT-056",
     title: "See who sent a bot's message",
     behaviour:

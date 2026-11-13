@@ -1,6 +1,6 @@
 /**
  * One session's actions: `/__hui/sessions/:id/(open|prompt|steer|follow-up|queue|continue|clear|compact|reload|btw|
- * tools|models|commands|model|abort|rewind|fork|resume|thinking|fast|question|connect)`, with the guards they share
+ * tools|models|commands|model|abort|rewind|fork|resume|thinking|fast|autonomous|question|connect)`, with the guards they share
  * (an unknown or still-creating session, a bot's forever chat) and the request ids
  * that keep a resent prompt from running twice. `hui.ts` applies the `x-hui` guard before dispatching here and
  * writes the `…/events` stream for the record this module answers with `{ stream }`.
@@ -10,7 +10,7 @@ import type { BotService } from "../bots/service.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { SessionTools, ToolsError, routeSchemas as toolsRouteSchemas } from "../api/tools.ts";
-import { SessionConnectResponse, SessionError, SessionFastResponse, SessionOk, SessionPromptResponse, SessionResponse, sessionActionRouteSchemas } from "../api/sessions.ts";
+import { SessionAutonomousResponse, SessionConnectResponse, SessionError, SessionFastResponse, SessionOk, SessionPromptResponse, SessionResponse, sessionActionRouteSchemas } from "../api/sessions.ts";
 import { SessionClearResponse, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionOpenResponse, SessionThinkingResponse, SideQuestionResult, routeSchemas as sessionEventRouteSchemas } from "../api/session-events.ts";
 
 import { readHuiSettings } from "../hui-settings.ts";
@@ -39,7 +39,7 @@ export const routeSchemas: RouteSchema[] = [
 
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|steer-now|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork|goal)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|steer-now|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|autonomous|question|abort|clear|reload|compact|rewind|fork|goal)$/;
 
 export function createSessionActionRoutes(deps: {
   lifecycle: Pick<ReturnType<typeof createSessionLifecycle>, "updateSession" | "forkRequest" | "forkFromSession">;
@@ -433,6 +433,19 @@ export function createSessionActionRoutes(deps: {
         } catch (error) {
           return reply(SessionError, {
             error: error instanceof Error ? error.message : "Could not change the speed.",
+          }, sessionMutationErrorStatus(error));
+        }
+      }
+      if (action[2] === "autonomous" && method === "POST") {
+        const body = (await request.json()) as Record<string, unknown>;
+        if (typeof body["autonomous"] !== "boolean") {
+          return reply(SessionError, { error: "Autonomous mode must be true or false." }, 400);
+        }
+        try {
+          return reply(SessionAutonomousResponse, { autonomous: await liveSessions.setAutonomous(id, body["autonomous"]) });
+        } catch (error) {
+          return reply(SessionError, {
+            error: error instanceof Error ? error.message : "Could not change the mode.",
           }, sessionMutationErrorStatus(error));
         }
       }

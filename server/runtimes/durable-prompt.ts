@@ -8,7 +8,8 @@
  * directory, and a bot's chat adds its own (`skills/` in its home folder,
  * `bots/skills.ts`); it lists only the ones the operator left on
  * (`bots/durable-access.ts`), so two chats in one directory can differ. A
- * session on Ultra adds OpenClaw's plan, delegate and verify section.
+ * session on Ultra adds OpenClaw's plan, delegate and verify section, and one in
+ * Autonomous mode the section that makes it the lead of its own task.
  */
 import { DefaultResourceLoader, type BuildSystemPromptOptions, type Skill } from "@earendil-works/pi-coding-agent";
 import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
@@ -51,7 +52,7 @@ const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
  * `before_agent_start` follow PI's, already tagged, in `extension_sections`. */
 const SECTION_KEYS = [
   "preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd", "extension_sections",
-  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_goal", "hui_extensions", "hui_ultra",
+  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_goal", "hui_extensions", "hui_ultra", "hui_autonomous",
 ] as const;
 const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
@@ -92,6 +93,29 @@ export function ultraSection(delegates: boolean): string {
   ].join("\n");
 }
 
+/** Autonomous mode: the session plans, stops for its supervisor's approval, then drives the task to a draft pull request
+ * and stops again only on a blocker or on its report. Its supervisor is the Chief of Staff that started it
+ * (`server/heartbeat.ts`), or the operator otherwise. */
+export function autonomousSection(delegates: boolean): string {
+  const report = "your last reply is your report: the goal and whether it was met, the pull request and its head commit, each check with its result, what remains and the proof gaps";
+  return [
+    "## Autonomous mode",
+    "Autonomous mode is on for this session. You drive one task to a draft pull request that is ready for review. Decide every technical matter yourself: scope, design, tests, retries, model routes and review findings.",
+    "You report to whoever supervises you: the Chief of Staff that started this session, or otherwise the operator. A message from the operator always comes first. Where another part of this prompt says otherwise (Ultra, a pull request lead's phases, an active goal), these steps win.",
+    "1. Plan, then stop for approval. Investigate enough to plan, then end your turn with the plan and nothing else implemented. Write it for the person who supervises you, following the `technical-writing` skill: short declarative sentences, one thought per sentence, no filler, no formatting tells, no wall of text. Give the goal, what changes, what stays, the evidence that will prove it, the risks, and where you will stop. End with one question that asks for approval or a change. Change nothing before the answer: a subagent's result or the passing of time is not approval.",
+    ...delegates ? [
+      "2. Delegate every step to a subagent, one task each, and do not do their work yourself: an `explorer` or `planner` for the investigation, one `worker` per change, a fresh `verifier` for the deciding checks, a `reviewer` for the diff, and a fresh worker for each fix round. While subagents work, end your turn: their results wake you.",
+      "3. One checkout, one branch. Every subagent works in this session's own checkout, so spawn them without `worktree: true`: the branch, the worktree and the pull request are the session's, and a fix round sees what the change before it did. If this session works directly in the operator's checkout, say so before committing to its branch.",
+    ] : [
+      "2. Implement the approved plan, then run the repository's own checks.",
+      "3. Read the whole diff against the plan: the intent, the logic and the failure paths. Fix what you find and check again.",
+    ],
+    "4. Verify before you call it done: the repository's checks have run, you have read the whole diff and compared it with what was approved.",
+    "5. Ship a draft. Open the pull request as a draft and update it as you go, until its checks pass and no review comment is open. Never mark it ready for review, never merge it, never deploy: the operator does both, and the operator decides when it leaves draft.",
+    `6. Stop three times, and only three. The plan, for approval. A blocker only your supervisor can clear, as one question at the end of your reply, never a question card and never the operator directly when a Chief of Staff started this session. And the report, when the draft pull request is tested, verified and ready for review: then ${report}.`,
+  ].join("\n");
+}
+
 export class DurablePrompt {
   readonly #agentDir: string;
   readonly #readSettings: () => Promise<PromptSettings>;
@@ -111,6 +135,8 @@ export class DurablePrompt {
   skillDirsFor: (conversationId: ConversationId) => Promise<readonly string[]> = async () => [];
   /** Whether the conversation's session is on Ultra. The Durable host answers. */
   ultraFor: (conversationId: ConversationId) => boolean = () => false;
+  /** Whether the conversation's session is in Autonomous mode. The Durable host answers. */
+  autonomousFor: (conversationId: ConversationId) => boolean = () => false;
   /** The active goal of the conversation's session, as its own prompt section. The Durable host answers. */
   goalFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
   /** The PR-lead section of a session a chief created, if it is one. The Durable host answers. */
@@ -193,7 +219,7 @@ export class DurablePrompt {
   /** PI's builder input for a request offering these tools. A bot's chat (`bot` given) lists only the skills the operator
    * left on: in PI's own section while it has read or bash, otherwise in one of HUI's that loads them with `load_skill`,
    * which such a chat is offered. */
-  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, bot?: BotSkills, skillDirs: readonly string[] = [], ultra = false): Promise<BuildSystemPromptOptions> {
+  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, bot?: BotSkills, skillDirs: readonly string[] = [], ultra = false, autonomous = false): Promise<BuildSystemPromptOptions> {
     const loader = await this.loader(cwd, skillDirs);
     const skills = bot ? bot.skills(loader.getSkills().skills) : loader.getSkills().skills;
     const own = bot?.section(skills, selectedTools);
@@ -215,6 +241,7 @@ export class DurablePrompt {
       sections: {
         ...huiToolSections(selectedTools, contributions, (await this.#readSettings()).models.routes), ...(own ? { skills: own } : {}),
         ...(ultra ? { hui_ultra: ultraSection(selectedTools.includes("sessions_spawn")) } : {}),
+        ...(autonomous ? { hui_autonomous: autonomousSection(selectedTools.includes("sessions_spawn")) } : {}),
       },
       cwd,
       contextFiles: loader.getAgentsFiles().agentsFiles,
@@ -230,7 +257,8 @@ export class DurablePrompt {
     const bot = conversationId === undefined ? undefined : await this.botSkillsFor(conversationId);
     const skillDirs = conversationId === undefined ? [] : await this.skillDirsFor(conversationId);
     const ultra = conversationId !== undefined && this.ultraFor(conversationId);
-    const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra);
+    const autonomous = conversationId !== undefined && this.autonomousFor(conversationId);
+    const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra, autonomous);
     const goal = conversationId === undefined ? undefined : await this.goalFor(conversationId);
     if (goal) base.sections = { ...base.sections, hui_goal: goal };
     const lead = conversationId === undefined ? undefined : await this.leadFor(conversationId);

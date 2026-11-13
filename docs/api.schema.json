@@ -9095,6 +9095,17 @@
         }
       }
     },
+    "SessionAutonomousResponse": {
+      "type": "object",
+      "required": [
+        "autonomous"
+      ],
+      "properties": {
+        "autonomous": {
+          "type": "boolean"
+        }
+      }
+    },
     "SessionBtwRequest": {
       "type": "object",
       "required": [
@@ -10068,6 +10079,9 @@
         "fast": {
           "type": "boolean"
         },
+        "autonomous": {
+          "type": "boolean"
+        },
         "queue": {
           "$ref": "#/$defs/RuntimeQueue"
         },
@@ -10422,6 +10436,30 @@
           "properties": {
             "event": {
               "type": "string",
+              "const": "autonomous"
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "autonomous"
+              ],
+              "properties": {
+                "autonomous": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
               "const": "heartbeat"
             },
             "data": {
@@ -10477,6 +10515,9 @@
           "type": "string"
         },
         "fast": {
+          "type": "boolean"
+        },
+        "autonomous": {
           "type": "boolean"
         },
         "queue": {
@@ -14667,6 +14708,7 @@
       "QuestionnaireOption",
       "QuestionnaireQuestion",
       "QuestionnaireResult",
+      "SessionAutonomousResponse",
       "SessionConnectResponse",
       "SessionError",
       "SessionFastResponse",
@@ -16065,6 +16107,13 @@
       "path": "/__hui/sessions/:id/abort",
       "response": {
         "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/autonomous",
+      "response": {
+        "$ref": "#/$defs/SessionAutonomousResponse"
       }
     },
     {
