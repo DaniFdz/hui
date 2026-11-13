@@ -39,12 +39,12 @@ jobs:
   e2e:
     if: github.event.repository.private == false && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # A shard takes about eight minutes once Chromium is installed.
+    # A shard takes about six to ten minutes once Chromium is installed.
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: ["1/4", "2/4", "3/4", "4/4"]
+        shard: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -54,6 +54,12 @@ jobs:
       # Match the npm major used to generate the committed lockfile.
       - run: npm install -g npm@11
       - run: npm ci --ignore-scripts
+      # The same browser cache the E2E workflow keeps, keyed by the lockfile
+      # that pins the headless shell.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npx e2e-web install chromium --with-deps
       - run: npm run e2e -- --shard ${{ matrix.shard }}
       # A failed shard's traces and screenshots are what explains it; a green one needs no artifact.

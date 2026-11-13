@@ -296,7 +296,7 @@ No new token or PAT is needed: publication uses the workflow's `GITHUB_TOKEN`.
 
 The Nightly workflow runs on every push to `main`, as parallel jobs so one slow
 proof cannot hold the others or outgrow a single budget: typecheck and the full
-test suite, the web suite in four shards, the smoke tests three times over with
+test suite, the web suite in eight shards, the smoke tests three times over with
 retries off, and the installed-package proof on Linux and again on macOS, where
 the installation, desktop and update paths differ. It stamps the package with
 `scripts/nightly-version.mjs` (a prerelease of the next patch, such as
