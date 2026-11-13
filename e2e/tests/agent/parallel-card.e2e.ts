@@ -65,4 +65,3 @@ test("helpers wait in one Parallel tasks card that counts them and details them,
   if (!(await timedOut.isVisible())) await swarm.getByText("0 completed · 1 failed or stopped").tap();
   await expect(timedOut).toContainText("The subagent exceeded 1 seconds.");
 });
-

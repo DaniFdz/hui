@@ -53,7 +53,7 @@ jobs:
           udid=$(xcrun simctl list devices available | grep -F "$device (" | head -1 | grep -oE '[0-9A-F-]{36}')
           echo "device=$device udid=$udid runtime=$runtime"
           echo "HUI_IOS_UDID=$udid" >> "$GITHUB_ENV"
-          (xcrun simctl boot "$udid" || true) 
+          (xcrun simctl boot "$udid" || true)
           (xcrun simctl bootstatus "$udid" -b > "$RUNNER_TEMP/boot.log" 2>&1 &)
       - name: Build for the simulator
         run: |
