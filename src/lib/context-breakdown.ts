@@ -15,6 +15,7 @@ const LABELS: Record<ContextUsagePart["id"], string> = {
   tools: "Tool definitions",
   conversation: "Conversation",
   summary: "Summarized conversation",
+  memory: "Memory view",
 };
 
 /**

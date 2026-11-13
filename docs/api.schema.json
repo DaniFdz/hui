@@ -4677,6 +4677,10 @@
             {
               "type": "string",
               "const": "summary"
+            },
+            {
+              "type": "string",
+              "const": "memory"
             }
           ]
         },

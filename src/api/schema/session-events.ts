@@ -7,7 +7,7 @@ import type { Watcher } from "./watchers.ts";
 
 export type CompactionReason = ("manual") | ("threshold") | ("overflow");
 
-export type ContextUsagePart = { "id": ("system") | ("tools") | ("conversation") | ("summary"); "tokens": number; "count"?: number; };
+export type ContextUsagePart = { "id": ("system") | ("tools") | ("conversation") | ("summary") | ("memory"); "tokens": number; "count"?: number; };
 
 export type QueuedMessage = { "id": string; "text": string; "mode": "followUp"; };
 

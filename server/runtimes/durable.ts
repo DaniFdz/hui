@@ -70,11 +70,16 @@ type ContextMessage = { message: Message; summary: boolean };
  * left. The messages are ordered as Durable orders them, so a result it drops or synthesizes counts the way the model
  * reads it. Estimating re-serializes every tool call, so each message is measured once.
  */
-export function contextParts(collected: readonly ContextMessage[], systemUpdates: boolean): Measurement["parts"] {
-  const parts = { system: 0, tools: 0, toolsCount: 0, conversation: 0, summary: 0, messages: 0 };
+export function contextParts(collected: readonly ContextMessage[], systemUpdates: boolean, memoryView = false, tokens = 0): Measurement["parts"] {
+  const parts = { system: 0, tools: 0, toolsCount: 0, conversation: 0, summary: 0, memory: 0, messages: 0 };
   const systems: SystemMessage[] = [];
   const summaries = new Set(collected.filter((each) => each.summary).map((each) => each.message));
-  for (const message of orderedMessages(collected.map((each) => each.message))) {
+  // A memory chat's request carries its memory's view of the chat instead of these messages, so only its prompt counts:
+  // what the prompt and tools leave of the context is that view, and the run's own input.
+  const shown = memoryView
+    ? collected.filter((each) => each.message.role === "system").map((each) => each.message)
+    : orderedMessages(collected.map((each) => each.message));
+  for (const message of shown) {
     if (message.role === "system") { systems.push(message); continue; }
     const tokens = sizeOf(message);
     if (summaries.has(message)) parts.summary += tokens;
@@ -88,11 +93,12 @@ export function contextParts(collected: readonly ContextMessage[], systemUpdates
     : estimateTextTokens(getCurrentSystemPrompt(systems));
   parts.tools = estimateTextTokens(JSON.stringify(tools));
   parts.toolsCount = tools.length;
+  if (memoryView) parts.memory = Math.max(0, tokens - parts.system - parts.tools);
   return parts;
 }
 
 /** The size of a context, and what it carries: its prompt and tool declarations, its conversation and its summaries. */
-type Measurement = { tokens: number; parts: { system: number; tools: number; toolsCount: number; conversation: number; summary: number; messages: number } };
+type Measurement = { tokens: number; parts: { system: number; tools: number; toolsCount: number; conversation: number; summary: number; memory: number; messages: number } };
 /** Durable's own ordering of a context's messages: each assistant's tool results follow it in call order, an unmatched
  * result goes and a missing one is synthesized, in the settled history and in the open round alike (`harness/context.js`,
  * not in the package's exports). */
@@ -735,11 +741,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         const usage = message.role === "assistant" ? message.usage : undefined;
         if (measured === undefined && usage && (!head || entry.id > head.id) && calculateContextTokens(usage) > 0) measured = calculateContextTokens(usage);
         if (measured === undefined) trailing += sizeOf(message);
-        // An OptChat conversation's request carries its memory's view, not this history: nothing here describes it.
-        if (!this.#optchat) collected.push({ message, summary: message.role !== "system" && CompactionEntry.is(entry) });
+        collected.push({ message, summary: message.role !== "system" && CompactionEntry.is(entry) });
       }
     }
-    return { tokens: (measured ?? 0) + trailing, parts: contextParts(collected.reverse(), this.#systemUpdates()) };
+    const tokens = (measured ?? 0) + trailing;
+    return { tokens, parts: contextParts(collected.reverse(), this.#systemUpdates(), this.#optchat, tokens) };
   }
 
   /** The agent as Durable reports it. A model of another kind reads the context differently, so the meter's split is
@@ -1357,15 +1363,16 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   }
 
   /** Where this conversation's context goes: the prompt and tool declarations it leads with, the conversation itself and
-   * the summaries compaction left. Undefined for an OptChat conversation, whose request carries its memory's view of the
-   * chat instead of this history. */
-  #breakdown(parts: Measurement["parts"]): ContextUsagePart[] | undefined {
-    if (this.#optchat) return undefined;
+   * the summaries compaction left. A memory chat counts its memory's view of the chat where the others count the
+   * conversation: its request carries that view, not this history. */
+  #breakdown(parts: Measurement["parts"]): ContextUsagePart[] {
     return [
       { id: "system", tokens: parts.system },
       ...(parts.toolsCount ? [{ id: "tools" as const, tokens: parts.tools, count: parts.toolsCount }] : []),
-      { id: "conversation", tokens: parts.conversation, count: parts.messages },
-      { id: "summary", tokens: parts.summary },
+      ...(this.#optchat ? [{ id: "memory" as const, tokens: parts.memory }] : [
+        { id: "conversation" as const, tokens: parts.conversation, count: parts.messages },
+        { id: "summary" as const, tokens: parts.summary },
+      ]),
     ];
   }
 

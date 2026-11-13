@@ -825,6 +825,14 @@ test("the meter's split counts the messages Durable sends, not a repeated tool r
     { message: message({ role: "toolResult", toolCallId: "call-2", content: "y".repeat(35_000), timestamp: 3 }), summary: false },
   ], false);
   assert.deepEqual([open.messages, open.conversation < 100], [2, true], "an open round is ordered the same way");
+  // A memory chat's stored messages are not its request: what the prompt and the tools leave of the reported context is
+  // its memory's view of the chat.
+  const memory = contextParts([
+    { message: message({ role: "system", content: "", sections: { preamble: "P".repeat(3_500) }, toolsAdded: [{ name: "read", description: "Read", parameters: { type: "object" } }], timestamp: 1 }), summary: false },
+    { message: message({ role: "user", content: "x".repeat(35_000), timestamp: 2 }), summary: false },
+  ], false, true, 5_000);
+  assert(3_000 < memory.memory && memory.memory < 5_000, `the view takes what the prompt and tools leave: ${memory.memory}`);
+  assert.equal(memory.conversation, 0, "and the stored message is not counted");
 });
 
 test("a requested compaction with nothing old enough to summarize says so", { timeout: 45_000 }, async (t) => {

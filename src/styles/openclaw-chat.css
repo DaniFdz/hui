@@ -2107,7 +2107,8 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .context-usage__bar-segment--system, .context-usage__part--system { --part-color: var(--info); }
 .context-usage__bar-segment--tools, .context-usage__part--tools { --part-color: var(--warn); }
 .context-usage__bar-segment--conversation, .context-usage__part--conversation { --part-color: var(--ok); }
-.context-usage__bar-segment--summary, .context-usage__part--summary { --part-color: color-mix(in srgb, var(--danger) 70%, var(--muted)); }
+.context-usage__bar-segment--summary, .context-usage__part--summary,
+.context-usage__bar-segment--memory, .context-usage__part--memory { --part-color: color-mix(in srgb, var(--danger) 70%, var(--muted)); }
 .context-usage__bar--breakdown .context-usage__bar-segment { background: var(--part-color); }
 .context-usage__bar--breakdown .context-usage__bar-remaining { background: transparent; }
 .context-usage__breakdown { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; }

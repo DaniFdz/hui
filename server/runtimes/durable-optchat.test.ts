@@ -315,7 +315,12 @@ test("an OptChat turn starts fresh from the view: system messages, then the view
   assert.match(JSON.stringify(second.system), /You are Grok, an AI agent that works for one user in a single chat/u);
   assert.match(JSON.stringify(second.system), /zoom\(id, 1\) gives message id in full/u);
   assert(toolNames(second).includes("zoom") && toolNames(second).includes("date") && toolNames(second).includes("search_chat"), JSON.stringify(toolNames(second)));
-  assert.equal(session.currentUsage()?.breakdown, undefined, "the meter keeps the plain bar: this history is not what the request carries");
+  // The meter counts the chat's prompt and tools, and never its stored messages: the request carries the memory's view
+  // instead. The fixture reports two tokens, so that view is whatever the prompt leaves of them (nothing here).
+  const usage = session.currentUsage()!;
+  assert.deepEqual(usage.breakdown?.map((part) => part.id), ["system", "tools", "memory"], "no conversation row for a chat whose request holds its memory instead");
+  const part = (id: string) => usage.breakdown!.find((each) => each.id === id)!.tokens;
+  assert.deepEqual([part("system") > 0, part("tools") > 0, part("memory")], [true, true, 0], "the prompt and its tools, and nothing left of the reported two tokens");
   // The view goes in blocks, its last whole one marked (the first turn's view was empty: nothing more to find).
   assert.deepEqual(marks(pieces), [["<chat>\n0+1|user: FIXTURE_MEMORY OPT_ONE", false], ["\n1+1|talk: Fixture response.", true], ["\n</chat>", false]]);
   assert.equal(rest[0]!.cache_control !== undefined, true, "pi-ai's own breakpoint at the request end");
