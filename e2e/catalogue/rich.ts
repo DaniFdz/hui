@@ -12,7 +12,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["markdown-formatting"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "RICH-002",
@@ -21,7 +22,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["markdown-formatting"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "RICH-003",
@@ -31,6 +33,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["markdown-formatting"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-004",
@@ -40,6 +43,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["markdown-formatting"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-005",
@@ -49,6 +53,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: [],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-006",
@@ -58,6 +63,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: [],
     web: "required",
+    phone: { excluded: "Arrow-key scrolling needs a hardware keyboard; on a phone the same table scrolls by swiping (RICH-005).", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "RICH-007",
@@ -66,6 +72,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-008",
@@ -74,6 +81,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-009",
@@ -83,6 +91,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["markdown-formatting"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-010",
@@ -92,6 +101,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["rich-embeds"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-011",
@@ -101,6 +111,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["rich-embeds"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-012",
@@ -109,7 +120,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["rich-embeds"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "RICH-013",
@@ -119,6 +131,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["rich-embeds"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-014",
@@ -128,6 +141,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["rich-embeds"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "RICH-015",
@@ -136,7 +150,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["rich-embeds"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "RICH-016",
@@ -146,6 +161,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: [],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-017",
@@ -155,6 +171,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-018",
@@ -164,6 +181,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "required",
+    phone: { excluded: "Enter on a focused embed needs a hardware keyboard; tapping the diagram or its Open viewer control does the same (RICH-017).", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "RICH-019",
@@ -173,6 +191,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-020",
@@ -182,6 +201,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "required",
+    phone: { excluded: "These are key presses with visible equivalents: the zoom controls, Copy image and Close viewer (RICH-017, RICH-019, RICH-021).", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "RICH-021",
@@ -191,6 +211,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-022",
@@ -200,6 +221,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-023",
@@ -209,6 +231,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "RICH-024",
@@ -218,6 +241,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["media-viewer"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "RICH-025",
@@ -225,7 +249,8 @@ const cases: UseCase[] = [
     behaviour: "An image attached to a message shows as a bounded thumbnail named for the file that opens in the media viewer; after a reload it loads from the gateway, and when its bytes cannot load the thumbnail turns into the file's card.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: ["route:GET /__hui/sessions/:id/attachments/:message/:image"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "RICH-026",
@@ -235,6 +260,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:present_media", "route:GET /__hui/media/:id/:name"],
     journeys: ["presented-media", "media-viewer"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-027",
@@ -244,6 +270,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:present_media", "route:GET /__hui/media/:id/:name"],
     journeys: ["presented-media"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "RICH-028",
@@ -253,6 +280,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:present_media", "route:GET /__hui/media/:id/:name"],
     journeys: ["presented-media"],
     web: "required",
+    phone: "required",
   },
   {
     id: "RICH-029",
@@ -261,7 +289,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#github-link-previews", "docs/api.md#get-__huigithubpreviews"],
     surfaces: ["route:GET /__hui/github/previews"],
     journeys: ["github-embeds"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-030",
@@ -270,7 +299,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#github-link-previews", "docs/api.md#get-__huigithubpreviews"],
     surfaces: ["route:GET /__hui/github/previews"],
     journeys: ["github-embeds"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-031",
@@ -279,7 +309,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#github-link-previews"],
     surfaces: ["route:GET /__hui/github/previews"],
     journeys: ["github-embeds"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-032",
@@ -289,6 +320,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/github/previews"],
     journeys: ["github-embeds"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "RICH-033",
@@ -297,7 +329,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huigithubpreviews"],
     surfaces: ["route:GET /__hui/github/previews"],
     journeys: ["github-embeds"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-035",
@@ -307,6 +340,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/github/previews", "route:GET /__hui/datadog/previews"],
     journeys: ["github-embeds"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "RICH-036",
@@ -316,6 +350,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/datadog/previews"],
     journeys: ["datadog-embeds"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "RICH-037",
@@ -324,7 +359,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#datadog-link-previews", "docs/api.md#get-__huidatadogpreviews"],
     surfaces: ["route:GET /__hui/datadog/previews"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-038",
@@ -333,7 +369,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#datadog-link-previews", "docs/api.md#get-__huidatadogpreviews"],
     surfaces: ["route:GET /__hui/datadog/previews"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-039",
@@ -342,7 +379,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#datadog-link-previews", "docs/api.md#post-__huidatadoglogin"],
     surfaces: ["route:GET /__hui/datadog/previews", "route:POST /__hui/datadog/login", "route:GET /__hui/datadog"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-040",
@@ -352,6 +390,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/datadog/previews"],
     journeys: ["datadog-embeds"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "RICH-043",
@@ -360,7 +399,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#datadog-orgs", KEYBOARD_ONLY],
     surfaces: ["settings-page:integrations"],
     journeys: ["datadog-embeds"],
-    web: "backlog",
+    web: "required",
+    phone: { excluded: "Escape needs a hardware keyboard; the dialog's Cancel button closes it (SET-026).", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "RICH-050",
@@ -369,7 +409,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#pi-package-and-skill-mutations", "docs/api.md#get-__huipiresourceskindid"],
     surfaces: ["route:GET /__hui/pi/resources/:kind/:id"],
     journeys: ["resource-reader"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "RICH-051",
@@ -379,6 +420,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:show_widget", "route:GET /__hui/widget-sandbox"],
     journeys: ["widgets"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "RICH-052",
@@ -387,7 +429,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "docs/api.md#frame-protocol"],
     surfaces: ["tool:show_widget", "route:GET /__hui/widget-sandbox"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-053",
@@ -396,7 +439,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "docs/api.md#frame-protocol"],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "RICH-054",
@@ -405,7 +449,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "docs/api.md#frame-protocol"],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-055",
@@ -414,7 +459,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", KEYBOARD_ONLY],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
+    phone: { excluded: "Escape needs a hardware keyboard; Exit full screen does the same (RICH-054).", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "RICH-056",
@@ -423,7 +469,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets-run-in-an-opaque-origin-sandbox", "docs/api.md#gethead-__huiwidget-sandbox"],
     surfaces: ["tool:show_widget", "route:GET /__hui/widget-sandbox"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "RICH-057",
@@ -432,7 +479,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "SPEC.md#agent-widgets-run-in-an-opaque-origin-sandbox", "docs/api.md#frame-protocol"],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-058",
@@ -441,7 +489,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "docs/api.md#frame-protocol"],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-059",
@@ -450,7 +499,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "docs/api.md#agent-widgets"],
     surfaces: ["tool:show_widget"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "RICH-060",
@@ -459,7 +509,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agent-widgets", "SPEC.md#agent-widgets-run-in-an-opaque-origin-sandbox", "docs/api.md#agent-widgets"],
     surfaces: ["tool:show_widget", "route:GET /__hui/widget-sandbox"],
     journeys: ["widgets"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
 ];
 

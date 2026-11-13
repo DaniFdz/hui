@@ -221,6 +221,10 @@ test("subagents stay folded until opened, except the path to a selected subagent
   assert.deepEqual(ids("other", ["parent"]), ["parent", "child", "other"]);
   assert.deepEqual(sessionTreeRows(source, { selectedId: "other", toggled: new Set() }).map(({ collapsed }) => collapsed), [true, false]);
   assert.equal(sessionTreeRows(source).length, 4);
+  // Opening the parent itself is not an opening of its subagents: only a disclosure unfolds that tree.
+  assert.deepEqual(sessionTreeRows(source, { selectedId: "parent", toggled: new Set() }).map(({ session, collapsed }) => [session.id, collapsed]), [["parent", true], ["other", false]]);
+  // And a tree the selection unfolded folds again once another session opens.
+  assert.deepEqual(ids("other"), ["parent", "other"], "nothing is left unfolded");
 });
 
 test("folding remains safe with missing parents, self-links and cycles", () => {

@@ -4,6 +4,8 @@ import { test } from "../../fixtures/hui.ts";
 
 test("a successful session action clears its toast and a failed copy waits for Dismiss", { tags: ["SHELL-028"], platforms: ["web"] }, async ({ screen, hui }) => {
   const copy = async (title: string, choice: string) => {
+    // The row lies in the sidebar, which a phone keeps in its drawer while a chat is open.
+    await hui.sessionList();
     const menu = await hui.sessionMenu(title);
     await menu.getByText("Copy", { exact: true, visible: true }).tap();
     await menu.getByText(choice, { exact: true, visible: true }).tap();

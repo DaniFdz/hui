@@ -4,6 +4,7 @@ import { test, vi } from "vitest";
 import {
   type DrawerMediaQuery,
   APP_SHELL_DRAWER_MEDIA,
+  closeNavigationDrawerOnBack,
   filterSessionGroups,
   isSessionGroupCollapsed,
   PRIMARY_NAV,
@@ -732,6 +733,34 @@ test("navigation drawer makes main inert and clears it before returning focus", 
   assert.deepEqual(sequence, ["set-inert", "clear-inert", "focus-trigger"]);
 });
 
+test("a back press closes the narrow drawer and leaves a wide sidebar alone", () => {
+  const narrow = controlledMedia(true);
+  vi.stubGlobal("matchMedia", () => narrow.media);
+  const attributes = new Map<string, string>();
+  let focused = 0;
+  const trigger = { setAttribute: (name: string, value: string) => attributes.set(name, value), focus: () => { focused += 1; } };
+  const sidebar = {
+    dataset: {} as DOMStringMap,
+    querySelector: () => trigger,
+  } as unknown as HTMLElement;
+  const root = { querySelector: (selector: string) => (selector === '.sidebar[data-open="true"]' && sidebar.dataset.open === "true" ? sidebar : null) } as unknown as ParentNode;
+
+  assert.equal(closeNavigationDrawerOnBack(root), false, "nothing is open: the press falls through to the next thing");
+
+  sidebar.dataset.open = "true";
+  assert.equal(closeNavigationDrawerOnBack(root), true);
+  assert.equal(sidebar.dataset.open, "false", "the drawer is closed, the way Escape closes it");
+  assert.equal(attributes.get("aria-expanded"), "false");
+  assert.equal(focused, 1, "focus goes back to the toggle that opened it");
+
+  // A wide layout keeps its sidebar: there is no drawer to close, so back belongs to something else.
+  sidebar.dataset.open = "true";
+  const wide = controlledMedia(false);
+  vi.stubGlobal("matchMedia", () => wide.media);
+  assert.equal(closeNavigationDrawerOnBack(root), false);
+  assert.equal(sidebar.dataset.open, "true");
+});
+
 test("settings drawer makes its workspace inert and clears it before returning focus", () => {
   const attributes = new Map<string, string>();
   const sequence: string[] = [];
@@ -930,6 +959,41 @@ test("the session list draws placeholder rows until its first read answers", () 
   assert.equal(loading.split('class="sidebar-placeholder__row"').length - 1, 6, "the placeholder keeps the list's shape");
   assert.doesNotMatch(loading, /sidebar-list__note/u, "no loading note stands beside the placeholder");
   assert.doesNotMatch(sidebar(2), /sidebar-placeholder/u, "rows replace the placeholder");
+});
+
+test("a parent opened on its own keeps its subagents folded until its disclosure opens the tree", () => {
+  const tree = (selectedId: string, toggled: string[] = []): string => markup(renderSidebar({
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined,
+    selectedSessionId: selectedId, splitSessionId: "",
+    groups: [{ label: "Work", sessions: [session("parent", "Parent task", "Work"), session("child", "Child task", "Work", { parentId: "parent" }) ] }],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(toggled), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "",
+    groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
+    groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
+  } as unknown as Parameters<typeof renderSidebar>[0]));
+
+  // The open parent shows no subagent row: its disclosure is the only thing that opens the tree.
+  const parentOpen = tree("parent");
+  assert.match(parentOpen, /aria-current=true/u, "the parent is the open chat");
+  assert.match(parentOpen, /class="session-tree-toggle"\s+aria-label=Expand subagents of Parent task\s+aria-expanded=false\s+@click=/u);
+  assert.doesNotMatch(parentOpen, /Child task/u, "opening the parent is not an opening of its subagents");
+
+  // Its own choice opens the whole subtree, and the button now offers to fold it again.
+  const unfolded = tree("parent", ["parent"]);
+  assert.match(unfolded, /aria-label=Collapse subagents of Parent task\s+aria-expanded=true/u);
+  assert.match(unfolded, />Child task</u);
+
+  // Loading or opening the subagent itself shows the path down to it.
+  const childOpen = tree("child");
+  assert.match(childOpen, /aria-current=true[^]{0,120}Child task/u, "the subagent is the open chat");
+  assert.match(childOpen, /aria-label=Collapse subagents of Parent task\s+aria-expanded=true/u);
+  assert.match(childOpen, />Child task</u);
+  // A row without children has no disclosure to offer.
+  const childRow = childOpen.slice(childOpen.indexOf("data-session-id=child"));
+  assert.ok(childRow.length < childOpen.length, "the subagent's own row is drawn");
+  assert.doesNotMatch(childRow, /session-tree-toggle/u);
 });
 
 test("a right click on a session row asks for the actions menu its button opens", () => {

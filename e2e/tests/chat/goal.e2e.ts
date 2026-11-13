@@ -15,20 +15,21 @@ test("a goal starts from /goal, continues by itself, and pauses and clears from 
   await send.tap();
   await expect(transcript.getByText("E2E_REPLAY get CI green on PR 1")).toBeVisible();
   await expect(screen.getByText("Pursuing goal", { exact: true })).toBeVisible();
+  const goalDetail = screen.getByTestId("goal-detail");
+  const status = screen.getByText("Goal paused", { exact: true });
+  // The pill opens in place. A phone folds the pill's command actions away until it is open, so the operator opens the
+  // pill before pausing; the wide pill draws them on its row and the same tap opens the detail below.
+  await expect(goalDetail).toBeHidden();
+  await screen.getByRole("button", "Expand goal").tap();
   await expect(screen.getByRole("button", "Pause goal")).toBeEnabled();
   await screen.getByRole("button", "Pause goal").tap();
   await hui.provider.release();
-  await expect(screen.getByText("Goal paused", { exact: true })).toBeVisible();
+  await expect(status).toBeVisible();
   await expect(screen.getByRole("button", "Resume goal")).toBeVisible();
   // A paused goal is not pursued: no continuation turn is queued behind the paused run.
   await expect(transcript.getByText("Continue the goal", { exact: false })).toBeHidden();
 
-  // The pill expands in place: the operator reads the whole objective there and retypes it.
-  const goalDetail = screen.getByTestId("goal-detail");
-  const status = screen.getByText("Goal paused", { exact: true });
-  await expect(goalDetail).toBeHidden();
-  await screen.getByRole("button", "Expand goal").tap();
-  await expect(goalDetail).toContainText("E2E_REPLAY get CI green on PR 1");
+  // The pill folds and opens again from its status, where the operator reads the whole objective and retypes it.
   await status.tap();
   await expect(goalDetail).toBeHidden();
   await status.tap();
@@ -40,6 +41,8 @@ test("a goal starts from /goal, continues by itself, and pauses and clears from 
   await expect(screen.getByText("Pursuing goal", { exact: true })).toBeVisible();
   await expect(transcript.getByText("and the nightly job", { exact: false })).toBeVisible();
 
+  // Clear sits with the pill's other commands, which a phone draws once the pill is open again.
+  await screen.getByRole("button", "Expand goal").tap();
   await screen.getByRole("button", "Clear goal").tap();
   await expect(screen.getByText("Goal paused", { exact: true })).toBeHidden();
 

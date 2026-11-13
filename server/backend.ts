@@ -3,6 +3,7 @@
  * subagents, triggers), the Durable store-failure hook, and the ordered shutdown that releases the store.
  */
 import { workers } from "./workers.ts";
+import type { Clock } from "./automation.ts";
 import { readHuiSettings } from "./hui-settings.ts";
 import { liveSessions, retryableRunFailure } from "./sessions/live-sessions.ts";
 import { mirrorDiagnosticLogs, recordDiagnosticEvent } from "./observability.ts";
@@ -14,6 +15,7 @@ import { HEARTBEAT_INTERVAL_MS, removeLegacyHeartbeatRoutines } from "./heartbea
 import { readRegistry, type SessionRecord } from "./sessions/sessions.ts";
 import {
   automation,
+  automationClockBinding,
   botRegistry,
   bots,
   datadogOrgs,
@@ -65,7 +67,10 @@ function initializeWatchers(): void {
     });
 }
 
-export async function startBackend(): Promise<void> {
+export type BackendOptions = { automationClock?: Clock };
+
+export async function startBackend(options: BackendOptions = {}): Promise<void> {
+  automationClockBinding.bind(options.automationClock);
   // Warnings, errors and lifecycle events also go to stderr: the managed
   // gateway appends it to gateway.log and a development server prints it.
   mirrorDiagnosticLogs((line) => process.stderr.write(line));
@@ -247,6 +252,7 @@ export async function stopBackend(): Promise<void> {
     // Before the sessions close: a delivery still going out reaches its bot, and every trigger write has settled.
     await triggers.stop();
     automation.dispose();
+    automationClockBinding.reset();
     subagents.dispose();
     await watchers.dispose();
     secretRequests.dispose();

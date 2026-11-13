@@ -9,11 +9,12 @@ const cases: UseCase[] = [
   {
     id: "CALL-001",
     title: "See Call when a ChatGPT login exists",
-    behaviour: "With a ChatGPT login, a bot's chat header and its overview profile show a button labelled `Call <bot>`. Without a login, or when the login status cannot be read, neither shows Call, and the bot's Settings tab says *Needs a ChatGPT login* beside its Calls heading.",
+    behaviour: "With a ChatGPT login, a bot's chat header and its overview profile show a button labelled `Call <bot>`. Without a login neither shows Call, and the bot's Settings tab says *Needs a ChatGPT login* beside its Calls heading; a login status that could not be read also leaves Call out, and the note stays away rather than claim a login is missing.",
     spec: ["SPEC.md#bots", GPT_LIVE_ONLY, "docs/api.md#get-__huicalls"],
     surfaces: ["route:GET /__hui/calls"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CALL-002",
@@ -21,7 +22,8 @@ const cases: UseCase[] = [
     behaviour: "Call opens the call view over the bot's chat in the bot's color: *Voice call*, a running timer, the bot's face and name, the status *Connecting…* then *Listening*, and the controls Mute, Speaker and Hang up with the focus on Hang up. The bot greets the caller briefly once connected, and the privacy line says the call runs through GPT-Live on the ChatGPT account, names the voice and says HUI stores no audio.",
     spec: ["SPEC.md#bots", CALLS, "docs/api.md#post-__huibotsidcalls"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CALL-003",
@@ -29,7 +31,8 @@ const cases: UseCase[] = [
     behaviour: "Starting a call asks for the microphone; once allowed, the call connects. The microphone is open only while the call runs and is released when the call ends, so the system's microphone indicator goes off after hanging up.",
     spec: ["SPEC.md#bots", CALLS],
     surfaces: [],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CALL-004",
@@ -37,7 +40,8 @@ const cases: UseCase[] = [
     behaviour: "When the microphone is refused the call view shows *Call failed* and the alert *Microphone access was denied. Allow it for this site in the browser's settings, then try again.*; a missing or busy microphone gets its own message (*No microphone was found…*, *The microphone is busy or unavailable…*), as does a page that cannot have one (plain HTTP away from this machine, or HUI's desktop app). **Back to the chat** closes the view and nothing is left in the chat.",
     spec: ["SPEC.md#bots", CALLS],
     surfaces: [],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CALL-005",
@@ -46,6 +50,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-have-animated-faces-2026-10-06", API],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-006",
@@ -53,7 +58,8 @@ const cases: UseCase[] = [
     behaviour: "**Mute** turns pressed and reads *Muted*, the status reads *Microphone muted* and the bot hears nothing; pressing it again reads *Mute* and the bot hears the caller again. The minimized bar's microphone button mutes and unmutes the same way.",
     spec: ["SPEC.md#bots", CALLS],
     surfaces: [],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CALL-007",
@@ -61,7 +67,8 @@ const cases: UseCase[] = [
     behaviour: "**Speaker** turns pressed and reads *Speaker off*, and the bot's voice stops playing while the call goes on; pressing it again reads *Speaker* and the voice plays again.",
     spec: ["SPEC.md#bots"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CALL-008",
@@ -70,6 +77,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", CALLS, "docs/api.md#delete-__huibotsidcallscallid"],
     surfaces: ["route:DELETE /__hui/bots/:id/calls/:callId"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-009",
@@ -77,7 +85,8 @@ const cases: UseCase[] = [
     behaviour: "**Minimize the call** shrinks the call to a bar above the chat with the bot's face, name, status, timer, a microphone button and Hang up; the chat underneath is usable. The bar's `Return to the call with <bot>`, or the header's button of the same name, opens the call view again with the call still running.",
     spec: ["SPEC.md#bots"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CALL-010",
@@ -85,7 +94,8 @@ const cases: UseCase[] = [
     behaviour: "Pressing Escape in the call view minimizes the call to its bar, as **Minimize the call** does; a failed call does not minimize.",
     spec: ["SPEC.md#bots"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
+    phone: { excluded: "Escape is a keyboard-only affordance; Minimize the call is its visible control (CALL-009).", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CALL-011",
@@ -93,7 +103,8 @@ const cases: UseCase[] = [
     behaviour: "Leaving the bot's chat for another session, another bot or Settings keeps the call running in a bar above that page's content, never over it. Its `Return to the call with <bot>` goes back to the bot's chat with the call view open.",
     spec: ["SPEC.md#bots"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CALL-012",
@@ -101,7 +112,8 @@ const cases: UseCase[] = [
     behaviour: "During a call with one bot, Call on another bot shows the error toast *Hang up the call with <bot> first.* and the first call goes on. When the gateway already holds two calls (from other tabs or devices), a new call fails with *2 calls are already running. Hang up before starting another.*",
     spec: ["SPEC.md#bots", "docs/api.md#post-__huibotsidcalls"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CALL-013",
@@ -109,7 +121,8 @@ const cases: UseCase[] = [
     behaviour: "When the call cannot start (the ChatGPT login is gone or every account waits for its quota, ChatGPT refuses the account or the voice, the voice limit is reached, or ChatGPT cannot be reached) the call view shows *Call failed* with the gateway's message saying what to do, such as signing in again under Settings → Models. **Back to the chat** returns to the chat and no call card is added.",
     spec: [CALLS, "docs/api.md#post-__huibotsidcalls"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CALL-014",
@@ -118,6 +131,7 @@ const cases: UseCase[] = [
     spec: [CALLS, API, "docs/api.md#post-__huibotsidcallscallidheartbeat"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/heartbeat"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-015",
@@ -126,6 +140,7 @@ const cases: UseCase[] = [
     spec: [CALLS, API],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-016",
@@ -134,6 +149,7 @@ const cases: UseCase[] = [
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscalliddelegations"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/delegations"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-017",
@@ -142,6 +158,7 @@ const cases: UseCase[] = [
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscalliddelegations", "docs/api.md#post-__huibotsidcallscallidtaskstask"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/delegations", "route:POST /__hui/bots/:id/calls/:callId/tasks/:task"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-018",
@@ -150,6 +167,7 @@ const cases: UseCase[] = [
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscalliddelegations"],
     surfaces: ["route:POST /__hui/bots/:id/calls/:callId/delegations"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-019",
@@ -158,6 +176,7 @@ const cases: UseCase[] = [
     spec: [CALLS, API, "docs/api.md#post-__huibotsidcallscallidlines"],
     surfaces: ["row:call", "route:POST /__hui/bots/:id/calls/:callId/lines", "item:call"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-020",
@@ -166,6 +185,7 @@ const cases: UseCase[] = [
     spec: [CALLS, API],
     surfaces: ["row:call"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-021",
@@ -174,6 +194,7 @@ const cases: UseCase[] = [
     spec: [API],
     surfaces: ["row:call"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-022",
@@ -182,6 +203,7 @@ const cases: UseCase[] = [
     spec: [CALLS, "docs/api.md#post-__huibotsidcallscallidheartbeat", "docs/api.md#delete-__huibotsidcallscallid"],
     surfaces: ["route:DELETE /__hui/bots/:id/calls/:callId", "route:POST /__hui/bots/:id/calls/:callId/heartbeat"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-023",
@@ -190,6 +212,7 @@ const cases: UseCase[] = [
     spec: [CALLS, API],
     surfaces: [],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-026",
@@ -198,16 +221,18 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", CALLS, API],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bots", "bot-setup"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CALL-027",
     title: "Choose the language a bot speaks on calls",
-    behaviour: "Calls → *Language* offers *Auto (detect)* and Whisper's languages, searchable by name or code under *Search languages*; a choice saves at once and persists. On the next call the bot speaks that language and the call's summary is written in it; Auto answers in the language the caller speaks, and nothing is translated.",
+    behaviour: "Calls → *Language* offers *Auto (detect)* and Whisper's languages, searchable by name or code under *Search languages*; the search and results stay inside the visible viewport while a phone's keyboard is open. A choice saves at once and persists. On the next call the bot speaks that language and the call's summary is written in it; Auto answers in the language the caller speaks, and nothing is translated.",
     spec: ["SPEC.md#bots", API],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CALL-028",
@@ -216,7 +241,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CALL-029",
@@ -225,6 +251,7 @@ const cases: UseCase[] = [
     spec: [CALLS, "docs/api.md#post-__huibotsidcalls"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "CALL-030",
@@ -233,6 +260,7 @@ const cases: UseCase[] = [
     spec: [CALLS, "SPEC.md#calls-talk-through-gpt-live-opendots-style-2026-10-06"],
     surfaces: ["route:POST /__hui/bots/:id/calls"],
     web: "backlog",
+    phone: "backlog",
   },
 ];
 

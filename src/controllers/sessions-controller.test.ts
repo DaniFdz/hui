@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import type { SessionGroup, SessionStatusUpdate, SessionView } from "../api/sessions.ts";
 import { GatewayHttpError } from "../api/request.ts";
+import { nativeShell } from "../lib/native-shell.ts";
 import type { WorktreeInventory } from "../lib/worktrees.ts";
 import { SessionsController } from "./sessions-controller.ts";
 
@@ -11,6 +12,8 @@ type Handlers = {
   onSessions: (update: { revision: number; groups?: { label: string; ids: string[] }[]; upserts: SessionView[] }) => void;
   heldRevision: () => number;
 };
+/** A call the page made on a plugin of the fake phone bridge. */
+type Call = { plugin: string; method: string; options: unknown };
 const fake = vi.hoisted(() => ({
   streams: [] as { handlers: Handlers; stopped: boolean }[],
   list: { revision: 0, groups: [] as SessionGroup[] },
@@ -141,6 +144,119 @@ test("a success toast clears after 6 s, while failures and progress stay", () =>
   sessions.notify("Moving repo…");
   vi.advanceTimersByTime(6_000);
   assert.deepEqual(sessions.actionToast, { message: "Moving repo…", failed: false });
+});
+
+/** A page inside the phone shell: the bridge's plugins record what the web asks them, the shell's own activity signal
+ * flips between the foreground and the background, and so does the page's visibility. */
+function phoneShell(): {
+  calls: Call[];
+  schedules: () => number;
+  appState: (data: unknown) => void;
+  visibility: (state: "visible" | "hidden") => void;
+} {
+  const calls: Call[] = [];
+  const appListeners: Array<(data: unknown) => void> = [];
+  const plugin = (name: string) => ({
+    addListener: (event: string, listener: (data: unknown) => void) => {
+      if (name === "App" && event === "appStateChange") appListeners.push(listener);
+      return Promise.resolve({ remove: async () => undefined });
+    },
+    schedule: (options: unknown) => {
+      calls.push({ plugin: name, method: "schedule", options });
+      return Promise.resolve();
+    },
+  });
+  const page = Object.assign(new EventTarget(), {
+    Capacitor: {
+      isNativePlatform: () => true,
+      getPlatform: () => "android",
+      Plugins: { App: plugin("App"), LocalNotifications: plugin("LocalNotifications") },
+    },
+    location: { pathname: "/", search: "" },
+    history: { pushState: () => undefined },
+  });
+  const pageDocument = Object.assign(new EventTarget(), { visibilityState: "visible" });
+  vi.stubGlobal("window", page);
+  vi.stubGlobal("document", pageDocument);
+  return {
+    calls,
+    schedules: () => calls.filter((call) => call.method === "schedule").length,
+    appState: (data) => {
+      for (const listener of [...appListeners]) listener(data);
+    },
+    visibility: (state) => {
+      pageDocument.visibilityState = state;
+      pageDocument.dispatchEvent(new Event("visibilitychange"));
+    },
+  };
+}
+
+test("a backgrounded phone hears about a session that starts waiting or settles", async () => {
+  const phone = phoneShell();
+  const { sessions } = controller();
+  sessions.start();
+  fake.list = { revision: 1, groups: [group(session("a", { title: "Fix the drawer" }))] };
+  await sessions.refresh();
+  const { handlers } = fake.streams[0]!;
+  handlers.onSnapshot([{ id: "a", status: "running" }]);
+
+  handlers.onStatus({ id: "a", status: "waiting" });
+  assert.equal(phone.schedules(), 0, "a visible page already shows the question");
+
+  // The shell only follows the page's visibility once it exists, so prove it does before the page goes away.
+  assert.equal(nativeShell()?.platform, "android");
+  phone.visibility("hidden");
+  handlers.onStatus({ id: "a", status: "waiting" });
+  assert.equal(phone.schedules(), 0, "the status it already had is not news");
+  handlers.onStatus({ id: "a", status: "running" });
+  handlers.onStatus({ id: "a", status: "waiting" });
+  assert.equal(phone.schedules(), 1, "a question waiting while the page is away posts exactly one notification");
+  const posted = phone.calls[0]!.options as { notifications: Array<{ id: number; title: string; body: string; extra: { path: string } }> };
+  const slot = posted.notifications[0]!.id;
+  assert.deepEqual(posted.notifications, [{ id: slot, title: "Fix the drawer", body: "Waiting for your answer", extra: { path: "/sessions/a" }, isExactNotification: false }]);
+  assert.ok(Number.isInteger(slot) && slot > 0, "the shell wants a 32-bit id");
+
+  handlers.onStatus({ id: "a", status: "idle" });
+  assert.equal(phone.schedules(), 2);
+  assert.deepEqual((phone.calls[1]!.options as { notifications: unknown[] }).notifications, [{
+    id: slot,
+    title: "Fix the drawer",
+    body: "Its turn finished",
+    extra: { path: "/sessions/a" },
+    isExactNotification: false,
+  }], "a settled turn replaces the session's own notification");
+
+  // Two sessions never share a slot, however alike their ids look to a hash.
+  fake.list = { revision: 2, groups: [group(session("a", { title: "Fix the drawer" }), session("b", { title: "Run the suite" }))] };
+  await sessions.refresh();
+  const next = fake.streams[0]!.handlers;
+  next.onSnapshot([{ id: "a", status: "running" }, { id: "b", status: "running" }]);
+  next.onStatus({ id: "b", status: "waiting" });
+  assert.equal(phone.schedules(), 3);
+  const other = (phone.calls[2]!.options as { notifications: Array<{ id: number }> }).notifications[0]!.id;
+  assert.notEqual(other, slot, "each session announces itself in a slot of its own");
+});
+
+test("a subagent's own turn is its parent's news, not a notification", async () => {
+  const phone = phoneShell();
+  const { sessions } = controller();
+  sessions.start();
+  fake.list = { revision: 1, groups: [group(session("child", { parentId: "parent", status: "running" }))] };
+  await sessions.refresh();
+  assert.equal(nativeShell()?.platform, "android");
+  phone.visibility("hidden");
+  fake.streams[0]!.handlers.onStatus({ id: "child", status: "waiting" });
+  assert.deepEqual(phone.calls, []);
+});
+
+test("in a browser no status posts a notification", async () => {
+  const { sessions } = controller();
+  sessions.start();
+  fake.list = { revision: 1, groups: [group(session("a", { status: "running" }))] };
+  await sessions.refresh();
+  fake.streams[0]!.handlers.onStatus({ id: "a", status: "waiting" });
+  assert.equal(nativeShell(), null, "a browser has no shell to tell");
+  assert.equal(sessions.listed("a")?.status, "waiting", "the status still lands; only the notification is the shell's");
 });
 
 test("an archive toast dismisses itself after 15 s", () => {

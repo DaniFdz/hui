@@ -1,0 +1,117 @@
+name: iOS
+# The iOS half of the phone shell has no local loop on Linux, so this job is the whole proof: it builds for the simulator,
+# boots one, launches the app on a fixture gateway and captures the screen. Spike S3 measured the runner
+# (macos-26-arm64, Xcode 26.6, iOS 26.x runtimes only), the build (44-64 s), the boot (92-120 s) and a 6m15s job. It has
+# its own workflow so a Linux-only change under mobile/ never spends macOS minutes (the plan, section 7).
+on:
+  pull_request:
+    paths:
+      - "mobile/ios/**"
+      - "mobile/connect/**"
+      - "capacitor.config.ts"
+      - "src/lib/native-shell.ts"
+      - "src/lib/native-shell-boot.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/ios-smoke.swift"
+      - "scripts/ios-smoke.test.mjs"
+      - ".github/workflows/ios.yml"
+  push:
+    branches: [main, "mobile/**"]
+    paths:
+      - "mobile/ios/**"
+      - "mobile/connect/**"
+      - "capacitor.config.ts"
+      - "src/lib/native-shell.ts"
+      - "src/lib/native-shell-boot.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/ios-smoke.swift"
+      - "scripts/ios-smoke.test.mjs"
+      - ".github/workflows/ios.yml"
+permissions:
+  contents: read
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ios-smoke:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
+      - run: npm run mobile:build
+      - run: npx cap sync ios
+      # Boot while the build runs: the boot is longer than the build, so it must not queue behind it.
+      - name: Boot a simulator in the background
+        run: |
+          set -euo pipefail
+          device=$(xcrun simctl list devices available | grep -E "iPhone [0-9]+" | head -1 | sed -E 's/^ +//; s/ \(.*//')
+          runtime=$(xcrun simctl list runtimes | grep -E "iOS [0-9]+" | tail -1 | sed -E 's/.*iOS ([0-9]+)\..*/iOS \1/')
+          udid=$(xcrun simctl list devices available | grep -F "$device (" | head -1 | grep -oE '[0-9A-F-]{36}')
+          echo "device=$device udid=$udid runtime=$runtime"
+          echo "HUI_IOS_UDID=$udid" >> "$GITHUB_ENV"
+          (xcrun simctl boot "$udid" || true)
+          (xcrun simctl bootstatus "$udid" -b > "$RUNNER_TEMP/boot.log" 2>&1 &)
+      - name: Build for the simulator
+        run: |
+          set -euo pipefail
+          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/iosbuild" CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/xcodebuild.log" | tail -20
+      - name: Compile and self-test the rendered-readiness oracle
+        run: |
+          set -euo pipefail
+          xcrun swiftc scripts/ios-smoke.swift -o "$RUNNER_TEMP/ios-smoke"
+          "$RUNNER_TEMP/ios-smoke" self-test
+      - name: Launch it against a fixture gateway and capture the ready screens
+        run: |
+          set -euo pipefail
+          # A CI checkout is detached, so the launcher is told HEAD: it records the exact commit instead of a branch name.
+          node e2e/visual-verification.mjs launch --branch HEAD --port 47500 \
+            --receipt-dir "$RUNNER_TEMP/receipt" --fast-fixture > "$RUNNER_TEMP/gateway.log" 2>&1 &
+          for _ in $(seq 1 90); do [ -f "$RUNNER_TEMP/receipt/receipt-47500.json" ] && break; sleep 2; done
+          receipt="$RUNNER_TEMP/receipt/receipt-47500.json"
+          workspace=$(RECEIPT="$receipt" node -e 'console.log(require(process.env.RECEIPT).workspace)')
+          seed() {
+            curl -fsS -X POST -H 'x-hui: 1' -H 'content-type: application/json' \
+              -d "{\"cwd\":\"$workspace\",\"title\":\"$1\",\"group\":\"Work\"}" http://127.0.0.1:47500/__hui/sessions > /dev/null
+          }
+          seed "Fix the flaky upload test"
+          seed "Plan the Android app"
+          xcrun simctl bootstatus "$HUI_IOS_UDID" -b
+          app=$(find "$RUNNER_TEMP/iosbuild/Build/Products" -name "App.app" -maxdepth 3 | head -1)
+          echo "app=$app"
+          xcrun simctl install "$HUI_IOS_UDID" "$app"
+          mkdir -p "$RUNNER_TEMP/shots"
+          # Prepare the cold native capture/Vision path before launch; its warm-up frame is never app proof.
+          "$RUNNER_TEMP/ios-smoke" warm-up "$HUI_IOS_UDID" "$RUNNER_TEMP/shots"
+          # Connect to HUI first: a launch with no gateway argument and no remembered one.
+          xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app
+          # Observe fresh frames under ONE 90 s infrastructure bound for capture admission AND completed OCR.
+          # A blank first frame cannot pass; keep observing until both required phrases appear before that bound.
+          # This is NOT a UI render-latency SLA. Every actual frame/OCR/timing is retained, including failures.
+          "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" connect
+          xcrun simctl terminate "$HUI_IOS_UDID" dev.hui.app || true
+          xcrun simctl launch "$HUI_IOS_UDID" dev.hui.app -HUIGatewayURL http://127.0.0.1:47500
+          # Both seeded titles must render in the same fresh frame; clocks, splash and errors cannot pass.
+          # The same single 90 s whole-phase infrastructure ceiling applies, not a UI render-latency SLA.
+          # This is boot visual proof only: a startup permission modal may remain; no taps are proved here.
+          "$RUNNER_TEMP/ios-smoke" wait "$HUI_IOS_UDID" "$RUNNER_TEMP/shots" gateway
+          ls -la "$RUNNER_TEMP/shots"
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-smoke
+          path: |
+            ${{ runner.temp }}/shots/
+            ${{ runner.temp }}/xcodebuild.log
+            ${{ runner.temp }}/gateway.log
+            ${{ runner.temp }}/boot.log
+          if-no-files-found: warn

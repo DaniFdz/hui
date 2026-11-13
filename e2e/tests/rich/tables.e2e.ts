@@ -53,7 +53,10 @@ test("On a phone a table that fits stays inside the content, and a wider one scr
   const fitting = await edges(usage);
   expect(fitting.left).toBeGreaterThanOrEqual(content.left);
   expect(fitting.right).toBeLessThanOrEqual(Math.min(content.right, phone.width));
-  expect((await edges(usage.getByText("Times", { exact: true }))).right).toBeLessThanOrEqual(fitting.right);
+  // Check the actual last-column cells, not only the clipping scroll viewport.
+  for (const cell of [usage.getByText("Times", { exact: true }), usage.getByText("5", { exact: true })]) {
+    expect((await edges(cell)).right).toBeLessThanOrEqual(fitting.right);
+  }
 
   const region = await edges(wide);
   expect(region.right).toBeLessThanOrEqual(phone.width);

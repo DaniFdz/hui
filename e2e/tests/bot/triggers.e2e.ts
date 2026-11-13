@@ -1,6 +1,7 @@
 /** A trigger steers a bot's running turn by default, and two events join it together (BOT-069). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { panelOverview } from "./bot-panel.ts";
 
 test("a trigger steers a bot's running turn by default, and two events join it together", { tags: ["BOT-069"], platforms: ["web"] }, async ({ screen, hui }) => {
   const { bot } = await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Ada", soul: "# Who I am\nA fixture bot that reviews pull requests." });
@@ -29,6 +30,7 @@ test("a trigger steers a bot's running turn by default, and two events join it t
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
 
   // The add form steers unless the operator clears the box.
+  await panelOverview(screen, "Ada");
   await screen.getByRole("button", "Add trigger").tap();
   await expect(screen.getByLabel("Steer the current turn with summaries and PR links only")).toBeChecked();
 });

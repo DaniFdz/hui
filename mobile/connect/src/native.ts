@@ -1,0 +1,54 @@
+/**
+ * The native half of the Connect page: the reachability probe and the calls into the app's own `HuiGateway` plugin.
+ * It is the only module here that touches `@capacitor/core`, so the page's checks stay testable without a bridge.
+ */
+import { Capacitor, CapacitorHttp, registerPlugin } from "@capacitor/core";
+
+/** The Android and iOS side of the Connect page (see mobile/AGENTS.md, "The Connect handoff"). */
+interface HuiGatewayPlugin {
+  /** Remember a gateway and rebuild the app's bridge on it. */
+  connect(options: { url: string }): Promise<{ url: string }>;
+  /** Forget the remembered gateway and come back to this page. */
+  forget(): Promise<{ gateway: string | null }>;
+  /** What this launch knows: the remembered gateway and the one that just failed to answer, if any. */
+  getState(): Promise<{ gateway: string | null; failed: string | null }>;
+}
+
+const huiGateway = registerPlugin<HuiGatewayPlugin>("HuiGateway");
+
+/** Whether the page runs inside the app's WebView rather than a plain browser. */
+export function isNative(): boolean {
+  return Capacitor.isNativePlatform();
+}
+
+/** What the shell remembers about this launch. A browser knows nothing. */
+export async function shellState(): Promise<{ gateway: string | null; failed: string | null }> {
+  if (!isNative()) return { gateway: null, failed: null };
+  return huiGateway.getState();
+}
+
+/**
+ * Ask a gateway for its update snapshot. On a device this goes through Capacitor's native HTTP: a cross-origin
+ * `fetch` from the Connect page (origin `https://localhost`) preflights, and the gateway refuses cross-origin
+ * requests, so the probe would report every gateway as refused. A plain browser has only `fetch`.
+ */
+export async function probeGateway(base: string): Promise<{ status: number; body: unknown }> {
+  const url = `${base}/__hui/update`;
+  const headers = { "x-hui": "1" };
+  if (isNative()) {
+    const response = await CapacitorHttp.get({ url, headers, connectTimeout: 5000, readTimeout: 5000, responseType: "json" });
+    return { status: response.status, body: response.data };
+  }
+  const response = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
+  return { status: response.status, body: await response.json().catch(() => null) };
+}
+
+/** Hand the chosen address to the app, which remembers it and reloads on it. */
+export async function connectGateway(base: string): Promise<void> {
+  await huiGateway.connect({ url: base });
+}
+
+/** Forget the remembered gateway and come back to a clean Connect page. */
+export async function forgetGateway(): Promise<void> {
+  await huiGateway.forget();
+}

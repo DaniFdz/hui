@@ -5,7 +5,7 @@
  * mounted but hidden, in a stable DOM order, so terminals and frames keep their state. The state and its transitions
  * belong to the caller (`lib/work-pane.ts`, applied by hui-app); each view belongs to its kind.
  */
-import { html, nothing, svg } from "lit";
+import { html, nothing, svg, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { HuiElement } from "../lit/hui-element.ts";
@@ -88,12 +88,16 @@ export class WorkPane extends HuiElement {
   private drag: { startX: number; startWidth: number; width: number } | undefined;
   private draggingKey = "";
 
-  /** Unsubscribes from the kinds' availability changes (a launcher's reason appears or goes away). */
+  /** Unsubscribes from the kinds' availability changes (a launcher's reason appears or goes away) and from a caption
+   * that arrives after the tab was restored (a terminal's name). */
   private stopAvailability: (() => void)[] = [];
 
   override connectedCallback() {
     super.connectedCallback();
-    this.stopAvailability = workViewKinds().flatMap((kind) => kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.requestUpdate())] : []);
+    this.stopAvailability = workViewKinds().flatMap((kind) => [
+      ...(kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.requestUpdate())] : []),
+      ...(kind.onTitleChange ? [kind.onTitleChange(() => this.requestUpdate())] : []),
+    ]);
     this.resizeObserver = new ResizeObserver(() => {
       const width = this.parentElement?.clientWidth ?? 0;
       if (width !== this.available) this.available = width;
@@ -158,9 +162,12 @@ export class WorkPane extends HuiElement {
     return this.shown();
   }
 
-  override willUpdate() {
+  override willUpdate(changed: PropertyValues) {
     // Once there is room again the pane simply fits; a later squeeze collapses it again.
     if (this.squeezedOpen && (this.fits() || this.squeezedOpen !== this.sessionId)) this.squeezedOpen = "";
+    // A reload keeps each tab's ref and not the name its terminal carries, so the conversation's terminals are read once
+    // per focus: `existing` remembers every name, and a tab that has not connected to its shell yet keeps its own.
+    if (changed.has("sessionId") && this.sessionId) void this.loadReopenable();
   }
 
   private readonly keydown = (event: KeyboardEvent) => {

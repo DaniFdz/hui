@@ -1,6 +1,7 @@
 /** Asked to check something on a schedule, a bot adds its own temporary routine, the Routines page and Automations show who made it and its limits, its own turn removes it, and its "Manage its own routines" switch gates it (BOT-043). */
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { hideBotPanel, panelOverview, showBotPanel } from "./bot-panel.ts";
 
 type Task = { id: string; name: string; sessionId: string; until?: string; runsLeft?: number; createdBy?: { kind: string; handle?: string } };
 
@@ -13,6 +14,7 @@ test("Asked to check something on a schedule, a bot adds a temporary routine tha
   const transcript = screen.getByTestId("transcript");
   await hui.open(`/bots/${bot.id}`);
 
+  await showBotPanel(screen, bot.name);
   await screen.getByText("Tools & skills", { exact: true }).tap();
   await expect(screen.getByRole("switch", "Manage its own routines (routines)")).toBeChecked();
   const catalog = (await hui.api<{ tools: { name: string; powerful?: boolean }[] }>("GET", `/__hui/bots/${bot.id}/catalog`)).tools;
@@ -20,6 +22,7 @@ test("Asked to check something on a schedule, a bot adds a temporary routine tha
   await expect(screen.getByText("Powerful", { exact: true })).toHaveCount(catalog.filter((tool) => tool.powerful).length);
 
   await screen.getByRole("button", `Back to ${bot.name}`).tap();
+  await hideBotPanel(screen);
   await screen.getByLabel("Message").fill("E2E_ROUTINE_ADD check whether PR #82 is green every 5 minutes until it is");
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText(/^routines answered: /u)).toBeVisible();
@@ -32,6 +35,7 @@ test("Asked to check something on a schedule, a bot adds a temporary routine tha
   expect(routine.runsLeft).toBe(3);
   expect(Date.parse(routine.until!)).toBeGreaterThan(Date.now());
 
+  await panelOverview(screen, bot.name);
   await screen.getByRole("button", "Add routine").tap();
   const facts = screen.getByLabel("About Watch #82");
   await expect(facts.getByText(`made by @${bot.handle}`)).toBeVisible();
@@ -46,6 +50,7 @@ test("Asked to check something on a schedule, a bot adds a temporary routine tha
   await expect(automationRow.getByText("3 runs left")).toBeVisible();
 
   await hui.open(`/bots/${bot.id}`);
+  await panelOverview(screen, bot.name);
   await screen.getByRole("button", "Add routine").tap();
   await expect(facts).toBeVisible();
   await screen.getByRole("button", "Run now: Watch #82").tap();
@@ -57,11 +62,13 @@ test("Asked to check something on a schedule, a bot adds a temporary routine tha
   await expect(screen.getByRole("button", "Edit Watch #82")).toBeHidden();
 
   await hui.open(`/bots/${bot.id}`);
+  await panelOverview(screen, bot.name);
   await screen.getByText("Tools & skills", { exact: true }).tap();
   await hui.flip(screen.getByRole("switch", "Manage its own routines (routines)"));
   await expect(screen.getByRole("switch", "Manage its own routines (routines)")).toBeChecked({ checked: false });
   await expect.poll(async () => (await hui.api<{ bot: { disabledTools?: string[] } }>("GET", `/__hui/bots/${bot.id}`)).bot.disabledTools).toEqual(["routines"]);
 
+  await hideBotPanel(screen);
   await screen.getByLabel("Message").fill("E2E_ROUTINE_ADD check whether PR #82 is green every 5 minutes again");
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText(/^routines answered: /u)).toHaveCount(3);

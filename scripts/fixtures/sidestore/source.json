@@ -1,0 +1,37 @@
+{
+  "name": "HUI",
+  "identifier": "dev.hui.app",
+  "subtitle": "Your HUI gateway, on the phone",
+  "description": "HUI on the phone: the shell around your own gateway's web UI, which asks for the address of the gateway you run (https:// through `tailscale serve`). It bundles no copy of the UI and keeps no account of its own. This IPA is unsigned: SideStore signs it with your Apple ID, which lasts seven days and is renewed by SideStore (see HUI's user guide).",
+  "iconURL": "https://github.com/DaniFdz/hui/raw/v1.2.3/mobile/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png",
+  "website": "https://github.com/DaniFdz/hui",
+  "tintColor": "#0b6bcb",
+  "apps": [
+    {
+      "name": "HUI",
+      "bundleIdentifier": "dev.hui.app",
+      "developerName": "DaniFdz",
+      "subtitle": "Your HUI gateway, on the phone",
+      "localizedDescription": "HUI on the phone: the shell around your own gateway's web UI, which asks for the address of the gateway you run (https:// through `tailscale serve`). It bundles no copy of the UI and keeps no account of its own. This IPA is unsigned: SideStore signs it with your Apple ID, which lasts seven days and is renewed by SideStore (see HUI's user guide).",
+      "iconURL": "https://github.com/DaniFdz/hui/raw/v1.2.3/mobile/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png",
+      "tintColor": "#0b6bcb",
+      "version": "1.2.3",
+      "buildVersion": "29250123",
+      "versionDate": "2026-11-09T12:03:00Z",
+      "versionDescription": "Release notes: https://github.com/DaniFdz/hui/releases/tag/v1.2.3\n- feat: add the Android and iOS apps around the web UI (1a2b3c4)\n- fix: keep the composer above the software keyboard on both phones (2b3c4d5)\n- docs: say what the phone app needs from a gateway (3c4d5e6)\n- …and 2 more commits, each in the full diff below.",
+      "size": 5242880,
+      "downloadURL": "https://github.com/DaniFdz/hui/releases/download/v1.2.3/hui-1.2.3.ipa",
+      "versions": [
+        {
+          "version": "1.2.3",
+          "buildVersion": "29250123",
+          "date": "2026-11-09T12:03:00Z",
+          "localizedDescription": "Release notes: https://github.com/DaniFdz/hui/releases/tag/v1.2.3\n- feat: add the Android and iOS apps around the web UI (1a2b3c4)\n- fix: keep the composer above the software keyboard on both phones (2b3c4d5)\n- docs: say what the phone app needs from a gateway (3c4d5e6)\n- …and 2 more commits, each in the full diff below.",
+          "downloadURL": "https://github.com/DaniFdz/hui/releases/download/v1.2.3/hui-1.2.3.ipa",
+          "size": 5242880,
+          "minOSVersion": "15.0"
+        }
+      ]
+    }
+  ]
+}

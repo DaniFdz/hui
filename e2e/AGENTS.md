@@ -17,20 +17,22 @@ in the order of `AREAS` in `catalogue/types.ts`). It is the checklist the shared
 
 - An entry is one outcome a test can prove: an `AREA-NNN` ID that is never renumbered or reused, a title, the
   behaviour a user observes (with the labels the UI renders today), the `SPEC.md` or `docs/api.md` anchors that
-  define it, the code surfaces it owns, the journeys it came from, and its status on the web.
+  define it, the code surfaces it owns, the journeys it came from, and its status on the web and on the phone.
 - `backlog` means the feature exists but has no passing shared test yet. Only IDs listed in
-  `catalogue/baseline.json` may be backlog. The list shrinks as shared tests land and grows only for an existing
-  feature found later. A new use case is required on the web, unless it is excluded there, with its shared test. An
-  exclusion needs a reason and the `SPEC.md` anchor of the decision behind it.
+  `catalogue/baseline.json` may be backlog, per platform. The list shrinks as shared tests land and grows only for an
+  existing feature found later. A new use case is required on the web and on the phone, unless it is excluded there,
+  with its shared test. An exclusion needs a reason and the `SPEC.md` anchor of the decision behind it, and only a
+  phone's own limits exclude a case on the phone: a keyboard chord, the wide layout, a hover, a secondary click. The
+  phone apps wrap the web UI (SPEC.md), so a case is never excluded because the phone drew its own screen.
 - `scripts/use-cases.test.ts` collects the code's surfaces (`catalogue/surfaces-src.ts`,
   `catalogue/surfaces-server.ts`) and fails when no use case claims one. A surface no screen uses goes into
   `catalogue/not-ui.ts` with its reason. Every journey has a class in `catalogue/journeys.ts`.
 - A change that adds or changes a user outcome adds or updates its entry in the same PR, and a use case it changes
-  leaves the web backlog with its shared test. An accessible name new in `src/` appears in a shared test that runs on
-  the web. A use case changes when its entry's behaviour, surfaces or spec change, or when the body of a test tagged
-  with it, or the file code it shares other than the header comment, does; the PR that adds a backlog use case's
-  first test and takes it off the backlog doesn't count. A test fix that leaves the behaviour alone, or a new name for
-  a control that already existed, goes on the PR description's `Unchanged behaviour:` line instead (IDs, and names in
+  leaves the web and the phone backlog with its shared test. An accessible name new in `src/` appears in a shared test
+  that runs on both targets. A use case changes when its entry's behaviour, surfaces or spec change, or when the body of
+  a test tagged with it, or the file code it shares other than the header comment, does; the PR that adds a backlog use
+  case's first test and takes it off the backlog doesn't count. A test fix that leaves the behaviour alone, or a new name
+  for a control that already existed, goes on the PR description's `Unchanged behaviour:` line instead (IDs, and names in
   quotes, separated by commas). `scripts/e2e-baseline-check.ts` (the E2E catalogue workflow) checks all of this
   against the pull request's base.
 
@@ -41,9 +43,31 @@ run by `../e2e.config.ts` against a disposable gateway that the visual-verificat
 `npm run e2e` after `npx e2e-web install chromium`; a failure leaves `trace.md`, a screenshot and the screen dump in
 `.e2e/results/`.
 
-The suite has one target, `web`, today. The tests stay portable so that a native phone app can run them as a second
-target: every gesture or reading that would differ per platform is a `hui.*` step from the fixture's per-target table,
-and the rules below keep the tests themselves free of web-only reads.
+The suite has three targets, `web`, `android` and `webkit-phone` (`../e2e.config.ts`), and `ios-smoke` follows. The
+tests stay portable so a phone can run them: every gesture or reading that would differ per platform is a `hui.*` step
+from the fixture's per-target table, and the rules below keep the tests themselves free of web-only reads. `android`
+runs HUI's own page inside the app's WebView over CDP (`fixtures/phone.ts`), so its steps are the web's except for what
+a WebView cannot do (it has one page and one context, so `hui.clearState()` clears the app's storage in the page). The
+web engine's platform is `web` on every target, so a test declaring `platforms: ["web"]` runs on the phones too: which use
+cases `android` runs is the catalogue's phone status, which `catalogue/phone.ts` prints as the `--tag` list the job uses.
+
+`webkit-phone` is Playwright's WebKit at an iPhone's viewport (390 by 844) with touch and a phone user agent, on Linux
+and with no device (`fixtures/phone-webkit.ts`). It proves what the iPhone's engine renders and lays out — the phone
+layout, the drawer, the touch targets, the fonts — in every pull request, so an iPhone-only rendering or layout bug is
+caught before a phone sees it. It is not the app: there is no WebView, no Capacitor bridge, no plugin, no status bar, no
+back button of its own, no soft keyboard and no notification, so a shell behaviour stays on `android`. Its platform is
+`web` too, so the fixture tells it from `web` by its gateway's fixed port (`E2E_WEBKIT_PHONE_PORT`, 47500 by default). A
+phone has no wide screen and no hover, so `hui.wideScreen()` and `hui.peek()` refuse there instead of proving desktop
+behavior on a phone. Shared message actions scroll to the message whose actions the touch layout draws outright, and
+`hui.openWorkView()` opens the narrow panel chooser or the wide pane's menu, whichever the real UI offers. Both phone
+targets default to the catalogue's phone-required cases. Use `--tag <ID>` to prove a backlog case before graduating it;
+a use case is phone-required only once it passes on both `android` and `webkit-phone`.
+
+Ordinary WebKit-phone tests block service workers in their fresh contexts: WebKit sends a controlled page's requests
+around Playwright's routes, even when the worker does not handle them. Journeys that prove offline installation or
+recovery import `offlineTest as test` from `fixtures/hui.ts`; those contexts allow the real shipped worker. Both modes
+reset before each test, so an intercepted mutation never quietly reaches the gateway and offline tests still prove the
+actual cache and reconnect behavior.
 
 A phone shows one screen at a time, so a test calls `hui.sessionList()` before it checks session rows while a chat
 or the Sessions page is open: on the web's wide layout the sidebar is always there and it does nothing, and on the
@@ -55,17 +79,16 @@ a container's label.
 - Import `test` from `fixtures/hui.ts` and `expect` from `e2e`. The fixture owns the gateway's API setup and cleanup,
   the fixture provider's barriers and the steps that differ per platform; a test never reads `platform`, `device` or
   `browser`.
-- Tag each test with the IDs of the use cases it proves, and make those `required`. A test carries
-  `platforms: ['web']` unless it is meant to run on a native target too, which none does yet.
-- Find controls by label, text, placeholder or test id, or by the roles a native phone app also has: `button`,
-  `textbox`, `switch`, `tab` and `listitem`; a test checks a link inside a message's Markdown with `hui.expectLinkTo`,
-  which owns the `link` role. A test id must exist as a `data-testid` in `src/`. Every test starts a line with
-  `test(`, which is how the check tells a file's tests apart.
+- Tag each test with the IDs of the use cases it proves, and make those `required` where the target runs them. A test
+  carries `platforms: ['web']` unless it is meant for a native target too; on the `android` target the catalogue's phone
+  status decides instead (see above).
+- Find controls by label, text, placeholder or test id, or by role: both targets render the same page, so a role is as
+  portable as a test id. A test checks a link inside a message's Markdown with `hui.expectLinkTo`, which owns the `link`
+  role. A test id must exist as a `data-testid` in `src/`. Every test starts a line with `test(`, which is how the check
+  tells a file's tests apart.
 - No agent steps, `retries`, `test.skip(` or sleeps, in the tests or the fixture. Wait on state: `expect`,
   `expect.poll` and the provider's barriers. Check `toBeHidden()` only after a positive check has synchronized, and
   prefer it to `.not.toBeVisible()`. Clear the app with `hui.clearState()`, never `app.clearState()`.
-- A test may use other roles only when every use case it covers is a keyboard-only, browser-only or wide-layout one
-  that `scripts/use-cases.test.ts` lists as such.
 - A test proves the whole behaviour its tags name. A clause no test can prove yet becomes its own backlog use case.
 - Every static `aria-label` in `src/` appears in a test or in the baseline's `unexercisedLabels`. A new control gets a
   test, not a line there.

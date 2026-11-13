@@ -11,6 +11,7 @@ test("closing the pane of a streaming session leaves it running and the other at
   await hui.open(`/sessions/${staying.id}`);
   await screen.getByRole("button", "Open split view").tap();
   await expect(panes).toHaveCount(2);
+  await hui.sessionList();
   await (await hui.sessionMenu("Streaming pane")).getByText("Open in split pane", { visible: true }).tap();
   await expect(panes).toHaveCount(3);
 
@@ -32,6 +33,7 @@ test("closing the pane of a streaming session leaves it running and the other at
   await panes.nth(0).getByTestId("session-title").tap();
   await expect(panes.nth(0)).toHaveAttribute("aria-current", "true");
 
+  await hui.sessionList();
   await (await hui.sessionMenu("Streaming pane")).getByText("Open in split pane", { visible: true }).tap();
   await expect(panes).toHaveCount(3);
   await expect(panes.nth(2).getByTestId("session-title")).toHaveText("Streaming pane");

@@ -53,6 +53,9 @@ Pi Durable owns conversations, runs, queues and crash recovery.
   `cli/main.ts`, `cli/gateway-run.ts`, `server/runtimes/pi-sdk-worker.ts`,
   `server/worker/main.ts` and `index.html`. An installed CLI checks their built
   files before switching to a new release.
+- R18. `src/` never imports `@capacitor/*`: the browser reaches the phone shell
+  only through the adapter in `src/lib/native-shell.ts`, which reads the bridge
+  Capacitor injects (see `mobile/AGENTS.md`).
 
 ## A message, start to finish
 
@@ -107,6 +110,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Area | Start here |
 |---|---|
 | App shell | `main.ts` (styles, boot, mount), `lib/boot-screen.ts` (index.html's boot screen), `lib/view-assets.ts` (view stylesheets loaded together before the first paint), `hui-app.ts` (route, layout and the controllers' wiring), `src/lit/hui-element.ts` |
+| Phone shell seam | `lib/native-shell.ts` is the only place the browser UI touches the phone: it reads the bridge Capacitor injects as `window.Capacitor` (never an `@capacitor/*` import, rule R18) and answers `nativeShell()`, `null` in a browser, with the contract `mobile/AGENTS.md` freezes (`platform`, `openExternal`, `notify`, `share`, `setStatusBar`, `onResume`, `onBack`, `forgetGateway`). It owns the policy its callers do not repeat: a notification is posted only while the shell is in the background, and a tap on one opens the path it announced. `onBack` answers the shell's own `hui:back` press: the page keeps the press with `preventDefault()` and an unconsumed one is the shell's, which goes back in the page's history and leaves the app at the root. `lib/native-shell-boot.ts` is what the page installs once for it at boot: links to other origins and "open in a new tab" targets go to the shell's browser, and a resume fires the `online` event the reconnect listeners already watch. Callers: the status stream posts the notifications (`controllers/sessions-controller.ts`), `hui-app.ts` answers a back press with the same `closeTopOverlay` order as Escape, the status bar follows the mode `lib/theme/theme.ts` resolves, and a transcript row's Share action hands the sheet what `messageShare` builds (`views/home.ts`) |
 | Device appearance | `src/lib/appearance/` (`store.ts`: this device's theme, color mode, accent, typefaces, text size and chat preferences in one versioned `localStorage` key, with the validators the Appearance page uses and the report to the desktop shell; `desktop-seed.ts`: adopting the look `hui doctor --fix` exported for the desktop app, once and only on a device that stored none; `index.html`'s boot look and `lib/boot-screen.ts` keep the boot screen's colors beside it) |
 | Client stores and API | `src/api/` (requests to `/__hui/`: `request.ts` (fetch boundary, `x-hui` header, response deadline), `settings.ts`, `ui-errors.ts` (browser errors batched to the gateway), `sessions.ts` (session API), `session-list.ts` (applies session-list update frames), `terminals.ts`, `browser.ts`, `files.ts`, `diff.ts`, and one client per area: `automation.ts`, `backlog.ts`, `bots.ts`, `bot-facts.ts`, `bot-templates.ts`, `bot-tools.ts`, `bot-triggers.ts`, `calls.ts`, `datadog.ts`, `jira.ts`, `github.ts`, `github-previews.ts`, `pi.ts`, `providers.ts`, `themes.ts`, `vscode.ts`, `workers.ts`, …), `src/lib/settings/settings-store.ts` (settings cache and write queue), other `lib/*-store.ts` |
 | Generated API types | `src/api/schema/`, generated only from `docs/api.schema.json` by `npm run api:schema` |
@@ -132,6 +136,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | `scripts/` | Build, release and nightly versioning |
 | `e2e/` | Browser-tool E2E procedures (`*.browser.md`), the launcher (`visual-verification.mjs`) and the package test; `e2e/catalogue/` (every user outcome HUI supports, one file per area, with the collectors of code surfaces that `scripts/use-cases.test.ts` checks it against), `e2e/tests/` (the shared e2e suite that `e2e.config.ts` runs, with its fixture in `e2e/fixtures/hui.ts`), `e2e/fixtures/` (fake providers, CLIs and services, seeds and PI extensions the launcher and tests start), `e2e/probes/` (in-page probes and oracles a procedure loads into the running app) |
 | `nix/` | Flake package, NixOS module and smoke checks |
+| `mobile/` | The Android and iOS shell around the gateway's web UI: `capacitor.config.ts` at the repository root (app id, `webDir`, platform paths, the https scheme), `mobile/connect/` (the bundled "Connect to HUI" page built by `vite.config.ts` into the git-ignored `dist/`; `mobile/connect/src/`: `gateway.ts` holds its wording and pure checks, `native.ts` the `CapacitorHttp` probe and the `HuiGateway` plugin calls, `main.ts` the DOM wiring), `mobile/android/` (the Gradle project, whose `MainActivity` builds the bridge on the gateway address it resolves), `mobile/ios/` (WP5); contracts, launch extras and the local loops in `mobile/AGENTS.md`, the emulator loop in `scripts/mobile.mjs` |
 | `skills/` | Skills shipped with HUI |
 | `themes/`, `public/` | Theme palettes and static assets |
 

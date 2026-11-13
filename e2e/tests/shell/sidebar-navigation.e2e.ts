@@ -15,6 +15,7 @@ const DESTINATIONS = [
 
 test("the sidebar lists its work destinations, ending with Settings, above this page's gateway", { tags: ["SHELL-001", "SHELL-049", "smoke"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/");
+  await hui.sessionList();
   const navigation = screen.getByTestId("primary-navigation");
 
   await expect(navigation).toBeVisible();
@@ -44,7 +45,10 @@ test("the sidebar lists its work destinations, ending with Settings, above this 
   const gatewayBox = await gateway.boundingBox();
   assert(gatewayBox);
   expect(gatewayBox.y).toBeGreaterThan(settingsBox.y);
-  await expect(screen.getByLabel("Collapse sidebar")).toBeVisible();
+  // A wide sidebar collapses in place; a phone's open drawer closes instead.
+  const close = screen.getByRole("button", "Close navigation", { visible: true });
+  if (await close.count() > 0) await expect(close.first()).toBeVisible();
+  else await expect(screen.getByLabel("Collapse sidebar")).toBeVisible();
 
   // The Bots list keeps the same destinations, Settings included, and the gateway.
   await screen.getByRole("tab", "Bots").tap();
@@ -64,12 +68,14 @@ test("a destination opens its page and keeps it across a reload", { tags: ["SHEL
   await hui.open("/");
 
   for (const [label, page] of DESTINATIONS) {
+    await hui.sessionList();
     await screen.getByTestId("primary-navigation").getByText(label).tap();
     await expect(screen.getByText(page, { exact: false }).first()).toBeVisible();
     await hui.reload();
     await expect(screen.getByText(page, { exact: false }).first()).toBeVisible();
   }
 
+  await hui.sessionList();
   await screen.getByTestId("nav-settings").tap();
   await expect(screen.getByText("HUI and PI preferences for this workspace.").first()).toBeVisible();
   await hui.reload();

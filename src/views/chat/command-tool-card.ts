@@ -5,7 +5,7 @@ import { guard } from "lit/directives/guard.js";
 import { icons } from "../../lib/icons.ts";
 import { openMessageContextMenu } from "../../lib/message-context-menu.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
-import { commandToolPresentation, displayToolValue } from "../../lib/tool-cards.ts";
+import { commandToolPresentation, displayToolValue, toolCardOutcome } from "../../lib/tool-cards.ts";
 import { renderHighlightedCommand } from "./command-highlight.ts";
 import { syncToolOverflow } from "./read-tool-card.ts";
 
@@ -47,7 +47,6 @@ export function renderCommandToolCard(item: Tool, options: {
 export function renderCommandToolBody(item: Tool, options: { onCopy: (text: string) => Promise<boolean> }) {
   const view = commandToolPresentation(item);
   if (!view) return html``;
-  const running = (item.status ?? "running") === "running";
   const failed = item.failed || item.status === "failed";
   const copy = (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, item.output ?? "", options.onCopy);
   return html`<div class="chat-tool-msg-body"><div class="chat-tool-card chat-tool-card--flush ${failed ? "chat-tool-card--error" : ""}"
@@ -57,6 +56,6 @@ export function renderCommandToolBody(item: Tool, options: { onCopy: (text: stri
       ${item.output?.trim() ? html`<pre class="chat-tool-term__out"><code>${item.output}</code></pre>` : nothing}
     </div>
     ${view.extras.length > 0 ? html`<div class="chat-tool-kv">${view.extras.map(([key, value]) => html`<div class="chat-tool-kv__row"><span class="chat-tool-kv__key">${key}:</span><span class="chat-tool-kv__value">${displayToolValue(value)}</span></div>`)}</div>` : nothing}
-    <div class="chat-tool-card__outcome">${failed ? "failed" : running ? "Running" : "Completed"}</div>
+    <div class="chat-tool-card__outcome">${toolCardOutcome(item)}</div>
   </div></div>`;
 }

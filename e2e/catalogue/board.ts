@@ -10,6 +10,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:kanban", "route:GET /__hui/sessions"],
     journeys: ["kanban"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-002",
@@ -18,7 +19,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-003",
@@ -27,7 +29,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-004",
@@ -37,6 +40,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["kanban"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-005",
@@ -46,6 +50,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["kanban"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-006",
@@ -55,6 +60,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["kanban"],
     web: "required",
+    phone: { excluded: "A keyboard chord; the Options menu's Move to (BOARD-004) and dragging (BOARD-005) do the same with visible controls.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "BOARD-007",
@@ -64,6 +70,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["kanban"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-008",
@@ -72,7 +79,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#session-stages"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-009",
@@ -82,6 +90,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:set_stage"],
     journeys: ["kanban"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-010",
@@ -90,7 +99,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#session-stages"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-012",
@@ -99,7 +109,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-013",
@@ -109,6 +120,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["kanban"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-014",
@@ -118,6 +130,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["kanban"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-015",
@@ -127,6 +140,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["kanban"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-016",
@@ -136,6 +150,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["kanban"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "BOARD-017",
@@ -144,7 +159,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#kanban-backlog", "docs/api.md#get-__huibacklog"],
     surfaces: ["route:GET /__hui/backlog"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-018",
@@ -153,7 +169,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#kanban-backlog", "docs/api.md#get-__huibacklog"],
     surfaces: ["route:GET /__hui/backlog"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-020",
@@ -163,6 +180,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/backlog/items/:id"],
     journeys: ["kanban"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-021",
@@ -171,7 +189,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-022",
@@ -180,7 +199,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#delete-__huibacklogitemsid"],
     surfaces: ["route:DELETE /__hui/backlog/items/:id"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-023",
@@ -189,7 +209,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#post-__huibacklogitemsidjiradraft", "docs/api.md#post-__huibacklogitemsidjira"],
     surfaces: ["route:POST /__hui/backlog/items/:id/jira/draft", "route:POST /__hui/backlog/items/:id/jira", "route:GET /__hui/jira/projects"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-024",
@@ -198,7 +219,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#post-__huibacklogitemsidjiralink"],
     surfaces: ["route:POST /__hui/backlog/items/:id/jira/link", "route:GET /__hui/jira/issues"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-025",
@@ -207,7 +229,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#post-__huibacklogitemsidstart"],
     surfaces: ["route:POST /__hui/backlog/items/:id/start", "route:GET /__hui/git-checkout", "route:GET /__hui/directories"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-026",
@@ -217,6 +240,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/git-checkout", "route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-027",
@@ -225,7 +249,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#post-__huibacklogitemsidstart"],
     surfaces: ["route:GET /__hui/git-checkout", "route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-028",
@@ -234,7 +259,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "SPEC.md#worktrees", "docs/api.md#post-__huibacklogitemsidbranch-name", "docs/api.md#post-__huibacklogitemsidstart"],
     surfaces: ["route:POST /__hui/backlog/items/:id/branch-name", "route:POST /__hui/backlog/items/:id/start", "setting:branchPrefix"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-029",
@@ -244,6 +270,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-033",
@@ -252,7 +279,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#jira-work-items"],
     surfaces: [],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-034",
@@ -261,7 +289,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#kanban", "docs/api.md#jira-work-items"],
     surfaces: [],
     journeys: ["jira-integration", "kanban"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-035",
@@ -270,16 +299,18 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#kanban", "docs/api.md#post-__huisessionsidjiradraft", "docs/api.md#post-__huisessionsidjira"],
     surfaces: ["route:POST /__hui/sessions/:id/jira/draft", "route:POST /__hui/sessions/:id/jira", "route:GET /__hui/jira/projects", "route:GET /__hui/jira"],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-036",
     title: "Link a session to an existing Jira work item",
-    behaviour: "Link Jira work item… opens a search (\"Key, URL or summary text\") that lists Recently viewed items, then Results as you type a key, a pasted /browse/ URL or words from the summary. Choosing one shows \"Linked Jira work item <key>.\" and the row's mark becomes that item; items already linked to a session are not offered, and no match reads \"No matching work items. Try a key such as CI-123 or paste its URL.\"",
+    behaviour: "Link Jira work item… opens a search (\"Key, URL or summary text\") that lists Recently viewed items, then Results as you type a key, a pasted /browse/ URL or words from the summary. Choosing one shows \"Linked Jira work item <key>.\" and the row's mark becomes that item, and a search that finds nothing reads \"No matching work items. Try a key such as CI-123 or paste its URL.\"",
     spec: ["SPEC.md#behaviour", "SPEC.md#kanban", "docs/api.md#get-__huijiraissues", "docs/api.md#post-__huisessionsidjiralink"],
     surfaces: ["route:GET /__hui/jira/issues", "route:POST /__hui/sessions/:id/jira/link"],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-037",
@@ -288,7 +319,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#kanban"],
     surfaces: [],
     journeys: ["jira-integration"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-044",
@@ -297,7 +329,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#github-contributions", "docs/api.md#get-__huigithubcontributions"],
     surfaces: ["page:contributions", "route:GET /__hui/github/contributions"],
     journeys: ["contributions"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-045",
@@ -306,7 +339,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["contributions"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-046",
@@ -315,7 +349,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huigithubcontributions"],
     surfaces: ["route:GET /__hui/github/contributions"],
     journeys: ["contributions"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-047",
@@ -325,6 +360,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/github/contributions"],
     journeys: ["contributions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "BOARD-048",
@@ -334,6 +370,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["contributions"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "BOARD-049",
@@ -342,7 +379,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huigithubcontributions"],
     surfaces: ["route:GET /__hui/github/contributions"],
     journeys: ["contributions"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-050",
@@ -351,7 +389,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#github-contributions"],
     surfaces: ["route:GET /__hui/github/contributions", "settings-page:integrations"],
     journeys: ["contributions"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-051",
@@ -361,6 +400,7 @@ const cases: UseCase[] = [
     surfaces: ["page:contributions", "route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "BOARD-052",
@@ -370,6 +410,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-053",
@@ -379,6 +420,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-calendar"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-054",
@@ -388,6 +430,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-calendar"],
     web: "required",
+    phone: { excluded: "Escape to close; clicking elsewhere (BOARD-053) closes the card with a visible action.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "BOARD-055",
@@ -397,6 +440,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-calendar"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-056",
@@ -406,6 +450,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-calendar"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "BOARD-057",
@@ -414,7 +459,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#session-activity"],
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-058",
@@ -423,7 +469,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisession-activity"],
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-059",
@@ -433,6 +480,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-calendar"],
     web: "backlog",
+    phone: { excluded: "Keyboard focus retention; tapping the date heading and the day arrows (BOARD-057, BOARD-058) does the same.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "BOARD-060",
@@ -442,6 +490,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOARD-061",
@@ -451,6 +500,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOARD-062",
@@ -459,7 +509,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#session-activity"],
     surfaces: [],
     journeys: ["session-calendar"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
 ];
 

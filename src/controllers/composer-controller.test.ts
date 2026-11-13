@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vitest";
-import type { QueueSnapshot, SessionConnection, SessionSnapshot, SessionView } from "../api/sessions.ts";
+import type { QueueSnapshot, RuntimeCommand, SessionConnection, SessionSnapshot, SessionView } from "../api/sessions.ts";
 import type { ComposerDraft } from "../lib/composer/drafts.ts";
 import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "../lib/composer/drafts.ts";
 import { clearSideChat, sideChatFor } from "../lib/session/side-chat-store.ts";
@@ -12,6 +12,7 @@ const fake = vi.hoisted(() => ({
   goals: [] as { id: string; action: string; objective?: string; resolve: () => void; reject: (error: Error) => void }[],
   drafts: new Map<string, ComposerDraft>(),
   pathRequests: [] as { cwd: string; input: string }[],
+  commandRequests: [] as { id: string; resolve: (commands: RuntimeCommand[]) => void; reject: (error: Error) => void }[],
   prompts: [] as { id: string; text: string; resolve: () => void; reject: (error: Error) => void }[],
   rewinds: [] as unknown[][],
   aborts: [] as string[],
@@ -19,6 +20,7 @@ const fake = vi.hoisted(() => ({
   sideQuestions: [] as { id: string; question: string; resolve: (result: { question: string; answer: string; model: string }) => void; reject: (error: Error) => void }[],
 }));
 vi.mock("../api/sessions.ts", () => ({
+  loadCommands: (id: string) => new Promise<RuntimeCommand[]>((resolve, reject) => fake.commandRequests.push({ id, resolve, reject })),
   mutateQueuedMessage: (id: string, mutation: unknown) => new Promise<void>((resolve, reject) => fake.mutations.push({ id, mutation, resolve, reject })),
   sendQueuedSteersNow: (id: string) => new Promise<void>((resolve, reject) => fake.steerNows.push({ id, resolve, reject })),
   sendPrompt: (id: string, text: string) => new Promise((resolve, reject) => fake.prompts.push({ id, text, resolve: () => resolve({ duplicate: false }), reject })),
@@ -50,6 +52,7 @@ beforeEach(() => {
   fake.goals = [];
   fake.drafts = new Map();
   fake.pathRequests = [];
+  fake.commandRequests = [];
   fake.prompts = [];
   fake.rewinds = [];
   fake.aborts = [];
@@ -169,6 +172,45 @@ test("typing renders only when the composer starts or stops holding text; a draf
   assert.equal(controller.draftRevision, 0);
   controller.setDraft("from HUI");
   assert.equal(controller.draftRevision, 1);
+});
+
+test("retrying a failed command catalog restores a blurred query and focuses the editor before replacing Retry", async () => {
+  const focus = vi.fn(() => {
+    assert.equal(controller.commandsLoading, false, "focus returns before loading replaces Retry");
+    assert.equal(fake.commandRequests.length, 1, "focus returns before the retry request starts");
+  });
+  const textarea = { focus, selectionStart: 1, selectionEnd: 1 } as unknown as HTMLTextAreaElement;
+  const { controller } = composer({ current: { id: "s1", status: "idle" } as SessionView }, { textarea });
+  // WebKit can blur the editor without focusing the tapped Retry button.
+  vi.stubGlobal("document", { activeElement: null });
+  try {
+    controller.setDraft("/");
+    controller.props().onCommandQuery({ text: "", start: 0 });
+    fake.commandRequests[0]?.reject(new Error("Could not load commands."));
+    await settle();
+    assert.equal(controller.commandsError, "Could not load commands.");
+    assert.equal(focus.mock.calls.length, 0, "an initial catalogue request does not move focus");
+
+    controller.props().onCommandQuery(null);
+    controller.props().commandMenu.onRetry();
+    assert.equal(focus.mock.calls.length, 1, "focus returns before loading removes the Retry button");
+    assert.deepEqual(controller.slashQuery, { text: "", start: 0 });
+    assert.equal(controller.props().commandMenu.open, true);
+    assert.equal(controller.commandsLoading, true);
+    assert.equal(fake.commandRequests.length, 2);
+
+    fake.commandRequests[1]?.resolve([{ name: "check-status", description: "Check status", source: "extension" }]);
+    await settle();
+    assert.equal(controller.commandsLoading, false);
+    assert.equal(controller.commandsError, "");
+    assert.equal(controller.props().commandMenu.open, true);
+    assert.ok(controller.props().commandMenu.commands.some(({ name }) => name === "check-status"));
+    assert.equal(controller.draft, "/");
+    assert.equal(focus.mock.calls.length, 1, "the reply never steals focus back after the operator moves away");
+    assert.deepEqual(fake.prompts, []);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 test("an @ path query loads suggestions for the session's folder and a pick completes the draft", async () => {

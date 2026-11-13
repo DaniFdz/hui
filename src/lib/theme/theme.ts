@@ -1,6 +1,8 @@
 /** Color mode is a document-level preference; the token layer in tokens.css
  * owns the actual colors. "system" defers to the OS. Nothing here is persisted;
- * settings.ts owns that. */
+ * settings.ts owns that. The phone shell's status bar follows the resolved mode
+ * from here too, so it never disagrees with the page above it. */
+import { nativeShell } from "../native-shell.ts";
 
 export const THEME_MODES = ["system", "light", "dark"] as const;
 
@@ -71,4 +73,6 @@ export function applyThemeMode(mode: ThemeMode, variant: ThemeVariant): void {
   root.classList.toggle("wa-dark", resolved === "dark");
   root.dataset["theme"] = resolvedPaletteSelector(root.dataset["themePalette"] ?? "claw", resolved);
   root.style.colorScheme = resolved;
+  // The phone's status bar carries no page: the shell is told the mode the page resolved, not the saved preference.
+  void nativeShell()?.setStatusBar({ dark: resolved === "dark" });
 }

@@ -1,6 +1,7 @@
 /** Settings → Models chooses the primary, fallback and utility models and the default reasoning, and the utility model names sessions and answers /btw in the Side chat Work view (SET-045, SET-047). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { hideWork } from "../work/work-views.ts";
 
 test("Primary, Fallback, Utility and Default reasoning choose their values, say when each runs and keep the choice after a reload", { tags: ["SET-045"] }, async ({ screen, hui }) => {
   await hui.open("/settings/models");
@@ -49,7 +50,12 @@ test("the utility model names a new session from its first prompt and answers /b
     await screen.getByPlaceholder("What should this session work on?").fill("Plan the release notes");
     await screen.getByRole("button", "Start session").tap();
     await expect(transcript.getByText("Fixture response.")).toBeVisible();
-    await expect(screen.getByTestId("session-title", { visible: true })).toHaveText(title);
+    // A phone replaces the conversation's title with its panel picker, so the row that names the session is the check
+    // both widths can make.
+    await hui.sessionList();
+    await expect(screen.getByTestId("session-row").filter({ hasText: title })).toBeVisible();
+    // The drawer makes the page behind it inert, so the conversation is opened again for the steps that follow.
+    await hui.open(new URL(await hui.url()).pathname);
   };
   await start("", "Plan the release notes");
   await start("hui-e2e/anthropic/claude-opus-5-5", "Improve session naming");
@@ -61,6 +67,8 @@ test("the utility model names a new session from its first prompt and answers /b
   // The question and the answer stay outside the conversation, which keeps its one reply.
   await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
   await expect(screen.getByText("Fixture response.")).toHaveCount(2);
+  // A phone answers in a full-screen Work destination, so the transcript is read once it is back on screen.
+  await hideWork(screen);
   await expect(transcript.getByText("Plan the release notes")).toBeVisible();
   await expect(transcript.getByText("which model answers this?")).toBeHidden();
 });

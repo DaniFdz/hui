@@ -1,37 +1,76 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against (restartable against the same
  * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
- * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, cleanup
+ * requests a test holds, rejects, answers or delivers while dropping the answer, disposable chiefs and Git repositories, cleanup
  * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
  * gesture or reading would differ per platform, kept in one table per target that the web fills: opening, reloading
  * and clearing the app, taps, holds, drags held mid-way, context menus, a message's actions (a hover reveals its
  * footer), switches (a Web Awesome switch draws its track over its input, so the web taps the point), attachments,
- * sideways scrolling, downloads, the clipboard, the Work pane's launcher (the + menu writes each shortcut on its entry
+ * sideways scrolling, downloads, the clipboard, the statuses a page shows and replaces within one render (a rich embed's
+ * "Rendering diagram…"), the Work pane's launcher (the + menu writes each shortcut on its entry
  * and opens the pane beside the chat), a Files row's delete, the phone screen's size, the session list (on the drawer
  * layout, the shell's drawer media, the navigation drawer), the Settings page list (the drawer on a phone), the app's
  * chrome outside Settings (the primary navigation), the chosen button of a group (aria-pressed), the app's and the
  * device's colour scheme, the session menu, status glyphs, how a piece of the screen looks, the window's size, Back and
- * Forward, sideways overflow, whether a tap reaches a control and the command palette's chord. The web page never
- * opens Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway
- * does. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
- * themselves.
+ * Forward, sideways overflow, whether a tap reaches a control, the command palette's chord and a frame's own document
+ * (an agent widget runs where only its sandbox can reach it, so a test reads and taps inside it there); and the steps
+ * that are the fixture's own rather than a platform's: a download the app saves itself (the browser's download event on
+ * the web, and on the phone the file the shell wrote into `Downloads`), the other tabs the page asks for (the engine
+ * drives one page, so a `window.open` or a `target="_blank"` press is recorded as the address it asked for instead of
+ * being followed), a controllable clock a test advances so a timer's deadline can be read on both sides of it
+ * (`clock.ts`), an independently controlled gateway automation clock whose state the launcher retains across child
+ * restarts (only its real scheduler's timers move, and Node-side controls stay behind the verification token),
+ * the browser's permission for the fake camera and microphone the web target's Chromium carries
+ * (`web-browser.ts`), a native dialog the page asks to confirm, a subagent's conversation opened from the card
+ * its parent's chat draws, a tool call held while it runs so its row and the working indicator can be read in flight, and
+ * a fixture world started for one test (`world.ts`). The web page never opens Vite's development socket, whose client
+ * reloads the page when the gateway restarts, which no installed gateway does. Test files import `test` from here, never
+ * from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator, type Screen } from "e2e";
-import type { Browser, WebRoute } from "@e2e-dev/web";
+import type { Browser, FrameScreen, WebRoute } from "@e2e-dev/web";
 import { addWorkerOnThisMachine } from "./worker.ts";
 import { startGatewayStub, type GatewayStub } from "./gateway-stub.ts";
+import { advanceClock, installClock } from "./clock.ts";
+import { allowMedia } from "./web-browser.ts";
+import { clearAppStorage, deviceBytes, deviceFiles, forwardPhoneGateway, onPhone, openPhoneGateway, refusePhoneNotificationPrompt, PHONE_DOWNLOADS } from "./phone.ts";
+import { onWebKitPhone, webkitServiceWorkers } from "./phone-webkit.ts";
+import { observeOfflineLifecycle, offlineReadinessProbe, readOfflineCacheNames, readOfflineReadiness } from "./offline-readiness.ts";
+import { startWorld, type World, type WorldName } from "./world.ts";
+import { storedContent } from "./stored-content.ts";
+import { androidDisplay, type DisplayArea, type Insets } from "./display-area.ts";
+import { readLook } from "./look.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; huiConfig: string; receipt: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; runtime?: { active: true }; subagent?: { status: string; completionDelivery?: string } };
+/** One other tab the page asked for: what it asked to open, and how. */
+export type TabRequest = {
+  /** The address it asked for, resolved against the page that asked. */
+  url: string;
+  /** `window.open`: a page script asked; `link`: a press on a `target="_blank"` link asked. */
+  via: "window.open" | "link";
+  /** Whether the request asked for no opener (`noopener` in `window.open`'s features, or in the link's `rel`). */
+  noopener: boolean;
+  /** Whether the request asked for no referrer (`noreferrer`, in the same place). */
+  noreferrer: boolean;
+  /** What the request said about the new tab: `window.open`'s features, or the link's `rel`, as written. */
+  asked: string;
+};
+
 type Intercepted = {
   arrived(): Promise<void>;
+  /** Matching requests observed at the HTTP barrier, including those still held. */
+  count(): number;
+  /** Real fetches initiated during a trusted tap's click dispatch, excluding background tasks and deferred work. */
+  requestsFromTap(target: Locator): Promise<number>;
   deliver(): Promise<void>;
   reject(status: number, error: string): Promise<void>;
   answer(json: string): Promise<void>;
@@ -45,10 +84,14 @@ export type Hui = {
   gateway: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
+  /** A real group chief owned by this test, so its conversation and usage are removed by the normal bot cleanup. */
+  createChief(): Promise<{ id: string; name: string; sessionId: string; group: string }>;
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   prompt(session: { id: string }, text: string): Promise<void>;
   provider: { url: string; held(): Promise<void>; release(): Promise<void> };
   network(mode: "online" | "offline" | "silent"): Promise<void>;
+  /** Answers the page's next native dialog (`window.confirm`) as an operator does, instead of the engine dismissing it. */
+  answerNextDialog(answer: "accept" | "dismiss"): Promise<void>;
   /** True once this browser has installed the open build's offline files and can serve its shell without the gateway. */
   offlineFilesReady(): Promise<boolean>;
   restartGateway(): Promise<void>;
@@ -63,6 +106,15 @@ export type Hui = {
   clearState(): Promise<void>;
   url(): Promise<string>;
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
+  /** Reads the current CSS viewport without changing rotation, focus or keyboard state. */
+  viewportSize(): Promise<{ width: number; height: number }>;
+  /**
+   * States synthetic browser insets through the page's \`--safe-area-*\` tokens. Refuses in the native app, where
+   * the shell fits the physical WebView frame and zeroes page tokens. Use safeDisplay for positive native evidence.
+   */
+  insets(insets: { top?: number; right?: number; bottom?: number; left?: number }): Promise<void>;
+  /** Measures safe display bounds and control boxes in one coordinate space. Browser insets are synthetic; Android uses real system overlays and its physical WebView frame. */
+  safeDisplay(insets?: Insets): Promise<DisplayArea>;
   wideScreen(width?: number): Promise<void>;
   paletteChord(): Promise<void>;
   /** A bot's Settings chord: ⇧⌘, on Apple platforms and Ctrl+Shift+, elsewhere. */
@@ -75,6 +127,10 @@ export type Hui = {
   reachable(target: Locator): Promise<boolean>;
   clipboard(options?: { refuse?: boolean; legacyCopy?: boolean }): Promise<void>;
   copied(): Promise<string>;
+  /** Starts recording the statuses a page shows and replaces within one render, from every page after this call. */
+  recordStatuses(): Promise<void>;
+  /** The statuses recorded since `recordStatuses()`, in the order the page added them. */
+  statuses(): Promise<string[]>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   type(text: string): Promise<void>;
   peek(target: Locator): Promise<void>;
@@ -99,7 +155,10 @@ export type Hui = {
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
-  attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
+  attach(target: Locator, files: (string | { name: string; bytes: number } | { name: string; text: string })[]): Promise<void>;
+  /** Taps a download control and answers with the file it saved: the browser's download event on the web, and on the
+   * app the file the shell wrote into `Downloads`, read off the device. A step that saved nothing fails with what the
+   * folder holds instead of answering with a file no one wrote. */
   download(target: Locator): Promise<{ name: string; text: string }>;
   /** A worker on this machine: its own home, this checkout pre-installed as its release. */
   addWorker(name: string): Promise<{ id: string; home: string }>;
@@ -109,6 +168,28 @@ export type Hui = {
   clipboardSpy(): Promise<void>;
   clipboardWrites(): Promise<string[]>;
   hold(target: Locator, until: Locator): Promise<void>;
+  /**
+   * Prompts a session for one tool call and holds it while it runs, so a test can read the row and the working indicator
+   * in flight: the tool answers only when the returned `release` runs. `name` is any tool the fixture's disposable
+   * extension registers as holdable — `fixture_echo`, and the `read`, `edit` and `git` classes HUI names its indicator
+   * after (`read_file`, `apply_patch`, `git_status`) — or the shell's own `bash`, whose held call waits on the same
+   * control endpoint. A name no tool answers waits until the test ends, so the prompt is refused here rather than
+   * hanging. */
+  holdTool(session: { id: string }, name: string, input?: Record<string, unknown>): Promise<{ release(): Promise<void> }>;
+  /**
+   * Opens a subagent's own conversation from its parent's Swarm card, the row the chat draws for it, opening the
+   * folded card first. The card is the same control on every target; a phone reaches it in the chat where the web's
+   * sidebar also lists the child, so a test that reads a child's header works on both.
+   */
+  openSubagent(child: { title: string }): Promise<void>;
+  /**
+   * Starts a fixture world for this test: its own disposable gateway, seeded by the launcher's `--jira-fixture`,
+   * `--github-fixture`, `--activity-fixture`, `--datadog-fixture` or `--quota-fixture` (`world.ts`), or by none of them
+   * with `plain`, which is a gateway of this test's own. The world is another gateway on another port, so a test
+   * opens its pages with `hui.open(`${world.url}/...`)` and calls it with `world.api`. On Android, opening that origin
+   * rebuilds the real native bridge on it, with its port reverse-forwarded to this isolated host.
+   */
+  world(name: WorldName): Promise<World>;
   textOf(target: Locator): Promise<string>;
   /** A task progress step's state, its `data-status`. */
   stepState(step: Locator, state: string): Promise<void>;
@@ -127,6 +208,37 @@ export type Hui = {
   /** A tap at the middle of where the target is now, read at the moment of the press: a phone sends a plain tap to the row its last reading put the target in, which a screen that just laid that row out elsewhere would miss. */
   tapAt(target: Locator): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
+  /** The screen of the frame a CSS selector matches, so a test reads and taps a document HUI only hosts, such as an agent
+   * widget's sandboxed frame; a frame nested inside it comes from that screen's own `frameLocator`. */
+  frame(selector: string): Promise<FrameScreen>;
+  /**
+   * Installs a controllable clock in the page: `Date.now()` and every timer the app schedules from now on run on a clock
+   * only `advanceClock` moves, so a test can assert both sides of a deadline without waiting for it. Rendering and
+   * animation keep real time (`performance.now`, `requestAnimationFrame`), and a timer due at once still runs on the
+   * loop's next turn. The clock survives a reload; nothing is installed until a test asks. Answers the time it starts at.
+   */
+  controllableClock(): Promise<number>;
+  /** Advances the controlled clock by `ms`, running every timer that falls due in order, and answers the time it now
+   * reads. Needs `controllableClock()` first. */
+  advanceClock(ms: number): Promise<number>;
+  /** Freezes only this fixture gateway's automation scheduler; its clock survives gateway-child restarts. */
+  automationClock(): Promise<{ now: number; advance(ms: number): Promise<number> }>;
+  /**
+   * Grants the open page the microphone and the camera, as an operator allowing them in the browser's permission prompt.
+   * The web target's Chromium carries a fake camera and microphone (`web-browser.ts`), so `getUserMedia` then answers with
+   * that device instead of refusing. A page that never asks keeps being refused, which is what a use case about a refused
+   * microphone proves.
+   */
+  allowMedia(): Promise<void>;
+  /**
+   * Every other tab the page asked for since it loaded: a `window.open` call, or a press on a `target="_blank"` link
+   * nothing else handled, in the order the app asked. It answers the address the app asked to open, resolved against
+   * the page, and whether the request asked for `noopener`/`noreferrer` — never what a second page would end up with,
+   * because the engine only ever drives one page. An empty list means the app asked for no tab at all.
+   */
+  tabs(): Promise<TabRequest[]>;
+  /** The last tab the page asked for, or `undefined` when it asked for none. */
+  tab(): Promise<TabRequest | undefined>;
   expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   messageActions(target: Locator): Promise<void>;
@@ -151,13 +263,87 @@ export type Hui = {
 };
 
 /** The steps whose gesture or reading differs per platform; each target fills its own table of them. */
-type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "gatewayStub">;
+type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "createChief" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "holdTool" | "openSubagent" | "world" | "gatewayStub" | "automationClock">;
 
 /** A tap at the middle of where a target is at the moment of the press. */
 const tapAt = async (target: Locator) => {
   const box = await target.boundingBox();
   if (!box) throw new Error("tapAt: the target is not on screen");
   await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
+};
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+/**
+ * The clipboard a test reads and refuses: `navigator.clipboard`'s writes recorded on `window.huiCopied`, and a refused
+ * write throwing the way a browser refuses one. It runs in the page, so it closes over nothing, and every target
+ * installs it twice: as an init script for every page after it and in the page that is open, so a test may install it
+ * before or after its last navigation. A page stub that only reached the open page would be gone at the next one —
+ * `hui.clipboard()` followed by `hui.open(...)` is the ordinary order — and the copy would go to the device's own
+ * clipboard, which no test can read.
+ */
+const clipboardStub = ({ refuse = false, legacyCopy = false }: { refuse?: boolean; legacyCopy?: boolean } = {}) => {
+  const page = window as unknown as { huiCopied: string };
+  page.huiCopied = "";
+  navigator.clipboard.writeText = async (text) => {
+    if (refuse) throw new DOMException("Clipboard write refused", "NotAllowedError");
+    page.huiCopied = text;
+  };
+  navigator.clipboard.write = async (items) => {
+    if (refuse) throw new DOMException("Clipboard write refused", "NotAllowedError");
+    const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
+    const sizes = await Promise.all(blobs.map(async (blob) => blob.type === "image/png" ? createImageBitmap(blob).then((bitmap) => ` ${bitmap.width}x${bitmap.height}`, () => "") : ""));
+    page.huiCopied = blobs.map((blob, index) => `${blob.type}${sizes[index]}`).join(",");
+  };
+  if (refuse) {
+    document.execCommand = ((command: string) => {
+      if (command === "copy" && legacyCopy) {
+        const active = document.activeElement;
+        page.huiCopied = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
+          ? active.value
+          : String(document.getSelection() ?? "");
+      }
+      return legacyCopy;
+    }) as typeof document.execCommand;
+  }
+  return null;
+};
+
+/**
+ * Records the state a page shows and then replaces within one render: a rich embed's "Rendering diagram…" lives only
+ * until its chunk arrives, and how long that takes is the device's, so a test that watched only the live DOM would race
+ * it. Every element a page adds with `role="status"` is kept with the text it carried, on `window.huiStatuses`.
+ */
+const statusRecorder = () => {
+  const page = window as unknown as { huiStatuses: string[] };
+  const seen: string[] = page.huiStatuses = [];
+  new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node instanceof Element && node.getAttribute("role") === "status") seen.push(node.textContent ?? "");
+      }
+    }
+  }).observe(document, { childList: true, subtree: true });
+  return null;
+};
+
+/** Mobile WebKit cannot emit a protocol mouse wheel. Canvas controls consume the same wheel path their touch adapter
+ * uses; otherwise scroll the browser-owned container, producing its real scroll events without changing its layout. */
+const scrollPhone = ({ x, y, dx, dy }: { x: number; y: number; dx: number; dy: number }) => {
+  let target = document.elementFromPoint(x, y);
+  if (!target) throw new Error(`scroll: nothing is at ${x}, ${y}`);
+  for (let inner = target.shadowRoot?.elementFromPoint(x, y); inner && inner !== target; inner = target.shadowRoot?.elementFromPoint(x, y)) target = inner;
+  const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, deltaX: dx, deltaY: dy });
+  if (!target.dispatchEvent(wheel)) return null;
+  for (let node: Element | null = target; node; node = node.parentElement ?? (node.getRootNode() as ShadowRoot).host ?? null) {
+    const style = getComputedStyle(node);
+    const scrolls = dx !== 0
+      ? node.scrollWidth > node.clientWidth && /auto|scroll|overlay/u.test(style.overflowX)
+      : node.scrollHeight > node.clientHeight && /auto|scroll|overlay/u.test(style.overflowY);
+    if (scrolls) { node.scrollBy({ left: dx, top: dy, behavior: "instant" }); return null; }
+  }
+  window.scrollBy({ left: dx, top: dy, behavior: "instant" });
+  return null;
 };
 
 const holding = <R>() => {
@@ -206,8 +392,22 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
 const swipe = ({ x, y, drag }: { x: number; y: number; drag: number }) => {
   const target = document.elementFromPoint(x, y);
   if (!target) throw new Error(`touch: nothing is at ${x}, ${y}`);
-  const at = (clientY: number) => new Touch({ identifier: 1, target, clientX: x, clientY, screenX: x, screenY: clientY });
-  const fire = (type: string, moving: Touch[], ended: Touch[]) => target.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, composed: true, touches: moving, changedTouches: ended, targetTouches: moving }));
+  const legacy = document as Document & {
+    createTouch?: (view: Window, target: EventTarget, id: number, pageX: number, pageY: number, screenX: number, screenY: number) => Touch;
+    createTouchList?: (...touches: Touch[]) => TouchList;
+  };
+  let legacyLists = false;
+  const at = (clientY: number) => {
+    try { return new Touch({ identifier: 1, target, clientX: x, clientY, screenX: x, screenY: clientY }); }
+    catch (error) {
+      // WebKit exposes Touch but its constructor is illegal; its native Touch/TouchList factories remain supported.
+      if (!legacy.createTouch || !legacy.createTouchList) throw error;
+      legacyLists = true;
+      return legacy.createTouch(window, target, 1, x + scrollX, clientY + scrollY, x, clientY);
+    }
+  };
+  const list = (touches: Touch[]) => legacyLists ? legacy.createTouchList!(...touches) as unknown as Touch[] : touches;
+  const fire = (type: string, moving: Touch[], ended: Touch[]) => target.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, composed: true, touches: list(moving), changedTouches: list(ended), targetTouches: list(moving) }));
   fire("touchstart", [at(y)], [at(y)]);
   for (let moved = 0; Math.abs(moved) < Math.abs(drag);) {
     moved = Math.sign(drag) * Math.min(Math.abs(moved) + 40, Math.abs(drag));
@@ -259,6 +459,40 @@ const fingerDrag = ({ dx, dy }: { dx: number; dy: number }) => {
   return null;
 };
 
+/**
+ * Records every other tab the app asks this page for — a `window.open` call, or the press of a `target="_blank"` link —
+ * and lets the browser do exactly what it would do without this script: the app's request is what a test reads, because
+ * the engine only ever drives one page. The listener sits on `window` in the bubble phase on purpose: HUI's own handlers
+ * (the media viewer, a link's own component) run first and cancel the press with `preventDefault`, and a press the app
+ * handled is no tab request at all. Each document keeps its own list, so a widget's frame records only what the widget
+ * itself asked.
+ */
+const recordTabs = () => {
+  type Raw = { url: string; via: "window.open" | "link"; asked: string };
+  const requests: Raw[] = [];
+  (window as unknown as { huiTabs: Raw[] }).huiTabs = requests;
+  const address = (url: unknown) => {
+    const asked = typeof url === "string" ? url : url instanceof URL ? url.href : "";
+    try {
+      return new URL(asked, window.location.href).href;
+    } catch {
+      return asked;
+    }
+  };
+  const open = window.open.bind(window);
+  window.open = function recordedOpen(url?: string | URL, _target?: string, features?: string) {
+    requests.push({ url: address(url), via: "window.open", asked: features ?? "" });
+    return open(url, _target, features);
+  } as typeof window.open;
+  window.addEventListener("click", (event) => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    const anchor = event.composedPath().find((node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement);
+    if (!anchor || anchor.target !== "_blank" || anchor.hasAttribute("download")) return;
+    requests.push({ url: anchor.href, via: "link", asked: anchor.getAttribute("rel") ?? "" });
+  });
+  return null;
+};
+
 const trackSockets = () => {
   const sockets = new Set<WebSocket>();
   (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets = sockets;
@@ -274,7 +508,9 @@ const trackSockets = () => {
   }, Native) as unknown as typeof WebSocket;
 };
 
-export const test = base.extend<{ hui: Hui }>({
+/** Ordinary tests isolate routed requests from WebKit's worker; offline tests explicitly exercise the real worker. */
+function huiTest(offline: boolean) {
+  return base.extend<{ hui: Hui }>({
   hui: async (fixtures, use) => {
     const port = new URL(fixtures.app.baseUrl!).port;
     const file = new URL(`../../.e2e/hui/receipt-${port}.json`, import.meta.url);
@@ -300,7 +536,9 @@ export const test = base.extend<{ hui: Hui }>({
     const sessions = async () => (await groups()).flatMap((group) => group.sessions);
     const sessionIds = async () => (await sessions()).map((session) => session.id);
     const taskIds = async () => (await api<{ tasks: { id: string }[] }>("GET", "/__hui/automation")).tasks.map((task) => task.id);
-    const botIds = async () => (await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots.map((bot) => bot.id);
+    // Archived bots count too: a test that archives one leaves it behind for the cleanup to remove.
+    const botIds = async () => [...(await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots,
+      ...(await api<{ bots: { id: string }[] }>("GET", "/__hui/bots?archived=1")).bots].map((bot) => bot.id);
     const backlogTaskIds = async () => (await api<{ items: { id: string; kind: string }[] }>("GET", "/__hui/backlog")).items
       .filter((item) => item.kind === "local").map((item) => item.id);
     const prompt = async (session: { id: string }, text: string) => {
@@ -317,6 +555,15 @@ export const test = base.extend<{ hui: Hui }>({
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
     // The shared receipt is safe to print, so the harness token stays in the private one it names.
     const token = (async () => (JSON.parse(await readFile(receipt.receipt, "utf8")) as { token: string }).token)();
+    let automationFrozen = false;
+    const automationClockControl = async (action: "freeze" | "advance" | "resume", ms?: number): Promise<number | null> => {
+      const response = await fetch(`${receipt.url}/__verification/automation-clock`, {
+        method: "POST", headers: { "x-hui-verification": await token, "content-type": "application/json" },
+        body: JSON.stringify({ action, ms }),
+      });
+      if (!response.ok) throw new Error(`automation clock ${action} answered ${response.status}: ${await response.text()}`);
+      return (await response.json() as { now: number | null }).now;
+    };
     const network = async (mode: "online" | "offline" | "silent") => {
       const response = await fetch(`${receipt.url}/__verification/network`, {
         method: "POST",
@@ -333,47 +580,56 @@ export const test = base.extend<{ hui: Hui }>({
     const workerIds = async () => (await api<{ workers: { id: string }[] }>("GET", "/__hui/workers")).workers.map((worker) => worker.id);
     const existingWorkers = new Set(await workerIds());
     const workerHomes: string[] = [];
+    const worlds: World[] = [];
     const gatewayStubs: GatewayStub[] = [];
     const settings = await api<unknown>("GET", "/__hui/settings");
     const directories: string[] = [];
+    const nativeDisplay = onPhone(fixtures.app.baseUrl) ? androidDisplay() : undefined;
 
     const webSteps: PlatformSteps = {
       open: (path) => fixtures.app.open(path),
       reload: () => browser().reload(),
       clearState: () => fixtures.app.clearState(),
       url: () => browser().url(),
-      clipboard: ({ refuse = false, legacyCopy = false } = {}) => browser().addInitScript(({ refused, legacy }: { refused: boolean; legacy: boolean }) => {
-        const page = window as unknown as { huiCopied: string };
-        page.huiCopied = "";
-        navigator.clipboard.writeText = async (text) => {
-          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
-          page.huiCopied = text;
-        };
-        navigator.clipboard.write = async (items) => {
-          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
-          const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
-          const sizes = await Promise.all(blobs.map(async (blob) => blob.type === "image/png" ? createImageBitmap(blob).then((bitmap) => ` ${bitmap.width}x${bitmap.height}`, () => "") : ""));
-          page.huiCopied = blobs.map((blob, index) => `${blob.type}${sizes[index]}`).join(",");
-        };
-        if (refused) {
-          document.execCommand = ((command: string) => {
-            if (command === "copy" && legacy) {
-              const active = document.activeElement;
-              page.huiCopied = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
-                ? active.value
-                : String(document.getSelection() ?? "");
-            }
-            return legacy;
-          }) as typeof document.execCommand;
-        }
-      }, { refused: refuse, legacy: legacyCopy }),
+      // The stub goes into the page that is open as well as every page after it, so a test may install it once its last
+      // navigation is behind it — which is the only order a WebView can take (`clipboardStub`).
+      clipboard: async (options = {}) => {
+        await browser().addInitScript(clipboardStub, options);
+        await browser().evaluate(clipboardStub, options);
+      },
       copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
+      recordStatuses: async () => {
+        await browser().addInitScript(statusRecorder);
+        await browser().evaluate(statusRecorder);
+      },
+      statuses: () => browser().evaluate(() => (window as unknown as { huiStatuses?: string[] }).huiStatuses ?? []),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
       type: (text) => browser().keyboard.type(text),
       phoneScreen: async (orientation = "portrait") => {
         const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
         await browser().setViewport(phone);
         return phone;
+      },
+      viewportSize: () => browser().evaluate(() => ({ width: innerWidth, height: innerHeight })),
+      insets: async ({ top = 0, right = 0, bottom = 0, left = 0 }) => {
+        await browser().evaluate((insets) => {
+          for (const [side, value] of Object.entries(insets)) document.documentElement.style.setProperty(`--safe-area-${side}`, `${value}px`);
+          return null;
+        }, { top, right, bottom, left });
+      },
+      safeDisplay: async (insets = {}) => {
+        await webSteps.insets(insets);
+        await browser().evaluate(async () => {
+          await Promise.all(document.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity).map((animation) => animation.finished.catch(() => undefined)));
+          return null;
+        });
+        const size = await browser().evaluate(() => ({ width: innerWidth, height: innerHeight }));
+        return { ...size, top: insets.top ?? 0, left: insets.left ?? 0, right: size.width - (insets.right ?? 0),
+          bottom: size.height - (insets.bottom ?? 0), box: async (target) => {
+            const box = await target.boundingBox();
+            if (!box) throw new Error("display measurement: the target is not laid out");
+            return box;
+          } };
       },
       overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
         .some((element) => element.scrollWidth > element.clientWidth)),
@@ -421,11 +677,18 @@ export const test = base.extend<{ hui: Hui }>({
       zone: () => browser().evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
       providerRequests: async () => (await readFile(join(dirname(receipt.workspace), "artifacts/provider.jsonl"), "utf8").catch(() => "")).split("\n").filter((line) => line.trim()).length,
       network,
-      offlineFilesReady: () => browser().evaluate(async () => {
-        if (!("serviceWorker" in navigator)) return false;
-        const registration = await navigator.serviceWorker.getRegistration();
-        return registration?.active?.state === "activated";
-      }),
+      answerNextDialog: async (answer) => {
+        const off = await browser().onDialog(async (dialog) => {
+          // One answer only: a later dialog is the test's to expect.
+          await off();
+          if (answer === "accept") await dialog.accept();
+          else await dialog.dismiss();
+        });
+      },
+      offlineFilesReady: offlineReadinessProbe(
+        () => browser().evaluate(readOfflineReadiness),
+        () => browser().evaluate(readOfflineCacheNames),
+      ),
       activateSidebarRow: async (title) => {
         await browser().evaluate((name) => {
           const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
@@ -438,22 +701,26 @@ export const test = base.extend<{ hui: Hui }>({
       },
       sessionList: async () => {
         const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
-        if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
-          await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
-          // A row is tappable only once a drawer has taken the screen. A split renders one per pane, so wait for
-          // any of them instead of making a two-match locator an error.
-          await expect.poll(() => fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count()).toBeGreaterThan(0);
-        }
+        if (!phone) return;
+        // A closing backdrop stays visible during its fade, and an initial route may not have drawn its trigger yet.
+        // Read the drawer's actual state, then let tap wait for the real Open navigation control when it is closed.
+        const opened = () => browser().evaluate(() => document.querySelector(".sidebar")?.getAttribute("data-open") === "true");
+        if (!(await opened())) await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).first().tap();
+        await expect.poll(opened).toBe(true);
       },
       settingsPages: async () => {
-        const close = fixtures.screen.getByRole("button", "Close settings navigation", { visible: true });
-        const open = fixtures.screen.getByRole("button", "Open settings navigation", { visible: true });
-        if (await close.count() === 0 && await open.count() > 0) await open.tap();
+        const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
+        if (!phone) return;
+        const opened = () => browser().evaluate(() => document.querySelector(".settings-sidebar")?.getAttribute("data-open") === "true");
+        if (!(await opened())) await fixtures.screen.getByRole("button", "Open settings navigation", { visible: true }).first().tap();
+        await expect.poll(opened).toBe(true);
       },
       sessionMenu: async (title) => {
+        await webSteps.sessionList();
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
-        await row.hover();
-        await row.getByRole("button", `Actions for ${title}`).tap();
+        const actions = row.getByRole("button", `Actions for ${title}`);
+        await actions.focus();
+        await actions.tap();
         return row;
       },
       glyph: (title) => browser().evaluate((name) => {
@@ -516,50 +783,17 @@ export const test = base.extend<{ hui: Hui }>({
         await target.scrollIntoView();
         const box = await target.boundingBox();
         if (!box) throw new Error("look: the target lays out no box");
-        return browser().evaluate(({ x, y, width, height }) => {
-          const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
-          const element = document.elementsFromPoint(x + width / 2, y + height / 2).find((candidate) => {
-            const rect = candidate.getBoundingClientRect();
-            return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
-          });
-          if (!element) throw new Error("look: no element has the target's box");
-          const rgb = (color: string) => {
-            const channels = /^(?:rgba?\(|color\(srgb )([\d.e-]+),? ([\d.e-]+),? ([\d.e-]+)/u.exec(color);
-            if (!channels) throw new Error(`look: ${color} is not an sRGB colour`);
-            const scale = color.startsWith("color(") ? 255 : 1;
-            return channels.slice(1).map((value) => Math.round(Number(value) * scale)) as [number, number, number];
-          };
-          let behind: Element | null = element;
-          while (behind && /^rgba\(.*, 0\)$|^color\(.* \/ 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
-          if (!behind) throw new Error("look: nothing opaque is behind the target");
-          const style = getComputedStyle(element);
-          let opacity = 1;
-          for (let node: Element | null = element; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
-          const fonts = style.fontFamily.split(",").map((family) => family.trim().replace(/^"(.*)"$/u, "$1"));
-          const faces = [...document.fonts];
-          const outerShadow = style.boxShadow.split(/,(?![^(]*\))/u).at(-1)!.trim();
-          return {
-            color: rgb(style.color),
-            background: rgb(getComputedStyle(behind).backgroundColor),
-            opacity,
-            fonts,
-            loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
-              && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
-            size: Number.parseFloat(style.fontSize),
-            weight: Number(style.fontWeight),
-            align: style.textAlign,
-            ring: !element.matches(":focus-visible") ? null
-              : style.outlineStyle !== "none" ? rgb(style.outlineColor)
-              : outerShadow === "none" ? null : rgb(outerShadow),
-          };
-        }, box);
+        const [label, href, className, text] = await Promise.all([
+          target.getAttribute("aria-label"), target.getAttribute("href"), target.getAttribute("class"), target.textContent(),
+        ]);
+        return browser().evaluate(readLook, { ...box, label, href, className, text });
       },
       attach: async (target, files) => {
         const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";
         if (made) directories.push(made);
         await target.setInputFiles(await Promise.all(files.map(async (file) => {
           if (typeof file === "string") return fileURLToPath(new URL(`files/${file}`, import.meta.url));
-          await writeFile(join(made, file.name), Buffer.alloc(file.bytes, "x"));
+          await writeFile(join(made, file.name), "text" in file ? file.text : Buffer.alloc(file.bytes, "x"));
           return join(made, file.name);
         })));
       },
@@ -654,17 +888,42 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(fingerDrag, { dx, dy });
       },
       contextMenu: (target) => target.secondaryTap(),
-      messageActions: (target) => target.hover(),
+      messageActions: async (target) => {
+        if (onPhone(fixtures.app.baseUrl) || onWebKitPhone(fixtures.app.baseUrl)) {
+          // Touch layouts draw the actions outright. Bring the message into view rather than pretending to hover it.
+          await target.scrollIntoView();
+          await expect(target).toBeVisible();
+        } else await target.hover();
+      },
       openWorkView: async (name) => {
-        await browser().setViewport({ width: 1440, height: 900 });
-        await fixtures.screen.getByRole("button", "Show Work pane").tap();
-        await fixtures.screen.getByRole("button", "Open Work view").tap();
-        await fixtures.screen.getByRole("menuitem").filter({ hasText: name }).tap();
+        const show = fixtures.screen.getByRole("button", "Show Work pane");
+        const plus = fixtures.screen.getByRole("button", "Open Work view");
+        const panel = fixtures.screen.getByRole("button", { name: /^Active panel/u });
+        await expect.poll(async () => (await show.isVisible()) || (await plus.isVisible()) || (await panel.isVisible())).toBe(true);
+        if (await show.isVisible()) await show.tap();
+        if (await plus.isVisible()) {
+          await plus.tap();
+          await fixtures.screen.getByRole("menuitem").filter({ hasText: name }).tap();
+        } else {
+          await panel.tap();
+          await fixtures.screen.getByRole("listbox", "Active panel").getByText(name, { exact: true }).first().tap();
+        }
       },
       deleteEntry: async (within, name) => {
         await within.getByRole("button", `Delete ${name}`).tap();
       },
       scrollTo: (_within, target) => target.scrollIntoView(),
+      frame: async (selector) => browser().frameLocator(selector),
+      allowMedia,
+      controllableClock: async () => {
+        // The page that is open gets it now, and every page after it through an init script, so a reload keeps the clock.
+        await browser().addInitScript(installClock);
+        return browser().evaluate(installClock);
+      },
+      advanceClock: (ms) => browser().evaluate(advanceClock, ms),
+      tabs: () => browser().evaluate(() => ((window as unknown as { huiTabs?: { url: string; via: "window.open" | "link"; asked: string }[] }).huiTabs ?? [])
+        .map(({ url, via, asked }) => ({ url, via, asked, noopener: /\bnoopener\b/u.test(asked), noreferrer: /\bnoreferrer\b/u.test(asked) }))),
+      tab: async () => (await steps.tabs()).at(-1),
       expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
       textOf: async (target) => (await target.textContent()) ?? "",
       stepState: (step, state) => expect(step).toHaveAttribute("data-status", state),
@@ -672,25 +931,24 @@ export const test = base.extend<{ hui: Hui }>({
       scrollSideways: async (target) => {
         const box = await target.boundingBox();
         if (!box) throw new Error("scrollSideways: the target is not on screen");
-        await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
-        await browser().mouse.wheel(240, 0);
+        const point = { x: box.x + Math.min(24, box.width / 2), y: box.y + box.height / 2 };
+        if (onWebKitPhone(fixtures.app.baseUrl)) await browser().evaluate(scrollPhone, { ...point, dx: 240, dy: 0 });
+        else {
+          await browser().mouse.move(point.x, point.y);
+          await browser().mouse.wheel(240, 0);
+        }
       },
       wheel: async (target, deltaY) => {
         const box = await target.boundingBox();
         if (!box) throw new Error("wheel: the target is not on screen");
-        await browser().mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-        await browser().mouse.wheel(0, deltaY);
+        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        if (onWebKitPhone(fixtures.app.baseUrl)) await browser().evaluate(scrollPhone, { ...point, dx: 0, dy: deltaY });
+        else {
+          await browser().mouse.move(point.x, point.y);
+          await browser().mouse.wheel(0, deltaY);
+        }
       },
-      stored: async (text) => {
-        const root = dirname(receipt.workspace);
-        const files = (await readdir(root, { recursive: true, withFileTypes: true }))
-          .filter((entry) => entry.isFile())
-          .map((entry) => relative(root, join(entry.parentPath, entry.name)))
-          .filter((file) => !file.startsWith("vite-cache/"));
-        const read = (file: string) => readFile(join(root, file), "latin1").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error));
-        const holding = await Promise.all(files.map(async (file) => ((await read(file)).includes(text) ? [file] : [])));
-        return holding.flat();
-      },
+      stored: (text) => storedContent(dirname(receipt.workspace), text),
       secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
       spoofUserAgent: (userAgent) => browser().addInitScript((agent: string) => {
         Object.defineProperty(navigator, "userAgent", { configurable: true, get: () => agent });
@@ -758,10 +1016,49 @@ export const test = base.extend<{ hui: Hui }>({
       },
       intercept: async (method, path) => {
         const { arrival, hold, settle } = holding<WebRoute>();
-        await browser().route(path, (route) => (route.request.method === method ? hold(route) : route.fallback()));
+        let count = 0;
+        await browser().route(path, (route) => {
+          if (route.request.method !== method) return route.fallback();
+          count += 1;
+          return hold(route);
+        });
         const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
         return {
           arrived: () => arrival,
+          count: () => count,
+          requestsFromTap: async (target) => {
+            // Observe the browser's transport, not app callbacks. Another stream task cannot run inside click
+            // dispatch; eventPhase becomes NONE after dispatch even if a handler stops propagation.
+            await browser().evaluate(({ method, source, flags }) => {
+              const matches = new RegExp(source, flags);
+              const fetch = window.fetch;
+              let click: Event | undefined;
+              let count = 0;
+              const capture = (event: Event) => { if (event.isTrusted) click = event; };
+              document.addEventListener("click", capture, true);
+              window.fetch = (input, init) => {
+                const url = input instanceof Request ? input.url : new URL(String(input), location.href).href;
+                matches.lastIndex = 0;
+                if (click && click.eventPhase !== Event.NONE && matches.test(url)
+                  && (init?.method ?? (input instanceof Request ? input.method : "GET")) === method) count += 1;
+                return fetch.call(window, input, init);
+              };
+              Object.assign(window, { huiTapRequests: () => {
+                window.fetch = fetch;
+                document.removeEventListener("click", capture, true);
+                return count;
+              } });
+              return null;
+            }, { method, source: path.source, flags: path.flags });
+            let found = 0;
+            try {
+              await target.tap();
+            } finally {
+              // Restore transport even if the gesture fails; each invocation owns only its observation window.
+              found = await browser().evaluate(() => (window as unknown as { huiTapRequests(): number }).huiTapRequests());
+            }
+            return found;
+          },
           deliver: () => decide((route) => route.continue()),
           reject: (status, error) => decide((route) => route.fulfill({ status, json: { error } })),
           answer: (json) => decide((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
@@ -774,20 +1071,227 @@ export const test = base.extend<{ hui: Hui }>({
     };
 
     // Each target's steps: the web fills its table, and a platform the suite gains adds its own beside it.
-    const steps = ({ web: webSteps } as Record<string, PlatformSteps | undefined>)[fixtures.platform];
-    if (!steps) throw new Error(`hui: the fixture has no steps for the ${fixtures.platform} target`);
+    const web = ({ web: webSteps } as Record<string, PlatformSteps | undefined>)[fixtures.platform];
+    if (!web) throw new Error(`hui: the fixture has no steps for the ${fixtures.platform} target`);
+    // The Android app's WebView is HUI's web page in another host, so its table is the web's except for what a WebView
+    // cannot do: it has one page and one context, which the engine cannot replace between attempts, so the app's own
+    // storage is cleared in place (and the page reloaded) where the web asks the engine for a clean context.
+    // `webkit-phone` is the iPhone's engine at a phone's size: its table is the web's too, except that the steps needing
+    // a desktop would quietly prove the desktop's behaviour on a phone (a mouse still moves in a touch context, and the
+    // engine can be told to lay the page out wide), so they refuse instead and the test fails where the behaviour is
+    // unprovable. WP7's area owners take the failures to a phone step or a catalogue exclusion. `sessionMenu` stays the
+    // web's: its hover only reveals the row's button there, and the phone draws that button at phone widths anyway.
+    const desktopOnly = (step: string) => (): never => {
+      throw new Error(`hui.${step}() needs a desktop: phone targets keep their narrow touch layout and cannot prove a desktop-only gesture`);
+    };
+    const steps: PlatformSteps = onWebKitPhone(fixtures.app.baseUrl)
+      ? {
+          ...web,
+          wideScreen: desktopOnly("wideScreen"),
+          peek: desktopOnly("peek"),
+          // The fake camera and microphone are the web target's Chromium, which this target does not launch: its WebKit
+          // has no device at all, so granting a permission would only prove a refusal. A use case that needs the
+          // microphone open stays off this target's required list.
+          allowMedia: async () => {
+            throw new Error("hui.allowMedia() needs the web target's fake camera and microphone: the webkit-phone target runs Playwright's WebKit, which has no device to grant, so a call here could only prove the refusal. A use case that needs the microphone open stays off the phone's required list.");
+          },
+        }
+      : onPhone(fixtures.app.baseUrl)
+        ? {
+            ...web,
+            // Page.url() is cached after its physical WebView closes. A real main-window read makes the engine
+            // recover the owned native window before observing a user-initiated bridge/gateway handoff.
+            url: () => browser().evaluate(() => location.href),
+            phoneScreen: async (orientation = "portrait") => {
+              nativeDisplay!.rotate(orientation);
+              return steps.viewportSize();
+            },
+            viewportSize: async () => {
+              let size: { width: number; height: number } | undefined;
+              await expect.poll(async () => {
+                const metrics = await browser().evaluate(() => ({ width: innerWidth, height: innerHeight, ratio: devicePixelRatio, scale: visualViewport?.scale ?? 1 }));
+                size = await nativeDisplay!.viewportSize(metrics);
+                return true;
+              }, { message: "the CSS viewport must match the attached native frame" }).toBe(true);
+              return size!;
+            },
+            insets: async () => { throw new Error("Android owns its frame insets; use safeDisplay for real native measurements"); },
+            safeDisplay: async (insets) => {
+              nativeDisplay!.prepare();
+              if (insets) {
+                const path = await browser().url();
+                const previous = await nativeDisplay!.target();
+                if (nativeDisplay!.cutout()) {
+                  // Applying Android resources recreates the Activity. Wait for its new real target before binding it.
+                  await expect.poll(() => nativeDisplay!.target()).not.toBe(previous);
+                  await fixtures.app.open(path);
+                  nativeDisplay!.prepare();
+                }
+              }
+              const metrics = () => browser().evaluate(() => ({ width: innerWidth, height: innerHeight, ratio: devicePixelRatio, scale: visualViewport?.scale ?? 1 }));
+              await expect.poll(async () => nativeDisplay!.ready(await metrics()), { message: "native inset resize must reach the real CSS viewport" }).toBe(true);
+              return nativeDisplay!.measure(await metrics());
+            },
+            open: async (path) => {
+              const destination = new URL(path, receipt.url);
+              await openPhoneGateway(destination.origin);
+              await fixtures.app.open(destination.href);
+              refusePhoneNotificationPrompt();
+            },
+            // CDP routes and attempt-scoped page scripts work in the app's persistent context just as in Chromium.
+            // Only context replacement, native downloads and genuinely unavailable desktop gestures need overrides.
+            clearOffline: async () => {
+              // The web's own reason holds here too: a worker an earlier test left can answer this navigation (and its app
+              // chunk) before an init script runs, so it is dropped in the page that is open as well.
+              const clear = async () => {
+                const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+                await Promise.all(registrations.map((registration) => registration.unregister()));
+                if ("caches" in globalThis) for (const key of await caches.keys()) await caches.delete(key);
+                return null;
+              };
+              await browser().evaluate(clear);
+              await browser().addInitScript(clear);
+            },
+            wideScreen: desktopOnly("wideScreen"),
+            peek: desktopOnly("peek"),
+            tabs: async () => {
+              // The app never asks its page for a tab in the app: `installNativeShell` hands an external address to the
+              // shell's own browser (`openExternal`), so a WebView has no `window.open` request to read and no second page
+              // to open. Refusing names that, instead of answering with a list that would mean "the app asked for none".
+              throw new Error("hui.tabs() needs a browser: the app's WebView hands an external address to the shell's own browser, so the page never asks for a tab there and there is nothing to read. A use case that reads one stays off the phone's required list.");
+            },
+            tab: async () => {
+              throw new Error("hui.tab() needs a browser: the app's WebView hands an external address to the shell's own browser, so the page never asks for a tab there and there is nothing to read. A use case that reads one stays off the phone's required list.");
+            },
+            controllableClock: async () => {
+              // The clock is advanced in the page that holds it (`advanceClock` evaluates here), so it goes into the open
+              // page and a reload starts a new one: a use case whose timer has to pass across a reload waits on the real
+              // clock instead.
+              return browser().evaluate(installClock);
+            },
+            advanceClock: (ms) => browser().evaluate(advanceClock, ms),
+            allowMedia: async () => {
+              // The app's WebView answers a page's permission prompt with the app's own Android grant (`RECORD_AUDIO`),
+              // which a Playwright attempt cannot hand to it and a fake device cannot stand in for. A use case that needs
+              // the microphone open stays off the phone's required list until the app grows a step for it.
+              throw new Error("hui.allowMedia() needs the browser's own permission grant: the app's WebView takes its permissions from the Android app, so there is nothing for a test to grant. A use case that needs the microphone stays off the phone's required list until the app has a step for it.");
+            },
+            clearState: async () => {
+              await fixtures.app.open("/");
+              await browser().evaluate(clearAppStorage);
+              await browser().reload();
+            },
+            download: async (target) => {
+              // The app saves a download itself: an `http(s)` one goes to the system's download manager, a `blob:` or
+              // `data:` one is written by the shell (`ShellDownloads`), and both land in `Downloads`. No browser download
+              // event reaches the engine in a WebView, so this reads the folder the app wrote and fails, naming what it
+              // found, when no file appeared.
+              const before = new Map(deviceFiles().map(({ name, size }) => [name, size]));
+              await target.tap();
+              let written: { name: string; size: number } | undefined;
+              await expect.poll(() => {
+                written = deviceFiles().find(({ name, size }) => before.get(name) !== size && size > 0);
+                return written?.name;
+              }, { timeout: 60_000, message: `hui.download: the app saved nothing into ${PHONE_DOWNLOADS}; it holds ${JSON.stringify(deviceFiles())}` }).toBeDefined();
+              // The download manager writes the file itself, so its size settles a moment after it appears.
+              const saving = written!;
+              let settled = saving.size;
+              let file: { name: string; size: number } | undefined;
+              await expect.poll(() => {
+                const now = deviceFiles().find(({ name }) => name === saving.name);
+                file = now !== undefined && now.size > 0 && now.size === settled ? now : undefined;
+                settled = now?.size ?? settled;
+                return file !== undefined;
+              }, { timeout: 60_000, message: `hui.download: ${saving.name} never finished writing to ${PHONE_DOWNLOADS}` }).toBe(true);
+              const path = `${PHONE_DOWNLOADS}/${file!.name}`;
+              try {
+                // One UI action must write one file, even when Downloads already holds other tests' files.
+                expect(deviceFiles().filter(({ name, size }) => before.get(name) !== size).map(({ name }) => name)).toEqual([file!.name]);
+                return { name: file!.name, text: deviceBytes(path).toString("utf8") };
+              } finally {
+                // Never remove or rename anything that existed before this action, including a changed-size file.
+                if (!before.has(file!.name)) execFileSync(process.env["ADB"] ?? "adb", [
+                  ...(process.env["ANDROID_SERIAL"] ? ["-s", process.env["ANDROID_SERIAL"]!] : []),
+                  "shell", "rm", "--", `'${path.replaceAll("'", "'\\''")}'`,
+                ], { timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });
+              }
+            },
+          }
+        : web;
+    if (onWebKitPhone(fixtures.app.baseUrl)) webkitServiceWorkers(offline);
+    if (offline && fixtures.platform === "web" && !onPhone(fixtures.app.baseUrl)) await browser().addInitScript(observeOfflineLifecycle);
     if (fixtures.platform === "web") await browser().addInitScript(trackSockets);
+    if (fixtures.platform === "web") await browser().addInitScript(recordTabs);
     await steps.clearState();
 
+    try {
     await use({
       ...steps,
+      automationClock: async () => {
+        const alignPage = async (now: number) => {
+          await browser().addInitScript(installClock, now);
+          await browser().evaluate(installClock, now);
+        };
+        // This control belongs only to the isolated fixture, never an unauthenticated browser or product API.
+        const denied = await fetch(`${receipt.url}/__verification/automation-clock`, {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "advance", ms: 0 }),
+        });
+        expect(denied.status).toBe(403);
+        const now = await automationClockControl("freeze");
+        if (now === null) throw new Error("The automation clock did not freeze");
+        automationFrozen = true;
+        await alignPage(now);
+        return { now, advance: async (ms) => {
+          const next = await automationClockControl("advance", ms);
+          if (next === null) throw new Error("The automation clock is not frozen");
+          await alignPage(next);
+          return next;
+        } };
+      },
       workspace: receipt.workspace,
       configDir: receipt.huiConfig,
       gateway: receipt.url,
       api,
       createSession: async (input) =>
         (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
+      createChief: async () => {
+        // Never prompt the launcher's shared seeded chief: its real usage otherwise leaks into later tests.
+        const group = `E2E ${randomUUID()}`;
+        await api("POST", "/__hui/session-groups", { name: group });
+        const { bot } = await api<{ bot: { id: string; name: string; sessionId: string; group: string } }>(
+          "POST", "/__hui/staff/chiefs", { group, cwd: receipt.workspace },
+        );
+        expect(existingBots.has(bot.id)).toBe(false);
+        return bot;
+      },
       prompt,
+      world: async (name) => {
+        const world = await startWorld(name);
+        worlds.push(world);
+        return world;
+      },
+      /** Prompts for one held tool call and answers with the release, once the tool is running. */
+      holdTool: async (session, name, input) => {
+        const call = Buffer.from(JSON.stringify({ name, input: input ?? {} })).toString("base64url");
+        await prompt(session, `E2E_HOLD:${call}`);
+        // The provider registers a held response only once a tool is actually waiting, so this resolves when the call is
+        // in flight and names the tool when nothing answers it.
+        const waiting = await fetch(`${receipt.providerUrl}/control/wait-replay-ready`, { signal: AbortSignal.timeout(60_000) })
+          .catch(() => undefined);
+        if (!waiting?.ok) throw new Error(`hui.holdTool: ${name} never started: only a tool the fixture's disposable extension registers as holdable (fixture_echo, read_file, apply_patch, git_status) or the shell's own bash waits on the control endpoint`);
+        return { release: () => control("POST", "/control/release-replay") };
+      },
+      openSubagent: async ({ title }) => {
+        // The chat's Swarm card holds each child as `Open subagent <title>`, and a new batch folds it: open the card by its
+        // summary title when the row is not on screen yet. The same card is what a phone shows, so no target branches here.
+        const card = fixtures.screen.getByLabel("Parallel tasks");
+        const row = card.getByLabel(new RegExp(`^Open subagent ${escapeRegExp(title)}`, "u"));
+        if (!(await row.isVisible())) await card.getByText(title, { exact: true }).first().tap();
+        await expect(row).toBeVisible();
+        await steps.scrollTo(fixtures.screen.getByTestId("transcript"), row);
+        await row.tap();
+      },
       createSubagent: async (parent) => {
         await prompt(parent, "E2E_SUBAGENTS_START");
         let child: ListedSession | undefined;
@@ -807,6 +1311,7 @@ export const test = base.extend<{ hui: Hui }>({
       gatewayStub: async (name) => {
         const stub = await startGatewayStub(name);
         gatewayStubs.push(stub);
+        if (onPhone(fixtures.app.baseUrl)) forwardPhoneGateway(stub.url);
         return stub;
       },
       restartGateway: async () => {
@@ -834,12 +1339,20 @@ export const test = base.extend<{ hui: Hui }>({
         return { path, git };
       },
     });
+    } finally {
+      try {
+        nativeDisplay?.restore();
+      } finally {
 
     // A test that failed while offline must not leave the fixture unreachable.
     await network("online");
     await control("POST", "/control/release-replay");
-    for (const id of await taskIds()) {
-      if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
+    try {
+      for (const id of await taskIds()) {
+        if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
+      }
+    } finally {
+      if (automationFrozen) await automationClockControl("resume");
     }
     for (const id of await botIds()) {
       if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
@@ -865,5 +1378,14 @@ export const test = base.extend<{ hui: Hui }>({
     }
     await api("PUT", "/__hui/settings", settings);
     for (const path of directories) await rm(path, { recursive: true, force: true });
+    // A world is another gateway and its own fake services: stop each one the test started, gateway and all.
+    for (const world of worlds.reverse()) await world.stop();
+      }
+    }
   },
-});
+  });
+}
+
+export const test = huiTest(false);
+/** Real service-worker installation and offline recovery, never the intercepted online test mode. */
+export const offlineTest = huiTest(true);

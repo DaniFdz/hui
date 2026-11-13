@@ -180,7 +180,7 @@ export class HuiGitHubSettings extends LitElement {
   override render() {
     const connection = this.#connection;
     return html`
-      <section class="settings-section" data-integration="github">
+      <section class="settings-section" data-integration="github" data-testid="settings-github">
         <div class="settings-section__header"><div class="settings-section__copy">
           <h2 class="settings-section__heading">GitHub</h2>
           <p class="settings-section__desc">Pull request badges and agent <code>gh</code> commands use the GitHub CLI login of the machine running HUI. The token stays in gh's own keyring or config.</p>

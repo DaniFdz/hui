@@ -8,6 +8,7 @@ test("the sidebar footer lists the gateways this device knows, marks the current
   const name = (await hui.api<{ name: string }>("GET", "/__hui/health")).name;
 
   await hui.open("/");
+  await hui.sessionList();
   const trigger = screen.getByTestId("sidebar-gateway");
   await expect(trigger).toBeVisible();
   await expect(trigger).toContainText(name);
@@ -18,14 +19,8 @@ test("the sidebar footer lists the gateways this device knows, marks the current
   await expect(screen.getByText("Current", { exact: true })).toBeVisible();
   await expect(screen.getByText("Add a gateway…", { exact: true })).toBeVisible();
 
-  // Escape closes the list and returns focus to the button, as the session menus do.
-  await screen.getByText("Add a gateway…", { exact: true }).press("Escape");
-  await expect(screen.getByText("Add a gateway…", { exact: true })).toBeHidden();
-  await expect(trigger).toBeFocused();
-
-  // Add a gateway… opens the dialog in place, without leaving the page for Settings.
+  // Add a gateway… opens the dialog in place. Escape/focus restoration is the web-only case SHELL-051.
   const before = await hui.url();
-  await trigger.tap();
   await screen.getByText("Add a gateway…", { exact: true }).tap();
   const dialog = screen.getByLabel("Add gateway", { exact: true });
   await expect(dialog).toBeVisible();
@@ -36,9 +31,35 @@ test("the sidebar footer lists the gateways this device knows, marks the current
   await expect(dialog).toBeHidden();
   expect(await hui.url()).toBe(before);
 
-  // The new gateway joins the list under the name chosen in the dialog.
+  // The new gateway joins the list under the name chosen in the dialog, back in the phone's drawer too.
+  await hui.sessionList();
   await trigger.tap();
   await expect(screen.getByText("Loft", { exact: true })).toBeVisible();
   await expect(screen.getByText("Current", { exact: true })).toBeVisible();
-  await screen.getByText("Add a gateway…", { exact: true }).press("Escape");
+  await trigger.tap();
+  await expect(screen.getByText("Add a gateway…", { exact: true })).toBeHidden();
+});
+
+test("choosing another gateway in the footer opens its own page", { tags: ["SHELL-049"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const there = new URL(hui.gateway);
+  there.hostname = "localhost";
+  const name = (await hui.api<{ name: string }>("GET", "/__hui/health")).name;
+  await hui.open("/settings/connection");
+  const page = screen.getByTestId("settings-page");
+  await page.getByRole("button", "Add gateway").tap();
+  const dialog = screen.getByLabel("Add gateway", { exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Address", { exact: true }).fill(there.origin);
+  await dialog.getByRole("button", "Add gateway").tap();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", `Switch to ${name}`)).toBeVisible();
+  await hui.open("/");
+  await hui.sessionList();
+  await screen.getByTestId("sidebar-gateway").tap();
+  // The disabled current item also has Current in its accessible name; this is the other gateway's item.
+  await screen.getByRole("menuitem", { name, exact: true }).tap();
+  await expect.poll(() => hui.url()).toMatch(/^http:\/\/localhost:\d+\//u);
+  await hui.sessionList();
+  await expect(screen.getByTestId("sidebar-gateway")).toContainText(name);
+  await hui.open("/");
 });

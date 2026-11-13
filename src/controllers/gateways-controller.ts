@@ -22,6 +22,7 @@ import {
   type GatewayView,
 } from "../lib/gateways/gateway-list.ts";
 import { GatewayStore } from "../lib/gateways/gateway-store.ts";
+import { nativeShell } from "../lib/native-shell.ts";
 
 /** Saves the name this gateway reports to every client; resolves false when the save did not land. */
 export type SaveGatewayName = (name: string) => Promise<boolean>;
@@ -220,10 +221,17 @@ export class GatewaysController implements ReactiveController {
     this.store.remove(url);
   }
 
-  /** Switching opens the chosen gateway in this page: its own address, its own state. HUI's desktop app shows it in
-   * the window it already has, so the mode it was switched in stays the window the operator is looking at. */
-  switchTo(url: string): void {
-    switchGateway(url);
+  /**
+   * Switching opens the chosen gateway's own page. A phone must rebuild its native bridge on that origin rather than
+   * navigate the old WebView across origins (which would hand it to the external browser); HUI's desktop app shows it
+   * in the window it already has; a browser navigates this page.
+   */
+  async switchTo(url: string): Promise<void> {
+    const address = normalizeGatewayAddress(url);
+    if (!address) throw new Error(GATEWAY_NOT_AN_ADDRESS);
+    const shell = nativeShell();
+    if (shell) await shell.connectGateway(address);
+    else switchGateway(address);
   }
 
   /** Tells HUI's desktop app which gateways this device lists, so switching to one keeps the app's window. */

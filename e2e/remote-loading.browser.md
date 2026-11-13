@@ -146,6 +146,85 @@ The latest rows look the same in both builds, the watcher's last line keeps
 updating, and after a gateway restart the page reconnects with the whole
 transcript.
 
+## Phone-shell integration measurement (2026-11-13)
+
+A production build of `b34be6e8f7a03271eb9d39a9a209b98ec78bfcdc`, in a clean isolated checkout with the existing
+160-turn fixture, was exercised through the Browser tool. The proxy used 300 ms RTT, 1.6 Mbit/s down and 800 kbit/s
+up. Home's **Open Long remote session** led through the loading state to **Step 160**; **Show earlier messages**
+kept the same visible Step 145 row at y283 on 1440×900 and y307 on a responsive 390×844 resize, with zero measured
+displacement. Both resulting screens wrapped without visible sideways overflow.
+
+| Single cold desktop run | Observed |
+| --- | ---: |
+| First byte | 373 ms |
+| First paint / contentful paint | 1.8 s |
+| DOMContentLoaded / load | 2.1 s / 3.9 s |
+| POST open duration | 477 ms |
+| POST open JSON Content-Length | 541 B |
+| POST open Browser-recorded encoded response | 739 B |
+
+All 91 captured HTTP requests answered 200; the Browser console recorded no warnings or errors. Encoded response
+counts are not raw JSON or total wire bytes. The transcript arrived through the live connection, whose WebSocket
+bytes were not observable. Exact UI-first-ready latency and request-byte totals were not measured. Mobile was a
+responsive resize of the same tab, not a cold mobile boot or native-phone test; this is one post-change run, not a
+before/after comparison. The fixture used no external inference, and its owned gateway/proxy sockets and processes
+were confirmed closed after capture.
+
+## Retained-content repair measurement (2026-11-13)
+
+A fresh clean production checkout at `ca6c7e0d611a61f998d09297b468ca37904eb25a` repeated the existing 160-turn
+fixture through the Browser tool, behind the same 300 ms RTT / 1.6 Mbit/s down / 800 kbit/s up proxy. This includes
+the retained-text, native-anchoring and quantized-scroll corrections, rather than treating the earlier integration
+measurement as proof of those later changes.
+
+Home's **Open Long remote session** loaded **Step 160**. After scrolling to **Show earlier messages**, Step 145's
+measured box stayed exactly at `(827, 283, 384, 55)` before and after expansion at 1440×900. After a responsive
+390×844 reload, its box stayed exactly at `(53, 307, 329, 76)`. Both resulting screens were inspected and wrapped
+without visible sideways overflow.
+
+| Single cold desktop navigation | Observed |
+| --- | ---: |
+| First byte | 361 ms |
+| First paint / contentful paint | 1.9 s |
+| DOMContentLoaded / load | 1.9 s / 3.9 s |
+| POST open duration | 517 ms |
+| POST open JSON Content-Length | 543 B |
+| POST open Browser-recorded encoded response | 741 B |
+
+All 91 captured HTTP requests returned 200. The Browser console reported no warnings or errors. The loading state
+was observed in the snapshot; the first screenshot had already reached Home and is not labeled as a boot capture.
+Mobile was a warm responsive reload of the same origin, not a cold mobile boot or native-phone test. Exact
+UI-first-ready latency, WebSocket bytes and total wire bytes were not measured. This is one synthetic post-repair
+run, not a before/after comparison; it made no external inference requests. The owned gateway and proxy processes
+were confirmed gone and both sockets closed after capture.
+
+## Rendered-pixel boundary measurement (2026-11-13)
+
+A clean production checkout at `03585007866b1d82cce8a1e0ec544a811ffbe563` exercised the same 160-turn fixture and
+300 ms / 1.6 Mbit/s down / 800 kbit/s up proxy after the pixel-preserving comparator correction. The real loading
+screen was captured this time. Home's **Open Long remote session** reached Step 160, and **Show earlier messages**
+was scrolled into view and clicked through the Browser tool.
+
+At 1440×900, Step 145 stayed at `(827, 283, 384, 55)`. On a warm responsive 390×844 reload, the first retained tool
+card stayed at `(9, 122, 372, 46)`. Its following Step 145 bubble measured `(53, 307, 329, 76)` before and
+`(53, 306, 329, 76)` after; a second mobile observation reproduced both results. This proves the first retained
+content's rendered pixel, not identical rounded boxes for every following row. Raw fractional coordinates were not
+measured. Both resulting screens were inspected, with wrapped text and no apparent sideways overflow.
+
+| Single cold desktop navigation | Observed |
+| --- | ---: |
+| First byte | 376 ms |
+| First paint / contentful paint | 1.9 s |
+| DOMContentLoaded / load | 2.1 s / 3.9 s |
+| POST open duration | 629 ms |
+| POST open JSON Content-Length | 531 B |
+| POST open Browser-recorded encoded response | 729 B |
+
+All 94 desktop HAR HTTP entries returned 200, and the final Browser console reported no errors or warnings. This is
+one synthetic desktop run with responsive mobile follow-up, not a performance comparison, cold mobile/native boot,
+exact UI-first-ready or total wire/WebSocket-byte measurement. No external inference was requested. The owned gateway
+and proxy processes were confirmed gone, both sockets closed and the Browser tab closed after capture.
+
 ## Limits
 
 The proxy models latency and one shared bandwidth budget over HTTP/1.1 to

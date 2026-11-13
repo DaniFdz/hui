@@ -145,7 +145,9 @@ test("Edit changes a saved gateway's name and address, and only the current gate
   await expect(page.getByText(here.origin, { exact: true })).toBeVisible();
 
   // Every surface that names this gateway shows the saved name, including the sidebar footer.
+  await hui.settingsPages();
   await screen.getByRole("button", "Exit Settings").tap();
+  await hui.sessionList();
   await expect(screen.getByTestId("sidebar-gateway")).toContainText("Studio Mac");
 });
 
@@ -167,6 +169,7 @@ test("switching opens the chosen gateway in this page", { tags: ["SET-094"], pla
 
   // The page is now that origin's app, and its footer names the gateway serving it.
   await expect.poll(() => hui.url()).toMatch(/^http:\/\/localhost:\d+\//u);
+  await hui.sessionList();
   const trigger = screen.getByTestId("sidebar-gateway");
   await expect(trigger).toBeVisible();
   await expect(trigger).toContainText(name);
@@ -175,7 +178,8 @@ test("switching opens the chosen gateway in this page", { tags: ["SET-094"], pla
   await trigger.tap();
   await expect(screen.getByText("Current", { exact: true })).toBeVisible();
   await expect(screen.getByText("127.0.0.1", { exact: true })).toHaveCount(0);
-  await screen.getByText("Add a gateway…", { exact: true }).press("Escape");
+  await trigger.tap();
+  await expect(screen.getByText("Add a gateway…", { exact: true })).toBeHidden();
 
   // Back to the checkout's own origin for the tests that follow.
   await hui.open("/");
