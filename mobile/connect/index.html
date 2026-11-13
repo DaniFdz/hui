@@ -3,14 +3,27 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf9f7" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1015" />
     <title>HUI</title>
   </head>
   <body>
     <main>
       <h1>Connect to HUI</h1>
-      <p>The address of the gateway you want this app to show.</p>
+      <p>The gateway this app shows, and the name every client sees.</p>
       <!-- novalidate: the page answers a bare host with its own message, not the browser's "Please enter a URL." -->
       <form id="connect-form" novalidate>
+        <label for="name">Name</label>
+        <input
+          id="name"
+          name="name"
+          type="text"
+          maxlength="60"
+          autocomplete="off"
+          autocapitalize="words"
+          spellcheck="false"
+          placeholder="Uses the name the gateway reports"
+        />
         <label for="gateway">Gateway URL</label>
         <input
           id="gateway"

@@ -3,6 +3,7 @@
  * It is the only module here that touches `@capacitor/core`, so the page's checks stay testable without a bridge.
  */
 import { Capacitor, CapacitorHttp, registerPlugin } from "@capacitor/core";
+import { normalizeGatewayName, settingsWithName } from "./gateway";
 
 /** The Android and iOS side of the Connect page (see mobile/AGENTS.md, "The Connect handoff"). */
 interface HuiGatewayPlugin {
@@ -51,4 +52,39 @@ export async function connectGateway(base: string): Promise<void> {
 /** Forget the remembered gateway and come back to a clean Connect page. */
 export async function forgetGateway(): Promise<void> {
   await huiGateway.forget();
+}
+
+/**
+ * Save the gateway's own name before the app loads it. `PUT /__hui/settings` replaces missing fields with defaults, so
+ * this reads the current document first and sends it back with only `name` changed. The write uses native HTTP for the
+ * same reason the probe does: a cross-origin PUT from `https://localhost` would be refused.
+ */
+export async function saveGatewayName(base: string, name: string): Promise<string> {
+  const url = `${base}/__hui/settings`;
+  const read = await CapacitorHttp.get({
+    url,
+    headers: { "x-hui": "1" },
+    connectTimeout: 5_000,
+    readTimeout: 5_000,
+    responseType: "json",
+  });
+  if (read.status !== 200) throw new Error(`the gateway answered ${read.status} when reading its settings`);
+  const next = settingsWithName(read.data, name);
+  if (next === null) throw new Error("the gateway's settings did not read as a settings document");
+  const write = await CapacitorHttp.request({
+    method: "PUT",
+    url,
+    headers: { "x-hui": "1", "content-type": "application/json" },
+    data: next,
+    connectTimeout: 5_000,
+    readTimeout: 5_000,
+    responseType: "json",
+  });
+  if (write.status !== 200) throw new Error(`the gateway answered ${write.status} when saving its name`);
+  const saved = typeof write.data === "string" ? JSON.parse(write.data) as unknown : write.data;
+  const savedName = typeof saved === "object" && saved !== null && typeof (saved as Record<string, unknown>)["name"] === "string"
+    ? (saved as Record<string, string>)["name"]
+    : "";
+  if (savedName !== normalizeGatewayName(name)) throw new Error("the gateway did not keep the name it was given");
+  return savedName;
 }

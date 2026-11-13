@@ -45,7 +45,10 @@ package runs `npm install` or edits `package.json`/`package-lock.json`** without
 - **The connect handoff.** The Connect page calls the shell's own `HuiGateway` plugin (`mobile/android/app/src/main/java/dev/hui/app/HuiGatewayPlugin.java`):
   `connect({ url })` remembers the address and calls `activity.recreate()`; `forget()` drops it and comes back to the
   Connect page — the action is named **"Change gateway"**; `getState()` answers `{ gateway, failed }` for this launch.
-  The address is checked again natively (`GatewayAddress`), so a page cannot point the bridge at a `file:` URL.
+  The address is checked again natively (`GatewayAddress`), so a page cannot point the bridge at a `file:` URL. When a
+  name is typed, the page first reads `/__hui/settings`, sets only `name`, and sends the whole document back with
+  `PUT /__hui/settings` through native HTTP; an empty name writes nothing, and a failed write keeps the page open so the
+  name can be cleared instead of silently connecting without it.
 - **A gateway that stops answering falls back.** A main-frame load error in `MainActivity` marks the address as failed
   and restarts on the Connect page, which names it and offers "Change gateway", instead of leaving an empty WebView.
   While a gateway loads, a "Connecting to HUI…" view covers the WebView; it goes away on the first committed frame.

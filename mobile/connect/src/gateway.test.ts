@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
 
-import { DEVELOPMENT_GATEWAY, normalizeGateway, readSnapshot, versionNotice } from "./gateway.ts";
+import { DEVELOPMENT_GATEWAY, normalizeGateway, normalizeGatewayName, readSnapshot, settingsWithName, versionNotice } from "./gateway.ts";
 
 const CASES = readFileSync(new URL("../../gateway-addresses.txt", import.meta.url), "utf8")
   .split("\n")
@@ -36,4 +36,23 @@ test("a gateway's update snapshot is recognised by what it carries", () => {
 test("only a gateway with no release version gets the development notice", () => {
   assert.equal(versionNotice({ currentVersion: null }), DEVELOPMENT_GATEWAY);
   assert.equal(versionNotice({ currentVersion: "0.1.6" }), null);
+});
+
+test("a gateway name is trimmed and bounded as the gateway bounds it", () => {
+  assert.equal(normalizeGatewayName("  Studio Mac  "), "Studio Mac");
+  assert.equal(normalizeGatewayName("   "), "");
+  assert.equal(normalizeGatewayName("x".repeat(80)), "x".repeat(60));
+});
+
+test("saving a name keeps every other gateway setting", () => {
+  const settings = { name: "Old", browser: { theme: "dark" }, vscode: { path: "/code" } };
+  assert.deepEqual(settingsWithName(settings, "  Studio  "), {
+    name: "Studio",
+    browser: { theme: "dark" },
+    vscode: { path: "/code" },
+  });
+  assert.deepEqual(settings, { name: "Old", browser: { theme: "dark" }, vscode: { path: "/code" } }, "the read document is not mutated");
+  for (const invalid of [null, "settings", 42, []]) {
+    assert.equal(settingsWithName(invalid, "Studio"), null, JSON.stringify(invalid));
+  }
 });

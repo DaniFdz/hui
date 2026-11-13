@@ -2,16 +2,17 @@
  * The Connect page's DOM wiring: restore what the shell remembers, probe the typed address, show the refusal or the
  * development-gateway notice, then hand the address to the app. All wording and checks live in `gateway.ts`.
  */
-import { CHANGE_GATEWAY, CONNECTING, NOT_AN_ADDRESS, REFUSED, normalizeGateway, readSnapshot, versionNotice } from "./gateway";
-import { connectGateway, forgetGateway, isNative, probeGateway, shellState } from "./native";
+import { CHANGE_GATEWAY, CONNECTING, NAME_NOT_SAVED, NOT_AN_ADDRESS, REFUSED, normalizeGateway, normalizeGatewayName, readSnapshot, versionNotice } from "./gateway";
+import { connectGateway, forgetGateway, isNative, probeGateway, saveGatewayName, shellState } from "./native";
 import "./style.css";
 
 const form = document.querySelector<HTMLFormElement>("#connect-form");
+const nameInput = document.querySelector<HTMLInputElement>("#name");
 const input = document.querySelector<HTMLInputElement>("#gateway");
 const connect = document.querySelector<HTMLButtonElement>("#connect");
 const status = document.querySelector<HTMLParagraphElement>("#status");
 const change = document.querySelector<HTMLButtonElement>("#change-gateway");
-if (!form || !input || !connect || !status || !change) throw new Error("the Connect page's markup changed under it");
+if (!form || !nameInput || !input || !connect || !status || !change) throw new Error("the Connect page's markup changed under it");
 change.textContent = CHANGE_GATEWAY;
 
 function say(text: string, kind: "error" | "ok" | "notice" | "" = ""): void {
@@ -44,6 +45,7 @@ async function submit(): Promise<void> {
     say(NOT_AN_ADDRESS, "error");
     return;
   }
+  const name = normalizeGatewayName(nameInput!.value);
   connect!.disabled = true;
   say(`Checking ${base}…`);
   try {
@@ -52,6 +54,17 @@ async function submit(): Promise<void> {
     if (snapshot === null) {
       say(REFUSED, "error");
       return;
+    }
+    // A plain browser can only preview this page; naming the gateway needs the app's native HTTP.
+    if (name !== "" && isNative()) {
+      say("Saving the gateway name…");
+      try {
+        await saveGatewayName(base, name);
+      } catch (error) {
+        say(NAME_NOT_SAVED, "error");
+        console.warn("the gateway did not save its name", error);
+        return;
+      }
     }
     const notice = versionNotice(snapshot);
     say(notice ?? CONNECTING, notice === null ? "" : "notice");

@@ -174,7 +174,8 @@ still need on-device verification**; see [desktop proof](../e2e/desktop-package.
 
 HUI has an Android app and an iPhone/iPad app. Both are the same shell around the
 web UI of **your** gateway: they bundle only the "Connect to HUI" page, ask for
-the gateway's address, and then load that gateway's own UI. There is no store
+the gateway's address and, optionally, the name every client sees, and then load
+that gateway's own UI. There is no store
 account and no copy of the UI in the app, so updating the gateway updates what the
 phone shows. The app needs a gateway it can reach: `https://` through
 `tailscale serve` is the supported setup, and plain `http://` works only for
