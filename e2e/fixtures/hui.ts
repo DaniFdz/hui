@@ -39,6 +39,7 @@ import { advanceClock, installClock } from "./clock.ts";
 import { allowMedia } from "./web-browser.ts";
 import { clearAppStorage, deviceBytes, deviceFiles, forwardPhoneGateway, onPhone, openPhoneGateway, refusePhoneNotificationPrompt, PHONE_DOWNLOADS } from "./phone.ts";
 import { onWebKitPhone, webkitServiceWorkers } from "./phone-webkit.ts";
+import { observeOfflineLifecycle, offlineReadinessProbe, readOfflineCacheNames, readOfflineReadiness } from "./offline-readiness.ts";
 import { startWorld, type World, type WorldName } from "./world.ts";
 import { storedContent } from "./stored-content.ts";
 import { androidDisplay, type DisplayArea, type Insets } from "./display-area.ts";
@@ -670,11 +671,10 @@ function huiTest(offline: boolean) {
           else await dialog.dismiss();
         });
       },
-      offlineFilesReady: () => browser().evaluate(async () => {
-        if (!("serviceWorker" in navigator)) return false;
-        const registration = await navigator.serviceWorker.getRegistration();
-        return registration?.active?.state === "activated";
-      }),
+      offlineFilesReady: offlineReadinessProbe(
+        () => browser().evaluate(readOfflineReadiness),
+        () => browser().evaluate(readOfflineCacheNames),
+      ),
       activateSidebarRow: async (title) => {
         await browser().evaluate((name) => {
           const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
@@ -1251,6 +1251,7 @@ function huiTest(offline: boolean) {
           }
         : web;
     if (onWebKitPhone(fixtures.app.baseUrl)) webkitServiceWorkers(offline);
+    if (offline && fixtures.platform === "web" && !onPhone(fixtures.app.baseUrl)) await browser().addInitScript(observeOfflineLifecycle);
     if (fixtures.platform === "web") await browser().addInitScript(trackSockets);
     if (fixtures.platform === "web") await browser().addInitScript(recordTabs);
     await steps.clearState();
