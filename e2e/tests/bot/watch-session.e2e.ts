@@ -4,10 +4,10 @@ import { test } from "../../fixtures/hui.ts";
 
 const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
 
-type Listed = { id: string; title: string; status: string };
+type Listed = { id: string; title: string; status: string; group: string };
 
 test("a watcher sees the session it started and can continue it", { tags: ["BOT-075"], platforms: ["web"] }, async ({ hui }) => {
-  const chief = (await hui.api<{ bots: Array<{ name: string; sessionId: string }> }>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
+  const chief = await hui.createChief();
   const source = { id: chief.sessionId };
   try {
   await hui.prompt(source, call("create_session", {
@@ -21,6 +21,7 @@ test("a watcher sees the session it started and can continue it", { tags: ["BOT-
   await expect.poll(find, { timeout: 30_000 }).toBeTruthy();
   await expect.poll(async () => (await find())?.status, { timeout: 30_000 }).toBe("idle");
   const watched = await find();
+  expect(watched?.group).toBe(chief.group);
 
   await hui.prompt(source, call("watch_session", { action: "list" }));
   await expect.poll(async () => (await hui.api<{ groups: Array<{ sessions: Listed[] }> }>("GET", "/__hui/sessions"))

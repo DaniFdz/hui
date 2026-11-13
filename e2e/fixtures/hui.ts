@@ -1,7 +1,7 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against (restartable against the same
  * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
- * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, cleanup
+ * requests a test holds, rejects, answers or delivers while dropping the answer, disposable chiefs and Git repositories, cleanup
  * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
  * gesture or reading would differ per platform, kept in one table per target that the web fills: opening, reloading
  * and clearing the app, taps, holds, drags held mid-way, context menus, a message's actions (a hover reveals its
@@ -26,6 +26,7 @@
  * from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -79,6 +80,8 @@ export type Hui = {
   gateway: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
+  /** A real group chief owned by this test, so its conversation and usage are removed by the normal bot cleanup. */
+  createChief(): Promise<{ id: string; name: string; sessionId: string; group: string }>;
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   prompt(session: { id: string }, text: string): Promise<void>;
   provider: { url: string; held(): Promise<void>; release(): Promise<void> };
@@ -254,7 +257,7 @@ export type Hui = {
 };
 
 /** The steps whose gesture or reading differs per platform; each target fills its own table of them. */
-type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "holdTool" | "openSubagent" | "world" | "gatewayStub">;
+type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "createChief" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "holdTool" | "openSubagent" | "world" | "gatewayStub">;
 
 /** A tap at the middle of where a target is at the moment of the press. */
 const tapAt = async (target: Locator) => {
@@ -1261,6 +1264,16 @@ function huiTest(offline: boolean) {
       api,
       createSession: async (input) =>
         (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
+      createChief: async () => {
+        // Never prompt the launcher's shared seeded chief: its real usage otherwise leaks into later tests.
+        const group = `E2E ${randomUUID()}`;
+        await api("POST", "/__hui/session-groups", { name: group });
+        const { bot } = await api<{ bot: { id: string; name: string; sessionId: string; group: string } }>(
+          "POST", "/__hui/staff/chiefs", { group, cwd: receipt.workspace },
+        );
+        expect(existingBots.has(bot.id)).toBe(false);
+        return bot;
+      },
       prompt,
       world: async (name) => {
         const world = await startWorld(name);

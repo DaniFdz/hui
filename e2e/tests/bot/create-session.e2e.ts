@@ -7,7 +7,7 @@ const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stri
 type ListedSession = { id: string; title: string; group: string; cwd: string; parentId?: string; status: string };
 
 test("a Chief of Staff creates an ordinary session in a group, not a child", { tags: ["BOT-073"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const chief = (await hui.api<{ bots: Array<{ id: string; name: string; sessionId: string }> }>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
+  const chief = await hui.createChief();
   const source = { id: chief.sessionId };
   const repo = await hui.repository();
   try {
@@ -41,7 +41,7 @@ test("a Chief of Staff creates an ordinary session in a group, not a child", { t
   await hui.open(`/sessions/${created!.id}`);
   const transcript = screen.getByTestId("transcript");
   await expect(transcript.getByText("Report that an agent created you.")).toBeVisible();
-  hui.expectLinkTo(transcript, "Chief of Staff", `/bots/${chief.id}`);
+  hui.expectLinkTo(transcript, chief.name, `/bots/${chief.id}`);
   await expect(transcript.getByText(/\[from @/u)).toHaveCount(0);
   await expect(transcript.getByText("You", { exact: true })).toHaveCount(0);
   await expect.poll(async () => (await hui.api<{ groups: Array<{ sessions: ListedSession[] }> }>("GET", "/__hui/sessions"))
@@ -62,7 +62,7 @@ test("a normal agent cannot create an ordinary session", { tags: ["BOT-073"], pl
 });
 
 test("a chief's session follows its group's New session defaults", { tags: ["BOT-073"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const chief = (await hui.api<{ bots: Array<{ id: string; name: string; sessionId: string }> }>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "Chief of Staff")!;
+  const chief = await hui.createChief();
   const repo = await hui.repository();
   const group = "Agent group defaults";
   await hui.createSession({ title: "Defaults anchor", group });
