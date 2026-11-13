@@ -146,7 +146,7 @@ export type Hui = {
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
-  attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
+  attach(target: Locator, files: (string | { name: string; bytes: number } | { name: string; text: string })[]): Promise<void>;
   /** Taps a download control and answers with the file it saved: the browser's download event on the web, and on the
    * app the file the shell wrote into `Downloads`, read off the device. A step that saved nothing fails with what the
    * folder holds instead of answering with a file no one wrote. */
@@ -819,7 +819,7 @@ function huiTest(offline: boolean) {
         if (made) directories.push(made);
         await target.setInputFiles(await Promise.all(files.map(async (file) => {
           if (typeof file === "string") return fileURLToPath(new URL(`files/${file}`, import.meta.url));
-          await writeFile(join(made, file.name), Buffer.alloc(file.bytes, "x"));
+          await writeFile(join(made, file.name), "text" in file ? file.text : Buffer.alloc(file.bytes, "x"));
           return join(made, file.name);
         })));
       },
@@ -1225,7 +1225,18 @@ function huiTest(offline: boolean) {
                 settled = now?.size ?? settled;
                 return file !== undefined;
               }, { timeout: 60_000, message: `hui.download: ${saving.name} never finished writing to ${PHONE_DOWNLOADS}` }).toBe(true);
-              return { name: file!.name, text: deviceBytes(`${PHONE_DOWNLOADS}/${file!.name}`).toString("utf8") };
+              const path = `${PHONE_DOWNLOADS}/${file!.name}`;
+              try {
+                // One UI action must write one file, even when Downloads already holds other tests' files.
+                expect(deviceFiles().filter(({ name, size }) => before.get(name) !== size).map(({ name }) => name)).toEqual([file!.name]);
+                return { name: file!.name, text: deviceBytes(path).toString("utf8") };
+              } finally {
+                // Never remove or rename anything that existed before this action, including a changed-size file.
+                if (!before.has(file!.name)) execFileSync(process.env["ADB"] ?? "adb", [
+                  ...(process.env["ANDROID_SERIAL"] ? ["-s", process.env["ANDROID_SERIAL"]!] : []),
+                  "shell", "rm", "--", `'${path.replaceAll("'", "'\\''")}'`,
+                ], { timeout: 120_000, stdio: ["ignore", "pipe", "pipe"] });
+              }
             },
           }
         : web;
