@@ -1,7 +1,7 @@
 /** Guards independent native-frame parsing and CSS-to-display mapping, including failures that must not look safe. */
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { androidDisplay, displayBox, nativeFrame, parseDisplay, parseWebView, validateNativeFrame } from "../e2e/fixtures/display-area.ts";
+import { androidDisplay, displayBox, nativeFrame, nativePaint, parseDisplay, parseWebView, queuedNativeFrame, validateNativeFrame } from "../e2e/fixtures/display-area.ts";
 
 const state = (cutout = 0, status = 63) => `mDisplayFrame=Rect(0, 0 - 1080, 2400)
  mDisplayCutout=DisplayCutout{insets=Rect(0, ${cutout} - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0}}
@@ -59,6 +59,41 @@ test("physical frame selection ignores detached outgoing pages and rejects malfo
     assert.throws(() => nativeFrame([nativeTarget("bad", info)]), /frame|metadata/u);
   }
   assert.throws(() => validateNativeFrame(parseDisplay(state()), frame, { width: 390, height: 844, ratio: 1, scale: 1 }), /viewport mismatch/u);
+});
+
+const paintedWindow = `  mCurrentFocus=Window{abc u0 dev.hui.app.debug/dev.hui.app.MainActivity}
+  Window #0 Window{abc u0 dev.hui.app.debug/dev.hui.app.MainActivity}:
+    mHasSurface=true isReadyForDisplay()=true
+    Surface: shown=true mDrawState=HAS_DRAWN
+    isOnScreen=true
+  Window #1 Window{other u0 another/app}:
+    Surface: shown=true mDrawState=HAS_DRAWN`;
+const layers = `RequestedLayerState{abc dev.hui.app.debug/dev.hui.app.MainActivity#10 parentId=9}
+RequestedLayerState{dev.hui.app.debug/dev.hui.app.MainActivity#11 parentId=10}`;
+
+test("native paint needs the focused app's shown drawn window and its own presented buffer, not CSS or another layer", () => {
+  const latency = "16666666\n100\t200\t150\n0\t0\t0\n300\t9223372036854775807\t350\n";
+  assert.deepEqual(nativePaint(paintedWindow, layers, () => latency), { window: "abc", layer: "dev.hui.app.debug/dev.hui.app.MainActivity#11", presentedNs: "200" });
+  for (const change of [
+    paintedWindow.replace("mCurrentFocus=Window{abc", "mCurrentFocus=Window{other"),
+    paintedWindow.replace("shown=true", "shown=false"),
+    paintedWindow.replace("HAS_DRAWN", "DRAW_PENDING"),
+    paintedWindow.replace("isOnScreen=true", "isOnScreen=false"),
+  ]) assert.equal(nativePaint(change, layers, () => latency), undefined);
+  assert.equal(nativePaint(paintedWindow, layers.replace("parentId=10", "parentId=99"), () => latency), undefined);
+  assert.equal(nativePaint(paintedWindow, layers, () => latency, "201"), undefined, "historical presentation cannot satisfy a later queued native render");
+  assert.ok(nativePaint(paintedWindow, layers, () => latency, "200"), "an already presented idle frame needs no manufactured repaint");
+  for (const pending of ["16666666\n", "16666666\n0\t0\t0", "16666666\n300\t9223372036854775807\t350"]) {
+    assert.equal(nativePaint(paintedWindow, layers, () => pending), undefined, "a pending fence is not a presentation");
+  }
+});
+
+test("latest native render, not historical gfxinfo, must complete before its presentation is accepted", () => {
+  const stats = (row: string) => `---PROFILEDATA---\nFlags,IntendedVsync,SwapBuffers,FrameCompleted,\n0,10,100,150,\n${row}\n---PROFILEDATA---`;
+  assert.equal(queuedNativeFrame(stats("0,20,200,250,")), "200");
+  assert.equal(queuedNativeFrame(stats("0,20,200,9223372036854775807,")), undefined);
+  assert.equal(queuedNativeFrame(stats("0,20,200,0,")), undefined);
+  assert.equal(queuedNativeFrame(""), undefined);
 });
 
 const CUTOUT = "com.android.internal.emulation.pixel_3_xl";
