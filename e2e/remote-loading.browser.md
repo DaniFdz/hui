@@ -170,6 +170,34 @@ responsive resize of the same tab, not a cold mobile boot or native-phone test; 
 before/after comparison. The fixture used no external inference, and its owned gateway/proxy sockets and processes
 were confirmed closed after capture.
 
+## Retained-content repair measurement (2026-11-13)
+
+A fresh clean production checkout at `ca6c7e0d611a61f998d09297b468ca37904eb25a` repeated the existing 160-turn
+fixture through the Browser tool, behind the same 300 ms RTT / 1.6 Mbit/s down / 800 kbit/s up proxy. This includes
+the retained-text, native-anchoring and quantized-scroll corrections, rather than treating the earlier integration
+measurement as proof of those later changes.
+
+Home's **Open Long remote session** loaded **Step 160**. After scrolling to **Show earlier messages**, Step 145's
+measured box stayed exactly at `(827, 283, 384, 55)` before and after expansion at 1440×900. After a responsive
+390×844 reload, its box stayed exactly at `(53, 307, 329, 76)`. Both resulting screens were inspected and wrapped
+without visible sideways overflow.
+
+| Single cold desktop navigation | Observed |
+| --- | ---: |
+| First byte | 361 ms |
+| First paint / contentful paint | 1.9 s |
+| DOMContentLoaded / load | 1.9 s / 3.9 s |
+| POST open duration | 517 ms |
+| POST open JSON Content-Length | 543 B |
+| POST open Browser-recorded encoded response | 741 B |
+
+All 91 captured HTTP requests returned 200. The Browser console reported no warnings or errors. The loading state
+was observed in the snapshot; the first screenshot had already reached Home and is not labeled as a boot capture.
+Mobile was a warm responsive reload of the same origin, not a cold mobile boot or native-phone test. Exact
+UI-first-ready latency, WebSocket bytes and total wire bytes were not measured. This is one synthetic post-repair
+run, not a before/after comparison; it made no external inference requests. The owned gateway and proxy processes
+were confirmed gone and both sockets closed after capture.
+
 ## Limits
 
 The proxy models latency and one shared bandwidth budget over HTTP/1.1 to
