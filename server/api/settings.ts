@@ -19,6 +19,14 @@ export const VscodeSettings = Type.Object({
 }, { $id: "VscodeSettings" });
 export type VscodeSettings = Static<typeof VscodeSettings>;
 
+/** The ntfy relay a phone or another device subscribes to. An empty topic means no relay; the server defaults to
+ * `https://ntfy.sh`, and `HUI_NTFY_TOKEN` in the gateway's environment authenticates a protected topic without the
+ * token ever entering settings or a payload. */
+export const NtfySettings = Type.Object({
+  server: Type.String(), topic: Type.String(),
+}, { $id: "NtfySettings" });
+export type NtfySettings = Static<typeof NtfySettings>;
+
 /** HUI's default reasoning is one of PI's levels: Ultra is the orchestrating session's own choice. */
 const SavedReasoningLevel = Type.Exclude(ThinkingLevel, Type.Literal("ultra"));
 
@@ -36,7 +44,10 @@ export const Settings = Type.Object({
   branchPrefix: Type.String(),
   browser: BrowserSettings, codemode: Type.Object({ enabled: Type.Boolean() }), questions: Type.Object({ timeoutMinutes: Type.Number() }),
   vscode: VscodeSettings, power: Type.Object({ keepAwake: Type.Boolean() }),
-  notifications: Type.Object({ tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean() }),
+  notifications: Type.Object({
+    tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean(),
+    ntfy: NtfySettings,
+  }),
   models: Type.Object({
     primary: Type.String(), fallback: Type.String(), utility: Type.String(),
     // Empty follows PI's own defaultThinkingLevel.

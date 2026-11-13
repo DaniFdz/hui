@@ -80,7 +80,9 @@ import {
 import { registerAgentToolHandler } from "./agent-tools/bridge.ts";
 import { SubagentService } from "./agent-tools/subagents.ts";
 import { presentMediaForSession } from "./agent-tools/presented-media.ts";
-import { deliverDesktopNotification, notifyUser } from "./agent-tools/notifications.ts";
+import { deliverDesktopNotification, notificationChatUrl, notifyUser } from "./agent-tools/notifications.ts";
+import { createNotificationDelivery } from "./notifications/delivery.ts";
+import { ntfyConfigured, ntfyMessage, publishNtfy } from "./notifications/ntfy.ts";
 import { watchSessionNotifications, type NotificationTarget } from "./sessions/session-notifications.ts";
 import { GitHubCli } from "./integrations/github.ts";
 import { GitHubContributionsReader } from "./integrations/github-contributions.ts";
@@ -118,6 +120,7 @@ import { modelMetrics } from "./model-metrics.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
 import { createWorktreeRoutes } from "./routes/worktrees.ts";
 import { createSettingsRoutes } from "./routes/settings.ts";
+import { createNotificationRoutes } from "./routes/notifications.ts";
 import { createExtensionRoutes } from "./routes/extensions.ts";
 import { createExtensionsService } from "./extensions/service.ts";
 import { createTerminalRoutes } from "./routes/terminals.ts";
@@ -480,6 +483,20 @@ export const vscodeRoutes = createVscodeRoutes({ vscode, readRegistry });
 /** macOS sleep prevention lives and dies with this gateway process. */
 export const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 export const powerRoutes = createPowerRoutes({ macPower });
+/** The one test notification Settings → Notifications can ask for: it proves the phone's topic instead of a session. */
+async function sendTestNotification(): Promise<void> {
+  const ntfy = (await readHuiSettings()).notifications.ntfy;
+  if (!ntfyConfigured(ntfy)) throw new Error("Set an ntfy topic in Settings → Notifications → Phone (ntfy), then send the test again.");
+  await publishNtfy(ntfy, {
+    title: "HUI",
+    message: `This is a test notification from ${(await readHuiSettings()).name || "your HUI gateway"}.`,
+    priority: 3,
+    tags: ["bell"],
+  }, {
+    ...(process.env["HUI_NTFY_TOKEN"] ? { token: process.env["HUI_NTFY_TOKEN"] } : {}),
+  });
+}
+export const notificationRoutes = createNotificationRoutes({ sendTest: sendTestNotification });
 export const appRoutes = createAppRoutes({ openChatInApp });
 const hostMetrics = createHostMetrics();
 sampleInBackground(hostMetrics);
@@ -521,14 +538,35 @@ async function notificationChat(sessionId: string): Promise<NotificationTarget |
   return { id: record.id, title: (bot?.name ?? record.title).slice(0, 120) || "HUI", subagent: record.parentId !== undefined, ...(bot ? { bot: bot.id } : {}) };
 }
 
-if (process.platform === "darwin") {
-  watchSessionNotifications({
-    sessions: liveSessions,
-    settings: async () => (await readHuiSettings()).notifications,
-    chat: notificationChat,
-    deliver: deliverDesktopNotification,
-  });
-}
+/** HUI's own notifications reach the installed desktop app on macOS and a phone through the ntfy relay its operator's
+ * app subscribes to. A gateway with neither is not an error for HUI's own events: `canDeliver` keeps those runs out of
+ * diagnostics. `notify_user` asks for a notification explicitly, so its caller gets the reason when none arrives. */
+const notificationDelivery = createNotificationDelivery({
+  desktop: { available: () => process.platform === "darwin", deliver: deliverDesktopNotification },
+  ntfy: {
+    settings: async () => (await readHuiSettings()).notifications.ntfy,
+    publish: async (settings, chat, notification, url) => {
+      await publishNtfy(settings, ntfyMessage(notification, url ?? await notificationChatUrl(chat)), {
+        // A protected server's token lives in the gateway's environment, never in settings a client can read.
+        ...(process.env["HUI_NTFY_TOKEN"] ? { token: process.env["HUI_NTFY_TOKEN"] } : {}),
+      });
+    },
+  },
+  skipped: (error, channel, chat) => recordDiagnosticEvent({
+    area: "session", level: "warning", action: "notification_skipped",
+    summary: `HUI skipped a ${channel === "desktop" ? "desktop" : "phone"} notification`,
+    detail: error instanceof Error ? error.message : String(error),
+    sessionId: chat.id,
+  }),
+});
+watchSessionNotifications({
+  sessions: liveSessions,
+  settings: async () => (await readHuiSettings()).notifications,
+  chat: notificationChat,
+  deliver: async (chat, notification) => {
+    if (await notificationDelivery.canDeliver()) await notificationDelivery.deliver(chat, notification);
+  },
+});
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 
@@ -712,7 +750,7 @@ registerAgentToolHandler(async (invocation) => {
     if (!(await readHuiSettings()).notifications.tool) throw new Error("The notification tool is off. The operator can turn it on in Settings → Tools.");
     const chat = await notificationChat(invocation.callerSessionId);
     if (!chat) throw new Error("Conversation no longer exists.");
-    return notifyUser(chat, invocation.params, invocation.signal);
+    return notifyUser(chat, invocation.params, invocation.signal, notificationDelivery.deliver);
   }
   if (invocation.action === "secret_request") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);

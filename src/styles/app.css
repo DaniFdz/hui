@@ -209,6 +209,20 @@ hui-session-multiplexer {
 .pi-install-form > .btn {
   flex: 0 0 auto;
 }
+/* The ntfy relay's stacked rows: the field keeps a readable width and the
+   buttons that act on it wrap instead of squeezing it to a few characters. */
+.settings-ntfy .settings-row--stacked > .settings-row__control {
+  width: 100%;
+  margin-left: 0;
+  flex-wrap: wrap;
+}
+.settings-ntfy .settings-row--stacked > .settings-row__control > .settings-input {
+  flex: 1 1 16rem;
+  width: auto;
+}
+.settings-ntfy .settings-row--stacked > .settings-row__control > .btn {
+  flex: 0 0 auto;
+}
 /* Settings list filter: rows it hides keep their own display rules otherwise. */
 .settings-list-filter { display: block; margin-block: 0 12px; }
 .settings-list-filter__input { width: 100%; }
