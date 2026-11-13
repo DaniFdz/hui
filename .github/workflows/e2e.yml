@@ -23,10 +23,16 @@ jobs:
     strategy:
       fail-fast: false
       # A shard runs its tests serially (`workers: 1` in e2e.config.ts), so the
-      # count sets the feedback wait: eight contiguous slices of about fifty
-      # tests keep the slowest shard near ten minutes instead of fifteen.
+      # count is the feedback wait. `--shard` cuts contiguous slices holding the
+      # same number of tests but not the same duration: of the 677 web tests,
+      # eight shards of 84 took a 7.2 minute mean and 8.4 to 11.0 for the slowest,
+      # because a slice inherits whichever heavy journeys fall in it. Twelve
+      # slices of 56 shrink that spread and the slowest shard's wait. A shard
+      # measured about one core and 2.9 GB, well inside a runner's four cores and
+      # sixteen gigabytes, and the account ran 27 jobs at once, so the extra
+      # shards neither starve a runner nor queue behind one another.
       matrix:
-        shard: ["1/8", "2/8", "3/8", "4/8", "5/8", "6/8", "7/8", "8/8"]
+        shard: ["1/12", "2/12", "3/12", "4/12", "5/12", "6/12", "7/12", "8/12", "9/12", "10/12", "11/12", "12/12"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
