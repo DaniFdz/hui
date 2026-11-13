@@ -267,7 +267,7 @@ test("the focused option's preview shows under the options on a phone and reache
   await expect(answered).toBeVisible();
 });
 
-test("an option's HTML mockup runs in the sandboxed preview and swaps with a Markdown preview", { tags: ["AGENT-004"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("an option's HTML mockup runs in the sandboxed preview and swaps with a Markdown preview", { tags: ["AGENT-004"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });

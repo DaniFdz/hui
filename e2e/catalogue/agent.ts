@@ -46,7 +46,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-005",
