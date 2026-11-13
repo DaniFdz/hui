@@ -54,7 +54,8 @@ const QUESTIONNAIRE_WAIT_MS = 24 * 60 * 60_000;
 const questionOption = Type.Object({
   label: Type.String({ minLength: 1, maxLength: 60, description: "MAX 60 CHARACTERS. The text the user sees and selects: concise (1-5 words) and clear." }),
   description: Type.String({ maxLength: 500, description: "What this option means or what choosing it does: its trade-offs." }),
-  preview: Type.Optional(Type.String({ maxLength: 2_500, description: "Optional Markdown shown beside the options while this one is focused: a mockup, code snippet, diagram or config to compare. Single-select only." })),
+  preview: Type.Optional(Type.String({ maxLength: 2_500, description: "Optional Markdown shown beside the options while this one is focused: a snippet, diagram or config to compare. Single-select only; do not also set previewHtml." })),
+  previewHtml: Type.Optional(Type.String({ maxLength: 2_500, description: "Optional self-contained HTML or SVG fragment (at most 2500 characters) shown beside the options while this one is focused, in a sandboxed frame: a visual mockup of how something would look. Use this instead of ASCII art. Single-select only; do not also set preview." })),
 });
 
 export default function agentToolsExtension(pi) {
@@ -63,11 +64,12 @@ export default function agentToolsExtension(pi) {
     label: "Ask user question",
     description: `Ask the user one or more structured questions in a card in this HUI conversation and wait for the answers, or until the operator's question timeout ends the call. Use it to gather preferences or requirements, clarify ambiguous instructions, get decisions on implementation choices, or offer choices of direction.
 
-A question takes one of three inputs: options (2-4 choices, radios or checkboxes), a slider over a numeric range (a budget, hours, a percentage) or a long text the user writes. An options question also offers a free-text answer the card adds itself. The user can cancel the whole card. Previews are Markdown shown beside the options of a single-select question while one is focused; use them only when the user needs to compare concrete artifacts (mockups, code, diagrams, configs).`,
+A question takes one of three inputs: options (2-4 choices, radios or checkboxes), a slider over a numeric range (a budget, hours, a percentage) or a long text the user writes. An options question also offers a free-text answer the card adds itself. The user can cancel the whole card. Previews are shown beside the options of a single-select question while one is focused, for concrete artifacts to compare: Markdown (\`preview\`) for a snippet, diagram or config, or a self-contained HTML/SVG fragment (\`previewHtml\`) for a visual mockup, rendered in a sandboxed frame. Use \`previewHtml\` rather than ASCII art when showing how something would look.`,
     promptSnippet: "Ask the user up to 4 structured questions (2-4 options each) when requirements are ambiguous",
     promptGuidelines: [
       "Use ask_user_question whenever the user's request is underspecified and you cannot proceed without concrete decisions. Group all clarifying questions into one call, up to 4; do not stack calls back-to-back.",
       "Each question needs a header (≤16 characters), the full question and one input: 2-4 options, each with a concise label and a description of what it means (the default); a slider with min, max and an optional step and unit; or a long text with an optional placeholder. An options question also gets a free-text answer from the card: never author \"Other\", \"Type something.\" or \"Next\" options.",
+      "When an option should show how something would look, give it previewHtml: a small, self-contained HTML or SVG fragment (no full document, external files or network). Never draw a mockup in ASCII art or a code fence. Use preview for Markdown snippets, diagrams and config; set only one of the two on an option.",
       "Set multiSelect: true when several answers can apply. If you recommend an option, put it first and end its label with \"(Recommended)\".",
       "If the user declines, do not ask the same questions again in chat; continue with sensible defaults or ask what they want.",
       "If the call times out, the operator may be away: continue with your recommended option, finish the rest of the work, and list the decisions that still need the operator in your final reply.",

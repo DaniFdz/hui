@@ -2,7 +2,7 @@
 import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
-type Question = { header: string; question: string; multiSelect?: boolean; options: { label: string; description: string; preview?: string }[] };
+type Question = { header: string; question: string; multiSelect?: boolean; options: { label: string; description: string; preview?: string; previewHtml?: string }[] };
 
 const ask = (...calls: Question[][]) =>
   `E2E_CALL:${Buffer.from(JSON.stringify(calls.map((questions) => ({ name: "ask_user_question", input: { questions } })))).toString("base64url")}`;
@@ -210,6 +210,28 @@ const PREVIEWS = ask([{
   ],
 }]);
 
+/** A small visual mockup: the kind of thing an agent drew with ASCII before the sandboxed preview. */
+const MOCKUP = `<div style="padding:4px;font:13px system-ui">
+  <h3 style="margin:0 0 10px">Sidebar layout</h3>
+  <div style="display:flex;gap:8px">
+    <nav style="width:86px;padding:8px;border-radius:8px;background:#8a8a8a24">Settings<br>Members<br>Billing</nav>
+    <div style="flex:1;padding:8px;border-radius:8px;background:#8a8a8a12">
+      <strong>Workspace</strong>
+      <p style="margin:6px 0 10px">A short description of this section.</p>
+      <button type="button">Save preferences</button>
+    </div>
+  </div>
+</div>`;
+
+const MOCKUPS = ask([{
+  header: "Layout",
+  question: "Which settings layout should we build?",
+  options: [
+    { label: "Sidebar", description: "Sections in a left column.", previewHtml: MOCKUP },
+    { label: "Tabs", description: "Sections as tabs.", preview: "Tabs across the top.\n\n**Tabs layout**" },
+  ],
+}]);
+
 test("the focused option's preview shows beside the options and scrolls on its own", { tags: ["AGENT-004"], platforms: ["web"] }, async ({ screen, hui }) => {
   const card = screen.getByTestId("question-card");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
@@ -243,6 +265,36 @@ test("the focused option's preview shows under the options on a phone and reache
   const answered = transcript.getByText('"Which layout should the settings page use?"="Tabs". selected preview: Tabs across the top.', { exact: false });
   await hui.scrollTo(transcript, answered);
   await expect(answered).toBeVisible();
+});
+
+test("an option's HTML mockup runs in the sandboxed preview and swaps with a Markdown preview", { tags: ["AGENT-004"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const transcript = screen.getByTestId("transcript");
+  const card = screen.getByTestId("question-card");
+  const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
+  const preview = card.getByLabel("Preview");
+  const mockup = async () => (await hui.frame("iframe.hui-widget-card__frame")).frameLocator("iframe");
+  await asked(hui, screen, "HTML previews", MOCKUPS);
+
+  // The first option carries the mockup, so it shows before any focus moves, in the same sandbox as an agent widget.
+  await expect(preview.getByRole("group", { name: "Preview: Sidebar preview" })).toBeVisible();
+  const inside = await mockup();
+  await expect(inside.getByRole("heading", "Sidebar layout")).toBeVisible();
+  await expect(inside.getByRole("button", "Save preferences")).toBeVisible();
+  await expect(preview.getByText("Sidebar layout")).toHaveCount(0);
+
+  // A Markdown option takes the same pane; the frame is gone, and back again for the mockup.
+  await option("Tabs").tap();
+  await expect(preview.getByText("Tabs layout")).toBeVisible();
+  await expect(preview.getByRole("group", { name: "Preview: Sidebar preview" })).toHaveCount(0);
+  await option("Sidebar").tap();
+  const again = await mockup();
+  await expect(again.getByRole("heading", "Sidebar layout")).toBeVisible();
+
+  // The agent gets the chosen label; the mockup's HTML is not echoed back.
+  await card.getByRole("button", "Submit").tap();
+  await expect(card).toBeHidden();
+  await expect(transcript.getByText('"Which settings layout should we build?"="Sidebar". You can now continue with the user\'s answers in mind.', { exact: false })).toBeVisible();
+  await expect(transcript.getByText("selected preview:", { exact: false })).toHaveCount(0);
 });
 
 test("Cancel declines the questions and the agent goes on", { tags: ["AGENT-006"] }, async ({ screen, hui }) => {

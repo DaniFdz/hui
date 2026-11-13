@@ -41,7 +41,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-004",
     title: "Compare options by their previews",
-    behaviour: "When a question's options carry previews, the focused option's Markdown preview shows beside the options, or under them on a narrow screen, in a bounded region that scrolls. The agent receives the chosen option's preview with the answer.",
+    behaviour: "When a question's options carry previews, the focused option's Markdown preview or its HTML mockup shows beside the options, or under them on a narrow screen, in a bounded region that scrolls. An HTML mockup runs in the same opaque-origin sandbox frame as an agent widget, without the widget card's header. The agent receives the chosen option's Markdown preview with the answer; an HTML mockup is not echoed back.",
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
