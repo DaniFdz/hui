@@ -99,6 +99,8 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       if (id === undefined) return;
       const harness = await host.open();
       if (!await harness.conversation(id, durableContext)) return;
+      // An OptChat document an older HUI wrote is rewritten before this commit reads it (`docs/optchat.md`).
+      await host.optchat.adopt(id);
       await harness.commit(async (tx) => {
         const doc = await tx.doc(BotDoc, id);
         doc.bot = "";

@@ -79,6 +79,29 @@ same with `enabled: true`. They reject an enabled document without a name, a mod
 that is not `provider/id` and an unknown thinking level. A running turn picks a
 change up at its next request.
 
+### A document an older HUI wrote
+
+A rewind keeping a chat's OptChat is what made the document `fork: "current"`;
+before that it was `fork: "initial"`, so a fork started without OptChat. Durable
+refuses a typed read whose fork semantics disagree with the incarnation it stored,
+so a store written before that change would fail to start every bot chat it holds
+(`Document <id> (hui.optchat) does not match the supplied definition semantics`).
+Durable cannot change an incarnation's fork semantics either, so HUI rewrites it:
+
+- `readOptChat(read, conversationId, context)` is how every read of the document
+goes ahead (the section, the hooks, the tools, the manager's queries): it reads the
+current document and falls back to the legacy token, so a chat works before its
+document is rewritten.
+- `adoptOptChat(store, conversationId, context)` retires the legacy incarnation and
+creates the current one with the same value, in one commit, and answers whether it
+adopted anything. A gateway adopts a conversation's document when it opens the chat
+(`DurableSession.attach`), the bots' boundaries adopt it before a setting changes or
+a deleted bot's chat is forgotten, and `hui doctor --fix` adopts every document in a
+store at rest.
+
+OptChat's memory files are never touched by an adoption: only the document's
+incarnation changes, and its value (`enabled`, `name`, `model`, `thinking`) is kept.
+
 ## How a turn runs
 
 **The log follows Durable.** Durable's entries are the authority; OptChat's log is

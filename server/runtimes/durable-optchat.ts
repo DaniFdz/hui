@@ -25,8 +25,8 @@ import {
 import { Type } from "typebox";
 import {
   AgentDoc, AssistantEntry, CompactionTask, defineDoc, defineExtension, defineTool, GenerationTask, hook, LiveDoc, ResetEntry, section, ToolResultEntry, UserEntry,
-  type CommitPublication, type Conversation, type ConversationId, type Cursor, type EntryId, type EntryRecord, type Extension, type Harness,
-  type HookApi, type SubmissionId, type ToolExecutionResult, type Tx,
+  type CommitPublication, type Conversation, type ConversationId, type Cursor, type DocumentReader, type EntryId, type EntryRecord, type Extension, type Harness,
+  type HookApi, type Session, type SubmissionId, type ToolExecutionResult, type Tx,
 } from "@earendil-works/pi-durable";
 import { BLOCK_LINES, blockCuts, blockMarks, markCache, markedPrefix } from "../optchat/cache.ts";
 import { createLimiter, type Limiter, type SummaryReply, type SummaryRequest } from "../optchat/compactor.ts";
@@ -53,6 +53,65 @@ export const OptChatDoc = defineDoc<OptChatState>({
   initial: () => ({ enabled: false, name: "" }),
   checkpointWhen: () => false,
 });
+
+/** The document as HUI wrote it before a bot's rewind kept OptChat: `fork: "initial"`, so a fork started without it.
+ * pi-durable refuses a typed read whose fork semantics disagree with the stored incarnation, so every read falls back to
+ * this token, and `adoptOptChat` rewrites the incarnation. It is never written, and its `initial` never used. */
+const LegacyOptChatDoc = defineDoc<OptChatState>({
+  kind: "hui.optchat", version: 1, scope: "conversation", history: "latest", fork: "initial",
+  initial: () => ({ enabled: false, name: "" }),
+  checkpointWhen: () => false,
+});
+
+/** pi-durable's refusal of a stored incarnation whose scope, history or fork the supplied definition does not have. */
+const isSemanticsMismatch = (error: unknown): boolean =>
+  error instanceof TypeError && error.message.includes("does not match the supplied definition semantics");
+
+/** A conversation's OptChat state, also while an update has left its document a fork semantics behind. */
+export async function readOptChat(read: DocumentReader, conversationId: ConversationId, context: Context): Promise<Readonly<OptChatState> | undefined> {
+  try {
+    return await read.snapshot(OptChatDoc, conversationId, context);
+  } catch (error) {
+    if (!isSemanticsMismatch(error)) throw error;
+    return await read.snapshot(LegacyOptChatDoc, conversationId, context);
+  }
+}
+
+/** The value of the legacy incarnation, when the conversation still has one: read with the token that matches it, so a
+ * mismatch means the current document is the stored one. */
+async function legacyOptChat(read: DocumentReader, conversationId: ConversationId, context: Context): Promise<Readonly<OptChatState> | undefined> {
+  try {
+    return await read.snapshot(LegacyOptChatDoc, conversationId, context);
+  } catch (error) {
+    if (isSemanticsMismatch(error)) return undefined;
+    throw error;
+  }
+}
+
+/** Where a document can be adopted from: committed reads, and commits. */
+type DocumentStore = DocumentReader & Pick<Session, "commit">;
+
+/**
+ * Rewrites a conversation's legacy OptChat document as the current one, its value kept: what an update that changed the
+ * document's fork semantics leaves behind (`docs/optchat.md`). pi-durable cannot change the fork semantics of the
+ * incarnation it stored, so one commit retires the old incarnation and creates the new one, and it answers whether it
+ * adopted anything. Call it outside a commit: it commits.
+ *
+ * The incumbent is read with the legacy token first: a typed read through the wrong definition fails the whole commit
+ * that starts it, even when the caller catches the error.
+ */
+export async function adoptOptChat(store: DocumentStore, conversationId: ConversationId, context: Context): Promise<boolean> {
+  if (await legacyOptChat(store, conversationId, context) === undefined) return false;
+  await store.commit(async (tx) => {
+    const legacy = await tx.doc(LegacyOptChatDoc, conversationId);
+    // `plain` drops the absent optional fields, so the fresh document (which has none) takes exactly what was stored.
+    const kept = { enabled: legacy.enabled, name: legacy.name, model: legacy.model, thinking: legacy.thinking };
+    await tx.retireDoc(LegacyOptChatDoc, conversationId);
+    const current = await tx.doc(OptChatDoc, conversationId);
+    Object.assign(current, plain(kept));
+  }, context);
+  return true;
+}
 
 /** The global extension (hooks and the prompt section), in every conversation's default selection. */
 export const OPTCHAT_EXTENSION = "hui-optchat";
@@ -158,6 +217,10 @@ async function applyChange(tx: Tx, conversationId: ConversationId, change: OptCh
  * tool selection. With a transaction it joins that commit, so a creator enables a conversation in the commit that
  * creates it (`createConversation({ init: (tx, id) => configureOptChat(tx, id, ...) })`); with a conversation it
  * commits on its own. A run in progress picks the change up at its next request.
+ *
+ * Both read the current document, so a conversation whose document an older HUI wrote is adopted first (`adoptOptChat`):
+ * a gateway does it when it opens the chat, `hui doctor --fix` for a store at rest, and the bots' boundaries before a
+ * setting changes. A transaction starts nothing else, so it cannot adopt it in passing.
  */
 export function configureOptChat(tx: Tx, conversationId: ConversationId, change: OptChatChange): Promise<void>;
 export function configureOptChat(conversation: Conversation, change: OptChatChange, context?: Context): Promise<void>;
@@ -471,14 +534,14 @@ export class OptChatManager {
     this.extension = defineExtension({
       name: OPTCHAT_EXTENSION,
       sections: [section("optchat", async (input, renderContext) => {
-        const state = await input.read.snapshot(OptChatDoc, input.conversationId, renderContext);
+        const state = await readOptChat(input.read, input.conversationId, renderContext);
         return state?.enabled ? systemSection(agentName(state)) : undefined;
       }, { tag: false })],
       hooks: [
         hook(GenerationTask, { beforeRequest: (request, api, hookContext) => this.#beforeRequest(request, api, hookContext) }),
         // OptChat is the memory; a Durable summary would replace history the next turn never sends anyway.
         hook(CompactionTask, {
-          beforeCompact: async (_compaction, api, hookContext) => (await api.snapshot(OptChatDoc, api.conversationId, hookContext))?.enabled ? { decline: true as const } : undefined,
+          beforeCompact: async (_compaction, api, hookContext) => (await readOptChat(api, api.conversationId, hookContext))?.enabled ? { decline: true as const } : undefined,
         }),
       ],
     });
@@ -516,7 +579,26 @@ export class OptChatManager {
   }
 
   async enabled(conversationId: ConversationId): Promise<boolean> {
-    return (await this.#harness?.snapshot(OptChatDoc, conversationId, context))?.enabled === true;
+    const harness = this.#harness;
+    return harness !== undefined && (await readOptChat(harness, conversationId, context))?.enabled === true;
+  }
+
+  /** Adopts a document an older HUI wrote (`adoptOptChat`), so a fork of this conversation keeps its OptChat. Called
+   * outside a commit: it commits, once, and never for a document that is already current. A failure is reported and
+   * never keeps a conversation from opening: every read still falls back to the document that is stored. */
+  async adopt(conversationId: ConversationId): Promise<void> {
+    const harness = this.#harness;
+    if (!harness) return;
+    try {
+      if (await adoptOptChat(harness, conversationId, context)) {
+        recordDiagnosticEvent({
+          area: "runtime", level: "info", action: "optchat_document_adopted",
+          summary: `Adopted conversation ${conversationId}'s OptChat document, written before a fork kept a chat's OptChat`,
+        });
+      }
+    } catch (error) {
+      this.#report("optchat_document_adopt_failed", `Conversation ${conversationId}'s OptChat document an older HUI wrote could not be adopted`, error);
+    }
   }
 
   /** The extension carrying zoom, date and search_chat when the conversation has OptChat; its session selects it. */
@@ -606,7 +688,7 @@ export class OptChatManager {
    */
   async purge(conversationId: ConversationId): Promise<void> {
     const harness = this.#harness;
-    if (harness && (await harness.snapshot(OptChatDoc, conversationId, context))?.enabled) {
+    if (harness && (await readOptChat(harness, conversationId, context))?.enabled) {
       throw new Error(`OptChat is still on for conversation ${conversationId}; turn it off before deleting its memory.`);
     }
     const opening = this.#memories.get(conversationId);
@@ -632,7 +714,7 @@ export class OptChatManager {
   async #memory(conversationId: ConversationId, known?: OptChatState): Promise<Memory | undefined> {
     const harness = this.#harness;
     if (!harness) return undefined;
-    const state = known ?? await harness.snapshot(OptChatDoc, conversationId, context);
+    const state = known ?? await readOptChat(harness, conversationId, context);
     if (!state?.enabled) return undefined;
     let opening = this.#memories.get(conversationId);
     if (!opening) {
@@ -818,7 +900,7 @@ export class OptChatManager {
    * every line before the run's input is summarized: a later step, a retry or a crash rerun sends the same view.
    */
   async #beforeRequest(request: { readonly messages: readonly Message[] }, api: HookApi, hookContext: Context): Promise<{ readonly messages: readonly Message[] } | undefined> {
-    const state = await api.snapshot(OptChatDoc, api.conversationId, hookContext);
+    const state = await readOptChat(api, api.conversationId, hookContext);
     if (!state?.enabled) return undefined;
     const run = (await api.snapshot(LiveDoc, api.conversationId, hookContext))?.run?.inputs[0];
     if (run === undefined) return undefined;
@@ -882,7 +964,7 @@ export class OptChatManager {
   async #summarize(conversationId: ConversationId, request: SummaryRequest, signal: AbortSignal, contextMark: ContextMark): Promise<SummaryReply> {
     const harness = this.#harness;
     if (!harness) throw new Error("The Durable store is closed.");
-    const state = await harness.snapshot(OptChatDoc, conversationId, context);
+    const state = await readOptChat(harness, conversationId, context);
     const own = modelRef(state?.model);
     const conversationModel = (await harness.snapshot(AgentDoc, conversationId, context))?.model;
     const utility = own ? undefined : modelRef(await this.#utilityModel?.().catch(() => undefined));
