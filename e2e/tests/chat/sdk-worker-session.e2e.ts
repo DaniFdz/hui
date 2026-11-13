@@ -56,11 +56,18 @@ test("a session on PI's worker streams thinking, tools and replies, answers an e
   await hui.messageActions(transcript.getByText("Thought it through."));
   await expect(screen.getByRole("button", "Fork from here")).toHaveCount(0);
 
+  // Leave through Sessions first: an open chat would reconnect after the restart and legitimately start its worker.
+  await hui.sessionList();
+  await screen.getByTestId("nav-item").filter({ hasText: "Sessions" }).tap();
+  await expect(screen.getByTestId("page-title")).toHaveText("Sessions");
+  await expect(transcript).toHaveCount(0);
+  const row = screen.getByRole("row", { name: /SDK worker chat/u });
+  await expect(row).toBeVisible();
+
   // A gateway restart leaves the session cold: the Sessions page reports no runtime for it until it is opened, and
   // opening it brings the stored transcript back.
   await hui.restartGateway();
   await hui.open("/sessions");
-  const row = screen.getByRole("row", { name: /SDK worker chat/u });
   await expect.poll(() => hui.textOf(row)).toContain("Cold");
   await screen.getByRole("button", "Open SDK worker chat").tap();
   await expect(transcript.getByText("Thought it through.")).toBeVisible();
