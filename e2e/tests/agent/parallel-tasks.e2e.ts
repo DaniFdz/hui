@@ -77,12 +77,28 @@ test("Stop on a parent waiting for its helpers cancels the wait and every helper
   const transcript = screen.getByTestId("transcript");
   const session = await hui.createSession({ title: "Stopped swarm" });
   await hui.open(`/sessions/${session.id}`);
+  // A fixed-duration child can finish while a phone reads the card, legitimately removing Stop. These real model
+  // responses instead stay held at the provider until released or aborted, independent of the speed of the UI.
   await hui.prompt(session, calls(
-    call("sessions_spawn", { task: "E2E_SUBAGENT_CHILD_SLOW", label: "First helper", collect: true }),
-    call("sessions_spawn", { task: "E2E_SUBAGENT_CHILD_SLOW", label: "Second helper", collect: true }),
+    call("sessions_spawn", { task: "E2E_REPLAY first helper", label: "First helper", collect: true }),
+    call("sessions_spawn", { task: "E2E_REPLAY second helper", label: "Second helper", collect: true }),
   ));
   await expect.poll(async () => (await children(hui, session.id)).length).toBe(2);
-  await hui.prompt(session, calls(call("agents_wait", { ids: await children(hui, session.id), timeoutSeconds: 120 })));
+  const batch = await children(hui, session.id);
+  type Entry = { kind: string; role?: string; text?: string; name?: string; output?: string };
+  const snapshot = async (id: string) =>
+    (await hui.api<{ snapshot: { status: string; transcript: Entry[] } }>("POST", `/__hui/sessions/${id}/open`)).snapshot;
+  // Each child's own streamed prefix proves its response reached the provider's hold, not just runtime startup.
+  await expect.poll(async () => Promise.all(batch.map(async (id) =>
+    (await snapshot(id)).transcript.some((entry) => entry.kind === "message" && entry.role === "assistant"
+      && entry.text === "Replay prefix — ")))).toEqual([true, true]);
+  await hui.provider.held();
+  await hui.prompt(session, calls(call("agents_wait", { ids: batch, timeoutSeconds: 120 })));
+  await expect.poll(async () => {
+    const parent = await snapshot(session.id);
+    return parent.status === "running" && parent.transcript.some((entry) =>
+      entry.kind === "tool" && entry.name === "agents_wait" && entry.output === undefined);
+  }).toBe(true);
 
   await expect(screen.getByLabel("Session status: Running")).toBeVisible();
   await expect(swarm.getByText("Parallel tasks")).toBeVisible();
@@ -97,6 +113,15 @@ test("Stop on a parent waiting for its helpers cancels the wait and every helper
   await expect(rows).toHaveCount(2);
   await expect(rows.first()).toContainText("Stopped with its parent.");
   await expect(rows.last()).toContainText("Stopped with its parent.");
+
+  // Stop, not provider release, must cancel every helper. Releasing any remaining holds afterwards must start no
+  // follow-up or completion turn and leave no running child behind.
+  await expect.poll(async () => (await sessions(hui)).filter(({ id }) => batch.includes(id))
+    .map((child) => [child.subagent?.status, child.subagent?.completionDelivery]))
+    .toEqual([["cancelled", "delivered"], ["cancelled", "delivered"]]);
+  await hui.provider.release();
+  await expect.poll(async () => (await sessions(hui)).filter(({ id }) => id === session.id || batch.includes(id))
+    .every(({ status }) => status === "idle")).toBe(true);
 
   // A stopped batch delivers nothing back, so no completion card and no new turn.
   await expect(transcript.getByLabel(/subagents? finished/iu)).toHaveCount(0);
