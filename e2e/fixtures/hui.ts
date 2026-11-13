@@ -99,6 +99,8 @@ export type Hui = {
   clearState(): Promise<void>;
   url(): Promise<string>;
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
+  /** Reads the current CSS viewport without changing rotation, focus or keyboard state. */
+  viewportSize(): Promise<{ width: number; height: number }>;
   /**
    * States synthetic browser insets through the page's \`--safe-area-*\` tokens. Refuses in the native app, where
    * the shell fits the physical WebView frame and zeroes page tokens. Use safeDisplay for positive native evidence.
@@ -590,6 +592,7 @@ function huiTest(offline: boolean) {
         await browser().setViewport(phone);
         return phone;
       },
+      viewportSize: () => browser().evaluate(() => ({ width: innerWidth, height: innerHeight })),
       insets: async ({ top = 0, right = 0, bottom = 0, left = 0 }) => {
         await browser().evaluate((insets) => {
           for (const [side, value] of Object.entries(insets)) document.documentElement.style.setProperty(`--safe-area-${side}`, `${value}px`);
@@ -1130,12 +1133,16 @@ function huiTest(offline: boolean) {
             url: () => browser().evaluate(() => location.href),
             phoneScreen: async (orientation = "portrait") => {
               nativeDisplay!.rotate(orientation);
-              const size = () => browser().evaluate(() => ({ width: innerWidth, height: innerHeight }));
+              return steps.viewportSize();
+            },
+            viewportSize: async () => {
+              let size: { width: number; height: number } | undefined;
               await expect.poll(async () => {
-                const { width, height } = await size();
-                return orientation === "portrait" ? height > width : width > height;
-              }, { message: "the physical display must reach the requested orientation" }).toBe(true);
-              return size();
+                const metrics = await browser().evaluate(() => ({ width: innerWidth, height: innerHeight, ratio: devicePixelRatio, scale: visualViewport?.scale ?? 1 }));
+                size = await nativeDisplay!.viewportSize(metrics);
+                return true;
+              }, { message: "the CSS viewport must match the attached native frame" }).toBe(true);
+              return size!;
             },
             insets: async () => { throw new Error("Android owns its frame insets; use safeDisplay for real native measurements"); },
             safeDisplay: async (insets) => {

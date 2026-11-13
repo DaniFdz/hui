@@ -75,8 +75,9 @@ const emulator = () => {
     if (command === "shell settings get system accelerometer_rotation") return "1";
     if (command === "shell settings get system user_rotation") return "0";
     if (command.startsWith("shell settings put system user_rotation ")) {
-      rotation = Number(args.at(-1));
-      top = enabled ? 171 : 63;
+      const next = Number(args.at(-1));
+      if (next !== rotation) top = enabled ? 171 : 63;
+      rotation = next;
     }
     if (command === "shell cmd overlay list") return `[${enabled ? "x" : " "}] ${CUTOUT}`;
     if (command === `shell cmd overlay enable ${CUTOUT}`) { enabled = true; top = 171; }
@@ -87,6 +88,35 @@ const emulator = () => {
   };
   return { run, calls, top: () => top, enabled: () => enabled };
 };
+
+test("ordinary portrait setup does not round trip even when the display is already portrait", () => {
+  vi.stubEnv("ANDROID_SERIAL", "emulator-5554");
+  try {
+    const native = emulator();
+    const display = androidDisplay(native.run);
+    display.rotate("portrait");
+    assert.deepEqual(native.calls.filter((call) => call.startsWith("shell settings put system user_rotation ")),
+      ["shell settings put system user_rotation 0"]);
+    assert.equal(native.top(), 171, "ordinary rotation does not rebuild SystemUI resources");
+    display.restore();
+  } finally { vi.unstubAllEnvs(); }
+});
+
+test("current viewport observes the attached IME frame without changing native state or requiring portrait CSS", async () => {
+  const calls: string[] = [];
+  let height = 2274;
+  const display = androidDisplay((...args) => { calls.push(args.join(" ")); return ""; },
+    async () => [nativeTarget("current", { height })]);
+  const metrics = { width: 412, height: 867, ratio: 2.625, scale: 1 };
+  assert.deepEqual(await display.viewportSize(metrics), { width: 412, height: 867 });
+  height = 1518; // The IME has resized the same attached native WebView since phone setup.
+  await assert.rejects(display.viewportSize(metrics), /viewport mismatch/u);
+  assert.deepEqual(await display.viewportSize({ ...metrics, height: 578 }), { width: 412, height: 578 });
+  height = 900;
+  assert.deepEqual(await display.viewportSize({ ...metrics, height: 343 }), { width: 412, height: 343 });
+  await assert.rejects(display.viewportSize({ ...metrics, ratio: 1 }), /viewport mismatch/u);
+  assert.deepEqual(calls, [], "viewport reads never rotate, rebuild resources or inspect accessibility");
+});
 
 test("a stale native baseline and cutout cleanup both need a real configuration round trip", () => {
   vi.stubEnv("ANDROID_SERIAL", "emulator-5554");
