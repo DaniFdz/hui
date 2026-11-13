@@ -615,7 +615,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-060",
     title: "See when a desktop notification is unavailable",
-    behaviour: "A notify_user call on an unsupported or unmanaged gateway fails with an explicit error in the chat instead of reporting a queued notification or sending a Script Editor alert.",
+    behaviour: "A notify_user call on a gateway with no managed macOS desktop app and no ntfy topic fails with an explicit error in the chat that names both ways to set one up, instead of reporting a queued notification or sending a Script Editor alert.",
     spec: ["SPEC.md#clickable-desktop-notifications", "docs/api.md#desktop-notifications"],
     surfaces: ["tool:notify_user"],
     web: "required",
