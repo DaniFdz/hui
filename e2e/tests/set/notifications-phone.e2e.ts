@@ -1,11 +1,11 @@
-/** HUI publishes to the ntfy topic Settings → Notifications saves, and the phone's ntfy app shows it (SET-098). */
+/** HUI publishes to the ntfy topic Settings → Notifications saves, and the phone's ntfy app shows it (SET-099). */
 import { createServer } from "node:http";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 type Message = { title?: string; message?: string; priority?: number };
 
-test("a test notification reaches the saved ntfy topic", { tags: ["SET-098"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a test notification reaches the saved ntfy topic", { tags: ["SET-099"], platforms: ["web"] }, async ({ screen, hui }) => {
   const received: { topic?: string; message?: Message }[] = [];
   const relay = createServer((request, response) => {
     let body = "";

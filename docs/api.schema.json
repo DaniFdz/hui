@@ -7239,6 +7239,134 @@
         }
       }
     },
+    "LocalProvider": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "models",
+        "inPi",
+        "hasEndpoint",
+        "configured",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "models": {
+          "type": "number"
+        },
+        "inPi": {
+          "type": "boolean"
+        },
+        "hasEndpoint": {
+          "type": "boolean"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/LocalProviderStatus"
+        },
+        "message": {
+          "type": "string"
+        },
+        "checkedAt": {
+          "type": "number"
+        },
+        "startCommand": {
+          "type": "string"
+        },
+        "healthUrl": {
+          "type": "string"
+        },
+        "readyTimeoutMs": {
+          "type": "number"
+        }
+      }
+    },
+    "LocalProviderError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "LocalProviderOk": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "LocalProviderRequest": {
+      "type": "object",
+      "required": [
+        "startCommand"
+      ],
+      "properties": {
+        "startCommand": {
+          "type": "string"
+        },
+        "healthUrl": {
+          "type": "string"
+        },
+        "readyTimeoutMs": {
+          "type": "number"
+        }
+      }
+    },
+    "LocalProviderSnapshot": {
+      "type": "object",
+      "required": [
+        "providers"
+      ],
+      "properties": {
+        "providers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LocalProvider"
+          }
+        }
+      }
+    },
+    "LocalProviderStatus": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "online"
+        },
+        {
+          "type": "string",
+          "const": "offline"
+        },
+        {
+          "type": "string",
+          "const": "starting"
+        },
+        {
+          "type": "string",
+          "const": "failed"
+        },
+        {
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
     "MemorySource": {
       "type": "object",
       "required": [
@@ -14514,6 +14642,14 @@
       "ProviderSnapshot",
       "ProviderSummary"
     ],
+    "local-providers": [
+      "LocalProvider",
+      "LocalProviderError",
+      "LocalProviderOk",
+      "LocalProviderRequest",
+      "LocalProviderSnapshot",
+      "LocalProviderStatus"
+    ],
     "tools": [
       "RuntimeInspection",
       "RuntimeTool",
@@ -15671,6 +15807,37 @@
       "path": "/__hui/local-paths",
       "response": {
         "$ref": "#/$defs/LocalPathsResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/local-providers",
+      "response": {
+        "$ref": "#/$defs/LocalProviderSnapshot"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/local-providers/:provider",
+      "response": {
+        "$ref": "#/$defs/LocalProviderOk"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/local-providers/:provider",
+      "request": {
+        "$ref": "#/$defs/LocalProviderRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/LocalProvider"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/local-providers/:provider/start",
+      "response": {
+        "$ref": "#/$defs/LocalProvider"
       }
     },
     {

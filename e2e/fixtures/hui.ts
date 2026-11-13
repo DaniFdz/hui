@@ -81,6 +81,8 @@ export type Hui = {
   workspace: string;
   /** The gateway's own config directory, where its settings and tool icons live. */
   configDir: string;
+  /** This disposable gateway's PI agent directory, where models.json and settings.json live. */
+  piAgentDir: string;
   gateway: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
@@ -263,7 +265,7 @@ export type Hui = {
 };
 
 /** The steps whose gesture or reading differs per platform; each target fills its own table of them. */
-type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "gateway" | "api" | "createSession" | "createChief" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "holdTool" | "openSubagent" | "world" | "gatewayStub" | "automationClock">;
+type PlatformSteps = Omit<Hui, "workspace" | "configDir" | "piAgentDir" | "gateway" | "api" | "createSession" | "createChief" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "repository" | "holdTool" | "openSubagent" | "world" | "gatewayStub" | "automationClock">;
 
 /** A tap at the middle of where a target is at the moment of the press. */
 const tapAt = async (target: Locator) => {
@@ -1251,6 +1253,7 @@ function huiTest(offline: boolean) {
       },
       workspace: receipt.workspace,
       configDir: receipt.huiConfig,
+      piAgentDir: join(dirname(receipt.workspace), "agent"),
       gateway: receipt.url,
       api,
       createSession: async (input) =>

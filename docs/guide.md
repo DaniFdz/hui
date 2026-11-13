@@ -401,6 +401,34 @@ provider quota windows and reset times. Unsupported quotas are labeled explicitl
 Reopen existing sessions after changing connections; new sessions use the updated
 configuration. HUI-managed connections require the default PI SDK backend.
 
+### Local model servers
+
+A local model can run on another machine that is normally asleep. Define the
+provider once in PI's `models.json` with its `baseUrl` and models, then open
+**Settings → Models → Model providers → Local model servers**. The group is
+folded; opening it shows one compact row per custom provider from that file, with
+its reachability and one **Start command**. **Set up start command** opens a
+dialog for the command, health URL and timeout. The command is yours: for
+example, send a wake-on-LAN packet, wait, then start the server over SSH. Use SSH keys or another non-interactive
+method; the command runs as your user on the machine that runs the gateway and
+is never given input.
+
+Press **Start server** before using the model. HUI keeps a **Starting…** state
+until the server answers. The health check uses the optional **Health URL**, or
+the provider's `baseUrl` from `models.json` when you leave it empty; any HTTP
+answer counts as ready except 502, 503 and 504. **Ready timeout** (three minutes
+by default) bounds both the command and that wait. Without a health URL the
+command still runs, but HUI reports **Unknown** because it cannot confirm that
+the server is ready. If a chat sends while a start is still running, its model
+request waits and the conversation shows **Waiting for … to start…**; a failed
+start fails that request with the reason. HUI never starts a machine because a
+model request arrived, and it never stops the server: stop it on the machine
+when you are done.
+
+The command is stored in HUI's own `providers/local-providers.json`, not in PI's
+configuration. It is not sent to model providers; the gateway's provider status
+never includes PI's `baseUrl` or credentials.
+
 Settings → Models names three roles. The **primary model** does the real work:
 choose the smartest model you have, speed doesn't matter. The **utility model**
 does the quick work (session and branch names, Jira drafts, `/btw`, and for bots

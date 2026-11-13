@@ -43,6 +43,7 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "interrupted-recovery": { kind: "automate" },
   "jira-integration": { kind: "world:jira" },
   "kanban": { kind: "automate" },
+  "local-model-servers": { kind: "automate" },
   "local-path-autocomplete": { kind: "automate" },
   "markdown-formatting": { kind: "automate" },
   "media-viewer": { kind: "automate" },
