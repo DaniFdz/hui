@@ -639,6 +639,48 @@ Account-specific quota with the same response shape below.
 
 `{ status, checkedAt, windows, plan?, email?, access?, message? }`; status is `available`, `unsupported` or `unavailable`; windows contain measured `usedPercent`, `scope` (`account`, `scoped`, `spend`) and optional epoch-ms `resetAt`.
 
+### Local model servers
+
+A custom provider in PI's `models.json` may live on a machine that is asleep or
+whose server is stopped. Under Settings → Models → Model providers, the folded
+**Local model servers** group lists every such provider HUI does not manage (a
+HUI connection with the same id wins) as a compact row and shows **Online**,
+**Offline**, **Starting…**, **Failed** or **Unknown**. **Set up start command**
+or **Edit command** opens a dialog for the command, health URL and timeout.
+
+Each provider can save one start command, an optional health URL and a ready
+timeout. The command is HUI-owned state in `providers/local-providers.json`
+(mode 0600), never in PI's configuration. Start runs it once as the gateway's
+user, in the user's home directory, with the gateway's environment and stdin
+closed; it must not prompt. HUI does not stop or restart what the command
+starts. The health check requests the saved URL, else the provider's `baseUrl`
+from `models.json`, without its userinfo; any HTTP answer counts as ready except
+502, 503 and 504. Without either URL the command still runs, but the result is
+**Unknown** because HUI cannot confirm readiness. A server that already answers
+is not started again.
+
+Starting is manual: a model request never runs the command. While a start is in
+progress, a model request for that provider waits for it and the chat shows
+**Waiting for <name> to start…**; a failed start fails the waiting request with
+its reason. PI's base URL and credentials never leave the gateway; the snapshot
+reports only whether an endpoint exists.
+
+### `GET /__hui/local-providers`
+
+Every custom provider in PI's `models.json` that HUI does not manage, plus any provider with a saved command whose PI entry is gone. Each entry has its id, display name, model count, `inPi`, `hasEndpoint`, `configured`, the saved command, health URL and ready timeout when present, and a status: `online`, `offline`, `starting`, `failed` or `unknown`; `checkedAt` is epoch ms. The PI base URL, credentials and transport details are never returned.
+
+### `PUT /__hui/local-providers/:provider`
+
+`{ startCommand: string, healthUrl?: string, readyTimeoutMs?: number }`; the provider must exist in PI's `models.json`. `startCommand` is trimmed, 1–4000 characters and cannot contain NUL. `healthUrl` must be HTTP(S) without a username or password. `readyTimeoutMs` defaults to 180000 and must be a whole number from 10000 to 900000. Writes are atomic at mode 0600. Returns the provider's current view.
+
+### `DELETE /__hui/local-providers/:provider`
+
+Removes only HUI's saved start command; PI's provider and models are untouched. Returns `{ ok: true }`.
+
+### `POST /__hui/local-providers/:provider/start`
+
+Runs the saved command unless the health endpoint already answers. Returns at once with status `starting`; the start continues in the background and a later `GET` reports `online`, `unknown` (no endpoint) or `failed` with a message. A failure kills the command's process group at the ready timeout. Starting is idempotent while one start runs.
+
 Credentials use PI's locked auth storage at `$XDG_CONFIG_HOME/hui/providers/auth.json`
 (default `~/.config/hui/providers/auth.json`, mode 0600). Selections use a separate
 0600 `models.json` mapping provider IDs to `{ models: string[] }`; writes are

@@ -50,6 +50,7 @@ import type {
 } from "../runtimes/types.ts";
 import { RuntimeOutputError, RuntimeUnreachableError } from "../runtimes/types.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
+import { localProviders } from "../pi/local-providers.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import type { Settings } from "../hui-settings.ts";
 
@@ -720,6 +721,15 @@ export class LiveSessions {
     live.transcript.push(prompted);
     this.#broadcastTranscript(live);
     this.#setStatus(live, "running");
+    // A manual start in Settings can still be waiting for the model server. The model request waits for it too;
+    // saying so here explains the silence instead of leaving the turn looking stuck.
+    const localProvider = live.runtime.currentModel?.()?.provider;
+    if (localProvider && localProviders.isStarting(localProvider)) {
+      this.#broadcast(live, {
+        kind: "event",
+        event: { type: "notice", level: "info", message: `Waiting for ${localProviders.name(localProvider)} to start…` },
+      });
+    }
     live.submissions += 1;
     try {
       // This write is the recovery boundary. If the gateway or machine dies

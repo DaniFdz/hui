@@ -8,6 +8,10 @@ import { fileURLToPath } from "node:url";
 export const CONFIG_DIR = process.env["HUI_CONFIG_DIR"]
   || (process.env["XDG_CONFIG_HOME"] ? join(process.env["XDG_CONFIG_HOME"], "hui") : join(homedir(), ".config", "hui"));
 
+/** HUI-managed provider connections: credentials, model selections and the local servers HUI can start. PI's own
+ * models.json stays in PI's agent directory. */
+export const PROVIDERS_DIR = process.env["HUI_PROVIDERS_DIR"] || join(CONFIG_DIR, "providers");
+
 /** Trusted local modules that add JSON routes to the gateway (docs/api.md, "Extension routes"). HUI owns this
  * directory and the enable list beside it; nothing writes there but the operator and the toggle route. */
 export const EXTENSIONS_DIR = join(CONFIG_DIR, "extensions");

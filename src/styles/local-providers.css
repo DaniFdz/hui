@@ -1,0 +1,45 @@
+/* Model providers → Local model servers: a folded group of compact provider rows and the start-command dialog. */
+.hui-local-servers { margin-top: 12px; }
+.hui-local-servers > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hui-local-servers__count { color: var(--muted); font-size: 12px; font-weight: 400; text-align: right; }
+.hui-local-servers__body { padding: 0 12px 12px; border-top: 1px solid var(--border); }
+.hui-local-servers__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 0; }
+.hui-local-servers__head .settings-section__desc { margin: 0; }
+.hui-local-provider-list { display: grid; }
+.hui-local-provider-entry { border-top: 1px solid var(--border); padding: 12px 0; }
+.hui-local-provider-entry:first-child { border-top: 0; padding-top: 0; }
+.hui-local-provider-entry:last-child { padding-bottom: 0; }
+.hui-local-provider-row { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.hui-local-provider-row__name { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.hui-local-provider-row__name strong { overflow-wrap: anywhere; font-size: 13px; }
+.hui-local-provider-row__name small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.hui-local-provider-row__name code { font-size: 11px; }
+.hui-local-provider-row__status { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.hui-local-provider-row__actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.hui-local-provider-row__actions .btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+.hui-local-provider-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.hui-local-provider-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.hui-local-provider-status[data-status="online"]::before { background: var(--ok); }
+.hui-local-provider-status[data-status="starting"]::before { background: var(--warn); }
+.hui-local-provider-status[data-status="failed"]::before { background: var(--danger); }
+.hui-local-provider-note { color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.hui-local-provider-warning { grid-column: 1 / -1; margin: 0; font-size: 12px; }
+.hui-local-provider-confirm { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 2px; }
+.hui-local-provider-confirm p { flex: 1 1 240px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.hui-local-provider-confirm .hui-provider-actions { margin: 0; }
+.hui-local-provider-empty { padding: 16px; margin: 0; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-size: 12px; line-height: 1.7; text-align: center; }
+.hui-local-provider-empty code { font-size: 11px; }
+.hui-local-provider-dialog { width: min(520px, calc(100vw - 32px)); }
+.hui-local-provider-form { margin: 0; }
+.hui-local-provider-form textarea { width: 100%; min-height: 84px; box-sizing: border-box; resize: vertical; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 12px; line-height: 1.55; }
+.hui-local-provider-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hui-local-provider-help { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.hui-local-provider-optional { color: var(--muted); font-weight: 400; }
+@media (max-width: 600px) {
+  .hui-local-servers > summary { align-items: flex-start; }
+  .hui-local-servers__count { text-align: left; }
+  .hui-local-servers__head { flex-direction: column; }
+  .hui-local-servers__head .btn { align-self: flex-start; }
+  .hui-local-provider-row { grid-template-columns: 1fr; gap: 8px; }
+  .hui-local-provider-row__actions { justify-content: flex-start; }
+}
