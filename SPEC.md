@@ -36,7 +36,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   how many messages) and the summaries compaction left; a bot's chat whose memory rewrites its request shows its memory's
   view of the chat in place of that conversation. The latest run's tokens, cost and Compact now stay below it. The split
   fits the occupancy the runtime reports and is labelled as an estimate; a runtime that reports no split draws the plain
-  bar.
+  bar. A bot's chat also carries the bot's cost there, as its panel totals it (its chat, its subagents and its memory
+  summaries), or where it is kept when the bot runs on a worker.
 
 - Session search is the field directly below the sidebar header; it filters the
   session list and is not duplicated in the Sessions toolbar or a bottom footer.

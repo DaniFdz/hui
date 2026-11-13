@@ -85,4 +85,5 @@ test("The context ring opens Context usage with occupancy over the estimate of w
   await screen.getByLabel(/^Context (window: |usage unavailable)/u).tap();
   await expect(usage.getByText("Context window")).toBeVisible();
   await expect(compactNow).toBeHidden();
+  await expect(usage).toHaveText(/Bot cost\s*(Chat, subagents and memory|Includes .*|Kept on|Reading|Could not read)\s*(Not reported|\$\d+\.\d\d|cost…|Unavailable)/iu);
 });

@@ -268,6 +268,8 @@ export type HomeProps = {
   usage: RuntimeUsage | undefined;
   /** The latest model request HUI measured for this session; absent until one completes. */
   modelMetric: ModelMetric | undefined;
+  /** What a bot has cost: its chat's, its subagents' and its memory summaries' spend, as its panel totals it. */
+  botCost?: { usd?: number | null; memory?: number; subagents?: number; reading?: true; unavailable?: true; remote?: string };
   /** A running compaction, or one that ended without a summary. */
   compaction: RuntimeCompaction | undefined;
   /** Files picked but not yet sent. */
@@ -1906,7 +1908,7 @@ function renderComposer(props: HomeProps) {
           <div class="agent-chat__composer-trail">
             <div class="agent-chat__composer-controls">
           ${renderModelMetric(props.modelMetric)}
-          ${renderContextPicker(props.usage, disconnected || props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot)}
+          ${renderContextPicker(props.usage, disconnected || props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot, props.botCost)}
           <div class="chat-controls__session chat-controls__model chat-controls__model-settings">${renderModelPicker({
             models: props.models,
             current: props.currentModel,
@@ -2264,7 +2266,7 @@ function renderModelMetric(metric: ModelMetric | undefined) {
 
 /** `onCompact` is absent while the session is busy; `compactable` is false
  * for a bot's permanent chat, whose memory summarizes older messages itself. */
-function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => void, compactable = true) {
+function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => void, compactable = true, botCost?: HomeProps["botCost"]) {
   const percent = usage?.percent;
   const label = percent === null || percent === undefined
     ? (usage?.contextWindow ? `Context window: ${compactTokens(usage.contextWindow)} · usage unavailable` : "Context usage unavailable")
@@ -2291,6 +2293,8 @@ function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => 
         ${usage
           ? html`<dl class="context-usage__stats"><div><dt>Input</dt><dd>${compactTokens(usage.inputTokens)}</dd></div><div><dt>Output</dt><dd>${compactTokens(usage.outputTokens)}</dd></div><div><dt>Est. cost</dt><dd>${usage.costUsd === null ? "Unavailable" : `$${usage.costUsd.toFixed(2)}`}</dd></div></dl>`
           : html`<p>The runtime has not reported usage for this session yet.</p>`}
+        ${botCost ? html`<div class="context-usage__section-label">Bot cost</div>
+          <dl class="context-usage__stats"><div><dt>${botCost.remote ? "Kept on" : botCost.reading ? "Reading" : botCost.unavailable ? "Could not read" : botCost.subagents ? (botCost.subagents === 1 ? "Includes one subagent" : `Includes ${botCost.subagents} subagents`) : "Chat, subagents and memory"}</dt><dd>${botCost.remote ?? (botCost.reading ? "cost…" : botCost.unavailable ? "Unavailable" : botCost.usd === null || (botCost.usd === undefined && !botCost.memory) ? "Not reported" : `$${((botCost.usd ?? 0) + (botCost.memory ?? 0)).toFixed(2)}`)}</dd></div></dl>` : nothing}
         ${usage?.sessionCost ? html`<div class="context-usage__section-label">Session cost</div>
           <dl class="context-usage__stats"><div><dt>${usage.sessionCost.source}</dt><dd>$${usage.sessionCost.usd.toFixed(2)}</dd></div><div><dt>Checked</dt><dd>${relativeTime(usage.sessionCost.asOf)}</dd></div></dl>` : nothing}
         ${compactable ? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact" ?disabled=${!onCompact}

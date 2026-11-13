@@ -326,6 +326,20 @@ test("the composer shows context usage and only offers compaction on a live idle
   assert.doesNotMatch(await renderWorkerSession("idle", { usage, session: { id: "bot", title: "Bot", tool: "pi", status: "idle", bot: "bot" } }), /Compact now/u);
 });
 
+test("a bot's chat says what the bot has cost, and how much of it is its subagents", async () => {
+  const bot = { id: "bot", title: "Bot", group: "", cwd: "/repo", displayCwd: "repo", tool: "durable", status: "idle" as const, bot: { id: "b", handle: "ada", name: "Ada" } };
+  const usage = { percent: 10, contextTokens: 2_000, contextWindow: 200_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.01 };
+  const render = async (botCost: object) => await renderWorkerSession("idle", { session: bot, usage, botCost });
+  const paid = await render({ usd: 1.5, memory: 0.25, subagents: 3 });
+  assert.match(paid, /Bot cost/u);
+  assert.match(paid, /<dt>Includes 3 subagents<\/dt><dd>\$1\.75<\/dd>/u, "the panel's total, memory included");
+  assert.match(await render({ usd: 1.5, memory: 0.25, subagents: 1 }), /<dt>Includes one subagent<\/dt><dd>\$1\.75<\/dd>/u);
+  assert.match(await render({ usd: null, memory: 0, subagents: 0 }), /<dt>Chat, subagents and memory<\/dt><dd>Not reported<\/dd>/u);
+  assert.match(await render({ reading: true }), /<dt>Reading<\/dt><dd>cost…<\/dd>/u);
+  assert.match(await render({ remote: "build-2" }), /<dt>Kept on<\/dt><dd>build-2<\/dd>/u, "a worker keeps its own");
+  assert.doesNotMatch(await renderWorkerSession("idle", { usage }), /Bot cost/u, "an ordinary session has no bot to price");
+});
+
 test("the context popover splits the meter into what the context carries", async () => {
   const breakdown = [{ id: "system", tokens: 400 }, { id: "tools", tokens: 200, count: 12 }, { id: "conversation", tokens: 300, count: 40 }, { id: "summary", tokens: 100 }];
   const usage = { percent: 10, contextTokens: 1_000, contextWindow: 10_000, inputTokens: 10, outputTokens: 2, costUsd: 0.01, breakdown };

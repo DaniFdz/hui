@@ -3979,7 +3979,8 @@ conversation: what the prompt and the tools leave of the context is the view the
 so a conversation a restarted gateway or a fork reopened still splits, and a model that takes
 system messages mid-conversation reads every one of them where another reads only the replayed
 prompt. The browser fits those estimates to the reported `contextTokens` and labels them as estimates. A runtime that cannot split its context omits the field and
-the meter draws the plain bar.
+the meter draws the plain bar. A bot's chat reads the bot's cost beside the session's through
+`GET /__hui/bots/:id/usage`, the same total its panel shows.
 `usage.sessionCost` is separate from that per-run figure: an extension that measured
 the whole session's cost from a source HUI cannot price reports it by appending a
 `hui.session-cost` entry with `{ usd, source, asOf }`, and the session's `usage`
