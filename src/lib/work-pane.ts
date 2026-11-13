@@ -58,6 +58,9 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   settingsLink?(sessionId?: string): WorkViewSettingsLink | undefined;
   /** Calls `listener` whenever `unavailable` may answer differently; returns the unsubscribe. */
   onAvailabilityChange?(listener: () => void): () => void;
+  /** Calls `listener` whenever `title` may answer differently for a ref already open — a terminal's name arrives from
+   * the gateway after a reload restored its tab; returns the unsubscribe. */
+  onTitleChange?(listener: () => void): () => void;
   /** Launcher action → new (or reused) ref. */
   create(sessionId: string): Promise<R> | R;
   /** Stable identity within a session. */

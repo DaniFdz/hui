@@ -14,6 +14,9 @@ Follow .agents/skills/hui-visual-verification/SKILL.md for UI work. -->
 - [ ] `npm run build`
 - [ ] `npm run test:package` (package or lifecycle changes)
 - [ ] `npm run e2e`
+- [ ] `npm run mobile -- test` and the Android procedure for `mobile/**`
+      (.agents/skills/hui-visual-verification/references/android.md); the `android`
+      e2e target once `e2e.config.ts` has one
 - [ ] Browser-tool E2E (user-visible changes)
 
 - Verified commit:
@@ -44,6 +47,16 @@ still require the desktop/mobile smoke. -->
 ### Mobile — 390×844
 
 <!-- Attach the affected rendered state; include landscape when relevant. -->
+
+### Phone — Android, 432×960
+
+<!-- Changes under mobile/: the affected screens from the emulator, light and dark
+(.agents/skills/hui-visual-verification/references/android.md). -->
+
+### Phone — iOS, from CI
+
+<!-- When mobile/ios/** changed: the ios-smoke job's screenshots from this HEAD's CI run
+(once WP5 adds that job), and what it does not show (.agents/skills/hui-visual-verification/references/ios.md). -->
 
 ## Proof gaps
 

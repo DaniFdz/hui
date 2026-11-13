@@ -10,6 +10,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/bots", "route:GET /__hui/bots/events"],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-002",
@@ -19,6 +20,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "required",
+    phone: { excluded: "Arrow keys on the tab bar are a keyboard-only affordance; tapping a tab is BOT-001.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "BOT-003",
@@ -27,7 +29,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#get-__huibots", "docs/api.md#get-__huibotsevents"],
     surfaces: ["route:GET /__hui/bots", "route:GET /__hui/bots/events"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-004",
@@ -37,6 +40,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/bots", "row:botCreated", "nav:bot"],
     journeys: ["bot-setup", "bots"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-005",
@@ -46,6 +50,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:set_profile"],
     journeys: ["bot-setup", "bots-workers"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-006",
@@ -55,15 +60,17 @@ const cases: UseCase[] = [
     surfaces: ["tool:write_soul"],
     journeys: ["bots", "bots-workers"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-007",
     title: "Keep routines, triggers and other bots from rewriting a bot",
-    behaviour: "In a turn that took a message from a routine, a trigger, another bot or an agent, the bot's attempt to rename itself, rewrite its SOUL.md or add a routine is refused, and the chat shows the refusal in its tool call. Its name, title and persona stay as they were.",
+    behaviour: "In a turn that took a message from a routine, a trigger, another bot or an agent, the bot's attempt to rename itself or rewrite its SOUL.md is refused, and the chat shows the refusal in its tool call; only the operator's turns, its routines' own turns and HUI's kickoff may add or change a routine, so a routine's turn still adds one. Its name, title and persona stay as they were.",
     spec: ["SPEC.md#bots", "SPEC.md#agents-and-bots-tag-bots-by-handle-2026-10-16", "SPEC.md#schedules-are-a-cli-and-bots-schedule-their-own-routines-2026-10-07"],
     surfaces: ["tool:set_profile", "tool:write_soul"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-008",
@@ -73,6 +80,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/bots"],
     journeys: ["bots", "bot-faces"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-009",
@@ -81,7 +89,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#resting-bots-sleep-and-a-green-dot-means-done-2026-10-19", "SPEC.md#bots-have-animated-faces-2026-10-06"],
     surfaces: ["route:GET /__hui/bots/events"],
     journeys: ["bot-faces"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-010",
@@ -91,6 +100,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:bot", "route:GET /__hui/bots"],
     journeys: ["bots", "bot-faces"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-011",
@@ -99,7 +109,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#chats-show-who-sent-each-message-2026-10-16", "docs/api.md#a-forever-chat"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-012",
@@ -109,6 +120,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-013",
@@ -118,6 +130,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bots"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-014",
@@ -126,7 +139,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#delete-__huibotsid", "docs/api.md#routines"],
     surfaces: ["route:DELETE /__hui/bots/:id"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-015",
@@ -135,7 +149,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#post-__huibotsidrestore"],
     surfaces: ["route:POST /__hui/bots/:id/restore", "nav:bot"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-016",
@@ -144,7 +159,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-write-their-own-soulmd-in-a-first-conversation-2026-10-06", "SPEC.md#bots-run-on-remote-workers-2026-10-06", "docs/api.md#delete-__huibotsid"],
     surfaces: ["route:DELETE /__hui/bots/:id"],
     journeys: ["bots", "bots-workers"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-017",
@@ -153,7 +169,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-018",
@@ -163,6 +180,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-019",
@@ -171,7 +189,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: ["route:GET /__hui/automation", "route:GET /__hui/bots/:id/triggers"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-020",
@@ -181,6 +200,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "required",
+    phone: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no edge to drag.", decision: "SPEC.md#bots" },
   },
   {
     id: "BOT-021",
@@ -190,6 +210,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "required",
+    phone: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no edge to resize.", decision: "SPEC.md#bots" },
   },
   {
     id: "BOT-022",
@@ -199,6 +220,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "required",
+    phone: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no Expand.", decision: "SPEC.md#bots" },
   },
   {
     id: "BOT-023",
@@ -208,6 +230,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots", "bot-setup"],
     web: "required",
+    phone: { excluded: "Escape is a keyboard-only affordance; the sheet's Close button (BOT-024) is the visible equivalent.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "BOT-024",
@@ -217,6 +240,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots", "bot-setup"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-025",
@@ -226,6 +250,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bot-setup", "bots"],
     web: "required",
+    phone: { excluded: "The chord is a keyboard-only affordance; Edit bot… and the profile's Edit are BOT-026.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "BOT-026",
@@ -235,6 +260,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bot-setup"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-027",
@@ -244,6 +270,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-028",
@@ -253,6 +280,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-faces", "bot-setup"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-029",
@@ -261,7 +289,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup", "bots"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-030",
@@ -270,7 +299,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id", "route:GET /__hui/directories"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-031",
@@ -280,6 +310,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bot-faces"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "BOT-032",
@@ -288,7 +319,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#a-bot-has-every-tool-and-skill-until-the-operator-turns-some-off-2026-10-06", "docs/api.md#tools-and-skills", "docs/api.md#get-__huibotsidcatalog"],
     surfaces: ["route:GET /__hui/bots/:id/catalog", "route:PATCH /__hui/bots/:id", "tool:write_soul", "tool:set_profile", "tool:request_access", "tool:load_skill", "tool:zoom", "tool:date"],
     journeys: ["bots", "bot-schedules"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-033",
@@ -297,7 +329,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#a-bot-has-every-tool-and-skill-until-the-operator-turns-some-off-2026-10-06", "docs/api.md#tools-and-skills"],
     surfaces: ["tool:request_access", "route:POST /__hui/sessions/:id/question", "route:GET /__hui/bots/:id/catalog"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-034",
@@ -305,16 +338,18 @@ const cases: UseCase[] = [
     behaviour: "With read and bash both off, the bot still loads a skill it needs: its chat shows the load_skill call and an answer that follows the skill. A skill that is off is not offered.",
     spec: ["SPEC.md#a-bot-has-every-tool-and-skill-until-the-operator-turns-some-off-2026-10-06", "docs/api.md#tools-and-skills"],
     surfaces: ["tool:load_skill"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-035",
     title: "Let a bot recall older parts of its chat",
-    behaviour: "Asked about something said long ago, the bot searches its whole chat and opens the lines it finds, and its chat shows those search_chat, zoom and date calls (each search named \"Searched for <query>\") before an answer that quotes them. A search that finds nothing says so, and an empty query is refused. Its chat is never compacted.",
+    behaviour: "Asked about something said long ago, the bot searches its whole chat and opens the lines it finds, and its chat shows those search_chat, zoom and date calls before an answer.",
     spec: ["SPEC.md#bots", "docs/api.md#bots"],
     surfaces: ["tool:zoom", "tool:date", "tool:search_chat"],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-036",
@@ -324,6 +359,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/bots/events"],
     journeys: ["bots", "bot-faces"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "BOT-037",
@@ -333,6 +369,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/bots/:id/facts", "route:POST /__hui/bots/:id/facts"],
     journeys: ["bot-facts"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-038",
@@ -342,6 +379,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/bots/:id/facts/:factId"],
     journeys: ["bot-facts"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-039",
@@ -351,6 +389,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/bots/:id/facts/:factId"],
     journeys: ["bot-facts"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-040",
@@ -360,6 +399,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/automation/tasks", "route:GET /__hui/automation"],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-041",
@@ -369,6 +409,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/automation/tasks/:id/run"],
     journeys: ["bots", "bot-routine-recovery"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-042",
@@ -378,6 +419,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "route:DELETE /__hui/automation/tasks/:id"],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-043",
@@ -387,6 +429,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/automation", "tool:routines"],
     journeys: ["bot-schedules"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-044",
@@ -395,7 +438,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#schedules-are-a-cli-and-bots-schedule-their-own-routines-2026-10-07", "docs/api.md#routines"],
     surfaces: ["route:GET /__hui/automation"],
     journeys: ["bot-schedules", "bot-routine-recovery"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-045",
@@ -405,6 +449,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/automation"],
     journeys: ["bot-schedules"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "BOT-046",
@@ -414,15 +459,17 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/automation"],
     journeys: ["bot-routine-recovery"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-047",
     title: "Follow or cancel a routine's automatic retry",
-    behaviour: "Run now on a routine whose worker is disconnected shows \"Retry scheduled\", \"Attempt 1/3\", the next retry's time and the connection error. Cancel in Automations before that time makes the run Cancelled with no further retry promised.",
+    behaviour: "Run now on a routine whose worker is disconnected shows \"Retry scheduled\", \"Attempt 1 · Next retry <time>\" and the connection error, and HUI keeps the run to try again instead of losing it. Cancel in Automations before that time makes the run Cancelled with no further retry promised.",
     spec: ["SPEC.md#bots", "docs/api.md#routines", "docs/api.md#post-__huiautomationrunsidcancel"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run", "route:POST /__hui/automation/runs/:id/cancel"],
     journeys: ["bot-routine-recovery"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-048",
@@ -431,7 +478,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#listeners-are-the-only-triggers-2026-10-09", "SPEC.md#listeners-report-what-hui-doesnt-read-itself-2026-10-08", "docs/api.md#triggers", "docs/api.md#post-__huibotsidtriggers"],
     surfaces: ["route:GET /__hui/bots/:id/triggers", "route:POST /__hui/bots/:id/triggers", "tool:triggers"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-049",
@@ -440,7 +488,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#listeners-report-what-hui-doesnt-read-itself-2026-10-08", "SPEC.md#chats-show-who-sent-each-message-2026-10-16", "docs/api.md#triggers"],
     surfaces: ["route:POST /__hui/hooks/<token>", "route:GET /__hui/bots/:id/triggers"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-050",
@@ -450,6 +499,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/hooks/<token>", "route:GET /__hui/bots/:id/triggers"],
     journeys: ["bot-triggers"],
     web: "backlog",
+    phone: "backlog",
   },
   {
     id: "BOT-051",
@@ -458,7 +508,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#triggers-wake-bots-on-github-session-and-webhook-events-2026-10-07", "docs/api.md#triggers"],
     surfaces: ["route:POST /__hui/hooks/<token>", "route:GET /__hui/bots/:id/triggers"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-052",
@@ -467,7 +518,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#post-__huibotsidtriggerstriggertest"],
     surfaces: ["route:POST /__hui/bots/:id/triggers/:trigger/test"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-053",
@@ -476,7 +528,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#post-__huibotsidtriggerstriggertoken"],
     surfaces: ["route:POST /__hui/bots/:id/triggers/:trigger/token"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-054",
@@ -485,7 +538,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#patch-__huibotsidtriggerstrigger", "docs/api.md#delete-__huibotsidtriggerstrigger"],
     surfaces: ["route:PATCH /__hui/bots/:id/triggers/:trigger", "route:DELETE /__hui/bots/:id/triggers/:trigger", "tool:triggers"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-055",
@@ -494,7 +548,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#triggers"],
     surfaces: ["route:POST /__hui/bots/:id/triggers", "route:POST /__hui/hooks/<token>"],
     journeys: ["bot-triggers"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-056",
@@ -503,7 +558,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#agents-and-bots-tag-bots-by-handle-2026-10-16", "docs/api.md#tagging-bots", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-tagging"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-057",
@@ -512,7 +568,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#agents-and-bots-tag-bots-by-handle-2026-10-16", "SPEC.md#chats-show-who-sent-each-message-2026-10-16", "docs/api.md#tagging-in-the-composer", "docs/api.md#tagging-bots"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt", "tool:message_bot"],
     journeys: ["bot-tagging"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-058",
@@ -521,7 +578,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#agents-and-bots-tag-bots-by-handle-2026-10-16", "docs/api.md#tagging-bots"],
     surfaces: [],
     journeys: ["bot-tagging"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-059",
@@ -530,7 +588,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots-can-notify-the-agent-that-handed-them-work-2026-10-16", "SPEC.md#chats-show-who-sent-each-message-2026-10-16", "docs/api.md#replying-to-a-calling-agent"],
     surfaces: [],
     journeys: ["bot-agent-replies"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-060",
@@ -539,7 +598,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-import-other-platforms-templates-and-export-their-own-2026-10-07", "docs/api.md#importing-and-exporting-bots", "docs/api.md#post-__huibotsimportpreview", "docs/api.md#post-__huibotsimport"],
     surfaces: ["route:POST /__hui/bots/import/preview", "route:POST /__hui/bots/import", "row:botCreated"],
     journeys: ["bot-templates"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-061",
@@ -549,6 +609,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/bots/:id/export/review", "route:POST /__hui/bots/:id/export"],
     journeys: ["bot-templates"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-062",
@@ -557,7 +618,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#exporting-a-bot-as-a-template"],
     surfaces: ["route:POST /__hui/bots/:id/export"],
     journeys: ["bot-templates"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-063",
@@ -566,7 +628,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bot-exports-are-templates-reviewed-for-personal-information-2026-10-16", "docs/api.md#importing-and-exporting-bots"],
     surfaces: ["route:POST /__hui/bots/import"],
     journeys: ["bot-templates"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-064",
@@ -575,16 +638,18 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-run-on-remote-workers-2026-10-06", "docs/api.md#bots-on-a-worker", "docs/api.md#post-__huibots"],
     surfaces: ["route:POST /__hui/bots", "route:GET /__hui/workers", "route:GET /__hui/directories"],
     journeys: ["bots-workers", "bot-setup"],
-    web: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-065",
     title: "Manage a worker bot's tools",
-    behaviour: "A bot on a worker lists its tools and skills from that worker, without the terminal, the browser or watchers, and its switches and access requests act there. While the worker is offline the page says \"<worker>, where this bot runs, is offline: HUI is not connected to it. Connect it in Settings → Workers, then try again.\" with Retry.",
+    behaviour: "A bot on a worker lists its tools and skills from that worker, without the watchers, whose processes live where the gateway runs: it browses in its own browser there, and its terminal is a shell there. Its switches and access requests act there. While the worker is offline the page says \"<worker>, where this bot runs, is offline: HUI is not connected to it. Connect it in Settings → Workers, then try again.\" with Retry.",
     spec: ["SPEC.md#a-bot-has-every-tool-and-skill-until-the-operator-turns-some-off-2026-10-06", "SPEC.md#bots-run-on-remote-workers-2026-10-06", "docs/api.md#bots-on-a-worker"],
     surfaces: ["route:GET /__hui/bots/:id/catalog", "route:PATCH /__hui/bots/:id"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-066",
@@ -593,7 +658,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots-run-on-remote-workers-2026-10-06", "docs/api.md#bots-on-a-worker"],
     surfaces: ["route:POST /__hui/bots", "route:GET /__hui/bots"],
     journeys: ["bots-workers", "bot-setup"],
-    web: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "BOT-067",
@@ -603,6 +669,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/bots/:id/usage"],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-068",
@@ -612,6 +679,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:update_user", "tool:update_memory"],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-069",
@@ -621,6 +689,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/bots/:id/triggers", "route:POST /__hui/hooks/<token>"],
     journeys: ["bot-triggers"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-072",
@@ -630,6 +699,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/staff/chiefs"],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-071",
@@ -639,6 +709,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/bots/:id/skills/:name", "route:PUT /__hui/bots/:id/skills/:name"],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-070",
@@ -648,6 +719,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/bots", "route:PUT /__hui/settings", "setting:models.routes"],
     journeys: ["bots", "subagent-routes"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-073",
@@ -657,6 +729,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:create_session"],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
   {
     id: "BOT-074",
@@ -666,7 +739,9 @@ const cases: UseCase[] = [
     surfaces: ["tool:worker_stats"],
     journeys: ["bots"],
     web: "required",
+    phone: "required",
   },
+
   {
     id: "BOT-075",
     title: "Watch a session and continue it when it stops",
@@ -675,6 +750,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:watch_session"],
     journeys: ["bots"],
     web: "required",
+    phone: "backlog",
   },
   {
     id: "BOT-077",
@@ -684,6 +760,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/heartbeat", "tool:watch_session"],
     journeys: ["bots"],
     web: "required",
+    phone: "backlog",
   },
 ];
 

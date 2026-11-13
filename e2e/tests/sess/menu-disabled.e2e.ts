@@ -7,6 +7,7 @@ test("a session menu disables the current group and Conversation as Markdown for
   await hui.createSession({ title: "Other session" });
   await hui.open(`/sessions/${open.id}`);
 
+  await hui.sessionList();
   const others = await hui.sessionMenu("Other session");
   await others.getByText("Move to group", { exact: true, visible: true }).tap();
   const current = others.getByTestId("session-move-group").filter({ hasText: "OTHER" });
@@ -17,6 +18,7 @@ test("a session menu disables the current group and Conversation as Markdown for
   await hui.keyboard.down("Escape");
   await hui.keyboard.up("Escape");
 
+  await hui.sessionList();
   const own = await hui.sessionMenu("Open session");
   await own.getByText("Copy", { exact: true, visible: true }).tap();
   await expect(own.getByTestId("session-copy-markdown")).toHaveAttribute("aria-disabled", "false");

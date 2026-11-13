@@ -1,7 +1,9 @@
 # Session API contract
 
-The interface between the backend and the browser. Change it deliberately: it is
-the seam the whole app is built across.
+The interface between the backend and the browser. The phone apps load the
+gateway's own UI at its origin ("Phone apps" below), so they speak this contract
+as the browser does. Change it deliberately: it is the seam the whole app is
+built across.
 
 Gateway API routes live under `/__hui/` and require the `x-hui: 1` header. A page
 on any site can reach localhost, but it cannot set a custom header without a
@@ -10,6 +12,36 @@ gateway](#adding-a-gateway)). Every other route refuses a preflight with 403 and
 carries no CORS header. Expected client errors use `{ "error": "message worth
 showing the user" }` with a 4xx status; storage/backend failures use the same
 shape with 500.
+
+## Phone apps
+
+The Android app is a Capacitor shell around this contract, not a second client:
+it remembers one gateway address and loads that gateway's own web UI at its
+origin, as the Electron renderer uses the desktop gateway's origin ("Desktop
+shell boundary" below), so every route, event and payload here is what a phone
+sends and receives, and no route is phone-specific. The iOS shell keeps to the
+same contract when it lands (WP5, `mobile/AGENTS.md`).
+
+- **Requests** are the same `/__hui/` routes with `x-hui: 1`. The app's page comes
+  from the gateway it calls, so its requests are same-origin and never
+  preflighted; the gateway still answers an `OPTIONS` with 403.
+- **Sockets** are same-origin as well. Every WebSocket upgrade in this document
+  (`POST /__hui/sessions/:id/connect`, `/__hui/terminal-stream`, the browser and
+  VS Code streams) requires an `Origin` that names the gateway's `Host`, and the
+  app's page is that origin, so its sockets pass the same check a browser's page
+  passes.
+- **The address check** made before any UI loads is `GET /__hui/update` with
+  `x-hui: 1`: a 200 `UpdateSnapshot` is a HUI gateway, and a `currentVersion` of
+  `null` (a development checkout) earns "Development gateway: its version is
+  unverified." (SPEC.md, "The iOS app connects to one gateway"); anything else
+  reads "This address doesn't answer as a HUI gateway." The page runs at the
+  shell's own origin (`https://localhost`), where a `fetch` would preflight and be
+  refused, so on a device that one check goes through Capacitor's native HTTP and
+  the gateway is unchanged by it.
+- **The version notice** a running app shows is the web's own, from the same
+  `GET /__hui/update` and `GET /__hui/update/check` ("Browser updates" below):
+  updating the gateway updates the phone's UI, and the shell holds only the
+  Connect page.
 
 ## Published schema
 
@@ -849,6 +881,14 @@ gateway older than this handshake cannot be added from the page: it answers the
 preflight with 403, so the probe fails and nothing is stored. The route takes no
 credentials and sends no cookies; `*` is refused by a browser for a request made
 with them, which is why it is safe here.
+
+Switching loads the chosen gateway's own UI; it does not make the old page a
+cross-origin API client. A browser navigates that page. The phone calls its
+existing `HuiGateway.connect({ url })` handoff so the shell remembers the chosen
+address and rebuilds its bridge on that origin. An unavailable or refused
+handoff reports an error in HUI instead of silently opening an external browser.
+The phone still remembers one connected address; its native saved-gateway
+chooser is separate from the page's origin-local list.
 
 ### macOS power
 

@@ -56,7 +56,9 @@ test("an opened watcher shows its target, outcome, times, log, path and controls
   const watchers = screen.getByLabel("Background watchers");
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("1 running · Wait for #21532 review signals");
   await watchers.getByText("2 watchers").tap();
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("posted /merge");
+  // A row keeps its latest output line only where it has the room; a phone's row is its purpose and state until it is
+  // opened (AGENT-036), and the log asserted below is what proves the command printed, so the wait is for the row to settle.
+  await expect(watchers.getByText(/^Done · /u)).toBeVisible();
   await watchers.getByText("Post /merge when approved").tap();
 
   await expect(watchers.getByText("Then: post /merge")).toBeVisible();
@@ -144,7 +146,7 @@ test("Dismiss removes a settled watcher and its log, folding the list back into 
   const watchers = screen.getByLabel("Background watchers");
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("1 running · Wait for #21532 review signals");
   await watchers.getByText("2 watchers").tap();
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("posted /merge");
+  await expect(watchers.getByText(/^Done · /u)).toBeVisible();
   await watchers.getByText("Post /merge when approved").tap();
   await expect(watchers.getByLabel("Watcher log").getByText("posted /merge")).toBeVisible();
   await watchers.getByRole("button", "Dismiss").tap();
@@ -194,6 +196,8 @@ test("deleting a conversation stops its running watcher and forgets its log", { 
   const pid = pidOf(path);
   expect(alive(pid)).toBe(true);
 
+  // The sidebar is the drawer on a phone, so the row whose menu this opens is only there once the drawer is open.
+  await hui.sessionList();
   await hui.sessionMenu("Watchers deleted with the chat");
   await screen.getByText("Delete…", { visible: true }).tap();
   await screen.getByRole("button", "Remove from HUI").tap();

@@ -8,7 +8,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { brandMarks, icons } from "../../lib/icons.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
 import { readToolPresentation, commandToolPresentation, codemodeToolPresentation, toolFilePath } from "../../lib/tool-cards.ts";
-import { renderReadToolBody } from "./read-tool-card.ts";
+import { renderReadToolBody, renderToolFileReference } from "./read-tool-card.ts";
 import { renderCommandToolBody } from "./command-tool-card.ts";
 import { renderCodemodeToolBody } from "./codemode-tool-card.ts";
 
@@ -260,8 +260,9 @@ export function renderToolBody(item: ToolItem, onCopy: (text: string, key: strin
   if (readToolPresentation(item)) return renderReadToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
   if (commandToolPresentation(item)) return renderCommandToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
   if (codemodeToolPresentation(item)) return renderCodemodeToolBody(item, { onCopy: (text) => Promise.resolve(onCopy(text, `tool-${item.id}`) as unknown as boolean) });
+  const path = toolFilePath(item);
   return html`<div class="chat-tool-msg-body"><div class="chat-tool-card">
-    <div class="chat-tool-card__header"><span class="chat-tool-card__detail">${item.name}</span>
+    <div class="chat-tool-card__header"><span class="chat-tool-card__detail">${item.name}${path ? html` · ${renderToolFileReference(path)}` : nothing}</span>
       ${item.output !== undefined ? html`<div class="chat-tool-card__actions"><button type="button" class="chat-copy-btn" aria-label="Copy output" title="Copy output" @click=${() => onCopy(item.output ?? "", `tool-${item.id}`)}>${icons.copy}</button></div>` : nothing}
     </div>
     ${item.args !== undefined ? html`<section class="chat-tool-card__block"><div class="chat-tool-card__block-header"><span class="chat-tool-card__block-label">Input</span></div><pre class="chat-tool-card__block-content"><code>${typeof item.args === "string" ? item.args : JSON.stringify(item.args, null, 2)}</code></pre></section>` : nothing}

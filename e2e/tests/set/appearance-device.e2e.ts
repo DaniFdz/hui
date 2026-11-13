@@ -37,12 +37,18 @@ test("the Settings footer still reports a gateway setting that fails to save", {
   const notSaved = screen.getByText("Settings not saved");
 
   await hui.open("/settings/notifications");
+  await expect(screen.getByRole("switch", "Run finished")).toBeVisible();
+  // The footer belongs to the Settings drawer on a phone, not the page behind it.
+  await hui.settingsPages();
   await expect(saved).toBeVisible();
   const ok = await hui.look(saved);
+  // Selecting the current page closes that drawer again so the switch is reachable.
+  await screen.getByLabel("Settings pages").getByRole("link", "Notifications").tap();
 
   const write = await hui.intercept("PUT", /\/__hui\/settings$/u);
   await hui.flip(screen.getByRole("switch", "Run finished"));
   await write.reject(500, "disk full");
+  await hui.settingsPages();
   await expect(notSaved).toBeVisible();
   await expect(saved).toBeHidden();
   const [r, g, b] = (await hui.look(notSaved)).color;

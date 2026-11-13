@@ -1,0 +1,122 @@
+apply plugin: 'com.android.application'
+
+// The app's version is the repository's package.json version, and the release and nightly workflows pass the exact
+// version they publish plus a versionCode derived from the commit time, so every artifact of a commit carries the same
+// numbers and versionCode only ever grows. Android's versionCode is a signed 32-bit int and the nightly stamp is 14
+// digits, so the workflows pass the commit time in minutes instead of the stamp itself.
+def huiPackage = new groovy.json.JsonSlurper().parse(rootProject.file("../../package.json"))
+def huiVersionName = (findProperty("huiVersionName") ?: huiPackage.version).toString()
+def huiVersionCode = (findProperty("huiVersionCode") ?: "1").toString().toInteger()
+
+// A release APK is signed only with the owner's release keystore (docs/mobile-app-plan.md, owner decision O4). The
+// workflow decodes the HUI_ANDROID_KEYSTORE_BASE64 secret into a file and passes its path as a Gradle property, and
+// exports the other three secrets as ORG_GRADLE_PROJECT_huiRelease*, so no secret reaches a command line or a log.
+// Any missing value fails checkReleaseSigning below: a release build must never fall back to the debug key or to no
+// signature at all.
+def huiReleaseSigning = [
+    huiReleaseStoreFile: findProperty("huiReleaseStoreFile"),
+    huiReleaseStorePassword: findProperty("huiReleaseStorePassword"),
+    huiReleaseKeyAlias: findProperty("huiReleaseKeyAlias"),
+    huiReleaseKeyPassword: findProperty("huiReleaseKeyPassword"),
+]
+def huiReleaseSigningMissing = huiReleaseSigning.findAll { name, value -> !value?.toString()?.trim() }.keySet()
+def huiReleaseSigningReady = huiReleaseSigningMissing.isEmpty()
+
+android {
+    namespace = "dev.hui.app"
+    // Gateway.java honours the launch extra in debug builds only, which reads BuildConfig.DEBUG.
+    buildFeatures {
+        buildConfig = true
+    }
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "dev.hui.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode huiVersionCode
+        versionName huiVersionName
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            if (huiReleaseSigningReady) {
+                storeFile file(huiReleaseSigning.huiReleaseStoreFile.toString())
+                storePassword huiReleaseSigning.huiReleaseStorePassword.toString()
+                keyAlias huiReleaseSigning.huiReleaseKeyAlias.toString()
+                keyPassword huiReleaseSigning.huiReleaseKeyPassword.toString()
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            // The plan's app ids: dev.hui.app.debug for the debug build, dev.hui.app for release.
+            applicationIdSuffix ".debug"
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Without the keystore this stays unset, and checkReleaseSigning fails the build before AGP would package an
+            // unsigned APK.
+            if (huiReleaseSigningReady) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+// Only a release build asks for the keystore, so `assembleDebug` and the JVM unit tests keep working without it.
+def checkReleaseSigning = tasks.register("checkReleaseSigning") {
+    description = "Fails a release build that has no release signing keystore."
+    group = "verification"
+    doLast {
+        if (!huiReleaseSigningReady) {
+            throw new GradleException("A release build is signed with the release keystore (docs/mobile-app-plan.md, " +
+                "owner decision O4); missing: " + huiReleaseSigningMissing.join(", ") +
+                ". See mobile/AGENTS.md, Distribution.")
+        }
+        def keystore = file(huiReleaseSigning.huiReleaseStoreFile.toString())
+        if (!keystore.isFile() || keystore.length() == 0L) {
+            throw new GradleException("The release keystore " + keystore + " does not exist or is empty.")
+        }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn checkReleaseSigning }
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+// The shared gateway-address cases (mobile/gateway-addresses.txt), which the Connect page's test reads too.
+tasks.withType(Test).configureEach {
+    systemProperty "hui.gatewayFixture", rootProject.file("../gateway-addresses.txt").absolutePath
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

@@ -147,3 +147,25 @@ export function svgIntrinsicSize(viewBox: string | null, width: string | null, h
   const h = numeric(height);
   return w > 0 && h > 0 ? { width: w, height: h } : undefined;
 }
+
+/**
+ * The viewBox a rendered SVG must carry once what it drew is known: never smaller than the box it declared, and always
+ * holding everything drawn. A diagram renderer declares its box from measurements taken before it draws, and an engine
+ * that measures and lays out differently (the Android WebView measured a flowchart's labels wide enough to spread the
+ * graph about 4.5 times past the viewBox it then set) leaves part of the drawing outside that box, where the embed
+ * scrolls to it and the viewer fits the empty box instead of the drawing. `undefined` means the declared box already
+ * holds the drawing, which is the common case and the only one a well-behaved renderer produces.
+ */
+export function viewBoxHolding(viewBox: string | null, drawn: { x: number; y: number; width: number; height: number }): string | undefined {
+  const box = viewBox?.trim().split(/[\s,]+/u).map(Number);
+  if (box?.length !== 4 || !box.every(Number.isFinite)) return undefined;
+  const [x, y, width, height] = box as [number, number, number, number];
+  if (!(width > 0 && height > 0) || !(drawn.width > 0 && drawn.height > 0)) return undefined;
+  const left = Math.min(x, drawn.x);
+  const top = Math.min(y, drawn.y);
+  const right = Math.max(x + width, drawn.x + drawn.width);
+  const bottom = Math.max(y + height, drawn.y + drawn.height);
+  // A box a hair smaller than what was drawn is the renderer's own rounding, not a spill worth rescaling for.
+  if (right - left <= width + 0.5 && bottom - top <= height + 0.5) return undefined;
+  return `${left} ${top} ${right - left} ${bottom - top}`;
+}

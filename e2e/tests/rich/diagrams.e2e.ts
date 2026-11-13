@@ -19,16 +19,26 @@ const within = async (inner: Locator, outer: Locator) => {
   return a.x >= b.x && a.x + a.width <= b.x + b.width;
 };
 
+/**
+ * A drawing fills the turn it sits in. An embed's width is a percentage of the turn, so a bubble sized to its own
+ * content resolves those percentages against itself and collapses the drawing, and every label with it: a flowchart
+ * drawn 92 px wide in a 768 px transcript, and 104 px on the phone, passed every containment check before this.
+ */
+const fillsTheTurn = async (drawn: Locator, transcript: Locator) =>
+  (await drawn.boundingBox())!.width > (await transcript.boundingBox())!.width / 2;
+
 test("A mermaid fence shows Rendering diagram…, then the diagram within the transcript on a phone, drawn again after a reload", { tags: ["RICH-010"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.phoneScreen();
-  const renderer = await hui.intercept("GET", /mermaid/u);
+  // The rendering state lasts as long as the mermaid chunk takes to arrive, which the device decides: the recorder keeps
+  // the state the page showed, so the test proves it was shown without racing it.
+  await hui.recordStatuses();
   const transcript = await reply(screen, hui, `Before the diagram.\n\n\`\`\`mermaid\n${FLOWCHART}\`\`\`\n\nAfter the diagram.`);
-  await expect(transcript.getByText("Rendering diagram…")).toBeVisible();
-  await renderer.deliver();
   const diagram = transcript.getByLabel("Mermaid diagram");
   await expect(diagram.getByText("Useful model")).toBeVisible();
+  expect(await hui.statuses()).toContain("Rendering diagram…");
   await expect(transcript.getByText("Rendering diagram…")).toBeHidden();
   expect(await within(diagram, transcript)).toBe(true);
+  expect(await fillsTheTurn(diagram, transcript)).toBe(true);
   for (const label of ["Idea", "Explain clearly", "Use concise prose"]) await expect.poll(() => within(diagram.getByText(label), diagram)).toBe(true);
   expect(await hui.overflowX()).toBe(0);
 
@@ -45,15 +55,16 @@ test("Mermaid source that cannot parse shows Diagram could not be rendered with 
 });
 
 test("chart, vega-lite and vegalite fences show Rendering chart…, then charts within the transcript with no editor or actions menu", { tags: ["RICH-011"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const renderer = await hui.intercept("GET", /vega/u);
+  // Each chart's rendering state lasts only until its chunk arrives, so the recorder is what proves it was shown.
+  await hui.recordStatuses();
   const fences = ["chart", "vega-lite", "vegalite"];
   const transcript = await reply(screen, hui, fences.map((fence) => `\`\`\`${fence}\n${chart(`The ${fence} fence`)}\n\`\`\``).join("\n\n"));
-  await expect(transcript.getByText("Rendering chart…")).toHaveCount(3);
-  await renderer.deliver();
   const charts = transcript.getByLabel("Data chart");
   await expect(charts.getByRole("button", "Open chart viewer")).toHaveCount(3);
+  expect((await hui.statuses()).filter((status) => status === "Rendering chart…").length, "all three charts showed their rendering state").toBeGreaterThanOrEqual(3);
   for (const drawn of await charts.all()) {
     expect(await within(drawn, transcript)).toBe(true);
+    expect(await fillsTheTurn(drawn, transcript)).toBe(true);
     for (const label of ["Prose", "Chart"]) await expect.poll(() => within(drawn.getByText(label, { exact: true }), drawn)).toBe(true);
   }
   await expect(transcript.getByText("Rendering chart…")).toBeHidden();

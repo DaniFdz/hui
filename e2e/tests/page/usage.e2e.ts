@@ -42,8 +42,12 @@ test("Usage reports a real turn's tokens, its recorded PI cost and its session",
   await expect(totals).not.toContainText("Unavailable", { ignoreCase: true });
   await expect(chart.getByRole("button", /· [1-9][\d,]* tokens · \$0\.00 · /u)).toBeVisible();
   await expect(screen.getByText("hui-e2e/fixture", { exact: false })).toBeVisible();
-  await hui.peek(screen.getByTestId("usage-models").getByRole("button", /fixture/u));
-  await expect(screen.getByText(/· [\d,.]+ tokens · \d+% · Click to show only these sessions$/u)).toBeVisible();
+  // The row carries the model's share as its own text. The sentence that pressing it filters the list is the tooltip,
+  // which a touch pointer never opens, so it is read as the tooltip's content rather than as something on screen.
+  const modelRow = screen.getByTestId("usage-models").getByRole("button", /fixture/u);
+  await expect(modelRow).toContainText(/\d+ tokens/u);
+  await expect(modelRow).toContainText(/\d+%/u);
+  await expect(modelRow).toHaveAttribute("data-hui-tooltip", /· [\d,.]+ tokens · \d+% · Click to show only these sessions$/u);
 
   const beforeCompaction = await totals.allTextContents();
   await expect(rows().getByRole("button", /^Usage coverage/u)).toBeVisible();

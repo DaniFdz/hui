@@ -19,6 +19,8 @@ export class HuiWorkersSettings extends LitElement {
   #workers: WorkerView[] = [];
   #loading = true;
   #error = "";
+  /** The reason the last action was refused: it outlives the refresh that follows, until the operator acts again. */
+  #refused = false;
   #notice = "";
   #busy = new Set<string>();
   /** Editing keeps the worker's sessions; only the next connection changes. */
@@ -37,7 +39,7 @@ export class HuiWorkersSettings extends LitElement {
       const workers = await loadWorkers();
       if (request !== this.#request) return;
       this.#workers = workers;
-      this.#error = "";
+      if (!this.#refused) this.#error = "";
     } catch (error) {
       if (request !== this.#request) return;
       this.#error = error instanceof Error ? error.message : "Workers could not be loaded.";
@@ -50,6 +52,7 @@ export class HuiWorkersSettings extends LitElement {
 
   async #act(key: string, action: () => Promise<unknown>, notice = "") {
     this.#busy.add(key);
+    this.#refused = false;
     this.#error = "";
     this.#notice = "";
     this.requestUpdate();
@@ -57,9 +60,11 @@ export class HuiWorkersSettings extends LitElement {
       await action();
       this.#notice = notice;
     } catch (error) {
+      this.#refused = true;
       this.#error = error instanceof Error ? error.message : "That did not work.";
     } finally {
       this.#busy.delete(key);
+      // The refresh that follows the action must not clear the reason it was refused before it is ever drawn.
       await this.#refresh();
     }
   }

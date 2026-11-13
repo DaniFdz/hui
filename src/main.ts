@@ -43,6 +43,7 @@ import { loadSettings } from "./lib/settings/settings-store.ts";
 import { applyTheme, loadThemes } from "./lib/theme/theme-store.ts";
 import { finishBoot, rememberBootLook, showBootFailure } from "./lib/boot-screen.ts";
 import { installCodeBlockInteractions } from "./lib/markdown/blocks.ts";
+import { installNativeShell } from "./lib/native-shell-boot.ts";
 import { applySidebarWidth, sidebarWidth } from "./lib/sidebar-width.ts";
 import { viewAssetsLoaded } from "./lib/view-assets.ts";
 import { keepReopenedSubmenuVisible, returnFocusFromClosedMenu } from "./lib/web-awesome.ts";
@@ -78,6 +79,8 @@ addEventListener("pagehide", () => rememberBootLook());
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") rememberBootLook(); });
 
 installCodeBlockInteractions();
+// In the phone shell only: other origins open in the shell's browser, and a resume runs the reconnect listeners.
+installNativeShell();
 
 // The app's code downloads meanwhile: over a slow link it is the longest wait,
 // and nothing about it depends on the appearance. index.html's boot screen

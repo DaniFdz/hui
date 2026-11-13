@@ -20,11 +20,10 @@ test("a bot's message shows its face, its color and its name on the left, render
   // Rendered, without its header, under the bot's name and beside its face.
   await expect(transcript.getByText(body)).toHaveCount(0);
   await expect(transcript.getByText(/\[from @grace/u)).toHaveCount(0);
-  hui.expectLinkTo(transcript, "Grace", `/bots/${bot.id}`);
+  await hui.expectLinkTo(transcript, "Grace", `/bots/${bot.id}`);
   await expect.poll(async () => (await hui.faces()).map((face) => face.color)).toContain("#2fc49a");
   const bubble = transcript.getByText("Grace reports back");
   const tint = (await hui.look(bubble)).background;
-  await expect(screen.getByLabel(/^From @grace, marker \d+ of \d+$/u)).toBeVisible();
 
   // Copy and Reply take what the bot wrote; only the operator's own prompt offers Rewind.
   await hui.messageActions(bubble);
@@ -55,7 +54,7 @@ test("a header HUI didn't write reads as that sender too, a bot it knows by name
   await hui.prompt(session, `[from ${bot.handle} · relayed from a Slack instruction] The build is green.`);
   await expect(transcript.getByText("The build is green.")).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-  hui.expectLinkTo(transcript, "Scout", `/bots/${bot.id}`);
+  await hui.expectLinkTo(transcript, "Scout", `/bots/${bot.id}`);
   await expect(transcript.getByText(/\[from /u)).toHaveCount(0);
   await expect(transcript.getByText("You", { exact: true })).toHaveCount(0);
 

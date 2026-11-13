@@ -49,6 +49,8 @@ export class BrowserPreview extends HuiElement {
   private clock: ReturnType<typeof setInterval> | undefined;
   /** An idle preview refreshes once per mount, then stays still. */
   private snapshotTaken = false;
+  /** A cached/previous frame does not count as a frame from the current stream. */
+  private streamStartFrame: BrowserViewController["frame"];
 
   constructor() {
     super();
@@ -79,17 +81,27 @@ export class BrowserPreview extends HuiElement {
 
   protected override willUpdate(changed: PropertyValues) {
     if (!changed.has("sessionId") && !changed.has("live") && !changed.has("visible") && !changed.has("onScreen")) return;
-    if (changed.has("sessionId")) this.snapshotTaken = false;
+    if (changed.has("sessionId")) {
+      this.browser.disconnect();
+      this.snapshotTaken = false;
+    }
     const shown = Boolean(this.sessionId) && this.visible && this.onScreen;
     if (shown && this.live) {
+      this.snapshotTaken = false;
+      const starting = this.browser.mode !== "stream";
       this.browser.connect(this.sessionId, "stream");
-    } else if (this.browser.mode === "stream") {
-      // The turn ended or the card left the screen: keep the frame, stop streaming.
-      this.browser.disconnect();
-      if (!this.live) this.snapshotTaken = true;
-    } else if (shown && !this.snapshotTaken) {
-      this.snapshotTaken = true;
-      this.browser.connect(this.sessionId, "snapshot");
+      if (starting) this.streamStartFrame = this.browser.frame;
+    } else {
+      if (this.browser.mode === "stream") {
+        // Cancellation is not a snapshot: a hidden turn still needs its final page,
+        // and even a visible stream may stop before its first frame arrives.
+        this.browser.disconnect();
+        if (shown && this.browser.frame && this.browser.frame !== this.streamStartFrame) this.snapshotTaken = true;
+      }
+      if (shown && !this.snapshotTaken) {
+        this.snapshotTaken = true;
+        this.browser.connect(this.sessionId, "snapshot");
+      }
     }
   }
 

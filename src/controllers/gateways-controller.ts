@@ -20,6 +20,7 @@ import {
   type GatewayView,
 } from "../lib/gateways/gateway-list.ts";
 import { GatewayStore } from "../lib/gateways/gateway-store.ts";
+import { nativeShell } from "../lib/native-shell.ts";
 
 /** Saves the name this gateway reports to every client; resolves false when the save did not land. */
 export type SaveGatewayName = (name: string) => Promise<boolean>;
@@ -214,9 +215,14 @@ export class GatewaysController implements ReactiveController {
     this.store.remove(url);
   }
 
-  /** Switching opens the chosen gateway in this page: its own address, its own state. */
-  switchTo(url: string): void {
-    window.location.assign(url);
+  /** Switching opens the chosen gateway's own page. A phone must rebuild its native bridge on that origin rather
+   * than navigate the old WebView across origins (which would hand it to the external browser). */
+  async switchTo(url: string): Promise<void> {
+    const address = normalizeGatewayAddress(url);
+    if (!address) throw new Error(GATEWAY_NOT_AN_ADDRESS);
+    const shell = nativeShell();
+    if (shell) await shell.connectGateway(address);
+    else window.location.assign(address);
   }
 
   #refuse(dialog: GatewayDialogState, address: string, error: string): void {

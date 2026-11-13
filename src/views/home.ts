@@ -6,6 +6,7 @@
  * the transcript's rows.
  */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
+import { messageShare, nativeShell, type NativeShell } from "../lib/native-shell.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
@@ -70,7 +71,7 @@ import { renderReadToolCard, renderToolFileReference } from "./chat/read-tool-ca
 import { renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
 import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
-import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath } from "../lib/tool-cards.ts";
+import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath, toolTiming } from "../lib/tool-cards.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { renderWatcherActivity, renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
@@ -101,9 +102,6 @@ if (typeof document !== "undefined") {
       if (event.target instanceof Node && !picker.contains(event.target)) picker.open = false;
     });
   });
-  window.addEventListener("resize", () => {
-    document.querySelectorAll<HTMLDetailsElement>(".agent-chat__input details[open]").forEach(positionNativePicker);
-  });
 }
 
 const SEND_LONG_PRESS_MS = 450;
@@ -119,6 +117,8 @@ const checkIcon = icons.check;
 const circleIcon = icons.circle;
 const stopIcon = icons.stop;
 const copyIcon = icons.copy;
+/** Lucide "share": the phone's own sheet, which a browser never draws (see `renderShare`). */
+const shareIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" x2="12" y1="2" y2="15"></line></svg>`;
 const rewindIcon = icons.rotateCcw;
 const continueIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 5 11 7-11 7Z"></path></svg>`;
 const queueIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 5H3"></path><path d="M16 12H3"></path><path d="M9 19H3"></path><path d="m16 16-3 3 3 3"></path><path d="M21 5v12a2 2 0 0 1-2 2h-6"></path></svg>`;
@@ -892,6 +892,13 @@ function renderCopy(props: HomeProps, text: string, id: string, label = "Copy") 
   </button>`);
 }
 
+/** Offers the phone's own sheet beside Copy, and is drawn only where `nativeShell()` answers a shell: a browser keeps
+ * exactly the action row it had. The row's words are what Copy hands over, so both actions share what is on screen. */
+function renderShare(sheet: NativeShell, props: HomeProps, text: string, id: string, label: string) {
+  const tooltipId = sessionControlId(props, `share-tooltip-${id}`);
+  return renderActionTooltip(tooltipId, "Share", html`<button type="button" class="chat-copy-btn chat-group-share" aria-label=${label} aria-describedby=${tooltipId} @click=${() => void sheet.share(messageShare({ text, session: props.session }, window.location.href))}>${shareIcon}</button>`);
+}
+
 /** Long prompts collapse by default, like ChatGPT; expansion is session-scoped UI state. */
 export function isLongPrompt(text: string): boolean {
   return text.length > 700 || text.split("\n").length > 10;
@@ -995,7 +1002,7 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
       onCopy: (text) => props.onCopy(text, `tool-${item.id}`),
     });
   }
-  const statusLabel = status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed";
+  const statusLabel = `${status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed"}${toolTiming(item)}`;
   const summary = item.name === "browser" ? browserToolSummary(item.args) : "";
   const filePath = toolFilePath(item);
   return html`<details class="chat-tool-msg-collapse ${status === "running" ? "chat-tool-row--running" : ""}"
@@ -1267,6 +1274,8 @@ function renderCompaction(row: Extract<ChatProjectionRow, { kind: "compaction" }
 
 function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow[], start: number): TemplateResult {
   const latestAssistantRowId = rows.findLast((row) => row.kind === "messages" && row.role === "assistant")?.id;
+  // Asked once per draw rather than once per row: a browser answers `null`, and its action rows are what they were.
+  const sheet = nativeShell();
   const latestSent = (role: ChatMessage["role"]) => rows.flatMap((row) => row.kind === "messages" && row.role === role ? row.messages : []).findLast((item) => !item.pending && !item.failed);
   const withEmbeds = [latestSent("user"), latestSent("assistant")];
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
@@ -1354,7 +1363,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     // Only Pi Durable copies a history into a new conversation; a bot's chat is never forked.
     const forkAt = props.connection === "live" && props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
     const forkTooltipId = sessionControlId(props, `fork-tooltip-${row.id}`);
-    return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-chat-row-key=${row.id}
+    return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-testid="message-row" data-chat-row-key=${row.id}
       style=${sender?.color ? `--chat-sender-color: ${sender.color}` : nothing}>
       ${sender ? html`<span class="chat-sender-avatar" aria-hidden="true">${sender.avatar}</span>` : nothing}
       <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, props.connection === "live" && withEmbeds.includes(item), row.sender ? attributedMessage(item.text) : undefined))}</div>
@@ -1363,7 +1372,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
         ${last && lastText ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
           <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, lastText)}>${icons.messageSquare}</button>
-        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
+        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}${sheet ? renderShare(sheet, props, lastText, `message-${last.id}`, sender ? "Share message" : row.role === "assistant" ? "Share response" : "Share prompt") : nothing}</div>` : nothing}
         ${rewindTo ? html`<div class="chat-group-footer-actions">
           ${renderActionTooltip(rewindTooltipId, props.rewindPending ? "Rewinding…" : "Rewind", html`
             <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "", last?.attachments)}>${rewindIcon}</button>
@@ -2076,18 +2085,68 @@ function positionComposerPicker(event: Event) {
   if (picker instanceof HTMLDetailsElement) positionNativePicker(picker);
 }
 
-function positionNativePicker(picker: HTMLDetailsElement) {
+const composerPickerLifecycles = new WeakMap<HTMLDetailsElement, () => void>();
+
+/** Track only an open picker: native resize can precede the composer's relayout by a frame. */
+export function positionNativePicker(picker: HTMLDetailsElement) {
   const trigger = picker.querySelector<HTMLElement>("summary");
   const menu = picker.querySelector<HTMLElement>(".chat-controls__inline-select-menu, .agent-chat__attach-popup, .context-usage__popover");
   if (!trigger || !menu) return;
-  if (!picker.open) { menu.hidePopover?.(); return; }
+  if (!picker.open || !picker.isConnected) {
+    composerPickerLifecycles.get(picker)?.();
+    menu.hidePopover?.();
+    return;
+  }
+  if (composerPickerLifecycles.has(picker)) return;
+  const viewport = window.visualViewport;
+  let frame = 0;
+  const setStyle = (name: string, value: string) => {
+    if (menu.style.getPropertyValue(name) !== value) menu.style.setProperty(name, value);
+  };
+  const stop = () => {
+    window.cancelAnimationFrame(frame);
+    window.removeEventListener("resize", schedule);
+    window.removeEventListener("scroll", schedule, true);
+    viewport?.removeEventListener("resize", schedule);
+    viewport?.removeEventListener("scroll", schedule);
+    composerPickerLifecycles.delete(picker);
+    menu.hidePopover?.();
+  };
+  const schedule = () => {
+    if (!frame) frame = window.requestAnimationFrame(update);
+  };
+  const update = () => {
+    frame = 0;
+    if (!picker.open || !picker.isConnected) { stop(); return; }
+    const rect = trigger.getBoundingClientRect();
+    const left = viewport?.offsetLeft ?? 0;
+    const top = viewport?.offsetTop ?? 0;
+    const right = left + (viewport?.width ?? window.innerWidth);
+    const bottom = top + (viewport?.height ?? window.innerHeight);
+    const above = Math.max(top + 12, Math.min(rect.top - 8, bottom - 12));
+    const below = Math.min(bottom - 12, Math.max(top + 12, rect.bottom + 8));
+    const aboveHeight = Math.max(0, above - top - 12);
+    const belowHeight = Math.max(0, bottom - 12 - below);
+    const opensAbove = aboveHeight >= 80 || aboveHeight >= belowHeight;
+    setStyle("--auto-size-available-height", `${opensAbove ? aboveHeight : belowHeight}px`);
+    setStyle("max-width", `${Math.max(0, right - left - 24)}px`);
+    const size = menu.getBoundingClientRect();
+    setStyle("left", `${Math.max(left + 12, Math.min(rect.right - size.width, right - size.width - 12))}px`);
+    setStyle("top", `${opensAbove ? Math.max(top + 12, above - size.height) : below}px`);
+    // A keyboard can move the anchor without another viewport event. Read once per open frame;
+    // unchanged frames write nothing, and closing/removing the picker cancels the lane entirely.
+    schedule();
+  };
+  composerPickerLifecycles.set(picker, stop);
+  setStyle("position", "fixed");
+  setStyle("right", "auto");
+  setStyle("bottom", "auto");
   menu.showPopover?.();
-  const rect = trigger.getBoundingClientRect();
-  menu.style.position = "fixed";
-  menu.style.right = "auto";
-  menu.style.left = `${Math.max(12, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 12))}px`;
-  menu.style.bottom = `${window.innerHeight - rect.top + 8}px`;
-  menu.style.setProperty("--auto-size-available-height", `${Math.max(80, rect.top - 20)}px`);
+  window.addEventListener("resize", schedule);
+  window.addEventListener("scroll", schedule, true);
+  viewport?.addEventListener("resize", schedule);
+  viewport?.addEventListener("scroll", schedule);
+  update();
 }
 
 function closeComposerPicker(event: KeyboardEvent) {
@@ -2535,7 +2594,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
       </div>
       <div class="chat-pane__header-trailing">
         <div class="chat-pane__actions chat-pane__header-actions">
-          ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall }) : nothing}
+          ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall, labelled: Boolean(props.mobileNavLayout) }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
             aria-label=${props.bot.panelOpen ? "Hide the bot panel" : "Show the bot panel"} title="Bot panel"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
