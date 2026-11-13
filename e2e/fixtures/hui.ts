@@ -62,6 +62,10 @@ export type TabRequest = {
 
 type Intercepted = {
   arrived(): Promise<void>;
+  /** Matching requests observed at the HTTP barrier, including those still held. */
+  count(): number;
+  /** Real fetches initiated during a trusted tap's click dispatch, excluding background tasks and deferred work. */
+  requestsFromTap(target: Locator): Promise<number>;
   deliver(): Promise<void>;
   reject(status: number, error: string): Promise<void>;
   answer(json: string): Promise<void>;
@@ -1038,10 +1042,49 @@ function huiTest(offline: boolean) {
       },
       intercept: async (method, path) => {
         const { arrival, hold, settle } = holding<WebRoute>();
-        await browser().route(path, (route) => (route.request.method === method ? hold(route) : route.fallback()));
+        let count = 0;
+        await browser().route(path, (route) => {
+          if (route.request.method !== method) return route.fallback();
+          count += 1;
+          return hold(route);
+        });
         const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
         return {
           arrived: () => arrival,
+          count: () => count,
+          requestsFromTap: async (target) => {
+            // Observe the browser's transport, not app callbacks. Another stream task cannot run inside click
+            // dispatch; eventPhase becomes NONE after dispatch even if a handler stops propagation.
+            await browser().evaluate(({ method, source, flags }) => {
+              const matches = new RegExp(source, flags);
+              const fetch = window.fetch;
+              let click: Event | undefined;
+              let count = 0;
+              const capture = (event: Event) => { if (event.isTrusted) click = event; };
+              document.addEventListener("click", capture, true);
+              window.fetch = (input, init) => {
+                const url = input instanceof Request ? input.url : new URL(String(input), location.href).href;
+                matches.lastIndex = 0;
+                if (click && click.eventPhase !== Event.NONE && matches.test(url)
+                  && (init?.method ?? (input instanceof Request ? input.method : "GET")) === method) count += 1;
+                return fetch.call(window, input, init);
+              };
+              Object.assign(window, { huiTapRequests: () => {
+                window.fetch = fetch;
+                document.removeEventListener("click", capture, true);
+                return count;
+              } });
+              return null;
+            }, { method, source: path.source, flags: path.flags });
+            let found = 0;
+            try {
+              await target.tap();
+            } finally {
+              // Restore transport even if the gesture fails; each invocation owns only its observation window.
+              found = await browser().evaluate(() => (window as unknown as { huiTapRequests(): number }).huiTapRequests());
+            }
+            return found;
+          },
           deliver: () => decide((route) => route.continue()),
           reject: (status, error) => decide((route) => route.fulfill({ status, json: { error } })),
           answer: (json) => decide((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),

@@ -57,11 +57,19 @@ test("a worker bot's Tools & skills reads the worker's own list, a switch saves 
   await expect(screen.getByRole("button", "Retry")).toBeVisible();
   await expect(screen.getByRole("heading", "Available tools")).toHaveCount(0);
 
-  // Connected again, Retry on the same page loads the worker's list as the switch left it.
+  // Hold every catalogue read before reconnecting: the bots stream also refreshes this page automatically.
+  // Its pending refresh must not replace the error/Retry before we can exercise the actual control.
+  const retry = await hui.intercept("GET", new RegExp(`/__hui/bots/${bot.id}/catalog$`, "u"));
   await hui.api("POST", `/__hui/workers/${worker.id}/connect`);
   await expect.poll(async () => (await hui.api<{ workers: { id: string; state: string }[] }>("GET", "/__hui/workers")).workers
     .find((each) => each.id === worker.id)?.state, { timeout: 120_000 }).toBe("connected");
-  await screen.getByRole("button", "Retry").tap();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await retry.arrived();
+  const automaticReads = retry.count();
+  // A delayed bots frame could also add a read. Attribute a real fetch to the click itself, not merely to its timing.
+  expect(await retry.requestsFromTap(screen.getByRole("button", "Retry"))).toBe(1);
+  await expect.poll(() => retry.count()).toBeGreaterThan(automaticReads);
+  await retry.deliver();
   await expect(screen.getByRole("heading", "Available tools")).toBeVisible();
   await expect(screen.getByRole("switch", `${off.label} (${off.name})`)).toBeChecked({ checked: false });
   await expect(screen.getByRole("switch", `${offered.tools.filter((tool) => tool.name !== off.name)[0]!.label} (${offered.tools.filter((tool) => tool.name !== off.name)[0]!.name})`)).toBeChecked();
