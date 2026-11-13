@@ -8,10 +8,20 @@ const call = (name: string, input: Record<string, unknown>) => ({ name, input })
 const calls = (...list: { name: string; input: Record<string, unknown> }[]) =>
   `E2E_CALL:${Buffer.from(JSON.stringify(list)).toString("base64url")}`;
 
+type Session = {
+  id: string;
+  parentId?: string;
+  status: string;
+  runtime?: { active: true };
+  subagent?: { status: string; completionDelivery?: string };
+};
+const sessions = async (hui: Hui) =>
+  (await hui.api<{ groups: { sessions: Session[] }[] }>("GET", "/__hui/sessions"))
+    .groups.flatMap(({ sessions }) => sessions);
+
 /** The child session ids the two spawns returned, which are the ids `agents_wait` takes. */
 const children = async (hui: Hui, parent: string) =>
-  (await hui.api<{ groups: { sessions: { id: string; parentId?: string }[] }[] }>("GET", "/__hui/sessions"))
-    .groups.flatMap(({ sessions }) => sessions).filter(({ parentId }) => parentId === parent).map(({ id }) => id);
+  (await sessions(hui)).filter(({ parentId }) => parentId === parent).map(({ id }) => id);
 
 test("a batch whose helpers all succeed folds into one Parallel tasks row that still opens Child details", { tags: ["AGENT-034"] }, async ({ screen, hui }) => {
   const swarm = screen.getByLabel("Parallel tasks");
@@ -23,7 +33,20 @@ test("a batch whose helpers all succeed folds into one Parallel tasks row that s
   ));
   await expect.poll(async () => (await children(hui, session.id)).length).toBe(2);
 
-  // The parent waits for both, which the card shows as the batch it is still running.
+  // Spawning and collecting are separate turns here. An idle parent receives any uncollected completion as a real
+  // new turn, so idle alone races that delivery. Let this batch's results reach the parent and its review settle
+  // before asking it to collect them; never race the notification's prompt or suppress the notification.
+  await expect.poll(async () => {
+    const all = await sessions(hui);
+    const batch = all.filter(({ parentId }) => parentId === session.id);
+    const parent = all.find(({ id }) => id === session.id);
+    return batch.length === 2 && batch.every((child) => child.subagent?.status === "completed"
+      && child.subagent.completionDelivery === "delivered")
+      && parent?.runtime?.active === true && parent.status === "idle";
+  }, { timeout: 30_000 }).toBe(true);
+  await expect(screen.getByTestId("transcript").getByText("Parent reviewed", { exact: false }).first()).toBeVisible();
+
+  // The parent collects both results, which the card shows as one completed batch.
   await hui.prompt(session, calls(call("agents_wait", { ids: await children(hui, session.id), timeoutSeconds: 120 })));
   await expect(swarm.getByText("Parallel tasks")).toBeVisible();
 
