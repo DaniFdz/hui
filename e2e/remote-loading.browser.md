@@ -198,6 +198,33 @@ UI-first-ready latency, WebSocket bytes and total wire bytes were not measured. 
 run, not a before/after comparison; it made no external inference requests. The owned gateway and proxy processes
 were confirmed gone and both sockets closed after capture.
 
+## Rendered-pixel boundary measurement (2026-11-13)
+
+A clean production checkout at `03585007866b1d82cce8a1e0ec544a811ffbe563` exercised the same 160-turn fixture and
+300 ms / 1.6 Mbit/s down / 800 kbit/s up proxy after the pixel-preserving comparator correction. The real loading
+screen was captured this time. Home's **Open Long remote session** reached Step 160, and **Show earlier messages**
+was scrolled into view and clicked through the Browser tool.
+
+At 1440×900, Step 145 stayed at `(827, 283, 384, 55)`. On a warm responsive 390×844 reload, the first retained tool
+card stayed at `(9, 122, 372, 46)`. Its following Step 145 bubble measured `(53, 307, 329, 76)` before and
+`(53, 306, 329, 76)` after; a second mobile observation reproduced both results. This proves the first retained
+content's rendered pixel, not identical rounded boxes for every following row. Raw fractional coordinates were not
+measured. Both resulting screens were inspected, with wrapped text and no apparent sideways overflow.
+
+| Single cold desktop navigation | Observed |
+| --- | ---: |
+| First byte | 376 ms |
+| First paint / contentful paint | 1.9 s |
+| DOMContentLoaded / load | 2.1 s / 3.9 s |
+| POST open duration | 629 ms |
+| POST open JSON Content-Length | 531 B |
+| POST open Browser-recorded encoded response | 729 B |
+
+All 94 desktop HAR HTTP entries returned 200, and the final Browser console reported no errors or warnings. This is
+one synthetic desktop run with responsive mobile follow-up, not a performance comparison, cold mobile/native boot,
+exact UI-first-ready or total wire/WebSocket-byte measurement. No external inference was requested. The owned gateway
+and proxy processes were confirmed gone, both sockets closed and the Browser tab closed after capture.
+
 ## Limits
 
 The proxy models latency and one shared bandwidth budget over HTTP/1.1 to
