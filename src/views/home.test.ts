@@ -617,10 +617,6 @@ test("a saved offline copy keeps its transcript, spins and says when the live re
   assert.equal(saved.match(/Reconnecting; your draft stays on this device\./gu)?.length, 1, "the status lives once under the composer");
   assert.doesNotMatch(saved, /transcript__note--status/u, "nothing sits above the transcript");
 
-  const retrying = await renderWorkerSession("disconnected", { connection: "saved", connectionNote: "HUI did not answer. Trying again in 10 seconds…", savedCopy: { savedAt: "2026-10-01T10:00:00.000Z", truncated: false } });
-  assert.match(retrying, /<span class="agent-chat__composer-status-text">HUI did not answer\. Trying again in 10 seconds…<\/span>/u, "a cached copy shows the scheduled retry");
-  assert.match(retrying, /agent-chat__composer-status-icon[^>]*><span class="session-run-spinner">/u);
-  assert.match(retrying, /chat-saved-copy-notice/u);
 });
 
 test("watchers stay out of the thread while a session loads and return once it is live", async () => {

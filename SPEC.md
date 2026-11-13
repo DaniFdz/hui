@@ -1602,8 +1602,7 @@ session opens or starts, so they do not jump from the middle to the bottom when
 the transcript arrives; they return at its end once the session is live. Task
 progress and queue cards stay in the composer's column. A cached reading copy
 shows its transcript and saved-copy notice while the band under the composer
-spins with the live connection note, including the scheduled retry, instead of
-showing the skeleton.
+spins with its live connection note instead of showing the skeleton.
 
 The Sessions page also projects ephemeral runtime cost: loaded runtime count,
 best-effort process-tree RSS, measured startup duration and the heaviest loaded

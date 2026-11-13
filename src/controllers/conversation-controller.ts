@@ -261,7 +261,8 @@ export class ConversationController implements ReactiveController {
         this.connectionNote = `HUI did not answer. Trying again in ${Math.round(delay / 1_000)} seconds…`;
         this.#host.requestUpdate();
         await waitForRetry(delay, signal);
-        if (signal.aborted || !current()) throw error;
+        // A cached copy that arrived during the wait is already on screen; its stream owns the reconnection.
+        if (signal.aborted || !current() || this.savedCopy) throw error;
         // The next attempt is in flight: the skeleton's own "Loading the conversation…" says so again.
         this.connectionNote = "";
         this.#host.requestUpdate();
