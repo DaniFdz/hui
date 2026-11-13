@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
-import { answeredCount } from "./questionnaire-card.ts";
+import { answeredCount, optionPreview } from "./questionnaire-card.ts";
 
 const source = readFileSync(new URL("./questionnaire-card.ts", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../styles/openclaw-chat.css", import.meta.url), "utf8");
@@ -45,6 +45,23 @@ test("a folded card counts the questions that already have an answer", () => {
     draft(["Lint", "Unit tests"]),
   ]), 3);
   assert.equal(answeredCount([slider, text], [draft([]), draft([], "", false)]), 1, "a slider always has an answer");
+});
+
+test("an option previews its Markdown, or else its HTML mockup, never the two", () => {
+  const option = { label: "Sidebar", description: "Sections in a left column." };
+  assert.equal(optionPreview(undefined), undefined);
+  assert.equal(optionPreview(option), undefined);
+  assert.deepEqual(optionPreview({ ...option, preview: "**Sidebar**" }), { kind: "markdown", value: "**Sidebar**" });
+  assert.deepEqual(optionPreview({ ...option, previewHtml: "<p>Sidebar</p>" }), { kind: "html", value: "<p>Sidebar</p>" });
+  // The gateway refuses both; a card from a future gateway still picks the mockup.
+  assert.deepEqual(optionPreview({ ...option, preview: "**Sidebar**", previewHtml: "<p>Sidebar</p>" }), { kind: "html", value: "<p>Sidebar</p>" });
+});
+
+test("an HTML preview is a compact widget-sandbox frame, never raw page HTML", () => {
+  assert.match(source, /hui-widget-card compact \.widgetTitle=/u);
+  assert.match(source, /\.code=\$\{preview\.value\}/u);
+  assert.match(source, /questionnaire-card__preview questionnaire-card__preview--widget/u);
+  assert.match(source, /renderMarkdown\(preview\.value\)/u);
 });
 
 test("both fold controls are buttons, and the folded bar stays inside the panel's corners", () => {

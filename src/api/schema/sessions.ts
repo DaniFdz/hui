@@ -11,7 +11,7 @@ export type QuestionnaireAnswer = { "header": string; "question": string; "selec
 
 export type QuestionnaireInput = ("options") | ("slider") | ("text");
 
-export type QuestionnaireOption = { "label": string; "description": string; "preview"?: string; };
+export type QuestionnaireOption = { "label": string; "description": string; "preview"?: string; "previewHtml"?: string; };
 
 export type QuestionnaireQuestion = { "header": string; "question": string; "multiSelect": boolean; "options": Array<QuestionnaireOption>; "input": QuestionnaireInput; "min"?: number; "max"?: number; "step"?: number; "unit"?: string; "placeholder"?: string; };
 

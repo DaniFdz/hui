@@ -1725,7 +1725,8 @@ cards without describing them as tools. Real PI tools remain a separate, live
 list built from PI's
 selected names, snippets and deduplicated guidelines. This does not grant network
 access or make arbitrary HTML, SVG, scripts or iframes in Markdown renderable;
-interactive HTML and SVG go through the `show_widget` tool (Agent widgets, below).
+interactive HTML and SVG go through the `show_widget` tool (Agent widgets, below),
+or through a question option's `previewHtml` in the same sandbox.
 
 Unsent composer state is scoped per HUI session and stored in browser IndexedDB,
 following OpenClaw's durable-draft model. Text and attachments survive navigation
@@ -2209,8 +2210,11 @@ with HUI's `ask_user_question` tool: one to four questions in a single call,
 each with a short header, the question and one of three inputs. An `options`
 question (the default) takes two to four options with a label and a
 description; it may allow several answers (`multiSelect`), and the options of
-a single-select question may carry a Markdown preview (a mockup, a snippet, a
-config) to compare. A `slider` question takes a number over `min`–`max`, with
+a single-select question may carry a Markdown preview (a snippet, a diagram,
+a config) or an HTML mockup to compare. A preview mockup is a self-contained
+HTML or SVG fragment rendered in an opaque-origin sandbox, the same frame that
+runs an agent widget; an option carries one preview or the other, never both.
+A `slider` question takes a number over `min`–`max`, with
 an optional `step` and a `unit` (a budget, hours, a percentage). A `text`
 question takes a longer written answer, with an optional `placeholder`. HUI's
 tool takes the place of any PI
@@ -2228,8 +2232,9 @@ a multi-select question, each with its label, description and number; an
 options question ends with a *Type something…* row for the operator's own
 answer, which
 replaces a single-select choice or adds to a multi-select one. When options
-carry previews, the focused option's preview shows beside them, or under them
-on a narrow screen. A slider shows its value large with its unit above the
+carry previews, the focused option's Markdown preview or sandboxed HTML
+mockup shows beside them, or under them on a narrow screen. A slider shows its
+value large with its unit above the
 range input and its bounds beneath it; a long-text question is a multi-line
 field. Picks, slider values and typed text are kept while moving between
 questions.
@@ -2256,15 +2261,17 @@ operator left it; Escape on the folded row opens it rather than declining the
 questions. A new call's card, and a reload, open unfolded.
 
 The agent learns each answer as `"question"="answer"` (several joined by
-commas, a chosen option's preview after it; a slider's value as it reads, such
+commas, a chosen option's Markdown preview after it; an HTML mockup is not
+echoed back; a slider's value as it reads, such
 as `5,050 €`), or that the operator declined:
 *Cancel*, Escape, Stop and a gateway stop all decline. Once answered, the
 transcript keeps a short summary of the answers by header in place of the card.
 A call the card could not show (more than four questions, a reserved label such
-as *Other*, duplicate labels, a header over 16 characters, a preview on a
-multi-select question, a slider without a numeric range, a long text with
-options, a unit over 16 characters) fails back to the agent with the reason,
-and no card opens. Questions from parallel calls show one after another. A reload shows a
+as *Other*, duplicate labels, a header over 16 characters, a preview or mockup
+on a multi-select question, both preview kinds on one option, a whole HTML
+document instead of a fragment, a slider without a numeric range, a long text
+with options, a unit over 16 characters) fails back to the agent with the
+reason, and no card opens. Questions from parallel calls show one after another. A reload shows a
 pending card again from its first question. Pending questionnaires live in
 gateway memory and do not survive a restart.
 

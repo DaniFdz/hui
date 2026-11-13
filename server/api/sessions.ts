@@ -151,7 +151,7 @@ export const SessionList = Type.Object({ revision: Type.Number(), groups: Type.A
 export type SessionList = Static<typeof SessionList>;
 
 export const QuestionnaireOption = Type.Object({
-  label: Type.String(), description: Type.String(), preview: Type.Optional(Type.String()),
+  label: Type.String(), description: Type.String(), preview: Type.Optional(Type.String()), previewHtml: Type.Optional(Type.String()),
 }, { $id: "QuestionnaireOption" });
 export type QuestionnaireOption = Static<typeof QuestionnaireOption>;
 
