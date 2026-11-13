@@ -106,15 +106,24 @@ let activeGateway: string | undefined;
 let observeNativeWindow: ((target: NativeTarget) => void) | undefined;
 
 /** Decline only the isolated app's real startup notification prompt, using its native refusal control, not a grant. */
-export function refusePhoneNotificationPrompt(): void {
-  adb("shell", "uiautomator", "dump", "/sdcard/hui-notification-consent.xml");
-  const xml = adb("shell", "cat", "/sdcard/hui-notification-consent.xml");
+export function refusePhoneNotificationPrompt(run = adb): void {
+  // A live WebView need not become accessibility-idle. Inspect only the focused system permission activity;
+  // the XML below still has to identify HUI's notification question before any native control is touched.
+  const windows = run("shell", "dumpsys", "window");
+  if (!/^\s*mCurrentFocus=Window\{[^\n]*\bcom\.(?:android|google\.android)\.permissioncontroller\/[^\s}]*GrantPermissionsActivity\}/mu.test(windows)) return;
+  const dumped = run("shell", "uiautomator", "dump", "/sdcard/hui-notification-consent.xml");
+  // Some Android builds print an idle failure yet exit zero. Never consume a previous prompt's XML on that path.
+  if (!/^UI hierchary dumped to: \/sdcard\/hui-notification-consent\.xml\s*$/mu.test(dumped)) {
+    throw new Error(`native notification inspection failed: ${dumped}`);
+  }
+  const xml = run("shell", "cat", "/sdcard/hui-notification-consent.xml");
   if (!xml.includes("Allow HUI to send you notifications?")) return;
   const deny = xml.match(/<node\b[^>]*resource-id="com\.android\.permissioncontroller:id\/permission_deny(?:_and_dont_ask_again)?_button"[^>]*>/u)?.[0];
   const bounds = deny?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/u);
   if (!bounds) throw new Error("the real notification prompt has no native refusal button");
   const [left, top, right, bottom] = bounds.slice(1).map(Number) as [number, number, number, number];
-  adb("shell", "input", "tap", String(Math.round((left + right) / 2)), String(Math.round((top + bottom) / 2)));
+  if (right <= left || bottom <= top) throw new Error("the real notification prompt has an empty native refusal button");
+  run("shell", "input", "tap", String(Math.round((left + right) / 2)), String(Math.round((top + bottom) / 2)));
   console.log("Declined the isolated app's native startup notification prompt");
 }
 
