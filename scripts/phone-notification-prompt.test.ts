@@ -1,51 +1,93 @@
-/** Guards native startup consent: a busy app is never accessibility-dumped, and only HUI's native Deny is tapped. */
+/** Guards fresh native consent inspection: a busy app is never dumped, and only the same real HUI prompt is refused. */
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { refusePhoneNotificationPrompt } from "../e2e/fixtures/phone.ts";
 
-const focused = (activity: string) => `  mCurrentFocus=Window{abc u0 ${activity}}`;
+const hui = "dev.hui.app.debug/dev.hui.app.MainActivity";
 const permission = "com.android.permissioncontroller/com.android.permissioncontroller.permission.ui.GrantPermissionsActivity";
-const prompt = '<node text="Allow HUI to send you notifications?" /><node resource-id="com.android.permissioncontroller:id/permission_deny_button" bounds="[100,200][300,260]" />';
+const focused = (activity: string, token = "abc") => `  mCurrentFocus=Window{${token} u0 ${activity}}`;
+const prompt = '<hierarchy rotation="0"><node text="Allow HUI to send you notifications?" /><node resource-id="com.android.permissioncontroller:id/permission_deny_button" bounds="[100,200][300,260]" /></hierarchy>';
+const ack = "UI hierchary dumped to: /sdcard/hui-notification-consent.xml";
 
-function device(activity: string, xml = prompt) {
+type Options = { focus?: string[]; output?: string; fresh?: string; dumpError?: boolean; owner?: boolean };
+function device(options: Options = {}) {
   const calls: string[] = [];
-  return { calls, run: (...args: string[]) => {
-    const command = args.join(" ");
-    calls.push(command);
-    if (command === "shell dumpsys window") return focused(activity);
-    if (!activity.includes("GrantPermissionsActivity")) throw new Error("busy app must never be accessibility-dumped");
-    if (command.startsWith("shell cat ")) return xml;
-    if (command.startsWith("shell uiautomator dump ")) return "UI hierchary dumped to: /sdcard/hui-notification-consent.xml";
-    return "";
-  } };
+  const focuses = [...(options.focus ?? [focused(permission)])];
+  let xml: string | undefined = prompt; // A stale file from an earlier prompt must never be consumed.
+  let ownershipReads = 0;
+  const run = (...args: string[]) => {
+    const command = args.join(" "); calls.push(command);
+    if (command === "shell dumpsys window") return focuses.length > 1 ? focuses.shift()! : focuses[0]!;
+    if (command === "shell rm -f /sdcard/hui-notification-consent.xml") { xml = undefined; return ""; }
+    if (command.startsWith("shell uiautomator dump ")) {
+      if (options.dumpError) throw new Error("native transport failed");
+      xml = options.fresh;
+      return options.output ?? ack;
+    }
+    if (command.startsWith("shell cat ")) {
+      if (xml === undefined) throw new Error("No such file or directory");
+      return xml;
+    }
+    if (command.startsWith("shell input tap ")) return "";
+    throw new Error(`unexpected native command: ${command}`);
+  };
+  return { calls, run, owns: () => { ownershipReads++; return options.owner ?? false; }, ownershipReads: () => ownershipReads };
 }
 
-test("ordinary focused HUI never requests accessibility idle, even when a live WebView is busy", () => {
-  const native = device("dev.hui.app.debug/dev.hui.app.MainActivity");
-  refusePhoneNotificationPrompt(native.run);
-  assert.deepEqual(native.calls, ["shell dumpsys window"]);
-});
-
-test("the focused real notification permission prompt is refused with its native Deny control, never granted", () => {
-  const native = device(permission);
-  refusePhoneNotificationPrompt(native.run);
-  assert.deepEqual(native.calls, ["shell dumpsys window", "shell uiautomator dump /sdcard/hui-notification-consent.xml", "shell cat /sdcard/hui-notification-consent.xml", "shell input tap 200 230"]);
-});
-
-test("a failed dump never reads stale prompt XML or taps even when Android exits zero", () => {
-  for (const output of ["", "ERROR: could not get idle state."]) {
-    const native = device(permission);
-    assert.throws(() => refusePhoneNotificationPrompt((...args) => args.includes("uiautomator") ? output : native.run(...args)), /inspection failed/u);
+test("ordinary HUI or another app never requests accessibility idle or target discovery", () => {
+  for (const activity of [hui, "other.app/MainActivity"]) {
+    const native = device({ focus: [focused(activity)] });
+    refusePhoneNotificationPrompt(native.run, native.owns);
     assert.deepEqual(native.calls, ["shell dumpsys window"]);
+    assert.equal(native.ownershipReads(), 0);
   }
 });
 
-test("another app or permission is not dismissed; HUI's malformed refusal fails closed", () => {
+test("fresh complete HUI notification XML and unchanged native focus authorize one Deny, even without a stdout ACK", () => {
+  for (const output of [ack, ""]) {
+    const native = device({ fresh: prompt, output });
+    refusePhoneNotificationPrompt(native.run, native.owns);
+    assert.deepEqual(native.calls, ["shell dumpsys window", "shell rm -f /sdcard/hui-notification-consent.xml", "shell uiautomator dump /sdcard/hui-notification-consent.xml", "shell cat /sdcard/hui-notification-consent.xml", "shell dumpsys window", "shell input tap 200 230"]);
+    assert.equal(native.ownershipReads(), 0);
+  }
+});
+
+test("stale, idle-failed, partial, missing or malformed inspections and changed focus never authorize a native tap", () => {
+  const cases: Options[] = [
+    { output: "" }, { output: "ERROR: could not get idle state.", fresh: prompt },
+    { output: `${ack}\nERROR: could not get idle state.`, fresh: prompt },
+    { fresh: prompt.replace("</hierarchy>", "</node></hierarchy>") },
+    { fresh: prompt.replace("</hierarchy>", "") }, { fresh: "" }, { dumpError: true },
+    { fresh: prompt, focus: [focused(permission), focused("other.app/MainActivity")], owner: true },
+    { fresh: prompt, focus: [focused(permission), focused(permission, "replacement")] },
+    { output: "", focus: [focused(permission), focused(hui)], owner: false },
+  ];
+  for (const options of cases) {
+    const native = device(options);
+    assert.throws(() => refusePhoneNotificationPrompt(native.run, native.owns), /native notification inspection failed:.*focus/isu);
+    assert.ok(!native.calls.some((call) => call.startsWith("shell input")));
+    assert.equal(native.calls.filter((call) => call.includes("uiautomator")).length, 1);
+    assert.ok(native.calls.indexOf("shell rm -f /sdcard/hui-notification-consent.xml") < native.calls.indexOf("shell uiautomator dump /sdcard/hui-notification-consent.xml"));
+  }
   for (const text of ["Allow Another App to send you notifications?", "Allow HUI to record audio?"]) {
-    const native = device(permission, prompt.replace("Allow HUI to send you notifications?", text));
-    refusePhoneNotificationPrompt(native.run);
+    const native = device({ fresh: prompt.replace("Allow HUI to send you notifications?", text) });
+    refusePhoneNotificationPrompt(native.run, native.owns);
     assert.ok(!native.calls.some((call) => call.startsWith("shell input")));
   }
-  assert.throws(() => refusePhoneNotificationPrompt(device(permission, prompt.replace("permission_deny_button", "permission_allow_button")).run), /no native refusal/u);
-  assert.throws(() => refusePhoneNotificationPrompt(device(permission, prompt.replace("[300,260]", "[100,260]")).run), /empty native refusal/u);
+  for (const malformed of [prompt.replace("permission_deny_button", "permission_allow_button"), prompt.replace("[300,260]", "[100,260]")]) {
+    const native = device({ fresh: malformed });
+    assert.throws(() => refusePhoneNotificationPrompt(native.run, native.owns), /native notification inspection failed/iu);
+    assert.ok(!native.calls.some((call) => call.startsWith("shell input")));
+  }
+});
+
+test("a vanished dialog returns without action only for freshly focused HUI with the owned attached target", () => {
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  for (const options of [{ output: "" }, { dumpError: true }, { fresh: prompt }]) {
+    const native = device({ ...options, focus: [focused(permission), focused(hui)], owner: true });
+    refusePhoneNotificationPrompt(native.run, native.owns);
+    assert.equal(native.ownershipReads(), 1);
+    assert.ok(!native.calls.some((call) => call.startsWith("shell input")));
+  }
+  assert.ok(log.mock.calls.every(([message]) => !String(message).includes("Declined")), "an already gone prompt is never reported as refused");
 });
