@@ -1,5 +1,6 @@
 /** Delete… removes a session and its subagents from HUI after a confirmation that Cancel backs out of, and a background session's unread mark shows until it is opened or set by hand (SESS-037, SESS-018). */
 import { expect } from "e2e";
+import { expectChatTitle } from "./chat-header.ts";
 import { test } from "../../fixtures/hui.ts";
 
 const row = (title: string) => new RegExp(`^${title}, status `, "u");
@@ -10,6 +11,8 @@ test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI remov
   const child = await hui.createSubagent(parent);
   await hui.createSession({ title: "Keep me" });
   await hui.open(`/sessions/${parent.id}`);
+  await expectChatTitle(screen, "Retire me");
+  await expect(screen.getByTestId("chat-header")).toBeVisible();
 
   await hui.sessionList();
   await hui.sessionMenu("Retire me");
@@ -24,6 +27,8 @@ test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI remov
   await expect(screen.getByLabel(row(child.title))).toBeVisible();
 
   await hui.open(`/sessions/${parent.id}`);
+  await expectChatTitle(screen, "Retire me");
+  await expect(screen.getByTestId("chat-header")).toBeVisible();
   await hui.sessionList();
   await hui.sessionMenu("Retire me");
   await screen.getByText("Delete…", { visible: true }).tap();
