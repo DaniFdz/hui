@@ -63,6 +63,7 @@ import {
   localPathRoutes,
   managedBrowser,
   localProviderRoutes,
+  modelMetricRoutes,
   extensions,
   piRoutes,
   powerRoutes,
@@ -445,6 +446,8 @@ async function handleRequest(
   if (answered(response, path, await providerRoutes.handle(routed))) return;
 
   if (answered(response, path, await localProviderRoutes.handle(routed))) return;
+
+  if (answered(response, path, await modelMetricRoutes.handle(routed))) return;
 
   if (answered(response, path, await powerRoutes.handle(routed))) return;
 

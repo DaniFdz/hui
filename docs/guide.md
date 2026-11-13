@@ -400,6 +400,15 @@ The command is stored in HUI's own `providers/local-providers.json`, not in PI's
 configuration. It is not sent to model providers; the gateway's provider status
 never includes PI's `baseUrl` or credentials.
 
+Each row also has **Metrics**. It opens HUI's measurements for that provider over
+the last 24 hours: generation speed, time to first token, an estimated prompt
+throughput, token counts, averages and a short trend. The chat composer shows
+the latest completed request as a compact speed chip; open the chip for the full
+measurement. HUI takes these numbers itself from each request's stream, so
+prompt throughput includes queueing and prefill and is an estimate, not the
+model server's own prefill counter. The last 5,000 requests are kept in
+`~/.config/hui/model-metrics.jsonl` (mode 0600).
+
 Settings → Models names three roles. The **primary model** does the real work:
 choose the smartest model you have, speed doesn't matter. The **utility model**
 does the quick work (session and branch names, Jira drafts, `/btw`, and for bots

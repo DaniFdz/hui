@@ -84,11 +84,20 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     const session = await hui.createSession({ title: "Local model", model: "local-e2e/fixture" });
     await hui.open(`/sessions/${session.id}`);
     await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+    await expect.poll(async () => (await hui.api<LocalProviderSnapshot>("GET", "/__hui/local-providers")).providers.find((provider) => provider.id === "local-e2e")?.status).toBe("starting");
     await hui.prompt(session, "Hello local model");
     await expect(screen.getByText("Waiting for Local fixture to start…", { exact: true })).toBeVisible();
     await writeFile(release, "");
     await expect(screen.getByText("Fixture response.", { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+
+    const metricPill = screen.getByLabel(/Last model request: .*tok\/s/u);
+    await expect(metricPill).toBeVisible();
+    await metricPill.tap();
+    const metricDetail = screen.getByLabel("Last model request metrics");
+    await expect(metricDetail).toBeVisible();
+    await expect(metricDetail).toContainText("Time to first token");
+    await expect(metricDetail).toContainText("Prompt (est.)");
 
     await hui.open("/settings/models");
     await expect(screen.getByText("HUI model routing", { exact: true })).toBeVisible();
@@ -97,6 +106,12 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     await reopened.tap();
     const online = screen.getByTestId("local-provider").filter({ hasText: "local-e2e" });
     await expect(online.getByText("Online", { exact: true })).toBeVisible();
+    await online.getByRole("button", "Metrics").tap();
+    const metricsDialog = screen.getByTestId("local-provider-metrics-dialog");
+    await expect(metricsDialog).toBeVisible();
+    await expect(metricsDialog.getByTestId("model-metrics-last")).toContainText("tok/s", { timeout: 10_000 });
+    await expect(metricsDialog.getByTestId("model-metrics-meta")).toContainText(/completed request/u);
+    await metricsDialog.getByRole("button", "Close model metrics").tap();
     const snapshot = await hui.api<LocalProviderSnapshot>("GET", "/__hui/local-providers");
     const view = snapshot.providers.find((provider) => provider.id === "local-e2e");
     expect(view).toMatchObject({ configured: true, hasEndpoint: true, inPi: true, status: "online" });

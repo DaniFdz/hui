@@ -7407,6 +7407,139 @@
         }
       }
     },
+    "ModelMetric": {
+      "type": "object",
+      "required": [
+        "at",
+        "provider",
+        "model",
+        "status"
+      ],
+      "properties": {
+        "at": {
+          "type": "number"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "inputTokens": {
+          "type": "number"
+        },
+        "outputTokens": {
+          "type": "number"
+        },
+        "cacheReadTokens": {
+          "type": "number"
+        },
+        "cacheWriteTokens": {
+          "type": "number"
+        },
+        "ttftMs": {
+          "type": "number"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "generationMs": {
+          "type": "number"
+        },
+        "tokensPerSecond": {
+          "type": "number"
+        },
+        "promptTokensPerSecond": {
+          "type": "number"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "ok"
+            },
+            {
+              "type": "string",
+              "const": "error"
+            }
+          ]
+        }
+      }
+    },
+    "ModelMetricAverage": {
+      "type": "object",
+      "properties": {
+        "tokensPerSecond": {
+          "type": "number"
+        },
+        "ttftMs": {
+          "type": "number"
+        },
+        "promptTokensPerSecond": {
+          "type": "number"
+        }
+      }
+    },
+    "ModelMetricError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "ModelMetricSession": {
+      "type": "object",
+      "properties": {
+        "metric": {
+          "$ref": "#/$defs/ModelMetric"
+        }
+      }
+    },
+    "ModelMetricSummary": {
+      "type": "object",
+      "required": [
+        "provider",
+        "since",
+        "requests",
+        "average",
+        "p50",
+        "p95",
+        "samples"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "since": {
+          "type": "number"
+        },
+        "requests": {
+          "type": "number"
+        },
+        "last": {
+          "$ref": "#/$defs/ModelMetric"
+        },
+        "average": {
+          "$ref": "#/$defs/ModelMetricAverage"
+        },
+        "p50": {
+          "$ref": "#/$defs/ModelMetricAverage"
+        },
+        "p95": {
+          "$ref": "#/$defs/ModelMetricAverage"
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModelMetric"
+          }
+        }
+      }
+    },
     "ObservabilitySnapshot": {
       "type": "object",
       "required": [
@@ -9394,6 +9527,22 @@
             },
             "message": {
               "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "metric"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "model_metric"
+            },
+            "metric": {
+              "$ref": "#/$defs/ModelMetric"
             }
           }
         },
@@ -14607,6 +14756,13 @@
       "LocalProviderSnapshot",
       "LocalProviderStatus"
     ],
+    "model-metrics": [
+      "ModelMetric",
+      "ModelMetricAverage",
+      "ModelMetricError",
+      "ModelMetricSession",
+      "ModelMetricSummary"
+    ],
     "tools": [
       "RuntimeInspection",
       "RuntimeTool",
@@ -15791,6 +15947,20 @@
       "path": "/__hui/local-providers/:provider/start",
       "response": {
         "$ref": "#/$defs/LocalProvider"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/model-metrics/providers/:provider",
+      "response": {
+        "$ref": "#/$defs/ModelMetricSummary"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/model-metrics/sessions/:session",
+      "response": {
+        "$ref": "#/$defs/ModelMetricSession"
       }
     },
     {

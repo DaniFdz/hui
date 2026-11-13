@@ -17,6 +17,7 @@
 @import "./openclaw-reference/chat/composer-progress.css";
 @import "./openclaw-reference/chat/sidebar.css";
 @import "./openclaw-reference/chat/split-view.css";
+@import "./chat-metrics.css";
 
 /* Keep compact tables intrinsic: forced column stretching can round their last cell past the scroll viewport in
    WebKit. Wide tables still scroll as a unit. This is HUI's adaptation, not a change to the reviewed snapshot. */

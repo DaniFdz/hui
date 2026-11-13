@@ -33,6 +33,7 @@ import {
   fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
 import { RuntimeTimings } from "./transcript-metrics.ts";
+import { ModelRequestTimer } from "./model-timing.ts";
 import { disabledSkillNotice } from "./skill-policy-extension.mjs";
 import type {
   AgentRuntime, CompactionReason, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQuestion,
@@ -241,6 +242,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   /** Callers waiting for this view to see work end, each with the state it waits for. */
   #waiters = new Set<{ done: () => boolean; resolve: () => void }>();
   #timings = new RuntimeTimings();
+  #modelTiming = new ModelRequestTimer();
   #agent: AgentState = {};
   #queue: RuntimeQueue = { steering: [], followUp: [] };
   #toolOutput = new Map<string, string>();
@@ -705,9 +707,13 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         return;
       case "message_start":
         this.#streamedText.clear();
-        if (event.message.role === "assistant") event.message.content.forEach((block, index) => this.#streamBlock(index, block));
+        if (event.message.role === "assistant") {
+          if (this.#streaming) this.#modelTiming.start(event.message, performance.now());
+          event.message.content.forEach((block, index) => this.#streamBlock(index, block));
+        }
         return;
       case "message_update":
+        this.#modelTiming.update(event.changes, performance.now());
         for (const change of event.changes) {
           if (change.type === "text_delta" && change.delta) {
             this.#streamedText.set(change.contentIndex, (this.#streamedText.get(change.contentIndex) ?? "") + change.delta);
@@ -718,7 +724,12 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         return;
       case "message_end":
       case "entry_appended":
-        if (event.type === "message_end") this.#streamedText.clear();
+        if (event.type === "message_end") {
+          this.#streamedText.clear();
+          const completed = [...(event.entry.model ?? [])].reverse().find((message) => message.role === "assistant");
+          const metric = this.#modelTiming.finish(completed, performance.now());
+          if (metric) this.#emit({ type: "model_metric", metric });
+        }
         this.#add(event.entry);
         // A call's record, written while no run streams: the chat shows it now rather than at the next settle.
         if (event.type === "entry_appended" && !this.#streaming) {

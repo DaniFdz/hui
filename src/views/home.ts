@@ -35,6 +35,7 @@ import type {
   WorktreeProgress,
 } from "../api/sessions.ts";
 import type { WorkerView } from "../api/workers.ts";
+import type { ModelMetric } from "../api/schema/model-metrics.ts";
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
@@ -262,6 +263,8 @@ export type HomeProps = {
   /** The model in use, when the tool reports one. */
   currentModel: RuntimeModel | undefined;
   usage: RuntimeUsage | undefined;
+  /** The latest model request HUI measured for this session; absent until one completes. */
+  modelMetric: ModelMetric | undefined;
   /** A running compaction, or one that ended without a summary. */
   compaction: RuntimeCompaction | undefined;
   /** Files picked but not yet sent. */
@@ -1850,6 +1853,7 @@ function renderComposer(props: HomeProps) {
           </div>
           <div class="agent-chat__composer-trail">
             <div class="agent-chat__composer-controls">
+          ${renderModelMetric(props.modelMetric)}
           ${renderContextPicker(props.usage, disconnected || props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot)}
           <div class="chat-controls__session chat-controls__model chat-controls__model-settings">${renderModelPicker({
             models: props.models,
@@ -2090,7 +2094,7 @@ const composerPickerLifecycles = new WeakMap<HTMLDetailsElement, () => void>();
 /** Track only an open picker: native resize can precede the composer's relayout by a frame. */
 export function positionNativePicker(picker: HTMLDetailsElement) {
   const trigger = picker.querySelector<HTMLElement>("summary");
-  const menu = picker.querySelector<HTMLElement>(".chat-controls__inline-select-menu, .agent-chat__attach-popup, .context-usage__popover");
+  const menu = picker.querySelector<HTMLElement>(".chat-controls__inline-select-menu, .agent-chat__attach-popup, .context-usage__popover, .chat-metrics__popover");
   if (!trigger || !menu) return;
   if (!picker.open || !picker.isConnected) {
     composerPickerLifecycles.get(picker)?.();
@@ -2171,6 +2175,38 @@ function compactTokens(value: number): string {
   if (value < 1_000) return String(Math.round(value));
   if (value < 1_000_000) return `${(value / 1_000).toFixed(value >= 100_000 ? 0 : 1)}k`;
   return `${(value / 1_000_000).toFixed(1)}m`;
+}
+
+function metricRate(value: number | undefined): string {
+  return value === undefined ? "—" : `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} tok/s`;
+}
+
+function metricSeconds(value: number | undefined): string {
+  return value === undefined ? "—" : value < 10_000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value / 1000)} s`;
+}
+
+/** The latest request's speed in the composer, with the full HUI-measured detail behind it. */
+function renderModelMetric(metric: ModelMetric | undefined) {
+  if (!metric) return nothing;
+  const speed = metricRate(metric.tokensPerSecond);
+  const ttft = metricSeconds(metric.ttftMs);
+  return html`<div class="chat-metrics"><details class="chat-metrics__details" @keydown=${closeComposerPicker} @toggle=${positionComposerPicker}>
+    <summary class="chat-metrics__summary" aria-label=${`Last model request: ${speed}, time to first token ${ttft}`} @click=${prepareComposerPicker}>
+      <span class="chat-metrics__speed">${speed}</span><span class="chat-metrics__ttft">${ttft} TTFT</span>
+    </summary>
+    <section class="chat-metrics__popover" popover="manual" aria-label="Last model request metrics">
+      <div class="chat-metrics__header"><span>Last model request</span><code>${metric.provider}/${metric.model}</code></div>
+      <dl class="chat-metrics__stats">
+        <div><dt>Generation</dt><dd>${speed}</dd></div>
+        <div><dt>Time to first token</dt><dd>${ttft}</dd></div>
+        <div><dt>Prompt (est.)</dt><dd>${metricRate(metric.promptTokensPerSecond)}</dd></div>
+        <div><dt>Tokens in / out</dt><dd>${metric.inputTokens === undefined ? "—" : metric.inputTokens.toLocaleString()} / ${metric.outputTokens === undefined ? "—" : metric.outputTokens.toLocaleString()}</dd></div>
+        <div><dt>Duration</dt><dd>${metricSeconds(metric.durationMs)}</dd></div>
+        <div><dt>Status</dt><dd>${metric.status === "error" ? "Error" : "OK"}</dd></div>
+      </dl>
+      <p class="chat-metrics__note">Measured by HUI from request start to first token and completion. Prompt throughput includes queue and prefill, so it is an estimate.</p>
+    </section>
+  </details></div>`;
 }
 
 /** `onCompact` is absent while the session is busy; `compactable` is false
