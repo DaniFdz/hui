@@ -542,6 +542,24 @@ const cases: UseCase[] = [
     web: "required",
     phone: { excluded: "Escape and its focus-return path require a hardware keyboard; the gateway menu itself is shared as SHELL-049.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
+  {
+    id: "SHELL-052",
+    title: "Keep gateway links and switches inside the desktop window",
+    behaviour:
+      "In HUI's desktop app, switching to another gateway — **Switch** in Settings → Gateway, or choosing it in the sidebar footer — loads that gateway in the same window, and so does a link to a gateway this device lists or to one on this device's own network that answers as HUI. A `hui://` chat link opens its chat on the gateway the window shows. A page of the gateway on screen that asks for a new tab still opens in the browser, and a public web or mail link still opens in the system browser. View → Back returns to the gateway left behind. A phone has no such window: switching rebuilds its native bridge in place (SHELL-049), and a link to another gateway is the system browser's.",
+    spec: ["SPEC.md#the-window-belongs-to-the-gateways-this-device-knows", "SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11"],
+    surfaces: [],
+    web: {
+      excluded:
+        "Switching gateways happens in the page on the web, but keeping the window belongs to HUI's Electron shell, which the web runner cannot drive; desktop/main.test.mjs covers the switch, the gateways this device lists, the identity handshake and the links left to the browser.",
+      decision: "SPEC.md#the-window-belongs-to-the-gateways-this-device-knows",
+    },
+    phone: {
+      excluded:
+        "A phone has no window to keep and no View → Back: switching rebuilds its native bridge on the chosen gateway (SHELL-049, proved on the android target), and its WebView hands a link to another origin to the system browser (SPEC.md \"The phone apps wrap the web UI\").",
+      decision: "SPEC.md#the-window-belongs-to-the-gateways-this-device-knows",
+    },
+  },
 ];
 
 export default cases;

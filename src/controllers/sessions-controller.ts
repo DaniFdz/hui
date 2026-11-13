@@ -128,7 +128,10 @@ export class SessionsController {
   }
 
   async refresh(background = false): Promise<void> {
-    if (!background) {
+    // A refresh that already has a list on screen keeps it: swapping the sidebar's rows for placeholders collapses
+    // its scroll and loses the reader's place. Only a read with nothing behind it waits with placeholders.
+    const firstRead = !background && !this.revision;
+    if (firstRead) {
       this.loading = true;
       this.#host.requestUpdate();
     }
@@ -164,7 +167,7 @@ export class SessionsController {
         this.#deps.reportError(error, message);
       }
     } finally {
-      if (!background) this.loading = false;
+      if (firstRead) this.loading = false;
       this.#host.requestUpdate();
       this.#deps.listSettled();
       if (this.#streamWanted) this.#openStatusStream();

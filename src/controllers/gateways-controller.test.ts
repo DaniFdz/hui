@@ -152,3 +152,31 @@ test("a running save cannot be dismissed, and a late answer does not redraw a cl
   assert.equal(controller.dialog, null);
   assert.equal(store.list()[0]?.name, "Loft");
 });
+
+test("the page tells the desktop shell which gateways this device lists, and again after every change", () => {
+  const reports: (readonly string[])[] = [];
+  (globalThis as { huiDesktop?: unknown }).huiDesktop = {
+    reportGateways: (links: readonly string[]) => reports.push(links),
+  };
+  const { controller, store } = setup();
+  controller.hostConnected();
+  assert.deepEqual(reports, [[CURRENT]], "the gateway serving the page, so a switch back to it works");
+
+  store.add("http://studio.local:8787/", "Studio");
+  assert.deepEqual(reports.at(-1), [CURRENT, "http://studio.local:8787"]);
+  store.remove("http://studio.local:8787");
+  assert.deepEqual(reports.at(-1), [CURRENT], "and a gateway it no longer lists is not offered");
+  assert.equal(reports.length, 3);
+  controller.hostDisconnected();
+  delete (globalThis as { huiDesktop?: unknown }).huiDesktop;
+});
+
+test("a browser, which has no shell, keeps the list and reports nothing", () => {
+  delete (globalThis as { huiDesktop?: unknown }).huiDesktop;
+  const { controller, store, host } = setup();
+  controller.hostConnected();
+  store.add("http://studio.local:8787", "Studio");
+  assert.deepEqual(store.list().map((entry) => entry.url), ["http://studio.local:8787"]);
+  assert.equal(host.updates > 0, true, "the page still redraws its own list");
+  controller.hostDisconnected();
+});

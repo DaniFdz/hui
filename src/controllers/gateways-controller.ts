@@ -2,12 +2,14 @@
  * `GatewaysController` owns this device's gateway list for the page: the saved entries, the current gateway's own name
  * from its health route, which saved gateways this page could not reach, and the Add/Edit dialog with its probe. The
  * sidebar's footer opens Add, Settings → Gateway opens both Add and Edit, and switching navigates this page to the
- * chosen address. The rules and the storage are in `lib/gateways/`; this controller only sequences them and reports
- * what to show.
+ * chosen address — in HUI's desktop app that is the same window, because the shell is told which gateways this device
+ * lists and is asked for the switch. The rules and the storage are in `lib/gateways/`; this controller only sequences
+ * them and reports what to show.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { loadGatewayHealth } from "../api/control-surfaces.ts";
 import { probeGateway, type GatewayProbe } from "../api/gateways.ts";
+import { reportGatewaysToShell, switchGateway } from "../lib/gateways/desktop-gateways.ts";
 import {
   GATEWAY_ALREADY_SAVED,
   GATEWAY_IS_CURRENT,
@@ -53,12 +55,16 @@ export class GatewaysController implements ReactiveController {
     this.#saveCurrentName = options.saveCurrentName;
     this.#probe = options.probe ?? probeGateway;
     this.#closeRenderedDialog = options.closeRenderedDialog;
-    this.#unsubscribe = store.subscribe(() => this.#changed());
+    this.#unsubscribe = store.subscribe(() => {
+      this.#report();
+      this.#changed();
+    });
     host.addController(this);
   }
 
   hostConnected(): void {
     void this.loadCurrentName();
+    this.#report();
   }
 
   hostDisconnected(): void {
@@ -215,14 +221,22 @@ export class GatewaysController implements ReactiveController {
     this.store.remove(url);
   }
 
-  /** Switching opens the chosen gateway's own page. A phone must rebuild its native bridge on that origin rather
-   * than navigate the old WebView across origins (which would hand it to the external browser). */
+  /**
+   * Switching opens the chosen gateway's own page. A phone must rebuild its native bridge on that origin rather than
+   * navigate the old WebView across origins (which would hand it to the external browser); HUI's desktop app shows it
+   * in the window it already has; a browser navigates this page.
+   */
   async switchTo(url: string): Promise<void> {
     const address = normalizeGatewayAddress(url);
     if (!address) throw new Error(GATEWAY_NOT_AN_ADDRESS);
     const shell = nativeShell();
     if (shell) await shell.connectGateway(address);
-    else window.location.assign(address);
+    else switchGateway(address);
+  }
+
+  /** Tells HUI's desktop app which gateways this device lists, so switching to one keeps the app's window. */
+  #report(): void {
+    reportGatewaysToShell([this.store.current, ...this.store.list().map((entry) => entry.url)]);
   }
 
   #refuse(dialog: GatewayDialogState, address: string, error: string): void {
