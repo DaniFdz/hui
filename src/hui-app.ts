@@ -1737,6 +1737,8 @@ export class HuiApp extends HuiElement {
     const target = scroller.scrollTop + movement;
     let best = target;
     let bestError = Infinity;
+    let bestPreservesPixel = false;
+    const pixel = Math.round(top);
     const measured = new Map<number, number>();
     const measure = (candidate: number) => {
       scroller.scrollTop = candidate;
@@ -1747,9 +1749,14 @@ export class HuiApp extends HuiElement {
         error = anchor.getBoundingClientRect().top - top;
         measured.set(scroller.scrollTop, error);
       }
-      if (Math.abs(error) < bestError) {
+      // Prefer the original rendered pixel: the smallest fractional movement
+      // can cross its boundary while an adjacent attainable position does not.
+      // Within that pixel (or if none is attainable), minimize real movement.
+      const preservesPixel = Math.round(top + error) === pixel;
+      if ((preservesPixel && !bestPreservesPixel) || (preservesPixel === bestPreservesPixel && Math.abs(error) < bestError)) {
         best = candidate;
         bestError = Math.abs(error);
+        bestPreservesPixel = preservesPixel;
       }
       return error;
     };
@@ -1772,7 +1779,7 @@ export class HuiApp extends HuiElement {
       let lower = Math.min(target, edge);
       let upper = Math.max(target, edge);
       // End at adjacent floating-point requests, not a guessed pixel quantum:
-      // the nearer of the two measured positions is then provably nearest.
+      // the neighboring measured positions decide pixel preservation and proximity.
       while (lower < upper) {
         const candidate = lower + (upper - lower) / 2;
         if (candidate === lower || candidate === upper) break;
