@@ -146,6 +146,30 @@ The latest rows look the same in both builds, the watcher's last line keeps
 updating, and after a gateway restart the page reconnects with the whole
 transcript.
 
+## Phone-shell integration measurement (2026-11-13)
+
+A production build of `b34be6e8f7a03271eb9d39a9a209b98ec78bfcdc`, in a clean isolated checkout with the existing
+160-turn fixture, was exercised through the Browser tool. The proxy used 300 ms RTT, 1.6 Mbit/s down and 800 kbit/s
+up. Home's **Open Long remote session** led through the loading state to **Step 160**; **Show earlier messages**
+kept the same visible Step 145 row at y283 on 1440×900 and y307 on a responsive 390×844 resize, with zero measured
+displacement. Both resulting screens wrapped without visible sideways overflow.
+
+| Single cold desktop run | Observed |
+| --- | ---: |
+| First byte | 373 ms |
+| First paint / contentful paint | 1.8 s |
+| DOMContentLoaded / load | 2.1 s / 3.9 s |
+| POST open duration | 477 ms |
+| POST open JSON Content-Length | 541 B |
+| POST open Browser-recorded encoded response | 739 B |
+
+All 91 captured HTTP requests answered 200; the Browser console recorded no warnings or errors. Encoded response
+counts are not raw JSON or total wire bytes. The transcript arrived through the live connection, whose WebSocket
+bytes were not observable. Exact UI-first-ready latency and request-byte totals were not measured. Mobile was a
+responsive resize of the same tab, not a cold mobile boot or native-phone test; this is one post-change run, not a
+before/after comparison. The fixture used no external inference, and its owned gateway/proxy sockets and processes
+were confirmed closed after capture.
+
 ## Limits
 
 The proxy models latency and one shared bandwidth budget over HTTP/1.1 to
