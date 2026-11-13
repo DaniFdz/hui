@@ -22,7 +22,7 @@ test("dropping a session row on a project group leaves it where it was", { tags:
   const groups = await grouping();
   const before = await order();
 
-  await hui.drag(home(), heading(there), async () => expect((await hui.look(home())).opacity).toBeLessThan(1));
+  await hui.drag(home(), heading(there), async () => expect.poll(async () => (await hui.look(home())).opacity).toBeLessThan(1));
   await expect(screen.getByText(/^Moved Home row/u)).toBeHidden();
   await expect.poll(order).toEqual(before);
   expect(await grouping()).toEqual(groups);
