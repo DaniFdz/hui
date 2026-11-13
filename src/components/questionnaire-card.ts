@@ -4,11 +4,11 @@
  * questionnaire (a segmented progress bar, "Step 1 of 4", Back and Next in a
  * sticky footer). A question takes options (radios, or checkboxes for a
  * multi-select question) with a free-text row and, when options carry one, a
- * Markdown preview beside them; a slider over a numeric range; or a long text.
- * It keeps the operator's picks while they move between questions and sends
- * them all at once. The card folds to one row, keeping every pick and the
- * progress, so the operator can read the conversation it covers and open it
- * again where they left it.
+ * Markdown preview or a sandboxed HTML mockup beside them; a slider over a
+ * numeric range; or a long text. It keeps the operator's picks while they move
+ * between questions and sends them all at once. The card folds to one row,
+ * keeping every pick and the progress, so the operator can read the
+ * conversation it covers and open it again where they left it.
  */
 import { html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
@@ -16,9 +16,19 @@ import { HuiElement } from "../lit/hui-element.ts";
 import { icons } from "../lib/icons.ts";
 import { renderMarkdown } from "../lib/markdown/markdown.ts";
 import type { QuestionResponse, RuntimeQuestion } from "../api/sessions.ts";
-import type { QuestionnaireQuestion } from "../api/schema/sessions.ts";
+import type { QuestionnaireOption, QuestionnaireQuestion } from "../api/schema/sessions.ts";
+import "./widget-card.ts";
 
 type Draft = { selected: string[]; custom: string; customChosen: boolean; slider: number; text: string };
+
+type OptionPreview = { kind: "markdown" | "html"; value: string };
+
+/** The preview an option offers: its HTML mockup, else its Markdown. */
+export function optionPreview(option: QuestionnaireOption | undefined): OptionPreview | undefined {
+  if (option?.previewHtml) return { kind: "html", value: option.previewHtml };
+  if (option?.preview) return { kind: "markdown", value: option.preview };
+  return undefined;
+}
 
 const emptyDraft = (question: QuestionnaireQuestion | undefined): Draft => ({
   selected: [],
@@ -107,7 +117,7 @@ export class QuestionnaireCard extends HuiElement {
     this.#promptId = this.prompt.id;
     this.step = 0;
     this.drafts = this.questions.map(emptyDraft);
-    this.previewed = this.questions.map((question) => Math.max(0, question.options.findIndex((option) => option.preview)));
+    this.previewed = this.questions.map((question) => Math.max(0, question.options.findIndex((option) => optionPreview(option))));
     // A new call's questions open in full: only this card's operator folds it.
     this.collapsed = false;
   }
@@ -251,11 +261,12 @@ export class QuestionnaireCard extends HuiElement {
     const draft = this.drafts[this.step] ?? emptyDraft(question);
     const multi = question.multiSelect;
     const last = this.step === questions.length - 1;
-    const preview = question.input === "options" ? question.options[this.previewed[this.step] ?? 0]?.preview : undefined;
+    const previewOption = question.input === "options" ? question.options[this.previewed[this.step] ?? 0] : undefined;
+    const preview = question.input === "options" ? optionPreview(previewOption) : undefined;
     const focusIndex = Math.max(0, question.options.findIndex((option) => draft.selected.includes(option.label)));
     const customOn = draft.customChosen && draft.custom.trim() !== "";
     const showPreview = (index: number) => {
-      if (!question.options[index]?.preview || this.previewed[this.step] === index) return;
+      if (!optionPreview(question.options[index]) || this.previewed[this.step] === index) return;
       this.previewed = this.previewed.map((each, step) => step === this.step ? index : each);
     };
     return html`<form class="session-question-card chat-question-panel questionnaire-card" data-testid="question-card" aria-labelledby=${titleId}
@@ -303,7 +314,13 @@ export class QuestionnaireCard extends HuiElement {
             <kbd>${question.options.length + 1}</kbd>
           </label>
         </div>
-        ${preview ? html`<div class="questionnaire-card__preview" aria-label="Preview" role="region"><div class="chat-text">${renderMarkdown(preview)}</div></div>` : nothing}
+        ${preview?.kind === "html"
+          ? html`<div class="questionnaire-card__preview questionnaire-card__preview--widget" aria-label="Preview" role="region">
+              <hui-widget-card compact .widgetTitle=${`${previewOption?.label ?? question.header} preview`} .code=${preview.value}></hui-widget-card>
+            </div>`
+          : preview
+            ? html`<div class="questionnaire-card__preview" aria-label="Preview" role="region"><div class="chat-text">${renderMarkdown(preview.value)}</div></div>`
+            : nothing}
       </div>`}
       <footer class="chat-question-panel__footer">
         ${this.step > 0 ? html`<button type="button" class="btn btn--sm chat-question-panel__back" @click=${() => this.#go(this.step - 1)}>Back</button>` : nothing}

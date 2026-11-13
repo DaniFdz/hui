@@ -496,6 +496,12 @@ hui-widget-card { display: block; width: 100%; }
 .hui-widget-card__notice { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 8px 12px; border-top: 1px solid var(--chat-attachment-border); color: var(--warn); font-size: 12px; line-height: 1.45; }
 .hui-widget-card__notice svg { flex: none; width: 14px; height: 14px; margin-top: 1px; }
 .hui-widget-card__notice span { min-width: 0; color: var(--text); overflow-wrap: anywhere; }
+/* A questionnaire option's HTML mockup: the same sandbox frame without the
+   widget card's header or full-screen control, inside a preview that already
+   bounds and scrolls it. */
+.hui-widget-card--compact .hui-widget-card__body { min-height: 0; padding: 0; }
+.hui-widget-card--compact .hui-widget-card__frame { height: var(--hui-widget-height, 120px); }
+.hui-widget-card--compact .hui-widget-card__loading { background: transparent; }
 .hui-widget-card__guard { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .hui-widget-card[data-expanded] {
   position: fixed; inset: 0; z-index: 1000; width: 100%; max-width: none; height: 100%; max-height: none;
@@ -1150,6 +1156,8 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   background: color-mix(in srgb, var(--panel) 72%, transparent);
   font-size: var(--control-ui-text-sm);
 }
+
+.questionnaire-card__preview--widget { padding: 8px; }
 
 .questionnaire-card__preview .chat-text > :first-child { margin-top: 0; }
 .questionnaire-card__preview .chat-text > :last-child { margin-bottom: 0; }

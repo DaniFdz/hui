@@ -3,10 +3,12 @@
  * `ask_user_question` tool: HUI's own replacement for a PI extension's
  * sequence of plain select and input dialogs. The whole questionnaire is one
  * pending card in the session's question list, answered from the browser in
- * one go. Like secret requests it lives in gateway memory: a restart drops it,
- * and the tool call ends as interrupted. With a question timeout set (Settings
- * → Tools → Questions) a card nobody answers in time ends as timed out, and the
- * agent goes on without an answer.
+ * one go. An option may carry a Markdown preview or a small HTML mockup; the
+ * latter renders only in the browser's widget sandbox. Like secret requests it
+ * lives in gateway memory: a restart drops it, and the tool call ends as
+ * interrupted. With a question timeout set (Settings → Tools → Questions) a
+ * card nobody answers in time ends as timed out, and the agent goes on without
+ * an answer.
  */
 import { randomUUID } from "node:crypto";
 import type { QuestionnaireAnswer, QuestionnaireOption, QuestionnaireQuestion, QuestionnaireResult } from "../api/sessions.ts";
@@ -17,6 +19,8 @@ const MAX_LABEL = 60;
 const MAX_TEXT = 500;
 /** Four full questions stay under the PI child bridge's 64 KiB request limit. */
 const MAX_PREVIEW = 2_500;
+/** A preview mockup is a fragment; the card wraps it in the sandbox's document. */
+const COMPLETE_HTML_DOCUMENT = /^(?:<!doctype\s+html\b|<html\b|<head\b|<body\b)/iu;
 /** Option labels the card adds itself or that models reach for instead of the free-text row. */
 const RESERVED_LABELS: ReadonlySet<string> = new Set(["Other", "Type something.", "Next"]);
 /** Longest typed answer the card sends for one question. */
@@ -108,11 +112,14 @@ export function parseQuestionnaire(params: Record<string, unknown>): Questionnai
       const label = text(option["label"], `${where}.label`, MAX_LABEL);
       if (RESERVED_LABELS.has(label)) throw new Error(`${where}.label "${label}" is reserved: the card already offers a free-text answer.`);
       const preview = text(option["preview"], `${where}.preview`, MAX_PREVIEW, false);
-      return { label, description: text(option["description"], `${where}.description`, MAX_TEXT, false), ...(preview ? { preview } : {}) };
+      const previewHtml = text(option["previewHtml"], `${where}.previewHtml`, MAX_PREVIEW, false);
+      if (preview && previewHtml) throw new Error(`${where}: set preview or previewHtml, not both.`);
+      if (previewHtml && COMPLETE_HTML_DOCUMENT.test(previewHtml)) throw new Error(`${where}.previewHtml must be an HTML fragment, not a whole document.`);
+      return { label, description: text(option["description"], `${where}.description`, MAX_TEXT, false), ...(preview ? { preview } : {}), ...(previewHtml ? { previewHtml } : {}) };
     });
     if (new Set(parsed.map(({ label }) => label)).size !== parsed.length) throw new Error(`${at}.options must have unique labels.`);
     const multiSelect = entry["multiSelect"] === true;
-    if (multiSelect && parsed.some((option) => option.preview)) throw new Error(`${at}: previews are for single-select questions only.`);
+    if (multiSelect && parsed.some((option) => option.preview || option.previewHtml)) throw new Error(`${at}: previews are for single-select questions only.`);
     return { header, question, multiSelect, options: parsed, input };
   });
   if (new Set(questions.map(({ question }) => question)).size !== questions.length) throw new Error("Each question must be asked once.");
@@ -143,6 +150,8 @@ function parseAnswers(questions: readonly QuestionnaireQuestion[], body: Record<
     if (custom) selected.push(custom);
     if (!question.multiSelect && selected.length > 1) throw new Error(`"${question.header}" takes one answer.`);
     if (!selected.length) return [];
+    // A Markdown preview goes back with the answer; an HTML mockup does not, because the
+    // agent wrote it and the label already identifies the choice.
     const preview = question.options.find(({ label }) => label === selected[0] && !custom)?.preview;
     return [{ header: question.header, question: question.question, selected, ...(preview ? { preview } : {}) }];
   });
