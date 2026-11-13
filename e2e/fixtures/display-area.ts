@@ -71,31 +71,73 @@ export function validateNativeFrame(safe: ReturnType<typeof parseDisplay>, frame
   }
 }
 
-/** A test owns only the cutout overlays it changes, restored even when setup, measurement or an assertion fails. */
-export function androidDisplay() {
+/** A test owns its cutout overlays and rotation; cleanup restores effective frames, not just settings flags. */
+export function androidDisplay(run = adb) {
   let original: { name: string; enabled: boolean }[] | undefined;
   let evidence: string | undefined;
   let captures = 0;
   let rotation: { key: string; value: string }[] | undefined;
+  let originalRotation: number | undefined;
+  let baseline: ReturnType<typeof parseDisplay> | undefined;
+  const displayState = () => run("shell", "dumpsys", "window", "displays");
+  const rotationOf = (state: string) => {
+    const value = state.match(/^\s*mRotation=([0-3])\b/mu)?.[1];
+    if (value === undefined) throw new Error("display measurement: missing effective rotation");
+    return Number(value);
+  };
+  const waitFor = (label: string, accepts: (state: string) => boolean) => {
+    const deadline = Date.now() + 10_000;
+    let state: string;
+    do {
+      state = displayState();
+      if (accepts(state)) return state;
+    } while (Date.now() < deadline);
+    throw new Error(`native display did not reach ${label}: ${state}`);
+  };
+  const rememberRotation = () => {
+    if (rotation) return;
+    originalRotation = rotationOf(displayState());
+    rotation = ["accelerometer_rotation", "user_rotation"].map((key) => ({ key, value: run("shell", "settings", "get", "system", key) }));
+  };
+  const setRotation = (value: number) => {
+    run("shell", "settings", "put", "system", "user_rotation", String(value));
+    return waitFor(`rotation ${value}`, (state) => rotationOf(state) === value);
+  };
+  const refreshConfiguration = (value: number) => {
+    // API 36 can retain the notch-sized SystemUI window after its resource overlay is disabled.
+    // A real configuration round trip rebuilds those bounds; resource/overlay flags alone cannot prove it.
+    run("shell", "settings", "put", "system", "accelerometer_rotation", "0");
+    setRotation((value + 1) % 4);
+    return setRotation(value);
+  };
   const requireEmulator = () => {
-    const serial = process.env["ANDROID_SERIAL"] ?? adb("get-serialno");
+    const serial = process.env["ANDROID_SERIAL"] ?? run("get-serialno");
     if (!/^emulator-\d+$/u.test(serial)) throw new Error("Display injection and rotation require an isolated Android emulator, not a physical handset.");
   };
   return {
     rotate(orientation: "portrait" | "landscape") {
       requireEmulator();
-      rotation ??= ["accelerometer_rotation", "user_rotation"].map((key) => ({ key, value: adb("shell", "settings", "get", "system", key) }));
-      adb("shell", "settings", "put", "system", "accelerometer_rotation", "0");
-      adb("shell", "settings", "put", "system", "user_rotation", orientation === "portrait" ? "0" : "1");
+      rememberRotation();
+      run("shell", "settings", "put", "system", "accelerometer_rotation", "0");
+      if (orientation === "portrait") refreshConfiguration(0);
+      else setRotation(1);
     },
     prepare() {
-      adb("shell", "uiautomator", "dump", "/sdcard/hui-safe-display.xml");
-      const xml = adb("shell", "cat", "/sdcard/hui-safe-display.xml");
+      requireEmulator();
+      if (!baseline) {
+        if (!rotation) {
+          rememberRotation();
+          refreshConfiguration(0);
+        }
+        baseline = parseDisplay(displayState());
+      }
+      run("shell", "uiautomator", "dump", "/sdcard/hui-safe-display.xml");
+      const xml = run("shell", "cat", "/sdcard/hui-safe-display.xml");
       // The fresh app asks about notifications. Dismiss that real system dialog rather than measuring a covered page.
       if (xml.includes("Allow HUI to send you notifications?")) {
         const deny = xml.match(/<node\b[^>]*resource-id="com\.android\.permissioncontroller:id\/permission_deny(?:_and_dont_ask_again)?_button"[^>]*>/u)?.[0];
         const box = rect(deny?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/u) ?? null, "notification refusal");
-        adb("shell", "input", "tap", String(Math.round(box.x + box.width / 2)), String(Math.round(box.y + box.height / 2)));
+        run("shell", "input", "tap", String(Math.round(box.x + box.width / 2)), String(Math.round(box.y + box.height / 2)));
       }
     },
     async target(): Promise<string> {
@@ -107,26 +149,42 @@ export function androidDisplay() {
     cutout() {
       requireEmulator();
       if (original) return false;
-      original = [...adb("shell", "cmd", "overlay", "list").matchAll(/^\[([ x])\] (com\.android\.internal\.(?:display\.cutout\.emulation\.|emulation\.pixel_)[\w.]+)$/gmu)]
+      original = [...run("shell", "cmd", "overlay", "list").matchAll(/^\[([ x])\] (com\.android\.internal\.(?:display\.cutout\.emulation\.|emulation\.pixel_)[\w.]+)$/gmu)]
         .map(([, enabled, name]) => ({ name: name!, enabled: enabled === "x" }));
       if (!original.some(({ name }) => name === CUTOUT)) throw new Error("the emulator has no Pixel 3 XL cutout overlay");
-      for (const { name, enabled } of original) if (enabled) adb("shell", "cmd", "overlay", "disable", name);
-      adb("shell", "cmd", "overlay", "enable", CUTOUT);
+      for (const { name, enabled } of original) if (enabled) run("shell", "cmd", "overlay", "disable", name);
+      run("shell", "cmd", "overlay", "enable", CUTOUT);
       return true;
     },
     restore() {
       const failures: unknown[] = [];
-      const restore = (...args: string[]) => { try { adb(...args); } catch (error) { failures.push(error); } };
-      if (rotation) {
-        for (const { key, value } of rotation) restore("shell", "settings", value === "null" ? "delete" : "put", "system", key, ...(value === "null" ? [] : [value]));
-        rotation = undefined;
-      }
-      // Attempt every changed setting even if a preceding restore command fails.
+      const restore = (...args: string[]) => { try { run(...args); } catch (error) { failures.push(error); } };
+      // Restore resources before rebuilding their effective SystemUI frame. Attempt all settings on failure.
       for (const { name, enabled } of original ?? []) {
         if (enabled || name === CUTOUT) restore("shell", "cmd", "overlay", enabled ? "enable" : "disable", name);
       }
+      if (rotation) {
+        try {
+          refreshConfiguration(originalRotation!);
+          if (baseline && originalRotation === 0) {
+            waitFor("the original safe display", (state) => JSON.stringify(parseDisplay(state)) === JSON.stringify(baseline));
+            // Activity's native hierarchy is available even while Chromium's accessibility root reconnects.
+            // This is a cleanup barrier only; test evidence still uses the independent UIAutomator bounds.
+            waitFor("the original native WebView frame", () => {
+              const hierarchy = run("shell", "dumpsys", "activity", "top");
+              const bounds = hierarchy.match(/com\.getcapacitor\.CapacitorWebView\{[^\n]* (\d+),(\d+)-(\d+),(\d+) /u);
+              return bounds?.[2] === String(baseline!.top) && bounds[4] === String(baseline!.bottom);
+            });
+          }
+        } catch (error) { failures.push(error); }
+        finally {
+          for (const { key, value } of rotation) restore("shell", "settings", value === "null" ? "delete" : "put", "system", key, ...(value === "null" ? [] : [value]));
+        }
+        rotation = undefined;
+      }
       original = undefined;
-      if (failures.length) throw new AggregateError(failures, "could not restore native display settings");
+      baseline = undefined;
+      if (failures.length) throw new AggregateError(failures, `could not restore native display settings: ${failures.map(String).join("; ")}`);
     },
     ready(metrics: PageMetrics): boolean {
       const safe = parseDisplay(adb("shell", "dumpsys", "window", "displays"));
