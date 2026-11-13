@@ -53,6 +53,7 @@ import { recordDiagnosticEvent } from "../observability.ts";
 import { localProviders } from "../pi/local-providers.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import type { Settings } from "../hui-settings.ts";
+import { modelMetrics } from "../model-metrics.ts";
 
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 /** A run that ends on a failure the next attempt can pass is retried by itself:
@@ -734,7 +735,7 @@ export class LiveSessions {
     this.#setStatus(live, "running");
     // A manual start in Settings can still be waiting for the model server. The model request waits for it too;
     // saying so here explains the silence instead of leaving the turn looking stuck.
-    const localProvider = live.runtime.currentModel?.()?.provider;
+    const localProvider = live.runtime.currentModel?.()?.provider ?? live.record.model?.split("/")[0];
     if (localProvider && localProviders.isStarting(localProvider)) {
       this.#broadcast(live, {
         kind: "event",
@@ -1642,6 +1643,11 @@ export class LiveSessions {
     }
     if (event.type === "usage") {
       this.#broadcastState(live);
+      return;
+    }
+    if (event.type === "model_metric") {
+      modelMetrics.record(event.metric, live.record.id);
+      this.#broadcast(live, { kind: "event", event });
       return;
     }
     if (event.type === "history") {
