@@ -8672,6 +8672,9 @@
         },
         "preview": {
           "type": "string"
+        },
+        "previewHtml": {
+          "type": "string"
         }
       }
     },

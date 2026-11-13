@@ -13,6 +13,7 @@ import type { SessionListUpdate } from "../api/schema/sessions.ts";
 import { deleteSession, loadSessions, renameSession, searchSessionTranscripts, subscribeSessionStatuses, type SessionGroup, type SessionStatus, type SessionStatusUpdate, type SessionView } from "../api/sessions.ts";
 import { loadWorktrees, removeWorktrees } from "../api/worktrees.ts";
 import { isGatewayUnavailable } from "../api/request.ts";
+import { reconnectDelay } from "../lib/event-stream.ts";
 import { forgetConversation, reconcileSavedConversations, savedConversationGroups } from "../lib/session/offline-store.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import { navigationPath } from "../lib/navigation.ts";
@@ -95,6 +96,8 @@ export class SessionsController {
   #actionToastTimer: ReturnType<typeof setTimeout> | undefined;
   #worktreePoll: ReturnType<typeof setTimeout> | undefined;
   #worktreeRemovalQueue: Promise<unknown> = Promise.resolve();
+  #listRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  #listRetryAttempt = 0;
 
   constructor(host: SessionsHost, deps: SessionsDeps) {
     this.#host = host;
@@ -107,16 +110,25 @@ export class SessionsController {
   }
 
   #openStatusStream(): void {
-    this.#statusStreamStop ??= subscribeSessionStatuses({
+    if (this.#statusStreamStop) return;
+    let stop: (() => void) | undefined;
+    stop = subscribeSessionStatuses({
       onSnapshot: this.#applyStatusSnapshot,
       onStatus: this.#applyStatusUpdate,
       onSessions: this.#applyListChange,
+      onStop: () => {
+        if (this.#statusStreamStop === stop) this.#statusStreamStop = undefined;
+      },
       heldRevision: () => this.revision,
     });
+    this.#statusStreamStop = stop;
   }
 
   stop(): void {
     this.#streamWanted = false;
+    this.#listRetryAttempt = 0;
+    clearTimeout(this.#listRetryTimer);
+    this.#listRetryTimer = undefined;
     clearTimeout(this.#worktreePoll);
     clearTimeout(this.#actionToastTimer);
     this.#statusStreamStop?.();
@@ -128,6 +140,8 @@ export class SessionsController {
   }
 
   async refresh(background = false): Promise<void> {
+    clearTimeout(this.#listRetryTimer);
+    this.#listRetryTimer = undefined;
     // A refresh that already has a list on screen keeps it: swapping the sidebar's rows for placeholders collapses
     // its scroll and loses the reader's place. Only a read with nothing behind it waits with placeholders.
     const firstRead = !background && !this.revision;
@@ -148,6 +162,7 @@ export class SessionsController {
     try {
       const { revision, groups } = await pending;
       settled = true;
+      this.#listRetryAttempt = 0;
       // The status stream may have delivered newer changes while this loaded.
       this.receive(revision, this.#hasStatusSnapshot ? mergeSessionStatuses(groups, this.statuses) : groups);
       this.error = "";
@@ -165,6 +180,17 @@ export class SessionsController {
         this.error = message;
       } else if (this.revision) {
         this.#deps.reportError(error, message);
+      }
+      // A gateway that never answered may answer shortly; a refusal will not. Keep asking while the shell wants its
+      // list, so a transient stall no longer needs a page reload.
+      if (this.#streamWanted && isGatewayUnavailable(error)) {
+        this.#listRetryAttempt += 1;
+        this.#listRetryTimer = setTimeout(() => {
+          this.#listRetryTimer = undefined;
+          if (this.#streamWanted) void this.refresh(this.revision > 0);
+        }, reconnectDelay(this.#listRetryAttempt + 1));
+      } else {
+        this.#listRetryAttempt = 0;
       }
     } finally {
       if (firstRead) this.loading = false;

@@ -25,3 +25,10 @@ test("full screen promotes the same card instead of moving its frame", () => {
   assert.match(source, /role=\$\{this\.expanded \? "dialog" : "group"\}/u);
   assert.match(source, /aria-modal=\$\{this\.expanded \? "true" : nothing\}/u);
 });
+
+test("a compact widget keeps the same sandbox but drops the card chrome and full screen", () => {
+  assert.match(source, /class=\$\{this\.compact \? "hui-widget-card hui-widget-card--compact" : "chat-assistant-attachment-card hui-widget-card"\}/u);
+  assert.match(source, /\$\{this\.compact \? nothing : html`<header/u);
+  assert.match(source, /if \(this\.compact \|\| this\.expanded \|\| this\.frameState !== "ready"\) return;/u);
+  assert.match(source, /if \(this\.compact\) \{\s*this\.#respond\(message\.id, \{ mode: "inline" \}\);\s*return;/u);
+});

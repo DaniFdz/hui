@@ -41,6 +41,20 @@ test("a questionnaire is one pending card in its session, answered all at once",
   assert.deepEqual(changes, ["s1", "s1"], "shown, then gone");
 });
 
+test("an option's HTML mockup reaches the card untouched and is not echoed in the answer", async () => {
+  const { questionnaires } = store();
+  const mockup = `<div class="card" style="padding:8px"><strong>OAuth flow</strong><p>Approve in the browser.</p></div>`;
+  const pending = questionnaires.request("s1", { questions: [
+    { header: "Auth", question: "Which auth method?", options: [option("OAuth", { previewHtml: mockup }), option("API key")] },
+  ] });
+  const [prompt] = questionnaires.questions("s1");
+  assert.deepEqual(prompt?.questions[0]?.options[0], { label: "OAuth", description: "OAuth description", previewHtml: mockup });
+  questionnaires.answer("s1", prompt!.id, { answers: [{ selected: ["OAuth"] }] });
+  assert.deepEqual(await pending, { cancelled: false, answers: [
+    { header: "Auth", question: "Which auth method?", selected: ["OAuth"] },
+  ] }, "the label identifies the choice; the agent already has its HTML");
+});
+
 test("a typed answer replaces a single-select choice, a blank question is left out, and nothing answered is a decline", async () => {
   const { questionnaires } = store();
   const typed = questionnaires.request("s1", ask);
@@ -163,7 +177,11 @@ test("a malformed call is rejected with a reason the model can fix", async () =>
     [[question({ header: "A header that is too long" })], /header must be at most 16/u],
     [[question({ header: "" })], /header must be non-empty/u],
     [[question({ options: [option("A", { preview: "x".repeat(2_501) }), option("B")] })], /preview must be at most 2500/u],
+    [[question({ options: [option("A", { previewHtml: "x".repeat(2_501) }), option("B")] })], /previewHtml must be at most 2500/u],
+    [[question({ options: [option("A", { preview: "**A**", previewHtml: "<p>A</p>" }), option("B")] })], /set preview or previewHtml, not both/u],
+    [[question({ options: [option("A", { previewHtml: "<!doctype html><p>A</p>" }), option("B")] })], /must be an HTML fragment/u],
     [[question({ multiSelect: true, options: [option("A", { preview: "x" }), option("B")] })], /single-select questions only/u],
+    [[question({ multiSelect: true, options: [option("A", { previewHtml: "<p>A</p>" }), option("B")] })], /single-select questions only/u],
     [[question({ input: "slider", options: [option("A"), option("B")] })], /slider question takes no options/u],
     [[asked({ input: "slider", min: 1 })], /max must be a number/u],
     [[asked({ input: "slider", min: 10, max: 1 })], /min must be below max/u],
@@ -179,6 +197,17 @@ test("a malformed call is rejected with a reason the model can fix", async () =>
   ];
   for (const [questions, error] of rejected) await assert.rejects(questionnaires.request("s1", { questions }), error);
   assert.deepEqual(questionnaires.questions("s1"), [], "nothing was shown");
+});
+
+test("the tool offers an HTML mockup preview beside Markdown, bounded like a Markdown preview", () => {
+  const tool = huiToolDefinitions().find(({ name }) => name === "ask_user_question");
+  assert(tool);
+  const properties = (tool.parameters as { properties: { questions: { items: { properties: { options: { items: { properties: Record<string, { maxLength?: number; description?: string }> } } } } } } })
+    .properties.questions.items.properties.options.items.properties;
+  assert.equal(properties["previewHtml"]?.maxLength, 2_500);
+  assert.match(properties["previewHtml"]?.description ?? "", /sandboxed frame/u);
+  assert.match(properties["previewHtml"]?.description ?? "", /ASCII art/u);
+  assert.match(properties["preview"]?.description ?? "", /Markdown/u);
 });
 
 test("the tool tells the model what the operator chose, or that they declined", async () => {

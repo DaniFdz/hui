@@ -1420,10 +1420,7 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
     </div>`;
   }
   if (props.opening) {
-    return html`<div class="agent-chat__empty agent-chat__creating" role="status" aria-live="polite">
-      <span>Loading the conversation…</span>
-      <wa-progress-bar label="Loading the conversation" indeterminate></wa-progress-bar>
-    </div>`;
+    return renderConversationSkeleton("Loading the conversation…", props.connectionNote);
   }
   if (props.openError) {
     return html`<div class="agent-chat__empty" role="alert">
@@ -1432,17 +1429,59 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
       <button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Try again</button>
     </div>`;
   }
-  if (props.session?.status === "starting") {
-    return html`<div class="agent-chat__empty" role="status">
-      Starting pi — this takes a few seconds.
-    </div>`;
+  if (props.transcript.length === 0 && props.session?.status === "starting") {
+    return renderConversationSkeleton("Preparing the session…", props.connectionNote);
   }
   if (props.transcript.length === 0) {
     return props.bot
       ? html`<div class="agent-chat__empty bot-chat-empty" data-face-stage>${renderBotAvatar(props.bot.bot, "lg", { state: botFaceState(props) })}<strong>Say hi to ${props.bot.bot.name}</strong>${props.bot.bot.title ? html`<span>${props.bot.bot.title}</span>` : nothing}</div>`
       : html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
-  return html`${renderTranscriptRows(props, rows, start)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+  return html`${renderTranscriptRows(props, rows, start)}${renderCachedTail(props)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+}
+
+/** The conversation's place before its first rows arrive, or while its runtime starts. Full-width rows
+ * keep the watcher and activity cards below in the conversation's own column instead of after a centered
+ * empty state. */
+function renderConversationSkeleton(label: string, note: string) {
+  return html`<div class="chat-skeleton" role="status" aria-live="polite" data-testid="conversation-skeleton">
+    <div class="chat-skeleton__status">
+      <span class="hui-orbit" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>${label}</span>
+    </div>
+    ${note ? html`<p class="chat-skeleton__note">${note}</p>` : nothing}
+    <div class="chat-skeleton__rows" aria-hidden="true">
+      <div class="chat-skeleton__row chat-skeleton__row--user"><span class="skeleton skeleton-line"></span></div>
+      <div class="chat-skeleton__row">
+        <span class="skeleton skeleton-line skeleton-line--long"></span>
+        <span class="skeleton skeleton-line skeleton-line--medium"></span>
+      </div>
+      <div class="chat-skeleton__row chat-skeleton__row--user"><span class="skeleton skeleton-line"></span></div>
+      <div class="chat-skeleton__row">
+        <span class="skeleton skeleton-line"></span>
+        <span class="skeleton skeleton-line skeleton-line--long"></span>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** Under the last row of a cached copy: the live conversation may have more than was saved. */
+function renderCachedTail(props: HomeProps) {
+  if (!props.savedCopy || props.connection !== "saved") return nothing;
+  return html`<div class="chat-cached-tail" role="status" aria-label="The live conversation may have newer messages">
+    <div class="chat-cached-tail__rows" aria-hidden="true">
+      <span class="skeleton chat-cached-tail__line"></span>
+      <span class="skeleton chat-cached-tail__line chat-cached-tail__line--short"></span>
+    </div>
+  </div>`;
+}
+
+/** A resumed conversation keeps its history while its runtime starts; this is the only line that says so. */
+function renderStartingSession() {
+  return html`<div class="chat-starting" role="status">
+    <span class="hui-orbit" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span>Preparing the session…</span>
+  </div>`;
 }
 
 /** The same divider while PI summarizes, or why it wrote no summary. The
@@ -1762,15 +1801,19 @@ function renderComposer(props: HomeProps) {
   const booting = props.opening || props.session?.status === "starting";
   // Unreachable, the session runs elsewhere: drafting stays open, sending waits.
   const saved = props.connection === "saved" || props.connection === "outdated";
+  const savedCopy = props.connection === "saved" && props.savedCopy !== undefined;
   const unreachable = props.session && !saved ? unreachableHost(props.session) : undefined;
   const disconnected = props.connection !== "live" || unreachable !== undefined;
-  // One status lane under the composer: the chat never repeats it in the transcript.
-  const connectionStatus = saved
-    ? "Saved conversation · draft preserved. Send waits for a live connection."
-    : unreachable
-      ?? (props.connection === "reconnecting" ? "Reconnecting…" : props.connection === "stopped" ? props.connectionNote || "Stream stopped." : undefined);
-  // A saved copy offers no action it cannot honour, and nothing is retrying there.
-  const reconnecting = !saved && (props.session?.status === "reconnecting" || (unreachable === undefined && props.connection === "reconnecting"));
+  // One status lane under the composer: a cached copy says the live connection is still being sought, including the
+  // scheduled retry, and spins while it does. An outdated page has nothing to retry.
+  const connectionStatus = savedCopy
+    ? props.connectionNote || "Saved conversation · waiting for the live connection."
+    : saved
+      ? "Saved conversation · draft preserved. Send waits for a live connection."
+      : unreachable
+        ?? (props.connection === "reconnecting" ? "Reconnecting…" : props.connection === "stopped" ? props.connectionNote || "Stream stopped." : undefined);
+  // A saved copy offers no action it cannot honour; its own live request is retrying.
+  const reconnecting = savedCopy || (!saved && (props.session?.status === "reconnecting" || (unreachable === undefined && props.connection === "reconnecting")));
   const reconnect = !saved && props.session?.status === "disconnected";
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
@@ -1801,6 +1844,7 @@ function renderComposer(props: HomeProps) {
           <button type="button" class="btn btn--sm" ?disabled=${props.sending || disconnected} @click=${props.onContinueInterrupted}>Continue run</button>
         </div>
       ` : nothing}
+      ${props.session?.status === "starting" && props.transcript.length ? renderStartingSession() : nothing}
       ${renderTaskProgress(props)}
       ${renderQueue(props)}
       ${renderGoalPill(props)}
@@ -2691,7 +2735,8 @@ function projectedRows(transcript: readonly TranscriptItem[]): readonly ChatProj
 function renderTranscript(props: HomeProps, session: SessionView) {
   const rows = projectedRows(props.transcript);
   const start = transcriptWindowStart(rows.length, props.transcriptWindowStart);
-  const markers = props.opening || session.status === "starting" ? [] : conversationMarkers(rows);
+  const loadingConversation = props.opening || session.status === "starting";
+  const markers = loadingConversation ? [] : conversationMarkers(rows);
   const reveal = (messageId: string) => {
     const row = rowOfMessage(rows, messageId);
     return row >= 0 && row < start ? props.onShowEarlier(row) : undefined;
@@ -2715,7 +2760,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                   <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript" data-window-start=${start}
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}>
                     ${positionRail({ sessionId: session.id, markers, onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
-                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}${renderQuestion(props)}</div>
+                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers && !loadingConversation ? renderWatcherActivity(props.watchers) : nothing}${renderQuestion(props)}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>

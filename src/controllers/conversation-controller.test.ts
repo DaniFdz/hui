@@ -174,6 +174,52 @@ test("only the session still selected opens and streams; its status frames reach
   assert.equal(controller.streamOpen, false);
 });
 
+test("a stalled open is retried instead of asking for a reload", async () => {
+  vi.useFakeTimers();
+  try {
+    const { controller, errors } = conversation({ selected: { id: "s1" } as SessionView });
+    const opening = controller.open("s1");
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(fake.opens.length, 1);
+    fake.opens[0]?.reject(new GatewayHttpError(503, "The gateway is starting."));
+    await vi.advanceTimersByTimeAsync(0);
+    assert.match(controller.connectionNote, /Trying again in 10 seconds/u);
+    await vi.advanceTimersByTimeAsync(9_999);
+    assert.equal(fake.opens.length, 1, "the retry waits the full ten seconds");
+    await vi.advanceTimersByTimeAsync(1);
+    assert.equal(fake.opens.length, 2, "a busy gateway gets the same request again");
+    assert.equal(controller.connectionNote, "", "the next attempt is in flight");
+
+    fake.opens[1]?.reject(new GatewayHttpError(503, "The gateway is still starting."));
+    await vi.advanceTimersByTimeAsync(0);
+    assert.match(controller.connectionNote, /Trying again in 30 seconds/u);
+    await vi.advanceTimersByTimeAsync(29_999);
+    assert.equal(fake.opens.length, 2, "the second retry waits the full thirty seconds");
+    await vi.advanceTimersByTimeAsync(1);
+    assert.equal(fake.opens.length, 3);
+
+    fake.opens[2]?.resolve("idle");
+    await opening;
+    assert.equal(controller.opening, false);
+    assert.equal(controller.openError, "");
+    assert.equal(errors.length, 0);
+    assert.deepEqual(fake.streams.map(({ id }) => id), ["s1"]);
+    assert.equal(controller.connectionNote, "");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a refused open is not retried", async () => {
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+  const opening = controller.open("s1");
+  fake.opens[0]?.reject(new GatewayHttpError(404, "unknown session: s1"));
+  await opening;
+  assert.equal(fake.opens.length, 1);
+  assert.equal(controller.opening, false);
+  assert.match(controller.openError, /unknown session/u);
+});
+
 test("a conversation whose element is removed starts no stream for an open still pending, and leaves no copy timer or stale state", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("window", globalThis);
