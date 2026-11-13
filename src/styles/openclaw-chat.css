@@ -1,6 +1,6 @@
 /* OpenClaw v2026.9.5, ec9c1a13db8938e5a3eaa51fca2e981cde2395a9.
  * Reference sheets are verbatim MIT-licensed source; keep geometry there.
- * Only HUI's native-control/PI protocol adapters belong below the imports. */
+ * HUI's controls, runtime protocol and browser adaptations belong below the imports. */
 @import "./openclaw-reference/chat/startup-layout.css";
 @import "./openclaw-reference/chat/layout.css";
 @import "./openclaw-reference/chat/message-layout.css";
@@ -17,6 +17,10 @@
 @import "./openclaw-reference/chat/composer-progress.css";
 @import "./openclaw-reference/chat/sidebar.css";
 @import "./openclaw-reference/chat/split-view.css";
+
+/* Keep compact tables intrinsic: forced column stretching can round their last cell past the scroll viewport in
+   WebKit. Wide tables still scroll as a unit. This is HUI's adaptation, not a change to the reviewed snapshot. */
+.chat-thread .chat-bubble .chat-text :where(table) { min-width: auto; }
 
 /* HUI recovery state: this is product-specific and intentionally stays out of
    the versioned OpenClaw reference snapshot above. */
