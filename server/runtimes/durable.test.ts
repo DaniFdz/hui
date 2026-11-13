@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
+import type { Message } from "@earendil-works/pi-ai";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getImageDimensions } from "@earendil-works/pi-tui";
 import { afterAll, test, type TestContext } from "vitest";
@@ -32,7 +33,9 @@ const { createDurableBots } = await import("../bots/durable-access.ts");
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
   estimateContext(view: unknown, extra: readonly unknown[]): number;
 };
-const { durableConversationId, durableReference, expandSkill, startDurable } = await import("./durable.ts");
+const { estimateTextTokens } = await import("@earendil-works/pi-ai/utils/estimate");
+const { getCurrentSystemPrompt, getCurrentTools } = await import("@earendil-works/pi-ai/utils/transcript");
+const { contextParts, durableConversationId, durableReference, expandSkill, startDurable } = await import("./durable.ts");
 const { autonomousSection } = await import("./durable-prompt.ts");
 const { importPiSession } = await import("./pi-import.ts");
 const { searchTranscripts } = await import("./transcript-search.ts");
@@ -748,7 +751,11 @@ test("Durable compaction keeps the whole history and marks where it summarized",
   await host.close();
   const reopened = await startDurable({ cwd: f.cwd, sessionFile: reference }, f.host());
   assert.deepEqual(withoutMetrics(reopened.transcript()), withoutMetrics(after), "the marker and history are stored");
+  const stored = reopened.currentUsage()!.breakdown!;
+  assert.deepEqual(stored.map((part) => part.id), ["system", "conversation", "summary"], "a reopened conversation splits from what its store holds, before any request");
+  assert(stored.find((part) => part.id === "summary")!.tokens > 0, "the summary compaction placed is part of it");
   await turns(reopened, ["AFTER_COMPACTION"]);
+  assert.equal(reopened.currentUsage()?.breakdown?.some((part) => part.id === "tools"), true, "and its next request declares the tools again");
   const context = await lastTurnRequest(f.log);
   assert.match(context, /FIXTURE_SUMMARY/u);
   assert.match(context, /COMPACT_THREE/u, "the kept window stays verbatim");
@@ -788,6 +795,36 @@ test("the context meter is Durable's own estimate, system prompt included", { ti
   await turns(session, ["AFTER_ERROR answered"]);
   view = await conversation!.context(durableContext);
   assert.equal(session.currentUsage()?.contextTokens, estimateContext(view, []), "measured by the newest answer");
+  // The meter also splits the context: the prompt and tools it leads with, the conversation and the summary.
+  const breakdown = session.currentUsage()!.breakdown!;
+  const part = (id: string) => breakdown.find((each) => each.id === id)!;
+  assert.deepEqual(breakdown.map((each) => each.id), ["system", "tools", "conversation", "summary"]);
+  assert.equal(part("system").tokens, estimateTextTokens(getCurrentSystemPrompt(view.messages)), "the prompt the request leads with");
+  assert.equal(part("tools").tokens, estimateTextTokens(JSON.stringify(getCurrentTools(view.messages))), "and its tool declarations");
+  assert.equal(part("tools").count, getCurrentTools(view.messages).length, "with how many tools they were");
+  assert(part("conversation").tokens > 0 && (part("conversation").count ?? 0) > 0, "the kept turn, as messages");
+  assert(part("summary").tokens > 0, "the summary compaction left is its own part");
+});
+
+test("the meter's split counts the messages Durable sends, not a repeated tool result", () => {
+  const message = (value: object) => value as unknown as Message;
+  const parts = contextParts([
+    { message: message({ role: "system", content: "", sections: { preamble: "P".repeat(3_500) }, toolsAdded: [{ name: "read", description: "Read", parameters: { type: "object" } }], timestamp: 1 }), summary: false },
+    { message: message({ role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "read", arguments: {} }], timestamp: 2 }), summary: false },
+    { message: message({ role: "toolResult", toolCallId: "call-1", content: "ok", timestamp: 3 }), summary: false },
+    { message: message({ role: "toolResult", toolCallId: "call-1", content: "x".repeat(35_000), timestamp: 4 }), summary: false },
+    { message: message({ role: "assistant", content: [{ type: "text", text: "done" }], timestamp: 5 }), summary: false },
+  ], false);
+  assert.equal(parts.messages, 3, "one result per call, and both answers");
+  assert(parts.conversation < 100, "the repeated result is not part of the context");
+  assert.equal(parts.system, 1_000, "the prompt is its own part");
+  assert.deepEqual([parts.toolsCount, parts.tools > 0], [1, true], "and the tools it declares another");
+  const open = contextParts([
+    { message: message({ role: "assistant", content: [{ type: "toolCall", id: "call-2", name: "read", arguments: {} }], timestamp: 1 }), summary: false },
+    { message: message({ role: "toolResult", toolCallId: "call-2", content: "ok", timestamp: 2 }), summary: false },
+    { message: message({ role: "toolResult", toolCallId: "call-2", content: "y".repeat(35_000), timestamp: 3 }), summary: false },
+  ], false);
+  assert.deepEqual([open.messages, open.conversation < 100], [2, true], "an open round is ordered the same way");
 });
 
 test("a requested compaction with nothing old enough to summarize says so", { timeout: 45_000 }, async (t) => {

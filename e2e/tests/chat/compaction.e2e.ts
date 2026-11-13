@@ -50,7 +50,7 @@ test("/compact with focus text adds a Context compacted divider after the last t
   await expect(transcript.getByText("FIXTURE_SUMMARY")).toBeVisible();
 });
 
-test("The context ring opens Context usage with occupancy, the latest run's tokens, cost and Compact now, disabled while busy and absent in a bot's chat; with nothing new to summarize a Compaction failed divider stays until the next turn", { tags: ["CHAT-039"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("The context ring opens Context usage with occupancy over the estimate of what it carries, the latest run's tokens, cost and Compact now, disabled while busy and absent in a bot's chat; with nothing new to summarize a Compaction failed divider stays until the next turn", { tags: ["CHAT-039"], platforms: ["web"] }, async ({ screen, hui }) => {
   const { transcript, idle } = chat(screen);
   const ring = screen.getByLabel(/^Context window: \d+% used$/u);
   const usage = screen.getByLabel("Context usage");
@@ -59,7 +59,7 @@ test("The context ring opens Context usage with occupancy, the latest run's toke
   await startSession(screen, hui, "Check context usage", ["A short turn"]);
 
   await ring.tap();
-  await expect(usage).toHaveText(/Context window\s*\S+ \/ \S+ · \d+%.*Latest run tokens\s*Input\s*\S+\s*Output\s*\S+\s*Est\. cost\s*\$\d+\.\d\d\s*Compact now/isu);
+  await expect(usage).toHaveText(/Context window\s*\S+ \/ \S+ · \d+%.*System prompt\s+\S+\s+\d+%.*Tool definitions\s+\d[\d,]* tools\s+\S+\s+\d+%.*Conversation\s+\d+ messages\s+\S+\s+\d+%.*Category breakdown is estimated.*Latest run tokens\s*Input\s*\S+\s*Output\s*\S+\s*Est\. cost\s*\$\d+\.\d\d\s*Compact now/isu);
   await expect(compactNow).toBeEnabled();
   await compactNow.tap();
   await expect(chat(screen).compacted).toBeVisible();

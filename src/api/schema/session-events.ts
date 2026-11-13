@@ -7,6 +7,8 @@ import type { Watcher } from "./watchers.ts";
 
 export type CompactionReason = ("manual") | ("threshold") | ("overflow");
 
+export type ContextUsagePart = { "id": ("system") | ("tools") | ("conversation") | ("summary"); "tokens": number; "count"?: number; };
+
 export type QueuedMessage = { "id": string; "text": string; "mode": "followUp"; };
 
 export type RuntimeCommand = { "name": string; "description": string; "source": ("extension") | ("skill") | ("prompt"); };
@@ -19,7 +21,7 @@ export type RuntimeQuestion = ({ "id": string; "method": "select"; "title": stri
 
 export type RuntimeQueue = { "steering": Array<string>; "followUp": Array<string>; "items"?: Array<QueuedMessage>; };
 
-export type RuntimeUsage = { "contextTokens": (number) | (null); "contextWindow": number; "percent": (number) | (null); "inputTokens": number; "outputTokens": number; "costUsd": (number) | (null); "sessionCost"?: SessionCostReport; };
+export type RuntimeUsage = { "contextTokens": (number) | (null); "contextWindow": number; "percent": (number) | (null); "inputTokens": number; "outputTokens": number; "costUsd": (number) | (null); "sessionCost"?: SessionCostReport; "breakdown"?: Array<ContextUsagePart>; };
 
 export type SessionBtwRequest = { "question": string; };
 

@@ -6,6 +6,7 @@
  * the transcript's rows.
  */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
+import { contextBreakdown } from "../lib/context-breakdown.ts";
 import { messageShare, nativeShell, type NativeShell } from "../lib/native-shell.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";
@@ -2271,13 +2272,21 @@ function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => 
   const circumference = 2 * Math.PI * 6.5;
   const warningMix = Math.min(1, Math.max(0, ((percent ?? 0) - 85) / 10));
   const color = (percent ?? 0) >= 85 ? `color-mix(in srgb, var(--warn) ${(1 - warningMix) * 100}%, var(--danger))` : "var(--muted)";
+  const breakdown = contextBreakdown(usage?.breakdown ?? [], usage?.contextTokens ?? 0, usage?.contextWindow ?? 0);
+  const remaining = usage ? usage.contextWindow - (usage.contextTokens ?? 0) : 0;
+  const bar = breakdown.length
+    ? [...breakdown.map((row) => html`<span class="context-usage__bar-segment context-usage__bar-segment--${row.id}" style=${`flex-grow: ${row.tokens}`}></span>`),
+      ...(remaining > 0 ? [html`<span class="context-usage__bar-remaining" style=${`flex-grow: ${remaining}`}></span>`] : [])]
+    : html`<span style=${`width: ${percent ?? 0}%`}></span>`;
   return html`<div class="context-usage" style=${`--ctx-color: ${color}`}><details class="chat-controls__context-picker" @keydown=${closeComposerPicker} @toggle=${positionComposerPicker}>
     <summary class="context-ring" aria-label=${label} title=${label} @click=${prepareComposerPicker}>
       <svg class="context-ring__dial" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle class="context-ring__track" cx="8" cy="8" r="6.5" /><circle class="context-ring__fill" cx="8" cy="8" r="6.5" stroke-dasharray=${circumference.toFixed(2)} stroke-dashoffset=${(circumference * (1 - Math.min(100, Math.max(0, percent ?? 0)) / 100)).toFixed(2)} /></svg>
     </summary>
     <section class="context-usage__popover" popover="manual" aria-label="Context usage">
       <div class="context-usage__header"><span class="context-usage__title">Context window</span><strong class="context-usage__context-value">${usage?.contextTokens === null || usage?.contextTokens === undefined ? (usage?.contextWindow ? `${compactTokens(usage.contextWindow)} · occupancy unavailable` : "Unavailable") : `${compactTokens(usage.contextTokens)} / ${compactTokens(usage.contextWindow)} · ${Math.round(percent ?? 0)}%`}</strong></div>
-      <div class="context-usage__bar" role="progressbar" aria-label="Context window used" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${percent === null || percent === undefined ? nothing : String(Math.round(percent))}><span style=${`width: ${percent ?? 0}%`}></span></div>
+      <div class="context-usage__bar ${breakdown.length ? "context-usage__bar--breakdown" : ""}" role="progressbar" aria-label="Context window used" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${percent === null || percent === undefined ? nothing : String(Math.round(percent))}>${bar}</div>
+      ${breakdown.length ? html`<ul class="context-usage__breakdown">${breakdown.map((row) => html`<li class="context-usage__part context-usage__part--${row.id}"><span class="context-usage__dot"></span><span class="context-usage__part-label">${row.label}</span>${row.detail ? html`<span class="context-usage__part-detail">${row.detail}</span>` : nothing}<span class="context-usage__part-tokens">${compactTokens(row.tokens)}</span><span class="context-usage__part-percent">${Math.round(row.percent)}%</span></li>`)}</ul>
+        <p class="context-usage__note">Category breakdown is estimated</p>` : nothing}
         <div class="context-usage__section-label">Latest run tokens</div>
         ${usage
           ? html`<dl class="context-usage__stats"><div><dt>Input</dt><dd>${compactTokens(usage.inputTokens)}</dd></div><div><dt>Output</dt><dd>${compactTokens(usage.outputTokens)}</dd></div><div><dt>Est. cost</dt><dd>${usage.costUsd === null ? "Unavailable" : `$${usage.costUsd.toFixed(2)}`}</dd></div></dl>`

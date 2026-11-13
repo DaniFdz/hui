@@ -46,10 +46,19 @@ export const SessionCostReport = Type.Object({
 }, { $id: "SessionCostReport" });
 export type SessionCostReport = Static<typeof SessionCostReport>;
 
+/** One kind of content a context holds, as the runtime estimated it: the system prompt, the tool definitions, the
+ * conversation, or the summaries compaction left. `count` is how many tools or messages it covers. */
+export const ContextUsagePart = Type.Object({
+  id: Type.Union([Type.Literal("system"), Type.Literal("tools"), Type.Literal("conversation"), Type.Literal("summary")]),
+  tokens: Type.Number(), count: Type.Optional(Type.Number()),
+}, { $id: "ContextUsagePart" });
+export type ContextUsagePart = Static<typeof ContextUsagePart>;
+
 export const RuntimeUsage = Type.Object({
   contextTokens: Type.Union([Type.Number(), Type.Null()]), contextWindow: Type.Number(), percent: Type.Union([Type.Number(), Type.Null()]),
   inputTokens: Type.Number(), outputTokens: Type.Number(), costUsd: Type.Union([Type.Number(), Type.Null()]),
   sessionCost: Type.Optional(SessionCostReport),
+  breakdown: Type.Optional(Type.Immutable(Type.Array(ContextUsagePart))),
 }, { $id: "RuntimeUsage" });
 export type RuntimeUsage = Static<typeof RuntimeUsage>;
 

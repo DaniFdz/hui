@@ -31,6 +31,11 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   reasoning), displayed once on its last text/reasoning block (or last tool call when no text exists). Missing values
   remain absent; HUI never estimates per-fragment tokens or historical duration.
   Live timings survive browser reconnects, not a PI runtime/gateway restart.
+- The composer's context ring opens Context usage: the window occupancy over a stacked bar of what the context carries,
+  and the estimated split between the system prompt, the tool definitions (with how many tools), the conversation (with
+  how many messages) and the summaries compaction left. The latest run's tokens, cost and Compact now stay below it. The
+  split fits the runtime's measured occupancy and is labelled as an estimate; a runtime that reports no split draws the
+  plain bar, as does a bot's chat whose request its memory rewrites instead of sending the history (OptChat).
 
 - Session search is the field directly below the sidebar header; it filters the
   session list and is not duplicated in the Sessions toolbar or a bottom footer.
