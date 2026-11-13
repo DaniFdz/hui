@@ -1780,15 +1780,19 @@ function renderComposer(props: HomeProps) {
   const booting = props.opening || props.session?.status === "starting";
   // Unreachable, the session runs elsewhere: drafting stays open, sending waits.
   const saved = props.connection === "saved" || props.connection === "outdated";
+  const savedCopy = props.connection === "saved" && props.savedCopy !== undefined;
   const unreachable = props.session && !saved ? unreachableHost(props.session) : undefined;
   const disconnected = props.connection !== "live" || unreachable !== undefined;
-  // One status lane under the composer: the chat never repeats it in the transcript.
-  const connectionStatus = saved
-    ? "Saved conversation · draft preserved. Send waits for a live connection."
-    : unreachable
-      ?? (props.connection === "reconnecting" ? "Reconnecting…" : props.connection === "stopped" ? props.connectionNote || "Stream stopped." : undefined);
-  // A saved copy offers no action it cannot honour, and nothing is retrying there.
-  const reconnecting = !saved && (props.session?.status === "reconnecting" || (unreachable === undefined && props.connection === "reconnecting"));
+  // One status lane under the composer: a cached copy says the live connection is still being sought, including the
+  // scheduled retry, and spins while it does. An outdated page has nothing to retry.
+  const connectionStatus = savedCopy
+    ? props.connectionNote || "Saved conversation · waiting for the live connection."
+    : saved
+      ? "Saved conversation · draft preserved. Send waits for a live connection."
+      : unreachable
+        ?? (props.connection === "reconnecting" ? "Reconnecting…" : props.connection === "stopped" ? props.connectionNote || "Stream stopped." : undefined);
+  // A saved copy offers no action it cannot honour; its own live request is retrying.
+  const reconnecting = savedCopy || (!saved && (props.session?.status === "reconnecting" || (unreachable === undefined && props.connection === "reconnecting")));
   const reconnect = !saved && props.session?.status === "disconnected";
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
@@ -2676,7 +2680,8 @@ function projectedRows(transcript: readonly TranscriptItem[]): readonly ChatProj
 function renderTranscript(props: HomeProps, session: SessionView) {
   const rows = projectedRows(props.transcript);
   const start = transcriptWindowStart(rows.length, props.transcriptWindowStart);
-  const markers = props.opening || session.status === "starting" ? [] : conversationMarkers(rows);
+  const loadingConversation = props.opening || session.status === "starting";
+  const markers = loadingConversation ? [] : conversationMarkers(rows);
   const reveal = (messageId: string) => {
     const row = rowOfMessage(rows, messageId);
     return row >= 0 && row < start ? props.onShowEarlier(row) : undefined;
@@ -2700,7 +2705,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                   <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript" data-window-start=${start}
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}>
                     ${positionRail({ sessionId: session.id, markers, onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
-                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}${renderQuestion(props)}</div>
+                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers && !loadingConversation ? renderWatcherActivity(props.watchers) : nothing}${renderQuestion(props)}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>

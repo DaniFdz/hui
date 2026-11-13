@@ -605,16 +605,40 @@ test("a dropped stream says so once under the composer, and a stopped one keeps 
   assert.doesNotMatch(stopped, /session-run-spinner/u, "nothing is retrying, so nothing spins");
 });
 
-test("a saved offline copy says so once and offers no Reconnect it cannot honour", async () => {
+test("a saved offline copy keeps its transcript, spins and says when the live request retries", async () => {
   const saved = await renderWorkerSession("disconnected", { connection: "saved", connectionNote: "Reconnecting; your draft stays on this device.", savedCopy: { savedAt: "2026-10-01T10:00:00.000Z", truncated: true } });
-  assert.match(saved, /<span class="agent-chat__composer-status-text">Saved conversation · draft preserved\. Send waits for a live connection\.<\/span>/u);
-  assert.doesNotMatch(saved, /reconnect-session|session-run-spinner/u, "nothing is retrying and there is no worker to reconnect");
+  assert.match(saved, /<span class="agent-chat__composer-status-text">Reconnecting; your draft stays on this device\.<\/span>/u);
+  assert.match(saved, /agent-chat__composer-status-icon[^>]*><span class="session-run-spinner">/u, "the cached copy says the live connection is still being sought");
+  assert.doesNotMatch(saved, /reconnect-session/u, "there is no worker to reconnect");
   assert.match(saved, /<div class="chat-composer-neighbor-card chat-composer-neighbor-card--info chat-saved-copy-notice" role="status">/u, "the copy is a neighbor card above the composer, not text over the chat");
   assert.match(saved, /<strong>Saved conversation · [^<]+<\/strong>/u);
   assert.match(saved, /<span>Only recent messages are saved\.<\/span>/u, "the reading copy still says how much of it was kept");
   assert.match(saved, /<button type="button" class="btn btn--sm" @click=>Forget saved conversations<\/button>/u);
-  assert.doesNotMatch(saved, /Reconnecting; your draft stays on this device/u, "the band under the composer already says the draft stays");
+  assert.equal(saved.match(/Reconnecting; your draft stays on this device\./gu)?.length, 1, "the status lives once under the composer");
   assert.doesNotMatch(saved, /transcript__note--status/u, "nothing sits above the transcript");
+
+  const retrying = await renderWorkerSession("disconnected", { connection: "saved", connectionNote: "HUI did not answer. Trying again in 10 seconds…", savedCopy: { savedAt: "2026-10-01T10:00:00.000Z", truncated: false } });
+  assert.match(retrying, /<span class="agent-chat__composer-status-text">HUI did not answer\. Trying again in 10 seconds…<\/span>/u, "a cached copy shows the scheduled retry");
+  assert.match(retrying, /agent-chat__composer-status-icon[^>]*><span class="session-run-spinner">/u);
+  assert.match(retrying, /chat-saved-copy-notice/u);
+});
+
+test("watchers stay out of the thread while a session loads and return once it is live", async () => {
+  const watchers = {
+    watchers: [{ id: "w1", purpose: "Wait for CI", target: "", outcome: "", command: "sleep 60", logPath: "/tmp/w.log", state: "running", pid: 123, startedAt: new Date().toISOString(), lastLine: "waiting" }],
+    pendingId: "", log: null, expanded: new Set<string>(), onGroupToggle: () => {}, onToggle: () => {}, onStop: () => {}, onRestart: () => {}, onDismiss: () => {},
+  };
+  for (const [label, overrides] of [
+    ["opening", { opening: true, transcript: [], watchers }],
+    ["starting empty", { transcript: [], watchers }],
+    ["starting with history", { watchers }],
+  ] as const) {
+    const html = await renderWorkerSession(label === "opening" ? "idle" : "starting", overrides as Record<string, unknown>);
+    assert.doesNotMatch(html, /Background watchers|Wait for CI/u, `${label} keeps watchers out of the loading thread`);
+  }
+  const live = await renderWorkerSession("idle", { watchers });
+  assert.match(live, /aria-label="Background watchers"/u);
+  assert.match(live, /Wait for CI/u);
 });
 
 test("a saved copy taken today says when, without repeating today's date", async () => {
