@@ -77,7 +77,41 @@ func selfTest() throws {
         try check(isReady(phrases.joined(separator: "\n").uppercased()
             .replacingOccurrences(of: " ", with: "\n  "), for: phase), "case/line normalization failed")
     }
+    // CI's cold first capture arrived after the deadline, but the matcher was already correct.
+    let ciConnectOCR = "3:52\nC\nConnect to HUI\nThe address of the gateway you want this\napp to show.\nGATEWAY URL\nhttps://my-machine.example.ts.net\nConnect"
+    try check(isReady(ciConnectOCR, for: "connect"), "CI Connect OCR did not match")
     print("Vision oracle self-test passed (synthetic images only; not app proof)")
+}
+
+// Both preparation and proof use this exact native capture path. A warm-up frame is never ready evidence.
+func captureScreenshot(udid: String, path: URL, label: String) throws {
+    let started = ProcessInfo.processInfo.systemUptime
+    print("\(label) screenshot started at uptime=\(started): \(path.path)")
+    fflush(stdout)
+    let capture = Process()
+    capture.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+    capture.arguments = ["simctl", "io", udid, "screenshot", path.path]
+    do {
+        try capture.run()
+    } catch {
+        throw Failure(description: "\(label) screenshot transport could not start at uptime=\(ProcessInfo.processInfo.systemUptime): \(error)")
+    }
+    capture.waitUntilExit()
+    let completed = ProcessInfo.processInfo.systemUptime
+    print("\(label) screenshot completed at uptime=\(completed), transport=\(completed - started) s, status=\(capture.terminationStatus)")
+    fflush(stdout)
+    guard capture.terminationStatus == 0 else {
+        throw Failure(description: "\(label) screenshot failed with status \(capture.terminationStatus) at uptime=\(completed)")
+    }
+}
+
+func warmUp(udid: String, directory: URL) throws {
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let frame = directory.appendingPathComponent("capture-warm-up.png")
+    try captureScreenshot(udid: udid, path: frame, label: "warm-up")
+    // Exercise the actual Simulator image dimensions too; synthetic Vision tests alone did not warm transport.
+    _ = try autoreleasepool { try recognizeFile(frame) }
+    print("Native capture/Vision warm-up completed at uptime=\(ProcessInfo.processInfo.systemUptime); not app readiness proof")
 }
 
 func waitForReady(udid: String, directory: URL, phase: String) throws {
@@ -85,36 +119,37 @@ func waitForReady(udid: String, directory: URL, phase: String) throws {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let latest = directory.appendingPathComponent("\(phase)-latest.png")
     let ready = directory.appendingPathComponent("\(phase)-ready.png")
-    // Preserve the old ~24 s per-phase budget; compilation and self-test happen before the app launches.
+    // Keep 24 s from wait entry through capture AND OCR; never restart or pause this clock.
+    // Native first-use transport/Vision preparation must finish before the workflow launches HUI.
     let deadline = ProcessInfo.processInfo.systemUptime + 24
+    print("\(phase) readiness deadline at uptime=\(deadline)")
     var lastText = ""
     while ProcessInfo.processInfo.systemUptime < deadline {
-        let capture = Process()
-        capture.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        capture.arguments = ["simctl", "io", udid, "screenshot", latest.path]
-        try capture.run()
-        capture.waitUntilExit()
-        guard capture.terminationStatus == 0 else {
-            throw Failure(description: "\(phase) screenshot failed with status \(capture.terminationStatus)")
-        }
+        try captureScreenshot(udid: udid, path: latest, label: phase)
+        let ocrStarted = ProcessInfo.processInfo.systemUptime
         lastText = try autoreleasepool { try recognizeFile(latest) }
-        if ProcessInfo.processInfo.systemUptime < deadline && isReady(lastText, for: phase) {
+        let observedAt = ProcessInfo.processInfo.systemUptime
+        let matches = isReady(lastText, for: phase)
+        print("\(phase) OCR completed at uptime=\(observedAt), OCR=\(observedAt - ocrStarted) s, matches=\(matches), deadline=\(deadline)")
+        if observedAt < deadline && matches {
             try FileManager.default.copyItem(at: latest, to: ready)
             print("\(phase) rendered boot content ready: \(ready.path)\n\(lastText)")
             return
         }
     }
-    throw Failure(description: "\(phase) did not render \(required[phase]!) within 24 s. Last OCR:\n\(lastText)")
+    throw Failure(description: "\(phase) did not observe \(required[phase]!) within 24 s (capture + OCR deadline uptime=\(deadline), now=\(ProcessInfo.processInfo.systemUptime)). Last OCR:\n\(lastText)")
 }
 
 do {
     let args = Array(CommandLine.arguments.dropFirst())
     if args == ["self-test"] {
         try selfTest()
+    } else if args.count == 3 && args[0] == "warm-up" {
+        try warmUp(udid: args[1], directory: URL(fileURLWithPath: args[2]))
     } else if args.count == 4 && args[0] == "wait" {
         try waitForReady(udid: args[1], directory: URL(fileURLWithPath: args[2]), phase: args[3])
     } else {
-        throw Failure(description: "Usage: ios-smoke self-test | wait <udid> <shots-directory> <connect|gateway>")
+        throw Failure(description: "Usage: ios-smoke self-test | warm-up <udid> <shots-directory> | wait <udid> <shots-directory> <connect|gateway>")
     }
 } catch {
     fputs("ios-smoke: \(error)\n", stderr)
