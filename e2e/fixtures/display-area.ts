@@ -81,12 +81,17 @@ export function displayBox(box: Box, frame: Box, ratio: number): Box {
   return { ...box, x: frame.x / ratio + box.x, y: frame.y / ratio + box.y };
 }
 
-/** Rejects emulated metrics and unsafe native fitting before any DOM box can be mistaken for physical evidence. */
-export function validateNativeFrame(safe: ReturnType<typeof parseDisplay>, frame: Box, metrics: PageMetrics): void {
+/** Matches the live CSS viewport to its attached native frame, including an IME-resized frame. */
+function validateViewport(frame: Box, metrics: PageMetrics): void {
   const { ratio } = metrics;
   if (!(ratio > 0) || metrics.scale !== 1 || Math.abs(frame.width / ratio - metrics.width) > 1 || Math.abs(frame.height / ratio - metrics.height) > 1) {
     throw new Error(`native frame / CSS viewport mismatch: ${JSON.stringify({ frame, metrics })}`);
   }
+}
+
+/** Rejects emulated metrics and unsafe native fitting before any DOM box can be mistaken for physical evidence. */
+export function validateNativeFrame(safe: ReturnType<typeof parseDisplay>, frame: Box, metrics: PageMetrics): void {
+  validateViewport(frame, metrics);
   if (frame.y < safe.top || frame.y + frame.height > safe.bottom || frame.x < safe.left || frame.x + frame.width > safe.right) {
     throw new Error(`WebView overlaps system chrome: ${JSON.stringify({ frame, safe })}`);
   }
@@ -140,19 +145,22 @@ export function androidDisplay(run = adb, targets = nativeTargets) {
       requireEmulator();
       rememberRotation();
       run("shell", "settings", "put", "system", "accelerometer_rotation", "0");
-      if (orientation === "portrait") refreshConfiguration(0);
-      else setRotation(1);
+      setRotation(orientation === "portrait" ? 0 : 1);
     },
     prepare() {
       requireEmulator();
+      // parseDisplay's safe-area oracle supports portrait top/bottom bars only. Refuse rather than rotate a caller.
+      if (rotationOf(displayState()) !== 0) throw new Error("native safe display measurement requires portrait rotation; prepare preserves the selected orientation");
       if (!baseline) {
-        if (!rotation) {
-          rememberRotation();
-          refreshConfiguration(0);
-        }
+        rememberRotation();
+        refreshConfiguration(0);
         baseline = parseDisplay(displayState());
       }
       refusePhoneNotificationPrompt(run);
+    },
+    async viewportSize(metrics: PageMetrics): Promise<{ width: number; height: number }> {
+      validateViewport(nativeFrame(await targets()), metrics);
+      return { width: metrics.width, height: metrics.height };
     },
     async target(): Promise<string> {
       const target = attachedNativeTarget(await targets());
