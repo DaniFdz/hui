@@ -9,6 +9,8 @@ import { LitElement, html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type { LocalProvider, LocalProviderSnapshot } from "../../api/schema/local-providers.ts";
 import { loadLocalProviders, removeLocalProvider, saveLocalProvider, startLocalProvider } from "../../api/local-providers.ts";
+import { loadModelMetrics } from "../../api/model-metrics.ts";
+import type { ModelMetric, ModelMetricSummary } from "../../api/schema/model-metrics.ts";
 import { loadViewAssets } from "../../lib/view-assets.ts";
 
 loadViewAssets(() => import("../../styles/providers.css"), () => import("../../styles/local-providers.css"));
@@ -19,6 +21,22 @@ type Draft = { startCommand: string; healthUrl: string; timeout: string };
 
 function timeoutSeconds(provider: LocalProvider): number {
   return Math.round((provider.readyTimeoutMs ?? DEFAULT_TIMEOUT_SECONDS * 1000) / 1000);
+}
+
+function tokPerSecond(value: number | undefined): string {
+  return value === undefined ? "—" : `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} tok/s`;
+}
+
+function seconds(ms: number | undefined): string {
+  return ms === undefined ? "—" : ms < 10_000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms / 1000)} s`;
+}
+
+function count(value: number | undefined): string {
+  return value === undefined ? "—" : value.toLocaleString();
+}
+
+function checkedAt(at: number): string {
+  return new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function modelCount(count: number): string {
@@ -36,10 +54,17 @@ export class HuiLocalProviderSettings extends LitElement {
   #confirm = "";
   #poll?: ReturnType<typeof setTimeout>;
   #generation = 0;
+  #metricsFor?: string;
+  #metrics?: ModelMetricSummary;
+  #metricsError = "";
+  #metricsBusy = false;
+  #metricsGeneration = 0;
+  #metricsPoll?: ReturnType<typeof setTimeout>;
+  #metricsAbort?: AbortController;
 
   override createRenderRoot() { return this; }
   override connectedCallback() { super.connectedCallback(); void this.#refresh(); }
-  override disconnectedCallback() { super.disconnectedCallback(); clearTimeout(this.#poll); this.#generation++; }
+  override disconnectedCallback() { super.disconnectedCallback(); clearTimeout(this.#poll); clearTimeout(this.#metricsPoll); this.#metricsAbort?.abort(); this.#metricsGeneration++; this.#generation++; }
 
   #dialog() { return this.querySelector<HTMLDialogElement>(".hui-local-provider-dialog"); }
 
@@ -59,6 +84,7 @@ export class HuiLocalProviderSettings extends LitElement {
       this.#error = "";
       // A provider that disappeared from the list closes its editor.
       if (this.#editing && !next.providers.some((provider) => provider.id === this.#editing)) this.#closeDialog();
+      if (this.#metricsFor && !next.providers.some((provider) => provider.id === this.#metricsFor)) this.#closeMetrics();
     } catch (error) {
       if (generation === this.#generation) this.#error = error instanceof Error ? error.message : "Local model servers could not be loaded.";
     } finally {
@@ -97,6 +123,65 @@ export class HuiLocalProviderSettings extends LitElement {
     if (id) void this.updateComplete.then(() => {
       if (this.isConnected) this.querySelector<HTMLButtonElement>(`[data-edit="${id}"]`)?.focus();
     });
+  }
+
+  #metricsDialog() { return this.querySelector<HTMLDialogElement>(".hui-model-metrics-dialog"); }
+
+  async #openMetrics(provider: LocalProvider) {
+    this.#metricsFor = provider.id;
+    this.#metrics = undefined;
+    this.#metricsError = "";
+    this.#metricsBusy = true;
+    this.requestUpdate();
+    await this.updateComplete;
+    const dialog = this.#metricsDialog();
+    if (dialog && !dialog.open) dialog.showModal();
+    await this.#loadMetrics();
+  }
+
+  #closeMetrics() {
+    const id = this.#metricsFor;
+    clearTimeout(this.#metricsPoll);
+    this.#metricsPoll = undefined;
+    this.#metricsAbort?.abort();
+    this.#metricsAbort = undefined;
+    this.#metricsGeneration++;
+    this.#metricsDialog()?.close();
+    this.#metricsFor = undefined;
+    this.#metrics = undefined;
+    this.#metricsError = "";
+    this.#metricsBusy = false;
+    this.requestUpdate();
+    if (id) void this.updateComplete.then(() => {
+      if (this.isConnected) this.querySelector<HTMLButtonElement>(`[data-metrics="${id}"]`)?.focus();
+    });
+  }
+
+  async #loadMetrics() {
+    const id = this.#metricsFor;
+    if (!id) return;
+    const generation = ++this.#metricsGeneration;
+    this.#metricsAbort?.abort();
+    const controller = new AbortController();
+    this.#metricsAbort = controller;
+    this.#metricsBusy = true;
+    this.requestUpdate();
+    try {
+      const metrics = await loadModelMetrics(id, 24 * 60, controller.signal);
+      if (generation !== this.#metricsGeneration || this.#metricsFor !== id || !this.isConnected) return;
+      this.#metrics = metrics;
+      this.#metricsError = "";
+    } catch (error) {
+      if (controller.signal.aborted || generation !== this.#metricsGeneration || !this.isConnected) return;
+      this.#metricsError = error instanceof Error ? error.message : "Model metrics could not be loaded.";
+    } finally {
+      if (generation === this.#metricsGeneration && this.#metricsFor === id) {
+        this.#metricsBusy = false;
+        clearTimeout(this.#metricsPoll);
+        this.#metricsPoll = setTimeout(() => void this.#loadMetrics(), 5_000);
+        this.requestUpdate();
+      }
+    }
   }
 
   async #start(provider: LocalProvider) {
@@ -249,6 +334,69 @@ export class HuiLocalProviderSettings extends LitElement {
     </dialog>`;
   }
 
+  #trend(samples: readonly ModelMetric[]) {
+    const values = samples.map((sample) => sample.tokensPerSecond).filter((value): value is number => value !== undefined);
+    if (!values.length) return nothing;
+    const width = 280;
+    const height = 48;
+    const max = Math.max(1, ...values);
+    const point = (value: number, index: number) => `${(values.length === 1 ? width / 2 : (index / (values.length - 1)) * width).toFixed(1)},${(height - 4 - (value / max) * (height - 8)).toFixed(1)}`;
+    const points = values.map(point).join(" ");
+    const first = values[0] ?? 0;
+    const last = values[values.length - 1] ?? 0;
+    return html`<svg class="hui-model-metrics__trend" viewBox="0 0 ${width} ${height}" role="img" aria-label=${`Generation speed over the last ${values.length} requests, from ${tokPerSecond(first)} to ${tokPerSecond(last)}`} preserveAspectRatio="none">
+      <line x1="0" y1="${height - 2}" x2="${width}" y2="${height - 2}" class="hui-model-metrics__axis" />
+      <polyline points=${points} fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" />
+      ${values.length === 1 ? html`<circle cx=${point(first, 0).split(",")[0]} cy=${point(first, 0).split(",")[1]} r="2.5" fill="currentColor" />` : nothing}
+    </svg>`;
+  }
+
+  #metricsTemplate(provider: LocalProvider) {
+    const metrics = this.#metrics;
+    if (this.#metricsBusy && !metrics) return html`<p class="hui-local-provider-note">Loading model metrics…</p>`;
+    if (!metrics) return nothing;
+    const last = metrics.last;
+    return html`
+      <div class="hui-model-metrics__meta" data-testid="model-metrics-meta">
+        <span>Last 24 hours · ${metrics.requests} completed request${metrics.requests === 1 ? "" : "s"}</span>
+        ${last ? html`<span>Last ${checkedAt(last.at)}</span>` : nothing}
+      </div>
+      ${last ? html`<div class="hui-model-metrics__last" data-testid="model-metrics-last">
+        <div><span>Generation</span><strong>${tokPerSecond(last.tokensPerSecond)}</strong></div>
+        <div><span>Time to first token</span><strong>${seconds(last.ttftMs)}</strong></div>
+        <div><span>Prompt (est.)</span><strong>${tokPerSecond(last.promptTokensPerSecond)}</strong></div>
+        <div><span>Tokens in / out</span><strong>${count(last.inputTokens)} / ${count(last.outputTokens)}</strong></div>
+      </div>` : html`<p class="hui-local-provider-empty">No completed model requests for ${provider.name} in the last 24 hours. Send a message on this provider, then refresh.</p>`}
+      ${metrics.requests ? html`
+        <dl class="hui-model-metrics__summary">
+          <div><dt>Average</dt><dd>${tokPerSecond(metrics.average.tokensPerSecond)}</dd></div>
+          <div><dt>p50</dt><dd>${tokPerSecond(metrics.p50.tokensPerSecond)}</dd></div>
+          <div><dt>p95</dt><dd>${tokPerSecond(metrics.p95.tokensPerSecond)}</dd></div>
+          <div><dt>Avg. TTFT</dt><dd>${seconds(metrics.average.ttftMs)}</dd></div>
+          <div><dt>Prompt est.</dt><dd>${tokPerSecond(metrics.average.promptTokensPerSecond)}</dd></div>
+        </dl>
+        ${this.#trend(metrics.samples)}
+        <div class="hui-model-metrics__recent"><table><thead><tr><th>When</th><th>Model</th><th>tok/s</th><th>TTFT</th><th>Out</th></tr></thead><tbody>
+          ${[...metrics.samples].slice(-8).reverse().map((sample) => html`<tr><td>${checkedAt(sample.at)}</td><td><code>${sample.model}</code></td><td>${tokPerSecond(sample.tokensPerSecond)}</td><td>${seconds(sample.ttftMs)}</td><td>${count(sample.outputTokens)}</td></tr>`)}
+        </tbody></table></div>` : nothing}
+      <p class="hui-local-provider-help">Measured by HUI from each model request's start to its first token and completion. Prompt throughput divides new input tokens by time to first token, so it includes queue and prefill and is an estimate. HUI keeps the last 5,000 completed requests.</p>`;
+  }
+
+  #metricsDialogTemplate() {
+    const provider = this.#snapshot?.providers.find((entry) => entry.id === this.#metricsFor);
+    if (!provider) return nothing;
+    return html`<dialog class="hui-provider-dialog hui-local-provider-dialog hui-model-metrics-dialog" data-testid="local-provider-metrics-dialog" aria-labelledby="hui-model-metrics-dialog-title"
+      @cancel=${(event: Event) => { event.preventDefault(); this.#closeMetrics(); }}>
+      <div class="hui-provider-heading">
+        <h3 id="hui-model-metrics-dialog-title">Model metrics · ${provider.name}</h3>
+        <button class="btn" aria-label="Close model metrics" @click=${() => this.#closeMetrics()}>✕</button>
+      </div>
+      <div class="hui-model-metrics__toolbar"><span>HUI's measurements, not the model server's counters.</span><button class="btn" ?disabled=${this.#metricsBusy} @click=${() => void this.#loadMetrics()}>Refresh</button></div>
+      ${this.#metricsError ? html`<p role="alert" class="hui-provider-error">${this.#metricsError}</p>` : nothing}
+      ${this.#metricsTemplate(provider)}
+    </dialog>`;
+  }
+
   #entry(provider: LocalProvider) {
     const busy = this.#busy === provider.id;
     const startable = provider.configured && provider.inPi && provider.status !== "online" && provider.status !== "starting";
@@ -264,6 +412,7 @@ export class HuiLocalProviderSettings extends LitElement {
         </div>
         <div class="hui-local-provider-row__actions">
           <button class="btn primary" ?disabled=${!startable || busy} @click=${() => void this.#start(provider)}>${provider.status === "starting" ? "Starting…" : provider.status === "online" ? "Running" : "Start server"}</button>
+          <button class="btn" data-metrics=${provider.id} @click=${() => void this.#openMetrics(provider)}>Metrics</button>
           <button class="btn" data-edit=${provider.id} ?disabled=${busy || !provider.inPi} @click=${() => void this.#edit(provider)}>${provider.configured ? "Edit command" : "Set up start command"}</button>
           ${provider.configured ? html`<button class="btn" ?disabled=${busy} @click=${() => { this.#confirm = provider.id; this.#error = ""; this.requestUpdate(); }}>Remove command</button>` : nothing}
         </div>
@@ -292,7 +441,8 @@ export class HuiLocalProviderSettings extends LitElement {
           : html`<p class="hui-local-provider-empty">No custom providers yet. Add one with its base URL and models to PI's <code>models.json</code> (usually <code>~/.pi/agent/models.json</code>), then come back here to give it a start command.</p>`}
       </div>
     </details>
-    ${this.#dialogTemplate()}`;
+    ${this.#dialogTemplate()}
+    ${this.#metricsDialogTemplate()}`;
   }
 }
 

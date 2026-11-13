@@ -18,6 +18,7 @@ export type {
 } from "../api/session-events.ts";
 import type { CompactionReason, RuntimeCommand, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage } from "../api/session-events.ts";
 import type { CallRecord } from "../calls-format.ts";
+import type { ModelMetric } from "../api/model-metrics.ts";
 
 export type RuntimeQuestionResponse = { value: string } | { confirmed: boolean };
 
@@ -37,6 +38,8 @@ export type RuntimeEvent =
   | { type: "compaction_start"; reason: CompactionReason; blocking?: false; background?: true }
   /** `willRetry`: PI resumes the overflowed turn itself after a summary. */
   | { type: "compaction_end"; reason: CompactionReason; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
+  /** A completed model request measured by HUI: time to first token, generation throughput and usage. */
+  | { type: "model_metric"; metric: ModelMetric }
   /** The agent stopped entirely. Distinct from `turn_end`: a turn can end while
    * the agent is still working, and the prompt guard follows this one. */
   | { type: "settled"; historyRefreshed?: boolean }

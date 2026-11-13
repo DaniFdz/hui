@@ -10,6 +10,7 @@ import type {
 /** One question's answer from the questionnaire card: chosen labels and typed text. */
 export type QuestionnaireReply = { selected: readonly string[]; custom?: string };
 import type { CallRecord } from "./schema/calls.ts";
+import type { ModelMetric } from "./schema/model-metrics.ts";
 import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionThinkingResponse, SideQuestionResult, SubagentTaskView } from "./schema/session-events.ts";
 import type { TaskSuggestion } from "./schema/task-suggestions.ts";
 import type { Watcher } from "./schema/watchers.ts";
@@ -93,6 +94,7 @@ export type RuntimeEvent =
   | { type: "turn_end" }
   | { type: "compaction_start"; reason: RuntimeCompaction["reason"]; blocking?: false; background?: true }
   | { type: "compaction_end"; reason: RuntimeCompaction["reason"]; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
+  | { type: "model_metric"; metric: ModelMetric }
   | { type: "settled"; historyRefreshed?: boolean }
   | { type: "error"; message: string };
 

@@ -4,6 +4,7 @@ import { QuestionnaireQuestion, SessionConnectResponse, SessionStatus, SessionVi
 import { CallRecord } from "./calls.ts";
 import { TaskSuggestion } from "./task-suggestions.ts";
 import { Watcher } from "./watchers.ts";
+import { ModelMetric } from "./model-metrics.ts";
 
 export const TranscriptAttachment = Type.Object({
   name: Type.String(), kind: Type.Union([Type.Literal("image"), Type.Literal("file")]), mimeType: Type.Optional(Type.String()), url: Type.Optional(Type.String()),
@@ -133,6 +134,7 @@ export const SessionEvent = Type.Union([
     type: Type.Literal("compaction_end"), reason: CompactionReason,
     outcome: Type.Union([Type.Literal("done"), Type.Literal("failed"), Type.Literal("cancelled")]), willRetry: Type.Boolean(), message: Type.Optional(Type.String()),
   }),
+  Type.Object({ type: Type.Literal("model_metric"), metric: ModelMetric }),
   Type.Object({ type: Type.Literal("settled"), historyRefreshed: Type.Optional(Type.Boolean()) }),
   Type.Object({ type: Type.Literal("error"), message: Type.String() }),
 ], { $id: "SessionEvent" });
