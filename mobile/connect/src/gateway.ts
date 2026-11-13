@@ -6,12 +6,29 @@
 
 /** An address that answers with something else. */
 export const REFUSED = "This address doesn't answer as a HUI gateway.";
+/** The gateway accepted the address but not the name chosen for it. */
+export const NAME_NOT_SAVED = "The gateway refused its name. Clear the name to connect without saving it.";
 /** A gateway with no release version (a development checkout). */
 export const DEVELOPMENT_GATEWAY = "Development gateway: its version is unverified.";
 /** Shown on the native side and here while a chosen gateway loads. */
 export const CONNECTING = "Connecting to HUI…";
 export const CHANGE_GATEWAY = "Change gateway";
 export const NOT_AN_ADDRESS = "Enter an http:// or https:// address.";
+
+/** The name a phone may give the gateway: the name every client sees, bounded as the gateway bounds it. */
+export function normalizeGatewayName(raw: string): string {
+  return raw.trim().slice(0, 60);
+}
+
+/**
+ * The gateway's settings with the chosen name, or `null` when the read was not a settings document. The page sends this
+ * whole object back: `PUT /__hui/settings` replaces missing fields with defaults, so sending only `{ name }` would reset
+ * the gateway's other settings.
+ */
+export function settingsWithName(settings: unknown, name: string): Record<string, unknown> | null {
+  if (typeof settings !== "object" || settings === null || Array.isArray(settings)) return null;
+  return { ...(settings as Record<string, unknown>), name: normalizeGatewayName(name) };
+}
 
 /**
  * The gateway address a typed value names, without trailing slashes, or `null` when it isn't an http(s) URL. A query, a

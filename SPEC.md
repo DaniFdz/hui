@@ -3194,7 +3194,11 @@ popover, and if they click on the popover they navigate to the link".
 
 The iPhone app is a client of one HUI gateway at a time. Its address comes from
 the Connect screen or the `-HUIGatewayURL` launch argument, and the app
-remembers the last one that answered. Before it shows the session list, it asks
+remembers the last one that answered. The Connect screen also offers the
+gateway's own **Name**, the name every client sees: an empty field keeps the
+name the gateway reports, and a typed name is saved through
+`PUT /__hui/settings` (after reading the current document) before the gateway
+loads. Before it shows the session list, it asks
 the gateway for its version: a gateway older or newer than the app gets a notice
 naming both versions, and a development gateway, which has no version, gets
 "Development gateway: its version is unverified." An address that answers with
