@@ -91,6 +91,7 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "swarm": { kind: "automate" },
   "task-suggestions": { kind: "automate" },
   "terminal-font": { kind: "automate" },
+  "phone": { kind: "external", reason: "Needs a real phone: every emulator and simulator reports zero safe-area insets, so the chrome a cutout covers is only readable on a device." },
   "update": { kind: "external", reason: "Installs a released package and restarts the gateway." },
   "update-notice": { kind: "automate" },
   "usage": { kind: "visual", reason: "Judges the report's charts, legends and rankings with seeded usage the shared suite's real turns cannot produce; the behaviour is automated in e2e/tests/page/usage.e2e.ts." },

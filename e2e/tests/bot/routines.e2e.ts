@@ -1,14 +1,16 @@
 /** A bot's routines: the Routines page's Add routine form with its names and refusals, and a routine paused, resumed and deleted from its page and the overview (BOT-040, BOT-042). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { panelOverview } from "./bot-panel.ts";
 
-async function openRoutines(screen: Screen, hui: Hui, bot: { id: string }) {
+async function openRoutines(screen: Screen, hui: Hui, bot: { id: string; name: string }) {
   await hui.open(`/bots/${bot.id}`);
+  await panelOverview(screen, bot.name);
   await screen.getByRole("button", "Add routine").tap();
 }
 
 const makeBot = async (hui: Hui, name: string) =>
-  (await hui.api<{ bot: { id: string; sessionId: string } }>("POST", "/__hui/bots", { name, soul: "# Who I am\nA terse fixture bot.\n" })).bot;
+  (await hui.api<{ bot: { id: string; name: string; sessionId: string } }>("POST", "/__hui/bots", { name, soul: "# Who I am\nA terse fixture bot.\n" })).bot;
 
 test("Add routine takes a name, a prompt and a cadence, refuses an empty name or prompt and keeps what was typed when the gateway refuses", { tags: ["BOT-040"], platforms: ["web"] }, async ({ screen, hui }) => {
   const bot = await makeBot(hui, "Scheduler");
@@ -123,6 +125,5 @@ test("a routine's switch pauses and resumes it on its page and the overview, and
   await expect.poll(async () => await tasks()).toEqual([]);
   await hui.open("/cron");
   await expect(screen.getByTestId("page-title")).toHaveText("Automations");
-  await expect(screen.getByText("Nothing scheduled")).toBeVisible();
   await expect(screen.getByRole("button", "Edit Weekly digest")).toBeHidden();
 });

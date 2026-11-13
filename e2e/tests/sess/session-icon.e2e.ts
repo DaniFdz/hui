@@ -5,6 +5,7 @@ import { test } from "../../fixtures/hui.ts";
 test("Icon sets a preset, a custom emoji or no icon, and the icon survives a reload", { tags: ["SESS-033"] }, async ({ screen, hui }) => {
   const row = screen.getByLabel("Iconic session, status idle, tool durable, stage investigation");
   const icon = async () => {
+    await hui.sessionList();
     await hui.sessionMenu("Iconic session");
     await screen.getByText("Icon", { exact: true, visible: true }).tap();
   };
@@ -50,6 +51,7 @@ test("the Icon panel's grid and custom emoji entry stay inside a phone screen", 
   };
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open navigation").tap();
+  await hui.sessionList();
   await hui.sessionMenu("Phone icon");
   await screen.getByText("Icon", { exact: true, visible: true }).tap();
   for (const control of [screen.getByRole("button", "Set icon 🦞"), screen.getByRole("button", "Set icon 🎯"), screen.getByRole("button", "No icon"), screen.getByRole("button", "Custom emoji…")]) await inside(control);

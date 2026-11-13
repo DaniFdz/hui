@@ -91,7 +91,7 @@ export class AutomationNotFoundError extends Error {}
 export class AutomationConflictError extends Error {}
 export class AutomationStoreError extends Error {}
 
-type Clock = {
+export type Clock = {
   now: () => number;
   setTimer: (callback: () => void, delay: number) => ReturnType<typeof setTimeout>;
   clearTimer: (timer: ReturnType<typeof setTimeout>) => void;

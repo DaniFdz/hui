@@ -32,18 +32,18 @@ test("HUI commands add btw and side without duplicating runtime names", () => {
   assert.deepEqual(commands.map((command) => command.name), ["update", "clear", "reload", "compact", "btw", "side", "goal", "review"]);
 });
 
-test("a bot's permanent chat offers no /clear or /compact, and runtime copies cannot take their names", () => {
+test("a bot's permanent chat offers /clear but no /compact, and runtime copies cannot take their names", () => {
   const commands = composerCommands([
     { name: "clear", description: "runtime copy", source: "extension" },
     { name: "compact", description: "runtime copy", source: "prompt" },
     { name: "review", description: "Review", source: "skill" },
   ], true, true);
-  assert.deepEqual(commands.map((command) => command.name), ["update", "reload", "btw", "side", "goal", "review"]);
+  assert.deepEqual(commands.map((command) => command.name), ["update", "clear", "reload", "btw", "side", "goal", "review"]);
   assert.deepEqual(composerCommands([], true).map((command) => command.name), ["update", "clear", "reload", "compact", "btw", "side", "goal"]);
-  for (const text of ["/clear", " /clear ", "/clear now", "/compact", "/compact keep the plan"]) {
+  for (const text of ["/compact", "/compact keep the plan"]) {
     assert.match(botChatCommandRefusal(text) ?? "", /permanent chat/u, text);
   }
-  for (const text of ["Explain /clear", "/clearly", "/reload", "/btw what now?", "hello"]) {
+  for (const text of ["Explain /compact", "/compacted", "/clear", "/clear now", "/reload", "/btw what now?", "hello"]) {
     assert.equal(botChatCommandRefusal(text), undefined, text);
   }
 });
@@ -155,7 +155,8 @@ test("sending decides between a HUI command, a refusal and a prompt", () => {
   assert.deepEqual(composerSendAction("/clear everything", idle), { kind: "refuse", note: "Use /clear without arguments or attachments." });
   assert.deepEqual(composerSendAction("/reload", { ...idle, attachments: 1 }), { kind: "refuse", note: "Use /reload without arguments or attachments." });
   assert.deepEqual(composerSendAction("/clear", { ...idle, busy: true }), { kind: "refuse", note: "Finish or stop active work before clearing the session." });
-  assert.deepEqual(composerSendAction("/clear", { ...idle, bot: true }).kind, "refuse");
+  assert.deepEqual(composerSendAction("/clear", { ...idle, bot: true }), { kind: "clear" }, "a bot's chat clears: its memory empties");
+  assert.deepEqual(composerSendAction("/compact", { ...idle, bot: true }).kind, "refuse");
   assert.deepEqual(composerSendAction("/compact keep it", { ...idle, busy: true }), { kind: "compact", instructions: "keep it" });
   assert.deepEqual(composerSendAction("/compact", { ...idle, steering: true }), { kind: "refuse", note: "Finish or stop active work before compacting the session." });
   assert.deepEqual(composerSendAction("/side what now?", idle), { kind: "side", question: "what now?" });

@@ -131,3 +131,19 @@ test("malformed trees, cycles and long names stay bounded", () => {
   assert.match(result.text, /…" \[ref=e1\]$/u);
   assert.equal(renderSnapshot([], new SnapshotRefs()).text, "");
 });
+
+test("a snapshot can be scoped to one subtree and cut at a depth", () => {
+  const nodes = page();
+  const list = nodes.find((node) => node.backendDOMNodeId === 18);
+  assert.ok(list);
+  const scoped = renderSnapshot(nodes, new SnapshotRefs(), { rootId: list.nodeId, pageUrl: "http://127.0.0.1:9/" });
+  assert.equal(scoped.text, "- list\n  - listitem: First");
+
+  const shallow = renderSnapshot(page(), new SnapshotRefs(), { pageUrl: "http://127.0.0.1:9/", maxDepth: 1 });
+  assert.match(shallow.text, /- \[deeper content omitted by depth\]/u);
+  assert.equal(shallow.depthLimited, true);
+  assert.doesNotMatch(shallow.text, /option "Red"/u);
+
+  // A root that is not in the tree renders nothing rather than the whole page.
+  assert.equal(renderSnapshot(nodes, new SnapshotRefs(), { rootId: "missing" }).text, "");
+});

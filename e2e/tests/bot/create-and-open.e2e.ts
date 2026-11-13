@@ -32,7 +32,8 @@ test("New bot creates a bot at once and opens its chat on its centered note and 
   }).toEqual({ centered: true, narrower: true });
   await expect(transcript.getByText(NAME_QUESTION)).toBeVisible();
   await expect.poll(async () => (await note.boundingBox())!.y < (await transcript.getByText(NAME_QUESTION).boundingBox())!.y).toBe(true);
-  await expect.poll(async () => (await hui.api<{ bots: { name: string }[] }>("GET", "/__hui/bots")).bots.length).toBe(2);
+  // Zeta, the new bot, and the seeded Chief of Staff.
+  await expect.poll(async () => (await hui.api<{ bots: { name: string }[] }>("GET", "/__hui/bots")).bots.length).toBe(3);
   const made = screen.getByLabel(/^New Bot,/u);
   await expect(made).toBeVisible();
   await expect.poll(async () => (await made.boundingBox())!.y < (await screen.getByLabel(/^Zeta,/u).boundingBox())!.y).toBe(true);
@@ -57,8 +58,8 @@ test("opening a bot's chat shows its name, status, panel and menu, an empty chat
   await screen.getByRole("button", "Hide the bot panel").tap();
   await expect(screen.getByLabel("Solo: bot panel")).toBeHidden();
   await expect.poll(() => screen.getByText("Solo", { exact: true }).count()).toBe(2);
-  await expect.poll(async () => (await hui.faces()).map((face) => face.size)).toEqual(["sm", "md", "lg"]);
-  await expect.poll(async () => (await hui.faces()).filter((face) => face.shape !== "")).toHaveLength(3);
+  await expect.poll(async () => (await hui.faces()).map((face) => face.size)).toEqual(["sm", "sm", "md", "lg"]);
+  await expect.poll(async () => (await hui.faces()).filter((face) => face.shape !== "")).toHaveLength(4);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(screen.getByText("Fixture helper · Idle")).toBeVisible();
   await expect(screen.getByText("Say hi to Solo")).toBeVisible();

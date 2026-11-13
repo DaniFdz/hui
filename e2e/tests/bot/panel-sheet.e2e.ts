@@ -1,18 +1,21 @@
 /** The bot panel on a phone: Show the bot panel opens it as a sheet over the chat on the page it last showed, without Expand or a resizable edge, Back leads to the overview, Close or the backdrop closes it, its body scrolls and the page never gets wider than the screen (BOT-024). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { showBotPanel } from "./bot-panel.ts";
 
 test("a phone opens the panel as a sheet over the chat on the page it last showed, Back leads to the overview, Close or the backdrop closes it and it never widens the page", { tags: ["BOT-024"], platforms: ["web"] }, async ({ screen, hui }) => {
   const bot = (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Solo", title: "Fixture helper", soul: "# Who I am\nA fixture bot.\n" })).bot;
   await hui.open(`/bots/${bot.id}`);
-  const panel = screen.getByLabel("Solo: bot panel");
+  const panel = await showBotPanel(screen, "Solo");
   const header = screen.getByTestId("chat-header");
-  await screen.getByRole("button", /^Tools & skills/u).tap();
+  await panel.getByRole("button", /^Tools & skills/u).tap();
   await expect(panel.getByText("Available tools")).toBeVisible();
 
+  // Narrowing the window closes the docked panel; a phone was narrow already, so its sheet stays until it is closed.
   await hui.phoneScreen();
+  if (await panel.count()) await screen.getByRole("button", "Close the bot panel").last().tap();
+  await expect(panel).toBeHidden();
   await expect(screen.getByRole("button", "Show the bot panel")).toBeVisible();
-  expect(await panel.count()).toBe(0);
   await screen.getByRole("button", "Show the bot panel").tap();
   await expect(panel.getByText("Available tools")).toBeVisible();
   await expect(screen.getByRole("button", "Expand the panel")).toHaveCount(0);

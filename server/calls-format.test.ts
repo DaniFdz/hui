@@ -21,7 +21,7 @@ type LegacyCallLine = { role: "user" | "assistant"; text: string };
 type LegacyCallRecordLine = { role: "user" | "assistant" | "helper" | "handoff"; text: string; at: number; request?: string };
 type LegacyCallRecord = { call: string; bot?: string; startedAt: number; endedAt: number; summary?: string; summaryUnavailable?: true; lines: LegacyCallRecordLine[] };
 type LegacyCallDelegationRequest = { id: string; request: string };
-type LegacyCallDelegationResult = { status: "answered" | "handed-off" | "failed" | "timeout" | "limit"; speak: string; task?: string };
+type LegacyCallDelegationResult = { status: "answered" | "handed-off" | "failed" | "timeout"; speak: string; task?: string };
 type LegacyCallTaskResult = { status: "answered" | "failed" | "needs-input" | "timeout"; speak: string };
 
 test("call payload schemas say what the hand-written call types said", () => {

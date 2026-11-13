@@ -1,28 +1,68 @@
 /**
- * HUI's `ask_user_question` card: up to four questions in one card above the
- * composer, one at a time, each with its options (radios, or checkboxes for
- * multi-select), a free-text row and, when options carry one, a Markdown
- * preview of the focused option beside them. It keeps the operator's picks
- * while they move between questions and sends them all at once.
+ * HUI's `ask_user_question` card, the transcript's last row while a question
+ * waits: up to four questions one at a time, stepped like ChatGPT's
+ * questionnaire (a segmented progress bar, "Step 1 of 4", Back and Next in a
+ * sticky footer). A question takes options (radios, or checkboxes for a
+ * multi-select question) with a free-text row and, when options carry one, a
+ * Markdown preview beside them; a slider over a numeric range; or a long text.
+ * It keeps the operator's picks while they move between questions and sends
+ * them all at once. The card folds to one row, keeping every pick and the
+ * progress, so the operator can read the conversation it covers and open it
+ * again where they left it.
  */
 import { html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
 import { HuiElement } from "../lit/hui-element.ts";
+import { icons } from "../lib/icons.ts";
 import { renderMarkdown } from "../lib/markdown/markdown.ts";
 import type { QuestionResponse, RuntimeQuestion } from "../api/sessions.ts";
 import type { QuestionnaireQuestion } from "../api/schema/sessions.ts";
 
-type Draft = { selected: string[]; custom: string; customChosen: boolean };
+type Draft = { selected: string[]; custom: string; customChosen: boolean; slider: number; text: string };
 
-const emptyDraft = (): Draft => ({ selected: [], custom: "", customChosen: false });
+const emptyDraft = (question: QuestionnaireQuestion | undefined): Draft => ({
+  selected: [],
+  custom: "",
+  customChosen: false,
+  slider: question?.input === "slider" ? sliderStart(question) : 0,
+  text: "",
+});
 
-/** The answer a draft gives: chosen labels, and the typed text when it counts. */
-function draftReply(draft: Draft): { selected: string[]; custom?: string } {
+/** Where a slider starts: the middle of its range, on a step, like a neutral default. */
+function sliderStart(question: QuestionnaireQuestion): number {
+  const min = question.min ?? 0;
+  const max = question.max ?? 0;
+  const step = question.step ?? 1;
+  return min + Math.round((max - min) / 2 / step) * step;
+}
+
+/** The answer a draft gives: chosen labels and typed text, a slider's raw value, or a long text. */
+function draftReply(question: QuestionnaireQuestion, draft: Draft): { selected: string[]; custom?: string } {
+  if (question.input === "slider") return { selected: [], custom: String(draft.slider) };
+  if (question.input === "text") return { selected: [], custom: draft.text.trim() };
   const custom = draft.customChosen ? draft.custom.trim() : "";
   return { selected: [...draft.selected], ...(custom ? { custom } : {}) };
 }
 
-const answered = (draft: Draft) => draft.selected.length > 0 || (draft.customChosen && draft.custom.trim() !== "");
+/** Whether the operator has an answer to give: a slider always has one, the rest need a pick or text. */
+function answered(question: QuestionnaireQuestion, draft: Draft): boolean {
+  if (question.input === "slider") return true;
+  if (question.input === "text") return draft.text.trim() !== "";
+  return draft.selected.length > 0 || (draft.customChosen && draft.custom.trim() !== "");
+}
+
+/** How many questions of the card already have an answer. */
+export function answeredCount(questions: readonly QuestionnaireQuestion[], drafts: readonly Draft[]): number {
+  return questions.filter((question, index) => answered(question, drafts[index] ?? emptyDraft(question))).length;
+}
+
+/** A slider value as the operator reads it: grouped digits, then its unit. */
+function sliderLabel(question: QuestionnaireQuestion, value: number): string {
+  const step = question.step ?? 1;
+  const digits = String(step).includes(".") ? String(step).split(".")[1]!.length : 0;
+  const shown = new Intl.NumberFormat("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+  return question.unit ? `${shown} ${question.unit}` : shown;
+}
 
 /** No decorators: the chat view (and so this module) also loads in Node tests. */
 export class QuestionnaireCard extends HuiElement {
@@ -33,6 +73,7 @@ export class QuestionnaireCard extends HuiElement {
     step: { state: true },
     drafts: { state: true },
     previewed: { state: true },
+    collapsed: { state: true },
   };
   declare prompt: RuntimeQuestion;
   declare onAnswer: (answer: QuestionResponse) => void;
@@ -42,6 +83,8 @@ export class QuestionnaireCard extends HuiElement {
   declare private drafts: Draft[];
   /** The option whose preview shows, per question. */
   declare private previewed: number[];
+  /** Folded to one row so the conversation behind the card can be read. */
+  declare private collapsed: boolean;
   #promptId = "";
 
   constructor() {
@@ -51,6 +94,7 @@ export class QuestionnaireCard extends HuiElement {
     this.step = 0;
     this.drafts = [];
     this.previewed = [];
+    this.collapsed = false;
   }
 
   private get questions(): readonly QuestionnaireQuestion[] {
@@ -64,11 +108,13 @@ export class QuestionnaireCard extends HuiElement {
     this.step = 0;
     this.drafts = this.questions.map(emptyDraft);
     this.previewed = this.questions.map((question) => Math.max(0, question.options.findIndex((option) => option.preview)));
+    // A new call's questions open in full: only this card's operator folds it.
+    this.collapsed = false;
   }
 
   /** The control the card focuses when it opens or changes question. */
   focusCurrent(): void {
-    const target = this.querySelector<HTMLElement>('.questionnaire-card__options [tabindex="0"]');
+    const target = this.querySelector<HTMLElement>(".questionnaire-card__options [tabindex=\"0\"], .questionnaire-card__slider, .questionnaire-card__text");
     target?.focus();
   }
 
@@ -89,6 +135,16 @@ export class QuestionnaireCard extends HuiElement {
     void this.updateComplete.then(() => this.focusCurrent());
   }
 
+  /** Folds the card to one row, or opens it again where the operator left it. */
+  #fold(folded: boolean): void {
+    if (this.collapsed === folded) return;
+    this.collapsed = folded;
+    void this.updateComplete.then(() => {
+      if (folded) this.querySelector<HTMLElement>(".chat-question-panel__collapsed-button")?.focus();
+      else this.focusCurrent();
+    });
+  }
+
   /** Next question, or Submit on the last one. */
   #advance(): void {
     if (this.step < this.questions.length - 1) this.#go(this.step + 1);
@@ -96,20 +152,30 @@ export class QuestionnaireCard extends HuiElement {
   }
 
   #submit(): void {
-    if (!this.drafts.some(answered)) return;
-    this.onAnswer({ answers: this.drafts.map(draftReply) });
+    if (!this.drafts.some((draft, index) => answered(this.questions[index]!, draft))) return;
+    this.onAnswer({ answers: this.drafts.map((draft, index) => draftReply(this.questions[index]!, draft)) });
   }
 
   #keydown(event: KeyboardEvent): void {
     // An input method's Enter and Escape belong to its composition.
     if (event.isComposing) return;
+    // Folded, the bar's own Enter and Space open the card. Escape does too, since
+    // an Escape that reached the page while the questions wait would stop the run.
+    if (this.collapsed) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      this.#fold(false);
+      return;
+    }
     const target = event.target as HTMLElement;
-    const typing = target instanceof HTMLInputElement;
+    const field = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ? target : undefined;
+    const typing = field !== undefined;
+    const slider = field instanceof HTMLInputElement && field.type === "range";
     if (event.key === "Escape") {
       // Consumed either way, or the page's Escape would stop the run. Typed text is
       // worth more than a keystroke: the first Escape only leaves the field, for the options.
       event.preventDefault();
-      if (typing && (target as HTMLInputElement).value.trim()) this.focusCurrent();
+      if (field && field.value.trim()) this.focusCurrent();
       else this.onAnswer({ cancelled: true });
       return;
     }
@@ -122,8 +188,8 @@ export class QuestionnaireCard extends HuiElement {
     const question = this.questions[this.step]!;
     const rows = [...this.querySelectorAll<HTMLElement>(".questionnaire-card__options [data-row]")];
     const current = rows.indexOf(target.closest<HTMLElement>("[data-row]")!);
-    // ↑/↓ leave the one-line field too; every other key types in it.
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    // ↑/↓ leave the one-line field too; every other key types in it. A slider owns its arrows.
+    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && !slider) {
       event.preventDefault();
       const next = rows[(current + (event.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length];
       this.#focusRow(next);
@@ -135,6 +201,7 @@ export class QuestionnaireCard extends HuiElement {
       this.#go(this.step + (event.key === "ArrowRight" ? 1 : -1));
       return;
     }
+    if (question.input !== "options") return;
     const number = Number(event.key);
     if (Number.isInteger(number) && number >= 1 && number <= rows.length) {
       event.preventDefault();
@@ -153,19 +220,38 @@ export class QuestionnaireCard extends HuiElement {
 
   #focusRow(row: HTMLElement | undefined): void {
     if (!row) return;
-    const field = row.querySelector("input");
-    (field ?? row).focus();
+    const input = row.querySelector("input");
+    (input ?? row).focus();
+  }
+
+  /** The folded card: one row with the progress, what is answered and how to open it again. */
+  #renderFolded(question: QuestionnaireQuestion, titleId: string) {
+    const questions = this.questions;
+    const done = answeredCount(questions, this.drafts);
+    const single = questions.length === 1;
+    // A lone question shows itself; several show how many are already answered.
+    const note = single ? question.question : done ? `${done} answered` : "";
+    return html`<form class="session-question-card chat-question-panel questionnaire-card questionnaire-card--collapsed chat-question-panel--collapsed"
+      data-testid="question-card" aria-labelledby=${titleId} @keydown=${(event: KeyboardEvent) => this.#keydown(event)}>
+      <button type="button" class="chat-question-panel__collapsed-button" aria-expanded="false" data-testid="question-unfold"
+        @click=${() => this.#fold(false)}>
+        <span id=${titleId} class="questionnaire-card__collapsed-copy"><strong>${single ? question.header : "Interactive questionnaire"}</strong>${note ? html`<span class="questionnaire-card__collapsed-note">${note}</span>` : nothing}</span>
+        <span class="chat-question-panel__progress" aria-label=${`Question ${this.step + 1} of ${questions.length}`}>${this.step + 1}/${questions.length}</span>
+        <span class="chat-question-panel__chevron">${icons.chevronUp}</span>
+      </button>
+    </form>`;
   }
 
   protected override render() {
     const questions = this.questions;
     const question = questions[this.step];
     if (!question) return nothing;
-    const draft = this.drafts[this.step] ?? emptyDraft();
-    const multi = question.multiSelect;
     const titleId = `${this.idPrefix}-title`;
+    if (this.collapsed) return this.#renderFolded(question, titleId);
+    const draft = this.drafts[this.step] ?? emptyDraft(question);
+    const multi = question.multiSelect;
     const last = this.step === questions.length - 1;
-    const preview = question.options[this.previewed[this.step] ?? 0]?.preview;
+    const preview = question.input === "options" ? question.options[this.previewed[this.step] ?? 0]?.preview : undefined;
     const focusIndex = Math.max(0, question.options.findIndex((option) => draft.selected.includes(option.label)));
     const customOn = draft.customChosen && draft.custom.trim() !== "";
     const showPreview = (index: number) => {
@@ -175,21 +261,23 @@ export class QuestionnaireCard extends HuiElement {
     return html`<form class="session-question-card chat-question-panel questionnaire-card" data-testid="question-card" aria-labelledby=${titleId}
       @submit=${(event: SubmitEvent) => { event.preventDefault(); this.#advance(); }}
       @keydown=${(event: KeyboardEvent) => this.#keydown(event)}>
-      <header class="chat-question-panel__topline">
-        <strong class="chat-question-panel__title">${questions.length > 1 ? "Questions" : question.header}</strong>
-        <span class="chat-question-panel__progress" aria-label=${`Question ${this.step + 1} of ${questions.length}`}>${this.step + 1}/${questions.length}</span>
-      </header>
-      ${questions.length > 1 ? html`<div class="questionnaire-card__tabs" role="tablist" aria-label="Questions">
-        ${questions.map((each, index) => html`<button type="button" role="tab" class="questionnaire-card__tab" tabindex=${index === this.step ? "0" : "-1"}
-          aria-selected=${String(index === this.step)} @click=${() => this.#go(index)}>
-          <span class="questionnaire-card__tab-check" aria-hidden="true">${answered(this.drafts[index] ?? emptyDraft()) ? "✓" : ""}</span>${each.header}
-          ${answered(this.drafts[index] ?? emptyDraft()) ? html`<span class="sr-only">(answered)</span>` : nothing}
-        </button>`)}
+      <button type="button" class="chat-question-panel__topline questionnaire-card__fold" aria-expanded="true" data-testid="question-fold"
+        @click=${() => this.#fold(true)}>
+        <strong class="chat-question-panel__title">${questions.length > 1 ? "Interactive questionnaire" : question.header}</strong>
+        <span class="questionnaire-card__step-label">${questions.length > 1 ? `STEP ${this.step + 1} OF ${questions.length}` : "1/1"}</span>
+        <span class="chat-question-panel__chevron">${icons.chevronDown}</span>
+      </button>
+      ${questions.length > 1 ? html`<div class="questionnaire-card__progress" role="progressbar" aria-label=${`Step ${this.step + 1} of ${questions.length}`}
+        aria-valuemin="1" aria-valuemax=${questions.length} aria-valuenow=${this.step + 1}>
+        ${questions.map((each, index) => html`<span class="questionnaire-card__segment" data-state=${index < this.step ? "done" : index === this.step ? "current" : "todo"}
+          title=${each.header}></span>`)}
       </div>` : nothing}
+      ${questions.length > 1 ? html`<div class="questionnaire-card__section">${question.header}</div>` : nothing}
       <div class="chat-question-panel__heading">
         <span id=${titleId} class="chat-question-panel__prompt">${question.question}</span>
       </div>
       ${multi ? html`<div class="questionnaire-card__hint">Choose all that apply.</div>` : nothing}
+      ${question.input === "slider" ? this.#renderSlider(question, draft) : question.input === "text" ? this.#renderText(question, draft) : html`
       <div class="questionnaire-card__body ${preview ? "questionnaire-card__body--preview" : ""}">
         <div class="chat-question-panel__options questionnaire-card__options" role=${multi ? "group" : "radiogroup"} aria-labelledby=${titleId}>
           ${question.options.map((option, index) => {
@@ -216,13 +304,43 @@ export class QuestionnaireCard extends HuiElement {
           </label>
         </div>
         ${preview ? html`<div class="questionnaire-card__preview" aria-label="Preview" role="region"><div class="chat-text">${renderMarkdown(preview)}</div></div>` : nothing}
-      </div>
+      </div>`}
       <footer class="chat-question-panel__footer">
-        <button type="button" class="btn btn--sm chat-question-panel__skip" @click=${() => this.onAnswer({ cancelled: true })}>Cancel</button>
         ${this.step > 0 ? html`<button type="button" class="btn btn--sm chat-question-panel__back" @click=${() => this.#go(this.step - 1)}>Back</button>` : nothing}
-        <button type="submit" class="btn btn--sm primary" ?disabled=${last && !this.drafts.some(answered)}>${last ? "Submit" : "Next"}</button>
+        <button type="button" class="btn btn--sm chat-question-panel__skip" @click=${() => this.onAnswer({ cancelled: true })}>Cancel</button>
+        <button type="submit" class="btn btn--sm primary" ?disabled=${last && !this.drafts.some((draft, index) => answered(this.questions[index]!, draft))}>${last ? "Submit" : html`Next <span class="questionnaire-card__arrow" aria-hidden="true">→</span>`}</button>
       </footer>
     </form>`;
+  }
+
+  /** A numeric answer with its range: the value reads large above the track. */
+  #renderSlider(question: QuestionnaireQuestion, draft: Draft) {
+    const min = question.min ?? 0;
+    const max = question.max ?? 0;
+    const step = question.step ?? 1;
+    return html`<div class="questionnaire-card__answer questionnaire-card__answer--slider">
+      <output class="questionnaire-card__value" for=${`${this.idPrefix}-slider`} aria-live="polite">${sliderLabel(question, draft.slider)}</output>
+      <input id=${`${this.idPrefix}-slider`} class="questionnaire-card__slider" type="range" min=${min} max=${max} step=${step}
+        .value=${live(String(draft.slider))} aria-labelledby=${`${this.idPrefix}-title`}
+        @input=${(event: Event) => {
+          const value = Number((event.currentTarget as HTMLInputElement).value);
+          this.#update(this.step, (each) => ({ ...each, slider: value }));
+        }} />
+      <div class="questionnaire-card__range"><span>${sliderLabel(question, min)}</span><span>${sliderLabel(question, max)}</span></div>
+    </div>`;
+  }
+
+  /** Long text, in a field that grows with what the operator writes. */
+  #renderText(question: QuestionnaireQuestion, draft: Draft) {
+    return html`<div class="questionnaire-card__answer questionnaire-card__answer--text">
+      <textarea class="questionnaire-card__text" rows="4" maxlength="4000" aria-labelledby=${`${this.idPrefix}-title`}
+        placeholder=${question.placeholder ?? "Type your answer…"}
+        .value=${live(draft.text)}
+        @input=${(event: Event) => {
+          const value = (event.currentTarget as HTMLTextAreaElement).value;
+          this.#update(this.step, (each) => ({ ...each, text: value }));
+        }}></textarea>
+    </div>`;
   }
 }
 

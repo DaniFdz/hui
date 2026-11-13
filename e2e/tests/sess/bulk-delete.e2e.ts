@@ -72,7 +72,10 @@ test("Also remove their worktrees removes the clean HUI-created worktrees and na
   await expect(screen.getByText("2 selected")).toBeVisible();
   await screen.getByRole("button", "Delete…").tap();
   await screen.getByLabel(/Also remove their worktrees/u).tap();
+  const removal = await hui.intercept("POST", /\/__hui\/worktrees\/remove$/u);
   await screen.getByRole("button", "Delete 2 sessions").tap();
+  await removal.arrived();
   await expect(screen.getByText("Deleted 2 sessions. Removing 2 worktrees…")).toBeVisible();
+  await removal.deliver();
   await expect(screen.getByText(`Deleted 2 sessions. Removed 1 worktree. Kept ${branch} (local changes or not created by HUI); review it in Settings → Worktrees.`)).toBeVisible();
 });

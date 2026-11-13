@@ -4,7 +4,7 @@ import { test } from "vitest";
 import { CALL_LIMITS } from "./calls.ts";
 import type { CallDelegationResult, CallLine, CallTaskResult } from "../../api/schema/calls.ts";
 import {
-  ActivityGate, CallTranscript, callStatusLabel, delegationAppends, GREETING_FALLBACK_MS, initialLiveCallState, LiveCall, livePhaseOf, MIC_GATE, parseLiveEvent, reduceLiveCall, sessionAppends, VOICE_GATE,
+  ActivityGate, CallTranscript, callStatusLabel, delegationAppends, GREETING_FALLBACK_MS, greetingCue, initialLiveCallState, LiveCall, livePhaseOf, MIC_GATE, parseLiveEvent, reduceLiveCall, sessionAppends, VOICE_GATE,
   type LiveCallPlatform, type LiveConnectionHandlers, type LiveEvent,
 } from "./live-call.ts";
 
@@ -165,6 +165,10 @@ function platform(options: { connect?: () => Promise<void>; micError?: Error } =
   let channelOpen = true;
   let heartbeatError: Error | undefined;
   const live: LiveCallPlatform = {
+    ring: () => {
+      log.push("ring");
+      return () => log.push("ring stopped");
+    },
     openMicrophone: async () => {
       if (options.micError) throw options.micError;
       log.push("mic");
@@ -236,7 +240,7 @@ test("a call greets once its session started, follows the audio for its phase an
   assert.equal(call.state.phase, "listening");
   assert.deepEqual(p.sent, [], "the greeting waits for session.started");
   p.message(EVENTS.started);
-  assert.deepEqual(p.sent, sessionAppends("speakable", "The call just connected. Greet the user briefly, as yourself."));
+  assert.deepEqual(p.sent, sessionAppends("speakable", greetingCue("Juno")));
   p.open();
   p.message(EVENTS.started);
   p.advance(GREETING_FALLBACK_MS);
@@ -385,7 +389,7 @@ test("without session.started, the greeting is asked for after a while", async (
   p.advance(GREETING_FALLBACK_MS - 1);
   assert.deepEqual(p.sent, []);
   p.advance(1);
-  assert.deepEqual(p.sent, sessionAppends("speakable", "The call just connected. Greet the user briefly, as yourself."));
+  assert.deepEqual(p.sent, sessionAppends("speakable", greetingCue("Juno")));
   void call;
 });
 
@@ -565,4 +569,49 @@ test("a hang-up while the call is still being set up ends it as soon as it conne
   assert(p.log.includes("closed"));
   assert(p.log.includes("end"));
   assert.equal(call.state.phase, "ended");
+});
+
+test("the greeting names the bot, so a voice model left to itself does not open as ChatGPT", () => {
+  assert.equal(greetingCue("Juno"),
+    "The call just connected. You are Juno, the bot the user is calling: never introduce yourself as ChatGPT or as an assistant. Greet the user briefly, as yourself, as Juno.");
+  assert.match(greetingCue("  "), /You are the bot, the bot the user is calling/u, "a nameless bot still gets no ChatGPT identity");
+});
+
+test("a call rings while it is placed, stops when it is answered, and never rings twice", async () => {
+  const p = platform();
+  const call = new LiveCall(p.live, { botName: "Juno" });
+  await call.start();
+  assert.deepEqual(p.log.filter((line) => line.startsWith("ring")), ["ring"], "the ringback starts before the call is answered");
+  p.open();
+  assert.deepEqual(p.log.filter((line) => line.startsWith("ring")), ["ring", "ring stopped"], "answered: it stops");
+  p.message(EVENTS.started);
+  call.hangUp();
+  assert.equal(p.log.filter((line) => line === "ring stopped").length, 1, "one stop for the whole call");
+  assert.equal(call.state.phase, "ended");
+});
+
+test("a call that fails or is hung up while it is placed stops ringing", async () => {
+  const failing = platform({ connect: async () => { throw new Error("GPT-Live refused it"); } });
+  const refused = new LiveCall(failing.live, { botName: "Juno" });
+  await refused.start();
+  assert.deepEqual(failing.log.filter((line) => line.startsWith("ring")), ["ring", "ring stopped"]);
+  assert.equal(refused.state.phase, "failed");
+
+  const waiting = platform();
+  const hungUp = new LiveCall(waiting.live, { botName: "Juno" });
+  await hungUp.start();
+  assert.deepEqual(waiting.log.filter((line) => line.startsWith("ring")), ["ring"]);
+  hungUp.hangUp();
+  assert.deepEqual(waiting.log.filter((line) => line.startsWith("ring")), ["ring", "ring stopped"]);
+  assert.equal(hungUp.state.phase, "ended");
+});
+
+test("a platform without audio places the call without a ringback", async () => {
+  const p = platform();
+  const silent = { ...p.live, ring: undefined };
+  const call = new LiveCall(silent, { botName: "Juno" });
+  await call.start();
+  p.open();
+  assert.equal(call.state.phase, "listening", "the call works without a tone");
+  assert.equal(p.log.some((line) => line.startsWith("ring")), false);
 });

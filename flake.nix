@@ -106,6 +106,63 @@
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
           };
         }
+        // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          # The Android app's toolchain (spike S1 of docs/mobile-app-plan.md): the SDK, an x86_64 emulator image and a JDK. The owner
+          # accepted the Android SDK licence for this shell (2026-11-09); nothing else in the flake is unfree.
+          android =
+            let
+              androidPkgs = import nixpkgs {
+                inherit system;
+                config = {
+                  allowUnfree = true;
+                  android_sdk.accept_license = true;
+                };
+              };
+              sdk = androidPkgs.androidenv.composeAndroidPackages {
+                platformVersions = [ "36" ];
+                buildToolsVersions = [
+                  "35.0.0"
+                  "36.0.0"
+                ];
+                includeEmulator = true;
+                includeSystemImages = true;
+                systemImageTypes = [ "google_apis" ];
+                abiVersions = [ "x86_64" ];
+                includeNDK = false;
+              };
+              androidHome = "${sdk.androidsdk}/libexec/android-sdk";
+              # agent-device (the e2e engine's device layer, and how an agent drives the emulator) runs /bin/ps,
+              # which NixOS lacks; this runs the checkout's copy in an FHS namespace that has it. Its daemon outlives
+              # each call (no die-with-parent) and shares the host's PIDs, so later calls find and reuse it.
+              agentDevice = androidPkgs.buildFHSEnv {
+                name = "agent-device";
+                targetPkgs = p: [
+                  p.procps
+                  p.nodejs_24
+                ];
+                dieWithParent = false;
+                runScript = androidPkgs.writeShellScript "agent-device" ''
+                  exec npx --no-install agent-device "$@"
+                '';
+              };
+            in
+            androidPkgs.mkShell {
+              packages = [
+                sdk.androidsdk
+                androidPkgs.jdk21
+                androidPkgs.nodejs_24
+                androidPkgs.git
+                # agent-device, which drives the emulator for screenshots and the e2e suite, reads processes with ps.
+                androidPkgs.procps
+                agentDevice
+              ];
+              ANDROID_HOME = androidHome;
+              ANDROID_SDK_ROOT = androidHome;
+              JAVA_HOME = androidPkgs.jdk21.home;
+              # AGP downloads a generic-Linux aapt2 that NixOS can't run; use the SDK's own.
+              GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${androidHome}/build-tools/36.0.0/aapt2";
+            };
+        }
       );
     };
 }
