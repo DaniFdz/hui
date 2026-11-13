@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, test, type TestContext } from "vitest";
 import { normalizeContext, type Api, type Message, type Model, type Models, type UserMessage } from "@earendil-works/pi-ai";
 import { clampMaxTokensToContext } from "@earendil-works/pi-ai/api/simple-options";
-import { AgentDoc, createRegistry, Harness, UserEntry, type ConversationId, type EntryRecord } from "@earendil-works/pi-durable";
+import { AgentDoc, createRegistry, defineDoc, Harness, UserEntry, type ConversationId, type EntryRecord } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { OptChatStatus } from "../optchat/memory.ts";
 import type { CallRecord } from "../calls-format.ts";
@@ -602,6 +602,75 @@ test("a call's record lands in the chat as one card and in OptChat's view, and t
   const [turn] = await turnRequests(f.log, "OPT_AFTER_CALL when is it?");
   assert.match(viewOf(turn!).view, /User: Remember that my sister's birthday is March 3\./u, "the bot's next turn starts from a view holding the call");
   assert.equal(session.transcript().filter((entry) => entry.kind === "message").length, 2, "no turn ran for the call");
+});
+
+// ── A document an older HUI wrote (adopted, never refused) ───────────────────────────────────────────
+
+/** OptChat's document as HUI stored it before a bot's rewind kept OptChat: `fork: "initial"`. Durable refuses a typed
+ *  read whose fork semantics disagree with the incarnation it stored, which kept a bot chat an update touched from
+ *  starting until it was adopted. */
+const LegacyOptChatDoc = defineDoc<{ enabled: boolean; name: string; model?: string; thinking?: string }>({
+  kind: "hui.optchat", version: 1, scope: "conversation", history: "latest", fork: "initial",
+  initial: () => ({ enabled: false, name: "" }),
+  checkpointWhen: () => false,
+});
+
+const rawHarness = async (f: Fixture) => Harness.open(await openNodeSqliteStorage(join(f.store, "harness.sqlite")), {
+  models: { getAuth: () => undefined } as unknown as Models, registry: createRegistry(),
+}, durableContext);
+
+/** Rewrites the conversation's document as the legacy incarnation, value kept: what an older HUI left in a store. */
+async function storeLegacyOptChat(f: Fixture, id: ConversationId): Promise<void> {
+  const raw = await rawHarness(f);
+  try {
+    await raw.commit(async (tx) => {
+      const current = await tx.doc(OptChatDoc, id);
+      const kept = { enabled: current.enabled, name: current.name, model: current.model, thinking: current.thinking };
+      await tx.retireDoc(OptChatDoc, id);
+      Object.assign(await tx.doc(LegacyOptChatDoc, id), JSON.parse(JSON.stringify(kept)) as typeof kept);
+    }, durableContext);
+  } finally {
+    await raw.close(durableContext);
+  }
+}
+
+test("a bot chat whose OptChat document an older HUI wrote starts, adopting it with its memory kept", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  const first = f.host();
+  const { session, id } = await botSession(f, first, "bot-legacy");
+  await turns(session, ["OPT_LEGACY1 before the update"]);
+  session.dispose();
+  await first.close();
+  await storeLegacyOptChat(f, id);
+
+  // What the update met: the current definition cannot read the stored incarnation, and the runtime never started.
+  const raw = await rawHarness(f);
+  await assert.rejects(raw.snapshot(OptChatDoc, id, durableContext), /does not match the supplied definition semantics/u);
+  await raw.close(durableContext);
+
+  // A gateway adopts it when it opens the conversation, before anything reads it: the chat starts and its memory holds both
+  // turns, and the stored document is the current one.
+  const second = f.host();
+  const resumed = await startDurable({ cwd: f.cwd, sessionFile: durableReference(id), huiSessionId: "bot-legacy" }, second);
+  await turns(resumed, ["OPT_LEGACY2 after the update"]);
+  await statusWhere(second, id, (status) => status.messages === 4 && status.pending === 0);
+  assert.match(String(await second.optchat.view(id)), /OPT_LEGACY1 before the update[\s\S]*OPT_LEGACY2 after the update/u);
+  assert.deepEqual(await (await second.open()).snapshot(OptChatDoc, id, durableContext), { enabled: true, name: "Grok" }, "the legacy incarnation was rewritten, its value kept");
+});
+
+test("a bot's settings adopt an OptChat document an older HUI wrote before the commit that reads it", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const first = f.host();
+  const { session, id } = await botSession(f, first, "bot-legacy-write");
+  session.dispose();
+  await first.close();
+  await storeLegacyOptChat(f, id);
+
+  // A bot's memory setting goes through the store's manager, which adopts the document first: the commit that writes the
+  // setting then reads the current document.
+  const second = f.host();
+  await optChatBotMemory(second).configure(durableReference(id), { name: "Grok 2" });
+  assert.deepEqual(await (await second.open()).snapshot(OptChatDoc, id, durableContext), { enabled: true, name: "Grok 2" }, "the legacy incarnation was retired, and the current one holds the new setting");
 });
 
 // ── A bot's clear and rewind (its memory follows the kept branch; a clear empties it) ────────────────────────────

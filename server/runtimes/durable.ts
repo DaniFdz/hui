@@ -517,6 +517,9 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** Attach to the conversation's committed state, read its history, then follow every commit. */
   async attach(): Promise<void> {
+    // An update can leave the conversation's OptChat document a fork semantics behind: adopt it before anything reads it,
+    // since a fork of a legacy incarnation would drop the chat's OptChat (docs/optchat.md).
+    await this.#host.optchat.adopt(this.#conversation.id);
     const stream = await watchEvents(this.#harness, this.#conversation.id, context);
     this.#history = [];
     this.#ids.clear();

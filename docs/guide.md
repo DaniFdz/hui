@@ -1739,6 +1739,19 @@ of time leaves it unmarked, so run the command again. A bot on a worker keeps it
 home there, and doctor cannot read a worker's files offline: it lists the bot until
 you run the same command once the worker is connected.
 
+### OptChat documents
+
+A bot's chat keeps its OptChat memory across a rewind, which is what made
+OptChat's `hui.optchat` document `fork: "current"`
+([A document an older HUI wrote](optchat.md#a-document-an-older-hui-wrote)); an
+older HUI wrote it `fork: "initial"`, and Durable refuses a document whatever
+wrote it did not define that way. A chat whose document is still the older one
+said *The runtime could not start* after the update. A gateway adopts the document
+when it opens the chat, so the chat starts; `hui doctor` lists the conversations
+it has not opened yet, and `--fix` adopts each one while the gateway is stopped.
+Only the document's record is rewritten: the chat, the bot and OptChat's memory
+files stay as they are, and a bot's settings or its deletion adopt it too.
+
 ### Datadog sessions
 
 HUI lets pup keep its Datadog sessions as files in its own directory

@@ -7,6 +7,7 @@ import { gatewayStatus as currentGatewayStatus, type GatewayStatus } from "./gat
 import { appCheck } from "./doctor-app.ts";
 import { appearanceCheck } from "./doctor-appearance.ts";
 import { botsCheck } from "./doctor-bots.ts";
+import { optChatCheck } from "./doctor-optchat.ts";
 import { staffCheck } from "./doctor-staff.ts";
 import { datadogCheck } from "./doctor-datadog.ts";
 import { piSessionsCheck } from "./doctor-pi-sessions.ts";
@@ -20,7 +21,7 @@ export type DoctorReport = { ok: boolean; checks: DoctorResult[] };
 
 /** Every check, in report order. The app check needs the installation: `--fix` reinstalls the app from it. */
 export function doctorChecks(installation: Installation): readonly DoctorCheck[] {
-  return [piSessionsCheck, triggersCheck, botsCheck, staffCheck, datadogCheck, appearanceCheck, extensionsCheck(installation.packageRoot), appCheck(installation)];
+  return [piSessionsCheck, triggersCheck, botsCheck, optChatCheck, staffCheck, datadogCheck, appearanceCheck, extensionsCheck(installation.packageRoot), appCheck(installation)];
 }
 
 export async function runDoctor(options: {
