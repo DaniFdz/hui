@@ -5,7 +5,19 @@ import { runInNewContext } from "node:vm";
 import { test } from "vitest";
 
 const html = await readFile(new URL("../e2e/fixtures/widget-probe.html", import.meta.url), "utf8");
-const script = html.match(/<script>([\s\S]*?)<\/script>/u)![1]!;
+// Extract the trusted checked-in fixture, not arbitrary HTML for sanitization.
+const scriptPattern = /<script>([\s\S]*?)<\/script>/iu;
+const script = html.match(scriptPattern)![1]!;
+
+test("fixture script extraction accepts uppercase and mixed-case opening and closing tags", () => {
+  for (const [opening, closing] of [
+    ["<SCRIPT>", "</SCRIPT>"],
+    ["<ScRiPt>", "</sCrIpT>"],
+  ] as const) {
+    const variant = html.replaceAll("<script>", opening).replaceAll("</script>", closing);
+    assert.equal(variant.match(scriptPattern)?.[1], script);
+  }
+});
 
 class Element {
   textContent = "";
