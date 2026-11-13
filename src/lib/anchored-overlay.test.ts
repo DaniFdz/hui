@@ -1,8 +1,60 @@
 // Owns picker collision regressions against the same Floating UI middleware as Web Awesome.
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { computePosition, flip, offset, shift, size } from "@floating-ui/core";
-import { pickerAnchorInViewport } from "./anchored-overlay.ts";
+import { observePickerAnchor, pickerAnchorInViewport } from "./anchored-overlay.ts";
+
+function anchorFrames() {
+  const frames = new Map<number, FrameRequestCallback>();
+  let next = 0;
+  let reads = 0;
+  let positions = 0;
+  const rect = { x: 100, y: 200, width: 120, height: 32 };
+  const trigger = { isConnected: true, getBoundingClientRect() { reads++; return { ...rect } as DOMRect; } };
+  vi.stubGlobal("window", {
+    requestAnimationFrame(callback: FrameRequestCallback) { const id = ++next; frames.set(id, callback); return id; },
+    cancelAnimationFrame(id: number) { frames.delete(id); },
+  });
+  const stop = observePickerAnchor(trigger as Element, () => { positions++; });
+  const frame = () => {
+    assert.equal(frames.size, 1, "the open picker owns exactly one pending rect read");
+    const [id, callback] = frames.entries().next().value!;
+    frames.delete(id);
+    callback(0);
+  };
+  return { frames, rect, trigger, stop, frame, reads: () => reads, positions: () => positions };
+}
+
+test("an open picker observes position-only anchor movement without repositioning or redrawing idle frames", () => {
+  const f = anchorFrames();
+  for (let i = 0; i < 5; i++) f.frame();
+  assert.equal(f.reads(), 6);
+  assert.equal(f.positions(), 0, "unchanged geometry causes no popup work");
+  f.rect.y += 10;
+  f.rect.x += 4;
+  f.rect.y += 5;
+  f.frame();
+  assert.equal(f.positions(), 1, "position changes coalesce to one reposition with unchanged width and height");
+  f.frame();
+  assert.equal(f.positions(), 1);
+  f.stop();
+  assert.equal(f.frames.size, 0);
+});
+
+test("closing or detaching a picker cancels its pending rect observer, including an already queued callback", () => {
+  for (const detach of [false, true]) {
+    const f = anchorFrames();
+    const pending = f.frames.values().next().value!;
+    if (detach) { f.trigger.isConnected = false; f.frame(); }
+    else f.stop();
+    const reads = f.reads();
+    pending(0);
+    assert.equal(f.reads(), reads);
+    assert.equal(f.positions(), 0);
+    assert.equal(f.frames.size, 0);
+    f.stop();
+  }
+});
 
 const anchor = { x: 253.9345245361328, y: 599.15478515625, width: 121.68452453613281, height: 32 };
 const menu = { width: 243.04762268066406, height: 98.51786041259766 };

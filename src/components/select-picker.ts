@@ -5,7 +5,7 @@ import WaPopup from "@awesome.me/webawesome/dist/components/popup/popup.js";
 import { LitElement, html, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
-import { configureAnchoredPopup, pickerAnchorInViewport } from "../lib/anchored-overlay.ts";
+import { configureAnchoredPopup, observePickerAnchor, pickerAnchorInViewport } from "../lib/anchored-overlay.ts";
 import { icons } from "../lib/icons.ts";
 import { pickerRows, type PickerOption } from "../lib/picker-options.ts";
 
@@ -162,6 +162,7 @@ export class SelectPicker<
       // The virtual reference retains the real trigger's width. Observe its actual scroll/resize sources only while open.
       const reposition = () => element.reposition();
       const viewport = window.visualViewport;
+      const stopAnchor = observePickerAnchor(trigger, reposition);
       this.ownerDocument.addEventListener("scroll", reposition, true);
       window.addEventListener("resize", reposition);
       viewport?.addEventListener("resize", reposition);
@@ -169,6 +170,7 @@ export class SelectPicker<
       const resize = new ResizeObserver(reposition);
       resize.observe(trigger);
       this.stopPopupPositioning = () => {
+        stopAnchor();
         this.ownerDocument.removeEventListener("scroll", reposition, true);
         window.removeEventListener("resize", reposition);
         viewport?.removeEventListener("resize", reposition);
