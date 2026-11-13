@@ -5,9 +5,9 @@
  * and the one reading that lets the fixture tell it apart from `web`.
  *
  * - **The engine.** `@e2e-dev/web` takes the browser (`webkit`) and the viewport, but not the two context options that
- *   make its page a phone: `hasTouch` and `isMobile`. Without `hasTouch`, Playwright refuses every `locator.tap()`, which
- *   the fixture's steps and the tests use everywhere, so nothing about the phone could be proven; without `isMobile`,
- *   WebKit lays a 390 px page out as a desktop window (no viewport meta, no touch-reading `pointer`/`hover` media).
+ *   make its context touch-capable and mobile: `hasTouch` and `isMobile`. The installed engine maps shared `.tap()` to
+ *   `locator.click()`, so `hasTouch` alone is not proof of touch dispatch; explicit touch steps own gesture coverage.
+ *   Without `isMobile`, WebKit lays a 390 px page out as a desktop window (without the phone's viewport behavior).
  *   `phoneContexts` adds both to every context the browser opens, on the copy of playwright-core that the engine itself
  *   loads: the technique `phone.ts` already uses for a WebView's two protocol gaps. It is what the engine cannot express
  *   today and nothing more, so it goes away with an engine option of its own.
