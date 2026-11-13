@@ -12,7 +12,6 @@ import { isGatewayUnavailable, GatewayHttpError } from "../api/request.ts";
 import { OutdatedBuildError } from "../api/offline.ts";
 import { forgetConversation, readSavedConversation, saveConversation, type SavedConversation } from "../lib/session/offline-store.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
-import { reconnectDelay } from "../lib/event-stream.ts";
 import { announceTurnEnd } from "../lib/session/turn-end.ts";
 import { emptySessionPresentation, isCurrentSessionRequest, isSelectedSession, modelRequestMarkerAfterFailure, shouldRequestModels, streamingAfterEvent, streamingForStatus } from "../lib/session/ui-state.ts";
 import { FINISHED_BATCH_VISIBLE_MS, isSubagentActive } from "../lib/subagent-activity.ts";
@@ -34,6 +33,8 @@ type ConversationDeps = {
 
 type ConversationHost = ReactiveControllerHost & Pick<LitElement, "renderRoot">;
 
+/** How long the browser waits before each retry after a failed or unanswered open. */
+const OPEN_RETRY_DELAYS_MS = [10_000, 30_000] as const;
 /** A stalled gateway usually answers the next attempt, so navigating retries before asking for an error. */
 const OPEN_ATTEMPTS = 3;
 
@@ -256,10 +257,14 @@ export class ConversationController implements ReactiveController {
         return await openSession(id, signal);
       } catch (error) {
         if (signal.aborted || !current() || attempt >= OPEN_ATTEMPTS || this.savedCopy || !openFailureMayPass(error)) throw error;
-        this.connectionNote = "HUI did not answer. Trying again…";
+        const delay = OPEN_RETRY_DELAYS_MS[attempt - 1] ?? OPEN_RETRY_DELAYS_MS.at(-1)!;
+        this.connectionNote = `HUI did not answer. Trying again in ${Math.round(delay / 1_000)} seconds…`;
         this.#host.requestUpdate();
-        await waitForRetry(reconnectDelay(attempt), signal);
+        await waitForRetry(delay, signal);
         if (signal.aborted || !current()) throw error;
+        // The next attempt is in flight: the skeleton's own "Loading the conversation…" says so again.
+        this.connectionNote = "";
+        this.#host.requestUpdate();
       }
     }
   }

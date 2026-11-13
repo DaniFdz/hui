@@ -1410,11 +1410,7 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
     </div>`;
   }
   if (props.opening) {
-    return html`<div class="agent-chat__empty agent-chat__creating" role="status" aria-live="polite">
-      <span>Loading the conversation…</span>
-      ${props.connectionNote ? html`<span>${props.connectionNote}</span>` : nothing}
-      <wa-progress-bar label="Loading the conversation" indeterminate></wa-progress-bar>
-    </div>`;
+    return renderConversationSkeleton("Loading the conversation…", props.connectionNote);
   }
   if (props.openError) {
     return html`<div class="agent-chat__empty" role="alert">
@@ -1423,17 +1419,48 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
       <button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Try again</button>
     </div>`;
   }
-  if (props.session?.status === "starting") {
-    return html`<div class="agent-chat__empty" role="status">
-      Starting pi — this takes a few seconds.
-    </div>`;
+  if (props.transcript.length === 0 && props.session?.status === "starting") {
+    return renderConversationSkeleton("Preparing the session…", props.connectionNote);
   }
   if (props.transcript.length === 0) {
     return props.bot
       ? html`<div class="agent-chat__empty bot-chat-empty" data-face-stage>${renderBotAvatar(props.bot.bot, "lg", { state: botFaceState(props) })}<strong>Say hi to ${props.bot.bot.name}</strong>${props.bot.bot.title ? html`<span>${props.bot.bot.title}</span>` : nothing}</div>`
       : html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
-  return html`${renderTranscriptRows(props, rows, start)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+  return html`${props.session?.status === "starting" ? renderStartingSession() : nothing}${renderTranscriptRows(props, rows, start)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+}
+
+/** The conversation's place before its first rows arrive, or while its runtime starts. Full-width rows
+ * keep the watcher and activity cards below in the conversation's own column instead of after a centered
+ * empty state. */
+function renderConversationSkeleton(label: string, note: string) {
+  return html`<div class="chat-skeleton" role="status" aria-live="polite" data-testid="conversation-skeleton">
+    <div class="chat-skeleton__status">
+      <span class="hui-orbit" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>${label}</span>
+    </div>
+    ${note ? html`<p class="chat-skeleton__note">${note}</p>` : nothing}
+    <div class="chat-skeleton__rows" aria-hidden="true">
+      <div class="chat-skeleton__row chat-skeleton__row--user"><span class="skeleton skeleton-line"></span></div>
+      <div class="chat-skeleton__row">
+        <span class="skeleton skeleton-line skeleton-line--long"></span>
+        <span class="skeleton skeleton-line skeleton-line--medium"></span>
+      </div>
+      <div class="chat-skeleton__row chat-skeleton__row--user"><span class="skeleton skeleton-line"></span></div>
+      <div class="chat-skeleton__row">
+        <span class="skeleton skeleton-line"></span>
+        <span class="skeleton skeleton-line skeleton-line--long"></span>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** A resumed conversation keeps its history while its runtime starts; this is the only line that says so. */
+function renderStartingSession() {
+  return html`<div class="chat-starting" role="status">
+    <span class="hui-orbit" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span>Preparing the session…</span>
+  </div>`;
 }
 
 /** The same divider while PI summarizes, or why it wrote no summary. The

@@ -27,8 +27,8 @@ test("selecting a row loads its conversation with its header and models, a faile
   await expect.poll(() => hui.url()).toMatch(new RegExp(`/sessions/${target.id}$`, "u"));
   await load.reject(503, "The runtime is not ready yet.");
   // A gateway that stops answering is retried without the operator reloading or pressing anything.
-  await expect(screen.getByText("HUI did not answer. Trying again…")).toBeVisible();
-  await expect(transcript.getByText("Hello from the sidebar")).toBeVisible();
+  await expect(screen.getByText("HUI did not answer. Trying again in 10 seconds…")).toBeVisible();
+  await expect(transcript.getByText("Hello from the sidebar")).toBeVisible({ timeout: 20_000 });
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
   await expectChatTitle(screen, "Open from the sidebar");
   await expect(screen.getByText("durable · INBOX · Idle", { visible: true })).toBeVisible();

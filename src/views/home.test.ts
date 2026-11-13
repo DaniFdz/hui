@@ -632,16 +632,30 @@ test("a reachable worker session shows neither notice, and a failed one keeps it
   assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
 });
 
-test("a conversation still downloading shows progress, and one that failed to load offers a retry instead of an empty chat", async () => {
+test("a conversation still downloading shows its skeleton, and one that failed to load offers a retry instead of an empty chat", async () => {
   const loading = await renderWorkerSession("idle", { transcript: [], opening: true });
-  assert.match(loading, /role="status" aria-live="polite"> <span>Loading the conversation…<\/span> <wa-progress-bar label="Loading the conversation" indeterminate>/u);
-  assert.doesNotMatch(loading, /Start a conversation/u);
-  const retrying = await renderWorkerSession("idle", { transcript: [], opening: true, connectionNote: "HUI did not answer. Trying again…" });
-  assert.match(retrying, /<span>Loading the conversation…<\/span> <span>HUI did not answer\. Trying again…<\/span> <wa-progress-bar/u, "a retried open says it is still trying");
+  assert.match(loading, /<div class="chat-skeleton" role="status" aria-live="polite" data-testid="conversation-skeleton">/u);
+  assert.match(loading, /<span>Loading the conversation…<\/span>/u);
+  assert.match(loading, /class="skeleton skeleton-line/u);
+  assert.doesNotMatch(loading, /Start a conversation|agent-chat__empty/u, "the skeleton keeps the conversation's column with no empty-state height");
+  const retrying = await renderWorkerSession("idle", { transcript: [], opening: true, connectionNote: "HUI did not answer. Trying again in 10 seconds…" });
+  assert.match(retrying, /<p class="chat-skeleton__note">HUI did not answer\. Trying again in 10 seconds…<\/p>/u, "a retried open says when it tries again");
 
-  const failed = await renderWorkerSession("idle", { transcript: [], openError: "HUI did not answer within 20 s. Check the connection and try again." });
-  assert.match(failed, /<div class="agent-chat__empty" role="alert"> <strong>Could not load this conversation<\/strong> <span>HUI did not answer within 20 s\. Check the connection and try again\.<\/span> <button type="button" class="btn btn--sm retry-session" @click=>Try again<\/button>/u);
+  const failed = await renderWorkerSession("idle", { transcript: [], openError: "HUI did not answer within 5 s. Check the connection and try again." });
+  assert.match(failed, /<div class="agent-chat__empty" role="alert"> <strong>Could not load this conversation<\/strong> <span>HUI did not answer within 5 s\. Check the connection and try again\.<\/span> <button type="button" class="btn btn--sm retry-session" @click=>Try again<\/button>/u);
   assert.doesNotMatch(failed, /Start a conversation|Send a message below/u, "a failed load never reads as an empty session");
+});
+
+test("a starting session shows its skeleton, and a resumed one keeps its transcript instead of a Starting pi line", async () => {
+  const empty = await renderWorkerSession("starting", { transcript: [] });
+  assert.match(empty, /<div class="chat-skeleton" role="status" aria-live="polite" data-testid="conversation-skeleton">/u);
+  assert.match(empty, /<span>Preparing the session…<\/span>/u);
+  assert.doesNotMatch(empty, /Starting pi/u);
+
+  const resumed = await renderWorkerSession("starting");
+  assert.match(resumed, /<div class="chat-starting" role="status"> <span class="hui-orbit" aria-hidden="true"><i><\/i><i><\/i><i><\/i><\/span> <span>Preparing the session…<\/span>/u);
+  assert.match(resumed, /long task/u, "a resumed conversation keeps its history while the runtime starts");
+  assert.doesNotMatch(resumed, /Starting pi|data-testid="conversation-skeleton"/u);
 });
 
 test("the Parallel tasks card counts the latest batch of subagents and folds a batch that all succeeded", async () => {

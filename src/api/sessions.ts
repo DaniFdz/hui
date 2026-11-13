@@ -25,6 +25,8 @@ export type {
 
 const SESSIONS_URL = "/__hui/sessions";
 const CREATE_SESSION_TIMEOUT_MS = 120_000;
+/** The gateway must start answering an open within five seconds; the body may keep arriving after that. */
+export const OPEN_HEADER_TIMEOUT_MS = 5_000;
 /** Mirrors the server's close code for a session that no longer exists. */
 const SESSION_STREAM_GONE = 4404;
 const SESSION_STATUSES_URL = `${SESSIONS_URL}/events`;
@@ -262,6 +264,7 @@ export async function openSession(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/open`,
     { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
     signal,
+    OPEN_HEADER_TIMEOUT_MS,
   );
   if (!body.session || !body.snapshot) {
     throw new Error("Could not open that session.");

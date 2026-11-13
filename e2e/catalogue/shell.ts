@@ -229,7 +229,7 @@ const cases: UseCase[] = [
     id: "SHELL-023",
     title: "Open a long conversation over a slow connection",
     behaviour:
-      "Selecting a long session over a slow link shows *Loading the conversation…* with a progress bar in the transcript area, then the whole conversation arrives intact. It never shows an empty *Start a conversation* or an aborted-request toast meanwhile.",
+      "Selecting a long session over a slow link shows *Loading the conversation…* with skeleton rows in the transcript area, then the whole conversation arrives intact. It never shows an empty *Start a conversation* or an aborted-request toast meanwhile.",
     spec: [BEHAVIOUR, "docs/api.md#post-__huisessionsidopen"],
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],

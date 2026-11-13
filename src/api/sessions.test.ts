@@ -8,12 +8,30 @@ import { WebSocketServer } from "ws";
 import { reconnectDelay } from "../lib/event-stream.ts";
 import { RESPONSE_TIMEOUT_MS } from "./request.ts";
 import {
+  OPEN_HEADER_TIMEOUT_MS,
   STATUS_STREAM_STALL_MS,
+  openSession,
   subscribeSessionStatuses,
   subscribeSession,
   type RuntimeEvent,
   type SessionStatusUpdate,
 } from "./sessions.ts";
+
+test("an open the gateway never answers is abandoned after five seconds", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  const nativeFetch = globalThis.fetch;
+  t.onTestFinished(() => { vi.stubGlobal("fetch", nativeFetch); });
+  vi.stubGlobal("fetch", (_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+  }));
+
+  assert.equal(OPEN_HEADER_TIMEOUT_MS, 5_000);
+  const opening = openSession("s1");
+  const failed = assert.rejects(opening, /HUI did not answer within 5 s/u);
+  await vi.advanceTimersByTimeAsync(OPEN_HEADER_TIMEOUT_MS);
+  await failed;
+});
 
 test("the browser runtime contract includes settled", () => {
   const event: RuntimeEvent = { type: "settled" };
