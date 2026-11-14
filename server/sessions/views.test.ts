@@ -84,11 +84,27 @@ test("a question's title and options are bounded, and whitespace runs collapse",
   });
   assert.ok(view.title.length <= 200);
   assert.ok(view.title.endsWith("…"));
-  assert.equal(view.options?.length, 8);
-  for (const option of view.options ?? []) {
-    assert.ok(option.length <= 120);
-    assert.ok(option.endsWith("…"));
-  }
+  assert.equal("options" in view, false, "a list holding an option over 120 characters sends none, so no button renames a choice");
+});
+
+test("a select's options are sent exactly as the runtime offered them, and a list holding a long one sends none", () => {
+  const exact = ["main  and  release", "one\ntwo", "tab\there", "x".repeat(120)];
+  assert.deepEqual(questionView({ id: "pick", method: "select", title: "Which branch?", options: exact }).options, exact,
+    "double spaces, newlines, tabs and an option at the cap come back byte for byte");
+
+  const nine = Array.from({ length: 9 }, (_, index) => `choice ${index}`);
+  assert.deepEqual(questionView({ id: "nine", method: "select", title: "Which?", options: nine }).options, nine.slice(0, 8),
+    "a short list is cut at eight options, each one whole");
+
+  const long = questionView({ id: "long", method: "select", title: "Which?", options: ["short", "y".repeat(120) + "z"] });
+  assert.deepEqual(long, { id: "long", method: "select", title: "Which?" }, "one 121-character option leaves the whole list out");
+
+  assert.equal(questionView({ id: "title", method: "select", title: "x".repeat(240), options: [] }).title.length, 200,
+    "the title stays bounded by cutting it to 200 characters");
+  assert.equal(questionView({ id: "title", method: "input", title: "x".repeat(240) }).title, "x".repeat(199) + "…",
+    "a cut title ends in an ellipsis");
+  const failure = runFailureMessage([{ kind: "error", message: `provider failed ${"no ".repeat(200)}` }]);
+  assert.ok(failure && failure.length <= 240 && failure.endsWith("…"), "and a failure keeps its own 240-character bound");
 });
 
 test("a failed run carries its last error message, bounded", () => {

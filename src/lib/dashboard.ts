@@ -6,9 +6,10 @@
  * row can only open it, to be retried in the session). A lane keeps its sessions in the order the operator should take
  * them: the longest wait first for the resting lanes, the newest first for the ones in flight. Filters narrow the lanes
  * without reordering them, by group, status, worker, Kanban stage and a text query over the title, the displayed path
- * and the group, and feed the page's counts and filter choices. The choices always come from every session in flight,
- * so they do not vanish while the operator filters. A finished session (idle in Done) is counted apart and sits in no
- * lane; subagents count on their parent; archived sessions are not sessions here.
+ * and the group, and feed the page's counts and filter choices. A choice's count is what picking it would show: the
+ * sessions that pass the other filters, its own dimension left out. The choices themselves always come from every
+ * session in flight, so they do not vanish while the operator filters. A finished session (idle in Done) is counted
+ * apart and sits in no lane; subagents count on their parent; archived sessions are not sessions here.
  */
 import type { SessionGroup, SessionStage, SessionStatus, SessionView } from "../api/schema/sessions.ts";
 import { SESSION_STAGE_LABELS, isSessionStage } from "./kanban.ts";
@@ -87,12 +88,21 @@ export type SessionSummary = {
 const matchesQuery = (session: SessionView, query: string) =>
   `${session.title} ${session.displayCwd} ${session.group}`.toLocaleLowerCase().includes(query);
 
+/** Which of the five dimensions a session passes, each on its own, so a filter's choice can be counted with the other
+ * dimensions applied and its own left out. `query` is already trimmed and lowercased. */
+function passesDimensions(session: SessionView, filters: SessionFilters, query: string): Record<keyof SessionFilters, boolean> {
+  return {
+    group: !filters.group || session.group === filters.group,
+    status: !filters.status || session.status === filters.status,
+    worker: !filters.worker || (session.worker?.id ?? LOCAL_WORKER) === filters.worker,
+    stage: !filters.stage || (isSessionStage(session.stage) && session.stage === filters.stage),
+    query: !query || matchesQuery(session, query),
+  };
+}
+
 function matches(session: SessionView, filters: SessionFilters, query: string): boolean {
-  if (filters.group && session.group !== filters.group) return false;
-  if (filters.status && session.status !== filters.status) return false;
-  if (filters.stage && (!isSessionStage(session.stage) || session.stage !== filters.stage)) return false;
-  if (filters.worker && (session.worker?.id ?? LOCAL_WORKER) !== filters.worker) return false;
-  return !query || matchesQuery(session, query);
+  const passed = passesDimensions(session, filters, query);
+  return passed.group && passed.status && passed.stage && passed.worker && passed.query;
 }
 
 /** Whether a session passes every dimension of the filters. Archived sessions, subagents and finished sessions are
@@ -182,23 +192,31 @@ export function summarizeSessions(groups: readonly SessionGroup[], filters: Sess
 
 const byCountThenLabel = (a: FilterOption, b: FilterOption) => b.count - a.count || a.label.localeCompare(b.label);
 
-/** The values the operator can filter by, counted over every session in flight so a choice never disappears while
- * another filter is active. A choice is only offered when it can narrow: an ungrouped session has no group option
- * because the empty value already means every group. */
-export function filterOptions(groups: readonly SessionGroup[]): FilterOptions {
+/** The values the operator can filter by. The choices always come from every session in flight so a value never
+ * disappears while another filter is active, and a choice is only offered when it can narrow: an ungrouped session has
+ * no group option because the empty value already means every group. Each count is what picking that choice would
+ * show: the sessions that pass every other dimension, its own left out, so a picker never promises rows it would not
+ * draw. */
+export function filterOptions(groups: readonly SessionGroup[], filters: SessionFilters = EMPTY_FILTERS): FilterOptions {
   const groupCounts = new Map<string, number>();
   const statusCounts = new Map<SessionStatus, number>();
   const stageCounts = new Map<SessionStage, number>();
   const workerCounts = new Map<string, { name: string; count: number }>();
+  const query = filters.query.trim().toLocaleLowerCase();
+  const bump = <K>(counts: Map<K, number>, value: K, passed: boolean) => counts.set(value, (counts.get(value) ?? 0) + (passed ? 1 : 0));
   for (const group of groups) {
     for (const session of group.sessions) {
       if (!inFlight(session)) continue;
-      if (session.group) groupCounts.set(session.group, (groupCounts.get(session.group) ?? 0) + 1);
-      statusCounts.set(session.status, (statusCounts.get(session.status) ?? 0) + 1);
-      if (isSessionStage(session.stage)) stageCounts.set(session.stage, (stageCounts.get(session.stage) ?? 0) + 1);
+      const passed = passesDimensions(session, filters, query);
+      if (session.group) bump(groupCounts, session.group, passed.status && passed.stage && passed.worker && passed.query);
+      bump(statusCounts, session.status, passed.group && passed.stage && passed.worker && passed.query);
+      if (isSessionStage(session.stage)) bump(stageCounts, session.stage, passed.group && passed.status && passed.worker && passed.query);
       const worker = session.worker?.id ?? LOCAL_WORKER;
       const known = workerCounts.get(worker);
-      workerCounts.set(worker, { name: known?.name ?? session.worker?.name ?? "This gateway", count: (known?.count ?? 0) + 1 });
+      workerCounts.set(worker, {
+        name: known?.name ?? session.worker?.name ?? "This gateway",
+        count: (known?.count ?? 0) + (passed.group && passed.status && passed.stage && passed.query ? 1 : 0),
+      });
     }
   }
   return {

@@ -82,6 +82,8 @@ test("Dashboard queues a parked session and a running one, opens it, and charts 
   await expect(lane(screen, "flight").getByText("Dashboard running")).toBeVisible();
   await expect(lane(screen, "flight")).toContainText("Running");
   await expect(lane(screen, "flight")).toContainText("Investigation");
+  // Every row says when it changed, the ones in flight included.
+  await expect(row(screen, "Dashboard running")).toContainText(/just now|[0-9]+m ago/u);
   await expect(lane(screen, "parked").getByText("Dashboard running")).toHaveCount(0);
   await expect(screen.getByTestId("dashboard-count")).toContainText("2 of 2 sessions");
 
@@ -199,10 +201,10 @@ test("an Answer row answers a select or a confirm question in place, and opens t
   await expect(row(screen, "HUI E2E confirmation")).toHaveCount(0);
   await expect(answer.getByTestId("dashboard-row")).toHaveCount(1);
 
-  // A questionnaire is answered in the chat, so its row only offers the way in.
+  // A questionnaire is answered in the chat, so its row offers one way in: *Open to answer* under its title's link.
   const questionnaire = row(screen, "Which scope should the queue answer?");
   await expect(questionnaire.getByRole("link", "Open to answer", { exact: true })).toBeVisible();
-  await expect(questionnaire.getByRole("link", "Open Typed asked", { exact: true })).toBeVisible();
+  await expect(questionnaire.getByRole("link")).toHaveCount(2);
   await expect(questionnaire.getByRole("button")).toHaveCount(0);
 });
 
@@ -297,9 +299,9 @@ test("the filters narrow every lane together, the counts follow them, and a relo
   await expect(row(screen, "Beta queue")).toHaveCount(0);
   await expect(filters.getByRole("button", "Clear", { exact: true })).toBeVisible();
 
-  // The pickers combine with the search: Alpha is in Investigation, so Testing leaves nothing.
+  // The pickers combine with the search: Alpha is in Investigation, so Testing has nothing left to show under it.
   await filters.getByRole("button", "Stage: Every stage").tap();
-  await screen.getByTestId("picker-list").getByText("Testing (1)", { exact: true }).tap();
+  await screen.getByTestId("picker-list").getByText("Testing (0)", { exact: true }).tap();
   await expect(count).toContainText("0 of 2 sessions");
   await expect(screen.getByTestId("dashboard-empty")).toContainText("No sessions match these filters.");
   await screen.getByTestId("dashboard-empty").getByRole("button", "Clear filters").tap();
@@ -312,6 +314,17 @@ test("the filters narrow every lane together, the counts follow them, and a relo
   await expect(count).toContainText("1 of 2 sessions");
   await expect(row(screen, "Alpha queue")).toBeVisible();
   await expect(lane(screen, "parked")).toHaveCount(0);
+
+  // Another picker's choices are counted under the filters that are on, so a pick draws the rows it names. Alpha is
+  // the only session left under ATLAS and it runs, so Status reads Running (1) and Idle (0).
+  await filters.getByRole("button", "Status: All statuses").tap();
+  const statuses = screen.getByTestId("picker-list", { visible: true });
+  await expect(statuses.getByText("Running (1)", { exact: true })).toBeVisible();
+  await expect(statuses.getByText("Idle (0)", { exact: true })).toBeVisible();
+  // Tapping the picker's own trigger closes it without choosing, and the filter it was counted under stays on.
+  await filters.getByRole("button", "Status: All statuses").tap();
+  await expect(screen.getByTestId("picker-list")).toBeHidden();
+  await expect(count).toContainText("1 of 2 sessions");
   await filters.getByRole("button", "Clear", { exact: true }).tap();
   await expect(count).toContainText("2 of 2 sessions");
 

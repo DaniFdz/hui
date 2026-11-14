@@ -2,14 +2,16 @@
  * The Dashboard page (Labs → Dashboard): a queue of the decisions the sessions in flight wait on, with the activity
  * monitor beside it. The queue narrows by group, status, worker, stage and a text query, counts what it shows in a
  * stat strip, and lists one lane per reason — Answer, Fix, Unread, In flight, Parked — with the session to pick up
- * first at the top of each and three rows per lane until its Show all button opens it. An Answer row answers a select
- * or confirm question in place and a Fix row resumes a session whose last run failed; both report their own failure
- * until the operator dismisses it. A Fix row whose runtime is not connected keeps its reason and only opens the
- * session, because a dead runtime cannot continue. The activity monitor is one chart with a line per selected machine
- * over the last 5, 15 or 30 minutes, a switch for the metric it draws, chips that choose the machines it and the cards
- * show, and a card per host metric for each of them with its value and a bar. A metric that reads above 85% is marked;
- * one the host can't report says so. A value too long for its card wraps between its parts, and the disk path keeps its
- * end on one line.
+ * first at the top of each and three rows per lane until its Show all button opens it. Every row says when it changed
+ * and keeps one link into its session: the title's, beside the option buttons or *Open to answer*. An Answer row
+ * answers a select or confirm question in place and a Fix row resumes a session whose last run failed; both report
+ * their own failure until the operator dismisses it. An In flight row that has no progress card reads its own status,
+ * so a starting or reconnecting session does not claim to be running. A Fix row whose runtime is not connected keeps
+ * its reason and only opens the session, because a dead runtime cannot continue. The activity monitor is one chart with
+ * a line per selected machine over the last 5, 15 or 30 minutes, a switch for the metric it draws, chips that choose the
+ * machines it and the cards show, and a card per host metric for each of them with its value and a bar. A metric that
+ * reads above 85% is marked; one the host can't report says so. A value too long for its card wraps between its parts,
+ * and the disk path keeps its end on one line.
  */
 import { html, nothing, svg, type TemplateResult } from "lit";
 import { live } from "lit/directives/live.js";
@@ -17,7 +19,7 @@ import type { HostMetrics } from "../api/schema/host.ts";
 import type { ProgressCard, SessionGroup, SessionStage, SessionStatus, SessionView } from "../api/schema/sessions.ts";
 import type { WorkerMetrics } from "../api/workers.ts";
 import {
-  DASHBOARD_ROWS, filterOptions, summarizeSessions,
+  DASHBOARD_ROWS, DASHBOARD_STATUS_LABELS, filterOptions, summarizeSessions,
   type FilterOption, type FilterOptions, type SessionFilters, type SessionLane, type SessionSummary,
 } from "../lib/dashboard.ts";
 import { isSessionStage, SESSION_STAGE_LABELS } from "../lib/kanban.ts";
@@ -37,6 +39,8 @@ const HIGH_PERCENT = 85;
 const MAX_ANSWER_OPTIONS = 8;
 /** The pickers' value for "no filter on this dimension". */
 const ALL = "all";
+/** What every real choice's value starts with, so a group literally named "all" is still a choice. */
+const CHOICE = "filter:";
 /** One colour per machine, in the order its chip appears. */
 const SERIES_COLORS = ["var(--session-color-blue)", "var(--session-color-green)", "var(--session-color-purple)", "var(--session-color-orange)", "var(--session-color-pink)", "var(--session-color-cyan)", "var(--session-color-yellow)", "var(--session-color-red)"];
 
@@ -314,7 +318,8 @@ function chip(kind: string, label: string, tone?: string, tooltip?: string) {
 function sessionChips(lane: SessionLane, session: SessionView, summary: SessionSummary) {
   const subagents = summary.subagents.get(session.id);
   return [
-    session.worker ? chip("worker", session.worker.name) : nothing,
+    // A chip ends in an ellipsis when its name is wider than its row, so it keeps the whole name in HUI's tooltip.
+    session.worker ? chip("worker", session.worker.name, undefined, session.worker.name) : nothing,
     session.unread && lane.key !== "unread" ? chip("unread", "Unread") : nothing,
     subagents ? chip("subagent", `${subagents.total} subagent${subagents.total === 1 ? "" : "s"}${subagents.active ? ` · ${subagents.active} running` : ""}`) : nothing,
     ...(session.pullRequests ?? []).map((pullRequest) => chip("pr", `#${pullRequest.number}${pullRequest.state ? ` ${pullRequestStateLabel(pullRequest.state)}` : ""}`,
@@ -322,7 +327,8 @@ function sessionChips(lane: SessionLane, session: SessionView, summary: SessionS
   ].filter((entry) => entry !== nothing);
 }
 
-/** The one-line answer control of a waiting session, by the method the question asks for. */
+/** The one-line answer control of a waiting session, by the method the question asks for. A row keeps one way into
+ * its session: the option buttons beside *Open*, or *Open to answer* alone, because the title already links there. */
 function answerActions(session: SessionView, props: DashboardProps) {
   const open = sessionAnchor(session, props, "dashboard-action dashboard-action--link", "Open", `Open ${session.title}`);
   const question = session.question;
@@ -332,10 +338,13 @@ function answerActions(session: SessionView, props: DashboardProps) {
     <button class="btn btn--sm dashboard-action" type="button" ?disabled=${busy}
       @click=${() => props.onAnswer(session, question, choice)}>${busy ? "Answering…" : label}</button>`;
   if (question.method === "select") {
-    return [...(question.options ?? []).slice(0, MAX_ANSWER_OPTIONS).map((option) => answer(option, { value: option })), open];
+    const choices = (question.options ?? []).slice(0, MAX_ANSWER_OPTIONS);
+    // A select the gateway sent without options holds one over 120 characters: it answers in the session, where the
+    // whole list is drawn, because no button may name a choice the agent did not offer.
+    if (choices.length) return [...choices.map((option) => answer(option, { value: option })), open];
   }
   if (question.method === "confirm") return [answer("Yes", { confirmed: true }), answer("No", { confirmed: false }), open];
-  return [sessionAnchor(session, props, "dashboard-action dashboard-action--link", "Open to answer"), open];
+  return [sessionAnchor(session, props, "dashboard-action dashboard-action--link", "Open to answer")];
 }
 
 /** What the row offers by its lane: answering or resuming in place, and always a way into the session. Resume is offered
@@ -362,14 +371,14 @@ function sessionRow(lane: SessionLane, session: SessionView, props: DashboardPro
   const group = session.group ? sessionGroupLabel(session.group) : nothing;
   const stage = isSessionStage(session.stage) ? SESSION_STAGE_LABELS[session.stage] : nothing;
   const detail = lane.key === "fix" ? html`<p class="dashboard-row__failure">${failureOf(session)}</p>`
-    : lane.key === "flight" ? html`<p class="dashboard-row__progress">${progress ?? "Running"}</p>`
+    : lane.key === "flight" ? html`<p class="dashboard-row__progress">${progress ?? DASHBOARD_STATUS_LABELS[session.status]}</p>`
     : lane.key === "unread" && progress ? html`<p class="dashboard-row__progress">${progress}</p>`
     : nothing;
   const line = lane.key === "answer"
     ? dotted([leads ? session.title : nothing, group, stage, ago("waiting", session.updatedAt, props.now)])
     : lane.key === "fix" ? dotted([group, stage, ago("stopped", session.updatedAt, props.now)])
     : lane.key === "parked" ? dotted([group, stage, ago("last answer read", session.updatedAt, props.now)])
-    : dotted([group, stage, lane.key === "unread" ? timeAgo(session.updatedAt, props.now) : nothing]);
+    : dotted([group, stage, lane.key === "unread" || lane.key === "flight" ? timeAgo(session.updatedAt, props.now) : nothing]);
   const chips = sessionChips(lane, session, summary);
   return html`<li class="dashboard-row dashboard-row--${lane.key}" data-testid="dashboard-row" data-session-id=${session.id} @click=${rowClick(session, props)}>
     <div class="dashboard-row__head">
@@ -384,12 +393,13 @@ function sessionRow(lane: SessionLane, session: SessionView, props: DashboardPro
   </li>`;
 }
 
-/** One picker's choices: every value with the count it would show, under the one that filters nothing. */
+/** One picker's choices: every value with the count it would show, under the one that filters nothing. A real value
+ * carries `CHOICE`, because the sentinel is a string a group, worker or stage can have too. */
 function filterPicker(label: string, all: string, value: string, options: readonly FilterOption[], onChange: (value: string) => void) {
-  return renderSettingsPicker(label, value || ALL, [
+  return renderSettingsPicker(label, value === "" ? ALL : `${CHOICE}${value}`, [
     { value: ALL, label: all },
-    ...options.map((option) => ({ value: option.value, label: `${option.label} (${option.count})` })),
-  ], (next) => onChange(next === ALL ? "" : next));
+    ...options.map((option) => ({ value: `${CHOICE}${option.value}`, label: `${option.label} (${option.count})` })),
+  ], (next) => onChange(next === ALL ? "" : next.slice(CHOICE.length)), { showOptionTooltips: false });
 }
 
 function filterBar(props: DashboardProps, choices: FilterOptions) {
@@ -450,7 +460,8 @@ function laneSection(lane: SessionLane, props: DashboardProps, summary: SessionS
 
 function sessionsSection(props: DashboardProps) {
   const summary = summarizeSessions(props.groups, props.filters);
-  const choices = filterOptions(props.groups);
+  // Each choice counts what picking it would show, so the pickers need the filters that are on.
+  const choices = filterOptions(props.groups, props.filters);
   const lanes = summary.lanes.filter((lane) => lane.sessions.length);
   const actionError = props.actionError ? html`<div class="callout danger dashboard-callout" role="alert" data-testid="dashboard-action-error">${props.actionError}<button class="btn btn--sm" type="button" @click=${props.onDismissActionError}>Dismiss</button></div>` : nothing;
   const empty = summary.matched === 0

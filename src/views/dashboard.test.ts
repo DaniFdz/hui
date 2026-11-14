@@ -50,7 +50,7 @@ function actions(value: unknown, attribute: string, found: Action[] = []): Actio
   return found;
 }
 
-type PickerParams = { label: string; value: string | null; options: readonly { value: string; label: string }[]; onChange: (value: string) => void };
+type PickerParams = { label: string; value: string | null; options: readonly { value: string; label: string }[]; showOptionTooltips?: boolean; onChange: (value: string) => void };
 
 /** The settings pickers a view draws, in render order. */
 function pickers(value: unknown, found: PickerParams[] = []): PickerParams[] {
@@ -192,6 +192,8 @@ test("each reason for a session in flight is a lane, in queue order, holding its
   assert.match(lane(markup, "answer"), /Session ask · Investigation · waiting <time/u, "the session's own title moves below the question it is waiting on");
   assert.match(lane(markup, "unread"), /Unread answer/u);
   assert.match(lane(markup, "parked"), /last answer read <time/u);
+  assert.match(lane(markup, "flight"), /Investigation · <time class="dashboard-row__time" datetime=2026-10-23T11:55:00Z>5m ago<\/time>/u,
+    "an In flight row says when it changed too");
   assert.match(lane(markup, "fix"), /dashboard-row__failure">The provider answered 500\./u);
   assert.deepEqual([...markup.matchAll(/data-lane=(\w+)>\s*<strong class="dashboard-stat__count">(\d+)/gu)].map((match) => `${match[1]} ${match[2]}`),
     ["answer 1", "fix 1", "unread 1", "flight 1", "parked 1"], "the stat strip counts one per lane");
@@ -219,6 +221,12 @@ test("a select question draws one button per option and answers with the value t
   assert.deepEqual(answers, [{ session: "ask", question: "q-1", answer: { value: "Option 3" } }]);
   assert.match(row, />Open</u, "a row always opens its session too");
   assert.doesNotMatch(row, /Open to answer/u);
+
+  const omitted = page({ groups: listed(session("long", { status: "waiting", question: { id: "q-4", method: "select", title: "Pick a long lane" } })) });
+  const omittedRow = lane(omitted, "answer");
+  assert.doesNotMatch(omittedRow, /type="button"/u, "a select whose options the gateway left out draws no answer button");
+  assert.match(omittedRow, /dashboard-action--link href=[^>]*>Open to answer</u);
+  assert.equal(omittedRow.match(/dashboard-action--link/gu)?.length, 1, "the title already links, so the row keeps one way in");
 });
 
 test("a confirm question answers yes or no, and any other method opens the session to answer", () => {
@@ -235,7 +243,8 @@ test("a confirm question answers yes or no, and any other method opens the sessi
   const inputRow = lane(input, "answer");
   assert.doesNotMatch(inputRow, /type="button"/u, "an answer typed into the session has no one-click value");
   assert.match(inputRow, />Open to answer</u);
-  assert.match(inputRow, />Open</u);
+  assert.doesNotMatch(inputRow, />Open</u, "no second link: the row's title already opens the session");
+  assert.equal(inputRow.match(/dashboard-action--link/gu)?.length, 1, "one way in from the actions");
 });
 
 test("a waiting session without a question says what it is waiting for and reads its title", () => {
@@ -289,7 +298,7 @@ test("a stopped session says why it stopped, from the run, the HUI record or its
   assert.equal(laneMarkup.match(/dashboard-row__failure/gu)?.length, 3);
 });
 
-test("a session in flight reads its progress steps, and the Running word when it has no card", () => {
+test("a session in flight reads its progress steps, and its own status when it has no card", () => {
   const steps = [
     ["lint the tree", "completed"], ["write the parser", "completed"], ["wire the view", "completed"], ["run the suite", "completed"],
     ["Wiring the resize handle", "in_progress"], ["write the tests", "pending"], ["update the docs", "pending"],
@@ -297,11 +306,15 @@ test("a session in flight reads its progress steps, and the Running word when it
   const markup = page({ groups: listed(
     session("run", { status: "running", progress: { markdown: "", steps: steps.map(([step, status]) => ({ step, status })) } }),
     session("fresh", { status: "starting" }),
+    session("back", { status: "reconnecting" }),
     session("read", { status: "idle", unread: true, progress: { markdown: "Waiting on the flaky suite", steps: [] } }),
   ) });
   assert.match(lane(markup, "flight"), /dashboard-row__progress">4 of 7 steps · Wiring the resize handle</u);
-  assert.match(lane(markup, "flight"), /dashboard-row__progress">Running</u, "a session without a card is simply running");
+  assert.match(rowOf(markup, "fresh"), /dashboard-row__progress">Starting</u, "a session starting says so, not that it runs");
+  assert.match(rowOf(markup, "back"), /dashboard-row__progress">Reconnecting</u, "and a reconnecting one names its own state");
+  assert.doesNotMatch(rowOf(markup, "fresh"), /dashboard-row__progress">Running</u);
   assert.match(lane(markup, "unread"), /dashboard-row__progress">Waiting on the flaky suite</u, "an unread card reads its note when it has no steps");
+  assert.match(rowOf(markup, "fresh"), /<time class="dashboard-row__time"/u, "a running row carries when it changed");
 });
 
 test("the filter bar offers every value with its count and narrows the lanes without reordering them", () => {
@@ -320,16 +333,26 @@ test("the filter bar offers every value with its count and narrows the lanes wit
   assert.deepEqual(drawn.map((picker) => [picker.label, picker.value]), [["Group", "all"], ["Status", "all"], ["Worker", "all"], ["Stage", "all"]]);
   assert.deepEqual(drawn[0]!.options.map(({ value, label }) => ({ value, label })), [
     { value: "all", label: "All groups" },
-    { value: "HUI", label: "HUI (2)" },
-    { value: "Other", label: "OTHER (1)" },
-  ], "a group choice counts the sessions it would show and keeps the stored group");
+    { value: "filter:HUI", label: "HUI (2)" },
+    { value: "filter:Other", label: "OTHER (1)" },
+  ], "a group choice counts the sessions it would show and keeps the stored group behind its own prefix");
   assert.deepEqual(drawn[1]!.options.map((option) => option.label), ["All statuses", "Idle (1)", "Needs input (1)", "Running (1)"]);
   assert.deepEqual(drawn[2]!.options.map((option) => option.label), ["Every machine", "This gateway (2)", "Workspace One (1)"]);
   assert.deepEqual(drawn[3]!.options.map((option) => option.label), ["Every stage", "Implementation (1)", "Investigation (1)", "Testing (1)"]);
 
-  drawn[0]!.onChange("HUI");
+  // A choice counts the sessions the other filters leave, so a picker promises what picking it would draw.
+  const narrowed = pickers(view({ groups, filters: { ...EMPTY_FILTERS, group: "HUI" } }));
+  assert.deepEqual(narrowed[0]!.options.map((option) => option.label), ["All groups", "HUI (2)", "OTHER (1)"],
+    "a group choice leaves its own filter out");
+  assert.deepEqual(narrowed[1]!.options.map((option) => option.label), ["All statuses", "Needs input (1)", "Running (1)", "Idle (0)"],
+    "a status choice stays listed with the count the group filter leaves it");
+  assert.deepEqual(narrowed[2]!.options.map((option) => option.label), ["Every machine", "This gateway (1)", "Workspace One (1)"]);
+  assert.deepEqual(narrowed[3]!.options.map((option) => option.label), ["Every stage", "Implementation (1)", "Testing (1)", "Investigation (0)"],
+    "a choice the other filters leave out stays listed, with nothing to show");
+
+  drawn[0]!.onChange("filter:HUI");
   drawn[1]!.onChange("all");
-  drawn[3]!.onChange("testing");
+  drawn[3]!.onChange("filter:testing");
   assert.deepEqual(patches, [{ group: "HUI" }, { status: "" }, { stage: "testing" }], "the sentinel filters nothing");
 
   const filtered = page({ groups, filters: { ...EMPTY_FILTERS, status: "waiting" } });
@@ -340,6 +363,29 @@ test("the filter bar offers every value with its count and narrows the lanes wit
   assert.deepEqual(rowIds(query), [], "the query reads title, path and group, so a worker name matches nothing");
   const byGroup = page({ groups, filters: { ...EMPTY_FILTERS, group: "HUI" } });
   assert.deepEqual(rowIds(byGroup), ["ask", "run"], "the lanes stay in order, with each lane's own order inside");
+});
+
+test("a group literally named all is a choice of its own, not the sentinel", () => {
+  const patches: Partial<SessionFilters>[] = [];
+  const groups: SessionGroup[] = [
+    { label: "all", sessions: [session("named-all", { group: "all", status: "running" })] },
+    { label: "Other", sessions: [session("other", { group: "Other", status: "idle" })] },
+  ];
+  const [group] = pickers(view({ groups, onFilters: (patch) => patches.push(patch) }));
+  assert.deepEqual(group!.options.map(({ value, label }) => ({ value, label })), [
+    { value: "all", label: "All groups" },
+    { value: "filter:all", label: "ALL (1)" },
+    { value: "filter:Other", label: "OTHER (1)" },
+  ], "the sentinel and the group named all are two different choices");
+  assert.equal(group!.value, "all", "an unfiltered page shows the sentinel");
+
+  group!.onChange("filter:all");
+  group!.onChange("all");
+  assert.deepEqual(patches, [{ group: "all" }, { group: "" }], "picking the group named all sets it, and only the sentinel clears");
+
+  const filtered = view({ groups, filters: { ...EMPTY_FILTERS, group: "all" } });
+  assert.equal(pickers(filtered)[0]!.value, "filter:all", "the group named all is shown as the selected choice");
+  assert.deepEqual(rowIds(page({ groups, filters: { ...EMPTY_FILTERS, group: "all" } })), ["named-all"]);
 });
 
 test("Clear shows only while a filter is set, and empties all of them", () => {
@@ -428,13 +474,19 @@ test("an answer or a resume in flight disables its buttons and says what it is d
 
 test("the page draws no native title tooltip, keeping its detail in HUI's own tooltip", () => {
   const title = "A".repeat(120);
-  const markup = page({
-    groups: listed(session("long", { status: "running", title, worker: { id: "w", name: "workspace-with-a-long-name" },
+  const worker = "workspace-with-a-long-name";
+  const render = view({
+    groups: listed(session("long", { status: "running", title, worker: { id: "w", name: worker },
       pullRequests: [{ repository: "o/r", number: 12, url: "https://github.com/o/r/pull/12", state: "open" }] })),
     metrics: metrics(),
   });
-  assert.doesNotMatch(markup, /\stitle=/u, "no element falls back to the browser's own tooltip");
+  const markup = text(render);
+  assert.doesNotMatch(markup, /\stitle=/u, "no element the page serializes falls back to the browser's own tooltip");
+  assert.deepEqual(pickers(render).map((picker) => picker.showOptionTooltips), [false, false, false, false],
+    "each filter picker keeps its option values out of a native title, where the serialized markup cannot show it");
   assert.match(sessionsArea(markup), new RegExp(`dashboard-row__title-text">${title}<`, "u"), "a long title keeps its two lines");
+  assert.match(sessionsArea(markup), new RegExp(`dashboard-chip--worker[^>]*data-hui-tooltip=${worker}>${worker}<`, "u"),
+    "a worker chip keeps its whole name in HUI's tooltip");
   assert.match(sessionsArea(markup), /data-hui-tooltip=Pull request o\/r#12, open>#12 Open</u, "a pull request keeps its full label");
   assert.match(markup, /dashboard-metric__path" data-hui-tooltip=\/Users\/me\/\.config\/hui/u, "the disk path keeps its full text");
   assert.match(sessionsArea(markup), /dashboard-chip--subagent|dashboard-chip--worker/u);

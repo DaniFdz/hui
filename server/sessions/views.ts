@@ -112,7 +112,9 @@ export function transcriptRunFailed(transcript: readonly TranscriptEntry[]): boo
 }
 
 /** The list caps: a session row shows one line of each, so a long question or
- * provider error must not grow the payload the list carries every second. */
+ * provider error must not grow the payload the list carries every second. A
+ * select's options are bounded by leaving the list out rather than by cutting
+ * one: see `selectOptions`. */
 const MAX_QUESTION_TITLE = 200;
 const MAX_QUESTION_OPTION = 120;
 const MAX_QUESTION_OPTIONS = 8;
@@ -133,16 +135,24 @@ export function boundedText(value: string, maximum: number): string {
 
 type QuestionView = NonNullable<SessionView["question"]>;
 
+/** The first options of a select, exactly as the runtime offered them, or none.
+ * The row answers with the string it drew, so an option is either that string
+ * or left out: a list holding one over `MAX_QUESTION_OPTION` is omitted whole
+ * (the row falls back to *Open to answer*), never collapsed, trimmed or cut,
+ * because a renamed choice would answer with text the agent never offered. */
+function selectOptions(options: readonly string[]): string[] | undefined {
+  return options.every((option) => option.length <= MAX_QUESTION_OPTION) ? options.slice(0, MAX_QUESTION_OPTIONS) : undefined;
+}
+
 /** The one question a session row can afford: its identity and title, and the
  * options only for a select, never a message body, prefill or questionnaire. */
 export function questionView(question: RuntimeQuestion | HuiQuestion): QuestionView {
+  const options = question.method === "select" ? selectOptions(question.options) : undefined;
   return {
     id: question.id,
     method: question.method,
     title: boundedText(question.title, MAX_QUESTION_TITLE),
-    ...(question.method === "select"
-      ? { options: question.options.slice(0, MAX_QUESTION_OPTIONS).map((option) => boundedText(option, MAX_QUESTION_OPTION)) }
-      : {}),
+    ...(options ? { options } : {}),
   };
 }
 

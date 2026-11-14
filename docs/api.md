@@ -992,7 +992,8 @@ type SessionView = {
     id: string;
     method: "select" | "confirm" | "input" | "editor" | "secret" | "questionnaire";
     title: string;      // one line, at most 200 characters
-    options?: string[]; // only for "select": at most 8, 120 characters each
+    options?: string[]; // only for "select": the runtime's own strings, at most 8 of them; omitted
+                        // when any option is over 120 characters, so no button renames a choice
   };
   failure?: string;     // why a failed run ended: one line, at most 240 characters; absent when nothing names it
   pinned?: true;

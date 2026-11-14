@@ -353,9 +353,10 @@ test("filters survive the page being hidden and shown again", () => {
   assert.deepEqual(controller.filters, { ...EMPTY_FILTERS, stage: "testing" }, "leaving the page only folds its lanes");
 });
 
-test("answering a session marks it busy, sends its question and answer once, and settles", async () => {
-  const { controller, host, answerReads } = setup();
+test("answering a session marks it busy, sends its question and answer once, and keeps it busy until the list moves on", async () => {
+  const { controller, host, answerReads, page } = setup();
   const session = waiting();
+  page.groups = [{ label: "", sessions: [session] }];
   controller.answer(session, session.question!, { confirmed: true });
   assert.deepEqual([...controller.busy], [session.id]);
   controller.answer(session, session.question!, { confirmed: true });
@@ -365,19 +366,36 @@ test("answering a session marks it busy, sends its question and answer once, and
   assert.deepEqual(answerReads[0]!.answer, { confirmed: true });
   answerReads[0]!.resolve();
   await settle();
-  assert.deepEqual([...controller.busy], [], "the session is free once the gateway answered");
-  assert.equal(controller.actionError, "");
+  controller.hostUpdate();
+  assert.deepEqual([...controller.busy], [session.id], "the row is still on screen carrying the same question, so the session stays blocked");
+  controller.answer(session, session.question!, { confirmed: true });
+  assert.equal(answerReads.length, 1, "a second click after success re-sends nothing");
+  assert.equal(controller.actionError, "", "and the row shows no false refusal");
   assert.equal(host.updates, 2, "one redraw when the action starts and one when it settles");
+
+  const next = { ...session, question: { id: "q2", method: "confirm" as const, title: "Continue?" } };
+  page.groups = [{ label: "", sessions: [next] }];
+  controller.hostUpdate();
+  assert.deepEqual([...controller.busy], [], "a list showing another question frees the session");
+  controller.answer(next, next.question, { confirmed: true });
+  assert.equal(answerReads.length, 2, "the next question can be answered");
+  answerReads[1]!.resolve();
+  await settle();
+
+  page.groups = [];
+  controller.hostUpdate();
+  assert.deepEqual([...controller.busy], [], "a session that leaves the list frees it");
 });
 
-test("a failed action shows its error, frees the session, and a retry works", async () => {
-  const { controller, answerReads } = setup();
+test("a failed action shows its error, frees the session at once, and a retry works", async () => {
+  const { controller, answerReads, page } = setup();
   const session = waiting();
+  page.groups = [{ label: "", sessions: [session] }];
   controller.answer(session, session.question!, { value: "yes" });
   answerReads[0]!.reject(new Error("gateway unreachable"));
   await settle();
   assert.equal(controller.actionError, "gateway unreachable");
-  assert.deepEqual([...controller.busy], [], "a failure does not leave the session stuck");
+  assert.deepEqual([...controller.busy], [], "a failure does not leave the session stuck, even while its row is still listed");
   controller.dismissActionError();
   assert.equal(controller.actionError, "", "the operator can dismiss it");
   controller.answer(session, session.question!, { value: "yes" });
@@ -385,20 +403,38 @@ test("a failed action shows its error, frees the session, and a retry works", as
   assert.equal(answerReads.length, 2);
   answerReads[1]!.resolve();
   await settle();
-  assert.deepEqual([...controller.busy], []);
   assert.equal(controller.actionError, "");
+  page.groups = [{ label: "", sessions: [{ ...session, status: "idle", question: undefined }] }];
+  controller.hostUpdate();
+  assert.deepEqual([...controller.busy], [], "the answered question leaving the list frees the session");
 });
 
-test("resuming a stopped session sends one request per session and settles it", async () => {
-  const { controller, resumeReads } = setup();
-  const session = running(1, "error")[0]!;
+test("resuming a stopped session sends one request per session and keeps it blocked until the list shows it moved", async () => {
+  const { controller, resumeReads, page } = setup();
+  const session = { ...running(1, "idle")[0]!, runFailed: true as const };
+  page.groups = [{ label: "", sessions: [session] }];
   controller.resume(session);
   controller.resume(session);
   assert.deepEqual([...controller.busy], [session.id]);
   assert.deepEqual(resumeReads.map((call) => call.id), [session.id], "a second click while the resume is in flight asks nothing");
   resumeReads[0]!.resolve();
   await settle();
-  assert.deepEqual([...controller.busy], []);
+  controller.hostUpdate();
+  assert.deepEqual([...controller.busy], [session.id], "a list still showing the same failed idle turn keeps it blocked");
   controller.resume(session);
-  assert.equal(resumeReads.length, 2, "it can be asked again once the last one settled");
+  assert.equal(resumeReads.length, 1, "a second click after success re-sends nothing");
+
+  page.groups = [{ label: "", sessions: [{ ...session, runFailed: undefined }] }];
+  controller.hostUpdate();
+  assert.deepEqual([...controller.busy], [], "the failed run leaving the list frees the session");
+  page.groups = [{ label: "", sessions: [session] }];
+  controller.resume(session);
+  assert.equal(resumeReads.length, 2, "it can be asked again once the list moved on");
+  resumeReads[1]!.resolve();
+  await settle();
+  controller.hostUpdate();
+  assert.deepEqual([...controller.busy], [session.id]);
+  page.groups = [{ label: "", sessions: [{ ...session, status: "running" }] }];
+  controller.hostUpdate();
+  assert.deepEqual([...controller.busy], [], "a status change frees it too, so the running row is not stuck");
 });

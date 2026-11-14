@@ -251,6 +251,44 @@ test("filter choices count every session in flight and leave out a value that ne
   assert.deepEqual(filterOptions(groups).groups.map(({ value }) => value), ["Alpha", "Beta"], "a filter never removes a choice");
 });
 
+test("a choice is counted with the other filters applied, its own dimension left out", () => {
+  const groups: SessionGroup[] = [
+    { label: "Alpha", sessions: [
+      session("alpha-run", { group: "Alpha", status: "running", stage: "implementation", worker: { id: "w1", name: "Workspace One" } }),
+      session("alpha-error", { group: "Alpha", status: "error", stage: "implementation", worker: { id: "w2", name: "Workspace Two" } }),
+    ] },
+    { label: "Beta", sessions: [session("beta-run", { group: "Beta", status: "running", stage: "testing" })] },
+  ];
+
+  const byGroup = filterOptions(groups, { ...EMPTY_FILTERS, group: "Alpha" });
+  assert.deepEqual(byGroup.groups, [
+    { value: "Alpha", label: "ALPHA", count: 2 },
+    { value: "Beta", label: "BETA", count: 1 },
+  ], "a group choice is counted over every session in flight: its own filter is left out");
+  assert.deepEqual(byGroup.statuses, [
+    { value: "error", label: "Error", count: 1 },
+    { value: "running", label: "Running", count: 1 },
+  ], "status counts follow the group filter, so a pick shows the rows it promised");
+  assert.deepEqual(byGroup.stages.map(({ value, count }) => [value, count]), [["implementation", 2], ["testing", 0]],
+    "a stage the filtered sessions never reach stays listed, with nothing to show");
+  assert.deepEqual(byGroup.workers.map(({ value, count }) => [value, count]), [["w1", 1], ["w2", 1], [LOCAL_WORKER, 0]]);
+
+  const searched = filterOptions(groups, { ...EMPTY_FILTERS, query: "  ALPHA " });
+  assert.deepEqual(searched.groups.map(({ value, count }) => [value, count]), [["Alpha", 2], ["Beta", 0]],
+    "a search narrows the group counts too, and no value vanishes");
+  assert.deepEqual(searched.statuses.map(({ value, count }) => [value, count]), [["error", 1], ["running", 1]]);
+  assert.deepEqual(searched.stages.map(({ value, count }) => [value, count]), [["implementation", 2], ["testing", 0]]);
+  assert.deepEqual(searched.workers.map(({ value, count }) => [value, count]), [["w1", 1], ["w2", 1], [LOCAL_WORKER, 0]]);
+
+  // The promise in SPEC: a choice carries the count it would show. Picking it shows exactly that many sessions.
+  for (const option of filterOptions(groups, { ...EMPTY_FILTERS, status: "running" }).groups) {
+    assert.equal(summarizeSessions(groups, { ...EMPTY_FILTERS, status: "running", group: option.value }).matched, option.count);
+  }
+
+  assert.deepEqual(filterOptions(listed(session("loose", { status: "running" }))).groups, [],
+    "an ungrouped session offers no group choice: the empty value already means every group");
+});
+
 test("matchesFilters reads only the five dimensions and treats an empty value as no filter", () => {
   const stuck = session("stuck", {
     title: "Fix the retry", displayCwd: "~/repo", group: "Alpha", status: "error", stage: "testing",

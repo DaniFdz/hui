@@ -7,7 +7,9 @@
  * The session counts and lanes come from the session list the app already holds, narrowed by the filters the operator
  * sets, which survive leaving the page and back. It also answers a waiting session and resumes a stopped one, one
  * action at a time per session, keeping the last action's error until the operator dismisses it or the next action
- * starts. The session list itself still arrives on the app's own stream.
+ * starts. A successful action keeps its session blocked until the session list shows the change it asked for, because
+ * the row that was clicked lives until the next list frame; a failure frees it at once. The session list itself still
+ * arrives on the app's own stream.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { loadHostMetrics, loadHostMetricsHistory } from "../api/control-surfaces.ts";
@@ -61,7 +63,8 @@ export class DashboardController implements ReactiveController {
   expandedLists: ReadonlySet<string> = new Set();
   /** What narrows the lanes; it survives leaving the page and back, and a reload clears it. */
   filters: SessionFilters = EMPTY_FILTERS;
-  /** Sessions with an action in flight, so a second click asks the gateway nothing. */
+  /** Sessions with an action in flight, so a second click asks the gateway nothing. A session stays here after a
+   * successful request until the list shows its outcome. */
   busy: ReadonlySet<string> = new Set();
   /** The last action's failure, shown until the operator dismisses it or the next action starts. */
   actionError = "";
@@ -76,6 +79,9 @@ export class DashboardController implements ReactiveController {
   readonly #resume: (id: string) => Promise<void>;
   /** The session list and filters the lanes were last folded against. */
   #folded: { groups: readonly SessionGroup[]; filters: SessionFilters } | undefined;
+  /** What each successfully acted-on session must no longer show before it is free again: the question it answered,
+   * or the status and failed run its resume started from. A session missing from the list is freed too. */
+  #awaiting = new Map<string, (session: SessionView | undefined) => boolean>();
   #timer: ReturnType<typeof setInterval> | undefined;
   /** One read in flight per machine list, so a worker that is slow to answer never holds back this gateway's own
    * cards or the next poll of them. */
@@ -108,6 +114,7 @@ export class DashboardController implements ReactiveController {
   }
 
   hostUpdate(): void {
+    this.#release();
     if (!this.expandedLists.size) return;
     if (!this.#shown()) {
       this.expandedLists = new Set();
@@ -147,18 +154,26 @@ export class DashboardController implements ReactiveController {
     this.#host.requestUpdate();
   };
 
-  /** Answers a waiting session; another click while its answer is in flight asks nothing. */
+  /** Answers a waiting session; another click asks nothing while its answer is in flight and until the list shows the
+   * question gone, so the row still on screen cannot answer twice. */
   answer = (session: SessionView, question: NonNullable<SessionView["question"]>, answer: AnswerChoice): void => {
-    void this.#act(session.id, () => this.#answer(session.id, question.id, answer));
+    const id = session.id;
+    const questionId = question.id;
+    void this.#act(id, () => this.#answer(id, questionId, answer), (current) => current?.question?.id !== questionId);
   };
 
-  /** Resumes a stopped session; another click while its resume is in flight asks nothing. */
+  /** Resumes a stopped session; another click asks nothing until the list shows its status or failed run changed, so
+   * the row still on screen cannot resume twice. */
   resume = (session: SessionView): void => {
-    void this.#act(session.id, () => this.#resume(session.id));
+    const { id, status, runFailed } = session;
+    void this.#act(id, () => this.#resume(id), (current) =>
+      current === undefined || current.status !== status || current.runFailed !== runFailed);
   };
 
-  /** Runs one action for a session: marks it busy, then settles it with the request's answer or its error. */
-  async #act(id: string, request: () => Promise<void>): Promise<void> {
+  /** Runs one action for a session: marks it busy, then settles it with the request's answer or its error. A request
+   * that succeeded keeps the session busy until `changed` sees the list catch up; a failure frees it at once, so the
+   * operator can try again. */
+  async #act(id: string, request: () => Promise<void>, changed: (session: SessionView | undefined) => boolean): Promise<void> {
     if (this.busy.has(id)) return;
     this.busy = new Set(this.busy).add(id);
     this.actionError = "";
@@ -167,12 +182,37 @@ export class DashboardController implements ReactiveController {
       await request();
     } catch (error) {
       this.actionError = message(error);
-    } finally {
-      const busy = new Set(this.busy);
-      busy.delete(id);
-      this.busy = busy;
+      this.#free(id);
       this.#host.requestUpdate();
+      return;
     }
+    this.#awaiting.set(id, changed);
+    this.#host.requestUpdate();
+  }
+
+  /** Frees a session now: its request failed, so there is nothing to wait for. */
+  #free(id: string): void {
+    this.#awaiting.delete(id);
+    if (!this.busy.has(id)) return;
+    const busy = new Set(this.busy);
+    busy.delete(id);
+    this.busy = busy;
+  }
+
+  /** Frees every session a successful action left blocked once the list shows the change it asked for, including one
+   * that left the list. No timer guesses: the list itself says whether the row still shows the action's subject. */
+  #release(): void {
+    if (!this.#awaiting.size) return;
+    const sessions = new Map<string, SessionView>();
+    for (const group of this.#groups()) for (const session of group.sessions) sessions.set(session.id, session);
+    const busy = new Set(this.busy);
+    let freed = false;
+    for (const [id, changed] of this.#awaiting) {
+      if (!changed(sessions.get(id))) continue;
+      this.#awaiting.delete(id);
+      freed = busy.delete(id) || freed;
+    }
+    if (freed) this.busy = busy;
   }
 
   /** Whether the machine's cards and line show: this gateway's, a worker's, or one the operator can chart. */

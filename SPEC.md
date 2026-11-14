@@ -4174,7 +4174,9 @@ waits, worked from the row that waits.
   the first lane it matches: a run that is going again is In flight even while
   the turn before it is still on record as failed, and a question comes before
   any stop. Each lane shows its first three rows and ends in **Show all**; a
-  lane opens on its own, as before.
+  lane opens on its own, as before. A lane with nothing in it is not drawn at
+  all, while the stat strip above the lanes always counts all five, so an empty
+  lane reads its zero beside the ones that are there.
 - **What needs the operator is Answer, Fix and Unread.** Parked work is listed
   but is not a decision waiting on the operator, and the page no longer says
   *Needs you*. A finished session (idle in Done) stays out of every lane and is
@@ -4182,6 +4184,12 @@ waits, worked from the row that waits.
 - **Order inside a lane is unchanged**: longest wait first in Answer, Fix,
   Unread and Parked, newest first in In flight, and a time HUI can't read sorts
   last.
+- **A gateway restart forgets a live failure marker.** A failed turn is a
+  marker HUI holds for the session it has loaded, not a status the registry
+  stores, and the session list does not replay transcripts to find one. A
+  gateway restart therefore leaves that session reading as Parked rather than
+  Fix until it runs again, while its reason stays in the transcript, which
+  opening the session loads.
 - **A row is where the decision is made.** An Answer row leads with the pending
   question's title and answers it in place: one button per option for a select
   question, **Yes** and **No** for a confirm, over the existing
@@ -4196,27 +4204,33 @@ waits, worked from the row that waits.
   otherwise sends HUI's continuation prompt, so it works on the default Durable
   runtime. That row keeps its reason and only opens the session, where the
   operator retries it with a new message. Every row still opens its session, and
-  an action the gateway refuses says so above the lanes until **Dismiss**.
+  a row keeps one link into it — its title's — so *Open to answer* stands alone
+  while a select or a confirm draws its option buttons beside **Open**. An
+  action the gateway refuses says so above the lanes until **Dismiss**.
 - **The filters narrow every lane at once**: **Search sessions** over the title,
   path and group, beside the Group, Status, Worker and Stage pickers,
-  AND-combined. A choice carries the count it would show and always comes from
-  every session in flight, so a value never vanishes while another filter is
-  set. The lanes' counts and the *n* of *n of m sessions* follow what passes,
-  *m* stays every session in flight with the finished ones after it, nothing
-  matching reads *No sessions match these filters.*, and **Clear** appears while
-  any filter is set. The filters survive leaving the page and coming back, and a
-  reload clears them.
+  AND-combined. A choice carries the count it would show — counted with the
+  other filters applied and its own left out, so picking it matches that many
+  — and always comes from every session in flight, so a value never vanishes
+  while another filter is set. The lanes' counts and the *n* of *n of m
+  sessions* follow what passes, *m* stays every session in flight with the
+  finished ones after it, nothing matching reads *No sessions match these
+  filters.*, and **Clear** appears while any filter is set. The filters
+  survive leaving the page and coming back, and a reload clears them.
 - **The session list carries two more fields for these rows**: `question` (the
   pending question's id, method, one-line title and, for a select, its options)
   and `failure` (why the failed run ended). Both are bounded so that a long
   question or provider error cannot grow the list the browser diffs every
-  second: whitespace collapses to one line, a title stops at 200 characters, an
-  option at 120 with at most 8 of them, a failure at 240, and each cut ends in
-  an ellipsis. `question` holds no message body, no prefill and, for a
-  questionnaire, only its first question's title; both fields are documented on
-  `SessionView` in `docs/api.md`. `failure` is absent when nothing names the
-  failure — a cold session has no loaded transcript to quote — so the row falls
-  back to *The last run failed.*, or *Disconnected* when that is why it stopped.
+  second: whitespace collapses to one line, a title stops at 200 characters, a
+  failure at 240, and each cut ends in an ellipsis. A select's options are sent
+  exactly as the runtime offered them, at most 8; a list holding an option over
+  120 characters is left out whole, so no button can name a choice the agent
+  did not offer and the row offers *Open to answer* instead. `question` holds
+  no message body, no prefill and, for a questionnaire, only its first
+  question's title; both fields are documented on `SessionView` in
+  `docs/api.md`. `failure` is absent when nothing names the failure — a cold
+  session has no loaded transcript to quote — so the row falls back to *The
+  last run failed.*, or *Disconnected* when that is why it stopped.
 - **The activity monitor is unchanged** and sits beside the lanes from 1200px
   and below them otherwise.
 

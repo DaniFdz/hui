@@ -294,7 +294,7 @@ const cases: UseCase[] = [
     id: "CHAT-022",
     title: "Continue a conversation without a prompt",
     behaviour:
-      'A session on PI\'s SDK worker shows Continue ("Continue without a prompt") in the header, disabled while the transcript is empty or a run is busy. When the branch already ends with a finished reply, it sends one explicit continuation prompt ("Continue from where you left off. …") and the agent answers it. A Pi Durable session cannot continue without a prompt, so its header has no Continue.',
+      'A session on PI\'s SDK worker shows Continue ("Continue without a prompt") in the header, disabled while the transcript is empty or a run is busy. When the branch already ends with a finished reply, it sends one explicit continuation prompt ("Continue from where you left off. …") and the agent answers it. A Pi Durable session has no prompt-free continuation, so its header has no Continue; the gateway continues it from the Dashboard\'s Resume with HUI\'s continuation prompt, which appends that prompt as a normal user turn.',
     spec: ["SPEC.md#behaviour", "SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: ["route:POST /__hui/sessions/:id/resume"],
     journeys: ["rewind-continue", "continue-error-toast"],
