@@ -5,7 +5,7 @@
  * rule the split makes easy to lose: the page and the app accept exactly the same gateway addresses.
  */
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "vitest";
 import { fileURLToPath } from "node:url";
@@ -108,6 +108,33 @@ test("both apps accept a gateway on the local network, and iOS explains the prom
   const addresses = await read("mobile/gateway-addresses.txt");
   assert.match(addresses, /^https:\/\/192\.168\.\d+\.\d+:\d+ -> https:\/\/192\.168\.\d+\.\d+:\d+$/mu, "the shared addresses include a LAN gateway");
   assert.match(plist, /<key>NSLocalNetworkUsageDescription<\/key>\s*<string>[^<]{20,}<\/string>/u, "the iOS shell explains why it wants the local network");
+});
+
+test("the Android local-network permission arrives with the SDK 37 target", async () => {
+  // Android 16 and lower grant local-network access through INTERNET, and Android's own guidance says not to declare
+  // ACCESS_LOCAL_NETWORK below targetSdk 37 because the platform ignores it there. Android 17 blocks the local network
+  // by default for target 37, so the bump must bring the manifest permission and a runtime request before the Connect
+  // page probes, or a LAN gateway silently stops answering.
+  const gradle = await read("mobile/android/variables.gradle");
+  const target = Number(/targetSdkVersion\s*=\s*(\d+)/u.exec(gradle)?.[1]);
+  assert.ok(Number.isInteger(target), "variables.gradle declares targetSdkVersion");
+  const manifest = await read("mobile/android/app/src/main/AndroidManifest.xml");
+  const appDir = "mobile/android/app/src/main/java/dev/hui/app";
+  const sources = await Promise.all(
+    (await readdir(join(root, appDir), { recursive: true }))
+      .filter((path) => path.endsWith(".java"))
+      .map((path) => readFile(join(root, appDir, path), "utf8")),
+  );
+  const permission = "android.permission.ACCESS_LOCAL_NETWORK";
+  if (target < 37) {
+    assert.ok(!manifest.includes(permission), "the manifest declares the local-network permission only at targetSdk 37");
+    assert.ok(!sources.some((source) => source.includes(permission)), "the app requests the local-network permission only at targetSdk 37");
+    return;
+  }
+  assert.match(manifest, /<uses-permission\s+android:name="android\.permission\.ACCESS_LOCAL_NETWORK"\s*\/>/u, "targetSdk 37 declares ACCESS_LOCAL_NETWORK");
+  const requester = sources.find((source) => source.includes(permission) && /requestPermissions\s*\(/u.test(source));
+  assert.ok(requester, "targetSdk 37 requests ACCESS_LOCAL_NETWORK at runtime, before the first gateway request");
+  assert.match(requester, /Build\.VERSION\.SDK_INT\s*>=\s*(?:37|Build\.VERSION_CODES\.[A-Z_]+)/u, "the request runs only where API 37 exists");
 });
 
 test("both apps declare the microphone a call needs, and iOS explains it", async () => {

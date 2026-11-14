@@ -223,6 +223,17 @@ The manifest names `android.media.action.IMAGE_CAPTURE` and `VIDEO_CAPTURE` in a
 `onShowFileChooser` asks the package manager whether a camera app answers before it opens one, and Android 11 hides other
 apps from that question: without the element the camera input silently falls back to the file picker.
 
+### The local-network permission waits for SDK 37
+
+Android 16 and lower grant local-network access through `INTERNET`; Android's own guidance says not to declare
+`android.permission.ACCESS_LOCAL_NETWORK` below `targetSdk 37`, because the platform ignores it there. Android 17 blocks
+the local network by default for target 37, so that bump must add the manifest permission and a runtime request before
+the Connect page's first probe or the bridge's first load, and handle a refusal with the page's own message.
+`scripts/mobile-contract.test.mjs` enforces both directions: the permission is absent while the target is below 37, and
+the bump fails the test until the manifest entry and a guarded `requestPermissions` call exist. The guard names
+`requestPermissions` because that is the API this shell uses; if the bump picks a different request API, update the guard
+with the reason.
+
 ## Launch, ports and target names
 
 | Contract | Value |
