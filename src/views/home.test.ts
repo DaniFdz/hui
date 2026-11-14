@@ -658,6 +658,18 @@ test("watchers stay out of the thread while a session loads and return once it i
   assert.match(live, /Wait for CI/u);
 });
 
+test("a long watcher list folds behind Watcher details", async () => {
+  const at = new Date().toISOString();
+  const watcher = (id: number) => ({ id: `w${id}`, purpose: `Watch ${id}`, target: "", outcome: "", command: "sleep 60", logPath: `/tmp/w${id}.log`, state: "running" as const, pid: 100 + id, startedAt: at, lastLine: "waiting" });
+  const activity = (count: number) => ({ watchers: Array.from({ length: count }, (_, index) => watcher(index + 1)), pendingId: "", log: null, expanded: new Set<string>(), onToggle: () => {}, onStop: () => {}, onRestart: () => {}, onDismiss: () => {} });
+  const many = await renderWorkerSession("idle", { watchers: activity(5) });
+  assert.match(many, /class="chat-run-status__watchers-details"/u);
+  assert.match(many, /Watcher details/u);
+  assert.equal(many.match(/data-watcher-id=/gu)?.length, 5, "the rows are there behind the disclosure");
+  const few = await renderWorkerSession("idle", { watchers: activity(2) });
+  assert.doesNotMatch(few, /chat-run-status__watchers-details/u, "a few watchers stay open as rows");
+});
+
 test("a saved copy taken today says when, without repeating today's date", async () => {
   const savedAt = new Date().setHours(12, 0, 0, 0);
   const saved = await renderWorkerSession("disconnected", { connection: "saved", savedCopy: { savedAt, truncated: false } });

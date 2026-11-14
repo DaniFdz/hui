@@ -216,12 +216,17 @@ function renderWatchers(props: RunStatusProps) {
   if (!watchers || watchers.watchers.length === 0) return nothing;
   const running = watchers.watchers.filter((watcher) => watcher.state === "running").length;
   const meta = running ? `${running} running` : `${watchers.watchers.length} watcher${watchers.watchers.length === 1 ? "" : "s"}`;
+  const rows = html`<div class="chat-run-status__watchers">${renderWatcherRows(watchers)}</div>`;
+  // Keep a long watcher list from pushing everything below it; a few stay open as rows.
+  const list = watchers.watchers.length > 4
+    ? html`<details class="chat-run-status__watchers-details"><summary>Watcher details<span class="chat-run-status__meta">${watchers.watchers.length}</span><span class="chat-run-status__chevron" aria-hidden="true">${icons.chevronDown}</span></summary>${rows}</details>`
+    : rows;
   return html`<section class="chat-run-status__section" aria-label="Background watchers">
     <div class="chat-run-status__section-head">
       <span class="chat-run-status__section-title">Watchers</span>
       <span class="chat-run-status__meta">${meta}</span>
     </div>
-    <div class="chat-run-status__watchers">${renderWatcherRows(watchers)}</div>
+    ${list}
   </section>`;
 }
 

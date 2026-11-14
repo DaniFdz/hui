@@ -123,6 +123,10 @@
 .chat-run-status__panel {
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  /* The popover body shrink-wraps its content; a fixed panel width keeps a watchers-only or goal-only popover
+     as wide as the full one, and leaves room for a watcher row's purpose. */
+  width: min(398px, calc(100vw - 16px));
   /* Keep the popover above the composer on a short phone or in landscape. */
   max-height: min(72dvh, 640px, calc(100dvh - 160px));
   overflow: auto;
@@ -597,13 +601,15 @@
 }
 
 /* A large batch keeps the counts and dots, and folds the per-child rows behind one disclosure. */
-.chat-run-status__children {
+.chat-run-status__children,
+.chat-run-status__watchers-details {
   display: grid;
   gap: 4px;
   margin-top: 6px;
 }
 
-.chat-run-status__children > summary {
+.chat-run-status__children > summary,
+.chat-run-status__watchers-details > summary {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -615,18 +621,25 @@
   cursor: pointer;
 }
 
-.chat-run-status__children > summary::-webkit-details-marker {
+.chat-run-status__children > summary::-webkit-details-marker,
+.chat-run-status__watchers-details > summary::-webkit-details-marker {
   display: none;
 }
 
-.chat-run-status__children > summary .chat-run-status__meta {
+.chat-run-status__children > summary .chat-run-status__meta,
+.chat-run-status__watchers-details > summary .chat-run-status__meta {
   margin-inline-start: auto;
 }
 
-.chat-run-status__children[open] > summary .chat-run-status__chevron svg {
+.chat-run-status__children[open] > summary .chat-run-status__chevron svg,
+.chat-run-status__watchers-details[open] > summary .chat-run-status__chevron svg {
   transform: rotate(180deg);
 }
 
 .chat-run-status__children .chat-run-status__helpers-list {
+  margin-top: 2px;
+}
+
+.chat-run-status__watchers-details .chat-run-status__watchers {
   margin-top: 2px;
 }

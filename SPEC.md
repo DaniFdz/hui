@@ -1845,7 +1845,8 @@ objective, its status note, when it was set, its automatic turns, and
 Pause/Resume, Edit and Clear), **Plan** (the Task progress steps and summary),
 **Helpers** (the latest batch, its counts, one dot per child and each child's
 row) and **Watchers** (each watcher's purpose, latest output, state, details,
-log tail and Stop/Restart/Dismiss). Empty sections are absent. The popover
+log tail and Stop/Restart/Dismiss; a list longer than four folds its rows behind
+Watcher details while the section header keeps the running count). Empty sections are absent. The popover
 scrolls inside itself, closes on Escape or an outside click, and never resizes
 the conversation. None of those surfaces draws above the composer or in the
 transcript; a helper or watcher that settles still writes its own transcript

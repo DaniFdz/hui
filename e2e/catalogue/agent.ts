@@ -339,7 +339,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-036",
     title: "See an agent's watchers in its conversation",
-    behaviour: "Watchers an agent starts are listed in the chat header's Run status popover under Watchers, never in the transcript or above the composer. The section header reads N running, or N watchers when none is running. One watcher is one row: a status icon, its purpose, its latest output line and a state with its time (phones keep only the purpose and state).",
+    behaviour: "Watchers an agent starts are listed in the chat header's Run status popover under Watchers, never in the transcript or above the composer. The section header reads N running, or N watchers when none is running. One watcher is one row: a status icon, its purpose, its latest output line and a state with its time (phones keep only the purpose and state); more than four fold behind Watcher details while the section header keeps the running count.",
     spec: WATCHERS,
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
