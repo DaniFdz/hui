@@ -45,10 +45,15 @@ const finish = (response, reason = "end_turn") => {
   event(response, { type: "message_stop" });
   response.end();
 };
-const text = (response, value, index = 0) => {
+/** `holdAfterTokenMs` waits out the rest of the block after the token, so Durable's next progress commit carries the
+ * token: a measured time to first token then has a real wait behind it, and the answer is not the first thing HUI
+ * sees. Only the call that passes one awaits the promise. */
+const text = (response, value, index = 0, holdAfterTokenMs = 0) => {
   event(response, { type: "content_block_start", index, content_block: { type: "text", text: "", citations: null } });
   event(response, { type: "content_block_delta", index, delta: { type: "text_delta", text: value } });
-  event(response, { type: "content_block_stop", index });
+  const close = () => { event(response, { type: "content_block_stop", index }); };
+  if (holdAfterTokenMs <= 0) { close(); return; }
+  return new Promise((resolve) => setTimeout(() => { close(); resolve(); }, holdAfterTokenMs));
 };
 const toolUse = (response, id, name, input, index = 0) => {
   event(response, { type: "content_block_start", index, content_block: { type: "tool_use", id, name, input: {} } });
@@ -1551,7 +1556,8 @@ const server = createServer(async (request, response) => {
   }
   // Attachment requests reach this branch. The request log is the proof that
   // PI, not merely HUI's HTTP boundary, received the image/file-expanded input.
-  text(response, source.includes("image") ? "Attachment received by PI." : "Fixture response.");
+  // E2E_SLOW_TTFT keeps the answer going 600 ms after its first token, so the token reaches HUI in its own partial.
+  await text(response, source.includes("image") ? "Attachment received by PI." : "Fixture response.", 0, source.includes("E2E_SLOW_TTFT") ? 600 : 0);
   finish(response);
 }).listen(port, "127.0.0.1", () => {
   port = server.address().port;

@@ -200,6 +200,25 @@ test("a host whose bots were never configured refuses to open its store, so no c
   await rm(dir, { recursive: true, force: true });
 });
 
+test("time to first token counts from the request start PI records, not from the partial HUI first saw", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-ttft" }, f.host());
+  const measured = nextEvent(session, (event) => event.type === "model_metric");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  // The fixture holds its answer open 600 ms past the first token, so Durable's progress commit carries that token and
+  // HUI's first sight of the partial already holds it: counting from that sight, as HUI did, can only measure zero.
+  await session.prompt("E2E_SLOW_TTFT hello");
+  const event = await measured;
+  await settled;
+  assert(event.type === "model_metric");
+  const { ttftMs, generationMs, durationMs, tokensPerSecond } = event.metric;
+  // The token was ready at once, so only the progress interval before that commit can put it after the request start.
+  assert.ok(ttftMs !== undefined && ttftMs >= 50, `time to first token: ${ttftMs} in ${JSON.stringify(event.metric)}`);
+  assert.ok(generationMs !== undefined && generationMs > 0, JSON.stringify(event.metric));
+  assert.ok(Math.abs((durationMs ?? 0) - ttftMs - generationMs) < 1e-6, JSON.stringify(event.metric));
+  assert.ok(tokensPerSecond === undefined || tokensPerSecond > 0);
+});
+
 test("the live view streams an answer Durable sends whole, exactly once", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-whole-answer" }, f.host());
