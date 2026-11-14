@@ -7427,6 +7427,12 @@
         "code": {
           "type": "string"
         },
+        "flow": {
+          "$ref": "#/$defs/ProviderLoginFlow"
+        },
+        "reason": {
+          "$ref": "#/$defs/ProviderLoginFailure"
+        },
         "prompt": {
           "type": "object",
           "required": [
@@ -7483,6 +7489,50 @@
         }
       }
     },
+    "ProviderLoginFailure": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "cancelled"
+        },
+        {
+          "type": "string",
+          "const": "expired"
+        },
+        {
+          "type": "string",
+          "const": "stale_link"
+        },
+        {
+          "type": "string",
+          "const": "port_in_use"
+        },
+        {
+          "type": "string",
+          "const": "network"
+        },
+        {
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
+    "ProviderLoginFlow": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "browser"
+        },
+        {
+          "type": "string",
+          "const": "device_code"
+        },
+        {
+          "type": "string",
+          "const": "copy_code"
+        }
+      ]
+    },
     "ProviderLoginRequest": {
       "type": "object",
       "required": [
@@ -7506,6 +7556,9 @@
         },
         "accountId": {
           "type": "string"
+        },
+        "flow": {
+          "$ref": "#/$defs/ProviderLoginFlow"
         }
       }
     },
@@ -7768,6 +7821,92 @@
           "items": {
             "$ref": "#/$defs/ProviderModel"
           }
+        }
+      }
+    },
+    "ProviderTest": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "ok",
+            "latencyMs"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "const": true
+            },
+            "latencyMs": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "ok",
+            "reason",
+            "message"
+          ],
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "const": false
+            },
+            "reason": {
+              "$ref": "#/$defs/ProviderTestFailure"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "ProviderTestFailure": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "auth"
+        },
+        {
+          "type": "string",
+          "const": "rate_limit"
+        },
+        {
+          "type": "string",
+          "const": "billing"
+        },
+        {
+          "type": "string",
+          "const": "timeout"
+        },
+        {
+          "type": "string",
+          "const": "format"
+        },
+        {
+          "type": "string",
+          "const": "unavailable"
+        },
+        {
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
+    "ProviderTestRequest": {
+      "type": "object",
+      "required": [
+        "model"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "accountId": {
+          "type": "string"
         }
       }
     },
@@ -14026,6 +14165,8 @@
       "ProviderAnswerRequest",
       "ProviderError",
       "ProviderLogin",
+      "ProviderLoginFailure",
+      "ProviderLoginFlow",
       "ProviderLoginRequest",
       "ProviderModel",
       "ProviderModelsRequest",
@@ -14033,7 +14174,10 @@
       "ProviderOrderRequest",
       "ProviderQuota",
       "ProviderSnapshot",
-      "ProviderSummary"
+      "ProviderSummary",
+      "ProviderTest",
+      "ProviderTestFailure",
+      "ProviderTestRequest"
     ],
     "tools": [
       "RuntimeInspection",
@@ -15219,6 +15363,16 @@
       "path": "/__hui/providers/:provider/quota",
       "response": {
         "$ref": "#/$defs/ProviderQuota"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/providers/:provider/test",
+      "request": {
+        "$ref": "#/$defs/ProviderTestRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/ProviderTest"
       }
     },
     {

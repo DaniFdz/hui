@@ -17,6 +17,7 @@ export const NOT_UI: Readonly<Record<string, string>> = {
   "route:POST /__hui/bots/:id/messages": "For the CLI and other callers; a bot's composer sends through the session prompt route.",
   "route:POST /__hui/bots/:id/stop": "For the CLI; Stop in a bot's chat uses the session's stop route.",
   "route:GET /__hui/providers/:provider/quota": "Settings → Models reads quota per account; no screen asks for the provider-wide figure.",
+  "route:POST /__hui/providers/:provider/test": "No screen calls it yet: the gateway's check of one model on one account landed before the Settings → Models control that will read it, which arrives with the sign-in flow it verifies.",
   "route:GET /__hui/sessions/:id/thinking": "The thinking level arrives in the session stream's snapshot and frames; no screen reads it separately.",
   "route:GET /__hui/sessions/:id/events": "The browser streams a session over the WebSocket that POST /connect opens; this server-sent events route is for other clients.",
   "route:GET /__hui/sessions/:owner/terminals/:id": "The terminal view replays over its WebSocket and the agent's terminal tool calls the terminal manager directly; no screen calls this route.",
