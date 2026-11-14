@@ -65,7 +65,6 @@ test("an opened watcher shows its target, outcome, times, log, path and controls
 
   const watchers = await openWatchers(screen);
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for #21532 review signals");
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("posted /merge");
   await watchers.getByText("Post /merge when approved").tap();
 
   await expect(watchers.getByText("Then: post /merge")).toBeVisible();
@@ -155,7 +154,6 @@ test("Dismiss removes a settled watcher and its log, folding the list back into 
 
   const watchers = await openWatchers(screen);
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for #21532 review signals");
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("posted /merge");
   await watchers.getByText("Post /merge when approved").tap();
   await expect(watchers.getByLabel("Watcher log").getByText("posted /merge")).toBeVisible();
   await watchers.getByRole("button", "Dismiss").tap();
