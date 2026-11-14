@@ -326,6 +326,21 @@ test("the composer shows context usage and only offers compaction on a live idle
   assert.doesNotMatch(await renderWorkerSession("idle", { usage, session: { id: "bot", title: "Bot", tool: "pi", status: "idle", bot: "bot" } }), /Compact now/u);
 });
 
+test("the meter adds what every model call cost, compaction summaries included", async () => {
+  const usage = { percent: 10, contextTokens: 2_000, contextWindow: 200_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.01, sessionTotal: { tokens: 1_200_000, usd: 4.25, asOf: Date.now() - 60_000 } };
+  const html = await renderWorkerSession("idle", { usage });
+  assert.match(html, /Session total/u);
+  assert.match(html, /<dt>All model calls<\/dt><dd>1\.2m tokens · \$4\.25<\/dd>/u, "the whole conversation, not the latest run");
+  assert.doesNotMatch(html, /Latest run tokens/u, "the run's figures give way to the session's");
+  assert.match(html, /<dt>Checked<\/dt>/u);
+  const unpriced = await renderWorkerSession("idle", { usage: { ...usage, sessionTotal: { tokens: 12_000, usd: null, asOf: Date.now() } } });
+  assert.match(unpriced, /12\.0k tokens · unpriced/u, "a call nobody priced is said, not counted as free");
+  const bot = { id: "bot", title: "Bot", group: "", cwd: "/repo", displayCwd: "repo", tool: "durable", status: "idle" as const, bot: { id: "b", handle: "ada", name: "Ada" } };
+  const botChat = await renderWorkerSession("idle", { session: bot, usage, botCost: { usd: 1.5, subagents: 0 } });
+  assert.doesNotMatch(botChat, /Session total/u, "a bot's cost already counts its chat and its subagents");
+  assert.doesNotMatch(botChat, /Latest run tokens/u);
+});
+
 test("a bot's chat says what the bot has cost, and how much of it is its subagents", async () => {
   const bot = { id: "bot", title: "Bot", group: "", cwd: "/repo", displayCwd: "repo", tool: "durable", status: "idle" as const, bot: { id: "b", handle: "ada", name: "Ada" } };
   const usage = { percent: 10, contextTokens: 2_000, contextWindow: 200_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.01 };
