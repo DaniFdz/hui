@@ -290,7 +290,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-031",
     title: "Follow parallel helpers in the Parallel tasks card",
-    behaviour: "When an agent spawns collected helpers and waits for them, the card above the composer reads Parallel tasks with complete of total, one dot per child, and N running · N queued · N failed or stopped; Child details lists each child with its status, latest summary or error and run time, and a timed-out one reads The subagent exceeded N seconds. Helpers get no sidebar rows and no completion card. Once all finish it reads N completed · N failed or stopped and Child runs finished. Check the conversation for the final response. (The parent is processing their results. while it still runs).",
+    behaviour: "When an agent spawns collected helpers and waits for them, the Run status popover in the chat header has a Helpers section reading complete of total, one dot per child, and N running · N queued · N failed or stopped; each child is listed with its status, latest summary or error and run time (a batch larger than six folds those rows behind Child details while its counts and dots stay visible), and a timed-out one reads The subagent exceeded N seconds. Helpers get no sidebar rows and no completion card, and never draw above the composer. Once all finish it reads N completed · N failed or stopped and Child runs finished. Check the conversation for the final response. (The parent is processing their results. while it still runs).",
     spec: SUBAGENTS,
     surfaces: ["tool:sessions_spawn", "tool:agents_wait"],
     journeys: ["swarm", "subagents"],
@@ -310,7 +310,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-033",
     title: "Stop a parent and its helpers together",
-    behaviour: "Stop on a parent waiting for its helpers cancels the wait and every queued and running helper: the card reads 0 completed · N failed or stopped, each child Stopped with its parent., and no completion event follows.",
+    behaviour: "Stop on a parent waiting for its helpers cancels the wait and every queued and running helper: the Helpers section of the Run status popover reads 0 completed · N failed or stopped, each child Stopped with its parent., and no completion event follows.",
     spec: SUBAGENTS,
     surfaces: ["route:POST /__hui/sessions/:id/abort", "tool:agents_wait"],
     journeys: ["swarm"],
@@ -320,7 +320,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-034",
     title: "See a fully successful batch fold into one row",
-    behaviour: "When every helper succeeds, the card folds into a single ✓ Parallel tasks · N completed row that still opens Child details.",
+    behaviour: "When every helper succeeds, the Helpers section folds into a single ✓ Helpers · N completed row that still opens each child's row.",
     spec: SUBAGENTS,
     surfaces: ["tool:agents_wait"],
     journeys: ["swarm"],
@@ -339,12 +339,12 @@ const cases: UseCase[] = [
   {
     id: "AGENT-036",
     title: "See an agent's watchers in its conversation",
-    behaviour: "Watchers an agent starts are listed at the end of the transcript above the composer, never floating over it. One watcher is one row: a status icon, its purpose, its latest output line and a state with its time (phones keep only the purpose and state). Several collapse into N watchers · M running · <purpose>, or None running, which opens into one row each.",
+    behaviour: "Watchers an agent starts are listed in the chat header's Run status popover under Watchers, never in the transcript or above the composer. The section header reads N running, or N watchers when none is running. One watcher is one row: a status icon, its purpose, its latest output line and a state with its time (phones keep only the purpose and state); more than four fold behind Watcher details while the section header keeps the running count.",
     spec: WATCHERS,
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-037",
@@ -359,7 +359,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-038",
     title: "Stop a running watcher",
-    behaviour: "Stop in its opened row turns the watcher Stopped, the summary updates (None running when it was the last) and Restart and Dismiss replace Stop; nothing starts it again.",
+    behaviour: "Stop in its opened row turns the watcher Stopped, the section header updates to N watchers when it was the last running one and Restart and Dismiss replace Stop; nothing starts it again.",
     spec: [...WATCHERS, "docs/api.md#post-__huisessionsidwatcherswidstop"],
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/stop"],
     journeys: ["watchers"],
@@ -379,7 +379,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-040",
     title: "Dismiss a settled watcher",
-    behaviour: "Dismiss removes the watcher and its log from the list; with one watcher left the summary becomes a single row.",
+    behaviour: "Dismiss removes the watcher and its log from the list; with one watcher left the section header reads 1 watcher.",
     spec: [...WATCHERS, "docs/api.md#delete-__huisessionsidwatcherswid"],
     surfaces: ["route:DELETE /__hui/sessions/:id/watchers/:wid"],
     journeys: ["watchers"],
@@ -528,11 +528,11 @@ const cases: UseCase[] = [
   {
     id: "AGENT-053",
     title: "Follow a session's task progress",
-    behaviour: "HUI's utility model reads the conversation after every turn and every five minutes of a running one, and writes a Task progress card above the composer: folded, the current step and done/total; open, Task progress with N of M, a one-line summary and each step marked pending, in progress or done. It starts open unless every step is done or Collapse task progress is on, a new turn rewrites it, and it is stored with the session so it returns after a reload. Without a utility model, or when the model cannot answer, the previous card stays and nothing blocks the turn.",
+    behaviour: "HUI's utility model reads the conversation after every turn and every five minutes of a running one, and writes the Plan section of the chat header's Run status popover: folded, the current step and done/total; open, N of M, a one-line summary and each step marked pending, in progress or done. It starts open unless every step is done or Collapse task progress is on (and starts folded on a phone), a new turn rewrites it, and it is stored with the session so it returns after a reload. The plan never draws above the composer. Without a utility model, or when the model cannot answer, the previous plan stays and nothing blocks the turn.",
     spec: ["docs/api.md#task-progress"],
     surfaces: ["appearance:chat.collapseTaskProgress", "setting:models.utility"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-054",

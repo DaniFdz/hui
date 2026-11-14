@@ -1822,11 +1822,11 @@ later turns. Examples include `/btw which file are we editing?` and
 HUI keeps each conversation's Task progress card itself, not the agent. A
 session's turn settling, and every five minutes while one is still running, send
 a bounded digest of the conversation to the configured utility model; its
-summary and `done`/`doing`/`todo` plan become a collapsible card attached above
-the composer, stored with the session. Nothing waits on that call: without a
+summary and `done`/`doing`/`todo` plan become the Plan section of the chat
+header's Run status popover, stored with the session. Nothing waits on that call: without a
 utility model, on a failure, or on an answer with neither a summary nor a plan,
-the previous card stays and the turn is unaffected. Subagent sessions get no
-card of their own; their work is the parent's. HUI never infers plan state from
+the previous plan stays and the turn is unaffected. Subagent sessions get no
+plan of their own; their work is the parent's. HUI never infers plan state from
 prose in the transcript, and the agent has no tool for it.
 Session rows retain OpenClaw’s single-line layout. Hover or keyboard focus opens
 the ported OpenClaw 2026.9.5 hovercard: session age, workspace, current unfinished
@@ -1836,24 +1836,49 @@ no invented percentage. Touch does not gain an extra progress button absent
 from the original. Background sessions refresh while the page is visible. The
 card is registry state, so it is there immediately after a gateway restart.
 
+### Run status
+
+The chat header's rightmost control is **Run status**, present whenever the
+conversation has a goal, a plan, a recent batch of helpers or background
+watchers; otherwise it is absent. It reads the most urgent state — Waiting for
+your answer, Goal blocked, Working, Watcher failed, Helper failed, Goal paused,
+Goal achieved, Done or Pursuing goal — with the plan's done/total (or the
+helpers' or watchers' count) beside it. Its accessible name names the goal, plan
+and helper facts it summarizes. On a narrow pane or a phone the trigger keeps
+only its mark and count.
+
+Clicking the trigger opens one popover anchored to its right edge: **Goal** (the
+objective, its status note, when it was set, its automatic turns, and
+Pause/Resume, Edit and Clear), **Plan** (the Task progress steps and summary),
+**Helpers** (the latest batch, its counts, one dot per child and each child's
+row) and **Watchers** (each watcher's purpose, latest output, state, details,
+log tail and Stop/Restart/Dismiss; a list longer than four folds its rows behind
+Watcher details while the section header keeps the running count). Empty sections are absent. The popover
+scrolls inside itself, closes on Escape or an outside click, and never resizes
+the conversation. None of those surfaces draws above the composer or in the
+transcript; a helper or watcher that settles still writes its own transcript
+event.
+
 ## Goals
 
 A goal is one objective attached to a conversation, so a long job keeps going
 without the operator repeating themselves. It is session state: it survives a
-restart, shows above the composer, and reaches every request's system prompt.
+restart, shows in the chat header's Run status popover, and reaches every
+request's system prompt.
 
 `/goal <objective>` starts one and sends the objective as the goal's first turn,
 so gathering the work and starting it is one step. `/goal pause`, `/goal resume`
-and `/goal clear` are the other operator controls; the pill above the composer
-offers the same three, with the status (Pursuing goal, Goal paused, Goal
+and `/goal clear` are the other operator controls; the Run status popover's Goal
+section offers the same three, with the status (Pursuing goal, Goal paused, Goal
 blocked, Goal achieved) and the objective.
 
-The pill expands in place, in OpenClaw's own goal detail: the whole objective
-wrapped and readable, the status note when it paused or blocked itself, when it
-was set, and the editor. Editing the objective there replaces the goal and sends
-the new objective as its next turn, exactly as `/goal <objective>` does. Starting
-or editing a goal while a turn runs is refused, never queued. A conversation has
-one goal; starting another replaces it.
+The Goal section shows the whole objective wrapped and readable, the status
+note when it paused or blocked itself, when it was set, and how many automatic
+turns it has had. Edit reveals the objective's editor there; saving replaces the
+goal and sends the new objective as its next turn, exactly as `/goal
+<objective>` does. Starting or editing a goal while a turn runs is refused, never
+queued. A conversation has one goal; starting another replaces it. No goal pill
+draws above the composer.
 
 Only the operator pauses, resumes or clears a goal. The agent may report
 `complete` or `blocked` through `update_goal`, with a note, and cannot move the
@@ -1990,19 +2015,18 @@ Visibility is the current session tree, not the whole registry: parent, child
 and sibling sessions can exchange bounded messages and history, while unrelated
 sessions remain inaccessible. PI reaches this contract through a random-token,
 loopback-only bridge inherited by its process; no browser route exposes these
-operations. Between the transcript and the composer, the UI shows OpenClaw's
-**Parallel tasks** card for the latest batch of a conversation's children (a child
-spawned while an earlier one is still active joins its batch; a batch of one is
-titled with that child): "complete of total", one dot per child (running, queued,
-failed or stopped, done), the running/queued/failed-or-stopped counts, and once all
-have finished, a note that the parent is processing their results or that its
-final response is in the conversation. **Child details** lists each child with its
-status, latest summary or error and run time; activating one opens the real child
-transcript. A batch that all succeeded folds into a single "N completed" row. The
-card stays for an hour after the batch finished (OpenClaw's retention). Child
-sessions nest below their parent in the sidebar, except collected children, which
-have no sidebar row (as in OpenClaw): the card lists and opens them, and the parent
-row still shows their work as background activity. A bot's subagents, and anything
+operations. The Run status popover's **Helpers** section shows the latest batch
+of a conversation's children (a child spawned while an earlier one is still active
+joins its batch): "complete of total", one dot per child (running, queued, failed
+or stopped, done), the running/queued/failed-or-stopped counts, and once all have
+finished, a note that the parent is processing their results or that its final
+response is in the conversation. Each child's row names its status, latest summary or error and run time; activating one opens the real child transcript. A
+batch larger than six folds those rows behind **Child details** while its counts and dots stay visible; a batch that all
+succeeded folds into a single "N completed" row. The batch stays in
+the popover for an hour after it finished (OpenClaw's retention). Child sessions
+nest below their parent in the sidebar, except collected children, which have no
+sidebar row (as in OpenClaw): the Helpers section lists and opens them, and the
+parent row still shows their work as background activity. A bot's subagents, and anything
 below them, have no row either: like the bot's chat, which is never listed, they
 stay out of every session list, and the bot chat's cards list and open them; a
 subagent's *Open parent* opens its bot's chat in the Bots tab. Each parent with visible children has a separate keyboard-accessible

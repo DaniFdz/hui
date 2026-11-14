@@ -17,12 +17,13 @@
 @import "./openclaw-reference/chat/composer-progress.css";
 @import "./openclaw-reference/chat/sidebar.css";
 @import "./openclaw-reference/chat/split-view.css";
+
 @import "./chat-metrics.css";
+@import "./chat-run-status.css";
 
 /* Keep compact tables intrinsic: forced column stretching can round their last cell past the scroll viewport in
    WebKit. Wide tables still scroll as a unit. This is HUI's adaptation, not a change to the reviewed snapshot. */
 .chat-thread .chat-bubble .chat-text :where(table) { min-width: auto; }
-
 /* HUI recovery state: this is product-specific and intentionally stays out of
    the versioned OpenClaw reference snapshot above. */
 /* A settled run error reuses OpenClaw's composer-neighbor error card; HUI only

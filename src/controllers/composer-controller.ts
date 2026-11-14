@@ -26,8 +26,8 @@ import { appendPendingUser, dropDuplicateSend, failPendingUser, localTranscriptI
 import type { GoalPanelState, HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";
 
-/** The goal pill's detail block starts closed. */
-const CLOSED_GOAL_PANEL: GoalPanelState = { expanded: false, editing: false, error: "" };
+/** The goal editor starts closed; the Run status popover reads it. */
+const CLOSED_GOAL_PANEL: GoalPanelState = { editing: false, error: "" };
 
 type ComposerDeps = {
   conversation: ConversationController;
@@ -735,9 +735,9 @@ export class ComposerController {
       });
   };
 
-  /** The goal pill's detail block; the row and its chevron toggle it, and a session switch closes it. */
+  /** The goal editor; a completed change and a session switch close it. */
   goalPanel: GoalPanelState = CLOSED_GOAL_PANEL;
-  /** `/goal`, the goal pill and the Goal dialog all land here. `typed` is the command line to put back if the gateway
+  /** `/goal`, the Run status popover and the Goal dialog all land here. `typed` is the command line to put back if the gateway
    * refuses, and a refusal answers where the operator made the change: in the dialog's own field while it edits. */
   changeGoal = (action: "start" | "pause" | "resume" | "clear", objective?: string, typed?: string) => {
     const session = this.#conversation.selected;
@@ -782,20 +782,15 @@ export class ComposerController {
     this.#host.requestUpdate();
   }
 
-  #toggleGoal = () => {
-    if (!this.#conversation.selected?.goal) return;
-    this.#setGoalPanel(this.goalPanel.expanded ? CLOSED_GOAL_PANEL : { expanded: true, editing: false, error: "" });
-  };
-
   #editGoal = () => {
     if (!this.#conversation.selected?.goal) return;
-    this.#setGoalPanel({ expanded: true, editing: true, error: "" });
+    this.#setGoalPanel({ editing: true, error: "" });
   };
 
-  #cancelGoalEdit = () => this.#setGoalPanel({ ...this.goalPanel, editing: false, error: "" });
+  #cancelGoalEdit = () => this.#setGoalPanel({ editing: false, error: "" });
 
   /** Replacing the objective is the `/goal <objective>` path: the new objective starts the goal and is sent as its
-   * next turn. A refusal stays in the pill's editor, where the operator is still typing. */
+   * next turn. A refusal stays in the popover's editor, where the operator is still typing. */
   #saveGoal = (objective: string) => {
     const text = objective.trim();
     if (!text) {
@@ -947,7 +942,7 @@ export class ComposerController {
       });
   };
 
-  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "onGoalToggle" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer" | "onQueueSteerNow"> {
+  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer" | "onQueueSteerNow"> {
     const conversation = this.#conversation;
     const sending = this.sending;
     return {
@@ -964,7 +959,6 @@ export class ComposerController {
       onAnswerQuestion: this.#answerQuestion,
       onGoalChange: (action) => this.changeGoal(action),
       goalPanel: this.goalPanel,
-      onGoalToggle: this.#toggleGoal,
       onGoalEdit: this.#editGoal,
       onGoalSave: this.#saveGoal,
       onGoalCancelEdit: this.#cancelGoalEdit,
