@@ -79,6 +79,10 @@
 	     this string all the same. -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>HUI uses your photo library only to choose a photo you attach to a message. Nothing is read until you pick one.</string>
+	<!-- A gateway can be another machine on the same Wi-Fi: the WebView loads its address and the app probes it. iOS
+	     asks for local network access, and an app that reaches a LAN host without this sentence cannot explain the ask. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>HUI connects to the HUI gateway you choose, including one on your local network. It talks only to that gateway.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>

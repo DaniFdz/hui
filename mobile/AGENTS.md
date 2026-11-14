@@ -375,6 +375,12 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   in-process: `NSPhotoLibraryUsageDescription` keeps those from terminating the app too. The simulator has no camera, so
   `ios-smoke` cannot tap this: `scripts/mobile-contract.test.mjs` keeps both strings beside the Android manifest's
   camera `<queries>`.
+- **A gateway on the Wi-Fi needs the local-network string.** The Connect page accepts an `https://` address on the LAN
+  as readily as a tailnet one, and iOS 14+ asks before the app reaches a host on the same network. iOS uses
+  `NSLocalNetworkUsageDescription` as that prompt; without it the app cannot explain the request and access can be
+  refused. The simulator's loopback gateway never triggers the prompt, so the contract test reads a LAN case from
+  `mobile/gateway-addresses.txt` and the plist together. Plain `http://` on a LAN address remains unsupported by design;
+  the gateway needs `https://` (for example `tailscale serve`).
 - **What iOS does not have:** no App-Bound Domains, so the service worker's offline cache does not run (everything else
   works online); no microphone or resume hooks yet (WP10), the share sheet being `@capacitor/share`'s; and `ios-smoke`
   proves the Connect page and the gateway's UI load, not a tapped journey.

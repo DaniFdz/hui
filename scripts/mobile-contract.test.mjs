@@ -100,6 +100,16 @@ test("both apps open the composer's camera and photos, and iOS explains both", a
   assert.match(plist, /<key>NSPhotoLibraryUsageDescription<\/key>\s*<string>[^<]{20,}<\/string>/u, "the iOS shell explains why it wants the photo library");
 });
 
+test("both apps accept a gateway on the local network, and iOS explains the prompt", async () => {
+  // The Connect page accepts an https address on the LAN as readily as a tailnet one, and iOS 14+ asks before an app
+  // reaches a host on the same network. Without the string the app has no sentence for that prompt, and access can be
+  // refused; the shared fixture is what both address checks read, so the LAN case cannot drift away from them.
+  const plist = await read("mobile/ios/App/App/Info.plist");
+  const addresses = await read("mobile/gateway-addresses.txt");
+  assert.match(addresses, /^https:\/\/192\.168\.\d+\.\d+:\d+ -> https:\/\/192\.168\.\d+\.\d+:\d+$/mu, "the shared addresses include a LAN gateway");
+  assert.match(plist, /<key>NSLocalNetworkUsageDescription<\/key>\s*<string>[^<]{20,}<\/string>/u, "the iOS shell explains why it wants the local network");
+});
+
 test("both apps declare the microphone a call needs, and iOS explains it", async () => {
   // A call is the one capability the page cannot grant itself: the WebView asks, the app answers. Capacitor's chrome
   // client requests RECORD_AUDIO and its iOS delegate grants the capture, so an undeclared permission is a refusal
