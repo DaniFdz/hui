@@ -9,6 +9,20 @@ const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stri
 
 const reply = (text: string) => `E2E_REPLY:${Buffer.from(text, "utf8").toString("base64url")}`;
 
+/** The plan card an Autonomous session shows its operator for a screen change: the current screen and the planned one. */
+const PLAN = `<div id="plan">
+<h3>The thinking picker, before and after</h3>
+<div class="pair">
+<div class="screen"><h4>Before</h4><p>Speed: Fast</p><p>Effort: High</p></div>
+<div class="screen"><h4>After</h4><p>Speed: Fast</p><p>Effort: High</p><p>Autonomy: Autonomous</p></div>
+</div>
+</div>`;
+
+/** What the session says after showing the card: the short plan and the one question that asks for approval. */
+const PLAN_QUESTION = "Before, the picker ends at Effort. After, Autonomy sits under Speed with Autonomous chosen. Evidence: typecheck, build, session and worker tests. Risks: a chief-started session keeps its plan as text. Stops at a draft pull request. Approve this plan, or tell me what to change?";
+
+const say = (text: string) => `E2E_SAY:${Buffer.from(text, "utf8").toString("base64url")}`;
+
 type Listed = { groups: Array<{ sessions: Array<{ id: string; title: string; status: string }> }> };
 type Bots = { bots: Array<{ id: string; name: string; sessionId: string }> };
 
@@ -25,9 +39,17 @@ test("Autonomous is chosen in the thinking picker, stays with the session, and r
   await hui.reload();
   await expect(screen.getByLabel("Thinking: high, autonomous")).toBeVisible();
 
-  await screen.getByLabel("Message").fill(reply("## Plan\n\nOne switch in Settings, with a check that it persists.\n\nApprove this plan?"));
+  await screen.getByLabel("Message").fill(`${call("show_widget", { title: "Plan: the thinking picker", widget_code: PLAN })} ${say(PLAN_QUESTION)}`);
   await screen.getByRole("button", "Send message").tap();
-  await expect(screen.getByTestId("transcript")).toContainText("Approve this plan?");
+  await expect(screen.getByLabel("Widget: Plan: the thinking picker")).toBeVisible();
+  await expect(screen.getByTestId("transcript")).toContainText("Approve this plan, or tell me what to change?");
+
+  // The operator supervises this session, so its prompt asks for the form that explains the change, never a wall of text.
+  const tools = await hui.api<{ prompt: string }>("GET", `/__hui/sessions/${id}/tools`);
+  expect(tools.prompt).toContain("before/after card with `show_widget`, following the `visualize` skill");
+  expect(tools.prompt).toContain("`mermaid` diagram");
+  expect(tools.prompt).toContain("a short text plan is the right plan");
+  expect(tools.prompt).not.toContain("A chief reads text and cannot see a widget");
 
   // Nothing started before the approval: the next turn answers the operator's answer.
   await screen.getByLabel("Message").fill("Approved, go ahead");
@@ -93,6 +115,10 @@ test("a session a Chief of Staff starts runs Autonomous and its stop reaches tha
     const tools = await hui.api<{ prompt: string }>("GET", `/__hui/sessions/${lead.id}/tools`);
     expect(tools.prompt).toContain("## Autonomous mode");
     expect(tools.prompt).toContain("## PR lead");
+    // A chief reads text, not a widget: this session writes its plan in its reply.
+    expect(tools.prompt).toContain("A chief reads text and cannot see a widget");
+    expect(tools.prompt).toContain("`mermaid` diagram or a table stays readable to them");
+    expect(tools.prompt).not.toContain("before/after card with `show_widget`");
 
     await hui.open(`/bots/${chief.id}`);
     await expect(screen.getByTestId("transcript")).toContainText(/Autonomous session "Autonomous lead" is idle; decide the next step/u);
