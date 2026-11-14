@@ -3,6 +3,7 @@ import { afterEach, test, vi } from "vitest";
 import type { HostMetrics } from "../api/schema/host.ts";
 import type { SessionGroup, SessionView } from "../api/schema/sessions.ts";
 import type { WorkerMetrics } from "../api/workers.ts";
+import { EMPTY_FILTERS } from "../lib/dashboard.ts";
 import { DASHBOARD_POLL_MS, DashboardController, GATEWAY_MACHINE } from "./dashboard-controller.ts";
 
 const NOW = Date.parse("2026-11-04T12:00:00Z");
@@ -24,12 +25,16 @@ function sample(seconds: number): HostMetrics {
 type Read<T> = { resolve: (value: T) => void; reject: (error: Error) => void };
 type HistoryRead = Read<readonly HostMetrics[]> & { minutes: number };
 type WorkerHistoryRead = Read<Map<string, readonly HostMetrics[]>> & { minutes: number; ids: readonly string[] };
+type AnswerCall = Read<void> & { id: string; questionId: string; answer: { value: string } | { confirmed: boolean } };
+type ResumeCall = Read<void> & { id: string };
 
 function setup() {
   const reads: Read<HostMetrics>[] = [];
   const workerReads: Read<readonly WorkerMetrics[]>[] = [];
   const historyReads: HistoryRead[] = [];
   const workerHistoryReads: WorkerHistoryRead[] = [];
+  const answerReads: AnswerCall[] = [];
+  const resumeReads: ResumeCall[] = [];
   const host = { updates: 0, requestUpdate() { this.updates += 1; }, addController() {} };
   const page = { shown: true, groups: [] as readonly SessionGroup[] };
   const controller = new DashboardController(
@@ -38,8 +43,10 @@ function setup() {
     () => new Promise((resolve, reject) => workerReads.push({ resolve, reject })),
     (minutes) => new Promise((resolve, reject) => historyReads.push({ minutes, resolve, reject })),
     (minutes, ids) => new Promise((resolve, reject) => workerHistoryReads.push({ minutes, ids, resolve, reject })),
+    (id, questionId, answer) => new Promise((resolve, reject) => answerReads.push({ id, questionId, answer, resolve, reject })),
+    (id) => new Promise((resolve, reject) => resumeReads.push({ id, resolve, reject })),
   );
-  return { controller, host, reads, workerReads, historyReads, workerHistoryReads, page };
+  return { controller, host, reads, workerReads, historyReads, workerHistoryReads, answerReads, resumeReads, page };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -259,42 +266,139 @@ test("a worker that is slow to answer neither holds back this gateway's cards no
   assert.equal(controller.metrics?.sampledAt, at(5));
 });
 
-function running(count: number, status: SessionView["status"] = "running"): SessionView[] {
+function running(count: number, status: SessionView["status"] = "running", overrides: Partial<SessionView> = {}): SessionView[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `${status}${index}`, title: `${status} ${index}`, group: "", cwd: "/w", displayCwd: "/w", tool: "pi", status,
     stage: "investigation", stageOrigin: "default", createdAt: "2026-10-23T10:00:00Z", updatedAt: "2026-10-23T10:00:00Z",
+    ...overrides,
   }));
 }
 
-test("each session list opens on its own and stays open until the page is left or the list has three rows or fewer", async () => {
+/** One session waiting for the operator, with the question its row answers. */
+function waiting(): SessionView {
+  return {
+    ...running(1, "waiting")[0]!,
+    question: { id: "q1", method: "confirm", title: "Continue?" },
+  };
+}
+
+test("each lane opens on its own and stays open until the page is left or the lane has three rows or fewer", async () => {
   const { controller, host, reads, page } = setup();
   const list = (...sessions: SessionView[][]) => { page.groups = [{ label: "", sessions: sessions.flat() }]; controller.hostUpdate(); };
-  list(running(5), running(5, "waiting"), running(5, "error"));
-  controller.toggleList("running");
-  controller.toggleList("needs-you");
-  assert.deepEqual([...controller.expandedLists], ["running", "needs-you"], "Needs you opens apart from the status lists");
+  list(running(5), running(4, "waiting"), running(4, "error"));
+  controller.toggleList("flight");
+  controller.toggleList("answer");
+  assert.deepEqual([...controller.expandedLists], ["flight", "answer"], "each lane opens on its own");
   assert.equal(host.updates, 2);
-  controller.toggleList("needs-you");
-  assert.deepEqual([...controller.expandedLists], ["running"]);
+  controller.toggleList("answer");
+  assert.deepEqual([...controller.expandedLists], ["flight"]);
 
   controller.refresh();
   reads[0]!.resolve(sample(0));
   await settle();
   controller.hostUpdate();
-  assert.deepEqual([...controller.expandedLists], ["running"], "a metrics poll keeps it open");
-  list(running(5), running(5, "waiting"), running(5, "error"));
-  assert.deepEqual([...controller.expandedLists], ["running"], "a refresh with the same rows keeps it open");
-  list(running(6), running(5, "error"));
-  assert.deepEqual([...controller.expandedLists], ["running"], "a new session keeps it open");
-  list(running(3), running(5, "error"));
+  assert.deepEqual([...controller.expandedLists], ["flight"], "a metrics poll keeps it open");
+  list(running(5), running(4, "waiting"), running(4, "error"));
+  assert.deepEqual([...controller.expandedLists], ["flight"], "a refresh with the same rows keeps it open");
+  list(running(6), running(4, "error"));
+  assert.deepEqual([...controller.expandedLists], ["flight"], "a new session keeps it open");
+  list(running(3), running(4, "error"));
   assert.deepEqual([...controller.expandedLists], [], "three rows have nothing to fold");
-  list(running(5), running(5, "error"));
-  assert.deepEqual([...controller.expandedLists], [], "a list that grows again starts folded");
+  list(running(5), running(4, "error"));
+  assert.deepEqual([...controller.expandedLists], [], "a lane that grows again starts folded");
 
-  controller.toggleList("errors");
+  controller.toggleList("fix");
   page.shown = false;
   controller.hostUpdate();
   page.shown = true;
   controller.hostUpdate();
-  assert.deepEqual([...controller.expandedLists], [], "the page opens again with every list folded");
+  assert.deepEqual([...controller.expandedLists], [], "the page opens again with every lane folded");
+});
+
+test("a filter narrows the lanes the page folds", () => {
+  const { controller, page } = setup();
+  page.groups = [{ label: "", sessions: [...running(5), ...running(4, "waiting", { group: "Beta" })] }];
+  controller.hostUpdate();
+  controller.toggleList("flight");
+  controller.toggleList("answer");
+  assert.deepEqual([...controller.expandedLists], ["flight", "answer"]);
+  controller.setFilters({ group: "Beta" });
+  controller.hostUpdate();
+  assert.deepEqual([...controller.expandedLists], ["answer"], "a filter that empties a lane folds it");
+  controller.clearFilters();
+  controller.hostUpdate();
+  assert.deepEqual([...controller.expandedLists], ["answer"], "a lane that grows again starts folded");
+});
+
+test("filters merge into what is set, and clearing restores every dimension", () => {
+  const { controller, host } = setup();
+  assert.equal(controller.filters, EMPTY_FILTERS, "the page opens unfiltered");
+  controller.setFilters({ status: "waiting" });
+  assert.deepEqual(controller.filters, { ...EMPTY_FILTERS, status: "waiting" });
+  controller.setFilters({ query: "lane", group: "Beta" });
+  assert.deepEqual(controller.filters, { ...EMPTY_FILTERS, status: "waiting", query: "lane", group: "Beta" }, "a patch keeps the dimensions it does not name");
+  assert.equal(host.updates, 2);
+  controller.clearFilters();
+  assert.equal(controller.filters, EMPTY_FILTERS);
+  assert.equal(host.updates, 3);
+});
+
+test("filters survive the page being hidden and shown again", () => {
+  const { controller, page } = setup();
+  controller.setFilters({ stage: "testing" });
+  page.shown = false;
+  controller.hostUpdate();
+  page.shown = true;
+  controller.hostUpdate();
+  assert.deepEqual(controller.filters, { ...EMPTY_FILTERS, stage: "testing" }, "leaving the page only folds its lanes");
+});
+
+test("answering a session marks it busy, sends its question and answer once, and settles", async () => {
+  const { controller, host, answerReads } = setup();
+  const session = waiting();
+  controller.answer(session, session.question!, { confirmed: true });
+  assert.deepEqual([...controller.busy], [session.id]);
+  controller.answer(session, session.question!, { confirmed: true });
+  assert.equal(answerReads.length, 1, "a second click while the answer is in flight asks nothing");
+  assert.equal(answerReads[0]!.id, session.id);
+  assert.equal(answerReads[0]!.questionId, "q1", "the answer goes to the question the row showed");
+  assert.deepEqual(answerReads[0]!.answer, { confirmed: true });
+  answerReads[0]!.resolve();
+  await settle();
+  assert.deepEqual([...controller.busy], [], "the session is free once the gateway answered");
+  assert.equal(controller.actionError, "");
+  assert.equal(host.updates, 2, "one redraw when the action starts and one when it settles");
+});
+
+test("a failed action shows its error, frees the session, and a retry works", async () => {
+  const { controller, answerReads } = setup();
+  const session = waiting();
+  controller.answer(session, session.question!, { value: "yes" });
+  answerReads[0]!.reject(new Error("gateway unreachable"));
+  await settle();
+  assert.equal(controller.actionError, "gateway unreachable");
+  assert.deepEqual([...controller.busy], [], "a failure does not leave the session stuck");
+  controller.dismissActionError();
+  assert.equal(controller.actionError, "", "the operator can dismiss it");
+  controller.answer(session, session.question!, { value: "yes" });
+  assert.deepEqual([...controller.busy], [session.id], "a retry is allowed once the last one settled");
+  assert.equal(answerReads.length, 2);
+  answerReads[1]!.resolve();
+  await settle();
+  assert.deepEqual([...controller.busy], []);
+  assert.equal(controller.actionError, "");
+});
+
+test("resuming a stopped session sends one request per session and settles it", async () => {
+  const { controller, resumeReads } = setup();
+  const session = running(1, "error")[0]!;
+  controller.resume(session);
+  controller.resume(session);
+  assert.deepEqual([...controller.busy], [session.id]);
+  assert.deepEqual(resumeReads.map((call) => call.id), [session.id], "a second click while the resume is in flight asks nothing");
+  resumeReads[0]!.resolve();
+  await settle();
+  assert.deepEqual([...controller.busy], []);
+  controller.resume(session);
+  assert.equal(resumeReads.length, 2, "it can be asked again once the last one settled");
 });

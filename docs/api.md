@@ -988,6 +988,13 @@ type SessionView = {
     bootDurationMs?: number;
   };
   model?: string;       // "provider/id"
+  question?: {          // the first pending question, for a session that waits
+    id: string;
+    method: "select" | "confirm" | "input" | "editor" | "secret" | "questionnaire";
+    title: string;      // one line, at most 200 characters
+    options?: string[]; // only for "select": at most 8, 120 characters each
+  };
+  failure?: string;     // why a failed run ended: one line, at most 240 characters; absent when nothing names it
   pinned?: true;
   parentId?: string;
   subagent?: Omit<SubagentRecord, "task" | "summary">; // the task and report stay out of lists: see SubagentTaskView
@@ -3890,9 +3897,12 @@ continues, including a compaction summary that is the whole context after a
 rewind. When the tail is a normally
 completed assistant response, HUI instead sends one explicit continuation
 prompt ("Continue from where you left off…") as a normal user turn. Running, queued or waiting sessions return 409.
-A runtime without prompt-free continuation, such as Pi Durable, returns 400 with
-the reason; the error notice and the interrupted banner resume it through
-`POST /__hui/sessions/:id/continue`.
+A runtime without a prompt-free continuation, such as Pi Durable, takes that
+prompt path for every resume: HUI sends its continuation prompt ("Continue from
+where you left off.") as a normal user turn, so Resume works on the default
+runtime and the user message it appends is what the transcript shows. The error
+notice and the interrupted banner in the conversation resume such a session
+through `POST /__hui/sessions/:id/continue`.
 
 ### Subagent completion events
 

@@ -19,6 +19,7 @@ import type {
   TranscriptEntry,
 } from "./runtimes/types.ts";
 import { DEFAULT_SETTINGS } from "./hui-settings.ts";
+import { CONTINUE_AFTER_ERROR_PROMPT } from "./sessions/digest.ts";
 import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
 import { waitFor } from "./test-support/wait-for.ts";
 
@@ -2089,6 +2090,7 @@ test("prompt-free continuation enters running state and rewind stops it", async 
 
   await manager.continueRun(record.id);
   assert.equal(started[0]?.continuations, 1);
+  assert.deepEqual(started[0]?.prompts, [], "a runtime that continues prompt-free gets no prompt");
   assert.equal(manager.status(record.id), "running");
   await assert.rejects(() => manager.continueRun(record.id), SessionBusyError);
   await manager.rewind(record.id, "user-1");
@@ -2719,6 +2721,28 @@ test("a pending question is claimed before awaiting PI so double-submit cannot a
   );
   await first;
   assert.equal(started[0]?.questionResponses.length, 1);
+});
+
+test("a runtime without prompt-free continuation resumes with the continuation prompt", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor("continue-durable");
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  // Durable keeps conversation state but has no prompt-free resume primitive.
+  Object.assign(started[0]!, { continueRun: undefined });
+
+  await manager.continueRun(record.id);
+
+  assert.deepEqual(started[0]?.prompts, [CONTINUE_AFTER_ERROR_PROMPT], "the run goes on through HUI's continuation prompt");
+  assert.equal(started[0]?.continuations, 0);
+  assert.equal(manager.status(record.id), "running", "the prompt path starts the turn instead of throwing");
+  const transcript = manager.transcript(record.id);
+  assert.deepEqual(transcript.at(-1), { kind: "message", role: "user", text: CONTINUE_AFTER_ERROR_PROMPT }, "the prompt is a visible user turn");
+  await assert.rejects(() => manager.continueRun(record.id), SessionBusyError, "the resumed run is the session's only one");
+  started[0]!.emit({ type: "settled" });
+  assert.equal(manager.status(record.id), "idle", "the resumed turn settles back to idle");
+  manager.disposeAll();
 });
 
 test("continue after a normally completed turn sends a continuation prompt", async () => {

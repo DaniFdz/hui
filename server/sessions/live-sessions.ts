@@ -15,7 +15,7 @@
 import { remoteRuntime } from "../runtimes/remote.ts";
 import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
-import { lastOperatorRequest } from "./digest.ts";
+import { CONTINUE_AFTER_ERROR_PROMPT, lastOperatorRequest } from "./digest.ts";
 import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../api/task-suggestions.ts";
 import type { Watcher } from "../api/watchers.ts";
@@ -517,6 +517,12 @@ export class LiveSessions {
     return publicTranscript(id, this.#live.get(id)?.transcript ?? []);
   }
 
+  /** The runtime error a live run logged; cleared at settlement, when the
+   * transcript carries the same failure. Views need it only as a fallback. */
+  loggedRunError(id: string): string | undefined {
+    return this.#live.get(id)?.loggedRunError;
+  }
+
   /** Image bytes for a transcript attachment, from the runtime's history. */
   async attachmentImage(id: string, message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined> {
     return this.#live.get(id)?.runtime?.attachmentImage?.(message, image);
@@ -981,7 +987,12 @@ export class LiveSessions {
     if (this.#reported(live) !== "idle" || live.followUps.length || live.questions.size) {
       throw new SessionBusyError("Finish or stop active work before continuing.");
     }
-    if (!live.runtime?.continueRun) throw new Error(`${live.record.tool} cannot continue without a prompt in this build.`);
+    // No prompt-free continuation (Durable): the run goes on through HUI's
+    // continuation prompt, which owns the state this branch would set itself.
+    if (!live.runtime?.continueRun) {
+      await this.prompt(id, CONTINUE_AFTER_ERROR_PROMPT);
+      return;
+    }
     live.promptPending = true;
     live.lastPrompt = undefined;
     live.turnProducedOutput = false;

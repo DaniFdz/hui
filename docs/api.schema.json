@@ -9952,6 +9952,59 @@
           "type": "boolean",
           "const": true
         },
+        "question": {
+          "type": "object",
+          "required": [
+            "id",
+            "method",
+            "title"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "method": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "select"
+                },
+                {
+                  "type": "string",
+                  "const": "confirm"
+                },
+                {
+                  "type": "string",
+                  "const": "input"
+                },
+                {
+                  "type": "string",
+                  "const": "editor"
+                },
+                {
+                  "type": "string",
+                  "const": "secret"
+                },
+                {
+                  "type": "string",
+                  "const": "questionnaire"
+                }
+              ]
+            },
+            "title": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "failure": {
+          "type": "string"
+        },
         "background": {
           "type": "boolean",
           "const": true

@@ -4160,3 +4160,66 @@ web page: the iOS app has no screen for them. Its outcomes are therefore web use
 cases, and PAGE-044 and PAGE-045 are excluded on iOS rather than left on its
 backlog, as the Usage page is. When the iPhone app gets a Dashboard of its own,
 that screen is its own use case with its own shared test.
+
+### Dashboard is a queue of decisions (2026-11-14)
+
+The Dashboard was a status board: a *Needs you* list under status counts and a
+stage pipeline. It is now a queue of decisions, one lane per reason a session
+waits, worked from the row that waits.
+
+- **Five lanes, in this order**: *Answer* (a session waiting on the operator),
+  *Fix* (a session whose last run failed or whose runtime is not connected),
+  *Unread* (an idle session whose answer nobody read), *In flight* (running,
+  starting or reconnecting) and *Parked* (idle, answer read). A session lands in
+  the first lane it matches: a run that is going again is In flight even while
+  the turn before it is still on record as failed, and a question comes before
+  any stop. Each lane shows its first three rows and ends in **Show all**; a
+  lane opens on its own, as before.
+- **What needs the operator is Answer, Fix and Unread.** Parked work is listed
+  but is not a decision waiting on the operator, and the page no longer says
+  *Needs you*. A finished session (idle in Done) stays out of every lane and is
+  only counted after the total.
+- **Order inside a lane is unchanged**: longest wait first in Answer, Fix,
+  Unread and Parked, newest first in In flight, and a time HUI can't read sorts
+  last.
+- **A row is where the decision is made.** An Answer row leads with the pending
+  question's title and answers it in place: one button per option for a select
+  question, **Yes** and **No** for a confirm, over the existing
+  `POST /__hui/sessions/:id/question`, so the row leaves the lane once the
+  session moves on. A question that wants a typed answer, a secret, the editor
+  or a questionnaire offers *Open to answer* instead. A Fix row says why the
+  session stopped and offers **Resume** over the existing
+  `POST /__hui/sessions/:id/resume`, but only while the session is idle: a
+  failed turn settles idle with its runtime still there, so the run can go on,
+  while `error` and `disconnected` mean the runtime is gone and nothing can
+  continue it. Resume uses the runtime's own continuation when it has one and
+  otherwise sends HUI's continuation prompt, so it works on the default Durable
+  runtime. That row keeps its reason and only opens the session, where the
+  operator retries it with a new message. Every row still opens its session, and
+  an action the gateway refuses says so above the lanes until **Dismiss**.
+- **The filters narrow every lane at once**: **Search sessions** over the title,
+  path and group, beside the Group, Status, Worker and Stage pickers,
+  AND-combined. A choice carries the count it would show and always comes from
+  every session in flight, so a value never vanishes while another filter is
+  set. The lanes' counts and the *n* of *n of m sessions* follow what passes,
+  *m* stays every session in flight with the finished ones after it, nothing
+  matching reads *No sessions match these filters.*, and **Clear** appears while
+  any filter is set. The filters survive leaving the page and coming back, and a
+  reload clears them.
+- **The session list carries two more fields for these rows**: `question` (the
+  pending question's id, method, one-line title and, for a select, its options)
+  and `failure` (why the failed run ended). Both are bounded so that a long
+  question or provider error cannot grow the list the browser diffs every
+  second: whitespace collapses to one line, a title stops at 200 characters, an
+  option at 120 with at most 8 of them, a failure at 240, and each cut ends in
+  an ellipsis. `question` holds no message body, no prefill and, for a
+  questionnaire, only its first question's title; both fields are documented on
+  `SessionView` in `docs/api.md`. `failure` is absent when nothing names the
+  failure — a cold session has no loaded transcript to quote — so the row falls
+  back to *The last run failed.*, or *Disconnected* when that is why it stopped.
+- **The activity monitor is unchanged** and sits beside the lanes from 1200px
+  and below them otherwise.
+
+This supersedes [Needs you counts every session that
+stopped](#needs-you-counts-every-session-that-stopped-2026-10-27) and [Needs you
+leads with the longest wait](#needs-you-leads-with-the-longest-wait-2026-11-04).

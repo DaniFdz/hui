@@ -2,16 +2,20 @@
  * Owns the Dashboard page's activity monitor: the poll that runs while the page shows and the document is visible (it
  * stops itself once the page is gone, however the app left it), each machine's last read or error, the samples its
  * chart draws for this gateway's host and every worker (`history` on open and when the chart changes, then one sample
- * per poll), which machines the chart and cards show, the metric and window it draws, and which session lists show
- * every row instead of the first three. A list folds again when the page is left or the list shrinks to three rows.
- * The session counts come from the session list the app already holds.
+ * per poll), which machines the chart and cards show, the metric and window it draws, and which session lanes show
+ * every row instead of the first three. A lane folds again when the page is left or it shrinks to three rows.
+ * The session counts and lanes come from the session list the app already holds, narrowed by the filters the operator
+ * sets, which survive leaving the page and back. It also answers a waiting session and resumes a stopped one, one
+ * action at a time per session, keeping the last action's error until the operator dismisses it or the next action
+ * starts. The session list itself still arrives on the app's own stream.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { loadHostMetrics, loadHostMetricsHistory } from "../api/control-surfaces.ts";
 import type { HostMetrics } from "../api/schema/host.ts";
-import type { SessionGroup } from "../api/schema/sessions.ts";
+import type { SessionGroup, SessionView } from "../api/schema/sessions.ts";
+import { answerQuestion, resumeSession } from "../api/sessions.ts";
 import { loadWorkerMetrics, loadWorkerMetricsHistory, type WorkerMetrics } from "../api/workers.ts";
-import { DASHBOARD_ROWS, NEEDS_YOU_LIST, summarizeSessions } from "../lib/dashboard.ts";
+import { DASHBOARD_ROWS, EMPTY_FILTERS, summarizeSessions, type SessionFilters } from "../lib/dashboard.ts";
 import { CHART_WINDOWS, type ChartMetric, type ChartWindow } from "../lib/metric-chart.ts";
 
 export const DASHBOARD_POLL_MS = 5_000;
@@ -22,6 +26,9 @@ export const GATEWAY_MACHINE = "gateway";
 const GAP_MS = 30_000;
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** What answering a waiting session sends: a chosen value or a confirmation. */
+type AnswerChoice = { value: string } | { confirmed: boolean };
 
 /** A host's samples, plus any this browser read after the one it reported. */
 function joined(history: readonly HostMetrics[], known: readonly HostMetrics[]): readonly HostMetrics[] {
@@ -50,7 +57,14 @@ export class DashboardController implements ReactiveController {
   samples: ReadonlyMap<string, readonly HostMetrics[]> = new Map();
   /** The instant the pointer (or the keyboard) is on in the chart, or none. */
   chartHover: number | null = null;
+  /** Expanded lane keys; a lane stays open only while it has more than `DASHBOARD_ROWS` sessions. */
   expandedLists: ReadonlySet<string> = new Set();
+  /** What narrows the lanes; it survives leaving the page and back, and a reload clears it. */
+  filters: SessionFilters = EMPTY_FILTERS;
+  /** Sessions with an action in flight, so a second click asks the gateway nothing. */
+  busy: ReadonlySet<string> = new Set();
+  /** The last action's failure, shown until the operator dismisses it or the next action starts. */
+  actionError = "";
   readonly #host: Pick<ReactiveControllerHost, "requestUpdate">;
   readonly #shown: () => boolean;
   readonly #groups: () => readonly SessionGroup[];
@@ -58,7 +72,10 @@ export class DashboardController implements ReactiveController {
   readonly #loadWorkers: () => Promise<readonly WorkerMetrics[]>;
   readonly #loadHistory: (minutes: number) => Promise<readonly HostMetrics[]>;
   readonly #loadWorkerHistory: (minutes: number, ids: readonly string[]) => Promise<ReadonlyMap<string, readonly HostMetrics[]>>;
-  #foldedFor: readonly SessionGroup[] | undefined;
+  readonly #answer: (id: string, questionId: string, answer: AnswerChoice) => Promise<void>;
+  readonly #resume: (id: string) => Promise<void>;
+  /** The session list and filters the lanes were last folded against. */
+  #folded: { groups: readonly SessionGroup[]; filters: SessionFilters } | undefined;
   #timer: ReturnType<typeof setInterval> | undefined;
   /** One read in flight per machine list, so a worker that is slow to answer never holds back this gateway's own
    * cards or the next poll of them. */
@@ -71,6 +88,8 @@ export class DashboardController implements ReactiveController {
     load: () => Promise<HostMetrics> = loadHostMetrics, loadWorkers: () => Promise<readonly WorkerMetrics[]> = loadWorkerMetrics,
     loadHistory: (minutes: number) => Promise<readonly HostMetrics[]> = loadHostMetricsHistory,
     loadWorkerHistory: (minutes: number, ids: readonly string[]) => Promise<ReadonlyMap<string, readonly HostMetrics[]>> = loadWorkerMetricsHistory,
+    answer: (id: string, questionId: string, answer: AnswerChoice) => Promise<void> = answerQuestion,
+    resume: (id: string) => Promise<void> = resumeSession,
   ) {
     this.#host = host;
     this.#shown = shown;
@@ -79,6 +98,8 @@ export class DashboardController implements ReactiveController {
     this.#loadWorkers = loadWorkers;
     this.#loadHistory = loadHistory;
     this.#loadWorkerHistory = loadWorkerHistory;
+    this.#answer = answer;
+    this.#resume = resume;
     host.addController(this);
   }
 
@@ -90,13 +111,14 @@ export class DashboardController implements ReactiveController {
     if (!this.expandedLists.size) return;
     if (!this.#shown()) {
       this.expandedLists = new Set();
+      this.#folded = undefined;
       return;
     }
-    const listed = this.#groups();
-    if (listed === this.#foldedFor) return;
-    this.#foldedFor = listed;
-    const { needsYou, groups } = summarizeSessions(listed);
-    const sizes = new Map([[NEEDS_YOU_LIST, needsYou.length], ...groups.map((group) => [group.key, group.sessions.length] as const)]);
+    const groups = this.#groups();
+    const filters = this.filters;
+    if (this.#folded?.groups === groups && this.#folded.filters === filters) return;
+    this.#folded = { groups, filters };
+    const sizes = new Map<string, number>(summarizeSessions(groups, filters).lanes.map((lane) => [lane.key, lane.sessions.length]));
     const kept = [...this.expandedLists].filter((key) => (sizes.get(key) ?? 0) > DASHBOARD_ROWS);
     if (kept.length < this.expandedLists.size) this.expandedLists = new Set(kept);
   }
@@ -107,6 +129,51 @@ export class DashboardController implements ReactiveController {
     this.expandedLists = next;
     this.#host.requestUpdate();
   };
+
+  /** Narrows the lanes by a patch of the filters; a choice that no longer exists stays set and matches nothing. */
+  setFilters = (patch: Partial<SessionFilters>): void => {
+    this.filters = { ...this.filters, ...patch };
+    this.#host.requestUpdate();
+  };
+
+  clearFilters = (): void => {
+    this.filters = EMPTY_FILTERS;
+    this.#host.requestUpdate();
+  };
+
+  dismissActionError = (): void => {
+    if (!this.actionError) return;
+    this.actionError = "";
+    this.#host.requestUpdate();
+  };
+
+  /** Answers a waiting session; another click while its answer is in flight asks nothing. */
+  answer = (session: SessionView, question: NonNullable<SessionView["question"]>, answer: AnswerChoice): void => {
+    void this.#act(session.id, () => this.#answer(session.id, question.id, answer));
+  };
+
+  /** Resumes a stopped session; another click while its resume is in flight asks nothing. */
+  resume = (session: SessionView): void => {
+    void this.#act(session.id, () => this.#resume(session.id));
+  };
+
+  /** Runs one action for a session: marks it busy, then settles it with the request's answer or its error. */
+  async #act(id: string, request: () => Promise<void>): Promise<void> {
+    if (this.busy.has(id)) return;
+    this.busy = new Set(this.busy).add(id);
+    this.actionError = "";
+    this.#host.requestUpdate();
+    try {
+      await request();
+    } catch (error) {
+      this.actionError = message(error);
+    } finally {
+      const busy = new Set(this.busy);
+      busy.delete(id);
+      this.busy = busy;
+      this.#host.requestUpdate();
+    }
+  }
 
   /** Whether the machine's cards and line show: this gateway's, a worker's, or one the operator can chart. */
   shows(machine: string): boolean {

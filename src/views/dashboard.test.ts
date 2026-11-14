@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
 import type { HostMetrics } from "../api/schema/host.ts";
-import type { SessionView } from "../api/schema/sessions.ts";
+import type { SessionGroup, SessionView } from "../api/schema/sessions.ts";
 import type { WorkerMetrics } from "../api/workers.ts";
+import { EMPTY_FILTERS, type SessionFilters } from "../lib/dashboard.ts";
 import { HUI_PAGES, availablePages, isPageAvailable } from "../lib/pages.ts";
 import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 import { renderDashboard, type DashboardChartProps, type DashboardProps } from "./dashboard.ts";
@@ -15,7 +16,56 @@ function text(value: unknown): string {
     const template = value as { strings: readonly string[]; values: readonly unknown[] };
     return template.strings.map((part, index) => part + (index < template.values.length ? text(template.values[index]) : "")).join("");
   }
-  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : "";
+}
+
+type Action = { label: string; handler: (event: unknown) => void };
+
+/** The text the element around a binding shows: inline when it has any, its whole rendered text otherwise. */
+function elementLabel(template: { strings: readonly string[]; values: readonly unknown[] }, index: number): string {
+  const rest = template.strings[index + 1] ?? "";
+  const close = rest.indexOf("<");
+  if (rest.startsWith(">") && close > 0) {
+    const inline = rest.slice(1, close).trim();
+    if (inline) return inline;
+  }
+  return text(template).replace(/<[^>]*>/gu, "").trim();
+}
+
+/** The elements a view binds one template attribute to, with the text they show, in document order. */
+function actions(value: unknown, attribute: string, found: Action[] = []): Action[] {
+  if (Array.isArray(value)) {
+    value.forEach((item) => actions(item, attribute, found));
+    return found;
+  }
+  if (!value || typeof value !== "object" || !("strings" in value && "values" in value)) return found;
+  const template = value as { strings: readonly string[]; values: readonly unknown[] };
+  template.strings.forEach((part, index) => {
+    const bound = template.values[index];
+    if (part.includes(attribute) && typeof bound === "function") {
+      found.push({ label: elementLabel(template, index), handler: bound as (event: unknown) => void });
+    }
+    actions(bound, attribute, found);
+  });
+  return found;
+}
+
+type PickerParams = { label: string; value: string | null; options: readonly { value: string; label: string }[]; onChange: (value: string) => void };
+
+/** The settings pickers a view draws, in render order. */
+function pickers(value: unknown, found: PickerParams[] = []): PickerParams[] {
+  if (Array.isArray(value)) {
+    value.forEach((item) => pickers(item, found));
+    return found;
+  }
+  if (!value || typeof value !== "object" || !("strings" in value && "values" in value)) return found;
+  const template = value as { strings: readonly string[]; values: readonly unknown[] };
+  template.strings.forEach((part, index) => {
+    const bound = template.values[index];
+    if (part.includes(".params=") && bound && typeof bound === "object" && "onChange" in bound) found.push(bound as PickerParams);
+    pickers(bound, found);
+  });
+  return found;
 }
 
 const NOW = Date.parse("2026-10-23T12:00:00Z");
@@ -27,6 +77,8 @@ function session(id: string, overrides: Partial<SessionView> = {}): SessionView 
     ...overrides,
   };
 }
+
+const listed = (...sessions: SessionView[]): SessionGroup[] => [{ label: "", sessions }];
 
 function metrics(overrides: Partial<HostMetrics> = {}): HostMetrics {
   return {
@@ -50,30 +102,66 @@ function chart(overrides: Partial<DashboardChartProps> = {}): DashboardChartProp
   };
 }
 
-function page(overrides: Partial<DashboardProps> = {}): string {
-  return text(renderDashboard({
-    groups: [], sessionsLoading: false, sessionsError: "", metrics: undefined, metricsError: "", expandedLists: new Set(), now: NOW,
-    workers: [], workersError: "", chart: chart(),
-    onRetry: () => {}, onOpenSession: () => {}, onToggleList: () => {},
+function view(overrides: Partial<DashboardProps> = {}) {
+  return renderDashboard({
+    groups: [], sessionsLoading: false, sessionsError: "", filters: EMPTY_FILTERS, busy: new Set(), actionError: "",
+    metrics: undefined, metricsError: "", workers: [], workersError: "", chart: chart(), expandedLists: new Set(), now: NOW,
+    onRetry: () => {}, onToggleList: () => {}, onFilters: () => {}, onClearFilters: () => {}, onDismissActionError: () => {},
+    onAnswer: () => {}, onResume: () => {}, onOpenSession: () => {},
     ...overrides,
-  }));
+  });
 }
 
-/** The chart, its plot and its legend, up to the first machine's cards. */
-function chartPart(markup: string): string {
-  const start = markup.indexOf('data-testid="dashboard-chart"');
-  assert.ok(start >= 0, "chart");
-  const next = markup.indexOf('data-testid="dashboard-machine"', start);
+const page = (overrides: Partial<DashboardProps> = {}) => text(view(overrides));
+
+/** Where an element with this test id starts, whether Lit drew the attribute quoted or bound. */
+function at(markup: string, id: string, from = 0): number {
+  const quoted = markup.indexOf(`data-testid="${id}"`, from);
+  return quoted >= 0 ? quoted : markup.indexOf(`data-testid=${id}`, from);
+}
+
+/** The sessions section, up to the activity monitor. */
+function sessionsArea(markup: string): string {
+  const start = at(markup, "dashboard-sessions");
+  const end = at(markup, "dashboard-activity", start);
+  assert.ok(start >= 0 && end > start, "the page has a sessions section before the activity monitor");
+  return markup.slice(start, end);
+}
+
+/** One lane's markup, from its section to the next lane. */
+function lane(markup: string, key: string): string {
+  const start = at(markup, `dashboard-lane-${key}`);
+  assert.ok(start >= 0, `the ${key} lane is drawn`);
+  const next = markup.indexOf("data-testid=dashboard-lane-", start + 1);
+  const end = next < 0 ? at(markup, "dashboard-activity", start) : next;
+  return markup.slice(start, end < 0 ? undefined : end);
+}
+
+/** The lane keys the sessions section draws, in order. */
+const laneKeys = (markup: string) => [...sessionsArea(markup).matchAll(/data-testid=dashboard-lane-(\w+)/gu)].map((match) => match[1]);
+
+/** Each row's title, in the order it is drawn. */
+const titles = (markup: string) => [...markup.matchAll(/dashboard-row__title-text">([^<]*)</gu)].map((match) => match[1]!);
+
+/** Each row's session id, in the order it is drawn. */
+const rowIds = (markup: string) => [...markup.matchAll(/data-session-id=([\w-]+)/gu)].map((match) => match[1]!);
+
+/** One row's markup, from its list item to the row after it. */
+function rowOf(markup: string, id: string): string {
+  const start = markup.indexOf(`data-session-id=${id}`);
+  assert.ok(start >= 0, `the row for ${id} is drawn`);
+  const next = markup.indexOf("data-session-id=", start + 1);
   return markup.slice(start, next < 0 ? undefined : next);
 }
 
-/** The markup of one `data-testid` element up to the next element with a test id. */
-function part(markup: string, id: string): string {
-  const start = markup.search(new RegExp(`data-testid="?dashboard-${id}\\b`, "u"));
-  assert.ok(start >= 0, id);
-  const next = markup.indexOf("data-testid=", start + 1);
-  return markup.slice(start, next < 0 ? undefined : next);
+/** The handler of the one action whose label is `label`, in a rendered view or its markup. */
+function actionAt(value: unknown, attribute: string, label: string): (event: unknown) => void {
+  const matches = actions(value, attribute).filter((entry) => entry.label === label);
+  assert.equal(matches.length, 1, `one action reads ${label}: ${JSON.stringify(actions(value, attribute).map((entry) => entry.label))}`);
+  return matches[0]!.handler;
 }
+
+const click = {} as MouseEvent;
 
 test("Dashboard is a page only while Labs → Dashboard is on", () => {
   const dashboard = HUI_PAGES.find((entry) => entry.id === "dashboard")!;
@@ -83,153 +171,299 @@ test("Dashboard is a page only while Labs → Dashboard is on", () => {
   assert.equal(availablePages(DEFAULT_SETTINGS.labs).length, HUI_PAGES.length - 1, "every other page stays");
 });
 
-test("the sessions summary counts every status that is present and the pipeline counts every stage", () => {
-  const markup = page({
-    groups: [
-      { label: "", sessions: [
-        session("a", { status: "running", stage: "implementation" }),
-        session("b", { status: "running", stage: "testing" }),
-        session("c"),
-        session("d", { status: "error" }),
-        session("e", { status: "waiting", archived: true }),
-        session("kid", { status: "running", parentId: "a" }),
-        session("old-kid", { parentId: "gone" }),
-        session("shipped", { stage: "done" }),
-      ] },
-      { label: "Other", sessions: [session("f", { stage: "done", status: "running" }), session("g", { stage: "done" })] },
-    ],
-  });
-  const summary = part(markup, "summary");
-  assert.match(summary, /5 sessions <span class="dashboard-summary__finished">· 2 finished<\/span><\/strong>\s*<span class="dashboard-summary__state dashboard-summary__state--attention">2 need you/u,
-    "archived sessions and subagents are not counted, idle sessions in Done are counted apart, and an idle session outside Done needs the operator");
-  assert.match(summary, /role="img" aria-label=Sessions by status: 1 Error, 3 Running, 1 Idle>/u);
-  assert.deepEqual([...summary.matchAll(/data-status=(\w+) style=flex-grow: (\d)>/gu)].map((match) => `${match[1]} ${match[2]}`), ["error 1", "running 3", "idle 1"]);
-  assert.deepEqual([...summary.matchAll(/<\/span>(\d+ [\w ]+)<\/li>/gu)].map((match) => match[1]), ["1 Error", "3 Running", "1 Idle"], "the legend leaves zero statuses out");
-  const stages = part(markup, "stage-counts");
-  assert.deepEqual([...stages.matchAll(/class="dashboard-stage ([\w-]*)" data-stage=(\w+)><strong>(\d+)/gu)].map((match) => `${match[2]} ${match[3]}${match[1] ? " zero" : ""}`),
-    ["investigation 2", "implementation 1", "testing 1", "done 1"], "Done counts only a session still in flight");
-  assert.deepEqual([...part(markup, "needs-you").matchAll(/__name" title=[^>]*>Session ([\w-]+)</gu)].map((match) => match[1]), ["d", "c"],
-    "every session that stopped outside Done is waiting for the operator, an error before parked work");
-  assert.deepEqual([...part(markup, "active-sessions").matchAll(/__name" title=[^>]*>Session ([\w-]+)</gu)].map((match) => match[1]).sort(), ["a", "b", "f"],
-    "no subagent or finished session is listed");
-  assert.match(page({ groups: [{ label: "", sessions: [session("x")] }] }), /dashboard-stage--zero" data-stage=done><strong>0/u);
-});
-
-test("a session that stopped anywhere but Done needs you, and the rest of what is in flight is grouped by status", () => {
-  const groups = [{ label: "", sessions: [
-    session("run", { status: "running", stage: "implementation", updatedAt: "2026-10-23T11:58:00Z" }),
-    session("wait", { status: "waiting", stage: "testing", worker: { id: "w1", name: "Workspace One" } }),
+test("each reason for a session in flight is a lane, in queue order, holding its own rows", () => {
+  const groups = listed(
+    session("ask", { status: "waiting", question: { id: "q", method: "select", title: "Which branch should I ship?", options: ["main", "next"] } }),
+    session("broken", { status: "error", failure: "The provider answered 500." }),
+    session("read", { status: "idle", unread: true }),
+    session("run", { status: "running" }),
+    session("parked", { status: "idle" }),
+    session("shipped", { status: "idle", stage: "done" }),
     session("child", { status: "running", parentId: "run" }),
-    session("done-child", { parentId: "run" }),
-    session("err-child", { status: "error", parentId: "err" }),
-    session("idle-child", { parentId: "err" }),
-    session("start", { status: "starting", pullRequests: [{ repository: "o/r", number: 123, url: "https://github.com/o/r/pull/123", state: "open" }] }),
-    session("err", { status: "error" }),
-    session("off", { status: "disconnected" }),
-    session("idle"),
-  ] }];
+  );
   const markup = page({ groups });
-  assert.match(part(markup, "summary"), /dashboard-summary__state--attention">4 need you/u);
-  const needsYou = part(markup, "needs-you");
-  assert.match(needsYou, /Needs you <span class="dashboard-subheading__count">4/u);
-  assert.match(needsYou, /Session wait<\/span>[\s\S]*5m ago[\s\S]*dashboard-chip--status" data-tone=waiting title=>Needs input<[\s\S]*>Testing<[\s\S]*>Workspace One</u,
-    "a waiting session says why and keeps its stage and worker");
-  assert.deepEqual([...needsYou.matchAll(/__name" title=[^>]*>Session (\w+)</gu)].map((match) => match[1]), ["wait", "err", "off"],
-    "a question, an error and a disconnect come first, the longest wait at the top");
-  assert.match(needsYou, /Show all 4</u);
-  const all = part(page({ groups, expandedLists: new Set(["needs-you"]) }), "needs-you");
-  assert.deepEqual([...all.matchAll(/__name" title=[^>]*>Session (\w+)</gu)].map((match) => match[1]), ["wait", "err", "off", "idle"],
-    "an error, a disconnect and an idle session outside Done each wait for the operator too");
-  assert.match(all, /Session off<[\s\S]*data-tone=disconnected title=>Disconnected</u, "a disconnect reads differently from an error");
-  assert.match(all, /Session idle<[\s\S]*data-tone=idle title=>Idle</u, "a parked session says it is idle");
-  assert.match(all, /Session err<[^]*?dashboard-chip--subagent" data-tone= title=>2 subagents · 1 running<[^]*?Session off</u);
-  assert.ok(markup.indexOf("dashboard-needs-you") < markup.indexOf("dashboard-stage-counts"), "Needs you sits above the pipeline");
-  const active = part(markup, "active-sessions");
-  assert.deepEqual([...active.matchAll(/<h3 class="dashboard-subheading">(\w+) <span class="dashboard-subheading__count">(\d)/gu)].map((match) => `${match[1]} ${match[2]}`),
-    ["Running 1", "Starting 1"], "empty groups are left out and a subagent is no row");
-  assert.deepEqual([...active.matchAll(/__name" title=[^>]*>Session (\w+)</gu)].map((match) => match[1]), ["run", "start"]);
-  assert.doesNotMatch(active, /dashboard-chip--status/u, "a single-status group needs no status chip");
-  assert.match(active, /Session run<[^]*?>2 subagents · 1 running<[^]*?Session start/u);
-  assert.match(active, /Session start<[\s\S]*dashboard-chip--pr" data-tone=open title=Pull request o\/r#123, open>#123 Open</u);
-  assert.doesNotMatch(active.slice(active.indexOf("Session start")), /subagent/u, "a session without subagents has no subagent chip");
-  const quiet = part(page({ groups: [{ label: "", sessions: [session("p", { status: "running" }), session("k", { parentId: "p" })] }] }), "active-sessions");
-  assert.match(quiet, />1 subagent</u, "no running count when every subagent is idle");
-  assert.match(active, /href=\/sessions\/run/u);
+  assert.deepEqual(laneKeys(markup), ["answer", "fix", "unread", "flight", "parked"], "the lanes keep their order and a finished session or subagent has none");
+  assert.deepEqual(titles(lane(markup, "answer")), ["“Which branch should I ship?”"], "a question leads its row in quotes");
+  assert.deepEqual(rowIds(lane(markup, "answer")), ["ask"]);
+  assert.deepEqual(rowIds(lane(markup, "fix")), ["broken"]);
+  assert.deepEqual(rowIds(lane(markup, "unread")), ["read"]);
+  assert.deepEqual(rowIds(lane(markup, "flight")), ["run"]);
+  assert.deepEqual(rowIds(lane(markup, "parked")), ["parked"]);
+  assert.match(lane(markup, "answer"), /Session ask · Investigation · waiting <time/u, "the session's own title moves below the question it is waiting on");
+  assert.match(lane(markup, "unread"), /Unread answer/u);
+  assert.match(lane(markup, "parked"), /last answer read <time/u);
+  assert.match(lane(markup, "fix"), /dashboard-row__failure">The provider answered 500\./u);
+  assert.deepEqual([...markup.matchAll(/data-lane=(\w+)>\s*<strong class="dashboard-stat__count">(\d+)/gu)].map((match) => `${match[1]} ${match[2]}`),
+    ["answer 1", "fix 1", "unread 1", "flight 1", "parked 1"], "the stat strip counts one per lane");
+  assert.doesNotMatch(markup, /dashboard-needs-you|dashboard-stage-counts|need you/u, "the old status pill and stage boxes are gone");
+  assert.match(sessionsArea(markup), /grouped by what they need from you/u, "the paragraph on the page is one sentence");
 });
 
-test("each list shows three rows and a button that shows all of them, and every count stays a total", () => {
+test("a lane with nothing in it is left out", () => {
+  const markup = page({ groups: listed(session("run", { status: "running" })) });
+  assert.deepEqual(laneKeys(markup), ["flight"]);
+  assert.match(sessionsArea(markup), /class="dashboard-stat dashboard-stat--zero" data-lane=answer/u, "the strip still says each lane is empty");
+  assert.doesNotMatch(sessionsArea(markup), /data-testid=dashboard-lane-answer/u);
+});
+
+test("a select question draws one button per option and answers with the value the operator picks", () => {
+  const answers: Array<{ session: string; question: string; answer: unknown }> = [];
+  const options = Array.from({ length: 10 }, (_, index) => `Option ${index}`);
+  const groups = listed(session("ask", { status: "waiting", question: { id: "q-1", method: "select", title: "Pick a lane", options } }));
+  const markup = page({ groups, onAnswer: (target, question, answer) => answers.push({ session: target.id, question: question.id, answer }) });
+  const row = lane(markup, "answer");
+  assert.deepEqual([...row.matchAll(/dashboard-action" type="button" \?disabled=false\s+@click=>([^<]+)</gu)].map((match) => match[1]),
+    options.slice(0, 8), "the gateway sends at most eight options, and each one is a button");
+  const render = view({ groups, onAnswer: (target, question, answer) => answers.push({ session: target.id, question: question.id, answer }) });
+  actionAt(render, "@click=", "Option 3")(click);
+  assert.deepEqual(answers, [{ session: "ask", question: "q-1", answer: { value: "Option 3" } }]);
+  assert.match(row, />Open</u, "a row always opens its session too");
+  assert.doesNotMatch(row, /Open to answer/u);
+});
+
+test("a confirm question answers yes or no, and any other method opens the session to answer", () => {
+  const answers: Array<{ confirmed: boolean }> = [];
+  const groups = listed(session("ask", { status: "waiting", question: { id: "q-2", method: "confirm", title: "Delete the branch?" } }));
+  const render = view({ groups, onAnswer: (_target, _question, answer) => answers.push(answer as { confirmed: boolean }) });
+  const row = lane(text(render), "answer");
+  assert.deepEqual([...row.matchAll(/dashboard-action" type="button" \?disabled=false\s+@click=>([^<]+)</gu)].map((match) => match[1]), ["Yes", "No"]);
+  actionAt(render, "@click=", "Yes")(click);
+  actionAt(render, "@click=", "No")(click);
+  assert.deepEqual(answers, [{ confirmed: true }, { confirmed: false }]);
+
+  const input = page({ groups: listed(session("type", { status: "waiting", question: { id: "q-3", method: "input", title: "Which tag?" } })) });
+  const inputRow = lane(input, "answer");
+  assert.doesNotMatch(inputRow, /type="button"/u, "an answer typed into the session has no one-click value");
+  assert.match(inputRow, />Open to answer</u);
+  assert.match(inputRow, />Open</u);
+});
+
+test("a waiting session without a question says what it is waiting for and reads its title", () => {
+  const markup = page({ groups: listed(session("ask", { status: "waiting", title: "Rebuild the index" })) });
+  const row = lane(markup, "answer");
+  assert.deepEqual(titles(row), ["Rebuild the index"]);
+  assert.match(row, /dashboard-row__why" data-tone="waiting">Waiting for your answer/u);
+  assert.doesNotMatch(row, /Open to answer|type="button"/u);
+});
+
+test("Fix offers Resume only for an idle session whose last run failed, and opens one whose runtime died", () => {
+  const groups = listed(
+    session("failed", { status: "idle", runFailed: true, failure: "The provider answered 401.", updatedAt: "2026-10-23T11:50:00Z" }),
+    session("crashed", { status: "error", failure: "The runtime exited.", updatedAt: "2026-10-23T11:40:00Z" }),
+    session("offline", { status: "disconnected", updatedAt: "2026-10-23T11:30:00Z" }),
+  );
+  const resumed: string[] = [];
+  const render = view({ groups, onResume: (target) => resumed.push(target.id) });
+  const fix = lane(text(render), "fix");
+  assert.deepEqual(rowIds(fix), ["offline", "crashed", "failed"], "a failed turn and a dead runtime wait in Fix alike, longest wait first");
+
+  const failed = rowOf(fix, "failed");
+  assert.match(failed, /dashboard-row__failure">The provider answered 401\./u, "the row keeps what the run reported");
+  assert.match(failed, /\?disabled=false\s+@click=>Resume</u, "an idle session's runtime can continue the failed turn");
+  assert.match(failed, />Open</u);
+
+  assert.match(rowOf(fix, "crashed"), /dashboard-row__failure">The runtime exited\./u);
+  assert.match(rowOf(fix, "offline"), /dashboard-row__failure">Disconnected</u, "a disconnect without a message says so");
+  for (const dead of ["crashed", "offline"]) {
+    const row = rowOf(fix, dead);
+    assert.doesNotMatch(row, /Resume|type="button"/u, `${dead} offers no Resume: a dead runtime cannot continue`);
+    assert.match(row, />Open</u, "the session still opens, so the operator retries it there");
+  }
+  actionAt(render, "@click=", "Resume")(click);
+  assert.deepEqual(resumed, ["failed"], "only the session that can continue is resumed");
+
+  const gone = page({ groups: listed(session("crashed", { status: "error" })) });
+  assert.match(rowOf(lane(gone, "fix"), "crashed"), /dashboard-row__failure">The last run failed\./u, "a stop with nothing to quote still says why it is here");
+});
+
+test("a stopped session says why it stopped, from the run, the HUI record or its disconnect", () => {
+  const markup = page({ groups: listed(
+    session("reported", { status: "error", failure: "The tool call was denied." }),
+    session("failed", { status: "error", runFailed: true }),
+    session("offline", { status: "disconnected" }),
+  ) });
+  const laneMarkup = lane(markup, "fix");
+  assert.match(laneMarkup, /The tool call was denied\./u);
+  assert.match(laneMarkup, /The last run failed\./u);
+  assert.match(laneMarkup, /Disconnected/u);
+  assert.equal(laneMarkup.match(/dashboard-row__failure/gu)?.length, 3);
+});
+
+test("a session in flight reads its progress steps, and the Running word when it has no card", () => {
+  const steps = [
+    ["lint the tree", "completed"], ["write the parser", "completed"], ["wire the view", "completed"], ["run the suite", "completed"],
+    ["Wiring the resize handle", "in_progress"], ["write the tests", "pending"], ["update the docs", "pending"],
+  ] as const;
+  const markup = page({ groups: listed(
+    session("run", { status: "running", progress: { markdown: "", steps: steps.map(([step, status]) => ({ step, status })) } }),
+    session("fresh", { status: "starting" }),
+    session("read", { status: "idle", unread: true, progress: { markdown: "Waiting on the flaky suite", steps: [] } }),
+  ) });
+  assert.match(lane(markup, "flight"), /dashboard-row__progress">4 of 7 steps · Wiring the resize handle</u);
+  assert.match(lane(markup, "flight"), /dashboard-row__progress">Running</u, "a session without a card is simply running");
+  assert.match(lane(markup, "unread"), /dashboard-row__progress">Waiting on the flaky suite</u, "an unread card reads its note when it has no steps");
+});
+
+test("the filter bar offers every value with its count and narrows the lanes without reordering them", () => {
+  const patches: Partial<SessionFilters>[] = [];
+  const groups: SessionGroup[] = [
+    { label: "HUI", sessions: [
+      session("run", { group: "HUI", status: "running", stage: "implementation" }),
+      session("ask", { group: "HUI", status: "waiting", stage: "testing", worker: { id: "w1", name: "Workspace One" } }),
+    ] },
+    { label: "Other", sessions: [session("parked", { group: "Other", status: "idle", stage: "investigation" })] },
+  ];
+  const render = view({ groups, onFilters: (patch) => patches.push(patch) });
+  const markup = text(render);
+  assert.match(markup, /<input type="search" aria-label="Search sessions" placeholder="Search title or project"/u);
+  const drawn = pickers(render);
+  assert.deepEqual(drawn.map((picker) => [picker.label, picker.value]), [["Group", "all"], ["Status", "all"], ["Worker", "all"], ["Stage", "all"]]);
+  assert.deepEqual(drawn[0]!.options.map(({ value, label }) => ({ value, label })), [
+    { value: "all", label: "All groups" },
+    { value: "HUI", label: "HUI (2)" },
+    { value: "Other", label: "OTHER (1)" },
+  ], "a group choice counts the sessions it would show and keeps the stored group");
+  assert.deepEqual(drawn[1]!.options.map((option) => option.label), ["All statuses", "Idle (1)", "Needs input (1)", "Running (1)"]);
+  assert.deepEqual(drawn[2]!.options.map((option) => option.label), ["Every machine", "This gateway (2)", "Workspace One (1)"]);
+  assert.deepEqual(drawn[3]!.options.map((option) => option.label), ["Every stage", "Implementation (1)", "Investigation (1)", "Testing (1)"]);
+
+  drawn[0]!.onChange("HUI");
+  drawn[1]!.onChange("all");
+  drawn[3]!.onChange("testing");
+  assert.deepEqual(patches, [{ group: "HUI" }, { status: "" }, { stage: "testing" }], "the sentinel filters nothing");
+
+  const filtered = page({ groups, filters: { ...EMPTY_FILTERS, status: "waiting" } });
+  assert.deepEqual(laneKeys(filtered), ["answer"], "a status filter leaves only the lane that holds it");
+  const byStage = page({ groups, filters: { ...EMPTY_FILTERS, stage: "investigation" } });
+  assert.deepEqual(laneKeys(byStage), ["parked"], "a stage filter narrows the rest");
+  const query = page({ groups, filters: { ...EMPTY_FILTERS, query: "workspace" } });
+  assert.deepEqual(rowIds(query), [], "the query reads title, path and group, so a worker name matches nothing");
+  const byGroup = page({ groups, filters: { ...EMPTY_FILTERS, group: "HUI" } });
+  assert.deepEqual(rowIds(byGroup), ["ask", "run"], "the lanes stay in order, with each lane's own order inside");
+});
+
+test("Clear shows only while a filter is set, and empties all of them", () => {
+  const groups = listed(session("run", { status: "running" }));
+  assert.doesNotMatch(page({ groups }), />Clear</u, "nothing to clear without a filter");
+  const cleared: number[] = [];
+  const render = view({ groups, filters: { ...EMPTY_FILTERS, group: "HUI", query: " hid " }, onClearFilters: () => cleared.push(1) });
+  const markup = text(render);
+  assert.match(sessionsArea(markup), />Clear</u);
+  actionAt(render, "@click=", "Clear")(click);
+  assert.deepEqual(cleared, [1]);
+  const patched: Partial<SessionFilters>[] = [];
+  actionAt(view({ groups, onFilters: (patch) => patched.push(patch) }), "@input=", "")({ target: { value: "parser" } } as unknown);
+  assert.deepEqual(patched, [{ query: "parser" }], "the search field patches the query");
+});
+
+test("the count line reads how many of the sessions pass, and how many are finished", () => {
+  const running = Array.from({ length: 3 }, (_, index) => session(`run${index}`, { status: "running", updatedAt: `2026-10-23T11:5${index}:00Z` }));
+  const parked = Array.from({ length: 5 }, (_, index) => session(`idle${index}`, { status: "idle" }));
+  const done = Array.from({ length: 2 }, (_, index) => session(`done${index}`, { status: "idle", stage: "done" }));
+  const groups = listed(...running, ...parked, ...done);
+  const markup = page({ groups, filters: { ...EMPTY_FILTERS, status: "running" } });
+  const count = markup.slice(at(markup, "dashboard-count"), markup.indexOf("</p>", at(markup, "dashboard-count")));
+  assert.match(count, /<strong class="dashboard-count__matched">3 of 8 sessions<\/strong>/u);
+  assert.match(count, /dashboard-count__finished">· 2 finished</u, "the finished count stays visible beside the filter");
+  assert.match(markup, /role="status" data-testid="dashboard-count"/u);
+  assert.match(page({ groups }), /<strong class="dashboard-count__matched">8 of 8 sessions<\/strong>/u);
+  assert.match(page({ groups, sessionsLoading: true }), /data-testid="dashboard-updating">Updating…</u, "a read in flight is quiet beside the rows");
+  assert.doesNotMatch(page({ groups }), /Updating…/u);
+});
+
+test("nothing matched reads one empty state that clears the filters", () => {
+  const groups = listed(session("run", { status: "running" }));
+  const cleared: number[] = [];
+  const render = view({ groups, filters: { ...EMPTY_FILTERS, status: "waiting" }, onClearFilters: () => cleared.push(1) });
+  const markup = text(render);
+  assert.deepEqual(laneKeys(markup), []);
+  assert.match(markup, /data-testid="dashboard-empty"[\s\S]*No sessions match these filters\./u);
+  actionAt(render, "@click=", "Clear filters")(click);
+  assert.deepEqual(cleared, [1]);
+  assert.match(page({ groups: [] }), /No sessions yet\./u);
+  assert.match(page({ groups: listed(session("done", { status: "idle", stage: "done" })) }), /No sessions in flight\./u);
+  assert.match(page({ sessionsLoading: true }), /Reading sessions…/u, "the first read says it is reading");
+  assert.match(page({ sessionsError: "the registry answered 500" }), /role="alert">the registry answered 500/u);
+});
+
+test("each lane shows three rows and opens on its own Show all button", () => {
   const many = (prefix: string, status: SessionView["status"], count: number) =>
     Array.from({ length: count }, (_, index) => session(`${prefix}${index}`, { status, updatedAt: `2026-10-23T11:5${9 - index}:00Z` }));
-  const groups = [{ label: "", sessions: [...many("w", "waiting", 4), ...many("r", "running", 5), ...many("e", "error", 5), ...many("s", "starting", 3)] }];
-  const names = (markup: string) => [...markup.matchAll(/__name" title=[^>]*>Session (\w+)</gu)].map((match) => match[1]);
-  const button = (markup: string) => markup.match(/<button class="dashboard-more"[^>]*>[^<]*/u)?.[0];
-  const sections = (markup: string) => Object.fromEntries(["Running", "Starting"].map((label) => {
-    const active = part(markup, "active-sessions");
-    const start = active.indexOf(`>${label} <`);
-    const end = active.indexOf("<h3", start);
-    return [label, active.slice(start, end < 0 ? undefined : end)];
-  }));
-
+  const groups = listed(...many("r", "running", 5), ...many("p", "idle", 4));
   const collapsed = page({ groups });
-  assert.match(part(collapsed, "summary"), /17 sessions/u);
-  assert.match(part(collapsed, "needs-you"), /Needs you <span class="dashboard-subheading__count">9/u, "the error sessions wait for the operator too, so they are in Needs you");
-  assert.deepEqual(names(part(collapsed, "needs-you")), ["w3", "w2", "w1"], "the questions have waited longest, so they come first");
-  assert.equal(button(part(collapsed, "needs-you")), `<button class="dashboard-more" type="button" aria-controls=dashboard-list-needs-you aria-expanded=false @click=>Show all 9`);
-  assert.match(part(collapsed, "needs-you"), /<ul id=dashboard-list-needs-you /u);
-  const closed = sections(collapsed);
-  assert.match(closed.Running!, /^>Running <span class="dashboard-subheading__count">5/u, "a heading counts every row, not the shown ones");
-  assert.deepEqual(names(closed.Running!), ["r0", "r1", "r2"]);
-  assert.equal(button(closed.Running!), `<button class="dashboard-more" type="button" aria-controls=dashboard-list-running aria-expanded=false @click=>Show all 5`);
-  assert.match(closed.Running!, /<ul id=dashboard-list-running /u);
-  assert.deepEqual(names(closed.Starting!), ["s0", "s1", "s2"]);
-  assert.equal(button(closed.Starting!), undefined, "a list of three has nothing to show");
+  assert.deepEqual(rowIds(lane(collapsed, "flight")), ["r0", "r1", "r2"], "a lane draws three rows");
+  assert.match(lane(collapsed, "flight"), /<button class="dashboard-more" type="button" aria-controls=dashboard-list-flight aria-expanded=false/u);
+  assert.match(lane(collapsed, "flight"), />Show all 5</u);
+  assert.match(lane(collapsed, "parked"), />Show all 4</u);
+  assert.doesNotMatch(lane(collapsed, "parked"), /aria-expanded=true/u);
+  assert.match(lane(collapsed, "parked"), /aria-controls=dashboard-list-parked aria-expanded=false/u, "a lane key is its own list key");
 
-  const expanded = page({ groups, expandedLists: new Set(["running"]) });
-  const open = sections(expanded);
-  assert.deepEqual(names(open.Running!), ["r0", "r1", "r2", "r3", "r4"]);
-  assert.equal(button(open.Running!), `<button class="dashboard-more" type="button" aria-controls=dashboard-list-running aria-expanded=true @click=>Show fewer`);
-  assert.equal(button(part(expanded, "needs-you")), `<button class="dashboard-more" type="button" aria-controls=dashboard-list-needs-you aria-expanded=false @click=>Show all 9`, "opening one list leaves the others folded");
-  assert.deepEqual(names(part(expanded, "needs-you")), ["w3", "w2", "w1"]);
-  assert.match(part(expanded, "summary"), /17 sessions/u);
-  assert.match(open.Running!, /^>Running <span class="dashboard-subheading__count">5/u);
+  const toggled: string[] = [];
+  const render = view({ groups, onToggleList: (key) => toggled.push(key) });
+  actionAt(render, "@click=", "Show all 5")(click);
+  assert.deepEqual(toggled, ["flight"]);
+
+  const expanded = page({ groups, expandedLists: new Set(["flight"]) });
+  assert.deepEqual(rowIds(lane(expanded, "flight")), ["r0", "r1", "r2", "r3", "r4"]);
+  assert.match(lane(expanded, "flight"), />Show fewer</u);
+  assert.match(lane(expanded, "flight"), /aria-expanded=true/u);
+  assert.match(lane(expanded, "parked"), /aria-expanded=false/u, "opening one lane leaves the others folded");
 });
 
-test("Needs you puts a question first, then a stopped session, an unread answer and parked work, each longest wait first", () => {
-  const groups = [{ label: "", sessions: [
-    session("idle-new", { updatedAt: "2026-10-23T11:59:00Z" }),
-    session("idle-old", { updatedAt: "2026-10-23T10:00:00Z" }),
-    session("unread-new", { unread: true, updatedAt: "2026-10-23T11:58:00Z" }),
-    session("unread-old", { unread: true, updatedAt: "2026-10-23T09:00:00Z" }),
-    session("asking", { status: "waiting", updatedAt: "2026-10-23T11:57:00Z" }),
-    session("broken", { status: "error", updatedAt: "2026-10-23T11:56:00Z" }),
-    session("offline", { status: "disconnected", updatedAt: "2026-10-23T11:55:00Z" }),
-    session("shipped", { stage: "done", unread: true }),
-  ] }];
-  const markup = part(page({ groups, expandedLists: new Set(["needs-you"]) }), "needs-you");
-  assert.deepEqual([...markup.matchAll(/__name" title=[^>]*>Session ([a-z-]+)</gu)].map((match) => match[1]),
-    ["asking", "broken", "offline", "unread-old", "unread-new", "idle-old", "idle-new"],
-    "a question outranks a stopped session, an unread answer and parked work, and the longest wait leads its tier");
-  const row = (name: string) => markup.slice(markup.indexOf(`>Session ${name}<`), markup.indexOf("</li>", markup.indexOf(`>Session ${name}<`)));
-  assert.match(row("unread-old"), /dashboard-chip--unread" data-tone= title=>Unread</u, "an unread row says why it sits above the parked ones");
-  assert.doesNotMatch(row("idle-old"), /dashboard-chip--unread/u);
-  assert.doesNotMatch(markup, /Session shipped/u, "an unread session in Done is still finished, so it is only counted");
-  assert.match(part(page({ groups }), "summary"), /7 sessions <span class="dashboard-summary__finished">· 1 finished<\/span>/u);
+test("an answer or a resume in flight disables its buttons and says what it is doing", () => {
+  const busy = new Set(["ask", "failed"]);
+  const groups = listed(
+    session("ask", { status: "waiting", question: { id: "q", method: "confirm", title: "Continue?" } }),
+    session("failed", { status: "idle", runFailed: true }),
+  );
+  const markup = page({ groups, busy });
+  const answer = lane(markup, "answer");
+  assert.doesNotMatch(answer, /type="button" \?disabled=false/u, "every answer button is inert");
+  assert.equal(answer.match(/\?disabled=true\s+@click=>Answering…</gu)?.length, 2);
+  const fix = lane(markup, "fix");
+  assert.match(fix, /\?disabled=true\s+@click=>Resuming…</u);
+  assert.match(fix, />Open</u, "the way into the session stays open");
+  assert.match(page({ groups }), /\?disabled=false @click=>Resume</u);
 });
 
-test("an idle session that is not finished needs you, and the list waits for the first session read", () => {
-  const idle = page({ groups: [{ label: "", sessions: [session("c")] }] });
-  assert.match(idle, /1 session<\/strong>/u);
-  assert.match(idle, /1 needs you/u);
-  assert.match(part(idle, "needs-you"), /Session c<[\s\S]*data-tone=idle title=>Idle</u, "a parked session is all the page has to offer the operator");
-  assert.doesNotMatch(idle, /data-testid="dashboard-active-sessions"/u);
-  assert.match(page({ sessionsLoading: true }), /Reading sessions…/u);
-  const none = page();
-  assert.match(none, /0 sessions<\/strong>/u);
-  assert.match(none, /No sessions yet\./u);
-  const finished = page({ groups: [{ label: "", sessions: [session("a", { stage: "done" }), session("b", { stage: "done" }), session("k", { parentId: "a", status: "running" })] }] });
-  assert.match(finished, /No sessions in flight <span class="dashboard-summary__finished">· 2 finished<\/span><\/strong>/u);
-  assert.doesNotMatch(finished, /No sessions yet|data-testid="dashboard-(needs-you|active-sessions)"/u);
-  assert.match(finished, /dashboard-summary__state ">Nothing needs you/u, "two finished sessions and a busy subagent leave nothing for the operator");
+test("the page draws no native title tooltip, keeping its detail in HUI's own tooltip", () => {
+  const title = "A".repeat(120);
+  const markup = page({
+    groups: listed(session("long", { status: "running", title, worker: { id: "w", name: "workspace-with-a-long-name" },
+      pullRequests: [{ repository: "o/r", number: 12, url: "https://github.com/o/r/pull/12", state: "open" }] })),
+    metrics: metrics(),
+  });
+  assert.doesNotMatch(markup, /\stitle=/u, "no element falls back to the browser's own tooltip");
+  assert.match(sessionsArea(markup), new RegExp(`dashboard-row__title-text">${title}<`, "u"), "a long title keeps its two lines");
+  assert.match(sessionsArea(markup), /data-hui-tooltip=Pull request o\/r#12, open>#12 Open</u, "a pull request keeps its full label");
+  assert.match(markup, /dashboard-metric__path" data-hui-tooltip=\/Users\/me\/\.config\/hui/u, "the disk path keeps its full text");
+  assert.match(sessionsArea(markup), /dashboard-chip--subagent|dashboard-chip--worker/u);
+});
+
+test("a filter the operator cannot satisfy keeps the lane order that is left", () => {
+  const groups = listed(
+    session("run", { status: "running", stage: "implementation", updatedAt: "2026-10-23T11:59:00Z" }),
+    session("ask", { status: "waiting", stage: "implementation", updatedAt: "2026-10-23T10:00:00Z" }),
+    session("parked", { status: "idle", stage: "implementation", updatedAt: "2026-10-23T09:00:00Z" }),
+  );
+  assert.deepEqual(laneKeys(page({ groups, filters: { ...EMPTY_FILTERS, stage: "implementation" } })), ["answer", "flight", "parked"]);
+  assert.deepEqual(rowIds(page({ groups })), ["ask", "run", "parked"], "the answer lane waits longest first, the flight lane newest first");
+});
+
+test("the answer error is a dismissible alert above the lanes, and a read failure keeps its own callout", () => {
+  const dismissed: number[] = [];
+  const render = view({
+    groups: listed(session("ask", { status: "waiting", question: { id: "q", method: "confirm", title: "Continue?" } })),
+    actionError: "the gateway answered 409",
+    onDismissActionError: () => dismissed.push(1),
+  });
+  const markup = text(render);
+  const alert = markup.indexOf('<div class="callout danger dashboard-callout" role="alert" data-testid="dashboard-action-error">the gateway answered 409');
+  assert.ok(alert >= 0, "the answer failure is an alert callout carrying its reason");
+  assert.ok(alert < at(markup, "dashboard-lane-answer"), "the alert sits above the lanes");
+  actionAt(render, "@click=", "Dismiss")(click);
+  assert.deepEqual(dismissed, [1]);
+  assert.doesNotMatch(page(), /dashboard-action-error/u);
 });
 
 test("each host metric shows its value, marks one above 85% and says when the host can't report it", () => {
@@ -251,24 +485,6 @@ test("each host metric shows its value, marks one above 85% and says when the ho
   assert.match(part(busy, "metric-network"), /↓\u00a02\u00a0KiB\/s ↑\u00a0512\u00a0B\/s/u);
 });
 
-test("a long network value wraps between its rates and a long disk path stays on one line inside its card", () => {
-  const path = `/Users/me/${"deep/".repeat(30)}hui`;
-  const markup = page({ metrics: metrics({
-    network: { rxBytesPerSecond: 999.9 * 1024 ** 4, txBytesPerSecond: 1.2 * 1024 ** 3 },
-    disk: { path, totalBytes: 2 * 1024 ** 4, usedBytes: 1024 ** 4 },
-  }) });
-  assert.match(part(markup, "metric-network"), /__value">↓\u00a0999\.9\u00a0TiB\/s ↑\u00a01\.2\u00a0GiB\/s</u, "the only break opportunity is between the two rates");
-  assert.match(part(markup, "metric-disk"), new RegExp(`__detail">1\\.0 TiB of 2\\.0 TiB<span class="dashboard-metric__path" title=${path}><span dir="ltr">${path}</span>`, "u"),
-    "the path has its own line and its full text in the tooltip");
-  const css = readFileSync(new URL("../styles/dashboard.css", import.meta.url), "utf8");
-  const rule = (selector: string) => css.match(new RegExp(`^${selector.replaceAll(".", "\\.")} \\{([^}]*)\\}`, "mu"))?.[1] ?? "";
-  assert.doesNotMatch(rule(".dashboard-metric__value"), /nowrap/u, "a value wider than its card wraps instead of overflowing");
-  assert.match(rule(".dashboard-metric__value"), /min-width: 0;[^]*overflow-wrap: anywhere/u);
-  assert.match(rule(".dashboard-metric__path"), /overflow: hidden;[^]*direction: rtl;[^]*text-overflow: ellipsis; white-space: nowrap/u, "a long path ends in an ellipsis at its start");
-  assert.match(rule(".dashboard-chip"), /display: inline-block;[^]*text-overflow: ellipsis/u, "a chip can show its ellipsis");
-  assert.match(rule(".dashboard-page"), /font-size: var\(--text-base\)/u, "values, details and rows follow the text scale");
-});
-
 test("a metric is marked high only once it reads above 85%", () => {
   const disk = (usedBytes: number) => part(page({ metrics: metrics({ disk: { path: "/", totalBytes: 1000, usedBytes } }) }), "metric-disk");
   assert.doesNotMatch(disk(850), /dashboard-metric--high/u);
@@ -276,18 +492,36 @@ test("a metric is marked high only once it reads above 85%", () => {
   assert.match(disk(856), /dashboard-metric--high[\s\S]*86%/u);
 });
 
-test("a session row keeps its full title and worker in tooltips and drops a time it can't read", () => {
-  const title = "A".repeat(200);
-  const worker = { id: "w", name: "workspace-with-a-very-long-name-in-us1-staging" };
-  const active = part(page({ groups: [{ label: "", sessions: [
-    session("broken", { status: "running", updatedAt: "not a date" }),
-    session("long", { status: "running", title, worker }),
-  ] }] }), "active-sessions");
-  assert.match(active, new RegExp(`__name" title=${title}>${title}<`, "u"));
-  assert.match(active, new RegExp(`dashboard-chip--worker" data-tone= title=${worker.name}>${worker.name}<`, "u"));
-  assert.deepEqual([...active.matchAll(/__name" title=([^>]+)>/gu)].map((match) => match[1]), [title, "Session broken"], "an unreadable time sorts last");
-  assert.doesNotMatch(active, /NaN/u);
-  assert.equal(active.match(/<time /gu)?.length, 1);
+test("a long network value wraps between its rates and a long disk path stays on one line inside its card", () => {
+  const path = `/Users/me/${"deep/".repeat(30)}hui`;
+  const markup = page({ metrics: metrics({
+    network: { rxBytesPerSecond: 999.9 * 1024 ** 4, txBytesPerSecond: 1.2 * 1024 ** 3 },
+    disk: { path, totalBytes: 2 * 1024 ** 4, usedBytes: 1024 ** 4 },
+  }) });
+  assert.match(part(markup, "metric-network"), /__value">↓\u00a0999\.9\u00a0TiB\/s ↑\u00a01\.2\u00a0GiB\/s</u, "the only break opportunity is between the two rates");
+  assert.match(part(markup, "metric-disk"), new RegExp(`__detail">1\\.0 TiB of 2\\.0 TiB<span class="dashboard-metric__path" data-hui-tooltip=${path}><span dir="ltr">${path}</span>`, "u"),
+    "the path has its own line and its full text in HUI's tooltip");
+});
+
+test("the dashboard CSS lays the page out in two columns, wraps its filters and keeps every row inside 360px", () => {
+  const css = readFileSync(new URL("../styles/dashboard.css", import.meta.url), "utf8");
+  const rule = (selector: string) => css.match(new RegExp(`^${selector.replaceAll(".", "\\.")} \\{([^}]*)\\}`, "mu"))?.[1] ?? "";
+  assert.match(rule(".dashboard-page"), /font-size: var\(--text-base\)/u, "values, details and rows follow the text scale");
+  assert.match(css, /@media \(min-width: 1200px\) \{\s*\.dashboard-page \{ display: grid; grid-template-columns: minmax\(0, 1\.6fr\) minmax\(0, 1fr\)/u,
+    "the sessions column is wider than the activity column from 1200px");
+  assert.match(rule(".dashboard-page__activity"), /container-type: inline-size/u, "the metric cards follow their own column");
+  assert.match(rule(".dashboard-filters"), /display: flex;[^]*flex-wrap: wrap/u, "the filter bar wraps instead of overflowing");
+  assert.match(rule(".dashboard-filters__field"), /flex: 1 1 132px;[^]*min-width: 0/u, "a picker shrinks to its column");
+  assert.match(rule(".dashboard-row"), /min-width: 0/u);
+  assert.match(rule(".dashboard-row__title-text"), /-webkit-line-clamp: 2;[^]*overflow-wrap: anywhere/u, "a title takes two lines and never widens its row");
+  assert.match(rule(".dashboard-row__line"), /overflow-wrap: anywhere/u);
+  assert.match(rule(".dashboard-row__actions"), /flex-wrap: wrap/u);
+  assert.match(rule(".dashboard-chip"), /display: inline-block;[^]*text-overflow: ellipsis/u, "a chip can show its ellipsis");
+  assert.match(rule(".dashboard-metric__value"), /min-width: 0;[^]*overflow-wrap: anywhere/u, "a value wider than its card wraps instead of overflowing");
+  assert.match(rule(".dashboard-metric__path"), /overflow: hidden;[^]*direction: rtl;[^]*text-overflow: ellipsis; white-space: nowrap/u, "a long path ends in an ellipsis at its start");
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.dashboard-lane\[data-lane="flight"\] \.dashboard-lane__dot \{ animation: none; \} \}/u);
+  assert.doesNotMatch(css, /dashboard-summary|dashboard-stage|dashboard-needs-you/u, "the dead status board styles are gone");
+  assert.doesNotMatch(css, /backdrop-filter/u, "no lane card composites a blur behind it");
 });
 
 test("the activity monitor shows what it read, what it is reading, and why a read failed", () => {
@@ -358,17 +592,34 @@ test("the reading under the pointer is marked and listed, busiest first, and goe
   const workers = [{ id: "w", name: "Worker w", state: "connected" as const, metrics: metrics() }];
   const markup = page({ metrics: metrics(), workers, chart: chart({ samples, hover: Date.parse("2026-10-23T11:59:20Z") }) });
   const tip = markup.slice(markup.indexOf('data-testid="dashboard-chart-tip"'));
+  const when = new Date(Date.parse("2026-10-23T11:59:30Z")).toLocaleTimeString();
   assert.match(markup.slice(0, markup.indexOf('data-testid="dashboard-chart-tip"')), /dashboard-chart__crosshair/u, "the crosshair marks the time");
   assert.equal(markup.match(/class="dashboard-chart__dot"/gu)?.length, 2, "a dot per machine at its reading");
-  assert.match(tip, /dashboard-chart__tip-time">11:59:30/u);
+  assert.ok(tip.includes(`dashboard-chart__tip-time">${when}<`), "the tooltip names the time under the pointer");
   assert.ok(tip.indexOf("Worker w") < tip.indexOf("This gateway"), "the busiest machine comes first");
   assert.match(tip, /Worker w<strong>90%<\/strong>/u);
   assert.match(tip, /This gateway<strong>42%<\/strong>/u);
   const spoken = markup.slice(markup.indexOf('aria-live="polite"'));
-  assert.match(spoken, /^aria-live="polite">11:59:30[^:]*: Worker w 90%, This gateway 42%/u, "and a screen reader hears the same");
+  assert.ok(spoken.startsWith(`aria-live="polite">${when}: Worker w 90%, This gateway 42%`), "and a screen reader hears the same");
   const away = page({ metrics: metrics(), workers, chart: chart({ samples, hover: null }) });
   assert.doesNotMatch(away, /dashboard-chart__crosshair|dashboard-chart-tip/u);
 });
+
+/** The chart, its plot and its legend, up to the first machine's cards. */
+function chartPart(markup: string): string {
+  const start = markup.indexOf('data-testid="dashboard-chart"');
+  assert.ok(start >= 0, "chart");
+  const next = markup.indexOf('data-testid="dashboard-machine"', start);
+  return markup.slice(start, next < 0 ? undefined : next);
+}
+
+/** The markup of one `data-testid` element up to the next element with a test id. */
+function part(markup: string, id: string): string {
+  const start = markup.search(new RegExp(`data-testid="?dashboard-${id}\\b`, "u"));
+  assert.ok(start >= 0, id);
+  const next = markup.indexOf("data-testid=", start + 1);
+  return markup.slice(start, next < 0 ? undefined : next);
+}
 
 /** One machine's whole block, found by the name it shows. */
 function block(markup: string, name: string): string {

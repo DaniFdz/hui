@@ -33,6 +33,13 @@ type LegacySessionView = {
   runtime?: { active: true; memoryBytes?: number; bootDurationMs?: number };
   interrupted?: true;
   runFailed?: true;
+  question?: {
+    id: string;
+    method: "select" | "confirm" | "input" | "editor" | "secret" | "questionnaire";
+    title: string;
+    options?: string[];
+  };
+  failure?: string;
   background?: true;
   model?: string;
   thinking?: string;
