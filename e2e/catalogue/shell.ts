@@ -494,7 +494,7 @@ const cases: UseCase[] = [
     id: "SHELL-047",
     title: "Use a phone's chat without a second header row",
     behaviour:
-      "At 390 × 844 the conversation's header holds the Active panel chooser in place of its title, so the chat spends one row on that header; the chooser still lists the chat panes, the open Work views and the launchers. The Task progress card starts folded to its current step and count, and opening it shows its steps.",
+      "At 390 × 844 the conversation's header holds the Active panel chooser in place of its title, so the chat spends one row on that header; the chooser still lists the chat panes, the open Work views and the launchers, and the header's rightmost Run status trigger keeps only its mark and count. The popover's Plan starts folded to its current step and count, and opening it shows its steps.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "required",

@@ -1,7 +1,18 @@
-/** An agent's background watchers: the rows above the composer, their opened details, Stop, Restart, Dismiss, and what a gateway restart and a deleted conversation leave behind (AGENT-036 to AGENT-040, AGENT-043, AGENT-044). */
+/** An agent's background watchers: the Watchers section of the Run status popover, each row's opened details,
+ * Stop, Restart, Dismiss, and what a gateway restart and a deleted conversation leave behind (AGENT-036 to AGENT-040,
+ * AGENT-043, AGENT-044). */
 import { readFile, stat } from "node:fs/promises";
-import { expect } from "e2e";
+import { expect, type Screen } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+
+/** Opens the chat header's Run status popover and returns its Background watchers group. */
+async function openWatchers(screen: Screen) {
+  const trigger = screen.getByTestId("run-status-trigger");
+  await expect(trigger).toBeVisible();
+  await trigger.tap();
+  await expect(screen.getByLabel("Run status")).toBeVisible();
+  return screen.getByLabel("Background watchers");
+}
 
 const start = (input: { purpose: string; command: string }) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name: "watcher", input: { action: "start", ...input } })).toString("base64url")}`;
@@ -17,18 +28,17 @@ const alive = (pid: number) => {
 
 const pidOf = (path: string) => Number(/^PID (\d+) · /u.exec(path)?.[1]);
 
-test("watchers sit above the composer as one row each and collapse into a summary that keeps only purpose and state on a phone", { tags: ["AGENT-036"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("watchers live in the Run status popover, one row each, and keep only purpose and state on a phone", { tags: ["AGENT-036"], platforms: ["web"] }, async ({ screen, hui }) => {
   const session = await hui.createSession({ title: "Watcher rows" });
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, "E2E_WATCHER");
 
-  const watchers = screen.getByLabel("Background watchers");
-  await expect(watchers.getByText("2 watchers")).toBeVisible();
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("1 running · Wait for #21532 review signals");
+  const watchers = await openWatchers(screen);
+  await expect(watchers.getByText("1 running", { exact: true })).toBeVisible();
+  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for #21532 review signals");
   const [listBox, composerBox] = [(await watchers.boundingBox())!, (await screen.getByLabel("Message").boundingBox())!];
   expect(listBox.y).toBeLessThan(composerBox.y);
 
-  await watchers.getByText("2 watchers").tap();
   const finished = watchers.getByText("Post /merge when approved");
   const running = watchers.getByText("Wait for #21532 review signals");
   await expect(finished).toBeVisible();
@@ -53,12 +63,9 @@ test("an opened watcher shows its target, outcome, times, log, path and controls
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, "E2E_WATCHER");
 
-  const watchers = screen.getByLabel("Background watchers");
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("1 running · Wait for #21532 review signals");
-  await watchers.getByText("2 watchers").tap();
-  // A row keeps its latest output line only where it has the room; a phone's row is its purpose and state until it is
-  // opened (AGENT-036), and the log asserted below is what proves the command printed, so the wait is for the row to settle.
-  await expect(watchers.getByText(/^Done · /u)).toBeVisible();
+  const watchers = await openWatchers(screen);
+  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for #21532 review signals");
+  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("posted /merge");
   await watchers.getByText("Post /merge when approved").tap();
 
   await expect(watchers.getByText("Then: post /merge")).toBeVisible();
@@ -96,22 +103,21 @@ test("Stop settles a running watcher, updates the summary and offers Restart and
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, "E2E_WATCHER");
 
-  const watchers = screen.getByLabel("Background watchers");
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("1 running · Wait for #21532 review signals");
-  await watchers.getByText("2 watchers").tap();
+  const watchers = await openWatchers(screen);
+  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for #21532 review signals");
   await watchers.getByText("Wait for #21532 review signals").tap();
   await screen.getByRole("button", "Stop").tap();
 
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("None running");
+  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("2 watchers");
   await expect(watchers.getByText(/^Stopped · /u)).toBeVisible();
   await expect(screen.getByRole("button", "Stop")).toBeHidden();
   await expect(watchers.getByRole("button", "Restart")).toBeVisible();
   await expect(watchers.getByRole("button", "Dismiss")).toBeVisible();
 
   await hui.reload();
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("None running");
-  await watchers.getByText("2 watchers").tap();
-  await expect(watchers.getByText(/^Stopped · /u)).toBeVisible();
+  const reopened = await openWatchers(screen);
+  await expect.poll(async () => hui.textOf(reopened), { timeout: 90_000 }).toContain("2 watchers");
+  await expect(reopened.getByText(/^Stopped · /u)).toBeVisible();
 });
 
 test("Restart runs a settled watcher's command again under a new process and a fresh start time", { tags: ["AGENT-039"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -119,7 +125,7 @@ test("Restart runs a settled watcher's command again under a new process and a f
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, start({ purpose: "Check the deploy", command: "sleep 6; printf 'ran again\\n'" }));
 
-  const watchers = screen.getByLabel("Background watchers");
+  const watchers = await openWatchers(screen);
   await expect(watchers.getByText("Check the deploy")).toBeVisible();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Done · ");
   await watchers.getByText("Check the deploy").tap();
@@ -143,16 +149,15 @@ test("Dismiss removes a settled watcher and its log, folding the list back into 
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, "E2E_WATCHER");
 
-  const watchers = screen.getByLabel("Background watchers");
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("1 running · Wait for #21532 review signals");
-  await watchers.getByText("2 watchers").tap();
-  await expect(watchers.getByText(/^Done · /u)).toBeVisible();
+  const watchers = await openWatchers(screen);
+  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for #21532 review signals");
+  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("posted /merge");
   await watchers.getByText("Post /merge when approved").tap();
   await expect(watchers.getByLabel("Watcher log").getByText("posted /merge")).toBeVisible();
   await watchers.getByRole("button", "Dismiss").tap();
 
   await expect(watchers.getByText("Post /merge when approved")).toBeHidden();
-  await expect(screen.getByText("2 watchers")).toBeHidden();
+  await expect(screen.getByText("1 watcher", { visible: true })).toBeVisible();
   await expect(watchers.getByText("Wait for #21532 review signals")).toBeVisible();
   await expect(watchers.getByText(/^Running · /u)).toBeVisible();
   await expect(watchers.getByLabel("Watcher log")).toBeHidden();
@@ -163,24 +168,23 @@ test("a watcher keeps its real state across a gateway restart and a dead one say
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, start({ purpose: "Wait for a review", command: "sleep 600" }));
 
-  const watchers = screen.getByLabel("Background watchers");
+  const watchers = await openWatchers(screen);
   await expect(watchers.getByText("Wait for a review")).toBeVisible();
   await hui.prompt(session, start({ purpose: "Wait for the reboot", command: "kill -9 $$" }));
-  await expect(watchers.getByText("2 watchers")).toBeVisible();
-  await watchers.getByText("2 watchers").tap();
+  await expect(watchers.getByText("1 running", { exact: true })).toBeVisible();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for the reboot Dead");
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("1 running · Wait for a review");
+  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for a review");
 
   await hui.restartGateway();
   await hui.reload();
   await hui.open(`/sessions/${session.id}`);
 
-  await expect(watchers.getByText("2 watchers")).toBeVisible();
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("1 running · Wait for a review");
-  await watchers.getByText("2 watchers").tap();
-  await expect(watchers.getByText("Dead", { exact: true })).toBeVisible();
-  await expect(watchers.getByText(/^Running · /u)).toBeVisible();
-  await watchers.getByText("Wait for the reboot").tap();
+  const reopened = await openWatchers(screen);
+  await expect(reopened.getByText("1 running", { exact: true })).toBeVisible();
+  await expect.poll(async () => hui.textOf(reopened), { timeout: 90_000 }).toContain("Wait for a review");
+  await expect(reopened.getByText("Dead", { exact: true })).toBeVisible();
+  await expect(reopened.getByText(/^Running · /u)).toBeVisible();
+  await reopened.getByText("Wait for the reboot").tap();
   await expect(screen.getByText("The process is gone and recorded no exit status, for example after a restart.")).toBeVisible();
 });
 
@@ -189,7 +193,7 @@ test("deleting a conversation stops its running watcher and forgets its log", { 
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, start({ purpose: "Wait for a review", command: "sleep 600" }));
 
-  const watchers = screen.getByLabel("Background watchers");
+  const watchers = await openWatchers(screen);
   await expect(watchers.getByText("Wait for a review")).toBeVisible();
   await watchers.getByText("Wait for a review").tap();
   const path = String(await watchers.getByText(/^PID \d+ · .+\.log$/u).textContent());

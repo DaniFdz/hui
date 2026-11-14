@@ -315,7 +315,7 @@ export const scenes: Scene[] = [
     ready: "Apple Pay at checkout",
     narration: {
       ask: "Big jobs can be split up. Here, one code review becomes three, running in parallel.",
-      children: "One card tracks every helper while the agent waits for all of them.",
+      children: "Run status tracks every helper while the agent waits for all of them.",
       report: "When they're done, the agent sums up what they found.",
       open: "You can open any of them to see exactly what it did.",
       parent: "Its task shows the session that sent it. Click the name to go back.",
@@ -329,10 +329,12 @@ export const scenes: Scene[] = [
       await d.click({ placeholder: "What should this session work on?" });
       await d.type("Review PR #142 before we merge: security, performance and test coverage, in parallel");
       await d.press("Enter");
-      await d.caption("One card tracks every helper");
+      await d.caption("Run status tracks every helper");
       await d.say("children");
-      await d.waitFor({ css: ".chat-swarm" }, 30_000);
-      await d.zoom({ css: ".chat-swarm" }, 1.6);
+      await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
+      await d.click({ css: ".chat-run-status__trigger" });
+      await d.waitFor({ css: ".chat-run-status__helpers-list" }, 30_000);
+      await d.zoom({ css: ".chat-run-status__panel" }, 1.6);
       await d.pause(2_400);
       await d.zoom();
       await d.caption("…and the agent sums them up");
@@ -350,8 +352,7 @@ export const scenes: Scene[] = [
       await d.zoom();
       await d.caption("Open any helper to see its work");
       await d.say("open");
-      await d.click({ css: ".chat-swarm__summary" });
-      await d.click({ css: ".chat-subagents__row", contains: "Security review" });
+      await d.click({ css: ".chat-run-status__helper", contains: "Security review" });
       await d.waitFor({ contains: "1 blocking issue" });
       await d.zoom({ contains: "1 blocking issue" }, 1.4);
       await d.pause(2_200);
@@ -365,6 +366,8 @@ export const scenes: Scene[] = [
       await d.caption("Watchers wait on CI for you");
       await d.say("watcher");
       await send(d, "Fix the ownership check, then merge once CI is green");
+      await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
+      await d.click({ css: ".chat-run-status__trigger" });
       await d.waitFor({ css: ".chat-watcher" }, 30_000);
       await d.zoom({ css: ".chat-watcher" }, 1.4);
       await d.pause(1_500);

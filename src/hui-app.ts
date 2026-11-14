@@ -2931,7 +2931,6 @@ export class HuiApp extends HuiElement {
         pendingId: this.backlog.watcherPendingId,
         log: this.backlog.watcherLog,
         expanded: this.expandedActivityIds,
-        onGroupToggle: (open) => this.setActivityExpanded("watchers", open),
         onToggle: this.toggleWatcher,
         onStop: this.backlog.stopWatcher,
         onRestart: this.backlog.restartWatcher,

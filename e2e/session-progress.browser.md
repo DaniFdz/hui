@@ -19,7 +19,7 @@ Verified on branch `dani.fernandez/session-status-fallback-updates` through
   and a new summary), folding shows the current step with `2/3`, a reload keeps
   it, Collapse task progress starts it folded, and the session row's hovercard
   shows the stored step/count and summary without opening the session.
-- Driven by hand at 1440 × 900 and 390 × 844: the card renders above the composer
+- Driven by hand at 1440 × 900 and 390 × 844: the plan renders in the Run status popover
   with its summary and steps, the session row's hovercard shows the same
   step/count and summary without opening the session, and mobile reports no
   horizontal document overflow. Desktop, hovercard and mobile captures are

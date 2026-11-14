@@ -991,7 +991,7 @@ const cases: UseCase[] = [
     id: "CHAT-073",
     title: "Give a conversation a goal and manage it",
     behaviour:
-      "Sending /goal <objective> empties the composer, sends the objective as the goal's first turn and shows a pill above the composer reading Pursuing goal with that objective. A clean turn ends with HUI's own continuation turn queued in the transcript. Pause goal turns the pill into Goal paused with Pause replaced by Resume, Resume goal makes it Pursuing goal again, and Clear goal removes the pill. Expanding the pill shows the whole objective, its status note and when it was set; Edit goal objective, a retyped objective and Save goal replace the goal and send the new objective as the next turn. /goal pause, /goal resume and /goal clear do the same from the composer.",
+      "Sending /goal <objective> empties the composer, sends the objective as the goal's first turn and shows the chat header's rightmost Run status trigger reading Pursuing goal (Working while a turn runs). A clean turn ends with HUI's own continuation turn queued in the transcript. Opening the trigger shows a Goal section with Pause goal, Clear goal and Edit goal objective; Pause goal makes it Goal paused with Resume goal, Resume goal makes it Pursuing goal again, and Clear goal removes the trigger. The section reads the whole objective, its status note, when it was set and its automatic turns; Edit goal objective, a retyped objective and Save goal replace the goal and send the new objective as the next turn. It never draws a goal pill above the composer. /goal pause, /goal resume and /goal clear do the same from the composer.",
     spec: ["SPEC.md#goals", "docs/api.md#post-__huisessionsidgoal"],
     surfaces: [
       "command:goal",
