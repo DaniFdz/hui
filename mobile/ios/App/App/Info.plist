@@ -74,6 +74,11 @@
 	     iOS shows this sentence in the camera prompt, and terminates an app that reaches the camera without one. -->
 	<key>NSCameraUsageDescription</key>
 	<string>HUI uses the camera for a photo you attach to a message. Nothing is taken until you press the shutter.</string>
+	<!-- The composer's "Photo" input opens WebKit's photo picker. PHPicker is out-of-process and needs no prompt, but
+	     the camera sheet and any UIImagePickerController path read the library in-process, which iOS terminates without
+	     this string all the same. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>HUI uses your photo library only to choose a photo you attach to a message. Nothing is read until you pick one.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>
