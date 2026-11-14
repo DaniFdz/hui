@@ -523,8 +523,12 @@ Under Speed, **Autonomy** chooses who drives the session: **Supervised** (the
 default) or **Autonomous**, in the composer and on New Session. Autonomous makes
 the session drive its task to a draft pull request at whatever Effort you picked.
 It investigates, then stops with its plan, and changes nothing until you or its
-chief approve it. The plan is written to the `technical-writing` skill: the goal,
-what changes, the evidence, the risks, and where it will stop. After approval it
+chief approve it. The plan takes the form that explains the change: a before/after
+card for a screen or control change, a diagram for an architecture or flow change,
+a table or chart for numbers, and a short text plan when nothing visual helps.
+Either way it gives the goal, the evidence, the risks and where it stops, and ends
+on one question. A session its chief started writes the plan in its reply, because
+the chief reads text. After approval it
 gives every step to a subagent, one task each, and the subagents work in the
 session's own checkout, so the branch and the pull request are the session's and a
 fix round sees what the change before it did. A fresh verifier runs the checks and

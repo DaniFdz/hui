@@ -4049,6 +4049,25 @@ Session, never in a bot's chat or a subagent, and persists as `autonomous: true`
   given before the gateway last restarted), so the operator has the session back. HUI does not refuse a merge command
   in this mode: the stop before a merge is the prompt's and the repository's rule.
 
+### An Autonomy plan takes the form its change needs (2026-11-14)
+
+The owner does not read a long plan in prose, but a widget is not the answer either: the plan's form follows the change
+it describes, and a visual is used only when it explains the change better than words.
+
+- **The change chooses the form.** `hui_autonomous` tells an Autonomous session the operator supervises to give its
+  plan the form that helps the operator judge it: a `show_widget` before/after card (following the `visualize` skill)
+  for a change to a screen, a control or a layout; a `mermaid` diagram for a change to how parts fit, flow or move
+  between states; a table or a chart for a comparison or a set of numbers; and a short text plan, following the
+  `technical-writing` skill, when no picture explains the change better. A visual is never mandatory.
+- **The plan still says the same things.** Whatever the form, it gives the goal, what changes, what stays, the evidence
+  that will prove it, the risks and where it stops, keeping in prose only what the picture cannot show, and it ends on
+  one question that asks for approval or a change. Neither the card nor the diagram can answer it.
+- **A chief's session keeps the text plan.** A Chief of Staff that started a session reads the reply HUI delivers
+  through the heartbeat and cannot see a widget, so such a session writes its plan in the reply, following the
+  `technical-writing` skill as before; a `mermaid` diagram or a table is still text it can read.
+
+This changes the plan step of [Autonomous mode drives a session to a draft pull request](#autonomous-mode-drives-a-session-to-a-draft-pull-request-2026-11-12).
+
 ### A custom group's chief is its own bot (2026-11-08)
 
 The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label and project directory, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its home, sets the bot's `group`, and puts its chat in that directory; the pack's routes are merged by name. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
