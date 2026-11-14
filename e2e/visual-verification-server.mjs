@@ -28,7 +28,9 @@ const fixtureModels = [
   { id: "gpt-5.1-codex-mini", name: "GPT-5.1 Codex Mini", contextWindow: 400_000, maxTokens: 128_000 },
   { id: "gpt-5.1", name: "GPT-5.1", contextWindow: 400_000, maxTokens: 128_000 },
 ];
-const providerState = { phase: "idle", provider: "openai-codex", flow: "", polls: 0, selected: [] };
+// `signedIn` outlives `phase`: the gateway keeps the connection when a save clears the finished login, so a reload
+// after the model step must show the card and no wizard.
+const providerState = { phase: "idle", signedIn: false, provider: "openai-codex", flow: "", polls: 0, selected: [] };
 
 /** The sign-in this fixture is running: a device code for a subscription flow, a prompt for an API key. */
 function fixtureLogin() {
@@ -53,8 +55,11 @@ function fixtureLogin() {
 const FIXTURE_POLLS_BEFORE_COMPLETE = 40;
 
 function fixtureSnapshot() {
-  if (providerState.phase === "pending" && ++providerState.polls >= FIXTURE_POLLS_BEFORE_COMPLETE) providerState.phase = "complete";
-  const connected = providerState.phase === "complete";
+  if (providerState.phase === "pending" && ++providerState.polls >= FIXTURE_POLLS_BEFORE_COMPLETE) {
+    providerState.phase = "complete";
+    providerState.signedIn = true;
+  }
+  const connected = providerState.signedIn;
   const provider = (id, name, methods, models) => ({
     id, name, methods, accounts: [],
     configured: connected && id === "openai-codex", authenticated: connected && id === "openai-codex",
@@ -63,7 +68,8 @@ function fixtureSnapshot() {
   });
   return {
     providers: [
-      provider("openai-codex", "OpenAI Codex", [{ id: "oauth", label: "ChatGPT account" }, { id: "api_key", label: "OpenAI API key" }], fixtureModels),
+      // PI's openai-codex is OAuth-only: no API-key method, unlike the openai provider beside it.
+      provider("openai-codex", "OpenAI Codex", [{ id: "oauth", label: "ChatGPT account" }], fixtureModels),
       provider("openai", "OpenAI", [{ id: "oauth", label: "ChatGPT account" }, { id: "api_key", label: "OpenAI API key" }], [{ id: "gpt-5.1", name: "GPT-5.1" }]),
       provider("anthropic", "Anthropic / Claude Pro & Max", [{ id: "oauth", label: "Claude Pro / Max" }, { id: "api_key", label: "Anthropic API key" }], [{ id: "claude-sonnet-5", name: "Claude Sonnet 5" }]),
       provider("opencode-go", "OpenCode Go", [{ id: "api_key", label: "OpenCode API key" }], [{ id: "kimi-k2", name: "Kimi K2" }]),
@@ -84,15 +90,16 @@ async function fixtureProviderRoutes(request, response) {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const { flow, method } = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-    Object.assign(providerState, { phase: "pending", provider: start[1], flow: method === "api_key" ? "" : flow ?? "browser", polls: 0, selected: [] });
+    Object.assign(providerState, { phase: "pending", signedIn: false, provider: start[1], flow: method === "api_key" ? "" : flow ?? "browser", polls: 0, selected: [] });
     json(response, 200, fixtureLogin());
     return true;
   }
   const pending = /^\/__hui\/providers\/login\/[^/]+$/u.exec(path);
   if (pending && (request.method === "POST" || request.method === "DELETE")) {
-    if (request.method === "DELETE") Object.assign(providerState, { phase: "idle", polls: 0, selected: [] });
+    if (request.method === "DELETE") Object.assign(providerState, { phase: "idle", signedIn: false, polls: 0, selected: [] });
     // An API-key sign-in is done once its prompt is answered; a subscription waits for the poll below.
     else if (!providerState.flow) providerState.phase = "complete";
+    if (providerState.phase === "complete") providerState.signedIn = true;
     json(response, 200, { ok: true });
     return true;
   }
@@ -107,6 +114,8 @@ async function fixtureProviderRoutes(request, response) {
     for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
     providerState.selected = Array.isArray(body.models) ? body.models : [];
+    // The gateway's save clears the finished login, so a later reload shows the card, not the wizard.
+    providerState.phase = "idle";
     json(response, 200, { ok: true });
     return true;
   }
