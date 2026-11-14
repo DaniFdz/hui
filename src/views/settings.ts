@@ -680,9 +680,19 @@ function renderProviderSection(props: SettingsProps) {
 
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
-  if (!pi) {
-    return html`${renderProviderSection(props)}${renderCallsSection(props)}${renderPiMissing(props)}`;
-  }
+  // One template shape with or without PI's configuration: the intro joins it once the catalog lands, but the
+  // provider wizard keeps its element, so a sign-in opened while the page was loading is never closed underfoot.
+  return html`
+    ${pi ? html`<p class="settings-page__intro">
+      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
+    </p>` : nothing}
+    ${renderProviderSection(props)}
+    ${pi ? renderModelRouting(props, pi) : html`${renderCallsSection(props)}${renderPiMissing(props)}`}
+  `;
+}
+
+/** The half of Models that waits for PI: model routing, subagent routes, the catalog and its diagnostics. */
+function renderModelRouting(props: SettingsProps, pi: NonNullable<SettingsProps["pi"]>) {
   const model = pi.model;
   const modelOptions = [
     { value: "", label: "Use PI default" },
@@ -718,10 +728,6 @@ function renderModelsPage(props: SettingsProps) {
     },
   });
   return html`
-    <p class="settings-page__intro">
-      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
-    </p>
-    ${renderProviderSection(props)}
     ${renderSection(
       "HUI model routing",
       "Saved by HUI and applied to new sessions.",

@@ -62,7 +62,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - Settings → Models does not show PI defaults, Cycling models or PI credential
   sources. PI's defaults, cycling configuration and credential handling stay unchanged.
   Configured providers start closed under **Provider configuration**, with a count.
-  **Add provider**, loading/empty states, errors and notices stay outside it.
+  **Connect a provider**, loading/empty states, errors and notices stay outside it.
   Folding keeps model drafts and the nested model picker intact; a confirmed
   connection save opens the group. Fold state is not saved across page visits.
 - Gateway settings shows labeled green/red connection states and an amber
@@ -777,10 +777,30 @@ Two stores, with one writer each:
 HUI does not reimplement transcripts. It asks pi to resume a session file.
 
 The available model catalog combines HUI-managed built-in connections with PI's
-custom providers. Settings → Models starts with **Add provider** and a modal
-limited to OpenCode Go, OpenAI, Claude and Mistral. Each brand groups its available account,
-API-key or native CLI login methods. After sign-in, HUI adds the connection with
-no models selected (or preserves an existing selection). Added cards load quota
+custom providers. Settings → Models offers **Connect a provider**, which opens a
+five-step wizard: the brand list (OpenAI, Claude, OpenCode Go, Mistral), that
+brand's sign-in methods, the provider-owned sign-in, one model from the
+provider's catalog, and a check of that model. Each brand groups its account or
+API-key methods, and a subscription method names what it grants: **ChatGPT
+account** gives the Codex models, Calls with GPT-Live and usage limits, while
+**ChatGPT account · all GPT models** gives every GPT model OpenAI lists with no
+Calls and no usage limits; **Claude Pro / Max** signs in with the Claude
+subscription. The sign-in step shows the flow the gateway is running: a browser
+page with **Open sign-in**, **Copy link** and **Use manual entry** for the
+callback address that did not load, or a code with **Copy code**, its remaining
+minutes and the warning to continue only when the sign-in was started here. A
+browser sign-in is the default on the machine that runs HUI; elsewhere the
+provider's code flow starts instead, and **Use a code instead** restarts a
+browser sign-in with it. When the provider confirms, the wizard says **Account
+connected**, preselects one model and offers **Check model**, which asks that
+account for a real one-word reply through its own runtime and ends on
+**Connection verified** with the measured latency or on the failed check with
+the next thing to try. A verified model fills the empty primary and utility
+roles and never replaces a saved choice; **Start chatting** opens New Session.
+Leaving the model step — closing, checking or choosing another method — saves
+exactly the model it holds and never an empty selection, so a completed sign-in
+always leaves one model saved unless the provider's catalog is empty. A failed
+model save keeps the dialog on that step with its error. Added cards load quota
 independently and expose multiple models in a collapsed searchable dropdown.
 Disconnected cards show only sign-in, not quota or model controls. The model
 dropdown shows per-model context/output limits,

@@ -566,7 +566,10 @@ Built-in names, supported login methods, configured/auth-available flags, select
 a new account by default, or reconnect exactly `accountId`; starts PI's provider-owned login; returns opaque
 login ID, pending state and the requested `flow`. A requested flow answers the first select prompt whose options
 offer it, so a provider's own choice of browser or device code is made for it and never reaches the browser; a
-prompt the flow does not offer, or any later prompt, is surfaced as before. An unknown flow is a `400`.
+prompt the flow does not offer, or any later prompt, is surfaced as before. An unknown flow is a `400`. The
+Settings → Models wizard asks for `browser` when the page is served from a loopback address, so the provider can
+hand control back to this machine, and for the provider's code flow otherwise; **Use a code instead** restarts a
+waiting sign-in with the other flow.
 
 ### `POST /__hui/providers/login/:id`
 

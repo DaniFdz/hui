@@ -16,6 +16,95 @@ const production = process.env.HUI_VERIFICATION_PRODUCTION === "1";
 
 let network = "online";
 
+const json = (response, status, body) => response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify(body));
+
+// ---- Scripted provider setup (--provider-fixture) -------------------------------------------------------------
+// The provider wizard's routes answered from memory: a sign-in that completes after a few polls, one model choice
+// and one model check. Nothing here reaches an account, a provider or the gateway's own provider service, so a
+// screenshot run walks Settings → Models → Connect a provider offline. Only these routes are replaced.
+const providerFixture = process.env.HUI_VERIFICATION_PROVIDER_FIXTURE === "1";
+const fixtureModels = [
+  { id: "gpt-5.1-codex", name: "GPT-5.1 Codex", contextWindow: 400_000, maxTokens: 128_000 },
+  { id: "gpt-5.1-codex-mini", name: "GPT-5.1 Codex Mini", contextWindow: 400_000, maxTokens: 128_000 },
+  { id: "gpt-5.1", name: "GPT-5.1", contextWindow: 400_000, maxTokens: 128_000 },
+];
+const providerState = { phase: "idle", provider: "openai-codex", flow: "", polls: 0, selected: [] };
+
+/** The sign-in this fixture is running: a device code for a subscription flow, a prompt for an API key. */
+function fixtureLogin() {
+  const base = { id: "hui-fixture-login", provider: providerState.provider, phase: providerState.phase };
+  if (providerState.phase !== "pending") return { ...base, message: "Signed in." };
+  if (!providerState.flow) {
+    return { ...base, message: "Enter the provider's API key.", prompt: { id: "hui-fixture-prompt", type: "text", message: "Enter API key" } };
+  }
+  return {
+    ...base, flow: providerState.flow, url: "https://example.com/device", code: "HUI7-DEMO",
+    message: providerState.flow === "device_code" ? "Enter the code at example.com/device, then return here." : "Waiting for the browser sign-in.",
+    prompt: { id: "hui-fixture-prompt", type: "manual_code", message: "Paste the callback address" },
+  };
+}
+
+function fixtureSnapshot() {
+  if (providerState.phase === "pending" && ++providerState.polls >= 12) providerState.phase = "complete";
+  const connected = providerState.phase === "complete";
+  const provider = (id, name, methods, models) => ({
+    id, name, methods, accounts: [],
+    configured: connected && id === "openai-codex", authenticated: connected && id === "openai-codex",
+    selected: connected && id === "openai-codex" ? providerState.selected : [],
+    models: id === "openai-codex" ? fixtureModels : models,
+  });
+  return {
+    providers: [
+      provider("openai-codex", "OpenAI Codex", [{ id: "oauth", label: "ChatGPT account" }, { id: "api_key", label: "OpenAI API key" }], fixtureModels),
+      provider("openai", "OpenAI", [{ id: "oauth", label: "ChatGPT account" }, { id: "api_key", label: "OpenAI API key" }], [{ id: "gpt-5.1", name: "GPT-5.1" }]),
+      provider("anthropic", "Anthropic / Claude Pro & Max", [{ id: "oauth", label: "Claude Pro / Max" }, { id: "api_key", label: "Anthropic API key" }], [{ id: "claude-sonnet-5", name: "Claude Sonnet 5" }]),
+      provider("opencode-go", "OpenCode Go", [{ id: "api_key", label: "OpenCode API key" }], [{ id: "kimi-k2", name: "Kimi K2" }]),
+      provider("mistral", "Mistral", [{ id: "api_key", label: "Mistral API key" }], [{ id: "mistral-large", name: "Mistral Large" }]),
+    ],
+    ...(providerState.phase === "idle" ? {} : { login: fixtureLogin() }),
+  };
+}
+
+async function fixtureProviderRoutes(request, response) {
+  const path = (request.url ?? "").split("?")[0];
+  if (path === "/__hui/providers" && request.method === "GET") {
+    json(response, 200, fixtureSnapshot());
+    return true;
+  }
+  const start = /^\/__hui\/providers\/([a-z0-9-]+)\/login$/u.exec(path);
+  if (start && request.method === "POST") {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const { flow, method } = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+    Object.assign(providerState, { phase: "pending", provider: start[1], flow: method === "api_key" ? "" : flow ?? "browser", polls: 0, selected: [] });
+    json(response, 200, fixtureLogin());
+    return true;
+  }
+  const pending = /^\/__hui\/providers\/login\/[^/]+$/u.exec(path);
+  if (pending && (request.method === "POST" || request.method === "DELETE")) {
+    if (request.method === "DELETE") Object.assign(providerState, { phase: "idle", polls: 0, selected: [] });
+    // An API-key sign-in is done once its prompt is answered; a subscription waits for the poll below.
+    else if (!providerState.flow) providerState.phase = "complete";
+    json(response, 200, { ok: true });
+    return true;
+  }
+  const check = /^\/__hui\/providers\/([a-z0-9-]+)\/test$/u.exec(path);
+  if (check && request.method === "POST") {
+    json(response, 200, { ok: true, latencyMs: 412 });
+    return true;
+  }
+  const save = /^\/__hui\/providers\/([a-z0-9-]+)$/u.exec(path);
+  if (save && request.method === "PUT") {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+    providerState.selected = Array.isArray(body.models) ? body.models : [];
+    json(response, 200, { ok: true });
+    return true;
+  }
+  return false;
+}
+
 async function verification(request, response) {
   response.setHeader("content-type", "application/json");
   response.setHeader("cache-control", "no-store");
@@ -56,6 +145,9 @@ async function handle(request, response, next) {
     response.statusCode = 503;
     return response.end();
   }
+  // The scripted setup keeps the gateway's own header guard: only HUI's own pages ask these routes.
+  if (providerFixture && (request.url ?? "").startsWith("/__hui/providers") && request.headers["x-hui"] === "1"
+    && await fixtureProviderRoutes(request, response)) return;
   const quota = /^\/__hui\/providers\/(openai-codex|anthropic|opencode-go|mistral)\/accounts\/([^/]+)\/quota$/.exec(request.url ?? "");
   if (process.env.HUI_VERIFICATION_QUOTAS === "1" && quota && request.method === "GET" && request.headers["x-hui"] === "1") {
     response.setHeader("content-type", "application/json");

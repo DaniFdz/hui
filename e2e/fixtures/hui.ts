@@ -1,7 +1,8 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against (restartable against the same
  * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
- * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, cleanup
+ * requests a test holds (and the body each one carried), rejects, answers or delivers while dropping the answer,
+ * disposable Git repositories, cleanup
  * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
  * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, a message's actions (on the
  * web a hover reveals its footer, on iOS its long press), switches (a Web Awesome
@@ -52,6 +53,8 @@ type ListedSession = { id: string; title: string; status: string; parentId?: str
 type GatewayRequest = { incoming: IncomingMessage; body: Buffer; response: ServerResponse };
 type Intercepted = {
   arrived(): Promise<void>;
+  /** The request that arrived: what the app sent, for a test that asserts a body rather than an outcome. */
+  request(): { method: string; url: string; body: string };
   deliver(): Promise<void>;
   reject(status: number, error: string): Promise<void>;
   answer(json: string): Promise<void>;
@@ -251,7 +254,11 @@ const gatewayProxy = async (gateway: string) => {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     intercept: (method: string, path: RegExp): Intercepted => {
       const { arrival, hold, settle } = holding<GatewayRequest>();
-      const held = { method, path, hold };
+      let seen: { method: string; url: string; body: string } | undefined;
+      const held = { method, path, hold: (route: GatewayRequest) => {
+        seen = { method: route.incoming.method ?? "", url: new URL(route.incoming.url ?? "/", gateway).href, body: route.body.toString() };
+        return hold(route);
+      } };
       holds.add(held);
       const decide = (handle: (route: GatewayRequest) => Promise<void>) => settle(handle).finally(() => holds.delete(held));
       const answer = (status: number, json: string) => decide(async ({ response }) => {
@@ -259,6 +266,10 @@ const gatewayProxy = async (gateway: string) => {
       });
       return {
         arrived: () => arrival,
+        request: () => {
+          if (!seen) throw new Error("intercept: no request has arrived yet");
+          return seen;
+        },
         deliver: () => decide(forward),
         reject: (status, error) => answer(status, JSON.stringify({ error })),
         answer: (json) => answer(200, json),
@@ -842,10 +853,19 @@ export const test = base.extend<{ hui: Hui }>({
         },
         intercept: async (method, path) => {
           const { arrival, hold, settle } = holding<WebRoute>();
-          await browser().route(path, (route) => (route.request.method === method ? hold(route) : route.fallback()));
+          let seen: { method: string; url: string; body: string } | undefined;
+          await browser().route(path, (route) => {
+            if (route.request.method !== method) return route.fallback();
+            seen = { method: route.request.method, url: route.request.url, body: route.request.postData ?? "" };
+            return hold(route);
+          });
           const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
           return {
             arrived: () => arrival,
+            request: () => {
+              if (!seen) throw new Error("intercept: no request has arrived yet");
+              return seen;
+            },
             deliver: () => decide((route) => route.continue()),
             reject: (status, error) => decide((route) => route.fulfill({ status, json: { error } })),
             answer: (json) => decide((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
