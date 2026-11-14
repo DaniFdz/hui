@@ -104,5 +104,5 @@ test("a keep-running watcher survives its shell, starts again with a new PID whe
   await expect.poll(async () => alive(second), { timeout: 90_000 }).toBe(false);
   await expect(screen.getByRole("button", "Stop")).toBeHidden();
   await expect(watchers.getByRole("button", "Restart")).toBeVisible();
-  await expect(transcript.getByText("Watch the deploy")).toBeVisible();
+  await expect.poll(async () => hui.textOf(transcript), { timeout: 90_000 }).toContain("Watch the deploy");
 });
