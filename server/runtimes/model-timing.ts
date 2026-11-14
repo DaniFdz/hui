@@ -1,12 +1,23 @@
-/** Per-model-request timing HUI measures at the runtime boundary: start to first content token, first token to the
- * completed assistant message, and the usage that message reports. Prompt throughput divides new input tokens by the
- * time to first token, so it includes queue and prefill and is labelled an estimate in the UI. */
+/** Per-model-request timing HUI measures at the runtime boundary: the request start PI records on the message to the
+ * first content token HUI sees, that token to the completed message, and the usage that message reports.
+ *
+ * Durable persists a streamed partial only once it holds content, so the partial HUI first sees usually holds the first
+ * token already, and counting from that observation would always measure zero. Time to first token therefore counts
+ * from the request start PI records on the message (`timestamp`) and includes the progress-persistence interval before
+ * the partial's commit. Prompt throughput divides new input tokens by the time to first token, so it includes queue and
+ * prefill and is labelled an estimate in the UI. */
 import type { ModelMetric } from "../api/model-metrics.ts";
 
 type Timing = {
-  startedAt: number;
   provider: string;
   model: string;
+  /** When HUI saw the partial that began the request, on the clock this timer's `now` readings use. */
+  observedAt: number;
+  /** The request start PI recorded for that partial, on this timer's clock; absent when it recorded none. */
+  requestStart?: number;
+  /** Whether the request was still streaming when HUI saw it: a `pending` partial, not an answer handed over whole. */
+  streaming: boolean;
+  /** When HUI saw the first content token, on this timer's clock. */
   firstTokenAt?: number;
 };
 
@@ -48,46 +59,70 @@ function changeHasContent(change: unknown): boolean {
   return false;
 }
 
+/** The request start recorded on a message (`timestamp`, epoch ms), moved onto this timer's clock; `now` and `epoch` are
+ * the same instant. Undefined when the message carries none, or one no request could have started at. */
+function requestStart(message: Record<string, unknown>, now: number, epoch: number): number | undefined {
+  const recorded = number(message.timestamp);
+  return recorded !== undefined && recorded > 0 && recorded <= epoch ? now - (epoch - recorded) : undefined;
+}
+
 export class ModelRequestTimer {
   #timing: Timing | undefined;
 
-  /** The assistant partial that begins a request. A non-assistant message is ignored. */
-  start(message: unknown, now: number): void {
+  /** The assistant partial that begins a request: `now` on this timer's clock, and `epoch` (wall-clock ms) for that same
+   * instant, which places PI's recorded request start on it. A non-assistant message is ignored. */
+  start(message: unknown, now: number, epoch = Date.now()): void {
     const value = record(message);
     if (value?.role !== "assistant") return;
+    const streaming = value.stopReason === "pending";
+    const startedAt = requestStart(value, now, epoch);
     this.#timing = {
-      startedAt: now,
       provider: typeof value.provider === "string" ? value.provider : "unknown",
       model: typeof value.model === "string" ? value.model : "unknown",
-      ...(hasContent(message) ? { firstTokenAt: now } : {}),
+      observedAt: now,
+      ...(startedAt === undefined ? {} : { requestStart: startedAt }),
+      streaming,
+      // A partial that already holds a token was first seen with it: the observation is HUI's only evidence of when it
+      // arrived. An answer handed over whole shows no token of its stream, so nothing is timed from it.
+      ...(streaming && hasContent(message) ? { firstTokenAt: now } : {}),
     };
   }
 
   /** The first streamed block or delta after the start. */
   update(changes: readonly unknown[], now: number): void {
-    if (!this.#timing || this.#timing.firstTokenAt !== undefined) return;
+    if (!this.#timing?.streaming || this.#timing.firstTokenAt !== undefined) return;
     if (changes.some(changeHasContent)) this.#timing.firstTokenAt = now;
   }
 
-  /** The completed assistant message, or undefined when no assistant request started. */
+  /** The completed assistant message, or undefined when the request did not end here: a user, tool or call entry ends
+   * while the request still streams, and only a request that started is reported once. */
   finish(message: unknown, now: number): ModelMetric | undefined {
+    const value = record(message);
+    if (value?.role !== "assistant") return undefined;
     const timing = this.#timing;
     this.#timing = undefined;
     if (!timing) return undefined;
-    const value = record(message);
-    const usage = record(value?.usage);
+    const usage = record(value.usage);
     const inputTokens = number(usage?.input);
     const outputTokens = number(usage?.output);
     const cacheReadTokens = number(usage?.cacheRead);
     const cacheWriteTokens = number(usage?.cacheWrite);
-    const durationMs = Math.max(0, now - timing.startedAt);
-    const ttftMs = timing.firstTokenAt === undefined ? undefined : Math.max(0, timing.firstTokenAt - timing.startedAt);
-    const generationMs = timing.firstTokenAt === undefined ? undefined : Math.max(0, now - timing.firstTokenAt);
+    const firstTokenAt = timing.firstTokenAt;
+    // HUI's own span covers the whole request, so time to first token and generation add up to it. A request it saw no
+    // token of keeps PI's own duration instead, which it times from the request start.
+    const measuredMs = Math.max(0, now - (timing.requestStart ?? timing.observedAt));
+    const durationMs = firstTokenAt === undefined ? number(value.durationMs) ?? measuredMs : measuredMs;
+    const generationMs = firstTokenAt === undefined ? undefined : Math.max(0, now - firstTokenAt);
+    const ttftMs = firstTokenAt === undefined || timing.requestStart === undefined
+      ? undefined
+      : Math.max(0, firstTokenAt - timing.requestStart);
+    // Without a first token seen there is no generation to divide by: the whole request is the measured span.
+    const throughputMs = generationMs || durationMs;
     return {
       at: Date.now(),
-      provider: typeof value?.provider === "string" ? value.provider : timing.provider,
-      model: typeof value?.model === "string" ? value.model : timing.model,
-      status: value?.stopReason === "error" ? "error" : "ok",
+      provider: typeof value.provider === "string" ? value.provider : timing.provider,
+      model: typeof value.model === "string" ? value.model : timing.model,
+      status: value.stopReason === "error" ? "error" : "ok",
       ...(inputTokens === undefined ? {} : { inputTokens }),
       ...(outputTokens === undefined ? {} : { outputTokens }),
       ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
@@ -95,7 +130,7 @@ export class ModelRequestTimer {
       ...(ttftMs === undefined ? {} : { ttftMs }),
       durationMs,
       ...(generationMs === undefined ? {} : { generationMs }),
-      ...(outputTokens !== undefined && generationMs ? { tokensPerSecond: outputTokens / (generationMs / 1000) } : {}),
+      ...(outputTokens !== undefined && throughputMs > 0 ? { tokensPerSecond: outputTokens / (throughputMs / 1000) } : {}),
       ...(inputTokens !== undefined && ttftMs ? { promptTokensPerSecond: inputTokens / (ttftMs / 1000) } : {}),
     };
   }

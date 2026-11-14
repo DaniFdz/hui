@@ -704,13 +704,24 @@ Runs the saved command unless the health endpoint already answers. Returns at on
 
 ### Model metrics
 
-HUI measures every completed model request in a Durable conversation: request
-start to the first streamed content token (`ttftMs`), that token to completion
-(`generationMs`), output throughput (`tokensPerSecond`), and the input/output
-and cache counts PI reports. `promptTokensPerSecond` divides new input tokens by
-the time to first token, so it includes request queueing and prefill and is an
-estimate; it is labelled as such in the UI. Older PI SDK-worker sessions do not
-produce these measurements.
+HUI measures every completed model request in a Durable conversation: the
+request start PI records on the message to the first content token HUI sees
+(`ttftMs`), that token to completion (`generationMs`), output throughput
+(`tokensPerSecond`) whose denominator is `generationMs`, or the whole request
+when HUI only saw the answer whole, and the input/output and cache counts PI
+reports. `promptTokensPerSecond` divides new input tokens by the time to first
+token, so it includes request queueing and prefill and is an estimate; it is
+labelled as such in the UI. Older PI SDK-worker sessions do not produce these
+measurements.
+
+Durable persists a streaming partial only once it holds a token, and only every
+progress interval, so the partial HUI first sees usually holds the first token
+already: counting from that sight would always measure zero, which is why
+`ttftMs` counts from the request start PI recorded instead, and includes the
+progress interval and commit latency before that partial (about 0.1–0.2 s). A
+response that streams within one interval reaches HUI whole: its sample carries
+PI's own request duration and no `ttftMs`, and the composer shows `—` for the
+time to first token.
 
 The latest 5,000 samples persist in `$XDG_CONFIG_HOME/hui/model-metrics.jsonl`
 (default `~/.config/hui/model-metrics.jsonl`, mode 0600). A sample carries the
