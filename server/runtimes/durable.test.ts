@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
 import type { Message } from "@earendil-works/pi-ai";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { ConversationId } from "@earendil-works/pi-durable";
 import { getImageDimensions } from "@earendil-works/pi-tui";
 import { afterAll, test, type TestContext } from "vitest";
 import { normalizeSettings } from "../hui-settings.ts";
@@ -36,7 +37,7 @@ const { estimateContext } = await import(new URL("./harness/compaction.js", impo
 const { estimateTextTokens } = await import("@earendil-works/pi-ai/utils/estimate");
 const { getCurrentSystemPrompt, getCurrentTools } = await import("@earendil-works/pi-ai/utils/transcript");
 const { contextParts, durableConversationId, durableReference, expandSkill, startDurable } = await import("./durable.ts");
-const { autonomousSection } = await import("./durable-prompt.ts");
+const { autonomousSection, DurablePrompt } = await import("./durable-prompt.ts");
 const { importPiSession } = await import("./pi-import.ts");
 const { searchTranscripts } = await import("./transcript-search.ts");
 const { aggregateUsage } = await import("../observability.ts");
@@ -349,13 +350,38 @@ test("Autonomous mode makes the session the lead of its task, at the level it ch
   assert.deepEqual([session.currentAutonomous(), session.currentThinking()], [true, "high"]);
   await turns(session, ["hello autonomous"]);
   assert.ok((await system()).includes(JSON.stringify(autonomousSection(true)).slice(1, -1)));
-  // The plan is a stop, the plan is written with the technical-writing skill, and pull requests stay drafts.
-  assert.match(JSON.stringify(autonomousSection(true)), /stop for approval.*`technical-writing` skill.*End with one question/su);
+  // The operator's plan takes the form that explains the change: a before/after card for a screen, a diagram for a flow,
+  // a table for numbers, and prose when no picture helps; a widget is never mandatory.
+  assert.match(autonomousSection(true), /before\/after card with `show_widget`, following the `visualize` skill/u);
+  assert.match(autonomousSection(true), /`mermaid` diagram/u);
+  assert.match(autonomousSection(true), /When none of those explains the change better than words, a short text plan is the right plan/u);
+  assert.match(autonomousSection(true), /neither the card nor the diagram can answer it/u);
+  // A chief reads text and cannot see a widget, so a session it supervises writes the plan in its reply.
+  assert.match(autonomousSection(true, true), /1\. Plan, then stop for approval\..*A chief reads text and cannot see a widget/u);
+  assert.match(autonomousSection(true, true), /`technical-writing` skill/u);
+  assert.match(autonomousSection(true, true), /`mermaid` diagram or a table stays readable to them/u);
+  assert.doesNotMatch(autonomousSection(true, true), /show_widget|visualize/u);
   assert.match(JSON.stringify(autonomousSection(true)), /Never mark it ready for review, never merge it, never deploy/su);
+  assert.match(JSON.stringify(autonomousSection(true, true)), /Never mark it ready for review, never merge it, never deploy/su);
 
   await session.setAutonomous(false);
   await turns(session, ["hello again"]);
   assert.doesNotMatch(await system(), /Autonomous mode/u);
+});
+
+test("the Autonomous plan takes the form that explains the change, and stays text for a chief", { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const prompt = new DurablePrompt(f.agentDir, async () => settings);
+  prompt.autonomousFor = () => true;
+  const tools = ["read", "show_widget", "sessions_spawn"];
+  const operator = await prompt.render(f.cwd, tools, 1 as ConversationId);
+  assert.match(operator, /before\/after card with `show_widget`, following the `visualize` skill/u);
+  assert.match(operator, /`mermaid` diagram/u);
+  // A session a chief created carries the PR-lead section, and its chief only reads text.
+  prompt.leadFor = async () => "## PR lead\nThis session owns one pull request.";
+  const chief = await prompt.render(f.cwd, tools, 1 as ConversationId);
+  assert.match(chief, /A chief reads text and cannot see a widget/u);
+  assert.doesNotMatch(chief, /before\/after card with `show_widget`/u);
 });
 
 test("Durable runs a real tool turn and reopens the conversation from its store", { timeout: 45_000 }, async (t) => {

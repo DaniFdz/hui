@@ -24,6 +24,8 @@ const replayReadyWaiters = new Set();
 let heldCount = 0;
 /** Sessions E2E_FAIL_ONCE already failed, so a journey can watch its own retry answer. */
 const failedOnce = new Set();
+/** What follows a chosen tool call's result, by call id: E2E_SAY in the message that made the call chooses it. */
+const afterCall = new Map();
 const heldCountWaiters = new Set();
 const signalReplayReady = () => {
   for (const ready of replayReadyWaiters) ready();
@@ -514,21 +516,30 @@ const server = createServer(async (request, response) => {
 
   // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
   // response, and the next answer quotes every result. E2E_HOLD:<the same> does too, and a `fixture_echo` call among
-  // them runs until POST /control/release-replay.
+  // them runs until POST /control/release-replay. E2E_SAY:<base64url text> in the same message answers with that text
+  // instead of the quoted results, so a turn can call a tool and then speak.
   // E2E_ASK_USER:<name> does the same with ask_user_question and the workspace's `ask-<name>.json`: its input, or an
   // array of inputs for parallel calls.
   const chosen = /E2E_(CALL|HOLD):([A-Za-z0-9_-]+)/u.exec(source);
+  const said = /E2E_SAY:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
   const asked = /E2E_ASK_USER:([a-z0-9-]+)/u.exec(source)?.[1];
   if (chosen || asked) {
     const calls = asked
       ? [JSON.parse(await readFile(`${workspace}/ask-${asked}.json`, "utf8"))].flat().map((input) => ({ name: "ask_user_question", input }))
       : [JSON.parse(Buffer.from(chosen[2], "base64url").toString("utf8"))].flat();
     const id = chosen?.[1] === "HOLD" ? "tool-e2e-hold" : "tool-e2e-call";
-    calls.forEach((call, index) => toolUse(response, `${id}-${index}`, call.name, call.input ?? {}, index));
+    calls.forEach((call, index) => {
+      const callId = `${id}-${index}`;
+      // The model speaks once, after its last call's result.
+      if (said && index === calls.length - 1) afterCall.set(callId, Buffer.from(said, "base64url").toString("utf8"));
+      toolUse(response, callId, call.name, call.input ?? {}, index);
+    });
     return finish(response, "tool_use");
   }
   if (/^tool-e2e-(call|hold)-/u.test(String(latestToolResult?.id ?? ""))) {
-    text(response, `tool answered: ${toolResultTexts([body.messages?.at(-1)]).join(" | ")}`);
+    const said = afterCall.get(latestToolResult.id);
+    afterCall.delete(latestToolResult.id);
+    text(response, said ?? `tool answered: ${toolResultTexts([body.messages?.at(-1)]).join(" | ")}`);
     return finish(response);
   }
 
