@@ -48,7 +48,6 @@ import { icons } from "../lib/icons.ts";
 import { renderEffortSelector } from "./effort-selector.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
-import type { SplitDirection } from "../lib/session/multiplexer.ts";
 import { renderAgentMarkdown, renderMarkdown } from "../lib/markdown/markdown.ts";
 import "../components/file-link.ts";
 import "../components/github-embeds.ts";
@@ -284,17 +283,11 @@ export type HomeProps = {
   onForgetSaved?: () => void;
   onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; autonomous?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
   onSelectSession: (session: SessionView) => void;
-  /** Pane identity keeps controls unique when the same session is split twice. */
+  /** Pane identity keeps controls unique between the workspace's panes. */
   controlScope?: string;
-  onSplitPane?: (direction: SplitDirection) => void;
-  onOpenTerminal?: () => void;
-  /** Shown once the agent has used the browser in this conversation. */
-  onOpenBrowser?: () => void;
   /** Live preview of the agent's browser under its latest browser activity;
    * absent while the browser tool is off. `visible` is false for hidden panes. */
   browserPreview?: { visible: boolean; onExpand?: () => void };
-  terminalOpening?: boolean;
-  terminalError?: string;
   /** Present while the workspace has more than one pane. */
   onClosePane?: () => void;
   paneMovable?: boolean;
@@ -2688,39 +2681,22 @@ function renderHeader(props: HomeProps, session: SessionView) {
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
             @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
           ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}
-          ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser view" data-hui-tooltip="Open browser view" ?disabled=${props.connection !== "live"} @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
-          ${props.onOpenTerminal ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.connection !== "live" || props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
           ${session.tool === "pi" ? html`<button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.connection !== "live" || props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
             <span class="session-history-action__icon">${continueIcon}</span><span class="session-history-action__label">${props.continuing ? "Continuing…" : "Continue"}</span>
           </button>` : nothing}
-          ${props.onSplitPane ? props.onClosePane ? html`
-            <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-pane__split-down" aria-label="Split down" title="Split down" @click=${() => props.onSplitPane?.("down")}>${icons.panelBottomOpen}</button>
-            <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-pane__split-right" aria-label="Split right" title="Split right" @click=${() => props.onSplitPane?.("right")}>${icons.panelRightOpen}</button>
-            <wa-dropdown class="chat-pane__split-menu" placement="bottom-end" @wa-select=${(event: CustomEvent<{ item: HTMLElement }>) => {
-              const direction = event.detail.item.getAttribute("value");
-              // WA restores trigger focus after wa-select; split only after
-              // that restoration so it cannot reactivate the source pane.
-              if (direction === "down" || direction === "right") queueMicrotask(() => props.onSplitPane?.(direction));
-            }}>
-              <button slot="trigger" type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Pane actions" title="Pane actions">${icons.moreHorizontal}</button>
-              <wa-dropdown-item value="down">Split down</wa-dropdown-item>
-              <wa-dropdown-item value="right">Split right</wa-dropdown-item>
-            </wa-dropdown>
-          ` : html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-split-view" aria-label="Open split view" title="Open split view" @click=${() => props.onSplitPane?.("right")}>${icons.columns2}</button>` : nothing}
-            ${props.onClosePane ? html`
-              <button
-                type="button"
-                class="btn btn--ghost btn--icon chat-icon-btn chat-pane__close-pane"
-                aria-label="Close session pane"
-                title="Close session pane"
-                @click=${props.onClosePane}
-              >${icons.close}</button>
-            ` : nothing}
+          ${props.onClosePane ? html`
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon chat-icon-btn chat-pane__close-pane"
+              aria-label="Close session pane"
+              title="Close session pane"
+              @click=${props.onClosePane}
+            >${icons.close}</button>
+          ` : nothing}
         </div>
       </div>
     </header>
     ${renderDeleteConfirmation(props, session)}
-    ${props.terminalError ? html`<p class="hui-terminal-error" role="alert">${props.terminalError}</p>` : nothing}
   `;
 }
 

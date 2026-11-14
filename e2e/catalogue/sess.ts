@@ -451,7 +451,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-047",
     title: "Open sessions side by side",
-    behaviour: "Open split view in a chat header, or Open in split pane in a row menu, shows two panes; Split right, Split down and the Pane actions menu add more, including more views of the same session. Clicking or focusing a pane makes it active and the URL follows it. The layout, pane sizes and active pane survive a reload.",
+    behaviour: "Open in split pane in another session's row menu shows two panes side by side, one view of each session; each further row opens another column. Clicking or focusing a pane makes it active and the URL follows it. The chat header itself offers no split control. The layout, pane sizes and active pane survive a reload.",
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-split-layout"],
     surfaces: ["nav:session"],
     journeys: ["session-multiplexing", "session-header-overflow", "pane-reposition"],
@@ -541,7 +541,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-056",
     title: "Keep pane controls reachable with a long title",
-    behaviour: "A long session title and its metadata each shorten to one line with the full title in the heading's tooltip, and Open parent and Continue become labeled icons when the header is narrow. At the 320px pane minimum and on a phone, the terminal, Continue, pane menu and Close session pane controls stay inside the header and reachable by Tab.",
+    behaviour: "A long session title and its metadata each shorten to one line with the full title in the heading's tooltip, and Open parent and Continue become labeled icons when the header is narrow. At the 320px pane minimum and on a phone, the surviving header controls, Continue and Close session pane, stay inside the header and reachable by Tab.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-header-overflow"],

@@ -3,7 +3,7 @@
  * cut, and a connection that cannot come back reads Disconnected with Reconnect terminal (WORK-030). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { reopenWork } from "./work-views.ts";
+import { openWork, reopenWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -28,7 +28,7 @@ test("a terminal comes back on the same shell after a reload, says when its repl
   const pane = screen.getByLabel("Work pane");
 
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Open terminal").tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);

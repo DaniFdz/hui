@@ -11,7 +11,9 @@ is recorded in `e2e/work-pane.browser.md`; the sharing, replay, reconnect and
 termination results below still apply.
 
 Since 2026-10-09 the terminal is drawn by Gespenst instead of Ghostty Web; the
-journey for the renderer and its UX fixes is in *Gespenst renderer* below.
+journey for the renderer and its UX fixes is in *Gespenst renderer* below. Since
+2026-11-14 the chat header has no terminal button and no split controls: a
+terminal comes from the Work pane's **+** menu, its empty state or its shortcut.
 
 ## Reproduction
 
@@ -19,7 +21,8 @@ journey for the renderer and its UX fixes is in *Gespenst renderer* below.
    The launcher creates disposable HUI/PI state and a workspace, prints their
    paths, and starts the real app at `http://localhost:43310`.
 2. Use the Browser tool with a dedicated labeled tab. Create a session through
-   **New session**, send `Shared terminal check`, and click **Open terminal**.
+   **New session**, send `Shared terminal check`, and open the Work pane's **+**
+   menu → **New terminal**.
 3. Type into the visible **Terminal input** control, not its hidden textarea:
    `shared_from_user=human; printf 'USER_READY\n'; pwd`, then press Enter.
 4. Submit `E2E_SHARED_TERMINAL` in the chat. The fixture requests `terminal`
@@ -40,10 +43,10 @@ HUI's session panels, not authenticated OpenClaw screenshot/pixel parity.
 
 | Journey | Result |
 | --- | --- |
-| Open terminal beside chat | Native interactive shell opened in the session workspace; cwd and `Shared · Connected` were visible. |
+| Open a terminal beside chat | Native interactive shell opened in the session workspace; cwd and `Shared · Connected` were visible. |
 | User and PI share one shell | The user's variable was read by PI's command as `Shared variable: human` in the same terminal. The chat displayed three completed tool calls. |
 | New terminal and selection | The second PTY printed `SECOND_SHELL:independent`; switching away and back retained each PTY's own output. |
-| Split down | A third PTY appeared below the first; chat and two terminal panels were visible together. |
+| Split down (earlier layout) | A third PTY appeared below the first; chat and two terminal panels were visible together. That header control was removed on 2026-11-14. |
 | Resize | Clicked column/row separators and used arrow keys; terminal `stty size` changed with its rendered dimensions. |
 | Hide and reopen | The visible panel disappeared without ending its PTY; reopening retained the terminal ID and shell state. |
 | Reload | Browser navigation back to the session restored the saved layout, terminal IDs and bounded output replay. |
@@ -102,7 +105,7 @@ node e2e/probes/terminal-benchmark.mjs --receipt <receipt.json> --runs 5 --label
 
 It starts its own headless Chromium-family browser (`--browser <path>`, default
 `brave`) with a throwaway profile, creates a session through the API, opens its
-terminal with **Open terminal**, and runs, in that PTY: an idle period, 20
+terminal with the Work pane's **+** menu → **New terminal**, and runs, in that PTY: an idle period, 20
 keystrokes through the real keyboard path (echo latency), `seq 1 300000`, a
 5 MiB coloured `cat`, 400 full-screen redraw frames, wheel-scrolling the
 scrollback, and a dropped socket's 256 KiB replay. Each output run ends when a

@@ -20,9 +20,10 @@ The authenticated reference conversation was not available in the isolated
 browser: it displayed its gateway-token gate. No credential was fetched or
 injected. This is an installed-code/behavior port, not a claim of an authenticated
 pixel-by-pixel screenshot comparison. HUI retains its PI transcript/composer,
-session IDs, native sidebar drag payload and routes. Its compact header uses a
-Pane actions dropdown for overflow split actions, and its merged mobile shell
-keeps the active pane's navigation toggle visible.
+session IDs, native sidebar drag payload and routes. Splits come from another
+session's row menu (**Open in split pane**) and from row drops; the chat header's
+own split controls were removed on 2026-11-14, and its merged mobile shell keeps
+the active pane's navigation toggle visible.
 
 Run the independent model comparison with the installed reference's assets:
 
@@ -56,7 +57,7 @@ disposable runs.
 | Up/down drops | Sidebar rows dropped on a header/composer inserted above/below the targeted pane in the same column. |
 | Left/right drops | Rows dropped at the target pane's left/right controls added a column on that side, not always on the right. |
 | Center replacement | Drop onto the transcript center changed only that pane; prior view stayed mounted and returned with the same instance. |
-| Same-session split | Split right and keyboard Pane actions → Split down created distinct pane identities; no duplicate DOM IDs. |
+| Same-session split (earlier layout) | Split right and keyboard Pane actions → Split down created distinct pane identities; no duplicate DOM IDs. Both controls were removed on 2026-11-14, and a pane's session is no longer offered again in its own row menu. |
 | Focus and close | Clicking either side revealed its controls. Closing rightmost and leftmost panes retained all surviving DOM instances. |
 | Resizing | Native pointer drag changed column weights. Arrows changed 2%, Shift+arrows 5%; Home/End reached 15%/85%. Horizontal keyboard resizing also passed. |
 | Persistence | A full reload restored columns, stacked rows, active pane, IDs and resized weights from browser-local state. |

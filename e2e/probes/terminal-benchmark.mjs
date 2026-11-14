@@ -2,7 +2,7 @@
 /**
  * Shared-terminal rendering benchmark. Drives a running, disposable HUI (a
  * visual-verification receipt) in headless Chromium over the DevTools protocol:
- * opens a terminal through the chat header's **Open terminal**, runs output-heavy
+ * opens a terminal through the Work pane's **+** menu (**New terminal**), runs output-heavy
  * workloads in its PTY and measures, per run, the wall time until the final line
  * is in the painted screen, main-thread long tasks and slow frames while output
  * streams, idle main-thread cost, keystroke echo latency through the real keyboard path, slow frames
@@ -171,13 +171,25 @@ const waitFor = (fn, timeoutMs = 30_000) => evaluate(async (source, timeout) => 
   }
 }, String(fn), timeoutMs);
 
+/** Clicks the middle of an element the way the operator does, once it has a box on screen. */
+const click = async (selector) => {
+  const point = await waitFor(() => {
+    const element = document.querySelector(selector);
+    const rect = element?.getBoundingClientRect();
+    return rect && rect.width > 0 && rect.height > 0 ? { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 } : null;
+  });
+  for (const type of ["mousePressed", "mouseReleased"]) await cdp("Input.dispatchMouseEvent", { type, ...point, button: "left", clickCount: 1 });
+};
+
 // A session created a moment ago can still be unknown to a fresh page, which then falls back to Home.
 for (let attempt = 1; ; attempt++) {
   await cdp("Page.navigate", { url: appUrl + "/sessions/" + encodeURIComponent(session.id) });
-  try { await waitFor(() => document.querySelector('button[aria-label="Open terminal"]:not([disabled])'), 10_000); break; }
+  try { await waitFor(() => document.querySelector('button[aria-label="Open Work view"]'), 10_000); break; }
   catch (error) { if (attempt === 3) throw error; }
 }
-await evaluate(() => document.querySelector('button[aria-label="Open terminal"]').click());
+// The chat header has no terminal button: the Work pane's + menu is the entry point.
+await click('button[aria-label="Open Work view"]');
+await click('.work-pane__menu-item[value="launch:terminal"]');
 await waitFor(() => { const pane = document.querySelector("hui-terminal-pane"); return pane?.ready && pane.status === "Connected"; });
 // Let the shell print its first prompt before measuring.
 await new Promise((resolve) => setTimeout(resolve, 1500));

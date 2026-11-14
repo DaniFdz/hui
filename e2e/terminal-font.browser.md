@@ -9,7 +9,8 @@ and the Browser tool. No operator sessions or settings are used.
 
 1. In Settings → Appearance → Typography, type `DejaVu Sans Mono` in the **Terminal font** picker and choose its
    "Use this local font" row.
-2. Exit Settings, create a fixture session in the launcher's workspace, and use **Open terminal**. The Ghostty
+2. Exit Settings, create a fixture session in the launcher's workspace, and open the Work pane's **+** menu →
+   **New terminal** (the chat header has no terminal button since 2026-11-14). The Ghostty
    canvas connects to a native PTY and its font option starts with `DejaVu Sans Mono`.
 3. Return to Settings, choose `MesloLGS NF`, exit Settings and reopen the terminal. The same terminal ID is
    connected with the new font stack; changing the preference does not restart the shell.

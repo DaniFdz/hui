@@ -254,7 +254,8 @@ export const scenes: Scene[] = [
     async run({ director: d }) {
       await d.caption("Every conversation has a Work pane");
       await d.say("terminal");
-      await d.click({ label: "Open terminal" });
+      await d.click({ label: "Open Work view" });
+      await d.click({ css: ".work-pane__menu-item[value='launch:terminal']" });
       await d.waitFor({ contains: "Shared · Connected" });
       const terminal = await d.waitFor({ css: ".hui-terminal-surface" });
       // The prompt and output sit at the top of the terminal.
