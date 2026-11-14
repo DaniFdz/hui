@@ -290,6 +290,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #shown: unknown[] | undefined;
   /** The cached size of the whole context, and where it goes. */
   #measurement: Measurement | undefined;
+  /** What every model call of this conversation cost, read after each run and compaction; undefined until read. */
+  #total: RuntimeUsage["sessionTotal"];
+  #totalRead: Promise<void> | undefined;
+  #totalStale = false;
   /** Durable compactions running now, by task. */
   #compactions = new Map<TaskId, Compaction>();
   /** Manual compactions `compact()` started that the stream has not listed yet. */
@@ -600,6 +604,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     const newest = stream.snapshot.entries.reduce<EntryId | undefined>((max, entry) => max === undefined || entry.id > max ? entry.id : max, undefined);
     this.#run = { going: stream.snapshot.run !== undefined, origins: [], reported: newest };
     await this.#read();
+    this.#refreshTotal();
     await this.#refreshQueue();
     stream.start(async (events) => {
       this.#follow(events);
@@ -746,6 +751,28 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     }
     const tokens = (measured ?? 0) + trailing;
     return { tokens, parts: contextParts(collected.reverse(), this.#systemUpdates(), this.#optchat, tokens) };
+  }
+
+  /** Reads the conversation's ledger for what it has cost, once, and reports it to the open view. */
+  #refreshTotal(): void {
+    this.#totalStale = true;
+    if (this.#totalRead) return;
+    this.#totalRead = (async () => {
+      // A run and its compaction settle together often: one read covers both.
+      await Promise.resolve();
+      while (this.#totalStale && !this.#disposed) {
+        this.#totalStale = false;
+        try {
+          const spend = await this.#host.conversationSpend(this.#conversation.id);
+          if (!spend) return;
+          this.#total = { ...spend, asOf: Date.now() };
+          this.#emit({ type: "usage" });
+        } catch {
+          this.#totalStale = false;
+        }
+      }
+    })().finally(() => { this.#totalRead = undefined; });
+    void this.#totalRead;
   }
 
   /** The agent as Durable reports it. A model of another kind reads the context differently, so the meter's split is
@@ -916,6 +943,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       this.#emit({ type: "error", message: error instanceof Error ? error.message : "Durable history refresh failed." });
     }
     this.#streaming = false;
+    this.#refreshTotal();
     this.#notifyQuiet();
     const ended = this.#extensions?.settled();
     if (!ended) {
@@ -950,6 +978,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   async #reportEnd(taskId: TaskId, reason: CompactionReason, blocking: boolean): Promise<void> {
     const { result: _summary, ...result } = await this.#compactionOutcome(taskId, reason);
     if (result.outcome === "done") await this.#read().catch(() => {});
+    // A summary is a model call of its own: what it cost shows in the total, not in the conversation's entries.
+    this.#refreshTotal();
     this.#ended({ type: "compaction_end", reason, ...result, willRetry: blocking && result.outcome === "done" });
     this.#notifyQuiet();
   }
@@ -1357,6 +1387,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       contextWindow: window,
       percent: tokens === null ? null : Math.min(100, (tokens / window) * 100),
       ...(measurement ? { breakdown: this.#breakdown(measurement.parts) } : {}),
+      ...(this.#total ? { sessionTotal: this.#total } : {}),
       ...latestRunUsage(this.#visible()),
       ...(this.#reportedCost ? { sessionCost: this.#reportedCost } : {}),
     };

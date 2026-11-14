@@ -825,6 +825,22 @@ test("the context meter is Durable's own estimate, system prompt included", { ti
   assert(part("summary").tokens > 0, "the summary compaction left is its own part");
 });
 
+test("the meter reports what every model call cost, the compaction's own call included", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t, { ...KEPT_WINDOW, settings: { ...KEPT_WINDOW.settings, retry: { enabled: false } } });
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-cost" }, host);
+  await turns(session, ["COMPACT_ONE first turn", "COMPACT_TWO second turn"]);
+  const before = await waitFor("the ledger after the runs", () => session.currentUsage()?.sessionTotal);
+  assert(before.tokens > 0, "the runs are in it");
+  assert.equal(before.usd, 0, "the fixture prices every call at zero, which is a price, not a missing one");
+  await compacted(session);
+  const after = await waitFor("the ledger after the compaction", () => {
+    const total = session.currentUsage()?.sessionTotal;
+    return total && total.asOf >= before.asOf && total.tokens > before.tokens ? total : undefined;
+  });
+  assert(after.tokens > before.tokens, "a summary is a model call of its own, and no entry holds it");
+});
+
 test("the meter's split counts the messages Durable sends, not a repeated tool result", () => {
   const message = (value: object) => value as unknown as Message;
   const parts = contextParts([

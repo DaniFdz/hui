@@ -3989,7 +3989,11 @@ covers. A chat whose memory rewrites its request reports `memory` where the othe
 conversation: what the prompt and the tools leave of the context is the view the request carries. The prompt and tools come from the system entries the conversation's context stores,
 so a conversation a restarted gateway or a fork reopened still splits, and a model that takes
 system messages mid-conversation reads every one of them where another reads only the replayed
-prompt. The browser fits those estimates to the reported `contextTokens` and labels them as estimates. A runtime that cannot split its context omits the field and
+prompt. `usage.sessionTotal` is Durable's own ledger, summed: every model call the conversation made, each compaction summary
+and tool-side call included, since no entry holds those. `tokens` and `usd` are that sum (`usd` is null when no call
+carried a price), and `asOf` is when the view last read the ledger, which it does after a run settles and after a
+compaction ends, never while drawing a snapshot.
+The browser fits those estimates to the reported `contextTokens` and labels them as estimates. A runtime that cannot split its context omits the field and
 the meter draws the plain bar. A bot's chat reads the bot's cost beside the session's through
 `GET /__hui/bots/:id/usage`, the same total its panel shows.
 `usage.sessionCost` is separate from that per-run figure: an extension that measured

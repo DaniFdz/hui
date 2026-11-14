@@ -55,11 +55,19 @@ export const ContextUsagePart = Type.Object({
 }, { $id: "ContextUsagePart" });
 export type ContextUsagePart = Static<typeof ContextUsagePart>;
 
+/** Everything one conversation's model calls cost, as Durable's ledger records it: the runs, each compaction summary and
+ * every tool-side call. `usd` is null when no call carried a price. */
+export const SessionSpend = Type.Object({
+  tokens: Type.Number(), usd: Type.Union([Type.Number(), Type.Null()]), asOf: Type.Number(),
+}, { $id: "SessionSpend" });
+export type SessionSpend = Static<typeof SessionSpend>;
+
 export const RuntimeUsage = Type.Object({
   contextTokens: Type.Union([Type.Number(), Type.Null()]), contextWindow: Type.Number(), percent: Type.Union([Type.Number(), Type.Null()]),
   inputTokens: Type.Number(), outputTokens: Type.Number(), costUsd: Type.Union([Type.Number(), Type.Null()]),
   sessionCost: Type.Optional(SessionCostReport),
   breakdown: Type.Optional(Type.Immutable(Type.Array(ContextUsagePart))),
+  sessionTotal: Type.Optional(SessionSpend),
 }, { $id: "RuntimeUsage" });
 export type RuntimeUsage = Static<typeof RuntimeUsage>;
 
