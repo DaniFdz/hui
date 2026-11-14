@@ -217,6 +217,9 @@ distribution is not set up.
    - **Stable:** `https://github.com/DaniFdz/hui/releases/latest/download/hui-sidestore.json`
    - **Nightly:** `https://github.com/DaniFdz/hui/releases/download/nightly/hui-sidestore.json`
 3. Install HUI from that source, open it and enter the gateway's address.
+   If the gateway is another machine on your Wi-Fi, iOS asks once whether HUI
+   may access the local network; allow it, or the Connect page cannot reach that
+   address.
 
 The source names the IPA's own version, so a new release shows up as an update.
 The stable source is the channel to use: the nightly one follows the rolling

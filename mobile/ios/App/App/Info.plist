@@ -70,6 +70,19 @@
 	     shows this sentence in the prompt, and an app that reaches the microphone without one is terminated. -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>HUI uses the microphone for voice calls with a bot. Nothing is recorded outside a call.</string>
+	<!-- The composer's "Take photo" is an input with `capture`, which WebKit opens as a UIImagePickerController camera.
+	     iOS shows this sentence in the camera prompt, and terminates an app that reaches the camera without one. -->
+	<key>NSCameraUsageDescription</key>
+	<string>HUI uses the camera for a photo you attach to a message. Nothing is taken until you press the shutter.</string>
+	<!-- The composer's "Photo" input opens WebKit's photo picker. PHPicker is out-of-process and needs no prompt, but
+	     the camera sheet and any UIImagePickerController path read the library in-process, which iOS terminates without
+	     this string all the same. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>HUI uses your photo library only to choose a photo you attach to a message. Nothing is read until you pick one.</string>
+	<!-- A gateway can be another machine on the same Wi-Fi: the WebView loads its address and the app probes it. iOS
+	     asks for local network access, and an app that reaches a LAN host without this sentence cannot explain the ask. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>HUI connects to the HUI gateway you choose, including one on your local network. It talks only to that gateway.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>
