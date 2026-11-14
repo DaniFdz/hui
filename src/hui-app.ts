@@ -123,7 +123,7 @@ import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
-import { activeSessionPane, closeSessionPane, focusSessionPane, isChatPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
+import { activeSessionPane, closeSessionPane, focusSessionPane, isChatPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
   retainWorkSessions, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, workPaneMaximized, workViewKey, workViewKind,
@@ -388,12 +388,8 @@ export class HuiApp extends HuiElement {
   /** The destination chooser a phone shows in this pane's header instead of a row of its own. */
   @property({ attribute: false }) panePanelPicker?: TemplateResult;
   @property(paneCallback) onPaneClose: (() => void) | undefined;
-  @property(paneCallback) onPaneSplit: ((direction: SplitDirection) => void) | undefined;
-  @property(paneCallback) onPaneTerminal: (() => Promise<void>) | undefined;
   /** Opens this session's browser view in the Work pane: the larger live view beside the chat. */
   @property(paneCallback) onPaneBrowser: (() => void) | undefined;
-  @state() private terminalOpening = false;
-  @state() private terminalError = "";
   @property(paneCallback) onPaneNavigate: ((id: string) => void) | undefined;
   @property(paneCallback) onPaneRegistryChange: (() => Promise<void>) | undefined;
   /** Worktree progress while the gateway still creates this pane's session;
@@ -1502,15 +1498,6 @@ export class HuiApp extends HuiElement {
       target?.focus({ preventScroll: true });
     });
   }
-
-  private openTerminal = async () => {
-    if (this.conversation.connection !== "live") return;
-    this.terminalOpening = true;
-    this.terminalError = "";
-    try { await this.onPaneTerminal?.(); }
-    catch (error) { this.terminalError = error instanceof Error ? error.message : "Could not open terminal."; }
-    finally { this.terminalOpening = false; }
-  };
 
   private dropSession = (id: string, paneId: string, zone: DropZone) => {
     if (!this.work.layout || !this.sessions.groups.some((group) => group.sessions.some((session) => session.id === id))) return;
@@ -2907,16 +2894,9 @@ export class HuiApp extends HuiElement {
       onSelectSession: this.selectSession,
       onClosePane: this.onPaneClose,
       paneMovable: Boolean(this.onPaneClose) && !this.paneNarrow,
-      onSplitPane: this.paneNarrow ? undefined : this.onPaneSplit,
-      onOpenTerminal: this.onPaneTerminal ? this.openTerminal : undefined,
-      onOpenBrowser: this.onPaneBrowser && this.conversation.connection === "live" && this.control.settings.browser.enabled && this.conversation.transcript.some((item) => item.kind === "tool" && item.name === "browser")
-        ? () => { if (this.conversation.connection === "live") this.onPaneBrowser?.(); }
-        : undefined,
       browserPreview: this.conversation.connection === "live" && this.control.settings.browser.enabled
         ? { visible: this.paneVisible, ...(this.onPaneBrowser ? { onExpand: () => this.onPaneBrowser?.() } : {}) }
         : undefined,
-      terminalOpening: this.terminalOpening,
-      terminalError: this.terminalError,
       onSelectSubagent: (sessionId) => {
         const openBot = this.embeddedPane ? this.onPaneOpenBot : this.openBot;
         const open = (session: SessionView) => session.bot && openBot ? openBot(session.bot.id) : this.selectSession(session);
@@ -3059,8 +3039,6 @@ export class HuiApp extends HuiElement {
       panelPicker: pane.id === this.work.layout?.activePaneId ? this.narrowPicker : undefined,
       bots: this.mentionable(),
       onClose: controls.close,
-      onSplit: controls.split,
-      onTerminal: () => this.work.openTerminal(pane),
       onBrowser: () => this.work.openBrowser(pane),
       onNavigate: (id) => this.work.changePaneSession(pane.id, id),
       onRegistryChange: () => this.refreshSessions(true).then(() => this.updateComplete).then(() => {}),

@@ -366,12 +366,12 @@ test("a bot's own message offers Rewind to here, and a bot's chat offers no fork
   assert.doesNotMatch(html, /Compact now/u);
 });
 
-test("a saved PI conversation cannot continue or open a terminal", async () => {
+test("a saved PI conversation cannot continue", async () => {
   const html = await renderWorkerSession("disconnected", {
     connection: "saved", session: { id: "s", title: "Saved", tool: "pi", status: "disconnected" },
   });
-  assert.match(html, /aria-label="Open terminal" title="Open terminal" \?disabled=true/u);
   assert.match(html, /session-history-action" \?disabled=true[^>]*aria-label="Continue without a prompt"/u);
+  assert.doesNotMatch(html, /aria-label="Open terminal"/u);
 });
 
 test("PI questions use the inline OpenClaw card instead of a modal", () => {
@@ -504,17 +504,17 @@ test("session actions live in the sidebar instead of the chat header", () => {
   assert.match(shellSource, /aria-label=\$\{`New session in /);
 });
 
-test("the chat header exposes original same-session split controls and pane-local close", () => {
+test("the chat header offers no view or split controls, only the pane's close", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const header = source.slice(source.indexOf("function renderHeader"), source.indexOf("const projections"));
 
-  assert.match(source, /aria-label="Open split view"/);
-  assert.match(source, /aria-label="Split right"/);
-  assert.match(source, /aria-label="Split down"/);
-  assert.match(source, /aria-label="Pane actions"/);
-  assert.doesNotMatch(source, /splitCandidates/);
-  assert.doesNotMatch(source, /onSplitSession\?: \(session: SessionView\) => void/);
-  assert.match(source, /aria-label="Close session pane"/);
-  assert.match(source, /@click=\$\{props\.onClosePane\}/);
+  for (const removed of ["Open split view", "Split right", "Split down", "Pane actions", "Open terminal", "Open browser view"]) {
+    assert.doesNotMatch(header, new RegExp(`aria-label="${removed}"`, "u"), `${removed} left the chat header`);
+  }
+  assert.doesNotMatch(header, /props\.onSplitPane|props\.onOpenTerminal|props\.onOpenBrowser|props\.terminalOpening/u);
+  assert.doesNotMatch(header, /icons\.(columns2|panelBottomOpen|squareTerminal)/u);
+  assert.match(header, /aria-label="Close session pane"/);
+  assert.match(header, /@click=\$\{props\.onClosePane\}/);
 });
 
 test("session rename mirrors the Control UI single title field without a group editor", () => {
@@ -693,10 +693,17 @@ test("a saved copy taken today says when, without repeating today's date", async
 });
 
 test("a reachable worker session shows neither notice, and a failed one keeps its error banner", async () => {
-  const idle = await renderWorkerSession("idle");
+  const idle = await renderWorkerSession("idle", { onClosePane: undefined });
   assert.doesNotMatch(idle, /Reconnecting to|Disconnected from|reconnect-session/u);
   assert.equal(sendButton(idle), "false");
-  assert.match(idle, /aria-label="Open terminal"/u, "its terminal opens on that machine through its connect command");
+  // This plain durable chat has an empty trailing corner: views and splits live in the Work pane and the sidebar. A
+  // bot chat (call, panel, menu), a PI session (Continue) and a split pane (Close) each add their own controls there,
+  // and none of the removed labels reach the page.
+  const trailing = idle.slice(idle.indexOf('class="chat-pane__header-trailing"'), idle.indexOf("</header>"));
+  assert.doesNotMatch(trailing, /<button/u, "a plain durable chat keeps its header corner empty");
+  for (const removed of ["Open terminal", "Open browser view", "Open split view", "Split right", "Split down", "Pane actions"]) {
+    assert.doesNotMatch(idle, new RegExp(`aria-label="${removed}"`, "u"), `${removed} is gone from the chat`);
+  }
   assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
 });
 

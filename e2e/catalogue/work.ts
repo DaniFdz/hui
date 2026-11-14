@@ -235,8 +235,8 @@ const cases: UseCase[] = [
 
   {
     id: "WORK-024",
-    title: "Open the conversation's terminal from the chat header",
-    behaviour: "Open terminal in the chat header shows the conversation's open terminal tab, else its first running shell, else a new shell in the session's directory, without calling the agent. The toolbar shows the working directory and \"Shared · Connected\".",
+    title: "Open a terminal in the Work pane",
+    behaviour: "New terminal in the Work pane's + menu (or its launcher while the pane is empty) opens a new shell in the session's directory without calling the agent, as the selected \"Terminal 1\" tab whose toolbar shows the working directory and \"Shared · Connected\". The chat header offers no terminal button, and the pane keeps that terminal as its tab when the conversation is opened again.",
     spec: ["SPEC.md#shared-terminals"],
     surfaces: ["work-view:terminal", "route:GET /__hui/sessions/:owner/terminals", "route:POST /__hui/sessions/:owner/terminals", "route:POST /__hui/sessions/:owner/terminals/:id/connect"],
     journeys: ["shared-terminal", "work-pane"],
@@ -377,7 +377,7 @@ const cases: UseCase[] = [
   {
     id: "WORK-039",
     title: "Watch the agent's browser in the browser view",
-    behaviour: "Selecting the chat's browser preview or its Open browser view, the header's globe button (Open browser view) or Browser in the + menu or the phone's panel selector opens the conversation's one Browser tab, streaming the agent's tab with \"Live · headless\", its URL and the latest action. It is view only (\"View only · the agent controls this browser\") and says \"No page is open in this conversation yet.\" before the agent opens one.",
+    behaviour: "Selecting the chat's browser preview or its Open browser view, or Browser in the + menu or the phone's panel selector, opens the conversation's one Browser tab, streaming the agent's tab with \"Live · headless\", its URL and the latest action. It is view only (\"View only · the agent controls this browser\") and says \"No page is open in this conversation yet.\" before the agent opens one.",
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["work-view:browser", "route:POST /__hui/sessions/:id/browser/connect", "route:WS /__hui/browser-stream"],
     journeys: ["work-pane", "browser-tool"],

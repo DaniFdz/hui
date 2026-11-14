@@ -1679,8 +1679,9 @@ never closes, and the view says *You have control; the agent waits*. A tab you
 leave in another view, or a handoff you never answer, ends by itself after ten
 minutes (the agent is told you may be away and gets the tab back); a handoff can
 ask for up to thirty. If the tab closes or the browser stops first, the agent is
-told that instead. Opening the browser view from the header's globe button shows
-the same view: it stays view-only unless a handoff is waiting.
+told that instead. Opening the browser view from the chat's preview card or the
+Work pane's **+** menu shows the same view: it stays view-only unless a handoff
+is waiting.
 
 ## Storing a password an agent can type
 

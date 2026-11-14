@@ -1,11 +1,15 @@
-/** Split panes side by side: opening them from the header, a row menu and the pane menus, their layout and sizes surviving a reload (SESS-047), and resizing them from a focused divider (SESS-052). */
+/** Split panes side by side: opening them from another session's row menu, their layout and sizes surviving a reload (SESS-047), and resizing them from a focused divider (SESS-052). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("split view opens from the header and a row menu, the split and pane menus add views of the open session, and the layout survives a reload", { tags: ["SESS-047"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("another session's row menu opens a split pane, focus makes a pane active with its route, and the layout survives a reload", { tags: ["SESS-047"], platforms: ["web"] }, async ({ screen, hui }) => {
   const panes = screen.getByTestId("session-pane");
   const titles = (title: string) => panes.getByTestId("session-title").filter({ hasText: title });
   const resize = screen.getByTestId("pane-divider");
+  const open = async (title: string) => {
+    await hui.sessionList();
+    await (await hui.sessionMenu(title)).getByText("Open in split pane", { visible: true }).tap();
+  };
   const active = async (index: number) => {
     await panes.nth(index).getByTestId("session-title").tap();
     await expect(panes.nth(index)).toHaveAttribute("aria-current", "true");
@@ -16,53 +20,45 @@ test("split view opens from the header and a row menu, the split and pane menus 
   };
   await hui.wideScreen(2200);
   const left = await hui.createSession({ title: "Left chat" });
-  const right = await hui.createSession({ title: "Right chat" });
+  const middle = await hui.createSession({ title: "Middle chat" });
+  await hui.createSession({ title: "Right chat" });
 
   await hui.open(`/sessions/${left.id}`);
   await expect(panes).toHaveCount(1);
-  await screen.getByRole("button", "Open split view").tap();
+  // A split comes from another session's row menu: the chat header offers no split control, and no pane opens a
+  // second view of the session it already shows.
+  await expect(screen.getByTestId("chat-header").getByRole("button", "Open split view")).toHaveCount(0);
+  await open("Middle chat");
   await expect(panes).toHaveCount(2);
-  await expect(titles("Left chat")).toHaveCount(2);
+  await expect(titles("Left chat")).toHaveCount(1);
+  await expect(titles("Middle chat")).toHaveCount(1);
 
-  await hui.sessionList();
-  await (await hui.sessionMenu("Right chat")).getByText("Open in split pane", { visible: true }).tap();
+  await open("Right chat");
   await expect(panes).toHaveCount(3);
   await expect(panes.nth(2).getByTestId("session-title")).toHaveText("Right chat");
 
   await active(0);
   await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${left.id}`);
-  await panes.nth(0).getByRole("button", "Split down").tap();
-  await expect(panes).toHaveCount(4);
-  await expect(titles("Left chat")).toHaveCount(3);
-  await active(0);
-  await panes.nth(0).getByRole("button", "Split right").tap();
-  await expect(panes).toHaveCount(5);
-  await expect(titles("Left chat")).toHaveCount(4);
-  await active(2);
-  await panes.nth(2).getByRole("button", "Pane actions").tap();
-  await screen.getByText("Split down", { visible: true }).tap();
-  await expect(panes).toHaveCount(6);
-
-  await active(2);
-  await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${right.id}`);
+  // Focusing a control inside another pane makes that pane the active one too, and the route follows it.
   await panes.nth(1).getByRole("button", "Move panel").focus();
   await expect(panes.nth(1)).toHaveAttribute("aria-current", "true");
-  await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${left.id}`);
+  await expect(panes.nth(0)).not.toHaveAttribute("aria-current", "true");
+  await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${middle.id}`);
 
-  const geometry = async () => Promise.all([0, 1, 2, 3, 4, 5].map(async (index) => {
+  const geometry = async () => Promise.all([0, 1, 2].map(async (index) => {
     const box = (await panes.nth(index).boundingBox())!;
     return [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)];
   }));
   const before = await geometry();
   await resize.first().focus();
-  await step("ArrowDown");
-  await step("ArrowDown");
+  await step("ArrowRight");
+  await step("ArrowRight");
   await expect.poll(geometry).not.toEqual(before);
   const resized = await geometry();
 
   await hui.reload();
-  await expect(panes).toHaveCount(6);
-  await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${left.id}`);
+  await expect(panes).toHaveCount(3);
+  await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${middle.id}`);
   await expect(panes.nth(1)).toHaveAttribute("aria-current", "true");
   await expect.poll(geometry).toEqual(resized);
 });
@@ -77,7 +73,8 @@ test("the arrow keys resize a split pane by 2% and with Shift by 5%, and Home an
   const first = await hui.createSession({ title: "Keyboard left" });
   await hui.createSession({ title: "Keyboard right" });
   await hui.open(`/sessions/${first.id}`);
-  await screen.getByRole("button", "Open split view").tap();
+  await hui.sessionList();
+  await (await hui.sessionMenu("Keyboard right")).getByText("Open in split pane", { visible: true }).tap();
   await expect(divider).toHaveCount(1);
   await expect(divider).toHaveAttribute("aria-valuenow", "50");
 
@@ -107,7 +104,8 @@ test("dragging the divider changes the panes' share, down to the minimum pane si
   const first = await hui.createSession({ title: "Dragged left" });
   await hui.createSession({ title: "Dragged right" });
   await hui.open(`/sessions/${first.id}`);
-  await screen.getByRole("button", "Open split view").tap();
+  await hui.sessionList();
+  await (await hui.sessionMenu("Dragged right")).getByText("Open in split pane", { visible: true }).tap();
   await expect(divider).toHaveAttribute("aria-valuenow", "50");
 
   const share = async () => Number(await divider.getAttribute("aria-valuenow"));

@@ -1,16 +1,15 @@
 /** The conversation's one Browser view: Browser in the + menu opens it before the agent has browsed, it says so and
- * that it is view only, and once the agent browses the header's globe and the chat's own preview card both show that
- * same tab, live and headless, with its address and the last thing the agent did (WORK-039). */
+ * that it is view only, and once the agent browses the chat's own preview card shows that same tab, live and headless,
+ * with its address and the last thing the agent did (WORK-039). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import { backToChat, hideWork, openWork, reopenWork } from "./work-views.ts";
 
-test("the browser view says no page is open before the agent browses, then shows the agent's headless tab from the header and from its preview card", { tags: ["WORK-039"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the browser view says no page is open before the agent browses, then shows the agent's headless tab from its preview card", { tags: ["WORK-039"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Watch the browser", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
   const transcript = screen.getByTestId("transcript");
-  const header = screen.getByTestId("chat-header").getByRole("button", "Open browser view");
   const preview = transcript.getByRole("button", "Open browser view");
 
   await hui.open(`/sessions/${session.id}`);
@@ -34,13 +33,7 @@ test("the browser view says no page is open before the agent browses, then shows
   await expect(pane.getByText("Took a screenshot")).toBeVisible();
   await expect(pane.getByText("View only · the agent controls this browser")).toHaveCount(0);
 
-  // The header's globe shows that same tab again, expanding the pane it is hidden in without adding a second one.
-  await hideWork(screen);
-  await header.tap();
-  await expect(pane.getByRole("tab", "Browser")).toHaveAttribute("aria-selected", "true");
-  await expect(pane.getByRole("tab")).toHaveCount(1);
-
-  // And so does the chat's preview card, which is the conversation's one Browser view as well.
+  // The chat's preview card opens that same view, expanding the pane it is hidden in without adding a second one.
   await hideWork(screen);
   await preview.tap();
   await expect(pane.getByRole("tab", "Browser")).toHaveAttribute("aria-selected", "true");

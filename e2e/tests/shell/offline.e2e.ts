@@ -37,7 +37,6 @@ test("a conversation saved on this device opens again without the gateway", { ta
   await expect(screen.getByRole("button", "Group options for")).toHaveCount(0);
   await expect(message).toHaveValue(DRAFT);
   await expect(send).toBeDisabled();
-  await expect(screen.getByRole("button", "Open terminal")).toBeDisabled();
 });
 
 test("reconnecting keeps the draft and sends nothing by itself", { tags: ["SHELL-045"], platforms: ["web"] }, async ({ screen, hui }) => {

@@ -6,7 +6,6 @@
  * opened from the chat, and the Alt shortcuts. The shell routes navigation through these and renders from them.
  */
 import type { ReactiveControllerHost } from "lit";
-import { listTerminals } from "../api/terminals.ts";
 import type { PanePresentation, SessionMultiplexer } from "../components/session-multiplexer.ts";
 import type { WorkPane } from "../components/work-pane.ts";
 import { requestFilesViewReveal } from "../lib/files/view-state.ts";
@@ -14,7 +13,7 @@ import type { OpenFileDetail } from "../lib/files/file-link-store.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import {
   activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, replacePaneSession, SESSION_LAYOUT_KEY,
-  SESSION_SPLIT_MEDIA, sessionPanes, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection,
+  SESSION_SPLIT_MEDIA, sessionPanes, splitSessionPane, type DropZone, type SessionLayout, type SessionPane,
 } from "../lib/session/multiplexer.ts";
 import { matchesShortcut } from "../lib/shortcut-binding.ts";
 import { subscribeSideChat } from "../lib/session/side-chat-store.ts";
@@ -28,7 +27,7 @@ import { diffWorkViewKind } from "../views/work/diff.ts";
 import { extensionWorkViewKind } from "../views/work/extension.ts";
 import { filesViewToReveal, filesWorkViewKind, type FilesWorkViewRef } from "../views/work/files.ts";
 import { sideChatWorkViewKind } from "../views/work/side-chat.ts";
-import { terminalWorkViewKind, type TerminalWorkViewRef } from "../views/work/terminal.ts";
+import { terminalWorkViewKind } from "../views/work/terminal.ts";
 import { vscodeWorkViewKind } from "../views/work/vscode.ts";
 
 type WorkLayoutHost = ReactiveControllerHost & { readonly renderRoot: HTMLElement | DocumentFragment };
@@ -101,15 +100,8 @@ export class WorkLayoutController {
     this.commitLayout(focusSessionPane(this.layout, id));
   };
 
-  splitPane = (pane: SessionPane, direction: SplitDirection) => {
-    if (this.layout) this.commitLayout(splitSessionPane(this.layout, pane.id, pane.sessionId, direction));
-  };
-
-  paneControls(pane: SessionPane, state: PanePresentation): { close?: () => void; split?: (direction: SplitDirection) => void } {
-    return {
-      ...(state.split ? { close: () => this.closePane(pane.id) } : {}),
-      ...(!state.narrow ? { split: (direction: SplitDirection) => this.splitPane(pane, direction) } : {}),
-    };
+  paneControls(pane: SessionPane, state: PanePresentation): { close?: () => void } {
+    return state.split ? { close: () => this.closePane(pane.id) } : {};
   }
 
   closePane = (paneId: string) => {
@@ -261,19 +253,7 @@ export class WorkLayoutController {
     if (!launched || ref.kind !== "terminal") void this.#host.updateComplete.then(() => this.#element()?.focusPane("active"));
   }
 
-  /** The chat header's **Open terminal**: the conversation's open terminal tab, else its first running terminal,
-   * else a new one, opened the way the launcher opens it so no two tabs of the conversation share a name. */
-  openTerminal = async (pane: SessionPane) => {
-    const open = sessionWorkPane(this.panes, pane.sessionId).views.find((view) => view.kind === "terminal");
-    if (open) { this.showView(pane.sessionId, open); return; }
-    const running = (await listTerminals(pane.sessionId)).find(({ status }) => status === "running");
-    if (running) { this.showView(pane.sessionId, { kind: "terminal", terminalId: running.id }, false); return; }
-    const kind = workViewKind("terminal");
-    if (!kind) return;
-    this.showView(pane.sessionId, await kind.create(pane.sessionId) as TerminalWorkViewRef, true);
-  };
-
-  /** The chat's inline browser preview and header globe open (or focus) the conversation's one browser view. */
+  /** The chat's inline browser preview opens (or focuses) the conversation's one browser view. */
   openBrowser = (pane: SessionPane) => {
     this.showView(pane.sessionId, { kind: "browser" });
   };

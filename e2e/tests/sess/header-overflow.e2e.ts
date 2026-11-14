@@ -1,6 +1,6 @@
 /** A long session title and its metadata shorten to one line with the full title in the heading's tooltip, Open parent
- * and Continue keep only their icons in a narrow header, and at the 320px pane minimum and on a phone the terminal,
- * Continue, pane menu and Close session pane controls stay inside the header and reachable by Tab (SESS-056). */
+ * and Continue keep only their icons in a narrow header, and at the 320px pane minimum and on a phone the surviving
+ * header controls, Continue and Close session pane, stay inside the header and reachable by Tab (SESS-056). */
 import { expect, type Locator } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -70,8 +70,8 @@ test("a long title and its metadata shorten to one line with the full title in t
   await activate(workerPane);
   expect(await labelWidth(workerPane, "Continue")).toBeGreaterThan(40);
 
-  // At the 320px pane minimum the worker's header keeps Continue as a labeled icon beside the terminal, pane menu and
-  // close controls, all inside it and in the Tab order.
+  // At the 320px pane minimum the worker's header keeps Continue as a labeled icon beside the close control, both
+  // inside it and in the Tab order.
   const maximum = (await divider.getAttribute("aria-valuemax"))!;
   const paneRight = async () => (await workerPane.boundingBox())!.x + (await workerPane.boundingBox())!.width;
   await hui.dragBy(divider, { dx: (await paneRight()) - (await divider.boundingBox())!.x - 2, dy: 0 },
@@ -79,7 +79,7 @@ test("a long title and its metadata shorten to one line with the full title in t
   await expect.poll(async () => Math.round((await workerPane.boundingBox())!.width)).toBe(320);
   await expect(workerPane.getByRole("button", "Continue without a prompt")).toBeVisible();
   await expect.poll(() => labelWidth(workerPane, "Continue")).toBeLessThanOrEqual(1);
-  await headerControls(workerPane, ["Open terminal", "Continue without a prompt", "Pane actions", "Close session pane"]);
+  await headerControls(workerPane, ["Continue without a prompt", "Close session pane"]);
 
   // The subagent's pane holds Open parent the same way when it is the narrow one.
   const minimum = (await divider.getAttribute("aria-valuemin"))!;
@@ -90,27 +90,25 @@ test("a long title and its metadata shorten to one line with the full title in t
   await expect(subagentPane.getByRole("button", "Open parent")).toBeVisible();
   await expect.poll(() => labelWidth(subagentPane, "Open parent")).toBeLessThanOrEqual(1);
   expect(await hui.textOf(subagentPane.getByTestId("session-title"))).toBe(TITLE);
-  await headerControls(subagentPane, ["Open parent", "Open terminal", "Pane actions", "Close session pane"]);
+  await headerControls(subagentPane, ["Open parent", "Close session pane"]);
 
-  // On a phone the open session's header holds the same controls, its pane menu being the Active panel selector.
+  // On a phone the open session's header holds the same controls, its pane chooser being the Active panel selector.
   await hui.phoneScreen();
   await hui.open(`/sessions/${worker.id}`);
   const phonePane = screen.getByTestId("session-pane", { visible: true });
   await expect(phonePane).toHaveCount(1);
   await expect(phonePane.getByRole("button", /^Active panel: 1 · Chat · Worker chat$/u)).toBeVisible();
   const phoneHeader = phonePane.getByTestId("chat-header");
-  for (const control of [phonePane.getByRole("button", "Open terminal"), phonePane.getByRole("button", "Continue without a prompt"),
+  for (const control of [phonePane.getByRole("button", "Continue without a prompt"),
     phonePane.getByRole("button", "Close session pane"), phonePane.getByRole("button", /^Active panel:/u)]) {
     await expect(control).toBeVisible();
     expect(await hui.reachable(control)).toBe(true);
   }
-  for (const control of [phonePane.getByRole("button", "Open terminal"), phonePane.getByRole("button", "Continue without a prompt"),
+  for (const control of [phonePane.getByRole("button", "Continue without a prompt"),
     phonePane.getByRole("button", "Close session pane")]) {
     await expect.poll(() => inside(phoneHeader, control)).toBe(true);
   }
-  await phonePane.getByRole("button", "Open terminal").focus();
-  await step("Tab");
-  await expect(phonePane.getByRole("button", "Continue without a prompt")).toBeFocused();
+  await phonePane.getByRole("button", "Continue without a prompt").focus();
   await step("Tab");
   await expect(phonePane.getByRole("button", "Close session pane")).toBeFocused();
 });
