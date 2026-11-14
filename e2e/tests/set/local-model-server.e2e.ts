@@ -136,5 +136,8 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     await hui.api("DELETE", "/__hui/local-providers/local-e2e").catch(() => undefined);
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    // The gateway reads models.json into its live model registry when it opens: the provider this test added stays in the
+    // catalog after the file no longer names it, so the next test in this shard would list a model that is gone.
+    await hui.restartGateway();
   }
 });
