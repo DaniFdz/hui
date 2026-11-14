@@ -178,7 +178,7 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
-      - run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - run: sdkmanager --install "platforms;android-37.0" "build-tools;36.0.0"
       - run: npm ci --ignore-scripts
       # Builds the Connect page and runs `cap sync android`, which writes the plugin list the Gradle project reads.
       - run: npm run mobile:build

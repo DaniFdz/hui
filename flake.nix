@@ -119,7 +119,7 @@
                 };
               };
               sdk = androidPkgs.androidenv.composeAndroidPackages {
-                platformVersions = [ "36" ];
+                platformVersions = [ "37.0" ];
                 buildToolsVersions = [
                   "35.0.0"
                   "36.0.0"

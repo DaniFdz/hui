@@ -14,6 +14,7 @@ public class HuiGatewayPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "connect", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "forget", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestLocalNetwork", returnType: CAPPluginReturnPromise),
     ]
 
     @objc func connect(_ call: CAPPluginCall) {
@@ -38,6 +39,12 @@ public class HuiGatewayPlugin: CAPPlugin, CAPBridgedPlugin {
             "gateway": Gateway.remembered() ?? NSNull(),
             "failed": Gateway.failed() ?? NSNull(),
         ])
+    }
+
+    /** iOS raises its local-network prompt from the WebView's first request; it has no runtime API to preflight, so the
+        Connect page proceeds and the system asks on the probe. */
+    @objc func requestLocalNetwork(_ call: CAPPluginCall) {
+        call.resolve(["status": "granted"])
     }
 
     /// A bridge's app URL is fixed, so the root view controller is replaced by a fresh bridge.

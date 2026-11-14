@@ -44,11 +44,21 @@ public class MainActivity extends BridgeActivity {
     /** A launch that arrives while the app runs (singleTask) must honour a different gateway, not ignore it. */
     private static final long CONNECT_DEADLINE_MS = 15_000;
 
+    /** This launch was held on Connect to ask for Android 17's local-network permission before loading its gateway. */
+    private boolean waitingForLocalNetwork;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(HuiGatewayPlugin.class);
         registerPlugin(HuiShellPlugin.class);
         gateway = Gateway.resolve(this);
+        // Android 17 blocks the local network until this app holds ACCESS_LOCAL_NETWORK. An install upgrading with a
+        // remembered gateway would otherwise spend the fallback's 15 s on a load the platform refuses: load Connect,
+        // ask, and rebuild on the gateway once the operator allows it.
+        if (gateway != null && !LocalNetwork.granted(this)) {
+            waitingForLocalNetwork = true;
+            gateway = null;
+        }
         if (gateway != null) config = EmbeddedConfig.withGateway(this, gateway);
         super.onCreate(savedInstanceState);
         // API 30 and later draw every app edge to edge and the shell pads the page's frame itself (ShellWindow); below
@@ -67,6 +77,14 @@ public class MainActivity extends BridgeActivity {
             }
         }
         ready = true;
+        if (waitingForLocalNetwork) getWindow().getDecorView().post(() -> LocalNetwork.request(this));
+    }
+
+    /** The launch path's local-network answer: a grant rebuilds on the remembered gateway; a refusal leaves Connect. */
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == LocalNetwork.REQUEST && LocalNetwork.granted(this)) recreate();
     }
 
     @Override
