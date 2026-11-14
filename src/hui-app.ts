@@ -176,6 +176,7 @@ const paneBotProperty = { attribute: false, hasChanged: (value: unknown, old: un
  * renders it again, not a bot's status or latest message. */
 const botFaces = (bots: unknown) => JSON.stringify((bots as readonly BotView[] | undefined)?.map(({ id, handle, name, avatar }) => [id, handle, name, avatar]));
 const paneBotsProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => botFaces(value) !== botFaces(old) };
+const paneBotCostProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
 /** Defined by `defineHuiApp`, not on import: main.ts loads this module while the
  * saved appearance is still being read, and the app must not paint before it. */
@@ -359,6 +360,8 @@ export class HuiApp extends HuiElement {
   private transcriptClockTick = 0;
   /** Set on the bot route's embedded pane: header identity and panel state. */
   @property(paneBotProperty) paneBot: PaneBot | undefined;
+  /** What that pane's bot has cost, so its chat's meter can say it: the shell app reads it. */
+  @property(paneBotCostProperty) paneBotCost: HomeProps["botCost"];
   @property(paneCallback) onPaneBotPanel: (() => void) | undefined;
   /** The bot header's ⋯ menu, handled by the app that owns the bot dialogs. */
   @property(paneCallback) onPaneBotAction: ((action: BotHeaderAction) => void) | undefined;
@@ -2195,10 +2198,21 @@ export class HuiApp extends HuiElement {
     if (bot) this.botTriggers.follow(bot);
   }
 
-  /** The overview shows the bot's cost, read again whenever its chat changes state. A worker keeps its own. */
+  /** The overview and the open bot's chat meter show the bot's cost, read again whenever its chat changes state. A
+   * worker keeps its own. */
   private followBotUsage() {
-    const bot = this.botPanelShows("overview") ? this.activeBot() : undefined;
+    const bot = this.botPanelShows("overview") || this.view === "bot" ? this.activeBot() : undefined;
     if (bot && !bot.worker) void this.botUsage.show(bot);
+  }
+
+  /** A bot's recorded spend, its chat's, its subagents' and its memory summaries', as the bot panel totals it. */
+  private botCost(): HomeProps["botCost"] {
+    const bot = this.activeBot();
+    if (!bot) return undefined;
+    if (bot.worker) return { remote: bot.worker.name };
+    const state = this.botUsage.state.botId === bot.id ? this.botUsage.state : { usage: undefined, error: "" };
+    if (!state.usage) return state.error ? { unavailable: true } : { reading: true };
+    return { usd: state.usage.costUsd, memory: bot.memory?.usage.cost ?? 0, subagents: Math.max(0, state.usage.sessions - 1) };
   }
 
   /** The panel's page decides what is read: the overview and Routines poll Automation like its page, the overview and
@@ -2333,6 +2347,7 @@ export class HuiApp extends HuiElement {
           .paneNarrow=${sheet}
           .paneMobileNav=${this.mobileNavLayout}
           .paneBot=${paneBot}
+          .paneBotCost=${this.botCost()}
           .onPaneBotPanel=${this.toggleBotPanel}
           .onPaneBotAction=${(action: BotHeaderAction) => {
             if (action === "edit") this.openEditBot(bot);
@@ -2878,6 +2893,7 @@ export class HuiApp extends HuiElement {
       transcriptWindowStart: this.transcriptWindowStart,
       showScrollToBottom: this.showScrollToBottom,
       ...this.conversation.props(),
+      ...(this.embeddedPane && this.paneBotCost ? { botCost: this.paneBotCost } : {}),
       compaction: this.conversation.compaction,
       launching: this.launching,
       note: this.note,
