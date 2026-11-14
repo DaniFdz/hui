@@ -223,6 +223,17 @@ The manifest names `android.media.action.IMAGE_CAPTURE` and `VIDEO_CAPTURE` in a
 `onShowFileChooser` asks the package manager whether a camera app answers before it opens one, and Android 11 hides other
 apps from that question: without the element the camera input silently falls back to the file picker.
 
+### The local-network permission waits for SDK 37
+
+Android 16 and lower grant local-network access through `INTERNET`; Android's own guidance says not to declare
+`android.permission.ACCESS_LOCAL_NETWORK` below `targetSdk 37`, because the platform ignores it there. Android 17 blocks
+the local network by default for target 37, so that bump must add the manifest permission and a runtime request before
+the Connect page's first probe or the bridge's first load, and handle a refusal with the page's own message.
+`scripts/mobile-contract.test.mjs` enforces both directions: the permission is absent while the target is below 37, and
+the bump fails the test until the manifest entry and a guarded `requestPermissions` call exist. The guard names
+`requestPermissions` because that is the API this shell uses; if the bump picks a different request API, update the guard
+with the reason.
+
 ## Launch, ports and target names
 
 | Contract | Value |
@@ -367,6 +378,20 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   gateway the app is on, ignored without a gateway, refused if it carries `://`, a backslash or whitespace.
 - **Cleartext is loopback only** (`NSExceptionDomains` for `127.0.0.1` and `localhost`), the same rule as Android's
   network security config and owner decision O3. A tailnet gateway needs HTTPS (`tailscale serve`).
+- **The pickers need their usage strings.** The composer's "Take photo" is an image input with `capture`, and WebKit's
+  file-upload panel opens that as a `UIImagePickerController` camera in the app's process. iOS shows
+  `NSCameraUsageDescription` in the prompt and terminates an app that reaches the camera without one, so the plist entry
+  is the difference between a camera and a crash. The "Photo" input opens WebKit's `PHPickerViewController`, which is
+  out-of-process and needs no prompt, but the camera sheet and any `UIImagePickerController` fallback read the library
+  in-process: `NSPhotoLibraryUsageDescription` keeps those from terminating the app too. The simulator has no camera, so
+  `ios-smoke` cannot tap this: `scripts/mobile-contract.test.mjs` keeps both strings beside the Android manifest's
+  camera `<queries>`.
+- **A gateway on the Wi-Fi needs the local-network string.** The Connect page accepts an `https://` address on the LAN
+  as readily as a tailnet one, and iOS 14+ asks before the app reaches a host on the same network. iOS uses
+  `NSLocalNetworkUsageDescription` as that prompt; without it the app cannot explain the request and access can be
+  refused. The simulator's loopback gateway never triggers the prompt, so the contract test reads a LAN case from
+  `mobile/gateway-addresses.txt` and the plist together. Plain `http://` on a LAN address remains unsupported by design;
+  the gateway needs `https://` (for example `tailscale serve`).
 - **What iOS does not have:** no App-Bound Domains, so the service worker's offline cache does not run (everything else
   works online); no microphone or resume hooks yet (WP10), the share sheet being `@capacitor/share`'s; and `ios-smoke`
   proves the Connect page and the gateway's UI load, not a tapped journey.
