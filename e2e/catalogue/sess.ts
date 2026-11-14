@@ -456,7 +456,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:session"],
     journeys: ["session-multiplexing", "session-header-overflow", "pane-reposition"],
     web: "required",
-    phone: "backlog",
+    phone: { excluded: "Opening two panes side by side, their sizes and their reload need a wide screen; \"Below 1100px only the active pane is visible\".", decision: "SPEC.md#behaviour" },
   },
   {
     id: "SESS-048",
@@ -546,7 +546,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-header-overflow"],
     web: "required",
-    phone: "backlog",
+    phone: { excluded: "Reaching the 320px pane minimum with two panes needs a wide screen; the web target also proves the phone's 390×844 header.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "SESS-057",
