@@ -54,6 +54,14 @@ test.for(runtimes)("Stop ends a request whose key command is still running (%s)"
   assert.deepEqual(keys, []);
 });
 
+test.for(runtimes)("a key command that fails once is tried again before the request gives up (%s)", async (kind, t) => {
+  const { runtime, model, keys } = await runtimeWithKeyCommand(t, kind, (dir) =>
+    `n=$(cat '${dir}/tries' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${dir}/tries'; [ $n -ge 2 ] && echo sk-second`);
+  const reply = await runtime.completeSimple(model, { messages: [] });
+  assert.equal(reply.stopReason, "stop", String(reply.errorMessage));
+  assert.deepEqual(keys, ["sk-second"]);
+});
+
 test.for(runtimes)("a stored credential still wins over the key command, and a failed command fails the request as PI's does (%s)", async (kind, t) => {
   const stored = await runtimeWithKeyCommand(t, kind, (dir) => `touch '${dir}/started'; echo sk-command`, "sk-stored");
   await stored.runtime.completeSimple(stored.model, { messages: [] });
@@ -81,4 +89,84 @@ test.for(runtimes)("keyCommandFails is true only while the key command fails, an
   await waitFor("the key command to start", () => existsSync(join(waiting.dir, "started")));
   stop.abort(new Error("Stopped by the operator"));
   await assert.rejects(checking, /Stopped by the operator/u);
+});
+
+type LocalGate = { isStarting: (provider: string) => boolean; waitWhileStarting: (provider: string, signal?: AbortSignal) => Promise<void> };
+
+async function runtimeWithLocalGate(t: TestContext, gate: LocalGate) {
+  const dir = await mkdtemp(join(tmpdir(), "hui-local-gate-"));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
+  const agentDir = join(dir, "pi");
+  await mkdir(agentDir);
+  await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { local: {
+    baseUrl: "http://127.0.0.1:9/v1", api: "openai-completions", apiKey: "fixture", models: [{ id: "m" }],
+  } } }));
+  const runtime = await createSessionModelRuntime(agentDir, join(dir, "hui"), { gate });
+  const calls: string[] = [];
+  runtime.registerNativeProvider({ ...runtime.getProvider("local")!, streamSimple: (_model, _context, options) => {
+    calls.push(options?.headers?.["x-fixture"] ?? "called");
+    const output = createAssistantMessageEventStream();
+    output.push({ type: "done", reason: "stop", message: fauxAssistantMessage("OK") });
+    output.end();
+    return output;
+  } });
+  return { runtime, model: runtime.getModel("local", "m")!, calls };
+}
+
+test("a model request waits for a local server that is still starting", async (t) => {
+  let release!: () => void;
+  const started = new Promise<void>((resolve) => { release = resolve; });
+  let asked = 0;
+  const gate: LocalGate = {
+    isStarting: () => true,
+    waitWhileStarting: async () => { asked += 1; await started; },
+  };
+  const { runtime, model, calls } = await runtimeWithLocalGate(t, gate);
+  const reply = runtime.completeSimple(model, { messages: [] });
+  await waitFor("the model request to wait for the start", () => asked > 0);
+  assert.deepEqual(calls, [], "the provider is not called while the server is starting");
+  release();
+  const message = await reply;
+  assert.equal(message.stopReason, "stop", String(message.errorMessage));
+  assert.deepEqual(calls, ["called"]);
+});
+
+test("a failed local start rejects the waiting model request with its reason", async (t) => {
+  const gate: LocalGate = {
+    isStarting: () => true,
+    waitWhileStarting: async () => { throw new Error("Studio did not start: the command exited with code 3."); },
+  };
+  const { runtime, model, calls } = await runtimeWithLocalGate(t, gate);
+  const message = await runtime.completeSimple(model, { messages: [] });
+  assert.equal(message.stopReason, "error");
+  assert.match(message.errorMessage ?? "", /Studio did not start: the command exited with code 3/u);
+  assert.deepEqual(calls, [], "a failed start never reaches the provider");
+});
+
+test("a model request does not wait when no local start is in progress", async (t) => {
+  let asked = 0;
+  const gate: LocalGate = { isStarting: () => false, waitWhileStarting: async () => { asked += 1; } };
+  const { runtime, model, calls } = await runtimeWithLocalGate(t, gate);
+  const message = await runtime.completeSimple(model, { messages: [] });
+  assert.equal(message.stopReason, "stop", String(message.errorMessage));
+  assert.equal(asked, 0);
+  assert.deepEqual(calls, ["called"]);
+});
+
+test("a cancelled waiting model request ends without reaching the provider", async (t) => {
+  const gate: LocalGate = {
+    isStarting: () => true,
+    waitWhileStarting: async (_provider, signal) => {
+      signal?.throwIfAborted();
+      await new Promise((_resolve, reject) => signal?.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    },
+  };
+  const { runtime, model, calls } = await runtimeWithLocalGate(t, gate);
+  const stop = new AbortController();
+  const reply = runtime.completeSimple(model, { messages: [] }, { signal: stop.signal });
+  stop.abort(new Error("Stopped by the operator"));
+  const message = await reply;
+  assert.equal(message.stopReason, "error");
+  assert.match(message.errorMessage ?? "", /Stopped by the operator/u);
+  assert.deepEqual(calls, []);
 });

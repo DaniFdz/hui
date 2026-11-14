@@ -1,9 +1,7 @@
 /**
  * Catalog of HUI's routed pages, each served at `/<id>` with its label, area and summary. Sessions, Settings
- * and the Kanban board are routed separately in `navigation.ts`. A page behind a Labs flag is listed only while its
- * flag is on.
+ * and the Kanban board are routed separately in `navigation.ts`.
  */
-import type { Settings } from "./settings/settings.ts";
 
 export type HuiPage = {
   id: string;
@@ -42,11 +40,3 @@ const PAGE_ROWS = [
 export type HuiPageId = (typeof PAGE_ROWS)[number][0];
 
 export const HUI_PAGES: readonly HuiPage[] = PAGE_ROWS.map(([id, label, area, summary]) => ({ id, label, area, summary }));
-
-export function isPageAvailable(page: HuiPage, labs: Settings["labs"]): boolean {
-  return page.id !== "dashboard" || labs.dashboard;
-}
-
-export function availablePages(labs: Settings["labs"]): readonly HuiPage[] {
-  return HUI_PAGES.filter((page) => isPageAvailable(page, labs));
-}

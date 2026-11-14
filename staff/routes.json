@@ -1,0 +1,22 @@
+[
+  {
+    "name": "planner",
+    "description": "Work out the data shape, seams, call sites and phase order before code. Use when a change crosses a boundary or the design is not settled."
+  },
+  {
+    "name": "explorer",
+    "description": "Read-only investigation: how a subsystem works, why it is built this way, where a change would land. Use before deciding anything."
+  },
+  {
+    "name": "worker",
+    "description": "Implement one scoped change in the session's checkout and prove it with the evidence the kickoff names. Use for code, tests and docs that one checkout can carry."
+  },
+  {
+    "name": "reviewer",
+    "description": "Try to break a diff: correctness, regressions, blast radius, missing tests. Use on every non-trivial change, on a different model family from the author."
+  },
+  {
+    "name": "verifier",
+    "description": "Independently prove the behavior on the real artifact, not the author's summary. Use before a change ships or a pull request merges."
+  }
+]

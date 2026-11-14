@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -74,6 +75,22 @@ test("zoom and date answer in the spec's formats, and refuse lines that do not e
   await pending.append("user", "far too long for sixteen bytes");
   await pending.append("talk", "also too long for it");
   assert.equal(pending.zoom(0, 2), `0+1|${PLACEHOLDER}\n1+1|${PLACEHOLDER}`, "lines not summarized yet say so");
+});
+
+test("search answers from the log, newest first, and never changes it", { timeout: 10_000 }, async (t) => {
+  const memory = await open(t, await directory(t), { summarize: never });
+  await memory.append("user", "the deploy window is Tuesdays");
+  await memory.append("talk", "Noted.");
+  await memory.append("echo", "deploys: Tuesdays\nfridays: frozen");
+  assert.equal(memory.search("tuesdays"), [
+    `2 lines mention "tuesdays", newest first:`,
+    `2+1|echo: deploys: Tuesdays fridays: frozen`,
+    `0+1|user: the deploy window is Tuesdays`,
+  ].join("\n"));
+  assert.equal(memory.search("Tuesdays", 1), [`1 line mentions "Tuesdays", newest first:`, `2+1|echo: deploys: Tuesdays fridays: frozen`, `[at most 1 shown]`].join("\n"));
+  assert.equal(memory.search("nothing"), `No line mentions "nothing" in the chat.`);
+  assert.equal(memory.search("  "), "No word to search for.");
+  assert.equal(memory.status().messages, 3, "a search reads the log and appends nothing to it");
 });
 
 /** Message `i` of a synthetic chat: every third one too long to be its own line. */
@@ -235,4 +252,45 @@ test("the browse page shows the view, every message and each level, escaped", { 
   assert(page.includes("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt; &amp; more"));
   for (const heading of ["View · 2 lines", "ROOT · 2 messages", "Level 0 · 2 nodes", "Level 1 · 1 nodes"]) assert(page.includes(heading), heading);
   assert(page.includes("<b>0+2</b>") || page.includes("<b>0+1</b>"));
+});
+
+test("what the compactor spent is kept beside the log, and counted again after a reopen", { timeout: 15_000 }, async (t) => {
+  const dir = await directory(t);
+  const spend: Summarize = async () => ({ text: "short line", usage: { input: 10, output: 5, cacheRead: 1, cacheWrite: 2, cost: 0.5 } });
+  const first = await OptChatMemory.open(dir, { name: "Grok", summarize: spend, node: 16 });
+  await first.append("user", "a message far too long for sixteen bytes");
+  await until(first, () => first.status().usage.calls === 1 && first.status().pending === 0);
+  const spent = { calls: 1, input: 10, output: 5, cacheRead: 1, cacheWrite: 2, cost: 0.5 };
+  assert.deepEqual(first.status().usage, spent);
+  await first.close();
+  assert.deepEqual(JSON.parse(await readFile(join(dir, "usage.json"), "utf8")), { version: 1, usage: spent }, "the file holds the total, not the last call");
+
+  const reopened = await open(t, dir, { summarize: spend, node: 16 });
+  assert.deepEqual(reopened.status().usage, spent, "a restart counts the same total, not zero");
+  await reopened.append("user", "another message far too long for it");
+  await until(reopened, () => reopened.status().usage.calls > spent.calls && reopened.status().pending === 0);
+  const grown = reopened.status().usage;
+  assert(grown.calls > spent.calls, `${grown.calls} calls, was ${spent.calls}`);
+  assert.deepEqual([grown.input, grown.output, grown.cost], [grown.calls * 10, grown.calls * 5, grown.calls * 0.5], "each call adds its own tokens and cost to the saved total");
+});
+
+test("a usage file that cannot be used is reported, starts from zero, and is replaced", { timeout: 10_000 }, async (t) => {
+  const dir = await directory(t);
+  await writeFile(join(dir, "usage.json"), "{ not json");
+  const reports: string[] = [];
+  const memory = await OptChatMemory.open(dir, { name: "Grok", summarize: refuse, report: (problem) => reports.push(problem) });
+  assert.match(reports.join("\n"), /usage\.json is not valid JSON/u);
+  assert.deepEqual(memory.status().usage, { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 });
+  await memory.close();
+  assert.deepEqual(JSON.parse(await readFile(join(dir, "usage.json"), "utf8")), { version: 1, usage: { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 } }, "the bad file is replaced, so the next open reads a good one");
+});
+
+test("a memory that has bought no summary keeps no usage file and reports nothing", { timeout: 10_000 }, async (t) => {
+  const reports: string[] = [];
+  const dir = await directory(t);
+  const memory = await open(t, dir, { summarize: refuse, report: (problem) => reports.push(problem) });
+  await memory.append("user", "hi");
+  await memory.close();
+  assert.deepEqual(reports, []);
+  assert.equal(existsSync(join(dir, "usage.json")), false, "nothing spent, nothing to keep");
 });

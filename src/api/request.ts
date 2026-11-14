@@ -55,6 +55,22 @@ export async function fetchWithResponseDeadline(
   }
 }
 
+/**
+ * Opens a streaming response. Its headers must arrive within the deadline,
+ * while the caller's signal still cancels it. Once the response is open the
+ * body may stream for as long as the stream lasts; streams never get a total
+ * download deadline.
+ */
+export function fetchEventStream(
+  fetcher: Fetcher,
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = RESPONSE_TIMEOUT_MS,
+): Promise<Response> {
+  const { signal, ...rest } = init;
+  return fetchWithResponseDeadline(fetcher, input, rest, timeoutMs, signal ?? undefined);
+}
+
 function huiRequest(input: RequestInfo | URL, init?: RequestInit): { method: string; path: string } | undefined {
   let url: URL;
   try {

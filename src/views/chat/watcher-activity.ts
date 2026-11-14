@@ -1,7 +1,7 @@
-/** Background watchers as compact rows at the end of the transcript, styled
- * like background-agent activity: one line per watcher (icon, purpose, latest
- * output, state), several collapsed into one summary line. Opening a row shows
- * its details, a log tail and the stop/restart/dismiss controls. */
+/** Background watchers as compact rows: one line per watcher (icon, purpose,
+ * latest output, state). Opening a row shows its details, a log tail and the
+ * stop/restart/dismiss controls. The Run status popover is where they live; a
+ * settled watcher still writes its own event into the conversation. */
 import { html, nothing } from "lit";
 import { relativeTime } from "../../lib/browser-view.ts";
 import { icons } from "../../lib/icons.ts";
@@ -21,9 +21,8 @@ export type WatcherActivityProps = {
   pendingId: string;
   /** The fetched log tail of the opened watcher, when there is one. */
   log: WatcherLogView | null;
-  /** Open disclosures: `watchers` for the group, `watcher:<id>` for a row. */
+  /** Open rows: `watcher:<id>`. */
   expanded: ReadonlySet<string>;
-  onGroupToggle: (open: boolean) => void;
   onToggle: (watcher: Watcher, open: boolean) => void;
   onStop: (watcher: Watcher) => void;
   onRestart: (watcher: Watcher) => void;
@@ -134,26 +133,7 @@ export function renderWatcherEvent(event: WatcherEvent) {
   </div>`;
 }
 
-export function renderWatcherActivity(props: WatcherActivityProps) {
-  const { watchers } = props;
-  if (!watchers.length) return nothing;
-  if (watchers.length === 1) {
-    return html`<div class="chat-subagents chat-watchers" aria-label="Background watchers">${renderRow(props, watchers[0]!)}</div>`;
-  }
-  const running = watchers.filter((watcher) => watcher.state === "running");
-  const current = running[0] ?? watchers[0]!;
-  const open = props.expanded.has("watchers");
-  return html`<details class="chat-subagents chat-subagents--group chat-watchers" aria-label="Background watchers" .open=${open}
-    @toggle=${(event: Event) => {
-      const next = (event.currentTarget as HTMLDetailsElement).open;
-      if (next !== open) props.onGroupToggle(next);
-    }}>
-    <summary class="chat-subagents__summary">
-      <span class="chat-subagents__icon">${stateIcon(running.length ? "running" : current.state)}</span>
-      <span class="chat-subagents__label">${watchers.length} watchers</span>
-      <span class="chat-subagents__snippet">${running.length ? `${running.length} running · ${current.purpose}` : "None running"}</span>
-      <span class="chat-subagents__chevron" aria-hidden="true">${icons.chevronDown}</span>
-    </summary>
-    <div class="chat-subagents__list">${watchers.map((watcher) => renderRow(props, watcher))}</div>
-  </details>`;
+/** Every watcher as its own disclosure, for the Run status popover. */
+export function renderWatcherRows(props: WatcherActivityProps) {
+  return html`${props.watchers.map((watcher) => renderRow(props, watcher))}`;
 }

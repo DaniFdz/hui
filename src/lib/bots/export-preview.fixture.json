@@ -167,6 +167,11 @@
           "c3": {
             "question": "Keep this as it is: “prod-eu-1”?"
           }
+        },
+        "setup": {
+          "characters": 1841,
+          "limit": 6000,
+          "dropped": []
         }
       }
     },
@@ -210,6 +215,11 @@
           "c3": {
             "replacement": ""
           }
+        },
+        "setup": {
+          "characters": 1672,
+          "limit": 6000,
+          "dropped": []
         }
       }
     },
@@ -303,6 +313,11 @@
           "a2": {
             "replacement": ""
           }
+        },
+        "setup": {
+          "characters": 1904,
+          "limit": 6000,
+          "dropped": []
         }
       }
     },
@@ -382,6 +397,11 @@
           "a1": {
             "replacement": ""
           }
+        },
+        "setup": {
+          "characters": 1919,
+          "limit": 6000,
+          "dropped": []
         }
       }
     }

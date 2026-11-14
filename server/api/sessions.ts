@@ -151,12 +151,25 @@ export const SessionList = Type.Object({ revision: Type.Number(), groups: Type.A
 export type SessionList = Static<typeof SessionList>;
 
 export const QuestionnaireOption = Type.Object({
-  label: Type.String(), description: Type.String(), preview: Type.Optional(Type.String()),
+  label: Type.String(), description: Type.String(), preview: Type.Optional(Type.String()), previewHtml: Type.Optional(Type.String()),
 }, { $id: "QuestionnaireOption" });
 export type QuestionnaireOption = Static<typeof QuestionnaireOption>;
 
+/** How a question takes its answer: options (radios, or checkboxes for a
+ * multi-select question), a slider over a numeric range, or a long text. */
+export const QuestionnaireInput = Type.Union([
+  Type.Literal("options"), Type.Literal("slider"), Type.Literal("text"),
+], { $id: "QuestionnaireInput" });
+export type QuestionnaireInput = Static<typeof QuestionnaireInput>;
+
 export const QuestionnaireQuestion = Type.Object({
   header: Type.String(), question: Type.String(), multiSelect: Type.Boolean(), options: Type.Array(QuestionnaireOption),
+  input: QuestionnaireInput,
+  /** The slider's range and step, and what its value counts in. */
+  min: Type.Optional(Type.Number()), max: Type.Optional(Type.Number()), step: Type.Optional(Type.Number()),
+  unit: Type.Optional(Type.String()),
+  /** The long-text field's prompt. */
+  placeholder: Type.Optional(Type.String()),
 }, { $id: "QuestionnaireQuestion" });
 export type QuestionnaireQuestion = Static<typeof QuestionnaireQuestion>;
 
@@ -201,6 +214,9 @@ export type SessionPromptResponse = Static<typeof SessionPromptResponse>;
 export const SessionFastResponse = Type.Object({ fast: Type.Boolean() }, { $id: "SessionFastResponse" });
 export type SessionFastResponse = Static<typeof SessionFastResponse>;
 
+export const SessionAutonomousResponse = Type.Object({ autonomous: Type.Boolean() }, { $id: "SessionAutonomousResponse" });
+export type SessionAutonomousResponse = Static<typeof SessionAutonomousResponse>;
+
 export const SessionConnectResponse = Type.Object({ url: Type.String() }, { $id: "SessionConnectResponse" });
 export type SessionConnectResponse = Static<typeof SessionConnectResponse>;
 
@@ -244,6 +260,7 @@ export const sessionActionRouteSchemas = [
   { method: "DELETE", path: "/__hui/sessions/:id/compact", response: SessionOk },
   { method: "POST", path: "/__hui/sessions/:id/fork", response: SessionResponse },
   { method: "POST", path: "/__hui/sessions/:id/fast", response: SessionFastResponse },
+  { method: "POST", path: "/__hui/sessions/:id/autonomous", response: SessionAutonomousResponse },
   { method: "POST", path: "/__hui/sessions/:id/queue", request: SessionQueueRequest, response: SessionOk },
   { method: "POST", path: "/__hui/sessions/:id/goal", request: SessionGoalRequest, response: SessionResponse },
 ];

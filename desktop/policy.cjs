@@ -1,11 +1,76 @@
 /** Pure decisions for the desktop shell, kept apart from the Electron process code: which URLs stay in the window,
- * which open externally, `hui://` chat links, validated notification destinations, gateway addresses and the saved
- * color scheme. */
+ * which open externally, the address a gateway is served at and how one is recognised, `hui://` chat links, validated
+ * notification destinations and the saved color scheme. */
 const { URL } = require('node:url');
-const { isIP } = require('node:net');
+const { BlockList, isIP } = require('node:net');
 
-function isInternal(url, origin) {
-  try { return new URL(url).origin === origin; } catch { return false; }
+/** The networks a gateway is reached on from this device: loopback, private, carrier-grade NAT (Tailscale's own range)
+ * and unique-local IPv6. A link-local address is deliberately absent — nothing administers a gateway there, and a
+ * metadata endpoint lives on one. */
+const LOCAL_NETWORKS = new BlockList();
+for (const [network, prefix, family] of [
+  ['127.0.0.0', 8, 'ipv4'], ['10.0.0.0', 8, 'ipv4'], ['172.16.0.0', 12, 'ipv4'], ['192.168.0.0', 16, 'ipv4'],
+  ['100.64.0.0', 10, 'ipv4'], ['::1', 128, 'ipv6'], ['fc00::', 7, 'ipv6'],
+]) LOCAL_NETWORKS.addSubnet(network, prefix, family);
+
+/** The http(s) URL a value names, or nothing: the scheme every gateway page and every web link uses. */
+function httpUrl(value) {
+  try {
+    const target = new URL(value);
+    return ['http:', 'https:'].includes(target.protocol) ? target : undefined;
+  } catch { return; }
+}
+
+/** The address a gateway is reached at: its origin and any path it is served under, without a trailing slash. */
+function gatewayBase(value) {
+  const target = httpUrl(value);
+  if (!target || target.username || target.password) return;
+  return `${target.origin}${target.pathname.replace(/\/+$/u, '')}`;
+}
+
+/** Whether `target` is a page of the gateway at `base`: that gateway's origin, under the path it is served at. */
+function isGatewayPage(target, base) {
+  const url = httpUrl(target);
+  const gateway = base && gatewayBase(base);
+  if (!url || !gateway) return false;
+  const root = new URL(gateway);
+  if (url.origin !== root.origin) return false;
+  const prefix = root.pathname.replace(/\/+$/u, '');
+  return !prefix || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`);
+}
+
+/** Whether an address names a machine on this device's own network, so it could be this device's other gateway and
+ * one identity request is worth it. A public site is the browser's, and is never asked. */
+function mayBeGateway(value) {
+  const target = httpUrl(value);
+  if (!target) return false;
+  const host = target.hostname.replace(/^\[|\]$/gu, '').toLowerCase();
+  const family = isIP(host) === 4 ? 'ipv4' : isIP(host) === 6 ? 'ipv6' : undefined;
+  if (family) return LOCAL_NETWORKS.check(host, family);
+  // A machine name, with or without the dot that makes it a fully qualified one.
+  const name = host.replace(/\.$/u, '');
+  if (!name.includes('.')) return true;
+  return /(?:^|\.)(?:local|localhost|internal|lan|home\.arpa|ts\.net)$/u.test(name);
+}
+
+/** The addresses to try as the base of the gateway `target` belongs to, nearest first: the origin, then its path one
+ * segment longer each time, so a gateway served under a path is found too. */
+function gatewayCandidates(value, limit = 4) {
+  const target = httpUrl(value);
+  if (!target) return [];
+  const bases = [target.origin];
+  const segments = target.pathname.split('/').filter(Boolean);
+  for (let length = 1; length <= segments.length && bases.length < limit; length++) {
+    bases.push(`${target.origin}/${segments.slice(0, length).join('/')}`);
+  }
+  return bases;
+}
+
+/** Whether a body is the identity handshake `GET /__hui/update` answers: HUI's own snapshot, not another app's page. */
+function isGatewayHandshake(body) {
+  return Boolean(body) && typeof body === 'object' && !Array.isArray(body)
+    && 'currentVersion' in body && 'job' in body
+    && (body.currentVersion === null || typeof body.currentVersion === 'string');
 }
 
 function isExternal(url) {
@@ -77,4 +142,7 @@ function notificationFromUrl(link) {
   } catch { return; }
 }
 
-module.exports = { isInternal, isExternal, gatewayUrl, themeSource, chatUrl, appChatPath, notificationFromUrl };
+module.exports = {
+  isExternal, gatewayUrl, themeSource, chatUrl, appChatPath, notificationFromUrl,
+  gatewayBase, isGatewayPage, mayBeGateway, gatewayCandidates, isGatewayHandshake,
+};

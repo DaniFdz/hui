@@ -14,10 +14,11 @@
 import type { TranscriptMetrics } from "./transcript-metrics.ts";
 export type { RuntimeInspection, RuntimeTool, ToolCatalogEntry, ToolsCatalog, SessionTools } from "../api/tools.ts";
 export type {
-  CompactionReason, QueuedMessage, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage,
+  CompactionReason, ContextUsagePart, QueuedMessage, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage,
 } from "../api/session-events.ts";
 import type { CompactionReason, RuntimeCommand, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage } from "../api/session-events.ts";
 import type { CallRecord } from "../calls-format.ts";
+import type { ModelMetric } from "../api/model-metrics.ts";
 
 export type RuntimeQuestionResponse = { value: string } | { confirmed: boolean };
 
@@ -37,6 +38,8 @@ export type RuntimeEvent =
   | { type: "compaction_start"; reason: CompactionReason; blocking?: false; background?: true }
   /** `willRetry`: PI resumes the overflowed turn itself after a summary. */
   | { type: "compaction_end"; reason: CompactionReason; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
+  /** A completed model request measured by HUI: time to first token, generation throughput and usage. */
+  | { type: "model_metric"; metric: ModelMetric }
   /** The agent stopped entirely. Distinct from `turn_end`: a turn can end while
    * the agent is still working, and the prompt guard follows this one. */
   | { type: "settled"; historyRefreshed?: boolean }
@@ -82,6 +85,8 @@ export type StartOptions = {
   huiSessionId?: string;
   /** Remote worker that hosts the session; absent means this machine. */
   worker?: string;
+  /** The bot whose own skills this subagent's prompt loads (a bot's workers carry the staff pack). */
+  botSkills?: string;
 };
 
 /** A caller-owned input identity, deduplicated by runtimes that expose tracked prompt receipts. */
@@ -137,6 +142,9 @@ export type RuntimeSession = {
   /** Fast mode: the session's requests to a model with one (`RuntimeModel.fast`) ask for it. */
   currentFast?(): boolean;
   setFast?(on: boolean): Promise<void>;
+  /** Autonomous mode: the session's prompt makes it the lead of its own task, reporting to its chief of staff. */
+  currentAutonomous?(): boolean;
+  setAutonomous?(on: boolean): Promise<void>;
   pendingQueue?(): RuntimeQueue;
   pendingQuestions?(): readonly RuntimeQuestion[];
   respondQuestion?(id: string, response: RuntimeQuestionResponse): Promise<void>;
@@ -217,6 +225,9 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
 export type AgentRuntime = {
   /** Runtime adapter ID, such as `pi`. */
   readonly id: string;
+  /** Every session this adapter starts continues an interrupted run itself when it reopens. A worker's sessions say
+   * so only once it answers, so a remote adapter leaves this out. */
+  readonly resumesInterruptedRuns?: boolean;
   start(options: StartOptions): Promise<RuntimeSession>;
 };
 

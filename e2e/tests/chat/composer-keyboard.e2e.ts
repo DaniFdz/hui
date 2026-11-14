@@ -36,8 +36,7 @@ test("Enter sends and steers, Shift+Enter breaks a line, Command or Ctrl+Enter q
   await expect(transcript.getByText("Fixture response.")).toHaveCount(3);
   await expect(idle).toBeVisible();
 
-  const settings = await hui.api<{ chat: Record<string, unknown> }>("GET", "/__hui/settings");
-  await hui.api("PUT", "/__hui/settings", { ...settings, chat: { ...settings.chat, sendShortcut: "modifierEnter" } });
+  await hui.saveAppearance({ chat: { sendShortcut: "modifierEnter" } });
   await hui.reload();
   await message.fill("Line one");
   await message.press("Enter");

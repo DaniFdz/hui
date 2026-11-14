@@ -1,7 +1,6 @@
 # Bot schedules browser verification
 
-Journey for schedules as a CLI and bots that schedule their own routines (HUI-18
-item 10; SPEC.md, "Schedules are a CLI, and bots schedule their own routines"):
+Journey for schedules as a CLI and bots that schedule their own routines (SPEC.md, "Schedules are a CLI, and bots schedule their own routines"):
 a bot adds a temporary routine through its `routines` tool, the Routines tab and
 Automations show who made it and its limits, the routine's own turn removes it,
 the Tools tab lists the tool as a normal switch, and `hui schedule` manages the

@@ -13,6 +13,8 @@
  * by itself) or `disconnected` (it waits for a reconnect); its streams stay open.
  */
 import { remoteRuntime } from "../runtimes/remote.ts";
+import { workers } from "../workers.ts";
+import { createSessionWorktree } from "../git/worktrees.ts";
 import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
 import { lastOperatorRequest } from "./digest.ts";
@@ -48,10 +50,22 @@ import type {
 } from "../runtimes/types.ts";
 import { RuntimeOutputError, RuntimeUnreachableError } from "../runtimes/types.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
+import { localProviders } from "../pi/local-providers.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import type { Settings } from "../hui-settings.ts";
+import { modelMetrics } from "../model-metrics.ts";
 
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
+/** A run that ends on a failure the next attempt can pass is retried by itself:
+ * a dropped connection would otherwise wait for the operator to press Continue.
+ * The last waits cover an outage of minutes, and a failure still on the record
+ * when the gateway starts or the Mac wakes gets a fresh set. */
+const AUTO_RESUME_DELAYS = [5_000, 20_000, 60_000, 180_000, 600_000];
+/** How long a recorded failure is worth retrying after the gateway restarts. */
+export const AUTO_RESUME_MAX_AGE_MS = 12 * 60 * 60_000;
+/** Messages a run died on where asking again unchanged can work. Anything else
+ * (a bad key, an unknown model, a refused request) only fails the same way. */
+const RETRYABLE_FAILURE = /timed? ?out|timeout|connection|disconnect|reconnect|offline|unreachable|fetch failed|socket hang up|ECONNRESET|ECONNREFUSED|network|overload|service unavailable|\b50[0234]\b|\b429\b|rate.?limit/iu;
 const MAX_RECENT_MESSAGES = 10_000;
 const RECENT_MESSAGES_MS = 60_000;
 
@@ -90,6 +104,8 @@ export type SessionSnapshot = {
   thinking?: string;
   /** Fast mode; absent when the runtime cannot change speed. */
   fast?: boolean;
+  /** Autonomous mode; absent when the session cannot carry it (a bot's chat, a runtime without the mode). */
+  autonomous?: boolean;
   queue: RuntimeQueue;
   /** The runtime's questions, then HUI's own pending ones. */
   questions: readonly (RuntimeQuestion | HuiQuestion)[];
@@ -112,6 +128,7 @@ export type SessionStreamMessage =
   | { kind: "model"; model: RuntimeModel }
   | { kind: "thinking"; level: string }
   | { kind: "fast"; fast: boolean }
+  | { kind: "autonomous"; autonomous: boolean }
   | { kind: "closed" };
 
 /** Lightweight gateway-wide lifecycle update. Detailed transcript/runtime
@@ -185,6 +202,7 @@ type Live = {
   transcript: TranscriptEntry[];
   thinking?: string;
   fast?: boolean;
+  autonomous?: boolean;
   queue: RuntimeQueue;
   /** Follow-ups not yet handed to the runtime. Keeping them here is what makes
    * OpenClaw-style edit, remove, and reorder operations truthful. */
@@ -205,6 +223,10 @@ type Live = {
   /** Runtime error already logged in this run, so settlement does not log the
    * same failure twice. */
   loggedRunError?: string;
+  /** Retries already spent on runs that ended on a connection failure. */
+  autoResumeAttempts?: number;
+  /** The retry waiting for its delay; cleared by anything that takes over. */
+  autoResumeTimer?: ReturnType<typeof setTimeout>;
   /** Set before removing this entry so a slow boot cannot resurrect it. */
   closed?: boolean;
   /** A boot reattaching to a runtime hosted elsewhere is in flight. */
@@ -250,6 +272,13 @@ function removedQueueEntries(previous: readonly string[], next: readonly string[
  * working. The route turns this into a 409 rather than a server error. */
 export class SessionBusyError extends Error {}
 
+/** A failure HUI still means to retry: set when a run ended on one, within the
+ * window a restart or a wake keeps it. */
+export function retryableRunFailure(record: SessionRecord): boolean {
+  const at = Date.parse(record.runFailedAt ?? "");
+  return Number.isFinite(at) && Date.now() - at <= AUTO_RESUME_MAX_AGE_MS;
+}
+
 export class LiveSessions {
   /** In-memory check used at the shutdown boundary, without a registry race. */
   get activeWorkCount(): number {
@@ -263,6 +292,11 @@ export class LiveSessions {
   get resumableWorkCount(): number {
     return this.#activeWork().filter((live) => live.runtime?.resumesInterruptedRuns === true
       && live.status !== "starting" && live.submissions === 0 && live.followUps.length === 0).length;
+  }
+
+  /** A session whose runtime continues an interrupted run itself when it reopens, so nothing has to prompt it. */
+  resumesRun(record: SessionRecord): boolean {
+    return this.#runtimes.get(record.tool)?.resumesInterruptedRuns === true;
   }
 
   /** Active work a gateway stop would lose; ordinary stop and update refuse it. */
@@ -281,6 +315,7 @@ export class LiveSessions {
   #revisions = Date.now() * 1000;
   #statusSubscribers = new Set<StatusSubscriber>();
   #runEnds = new Set<(end: RunEnd) => void>();
+  #autonomy = new Set<(id: string, on: boolean) => void>();
   /** Deleted ids stay tombstoned for this gateway lifetime so a request that
    * read the old row before DELETE committed cannot start it afterwards. */
   #deletions = new Map<string, DeletionState>();
@@ -297,6 +332,7 @@ export class LiveSessions {
   /** Hands a settled conversation to the progress refresher; it never delays the settle. */
   #progressRefresh: (sessionId: string, transcript: readonly TranscriptEntry[]) => void = () => {};
   #aborted: (sessionId: string) => void = () => {};
+  #autoResumeDelays: readonly number[];
 
   /** Injectable so the state machine can be exercised without waiting to boot a
    * real tool. A single runtime stands in for one tool, an array for several. */
@@ -304,9 +340,11 @@ export class LiveSessions {
     runtimes: AgentRuntime | AgentRuntime[] = [piRuntime, durableRuntime],
     registryUpdater: typeof updateRegistry = updateRegistry,
     settingsReader: () => Promise<Settings> = readHuiSettings,
+    autoResumeDelays: readonly number[] = AUTO_RESUME_DELAYS,
   ) {
     this.#updateRegistry = registryUpdater;
     this.#readSettings = settingsReader;
+    this.#autoResumeDelays = autoResumeDelays;
     for (const runtime of Array.isArray(runtimes) ? runtimes : [runtimes]) {
       this.#runtimes.set(runtime.id, runtime);
     }
@@ -548,6 +586,7 @@ export class LiveSessions {
       ...(usage ? { usage } : {}),
       ...(live.thinking ? { thinking: live.thinking } : {}),
       ...(live.fast === undefined ? {} : { fast: live.fast }),
+      ...(live.autonomous === undefined ? {} : { autonomous: live.autonomous }),
       queue: this.#queueSnapshot(live),
       questions: [...live.questions.values(), ...this.#huiQuestions(id)],
       subagents: [...this.#subagentSnapshot(id)],
@@ -624,6 +663,11 @@ export class LiveSessions {
     this.#runEnds.add(listener);
   }
 
+  /** Told after a session's Autonomous mode changed and was saved. */
+  watchAutonomy(listener: (id: string, on: boolean) => void): void {
+    this.#autonomy.add(listener);
+  }
+
   /** Listeners are held even before the runtime exists, so a stream opened
    * during boot misses nothing. */
   subscribe(id: string, subscriber: Subscriber): () => void {
@@ -648,6 +692,7 @@ export class LiveSessions {
     if (!live?.runtime) {
       throw this.#unavailable(live);
     }
+    this.#cancelAutoResume(live);
     if (this.#holdWhileCompacting(live)) {
       await this.followUp(id, text, attachments, options);
       return;
@@ -668,6 +713,10 @@ export class LiveSessions {
     live.lastPrompt = { text, ...(attachments?.length ? { attachments } : {}) };
     if (!text.startsWith(SUBAGENT_COMPLETION_MARKER)) live.runOrigin = recoveryPrompt;
     live.stopped = undefined;
+    if (live.record.runFailedAt !== undefined) {
+      live.record = { ...live.record, runFailedAt: undefined };
+      void this.#save(live, { runFailedAt: undefined }, true).catch(() => undefined);
+    }
     live.turnProducedOutput = false;
     live.fallbackAttempted = false;
     // Every screen on this session gets the prompt before the run is announced: a chat
@@ -684,6 +733,15 @@ export class LiveSessions {
     live.transcript.push(prompted);
     this.#broadcastTranscript(live);
     this.#setStatus(live, "running");
+    // A manual start in Settings can still be waiting for the model server. The model request waits for it too;
+    // saying so here explains the silence instead of leaving the turn looking stuck.
+    const localProvider = live.runtime.currentModel?.()?.provider ?? live.record.model?.split("/")[0];
+    if (localProvider && localProviders.isStarting(localProvider)) {
+      this.#broadcast(live, {
+        kind: "event",
+        event: { type: "notice", level: "info", message: `Waiting for ${localProviders.name(localProvider)} to start…` },
+      });
+    }
     live.submissions += 1;
     try {
       // This write is the recovery boundary. If the gateway or machine dies
@@ -787,6 +845,16 @@ export class LiveSessions {
 
   async subagentRoutes(): Promise<Settings["models"]["routes"]> {
     return (await this.#readSettings()).models.routes;
+  }
+
+  /** A subagent's own checkout: a fresh worktree off its caller's (on the worker that runs the caller), so parallel
+   * workers never share one working tree. The branch gets HUI's configured prefix and the child's title. */
+  async subagentWorktree(caller: SessionRecord, title: string): Promise<{ cwd: string; branch: string; rollback: () => Promise<void> }> {
+    const { branchPrefix } = await this.#readSettings();
+    const options = { sourceDirectory: caller.cwd, title, branchPrefix };
+    if (caller.worker) return workers.createWorktree(caller.worker, options);
+    const created = await createSessionWorktree(options);
+    return { cwd: created.cwd, branch: created.branch, rollback: created.rollback };
   }
 
   async commands(id: string): Promise<readonly RuntimeCommand[]> {
@@ -1204,6 +1272,10 @@ export class LiveSessions {
     return this.#live.get(id)?.thinking;
   }
 
+  isAutonomous(id: string): boolean {
+    return this.#live.get(id)?.autonomous === true;
+  }
+
   async setThinking(id: string, level: string): Promise<void> {
     const live = this.#ready(id);
     if (!live.runtime?.setThinking) throw new Error(`${live.record.tool} cannot change thinking in this build.`);
@@ -1251,6 +1323,25 @@ export class LiveSessions {
       this.#broadcast(live, { kind: "fast", fast: live.fast === true });
     }
     return live.fast === true;
+  }
+
+  async setAutonomous(id: string, on: boolean): Promise<boolean> {
+    const live = this.#ready(id);
+    if (live.record.bot || live.record.subagent) throw new Error("A bot's chat or a subagent has no Autonomous mode.");
+    if (!live.runtime?.setAutonomous) throw new Error(`${live.record.tool} cannot run autonomously in this build.`);
+    const previous = live.runtime.currentAutonomous?.() === true;
+    await live.runtime.setAutonomous(on);
+    try {
+      await this.#save(live, { autonomous: on || undefined });
+    } catch (persistenceError) {
+      await live.runtime.setAutonomous(previous).catch(() => undefined);
+      throw new SessionRegistryError("HUI could not save the mode, so the session keeps its previous one.", { cause: persistenceError });
+    } finally {
+      live.autonomous = live.runtime.currentAutonomous?.() ?? live.autonomous;
+      this.#broadcast(live, { kind: "autonomous", autonomous: live.autonomous === true });
+    }
+    if (previous !== (live.autonomous === true)) for (const listener of this.#autonomy) listener(id, live.autonomous === true);
+    return live.autonomous === true;
   }
 
   async respondQuestion(id: string, questionId: string, response: RuntimeQuestionResponse): Promise<void> {
@@ -1340,6 +1431,7 @@ export class LiveSessions {
       return;
     }
     live.closed = true;
+    this.#cancelAutoResume(live);
     live.unsubscribe?.();
     live.unsubscribeExit?.();
     live.runtime?.dispose();
@@ -1434,9 +1526,11 @@ export class LiveSessions {
         ...(live.record.model ? { model: live.record.model } : {}),
         ...(live.record.thinking ? { thinking: live.record.thinking } : {}),
         ...(live.record.worker ? { worker: live.record.worker } : {}),
+        ...(live.record.botSkills ? { botSkills: live.record.botSkills } : {}),
         huiSessionId: live.record.id,
       });
       if (live.record.fast) await runtime.setFast?.(true);
+      if (live.record.autonomous && !live.record.bot && !live.record.subagent) await runtime.setAutonomous?.(true);
       // Deletion or gateway shutdown can happen while a runtime takes several
       // seconds to boot. Never attach or persist a process nobody owns.
       if (live.closed || this.#live.get(live.record.id) !== live) {
@@ -1450,6 +1544,7 @@ export class LiveSessions {
       live.thinking = runtime.currentThinking?.();
       // Only a runtime that can change speed reports one.
       live.fast = runtime.setFast ? runtime.currentFast?.() === true : undefined;
+      live.autonomous = runtime.setAutonomous && !live.record.bot && !live.record.subagent ? runtime.currentAutonomous?.() === true : undefined;
       live.queue = runtime.pendingQueue?.() ?? { steering: [], followUp: [] };
       live.questions = new Map((runtime.pendingQuestions?.() ?? []).map((question) => [question.id, question]));
       live.unsubscribe = runtime.subscribe((event) => this.#onEvent(live, runtime!, event));
@@ -1493,6 +1588,10 @@ export class LiveSessions {
           // subagent, an automation) hears that now.
           if (live.reattaching) this.#broadcast(live, { kind: "event", event: { type: "settled" } });
         } else await this.#recoverInterrupted(live);
+      } else if (readyStatus === "idle" && retryableRunFailure(live.record)) {
+        // A run this Mac cut off before HUI stopped: nobody pressed Continue for
+        // it, so opening the session retries it now.
+        this.#scheduleAutoResume(live);
       }
       // A resumed session only has its history after boot, so the transcript is
       // sent now rather than left empty at connect.
@@ -1544,6 +1643,11 @@ export class LiveSessions {
     }
     if (event.type === "usage") {
       this.#broadcastState(live);
+      return;
+    }
+    if (event.type === "model_metric") {
+      modelMetrics.record(event.metric, live.record.id);
+      this.#broadcast(live, { kind: "event", event });
       return;
     }
     if (event.type === "history") {
@@ -1603,6 +1707,8 @@ export class LiveSessions {
         if (live.turnStarted) this.#logRunFailure(live);
       }
       live.runFailed = live.loggedRunError !== undefined || live.transcript.at(-1)?.kind === "error";
+      if (live.runFailed) this.#scheduleAutoResume(live);
+      else live.autoResumeAttempts = undefined;
       live.turnStarted = undefined;
       live.loggedRunError = undefined;
       this.#clearRunMarker(live);
@@ -1709,9 +1815,10 @@ export class LiveSessions {
   }
 
   /** An active goal whose turn ended cleanly gets the next one from the queue. A stop, a failed run, an open
-   * question or input already waiting ends the pursuit here: the operator's next message picks it up. */
+   * question or input already waiting ends the pursuit here: the operator's next message picks it up. An Autonomous
+   * session's chief takes its next step instead. */
   async #queueGoalContinuation(live: Live): Promise<void> {
-    if (live.runFailed || live.stopped || live.questions.size || live.followUps.length || live.record.worker) return;
+    if (live.runFailed || live.stopped || live.questions.size || live.followUps.length || live.record.worker || live.autonomous) return;
     const text = await this.#goalContinuation(live.record.id).catch(() => undefined);
     if (!text || live.closed) return;
     live.followUps.push({ id: crypto.randomUUID(), text, mode: "followUp" });
@@ -1841,6 +1948,54 @@ export class LiveSessions {
     for (const subscriber of this.#statusSubscribers) subscriber(update);
   }
 
+  /** Retries a run that ended on a failure the next attempt can pass, so a
+   * dropped connection recovers without the operator pressing Continue. */
+  #scheduleAutoResume(live: Live): void {
+    if (live.autoResumeTimer !== undefined) return;
+    const last = live.transcript.findLast((entry) => entry.kind !== "compaction");
+    const failure = last?.kind === "error" ? last.message : undefined;
+    if (live.closed || live.stopped || live.followUps.length > 0) return;
+    if (failure !== undefined ? !RETRYABLE_FAILURE.test(failure) : !retryableRunFailure(live.record)) return;
+    if (failure !== undefined) this.#markRunFailure(live);
+    const attempt = live.autoResumeAttempts ?? 0;
+    const delay = this.#autoResumeDelays[attempt];
+    if (delay === undefined) {
+      recordDiagnosticEvent({ area: "session", level: "warning", action: "auto_resume_exhausted", summary: "Automatic retry of a failed run gave up", detail: failure, sessionId: live.record.id });
+      return;
+    }
+    live.autoResumeAttempts = attempt + 1;
+    live.autoResumeTimer = setTimeout(() => {
+      live.autoResumeTimer = undefined;
+      void this.#autoResume(live, failure);
+    }, delay);
+    live.autoResumeTimer.unref?.();
+  }
+
+  #cancelAutoResume(live: Live): void {
+    if (live.autoResumeTimer !== undefined) clearTimeout(live.autoResumeTimer);
+    live.autoResumeTimer = undefined;
+  }
+
+  async #autoResume(live: Live, failure?: string): Promise<void> {
+    const id = live.record.id;
+    if (live.closed || this.#live.get(id) !== live || live.status !== "idle") return;
+    if (failure !== undefined) {
+      const last = live.transcript.findLast((entry) => entry.kind !== "compaction");
+      if (last?.kind !== "error" || last.message !== failure) return;
+    }
+    // The request the failed run was handling, restated the way Continue does it:
+    // a failure leaves no error row in a stored transcript, so the session record
+    // and the operator's own messages are what is left to go on.
+    const original = live.record.runPrompt?.trim() || lastOperatorRequest(live.transcript);
+    const message = interruptedRunPrompt(original);
+    recordDiagnosticEvent({ area: "session", level: "info", action: "auto_resume", summary: "Retrying a run that ended on a recoverable failure", detail: failure, sessionId: id });
+    try {
+      await this.prompt(id, message, undefined, original || message);
+    } catch (error) {
+      recordDiagnosticEvent({ area: "session", level: "warning", action: "auto_resume_failed", summary: "Automatic retry of a failed run did not start", detail: failureDetail(error), sessionId: id });
+    }
+  }
+
   async #recoverInterrupted(live: Live): Promise<void> {
     const attempts = live.record.runRecoveryAttempts ?? 0;
     if (!live.record.runStartedAt || attempts >= MAX_AUTOMATIC_RECOVERY_ATTEMPTS) {
@@ -1907,6 +2062,17 @@ export class LiveSessions {
             : "The run finished, but HUI could not save its recovery state.",
         },
       });
+    });
+  }
+
+  /** Records that the last run ended on a failure worth retrying, so the next
+   * gateway start or wake picks it up instead of leaving the session stopped. */
+  #markRunFailure(live: Live): void {
+    const runFailedAt = new Date().toISOString();
+    live.record = { ...live.record, runFailedAt };
+    void this.#save(live, { runFailedAt }).catch((error) => {
+      live.record = { ...live.record, runFailedAt: undefined };
+      recordDiagnosticEvent({ area: "session", level: "warning", action: "run_failure_unsaved", summary: "Could not record a failed run for a later retry", detail: failureDetail(error), sessionId: live.record.id });
     });
   }
 

@@ -1,0 +1,390 @@
+name: Mobile
+# The phone shell (mobile/AGENTS.md): the Connect page, Capacitor's sync into the Android project, the debug
+# APK and its JVM unit tests. It runs on the paths the app is made of, and on every push to a `mobile/**` package
+# branch, so a package gets its CI without a pull request of its own (section 6).
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/mobile.yml"
+  push:
+    branches: [main, "mobile/**"]
+    paths:
+      - "mobile/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/mobile.yml"
+  # A phone-catch-up branch has no emulator of its own: it dispatches this workflow on itself with scope=all and reads
+  # the failures (and their traces) from the run's artifacts. See mobile/AGENTS.md, "Proving a phone change in CI".
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Which use cases the android target runs"
+        type: choice
+        options: [required, all]
+        default: required
+      files:
+        description: "Optional test files or folders to run instead of the whole area selection (for example e2e/tests/rich)"
+        type: string
+        default: ""
+      ios_ipa:
+        description: "Also archive an unsigned IPA of this commit for a real iPhone (adds a macOS runner)"
+        type: choice
+        options: ["false", "true"]
+        default: "false"
+permissions:
+  contents: read
+concurrency:
+  # A newer push to the same branch or pull request supersedes a run in progress.
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # The private jobs that come later (WP4's `android-e2e`, WP5's `ios-smoke`) are one job each in this file, so no two
+  # packages edit the same lines. WP6's `webkit-phone` is its own workflow (mobile-webkit-phone.yml): it triggers on the
+  # page's paths, which must not wake the Android build here.
+  android-build:
+    # An IPA-only dispatch rebuilds the shell for a phone and spends no Linux minutes on it.
+    if: inputs.ios_ipa != 'true'
+    runs-on: ubuntu-latest
+    # The SDK download, the Gradle distribution and the debug build; a hang fails here, not at GitHub's six hours.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      # Capacitor 8 compiles at Java release 21, and the shell's own sources do too.
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      # The runner's preinstalled cmdline-tools are the wrong version, so this downloads its own and accepts the
+      # licences. The platform and build-tools are what AGP 8.13 needs for compileSdk 37.
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+      - run: sdkmanager --install "platforms;android-37.0" "build-tools;36.0.0"
+      - run: npm ci --ignore-scripts
+      # Builds the Connect page and runs `cap sync android`, which writes the plugin list the Gradle project reads.
+      - run: npm run mobile:build
+      - name: Build the debug APK and run the JVM unit tests
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon --console=plain :app:assembleDebug :app:testDebugUnitTest
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hui-android-debug
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  # The shared e2e suite inside the debug app's WebView (`mobile/AGENTS.md`, WP4): the web engine attached over
+  # CDP to the WebView the app opened, one emulator per shard, four shards like e2e.yml. The target runs the use cases
+  # the catalogue requires on the phone (`e2e/catalogue/phone.ts` prints their tags), because the web engine's platform
+  # is `web` on both targets and the runner cannot filter the shared suite by platform.
+  #
+  # One emulator per isolated runner: two on one runner contend. Always cold boot with software GLES and no Vulkan;
+  # a restored gfxstream snapshot produced invalid EGL/color-buffer resources before a VM disappeared in CI.
+  # Its exact exit signal/cause was not recorded. Wait on `sys.boot_completed` AND
+  # `pm path android`, never on `init.svc.bootanim`: `-no-boot-anim` never sets it.
+  android-e2e:
+    if: inputs.ios_ipa != 'true'
+    runs-on: ubuntu-latest
+    # Four slices exhausted this budget on a1c06535: one ran 104 passing tests in 42m11s, before setup/upload costs.
+    # Six isolated runners keep every selected test once while leaving headroom; each runner still owns one emulator.
+    timeout-minutes: 45
+    # Advisory until the phone backlog closes (mobile/AGENTS.md, owner decision O2: required after 20 green runs).
+    # It runs the whole suite so the failures ARE the backlog a WP7 area works from; the traces say which.
+    continue-on-error: true
+    needs: android-build
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6"]
+    steps:
+      # These fixed fixture ports lie inside Linux's ephemeral range. An OS-assigned listener or client socket must
+      # not claim them before Vite binds; reservation changes no explicit bind and preserves the runner's other ports.
+      - name: Reserve the fixed fixture ports
+        run: |
+          reserved=$(sysctl -n net.ipv4.ip_local_reserved_ports)
+          sudo sysctl -w "net.ipv4.ip_local_reserved_ports=${reserved:+$reserved,}47400,47500"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm install -g npm@11
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools
+      - name: Enable KVM
+        run: |
+          set -euo pipefail
+          # The device node is root:kvm 0660 before this rule, which the runner user is not in. The rule is what a reboot
+          # would need; the chmod is what this run needs, and neither the udev daemon nor the rule has to be running.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules || echo "udev is not running here; the chmod below is what this run needs"
+          sudo udevadm trigger --name-match=kvm || sudo udevadm trigger || true
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Install the emulator and its system image
+        run: |
+          set -euo pipefail
+          # `yes` outlives sdkmanager and dies of SIGPIPE, so pipefail stands down for the pipe.
+          set +o pipefail
+          yes | sdkmanager --install "emulator" "platforms;android-37.0" "system-images;android-37.0;google_apis;x86_64"
+          set -o pipefail
+      # No AVD cache/seed: a previous runner's booted graphics state must never enter this runner.
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: hui-android-debug
+          path: ${{ runner.temp }}/apk
+      - name: Boot the emulator
+        env:
+          ANDROID_SERIAL: emulator-5554
+        run: |
+          set -euo pipefail
+          # `ANDROID_AVD_HOME` is pinned so `avdmanager` and the emulator name
+          # the same directory: on this image `avdmanager` otherwise writes its AVD somewhere the step cannot find.
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          avd=HUI_Pixel_e2e
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
+          # Without -p, avdmanager writes both <name>.ini and <name>.avd under ANDROID_AVD_HOME, which is what the emulator
+          # looks for; naming the directory itself (-p) writes no .ini and the emulator reports "Unknown AVD name".
+          if [ ! -f "$ANDROID_AVD_HOME/$avd.ini" ]; then
+            device=$(avdmanager list device -c 2>/dev/null | grep -E '^pixel_[0-9]+$' | sort -V | tail -1 || true)
+            echo "device profile: ${device:-pixel}"
+            echo no | avdmanager create avd -n "$avd" -k "system-images;android-37.0;google_apis;x86_64" -d "${device:-pixel}" --force
+            # A hardware keyboard so typed text never waits on the soft one, and no device frame or camera.
+            {
+              echo 'hw.keyboard=yes'
+              echo 'hw.ramSize=4096'
+              echo 'showDeviceFrame=no'
+              echo 'hw.camera.back=none'
+            } >> "$ANDROID_AVD_HOME/$avd.avd/config.ini"
+          fi
+          ls "$ANDROID_AVD_HOME"
+          test -f "$ANDROID_AVD_HOME/$avd.ini" || { echo "::error::the AVD was not created"; exit 1; }
+          adb start-server
+          # Every adb call has a deadline: a device that went "offline" makes an unbounded `adb shell` wait forever, which
+          # is how a shard once spent its whole 45-minute budget in this loop without a single diagnostic.
+          adb_sh() { timeout 20 adb -s "$ANDROID_SERIAL" shell "$@" 2>/dev/null | tr -d '\r'; }
+          start_emulator() {
+            # software is the supported automatic software backend; indirect modes are deprecated since 36.4.9.
+            # read returns after the PID line, not VM exit. The supervisor owns/waits for the real child, while
+            # alive/recovery retain that child's PID, never the supervisor's. No restart or keepalive is added.
+            read -r emulator_pid < <(
+              "$ANDROID_HOME/emulator/emulator" -avd "$avd" -port 5554 -no-window -no-audio -no-boot-anim \
+                -gpu software -feature -Vulkan -no-snapshot -no-metrics > "$RUNNER_TEMP/emulator.log" 2>&1 &
+              child=$!
+              printf '%s\n' "$child"
+              # Drop the step's output pipes before waiting, so this observer cannot keep the boot step open.
+              exec >> "$RUNNER_TEMP/emulator-exits.log" 2>&1
+              set +e
+              wait "$child"
+              status=$?
+              # Recovery may deliberately produce 143/137; record status without inventing a crash cause.
+              printf 'pid=%s status=%s exitedAt=%s\n' "$child" "$status" "$(date -u +%FT%TZ)"
+            ) || { echo '::error::emulator supervisor gave no PID'; exit 1; }
+            printf '%s\n' "$emulator_pid" > "$RUNNER_TEMP/emulator.pid"
+          }
+          alive() { kill -0 "$emulator_pid" 2>/dev/null; }
+          # boot_completed comes before the package manager answers, which an install and `am start` need. Never wait on
+          # init.svc.bootanim: -no-boot-anim never sets it.
+          ready() { [ "$(adb_sh getprop sys.boot_completed)" = 1 ] && adb_sh pm path android | grep -q package:; }
+          # Five minutes per attempt; the loop also ends early when the emulator process itself is gone.
+          try_boot() {
+            local deadline=$((SECONDS + 300))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              alive || return 1
+              ready && return 0
+              sleep 3
+            done
+            return 1
+          }
+          start_emulator
+          if ! try_boot; then
+            tail -80 "$RUNNER_TEMP/emulator.log"
+            echo "::warning::the first boot attempt failed; restarting the emulator once"
+            kill "$emulator_pid" 2>/dev/null || true
+            sleep 5
+            adb kill-server
+            adb start-server
+            start_emulator
+            try_boot || { tail -80 "$RUNNER_TEMP/emulator.log"; echo "::error::the emulator did not boot after two attempts"; exit 1; }
+          fi
+          for scale in window_animation_scale transition_animation_scale animator_duration_scale; do
+            adb -s "$ANDROID_SERIAL" shell settings put global "$scale" 0 || true
+          done
+          # Start tests without an installed package, including after the existing boot-recovery path, so every test
+          # installs the APK this workflow built.
+          timeout 60 adb -s "$ANDROID_SERIAL" uninstall dev.hui.app.debug > /dev/null 2>&1 || true
+          adb devices -l
+          echo "booted in $((SECONDS)) s of this step"
+      - name: Run the shared suite in the app's WebView
+        env:
+          ANDROID_SERIAL: emulator-5554
+          E2E_PHONE_PORT: "47400"
+          E2E_CDP_PORT: "9333"
+          E2E_ANDROID_APK: ${{ runner.temp }}/apk/app-debug.apk
+          E2E_TELEMETRY_DISABLED: "1"
+        run: |
+          set -euo pipefail
+          # `required` runs only the use cases the catalogue says the phone proves, plus nothing else: the job is green
+          # when those pass. `all` (a dispatch from a catch-up branch) runs everything, which is how a worker reads a
+          # backlog area's real failures from the artifacts without an emulator on their own machine.
+          scope="${{ inputs.scope || 'required' }}"
+          files="${{ inputs.files }}"
+          tags=$(node e2e/catalogue/phone.ts 2>/dev/null || true)
+          count=$(printf '%s' "$tags" | tr ',' '\n' | grep -c . || true)
+          echo "scope=$scope required-ids=$count files=${files:-<selection>}"
+          # A catch-up dispatches one area's files to get a short run: sharding still splits the files across the four
+          # jobs, so a single area is minutes, not half an hour.
+          if [ -n "$files" ]; then
+            # shellcheck disable=SC2086
+            npx e2e run --target android --shard "${{ matrix.shard }}" $files
+          elif [ "$scope" = "all" ]; then
+            npx e2e run --target android --shard "${{ matrix.shard }}"
+          elif [ "$count" -eq 0 ]; then
+            # Running everything here would hide a broken catalogue behind a red job: say so instead.
+            echo "::error::the catalogue names no phone-required id, so scope=required has nothing to prove"
+            exit 1
+          else
+            npx e2e run --target android --shard "${{ matrix.shard }}" --tag "$tags"
+          fi
+      - name: Record the emulator host state
+        if: ${{ always() }}
+        run: |
+          # Read-only, scoped diagnostics: no process arguments, device commands, restarts or keepalive.
+          {
+            date -u +%FT%TZ
+            free -m
+            df -h "$RUNNER_TEMP" "$HOME"
+            if [ -r "$RUNNER_TEMP/emulator.pid" ]; then
+              read -r emulator_pid < "$RUNNER_TEMP/emulator.pid"
+              if [[ "$emulator_pid" =~ ^[0-9]+$ ]]; then
+                # $! may name the launcher; include only its direct children, not a host-wide process listing.
+                ps -p "$emulator_pid" -o pid=,ppid=,stat=,rss=,comm= || echo 'owned emulator launcher PID no longer present'
+                ps --ppid "$emulator_pid" -o pid=,ppid=,stat=,rss=,comm= || echo 'no direct child of the owned emulator launcher'
+              else
+                echo 'invalid owned emulator PID record'
+              fi
+            else
+              echo 'no owned emulator PID record'
+            fi
+            # The postmortem's current free RAM cannot rule out an earlier OOM. Preserve bounded cgroup counters/peak.
+            cgroup=$(awk -F: '$1 == "0" && $2 == "" { print $3 }' /proc/self/cgroup)
+            if [[ "$cgroup" = /* && "$cgroup" != *..* ]]; then
+              for metric in memory.events memory.peak; do
+                path="/sys/fs/cgroup${cgroup%/}/$metric"
+                if [ -r "$path" ]; then
+                  printf '%s (%s):\n' "$metric" "$cgroup"
+                  head -c 4096 "$path"
+                  printf '\n'
+                else
+                  printf '%s unavailable\n' "$metric"
+                fi
+              done
+            else
+              echo 'cgroup v2 memory evidence unavailable'
+            fi
+            echo 'Kernel OOM evidence (if permitted):'
+            if kernel_log=$(timeout 5 dmesg --level=emerg,alert,crit,err,warn 2>&1); then
+              printf '%s\n' "$kernel_log" | grep -Ei 'out of memory|oom-kill|killed process' | tail -20 || true
+            else
+              printf '%s\n' "$kernel_log"
+            fi
+          } > "$RUNNER_TEMP/emulator-host.txt" 2>&1
+      # The suite's traces/screenshots, gateway logs and read-only host diagnostics survive success and failure.
+      # These facts may explain a future VM disappearance; graphics hardening alone does not establish its cause.
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-android-${{ strategy.job-index }}
+          path: |
+            .e2e/
+            /tmp/hui-visual-*/artifacts/
+            ${{ runner.temp }}/emulator.log
+            ${{ runner.temp }}/emulator.pid
+            ${{ runner.temp }}/emulator-exits.log
+            ${{ runner.temp }}/emulator-host.txt
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  # An unsigned IPA of this commit for a real iPhone: `workflow_dispatch` only, because it spends a macOS runner and no
+  # pull request installs it. SideStore signs it with the owner's own Apple ID, which is how a phone with no Mac and no
+  # paid developer account runs the app (`docs/guide.md`, "Install the phone app"). It is the same archive `release.yml`
+  # publishes, minus the SideStore source: a branch build has no release URL to point a source at, so the file is
+  # imported into SideStore directly.
+  ios-ipa:
+    if: github.event_name == 'workflow_dispatch' && inputs.ios_ipa == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # Match the npm major used to generate the committed lockfile.
+      - run: npm install -g npm@11
+      - run: npm ci --ignore-scripts
+      - run: npm run mobile:build
+      - run: npx cap sync ios
+      - name: Read the version this build carries
+        id: version
+        run: |
+          set -euo pipefail
+          echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+          # CFBundleVersion is the commit time in minutes, as the release pipeline numbers it.
+          echo "code=$(( $(git log -1 --format=%ct) / 60 ))" >> "$GITHUB_OUTPUT"
+      # Nothing on Linux can archive for a device, and CODE_SIGNING_ALLOWED=NO leaves the signature to whoever installs
+      # it. The version keys are overridden so the archive carries this commit's numbers rather than the placeholder.
+      - name: Archive the app for a device, unsigned
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          set -euo pipefail
+          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/hui.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$CODE" \
+            archive | tee "$RUNNER_TEMP/xcodebuild-archive.log" | tail -20
+      - name: Package the unsigned IPA and check its version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CODE: ${{ steps.version.outputs.code }}
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/hui.xcarchive/Products/Applications/App.app"
+          test -d "$app"
+          short=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Info.plist")
+          build=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app/Info.plist")
+          echo "archive: $short ($build); this build was given $VERSION ($CODE)"
+          [ "$short" = "$VERSION" ]
+          [ "$build" = "$CODE" ]
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$app" "$RUNNER_TEMP/Payload/App.app"
+          (cd "$RUNNER_TEMP" && zip -qry "hui-$VERSION-unsigned.ipa" Payload)
+          mv "$RUNNER_TEMP/hui-$VERSION-unsigned.ipa" .
+          # macOS has no sha256sum; shasum writes the same "<hash>  <file>" line it would.
+          shasum -a 256 "hui-$VERSION-unsigned.ipa" > "hui-$VERSION-unsigned.ipa.sha256"
+          unzip -l "hui-$VERSION-unsigned.ipa" | head -5
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-ipa
+          path: |
+            hui-*-unsigned.ipa
+            hui-*-unsigned.ipa.sha256
+          if-no-files-found: error

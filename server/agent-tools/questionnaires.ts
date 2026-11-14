@@ -3,10 +3,12 @@
  * `ask_user_question` tool: HUI's own replacement for a PI extension's
  * sequence of plain select and input dialogs. The whole questionnaire is one
  * pending card in the session's question list, answered from the browser in
- * one go. Like secret requests it lives in gateway memory: a restart drops it,
- * and the tool call ends as interrupted. With a question timeout set (Settings
- * → Tools → Questions) a card nobody answers in time ends as timed out, and the
- * agent goes on without an answer.
+ * one go. An option may carry a Markdown preview or a small HTML mockup; the
+ * latter renders only in the browser's widget sandbox. Like secret requests it
+ * lives in gateway memory: a restart drops it, and the tool call ends as
+ * interrupted. With a question timeout set (Settings → Tools → Questions) a
+ * card nobody answers in time ends as timed out, and the agent goes on without
+ * an answer.
  */
 import { randomUUID } from "node:crypto";
 import type { QuestionnaireAnswer, QuestionnaireOption, QuestionnaireQuestion, QuestionnaireResult } from "../api/sessions.ts";
@@ -17,10 +19,17 @@ const MAX_LABEL = 60;
 const MAX_TEXT = 500;
 /** Four full questions stay under the PI child bridge's 64 KiB request limit. */
 const MAX_PREVIEW = 2_500;
+/** A preview mockup is a fragment; the card wraps it in the sandbox's document. */
+const COMPLETE_HTML_DOCUMENT = /^(?:<!doctype\s+html\b|<html\b|<head\b|<body\b)/iu;
 /** Option labels the card adds itself or that models reach for instead of the free-text row. */
 const RESERVED_LABELS: ReadonlySet<string> = new Set(["Other", "Type something.", "Next"]);
 /** Longest typed answer the card sends for one question. */
 const MAX_CUSTOM = 4_000;
+/** A slider's unit and a long-text field's prompt. */
+const MAX_UNIT = 16;
+const MAX_PLACEHOLDER = 200;
+/** Most slider positions one question may offer; a range input has no use for more. */
+const MAX_SLIDER_STEPS = 1_000;
 /** The transports' ceiling on one call: a day, after which the caller gives up and the card goes. */
 export const QUESTIONNAIRE_WAIT_MS = 24 * 60 * 60_000;
 
@@ -31,11 +40,40 @@ type Pending = { sessionId: string; prompt: QuestionnairePrompt; settle(result: 
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
+const INPUTS = ["options", "slider", "text"] as const;
+
+type Input = typeof INPUTS[number];
+
 function text(value: unknown, name: string, maximum: number, required = true): string {
   const trimmed = typeof value === "string" ? value.trim() : "";
   if (required && !trimmed) throw new Error(`${name} must be non-empty text.`);
   if (trimmed.length > maximum) throw new Error(`${name} must be at most ${maximum} characters.`);
   return trimmed;
+}
+
+function finite(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${name} must be a number.`);
+  return value;
+}
+
+/** What a slider value reads as, in the model's answer and the transcript's summary. */
+function sliderValue(question: QuestionnaireQuestion, value: number): string {
+  const step = question.step ?? 1;
+  const digits = String(step).includes(".") ? String(step).split(".")[1]!.length : 0;
+  const shown = new Intl.NumberFormat("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+  return question.unit ? `${shown} ${question.unit}` : shown;
+}
+
+/** A slider answer is the raw number the range input holds, checked against its bounds. */
+function sliderAnswer(question: QuestionnaireQuestion, custom: string): number | undefined {
+  if (!custom) return undefined;
+  const value = Number(custom);
+  const { min = 0, max = 0, step = 1 } = question;
+  if (!Number.isFinite(value)) throw new Error(`"${question.header}" needs a number.`);
+  if (value < min || value > max) throw new Error(`"${question.header}" must be between ${min} and ${max}.`);
+  const stepped = Math.round((value - min) / step) * step + min;
+  if (Math.abs(stepped - value) > 1e-9) throw new Error(`"${question.header}" takes steps of ${step}.`);
+  return value;
 }
 
 /** The model's call, checked: errors are written for the model, which retries with a fixed call. */
@@ -46,6 +84,26 @@ export function parseQuestionnaire(params: Record<string, unknown>): Questionnai
   const questions = raw.map((entry, index): QuestionnaireQuestion => {
     const at = `questions[${index}]`;
     if (!isRecord(entry)) throw new Error(`${at} must be an object.`);
+    const header = text(entry["header"], `${at}.header`, MAX_HEADER);
+    const question = text(entry["question"], `${at}.question`, MAX_TEXT);
+    const input = (entry["input"] ?? "options") as Input;
+    if (!INPUTS.includes(input)) throw new Error(`${at}.input must be options, slider or text.`);
+    if (input !== "options") {
+      if (entry["options"] !== undefined) throw new Error(`${at}: a ${input} question takes no options.`);
+      if (entry["multiSelect"] === true) throw new Error(`${at}: multiSelect only applies to an options question.`);
+      if (input === "slider") {
+        const min = finite(entry["min"], `${at}.min`);
+        const max = finite(entry["max"], `${at}.max`);
+        if (min >= max) throw new Error(`${at}: min must be below max.`);
+        const step = entry["step"] === undefined ? 1 : finite(entry["step"], `${at}.step`);
+        if (step <= 0) throw new Error(`${at}.step must be above zero.`);
+        if ((max - min) / step > MAX_SLIDER_STEPS) throw new Error(`${at}: at most ${MAX_SLIDER_STEPS} slider steps.`);
+        const unit = text(entry["unit"], `${at}.unit`, MAX_UNIT, false);
+        return { header, question, multiSelect: false, options: [], input, min, max, step, ...(unit ? { unit } : {}) };
+      }
+      const placeholder = text(entry["placeholder"], `${at}.placeholder`, MAX_PLACEHOLDER, false);
+      return { header, question, multiSelect: false, options: [], input, ...(placeholder ? { placeholder } : {}) };
+    }
     const options = entry["options"];
     if (!Array.isArray(options) || options.length < 2 || options.length > 4) throw new Error(`${at}.options must hold 2-4 options.`);
     const parsed = options.map((option, each): QuestionnaireOption => {
@@ -54,12 +112,15 @@ export function parseQuestionnaire(params: Record<string, unknown>): Questionnai
       const label = text(option["label"], `${where}.label`, MAX_LABEL);
       if (RESERVED_LABELS.has(label)) throw new Error(`${where}.label "${label}" is reserved: the card already offers a free-text answer.`);
       const preview = text(option["preview"], `${where}.preview`, MAX_PREVIEW, false);
-      return { label, description: text(option["description"], `${where}.description`, MAX_TEXT, false), ...(preview ? { preview } : {}) };
+      const previewHtml = text(option["previewHtml"], `${where}.previewHtml`, MAX_PREVIEW, false);
+      if (preview && previewHtml) throw new Error(`${where}: set preview or previewHtml, not both.`);
+      if (previewHtml && COMPLETE_HTML_DOCUMENT.test(previewHtml)) throw new Error(`${where}.previewHtml must be an HTML fragment, not a whole document.`);
+      return { label, description: text(option["description"], `${where}.description`, MAX_TEXT, false), ...(preview ? { preview } : {}), ...(previewHtml ? { previewHtml } : {}) };
     });
     if (new Set(parsed.map(({ label }) => label)).size !== parsed.length) throw new Error(`${at}.options must have unique labels.`);
     const multiSelect = entry["multiSelect"] === true;
-    if (multiSelect && parsed.some((option) => option.preview)) throw new Error(`${at}: previews are for single-select questions only.`);
-    return { header: text(entry["header"], `${at}.header`, MAX_HEADER), question: text(entry["question"], `${at}.question`, MAX_TEXT), multiSelect, options: parsed };
+    if (multiSelect && parsed.some((option) => option.preview || option.previewHtml)) throw new Error(`${at}: previews are for single-select questions only.`);
+    return { header, question, multiSelect, options: parsed, input };
   });
   if (new Set(questions.map(({ question }) => question)).size !== questions.length) throw new Error("Each question must be asked once.");
   return questions;
@@ -72,6 +133,14 @@ function parseAnswers(questions: readonly QuestionnaireQuestion[], body: Record<
   return questions.flatMap((question, index): QuestionnaireAnswer[] => {
     const entry: unknown = raw[index];
     if (!isRecord(entry)) throw new Error("Answer each question, or cancel.");
+    if (question.input === "slider") {
+      const value = sliderAnswer(question, text(entry["custom"], "Your answer", MAX_CUSTOM, false));
+      return value === undefined ? [] : [{ header: question.header, question: question.question, selected: [sliderValue(question, value)] }];
+    }
+    if (question.input === "text") {
+      const typed = text(entry["custom"], "Your answer", MAX_CUSTOM, false);
+      return typed ? [{ header: question.header, question: question.question, selected: [typed] }] : [];
+    }
     const chosen = Array.isArray(entry["selected"]) ? entry["selected"] : [];
     const labels = question.options.map(({ label }) => label);
     if (!chosen.every((label): label is string => typeof label === "string" && labels.includes(label))) throw new Error(`"${question.header}" has no such option.`);
@@ -81,6 +150,8 @@ function parseAnswers(questions: readonly QuestionnaireQuestion[], body: Record<
     if (custom) selected.push(custom);
     if (!question.multiSelect && selected.length > 1) throw new Error(`"${question.header}" takes one answer.`);
     if (!selected.length) return [];
+    // A Markdown preview goes back with the answer; an HTML mockup does not, because the
+    // agent wrote it and the label already identifies the choice.
     const preview = question.options.find(({ label }) => label === selected[0] && !custom)?.preview;
     return [{ header: question.header, question: question.question, selected, ...(preview ? { preview } : {}) }];
   });

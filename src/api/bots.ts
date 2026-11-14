@@ -6,7 +6,7 @@
 import type { BotInput, BotPatch, BotUsageResponse, BotView } from "./schema/bots.ts";
 import type { UsageTotals } from "./schema/diagnostics.ts";
 import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers } from "../lib/bots/bots.ts";
-import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
+import { CLIENT_HEADERS, fetchEventStream, fetchJson, trackedFetch } from "./request.ts";
 import { readEventStream } from "./sessions.ts";
 import { reconnectDelay } from "../lib/event-stream.ts";
 
@@ -55,7 +55,7 @@ export function subscribeBots(handlers: BotsStreamHandlers, fetcher: typeof fetc
 async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal, fetcher: typeof fetch, onLive: () => void): Promise<"dropped" | "unsupported"> {
   let response: Response;
   try {
-    response = await fetcher(BOTS_EVENTS_URL, { headers: { ...CLIENT_HEADERS, accept: "text/event-stream" }, cache: "no-store", signal });
+    response = await fetchEventStream(fetcher, BOTS_EVENTS_URL, { headers: { ...CLIENT_HEADERS, accept: "text/event-stream" }, cache: "no-store", signal });
   } catch {
     return "dropped";
   }

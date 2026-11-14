@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 
 test("effort preview owns a textContent property without destroying Lit child markers", () => {
   const source = readFileSync(new URL("./effort-selector.ts", import.meta.url), "utf8");
@@ -126,7 +126,7 @@ test("the composer ports OpenClaw input interactions without unsupported control
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /import \{ adjustTextareaHeight as syncComposerTextarea \} from "\.\.\/lib\/composer\/textarea\.ts"/);
+  assert.match(source, /import \{ adjustTextareaHeight as syncComposerTextarea, mountEditorAtEnd \} from "\.\.\/lib\/composer\/textarea\.ts"/);
   assert.doesNotMatch(source, /@scroll=\$\{[^\n]*syncComposerTextarea/);
   assert.match(source, /@paste=\$\{onComposerPaste\(props\)\}/);
   assert.match(source, /PASTED_TEXT_ATTACHMENT_THRESHOLD/);
@@ -167,7 +167,7 @@ test("the primary chat uses the OpenClaw transcript and composer hierarchy", () 
   assert.match(source, /class="chat-tool-card__block-content"/);
   assert.doesNotMatch(styles, /\.chat-tool-msg-body pre\s*\{/);
   assert.match(source, /class="chat-group \$\{row\.role\} chat-group--with-footer \$\{row\.id === latestAssistantRowId/);
-  assert.match(source, /<div class="agent-chat__composer-shell \$\{props\.question \? "agent-chat__composer-shell--question-composer" : ""\}"/);
+  assert.match(source, /<div class="agent-chat__composer-shell"/);
   assert.match(source, /<form class="agent-chat__input agent-chat__input--chat/);
   assert.match(source, /agent-chat__input--chat agent-chat__input--mobile-toolbar/);
   assert.match(source, /chat-send-control chat-mobile-primary-action chat-desktop-primary-action/);
@@ -242,28 +242,30 @@ test("the composer send control uses OpenClaw's SVG geometry and state colors", 
   assert.match(styles, /\.agent-chat__input \.chat-send-btn\s*\{[^}]*height:\s*var\(--chat-composer-send-size\);[^}]*color:\s*var\(--primary-foreground\);[^}]*box-shadow:\s*none;/s);
 });
 
-test("Task progress draws the card HUI's utility model wrote above the composer", async () => {
+test("Task progress lives in the Run status popover and never draws in the transcript", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const styles = readStyles("../styles/openclaw-chat.css");
-
-  assert.match(source, /const card = props\.session\?\.progress;/);
-  assert.match(source, /class="session-progress-card session-progress-card--composer"/);
+  const view = readFileSync(new URL("./chat/run-status.ts", import.meta.url), "utf8");
+  assert.match(view, /data-testid="task-progress"/);
+  assert.match(view, /role="region" aria-label="Task progress steps"/);
   // Calls an older transcript still holds are never drawn as activity.
   assert.match(source, /item\.name !== "progress_card"/);
-  assert.match(styles, /\.agent-chat__progress-float\s*\{[^}]*--chat-progress-underlap:\s*18px;/s);
-  assert.ok(source.indexOf("${renderTaskProgress(props)}") > source.indexOf('<div class="agent-chat__composer-shell'));
 
   const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status: "running", worker: { id: "w", name: "devbox" } };
   const html = await renderWorkerSession("running", {
+    streaming: true,
     session: { ...session, progress: { markdown: "Wiring the card.", steps: [
       { step: "Read the session", status: "completed" },
       { step: "Check the build", status: "in_progress" },
     ] } },
   });
+  assert.match(html, /class="chat-run-status__trigger"[^>]*data-tone=running/u);
+  assert.match(html, /aria-label=Run status: Working, 1 of 2 steps done/u);
+  assert.match(html, /data-testid="task-progress"/u);
   assert.match(html, /Check the build/u);
   assert.match(html, /1 of 2/u);
   assert.match(html, /Wiring the card\./u);
-  assert.doesNotMatch(await renderWorkerSession("idle"), /session-progress-card/u, "no card, nothing drawn");
+  assert.doesNotMatch(html, /session-progress-card/u, "the old composer card is gone");
+  assert.doesNotMatch(await renderWorkerSession("idle"), /chat-run-status__trigger/u, "nothing to report, nothing drawn");
 });
 
 test("model and thinking reuse one exclusive composer picker pattern", () => {
@@ -326,6 +328,46 @@ test("the composer shows context usage and only offers compaction on a live idle
   assert.doesNotMatch(await renderWorkerSession("idle", { usage, session: { id: "bot", title: "Bot", tool: "pi", status: "idle", bot: "bot" } }), /Compact now/u);
 });
 
+test("a bot's chat says what the bot has cost, and how much of it is its subagents", async () => {
+  const bot = { id: "bot", title: "Bot", group: "", cwd: "/repo", displayCwd: "repo", tool: "durable", status: "idle" as const, bot: { id: "b", handle: "ada", name: "Ada" } };
+  const usage = { percent: 10, contextTokens: 2_000, contextWindow: 200_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.01 };
+  const render = async (botCost: object) => await renderWorkerSession("idle", { session: bot, usage, botCost });
+  const paid = await render({ usd: 1.5, memory: 0.25, subagents: 3 });
+  assert.match(paid, /Bot cost/u);
+  assert.match(paid, /<dt>Includes 3 subagents<\/dt><dd>\$1\.75<\/dd>/u, "the panel's total, memory included");
+  assert.match(await render({ usd: 1.5, memory: 0.25, subagents: 1 }), /<dt>Includes one subagent<\/dt><dd>\$1\.75<\/dd>/u);
+  assert.match(await render({ usd: null, memory: 0, subagents: 0 }), /<dt>Chat, subagents and memory<\/dt><dd>Not reported<\/dd>/u);
+  assert.match(await render({ reading: true }), /<dt>Reading<\/dt><dd>cost…<\/dd>/u);
+  assert.match(await render({ remote: "build-2" }), /<dt>Kept on<\/dt><dd>build-2<\/dd>/u, "a worker keeps its own");
+  assert.doesNotMatch(await renderWorkerSession("idle", { usage }), /Bot cost/u, "an ordinary session has no bot to price");
+});
+
+test("the context popover splits the meter into what the context carries", async () => {
+  const breakdown = [{ id: "system", tokens: 400 }, { id: "tools", tokens: 200, count: 12 }, { id: "conversation", tokens: 300, count: 40 }, { id: "summary", tokens: 100 }];
+  const usage = { percent: 10, contextTokens: 1_000, contextWindow: 10_000, inputTokens: 10, outputTokens: 2, costUsd: 0.01, breakdown };
+  const html = await renderWorkerSession("idle", { usage });
+  assert.match(html, /context-usage__bar--breakdown/u);
+  assert.match(html, /context-usage__bar-segment--system" style=flex-grow: 400/u);
+  assert.match(html, /context-usage__bar-segment--summary" style=flex-grow: 100/u, "each part takes its share of the bar");
+  assert.match(html, /context-usage__bar-remaining" style=flex-grow: 9000/u, "the rest of the window stays empty");
+  assert.match(html, /System prompt<\/span><span class="context-usage__part-tokens">400<\/span><span class="context-usage__part-percent">4%<\/span>/u);
+  assert.match(html, /Tool definitions<\/span><span class="context-usage__part-detail">12 tools<\/span>/u);
+  assert.match(html, /Conversation<\/span><span class="context-usage__part-detail">40 messages<\/span>/u);
+  assert.match(html, /Summarized conversation/u);
+  assert.match(html, /Category breakdown is estimated/u);
+  assert.doesNotMatch(await renderWorkerSession("idle", { usage: { ...usage, breakdown: undefined } }), /Category breakdown is estimated/u, "a runtime that reports no split keeps the plain bar");
+});
+
+test("a bot's own message offers Rewind to here, and a bot's chat offers no fork or compaction", async () => {
+  const bot = { id: "bot", title: "Bot", group: "", cwd: "/repo", displayCwd: "repo", tool: "durable", status: "idle", bot: { id: "b", handle: "ada", name: "Ada" } };
+  const transcript = [{ kind: "message", id: "u1", role: "user", text: "Plan the week", entryId: 7 }, { kind: "message", id: "a1", role: "assistant", text: "Here it is." }];
+  const usage = { percent: 10, contextTokens: 2_000, contextWindow: 200_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.01, sessionCost: { usd: 0.1, source: "Metered", asOf: new Date().toISOString() } };
+  const html = await renderWorkerSession("idle", { session: bot, transcript, usage });
+  assert.match(html, /class="chat-group-rewind" aria-label=Rewind to here/u, "the bot's user message offers the rewind");
+  assert.doesNotMatch(html, /Fork into a new session from here/u);
+  assert.doesNotMatch(html, /Compact now/u);
+});
+
 test("a saved PI conversation cannot continue or open a terminal", async () => {
   const html = await renderWorkerSession("disconnected", {
     connection: "saved", session: { id: "s", title: "Saved", tool: "pi", status: "disconnected" },
@@ -347,6 +389,25 @@ test("PI questions use the inline OpenClaw card instead of a modal", () => {
   assert.doesNotMatch(source, /class="question-dialog"/);
   assert.match(styles, /\.chat-question-panel\s*\{[^}]*gap: 12px;[^}]*padding: 14px;/s);
   assert.match(styles, /\.chat-question-panel__option\s*\{[^}]*padding: 10px 11px;/s);
+});
+
+test("a pending question is the transcript's last row, not a dock in the composer", async () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const styles = readStyles("../styles/openclaw-chat.css");
+  const waiting = await renderWorkerSession("waiting", { question: { id: "q", method: "input", title: "Name?" } });
+  const thread = waiting.indexOf('class="chat-thread-inner"');
+  const dock = waiting.indexOf('class="chat-question-dock"');
+  const composer = waiting.indexOf('class="agent-chat__composer-shell"');
+  assert.ok(thread >= 0 && dock > thread && composer > dock, "the card is the transcript's last content, above the composer");
+  assert.match(styles, /\.chat-question-dock\s*\{[^}]*min-width: 0;/s);
+  assert.doesNotMatch(source, /agent-chat__composer-shell--question-composer/u);
+});
+
+test("the pending question card blurs nothing behind it, in the transcript", () => {
+  const styles = readStyles("../styles/openclaw-chat.css").replace(/\/\*[\s\S]*?\*\//gu, "");
+  const rules = styles.match(/(?<=^|[{}])[^{}]*\.chat-question-dock[^{}]*\{[^}]*\}/gu) ?? [];
+  assert.ok(rules.length > 0);
+  assert.ok(rules.some((rule) => /\.chat-question-dock \.chat-question-panel\s*\{[^}]*backdrop-filter: none;/su.test(rule)), "the transcript card cancels the dock's blur");
 });
 
 test("New Session uses the dedicated PI mascot", () => {
@@ -395,6 +456,7 @@ test("thinking renders as plain intermediate text without a reasoning label", ()
 
 test("the primary runtime working state is contextual and child activity remains explicit", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const runStatus = readFileSync(new URL("./chat/run-status.ts", import.meta.url), "utf8");
 
   assert.match(source, /renderWorkingIndicator\(props\)/);
   assert.match(source, /class="chat-working-indicator__label"/);
@@ -402,7 +464,7 @@ test("the primary runtime working state is contextual and child activity remains
   assert.doesNotMatch(source, /hui-run-elapsed/);
   assert.match(source, /class="chat-subagents__row/);
   assert.doesNotMatch(source, /subagentClawIcon/);
-  assert.match(source, /props\.onSelectSubagent\(task\.sessionId\)/);
+  assert.match(runStatus, /props\.onSelectSubagent\(task\.sessionId\)/);
 });
 
 test("text inputs do not inherit the global focus halo", () => {
@@ -469,9 +531,9 @@ test("session rename mirrors the Control UI single title field without a group e
   assert.match(source, /onRename: \(title: string\) => void;/);
 });
 
-test("composer notices render above the progress card, queue and goal, which underlap their next sibling", () => {
+test("composer notices render above the queue and the composer", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const order = ["${renderRunError(", "agent-chat__interrupted-recovery\" role", "${renderTaskProgress(", "${renderQueue(", "${renderGoalPill(", "<form class=\"agent-chat__input"]
+  const order = ["${renderRunError(", "agent-chat__interrupted-recovery\" role", "${renderQueue(", "<form class=\"agent-chat__input"]
     .map((marker) => source.indexOf(marker));
   assert.ok(order.every((index, i) => index > 0 && (i === 0 || index > order[i - 1]!)), String(order));
 });
@@ -500,7 +562,7 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
-    goalPanel: { expanded: false, editing: false, error: "" },
+    goalPanel: { editing: false, error: "" },
     chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
     commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
     findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
@@ -528,6 +590,20 @@ test("Effort offers the model's own levels up to Maximum, and Speed only where f
   assert.match(durableAged, /<span class="chat-controls__inline-select-label">High<\/span>/u);
   assert.doesNotMatch(clamped, /chat-controls__speed-panel/u);
   assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: { ...opus, fast: undefined }, thinking: "high", fast: false }), /chat-controls__speed-panel/u);
+});
+
+test("Autonomy sits under Speed with Supervised or Autonomous, names the mode on the trigger, and needs a session that carries it", async () => {
+  const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max"], fast: true };
+  const on = await renderWorkerSession("idle", { currentModel: opus, thinking: "high", fast: true, autonomous: true });
+  assert.match(on, /aria-label=Thinking: high, fast, autonomous/u);
+  assert.match(on, /aria-label="Speed".*<span class="chat-controls__effort-heading">Autonomy<\/span> <div class="chat-controls__speed-options" role="radiogroup" aria-label="Autonomy">/u);
+  assert.match(on, /aria-checked=false[^>]*>Supervised<\/button>.*aria-checked=true[^>]*>Autonomous<\/button>/u);
+
+  const off = await renderWorkerSession("idle", { currentModel: opus, thinking: "high", autonomous: false });
+  assert.match(off, /aria-label=Thinking: high /u);
+  assert.match(off, /aria-checked=true[^>]*>Supervised<\/button>.*aria-checked=false[^>]*>Autonomous<\/button>/u);
+
+  assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: opus, thinking: "high" }), /Autonomy/u);
 });
 
 test("Ultra is the stop above Maximum where the runtime offers it, and both glow", async () => {
@@ -576,16 +652,52 @@ test("a dropped stream says so once under the composer, and a stopped one keeps 
   assert.doesNotMatch(stopped, /session-run-spinner/u, "nothing is retrying, so nothing spins");
 });
 
-test("a saved offline copy says so once and offers no Reconnect it cannot honour", async () => {
+test("a saved offline copy keeps its transcript, spins and says when the live request retries", async () => {
   const saved = await renderWorkerSession("disconnected", { connection: "saved", connectionNote: "Reconnecting; your draft stays on this device.", savedCopy: { savedAt: "2026-10-01T10:00:00.000Z", truncated: true } });
-  assert.match(saved, /<span class="agent-chat__composer-status-text">Saved conversation · draft preserved\. Send waits for a live connection\.<\/span>/u);
-  assert.doesNotMatch(saved, /reconnect-session|session-run-spinner/u, "nothing is retrying and there is no worker to reconnect");
+  assert.match(saved, /<span class="agent-chat__composer-status-text">Reconnecting; your draft stays on this device\.<\/span>/u);
+  assert.match(saved, /agent-chat__composer-status-icon[^>]*><span class="session-run-spinner">/u, "the cached copy says the live connection is still being sought");
+  assert.doesNotMatch(saved, /reconnect-session/u, "there is no worker to reconnect");
   assert.match(saved, /<div class="chat-composer-neighbor-card chat-composer-neighbor-card--info chat-saved-copy-notice" role="status">/u, "the copy is a neighbor card above the composer, not text over the chat");
   assert.match(saved, /<strong>Saved conversation · [^<]+<\/strong>/u);
   assert.match(saved, /<span>Only recent messages are saved\.<\/span>/u, "the reading copy still says how much of it was kept");
   assert.match(saved, /<button type="button" class="btn btn--sm" @click=>Forget saved conversations<\/button>/u);
-  assert.doesNotMatch(saved, /Reconnecting; your draft stays on this device/u, "the band under the composer already says the draft stays");
+  assert.equal(saved.match(/Reconnecting; your draft stays on this device\./gu)?.length, 1, "the status lives once under the composer");
   assert.doesNotMatch(saved, /transcript__note--status/u, "nothing sits above the transcript");
+  assert.match(saved, /<div class="chat-cached-tail" role="status" aria-label="The live conversation may have newer messages">/u, "a placeholder under the last saved row says more may follow");
+  assert.ok(saved.indexOf("long task") < saved.indexOf("chat-cached-tail"), "the placeholder sits after the last cached row");
+  const live = await renderWorkerSession("idle");
+  assert.doesNotMatch(live, /chat-cached-tail/u, "a live conversation has no cached-tail placeholder");
+
+});
+
+test("watchers stay out of the thread while a session loads and return once it is live", async () => {
+  const watchers = {
+    watchers: [{ id: "w1", purpose: "Wait for CI", target: "", outcome: "", command: "sleep 60", logPath: "/tmp/w.log", state: "running", pid: 123, startedAt: new Date().toISOString(), lastLine: "waiting" }],
+    pendingId: "", log: null, expanded: new Set<string>(), onToggle: () => {}, onStop: () => {}, onRestart: () => {}, onDismiss: () => {},
+  };
+  for (const [label, overrides] of [
+    ["opening", { opening: true, transcript: [], watchers }],
+    ["starting empty", { transcript: [], watchers }],
+    ["starting with history", { watchers }],
+  ] as const) {
+    const html = await renderWorkerSession(label === "opening" ? "idle" : "starting", overrides as Record<string, unknown>);
+    assert.doesNotMatch(html, /Background watchers|Wait for CI/u, `${label} keeps watchers out of the loading thread`);
+  }
+  const live = await renderWorkerSession("idle", { watchers });
+  assert.match(live, /aria-label="Background watchers"/u);
+  assert.match(live, /Wait for CI/u);
+});
+
+test("a long watcher list folds behind Watcher details", async () => {
+  const at = new Date().toISOString();
+  const watcher = (id: number) => ({ id: `w${id}`, purpose: `Watch ${id}`, target: "", outcome: "", command: "sleep 60", logPath: `/tmp/w${id}.log`, state: "running" as const, pid: 100 + id, startedAt: at, lastLine: "waiting" });
+  const activity = (count: number) => ({ watchers: Array.from({ length: count }, (_, index) => watcher(index + 1)), pendingId: "", log: null, expanded: new Set<string>(), onToggle: () => {}, onStop: () => {}, onRestart: () => {}, onDismiss: () => {} });
+  const many = await renderWorkerSession("idle", { watchers: activity(5) });
+  assert.match(many, /class="chat-run-status__watchers-details"/u);
+  assert.match(many, /Watcher details/u);
+  assert.equal(many.match(/data-watcher-id=/gu)?.length, 5, "the rows are there behind the disclosure");
+  const few = await renderWorkerSession("idle", { watchers: activity(2) });
+  assert.doesNotMatch(few, /chat-run-status__watchers-details/u, "a few watchers stay open as rows");
 });
 
 test("a saved copy taken today says when, without repeating today's date", async () => {
@@ -603,43 +715,65 @@ test("a reachable worker session shows neither notice, and a failed one keeps it
   assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
 });
 
-test("a conversation still downloading shows progress, and one that failed to load offers a retry instead of an empty chat", async () => {
+test("a conversation still downloading shows its skeleton, and one that failed to load offers a retry instead of an empty chat", async () => {
   const loading = await renderWorkerSession("idle", { transcript: [], opening: true });
-  assert.match(loading, /role="status" aria-live="polite"> <span>Loading the conversation…<\/span> <wa-progress-bar label="Loading the conversation" indeterminate>/u);
-  assert.doesNotMatch(loading, /Start a conversation/u);
+  assert.match(loading, /<div class="chat-skeleton" role="status" aria-live="polite" data-testid="conversation-skeleton">/u);
+  assert.match(loading, /<span>Loading the conversation…<\/span>/u);
+  assert.match(loading, /class="skeleton skeleton-line/u);
+  assert.doesNotMatch(loading, /Start a conversation|agent-chat__empty/u, "the skeleton keeps the conversation's column with no empty-state height");
+  const retrying = await renderWorkerSession("idle", { transcript: [], opening: true, connectionNote: "HUI did not answer. Trying again in 10 seconds…" });
+  assert.match(retrying, /<p class="chat-skeleton__note">HUI did not answer\. Trying again in 10 seconds…<\/p>/u, "a retried open says when it tries again");
 
-  const failed = await renderWorkerSession("idle", { transcript: [], openError: "HUI did not answer within 20 s. Check the connection and try again." });
-  assert.match(failed, /<div class="agent-chat__empty" role="alert"> <strong>Could not load this conversation<\/strong> <span>HUI did not answer within 20 s\. Check the connection and try again\.<\/span> <button type="button" class="btn btn--sm retry-session" @click=>Try again<\/button>/u);
+  const failed = await renderWorkerSession("idle", { transcript: [], openError: "HUI did not answer within 5 s. Check the connection and try again." });
+  assert.match(failed, /<div class="agent-chat__empty" role="alert"> <strong>Could not load this conversation<\/strong> <span>HUI did not answer within 5 s\. Check the connection and try again\.<\/span> <button type="button" class="btn btn--sm retry-session" @click=>Try again<\/button>/u);
   assert.doesNotMatch(failed, /Start a conversation|Send a message below/u, "a failed load never reads as an empty session");
 });
 
-test("the Parallel tasks card counts the latest batch of subagents and folds a batch that all succeeded", async () => {
+test("a starting session shows its skeleton, and a resumed one keeps its transcript instead of a Starting pi line", async () => {
+  const empty = await renderWorkerSession("starting", { transcript: [] });
+  assert.match(empty, /<div class="chat-skeleton" role="status" aria-live="polite" data-testid="conversation-skeleton">/u);
+  assert.match(empty, /<span>Preparing the session…<\/span>/u);
+  assert.doesNotMatch(empty, /Starting pi/u);
+
+  const resumed = await renderWorkerSession("starting");
+  assert.match(resumed, /<div class="chat-starting" role="status"> <span class="hui-orbit" aria-hidden="true"><i><\/i><i><\/i><i><\/i><\/span> <span>Preparing the session…<\/span>/u);
+  assert.match(resumed, /long task/u, "a resumed conversation keeps its history while the runtime starts");
+  assert.doesNotMatch(resumed, /Starting pi|data-testid="conversation-skeleton"/u);
+});
+
+test("the Run status popover counts the latest batch of helpers and folds a batch that all succeeded", async () => {
   const startedAt = new Date(Date.now() - 60_000).toISOString();
   const endedAt = new Date(Date.now() - 10_000).toISOString();
   const task = (taskId: string, status: string, extra: Record<string, unknown> = {}) =>
     ({ taskId, sessionId: `s-${taskId}`, parentSessionId: "s", title: `Check ${taskId}`, status, startedAt, updatedAt: endedAt, ...extra });
-  const card = (html: string) => html.slice(html.indexOf('<aside class="chat-swarm"'), html.indexOf("</aside>"));
 
-  const active = card(await renderWorkerSession("idle", { subagents: [
+  const active = await renderWorkerSession("idle", { subagents: [
     task("a", "running"), task("b", "starting"), task("c", "queued"), task("d", "failed", { endedAt, error: "Provider refused" }),
-  ] }));
-  assert.match(active, /<strong title=Parallel tasks>Parallel tasks<\/strong><span>1 of 4<\/span>/u);
-  assert.match(active, /<span class="chat-swarm__counts">2 running · 1 queued · 1 failed or stopped<\/span>/u);
-  assert.equal(active.match(/chat-swarm__marker chat-swarm__marker--/gu)?.length, 4);
+  ] });
+  assert.match(active, /<span class="chat-run-status__section-title" id=[^>]*>Helpers<\/span> <span class="chat-run-status__meta">1 of 4<\/span>/u);
+  assert.match(active, /<p class="chat-run-status__counts">2 running · 1 queued · 1 failed or stopped<\/p>/u);
+  assert.equal(active.match(/class="chat-run-status__marker" data-state=/gu)?.length, 4);
   assert.match(active, /Waiting for a free slot…/u);
   assert.match(active, /Provider refused/u);
+  assert.match(active, /aria-label=Open subagent Check a/u);
   assert.doesNotMatch(active, /Child runs finished/u);
 
-  const finished = card(await renderWorkerSession("idle", { streaming: true, subagents: [
+  const finished = await renderWorkerSession("idle", { streaming: true, subagents: [
     task("a", "completed", { endedAt }), task("b", "cancelled", { endedAt }),
-  ] }));
+  ] });
   assert.match(finished, /1 completed · 1 failed or stopped/u);
   assert.match(finished, /Child runs finished\. The parent is processing their results\./u);
 
-  const succeeded = card(await renderWorkerSession("idle", { subagents: [task("a", "completed", { endedAt }), task("b", "completed", { endedAt })] }));
-  assert.match(succeeded, /chat-swarm__group--completed/u);
-  assert.match(succeeded, /<span class="chat-swarm__counts">2 completed<\/span>/u);
-  assert.doesNotMatch(succeeded, /chat-swarm__marker /u);
+  const many = await renderWorkerSession("idle", { subagents: Array.from({ length: 7 }, (_, index) => task(`m${index}`, "running")) });
+  assert.match(many, /class="chat-run-status__children"/u);
+  assert.match(many, /Child details/u);
+  assert.equal(many.match(/class="chat-run-status__helper /gu)?.length, 7, "the rows are there behind the disclosure");
+  assert.doesNotMatch(active, /chat-run-status__children/u, "a small batch shows its rows directly");
+
+  const succeeded = await renderWorkerSession("idle", { subagents: [task("a", "completed", { endedAt }), task("b", "completed", { endedAt })] });
+  assert.match(succeeded, /class="chat-run-status__success"/u);
+  assert.match(succeeded, /<span class="chat-run-status__meta">2 completed<\/span>/u);
+  assert.doesNotMatch(succeeded, /class="chat-run-status__marker"/u);
   assert.match(succeeded, /Child runs finished\. Check the conversation for the final response\./u);
 });
 
@@ -658,11 +792,12 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
     { kind: "message", id: "s", role: "user", text: "[from agent: Implement retry fix · reply-to agent:s-fix] Please babysit PR #7." },
     { kind: "message", id: "h", role: "user", text: "[Inter-session message from Context lane (s-helper)]\nAlert history attached." },
     { kind: "message", id: "r", role: "user", text: "[routine: Daily standup] Summarize yesterday." },
+    { kind: "message", id: "w", role: "user", text: "[from grace · relayed from Dani's Slack instruction] PR #167221 is mine." },
   ] });
   const row = (id: string) => html.slice(html.indexOf(`data-chat-row-key=${id}`), html.indexOf("data-chat-row-key=", html.indexOf(`data-chat-row-key=${id}`) + 1));
 
   const bot = row("g");
-  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-chat-row-key=g style=--chat-sender-color: #2fc49a>/u);
+  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-testid="message-row" data-chat-row-key=g style=--chat-sender-color: #2fc49a>/u);
   assert.match(bot, /<span class="chat-sender-avatar" aria-hidden="true"><span class="bot-avatar bot-avatar--sm bot-avatar--face"/u);
   assert.match(bot, /<div class="chat-text">.*PR #7 review needs your decision\./u);
   assert.match(bot, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u);
@@ -680,6 +815,9 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
   assert.match(child, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u, "a bot subagent's parent is its bot's chat in the Bots tab");
   assert.match(row("r"), /<div class="chat-text chat-text--plain">Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
   assert.match(row("u"), /<span class="chat-sender-name">You<\/span>/u);
+  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-testid="message-row" data-chat-row-key=w /u, "a header a bot wrote before HUI tagged the brief still reads as its message");
+  assert.match(row("w"), /<p>PR #167221 is mine\.<\/p>.*>Grace<\/a>/u);
+  assert.doesNotMatch(row("w"), /\[from grace|>You</u);
 
   const handoff = row("m");
   assert.match(handoff, /<details class="chat-tool-msg-collapse chat-handoff" data-status=succeeded style=--chat-sender-color: #2fc49a/u);
@@ -795,51 +933,54 @@ test("subagent and watcher cards blur nothing behind them, so a long chat keeps 
   for (const rule of cardRules) assert.doesNotMatch(rule, /backdrop-filter/u, rule.trim());
 });
 
-test("the goal sits above the composer with its status, its controls and a collapsed detail block", async () => {
+test("the goal sits in the Run status popover with its status, objective and controls", async () => {
   const goal = { objective: "get CI green on PR 1", status: "active", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 0 };
   const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal };
   const active = await renderWorkerSession("idle", { session });
-  assert.match(active, /class="agent-chat__goal-float"/u);
-  assert.match(active, /class="agent-chat__goal agent-chat__goal--active" data-expanded=false/u);
-  assert.match(active, /class="agent-chat__goal-label">Pursuing goal</u);
-  assert.match(active, /class="agent-chat__goal-objective">get CI green on PR 1</u);
-  assert.match(active, /aria-label=Pause goal/u);
-  assert.match(active, /aria-label=Clear goal/u);
+  assert.match(active, /class="chat-run-status__trigger" data-tone=idle/u);
+  assert.match(active, /aria-label=Run status: Pursuing goal, goal pursuing/u);
+  assert.match(active, /<span class="chat-run-status__label">Pursuing goal<\/span>/u);
+  assert.match(active, /<span class="chat-run-status__section-title" id=[^>]*>Goal<\/span> <span class="chat-run-status__meta" data-status=active>Pursuing goal<\/span>/u);
+  assert.match(active, /<p class="chat-run-status__objective">get CI green on PR 1<\/p>/u);
+  assert.match(active, />Pause</u);
   assert.match(active, /aria-label="Edit goal objective"/u);
-  assert.doesNotMatch(active, /aria-label=Resume goal/u);
-  assert.match(active, /class="agent-chat__goal-action agent-chat__goal-expand" aria-expanded=false aria-controls=goal-detail-s aria-label=Expand goal/u);
-  assert.match(active, /class="agent-chat__goal-detail" id=goal-detail-s data-testid="goal-detail" data-expanded=false \?inert=true>/u);
+  assert.match(active, /aria-label="Clear goal"/u);
+  assert.doesNotMatch(active, />Resume</u);
+  assert.doesNotMatch(active, /agent-chat__goal-float|agent-chat__goal-detail/u, "the old composer pill is gone");
+
   const blocked = await renderWorkerSession("idle", { session: { ...session, goal: { ...goal, status: "blocked", note: "waiting on review" } } });
-  assert.match(blocked, /class="agent-chat__goal agent-chat__goal--blocked" data-expanded=false title=waiting on review/u);
-  assert.match(blocked, /class="agent-chat__goal-label">Goal blocked</u);
-  assert.match(blocked, /aria-label=Resume goal/u);
-  assert.match(blocked, /class="agent-chat__goal-detail-note">waiting on review</u);
+  assert.match(blocked, /class="chat-run-status__trigger" data-tone=blocked/u);
+  assert.match(blocked, /aria-label=Run status: Goal blocked, goal blocked/u);
+  assert.match(blocked, /<p class="chat-run-status__note">waiting on review<\/p>/u);
+  assert.match(blocked, />Resume</u);
+
+  const complete = await renderWorkerSession("idle", { session: { ...session, goal: { ...goal, status: "complete" } } });
+  assert.match(complete, /class="chat-run-status__trigger" data-tone=done/u);
+  assert.doesNotMatch(complete, />Resume<|>Pause</u);
+  assert.match(complete, />Clear</u);
+
   const none = await renderWorkerSession("idle");
-  assert.doesNotMatch(none, /agent-chat__goal-float/u);
+  assert.doesNotMatch(none, /chat-run-status__trigger/u);
 });
 
-test("an expanded goal reads the whole objective and edits it in place", async () => {
+test("the goal editor reads the whole objective and keeps a refused save", async () => {
   const objective = "Keep the release branch green through the migration, including the flaky integration suite.".repeat(3);
   const goal = { objective, status: "paused", note: "Paused after 10 automatic turns.", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 10 };
   const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal };
-  const open = await renderWorkerSession("idle", { session, goalPanel: { expanded: true, editing: false, error: "" } });
-  assert.match(open, /data-expanded=true title=/u);
-  assert.match(open, /class="agent-chat__goal-detail" id=goal-detail-s data-testid="goal-detail" data-expanded=true \?inert=false>/u);
-  assert.ok(open.includes(`class="agent-chat__goal-detail-objective">${objective}<`), "the detail holds the whole objective");
-  assert.match(open, /class="agent-chat__goal-detail-note">Paused after 10 automatic turns\.</u);
-  assert.match(open, /class="agent-chat__goal-detail-duration">Set [^<]+</u);
-  assert.match(open, /aria-label=Collapse goal/u);
+  const open = await renderWorkerSession("idle", { session });
+  assert.ok(open.includes(`class="chat-run-status__objective">${objective}<`), "the popover holds the whole objective");
+  assert.match(open, /class="chat-run-status__note">Paused after 10 automatic turns\./u);
+  assert.match(open, /class="chat-run-status__set">Set [^<]+ · 10 automatic turns</u);
   assert.doesNotMatch(open, /name="objective"/u, "the objective reads before it edits");
 
-  const editing = await renderWorkerSession("idle", { session, goalPanel: { expanded: true, editing: true, error: "Finish or stop the active turn before starting a goal." } });
+  const editing = await renderWorkerSession("idle", { session, goalPanel: { editing: true, error: "Finish or stop the active turn before starting a goal." } });
   assert.match(editing, /class="goal-edit"/u);
   assert.match(editing, /name="objective" rows="3" aria-label="Goal objective"/u);
-  assert.match(editing, /class="goal-edit__error" role="alert">Finish or stop the active turn before starting a goal\.</u);
+  assert.match(editing, /class="goal-edit__error" role="alert">Finish or stop the active turn before starting a goal\./u);
   assert.match(editing, />Save goal</u);
   assert.match(editing, />Cancel</u);
-  assert.doesNotMatch(editing, /agent-chat__goal-detail-objective/u, "the editor replaces the objective");
 
-  const busy = await renderWorkerSession("running", { session: { ...session, status: "running" }, streaming: true, goalPanel: { expanded: true, editing: true, error: "" } });
+  const busy = await renderWorkerSession("running", { session: { ...session, status: "running" }, streaming: true, goalPanel: { editing: true, error: "" } });
   assert.match(busy, /Finish or stop the active turn before changing the objective\./u);
   assert.match(busy, /<button type="submit" class="btn btn--sm primary" \?disabled=true>Save goal</u);
 });
@@ -880,4 +1021,38 @@ test("a presented file from the working directory offers to open in Files", asyn
   assert.doesNotMatch(outside, /chat-presented-media__reveal/u, "a file outside the working directory has nothing in Files to open");
 
   assert.match(readStyles("../styles/openclaw-chat.css"), /hui-file-ref\.chat-presented-media__reveal:not\(\.is-linked\) \{ display: none; \}/u);
+});
+
+test("a message's action row offers the phone's Share sheet only where a shell answers", async () => {
+  const transcript = [
+    { kind: "message", id: "u", role: "user", text: "Ship the release" },
+    { kind: "message", id: "a", role: "assistant", text: "Shipped." },
+    { kind: "message", id: "b", role: "user", text: "[from @grace] PR #7 needs you." },
+  ];
+
+  // A browser: no injected bridge, so `nativeShell()` answers nothing and the row is what it drew before the sheet.
+  vi.stubGlobal("window", undefined);
+  const web = await renderWorkerSession("idle", { transcript });
+  assert.match(web, /aria-label="Reply to message"/u, "the web keeps the actions it has");
+  assert.match(web, /aria-label=Copy prompt/u);
+  assert.doesNotMatch(web, /chat-group-share|Share prompt|Share response|Share message/u);
+  // Capacitor's own browser build injects a bridge that is not a shell either.
+  vi.stubGlobal("window", { location: { href: "https://gateway.test/sessions/s" }, Capacitor: { isNativePlatform: () => false, getPlatform: () => "web", Plugins: {} } });
+  assert.doesNotMatch(await renderWorkerSession("idle", { transcript }), /chat-group-share/u);
+
+  // The app: Capacitor's bridge, on a page the gateway served.
+  vi.stubGlobal("window", {
+    location: { href: "https://gateway.test/sessions/s" },
+    Capacitor: { isNativePlatform: () => true, getPlatform: () => "android", Plugins: {} },
+  });
+  const phone = await renderWorkerSession("idle", { transcript });
+  const row = (id: string) => phone.slice(phone.indexOf(`data-chat-row-key=${id}`), phone.indexOf("data-chat-row-key=", phone.indexOf(`data-chat-row-key=${id}`) + 1));
+  assert.match(row("u"), /class="chat-copy-btn chat-group-share" aria-label=Share prompt/u, "the operator's own words");
+  assert.match(row("a"), /class="chat-copy-btn chat-group-share" aria-label=Share response/u, "and the reply's");
+  assert.match(row("b"), /class="chat-copy-btn chat-group-share" aria-label=Share message/u, "a sender's message, named as Copy names it");
+  // HUI's own tooltip card, never the browser's `title`.
+  assert.match(row("a"), /role="tooltip">Share</u);
+  assert.doesNotMatch(phone, /title="Share/u);
+  // Beside Copy and Reply, in the one footer row, so the phone draws one action row and not two.
+  assert.match(row("a"), /aria-label="Reply to message"[^>]*>.*aria-label=Copy response.*aria-label=Share response/u);
 });

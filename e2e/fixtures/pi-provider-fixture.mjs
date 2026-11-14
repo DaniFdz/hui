@@ -24,6 +24,8 @@ const replayReadyWaiters = new Set();
 let heldCount = 0;
 /** Sessions E2E_FAIL_ONCE already failed, so a journey can watch its own retry answer. */
 const failedOnce = new Set();
+/** What follows a chosen tool call's result, by call id: E2E_SAY in the message that made the call chooses it. */
+const afterCall = new Map();
 const heldCountWaiters = new Set();
 const signalReplayReady = () => {
   for (const ready of replayReadyWaiters) ready();
@@ -45,10 +47,15 @@ const finish = (response, reason = "end_turn") => {
   event(response, { type: "message_stop" });
   response.end();
 };
-const text = (response, value, index = 0) => {
+/** `holdAfterTokenMs` waits out the rest of the block after the token, so Durable's next progress commit carries the
+ * token: a measured time to first token then has a real wait behind it, and the answer is not the first thing HUI
+ * sees. Only the call that passes one awaits the promise. */
+const text = (response, value, index = 0, holdAfterTokenMs = 0) => {
   event(response, { type: "content_block_start", index, content_block: { type: "text", text: "", citations: null } });
   event(response, { type: "content_block_delta", index, delta: { type: "text_delta", text: value } });
-  event(response, { type: "content_block_stop", index });
+  const close = () => { event(response, { type: "content_block_stop", index }); };
+  if (holdAfterTokenMs <= 0) { close(); return; }
+  return new Promise((resolve) => setTimeout(() => { close(); resolve(); }, holdAfterTokenMs));
 };
 const toolUse = (response, id, name, input, index = 0) => {
   event(response, { type: "content_block_start", index, content_block: { type: "tool_use", id, name, input: {} } });
@@ -107,6 +114,93 @@ const BROWSER_FIXTURE_PAGE = `<!doctype html>
   </script>
 </body>
 </html>`;
+/** For a frame check: a same-origin frame and one from another origin, each with a button. */
+const FRAME_FIXTURE_PAGE = (crossOrigin) => `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>HUI frame fixture</title>
+<style>body{margin:0;font:16px/1.5 system-ui,sans-serif} iframe{width:100%;height:180px;border:0} button{padding:8px 14px}</style></head>
+<body>
+  <h1>HUI frame fixture</h1>
+  <iframe src="/browser-frame-inner" title="Same frame"></iframe>
+  <iframe src="${crossOrigin}/browser-frame-inner" title="Cross frame"></iframe>
+</body>
+</html>`;
+const FRAME_INNER_PAGE = (label) => `<!doctype html><title>${label}</title>
+  <button onclick="document.getElementById('out').textContent = '${label} clicked'">${label} button</button>
+  <p id="out">idle</p>`;
+
+/** For a handoff check: the Name field sits at the viewport's centre, so the
+ * operator's click on the middle of the live view lands on it; Greet follows it. */
+const HANDOFF_FIXTURE_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HUI handoff fixture</title>
+  <style>
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1f2328; background: #f6f8fa; }
+    header { padding: 24px 32px; }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    header p { margin: 0; }
+    /* The field's centre is the viewport's centre: a click on the middle of the
+       live view lands in it, which is where a person would click anyway. */
+    label { position: fixed; left: 50%; top: calc(50% - 54px); transform: translateX(-50%); font-weight: 600; }
+    input { position: fixed; left: 50%; top: 50%; width: 320px; height: 48px; box-sizing: border-box; transform: translate(-50%, -50%); padding: 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; font: inherit; }
+    button { position: fixed; left: 50%; top: calc(50% + 42px); transform: translateX(-50%); padding: 10px 18px; border: 0; border-radius: 6px; color: #fff; background: #0969da; font: inherit; cursor: pointer; }
+    #greeting { position: fixed; left: 50%; top: calc(50% + 108px); transform: translateX(-50%); min-height: 1.5em; margin: 0; font-size: 18px; font-weight: 600; color: #1a7f37; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>HUI handoff fixture</h1>
+    <p>Only a person can finish this page.</p>
+  </header>
+  <label for="name">Name</label>
+  <input id="name" autocomplete="off">
+  <button type="button" id="greet">Greet</button>
+  <p id="greeting" role="status"></p>
+  <script>
+    document.getElementById("greet").addEventListener("click", () => {
+      const name = document.getElementById("name").value;
+      document.getElementById("greeting").textContent = "Hello, " + name + "! Typed by the operator.";
+      console.log("greeted", name);
+    });
+  </script>
+</body>
+</html>`;
+
+/** For a stored-secret check: a password field and a submit that reports its length only. */
+const SECRET_FIXTURE_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HUI secret fixture</title>
+  <style>
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1f2328; background: #f6f8fa; }
+    main { max-width: 420px; margin: 48px auto; padding: 24px; border-radius: 12px; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 12%); }
+    h1 { margin: 0 0 16px; font-size: 22px; }
+    label { display: block; margin: 0 0 6px; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #d0d7de; border-radius: 6px; font: inherit; }
+    button { margin-top: 12px; padding: 10px 18px; border: 0; border-radius: 6px; color: #fff; background: #0969da; font: inherit; cursor: pointer; }
+    #out { min-height: 1.5em; margin: 16px 0 0; font-weight: 600; color: #1a7f37; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Sign in</h1>
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="off">
+    <button type="button" id="sign-in">Sign in</button>
+    <p id="out" role="status"></p>
+  </main>
+  <script>
+    document.getElementById("sign-in").addEventListener("click", () => {
+      const length = document.getElementById("password").value.length;
+      document.getElementById("out").textContent = "signed in with " + length + " characters";
+    });
+  </script>
+</body>
+</html>`;
+
 /** A small built-in widget for show_widget checks. */
 const COUNTER_WIDGET = `<div id="counter" class="row">
 <style>#counter{gap:12px}#counter output{min-width:3ch;font:600 22px/1 var(--font-mono);color:var(--text-strong)}</style>
@@ -155,12 +249,126 @@ const heldUntilRelease = (response) => new Promise((resolve) => {
   signalReplayReady();
 });
 
+let frameOrigin = "";
+const frameServer = createServer((_request, response) => {
+  response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  response.end(FRAME_INNER_PAGE("Cross"));
+});
+frameServer.listen(0, "127.0.0.1", () => {
+  frameOrigin = `http://127.0.0.1:${frameServer.address().port}`;
+});
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (request.method === "GET" && url.pathname === "/health") return json(response, 200, { ok: true });
   if (request.method === "GET" && url.pathname === "/browser-fixture") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return response.end(BROWSER_FIXTURE_PAGE);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-handoff-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(HANDOFF_FIXTURE_PAGE);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-annotate-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI annotate fixture</title>
+      <h1>HUI annotate fixture</h1>
+      <p id="note">unchanged</p>
+      <button id="save">Save draft</button>
+      <button id="send">Send</button>
+      <a href="#details">Open details</a>
+      <script>
+        document.getElementById("save").addEventListener("click", () => {
+          document.getElementById("note").textContent = "clicked";
+        });
+      </script>`);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-storage-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI storage fixture</title>
+      <h1>HUI storage fixture</h1>
+      <p>The page keeps a cookie and some storage it never shows.</p>
+      <script>
+        document.cookie = "sid=cookie-secret-fixture; path=/";
+        document.cookie = "theme=light; path=/";
+        localStorage.setItem("draft", "draft-secret-fixture");
+        sessionStorage.setItem("tab-token", "tab-secret-fixture");
+      </script>`);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-perf-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI performance fixture</title>
+      <h1>HUI performance fixture</h1>
+      <div id="rows"></div>
+      <script>
+        const rows = document.getElementById("rows");
+        for (let index = 0; index < 250; index += 1) {
+          const row = document.createElement("div");
+          row.textContent = "row " + index;
+          rows.append(row);
+        }
+      </script>`);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-upload-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI upload fixture</title>
+      <h1>HUI upload fixture</h1>
+      <input id="doc" type="file" aria-label="Attach document">
+      <p id="picked">nothing picked</p>
+      <script>
+        document.getElementById("doc").addEventListener("change", (event) => {
+          document.getElementById("picked").textContent = "picked: " + [...event.target.files].map((file) => file.name).join(", ");
+        });
+      </script>`);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-diff-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI diff fixture</title>
+      <h1>HUI diff fixture</h1>
+      <p id="count">2 items</p>
+      <button id="add">Add item</button>
+      <button id="confirm" hidden>Confirm</button>
+      <script>
+        document.getElementById("add").onclick = () => {
+          document.getElementById("count").textContent = "3 items";
+          document.getElementById("confirm").hidden = false;
+        };
+        document.getElementById("confirm").onclick = () => {
+          document.getElementById("count").textContent = "confirmed";
+        };
+      </script>`);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-network-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(`<!doctype html><title>HUI network fixture</title>
+      <h1>HUI network fixture</h1>
+      <p id="out">loading</p>
+      <script>
+        Promise.all([
+          fetch("/browser-network-api?token=fixture-secret", { headers: { authorization: "Bearer fixture-secret" } }),
+          fetch("/browser-network-missing"),
+        ]).then(() => { document.getElementById("out").textContent = "fetched"; });
+      </script>`);
+  }
+  if (request.method === "GET" && url.pathname === "/browser-network-api") {
+    response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    return response.end(JSON.stringify({ ok: true }));
+  }
+  if (request.method === "GET" && url.pathname === "/browser-network-missing") {
+    response.writeHead(404, { "content-type": "text/plain" });
+    return response.end("missing");
+  }
+  if (request.method === "GET" && url.pathname === "/browser-frame-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(FRAME_FIXTURE_PAGE(frameOrigin));
+  }
+  if (request.method === "GET" && url.pathname === "/browser-frame-inner") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(FRAME_INNER_PAGE("Same"));
+  }
+    if (request.method === "GET" && url.pathname === "/browser-secret-fixture") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    return response.end(SECRET_FIXTURE_PAGE);
   }
   if (request.method === "GET" && url.pathname === "/control/wait-subagent-parent") {
     subagentParentWaiting = true;
@@ -211,6 +419,11 @@ const server = createServer(async (request, response) => {
   if (requiredKey && request.headers["x-api-key"] !== requiredKey) {
     return json(response, 401, { type: "error", error: { type: "authentication_error", message: "fixture provider: wrong API key" } });
   }
+  // Opt-in OpenCode routing check: OpenCode rejects a request without its session header.
+  const opencodeSession = request.headers["x-opencode-session"];
+  if (process.env.HUI_E2E_PROVIDER_OPENCODE === "1" && opencodeSession === undefined) {
+    return json(response, 400, { type: "MissingSessionID", message: "Request is missing x-opencode-session and cannot be routed efficiently." });
+  }
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
@@ -219,7 +432,7 @@ const server = createServer(async (request, response) => {
   const clientSessionId = request.headers["x-client-session-id"];
   // And one with an x-e2e-token header logs that, e.g. to prove a remote worker got it.
   const header = request.headers["x-e2e-token"];
-  await appendFile(logFile, `${JSON.stringify({ ...body, ...(clientSessionId === undefined ? {} : { clientSessionId }), ...(header === undefined ? {} : { header }) })}\n`, "utf8");
+  await appendFile(logFile, `${JSON.stringify({ ...body, ...(clientSessionId === undefined ? {} : { clientSessionId }), ...(header === undefined ? {} : { header }), ...(opencodeSession === undefined ? {} : { opencodeSession }) })}\n`, "utf8");
   const source = flattenedText(withoutView(body.messages?.at(-1)));
   const latestToolResult = toolResultFrom(body.messages?.at(-1));
   const naming = source.includes("Generate a concise session title") || source.includes("Name this coding-agent session");
@@ -252,9 +465,20 @@ const server = createServer(async (request, response) => {
   // routine's run records the rate-limit kind that needs the operator.
   if (!recovering && source.includes("E2E_ERROR_QUOTA")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
     message: "fixture quota exhausted: the fixture's plan has no credits left" } });
+  // E2E_CAPACITY is a provider 429 that asks for a retry, as OpenCode Go does when its upstream cell is full.
+  if (!recovering && source.includes("E2E_CAPACITY") && body.model === "fixture") {
+    response.writeHead(429, { "content-type": "application/json", "retry-after": "0" });
+    response.end(JSON.stringify({ type: "server_error", message: "Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 1 s)" }));
+    return;
+  }
   // E2E_OVERFLOW overflows the context window until PI's summary is in the request, so PI compacts and retries the turn.
   if (!recovering && source.includes("E2E_OVERFLOW") && !flattenedText(body.messages).includes("FIXTURE_SUMMARY") && !flattenedText(body.system).includes("context summarization assistant")) {
     return json(response, 400, { type: "error", error: { type: "invalid_request_error", message: "prompt is too long: 213462 tokens > 200000 maximum" } });
+  }
+  // E2E_TOO_LONG is Amazon Bedrock's bare refusal of a request past the size the provider takes: it names neither the
+  // images nor a limit, so only the history's own images can be what filled it.
+  if (!recovering && source.includes("E2E_TOO_LONG")) {
+    return json(response, 400, { type: "error", error: { type: "invalid_request_error", message: "Input is too long." } });
   }
   // E2E_PRIMARY_ERROR fails only the primary fixture model, so the run falls back to another model that answers it.
   if (!recovering && source.includes("E2E_PRIMARY_ERROR") && body.model === "fixture") return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
@@ -292,21 +516,30 @@ const server = createServer(async (request, response) => {
 
   // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
   // response, and the next answer quotes every result. E2E_HOLD:<the same> does too, and a `fixture_echo` call among
-  // them runs until POST /control/release-replay.
+  // them runs until POST /control/release-replay. E2E_SAY:<base64url text> in the same message answers with that text
+  // instead of the quoted results, so a turn can call a tool and then speak.
   // E2E_ASK_USER:<name> does the same with ask_user_question and the workspace's `ask-<name>.json`: its input, or an
   // array of inputs for parallel calls.
   const chosen = /E2E_(CALL|HOLD):([A-Za-z0-9_-]+)/u.exec(source);
+  const said = /E2E_SAY:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
   const asked = /E2E_ASK_USER:([a-z0-9-]+)/u.exec(source)?.[1];
   if (chosen || asked) {
     const calls = asked
       ? [JSON.parse(await readFile(`${workspace}/ask-${asked}.json`, "utf8"))].flat().map((input) => ({ name: "ask_user_question", input }))
       : [JSON.parse(Buffer.from(chosen[2], "base64url").toString("utf8"))].flat();
     const id = chosen?.[1] === "HOLD" ? "tool-e2e-hold" : "tool-e2e-call";
-    calls.forEach((call, index) => toolUse(response, `${id}-${index}`, call.name, call.input ?? {}, index));
+    calls.forEach((call, index) => {
+      const callId = `${id}-${index}`;
+      // The model speaks once, after its last call's result.
+      if (said && index === calls.length - 1) afterCall.set(callId, Buffer.from(said, "base64url").toString("utf8"));
+      toolUse(response, callId, call.name, call.input ?? {}, index);
+    });
     return finish(response, "tool_use");
   }
   if (/^tool-e2e-(call|hold)-/u.test(String(latestToolResult?.id ?? ""))) {
-    text(response, `tool answered: ${toolResultTexts([body.messages?.at(-1)]).join(" | ")}`);
+    const said = afterCall.get(latestToolResult.id);
+    afterCall.delete(latestToolResult.id);
+    text(response, said ?? `tool answered: ${toolResultTexts([body.messages?.at(-1)]).join(" | ")}`);
     return finish(response);
   }
 
@@ -415,10 +648,428 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // The agent tries a host the allowlist keeps out, and reports the refusal it gets.
+  if (source.includes("E2E_BROWSER_BLOCKED") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-blocked-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-blocked-open") {
+    await browserPace(body);
+    toolUse(response, "tool-e2e-blocked-navigate", "browser", { action: "navigate", url: "https://example.com/" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-blocked-navigate") {
+    const refusal = /[\w.-]+ is not in this browser's allowed origins[^\n]*/u.exec(toolResultTexts(body.messages).join("\n"))?.[0];
+    text(response, refusal
+      ? `The browser refused the navigation: **${refusal}**`
+      : "The navigation was not refused, so the allowlist did not apply.");
+    return finish(response);
+  }
+
+  // The agent types the operator's stored secret into the sign-in form and reports what the page said.
+  if (source.includes("E2E_BROWSER_SECRET") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-secret-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-secret-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-secret-open") {
+    await browserPace(body);
+    const password = /textbox "Password" \[ref=(e\d+)\]/u.exec(toolResultTexts(body.messages).join("\n"))?.[1];
+    if (!password) {
+      text(response, "The sign-in field was not in the page snapshot.");
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-secret-type", "browser", { action: "secret", name: "fixture-secret", ref: password, submit: true });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-secret-type") {
+    await browserPace(body);
+    const signIn = /button "Sign in" \[ref=(e\d+)\]/u.exec(toolResultTexts(body.messages).join("\n"))?.[1];
+    if (!signIn) {
+      text(response, "The sign-in button was not in the page snapshot.");
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-secret-click", "browser", { action: "act", kind: "click", ref: signIn });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-secret-click") {
+    await browserPace(body);
+    toolUse(response, "tool-e2e-secret-read", "browser", { action: "text", selector: "#out" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-secret-read") {
+    const texts = toolResultTexts(body.messages).join("\n");
+    const typed = /Typed the site secret "fixture-secret"[^\n]*/u.exec(texts)?.[0];
+    const outcome = /signed in with [^\n]*/u.exec(texts)?.[0];
+    text(response, typed && outcome
+      ? `The stored secret was typed: **${typed}**. The page said "${outcome}".`
+      : `The stored secret was not typed cleanly: ${typed ?? "no type confirmation"}; ${outcome ?? "no page result"}.`);
+    return finish(response);
+  }
+
+  // The agent runs a dependent flow as one steps call and reports each step it ran.
+  if (source.includes("E2E_BROWSER_STEPS") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-steps-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-steps-open") {
+    await browserPace(body);
+    const snapshots = toolResultTexts(body.messages).join("\n");
+    const name = /textbox "Name" \[ref=(e\d+)\]/u.exec(snapshots)?.[1];
+    const greet = /button "Greet" \[ref=(e\d+)\]/u.exec(snapshots)?.[1];
+    if (!name || !greet) {
+      text(response, "The form was not in the page snapshot.");
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-steps-run", "browser", {
+      action: "steps",
+      steps: [
+        { kind: "type", ref: name, text: "Step by step" },
+        { kind: "click", ref: greet },
+        { kind: "wait", text: "Hello, Step by step!" },
+      ],
+    });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-steps-run") {
+    const log = /Ran 3 steps in tab t\d+\.[\s\S]*?3\. wait: [^\n]*/u.exec(toolResultTexts(body.messages).join("\n"))?.[0];
+    text(response, log
+      ? `The flow ran in one call:\n\n${log}`
+      : "The steps call did not report three steps.");
+    return finish(response);
+  }
+
+  // The agent captures a picture whose numbers are the refs it can act on.
+  if (source.includes("E2E_BROWSER_ANNOTATE") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-annotate-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-annotate-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-annotate-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-annotate-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      open: ["shot", { action: "screenshot", annotate: true, path: "shots/annotated.png" }],
+      shot: ["count", { action: "get", what: "count", selector: "[data-hui-annotations]" }],
+      count: ["click", { action: "act", kind: "click", ref: ref(/button "Save draft" \[ref=(e\d+)\]/u) }],
+      click: ["note", { action: "get", what: "text", selector: "#note" }],
+    }[step];
+    if (next && (next[1].action !== "act" || next[1].ref)) {
+      toolUse(response, `tool-e2e-annotate-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const numbers = Number(/Annotated with (\d+) numbers?/u.exec(results)?.[1]);
+    const saved = /Saved to [^\n]*shots\/annotated\.png/u.test(results);
+    const cleaned = /0 elements match \[data-hui-annotations\]/u.test(results);
+    const stillActs = /note of .*: "clicked"/u.test(results) || /clicked/u.test(results);
+    text(response, numbers >= 3 && saved && cleaned && stillActs
+      ? `The annotated picture drew ${numbers} numbers, its overlay was gone afterwards, and the refs still acted.`
+      : `The annotate check did not complete: numbers=${numbers}, saved=${saved}, cleaned=${cleaned}, acts=${stillActs}.`);
+    return finish(response);
+  }
+
+  // The agent lists a page's cookies and storage without their values.
+  if (source.includes("E2E_BROWSER_STORAGE") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-storage-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-storage-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-storage-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-storage-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const next = {
+      open: ["cookies", { action: "storage", what: "cookies" }],
+      cookies: ["local", { action: "storage", what: "local" }],
+    }[step];
+    if (next) {
+      toolUse(response, `tool-e2e-storage-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const cookies = /2 cookies for [^\n]+, values hidden:/u.test(results);
+    const local = /1 localStorage key on [^\n]+, values hidden:/u.test(results);
+    const names = /^ {2}sid ·/mu.test(results) && /^ {2}theme ·/mu.test(results) && /^ {2}draft ·/mu.test(results);
+    const hidden = !/cookie-secret-fixture|draft-secret-fixture|tab-secret-fixture/u.test(results);
+    text(response, cookies && local && names && hidden
+      ? "The page holds 2 cookies (sid, theme) and one localStorage key (draft), and none of their values reached the transcript."
+      : `The storage check did not complete: cookies=${cookies}, local=${local}, names=${names}, hidden=${hidden}.`);
+    return finish(response);
+  }
+
+  // The agent measures what a page costs instead of guessing.
+  if (source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-perf-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-perf-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-perf-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-perf-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const next = {
+      open: ["metrics", { action: "performance", operation: "metrics" }],
+      metrics: ["timings", { action: "performance", operation: "timings" }],
+    }[step];
+    if (next) {
+      toolUse(response, `tool-e2e-perf-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const nodes = Number(/nodes (\d+)/u.exec(results)?.[1]);
+    const load = /Load: [^\n]+/u.exec(results)?.[0];
+    const resources = /Resources: \d+ requests?, [\d.]+ (B|KB|MB) transferred\./u.exec(results)?.[0];
+    const accum = /Counters accumulate from this tab's first performance call\./u.test(results);
+    text(response, nodes >= 250 && load && resources && accum
+      ? `The page reports ${nodes} DOM nodes, and ${load}. ${resources} Counters accumulate from the tab's first performance call.`
+      : `The performance check did not complete: nodes=${nodes}, load=${Boolean(load)}, resources=${Boolean(resources)}, counters=${accum}.`);
+    return finish(response);
+  }
+
+  // The agent uploads a local file into the page's file input.
+  if (source.includes("E2E_BROWSER_UPLOAD") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-upload-write", "bash", { command: "printf 'hello upload\\n' > upload-note.txt && ls -l upload-note.txt" });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-upload-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-upload-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      write: ["open", { action: "open", url: `http://127.0.0.1:${port}/browser-upload-fixture` }],
+      open: ["snapshot", { action: "snapshot" }],
+      snapshot: ["upload", { action: "act", kind: "upload", ref: ref(/button "Attach document" \[ref=(e\d+)\]/u), files: ["upload-note.txt"] }],
+      upload: ["picked", { action: "get", what: "text", selector: "#picked" }],
+    }[step];
+    const needsRef = (step) => step[1].action === "act" && step[1].kind === "upload";
+    if (next && (!needsRef(next) || next[1].ref)) {
+      toolUse(response, `tool-e2e-upload-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const uploaded = /Uploaded upload-note\.txt to e\d+ \(button "Attach document"\) \(1 file\)\./u.test(results);
+    const picked = /picked: upload-note\.txt/u.test(results);
+    text(response, uploaded && picked
+      ? "Uploaded upload-note.txt to the file input, and the page's change handler shows **picked: upload-note.txt**."
+      : `The upload check did not complete: uploaded=${uploaded}, picked=${picked}.`);
+    return finish(response);
+  }
+
+  // The agent reads only what an action changed, then acts on a ref from the diff.
+  if (source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-diff-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-diff-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-diff-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-diff-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      open: ["baseline", { action: "snapshot" }],
+      baseline: ["add", { action: "act", kind: "click", ref: ref(/button "Add item" \[ref=(e\d+)\]/u) }],
+      add: ["diff", { action: "snapshot", diff: true }],
+      diff: ["confirm", { action: "act", kind: "click", ref: ref(/\+ - button "Confirm" \[ref=(e\d+)\]/u) }],
+      confirm: ["confirmed", { action: "snapshot", diff: true }],
+    }[step];
+    const needsRef = (step) => step[1].action === "act" && step[1].kind === "click";
+    if (next && (!needsRef(next) || next[1].ref)) {
+      toolUse(response, `tool-e2e-diff-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const revealed = /Page changed since the previous snapshot: \d+ lines added, \d+ removed\./u.test(results)
+      && /\+ - paragraph: 3 items/u.test(results)
+      && /\+ - button "Confirm" \[ref=e\d+\]/u.test(results)
+      && !/\+ - heading "HUI diff fixture"/u.test(results);
+    const confirmed = /\+ - paragraph: confirmed/u.test(results);
+    text(response, revealed && confirmed
+      ? "The diff after Add item showed only the added lines (3 items, Confirm), the ref it carried clicked, and the next diff showed **confirmed**."
+      : `The snapshot diff check did not complete: revealed=${revealed}, confirmed=${confirmed}.`);
+    return finish(response);
+  }
+
+  // The agent captures the page's requests and writes a HAR whose values are redacted.
+  if (source.includes("E2E_BROWSER_NETWORK") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-network-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-network-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-network-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-network-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const next = {
+      open: ["start", { action: "network", operation: "start" }],
+      start: ["reload", { action: "reload" }],
+      reload: ["requests", { action: "network", operation: "requests" }],
+      requests: ["har", { action: "network", operation: "har", path: "net/fixture.har" }],
+    }[step];
+    if (next) {
+      toolUse(response, `tool-e2e-network-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const captured = /\d+ requests captured in tab t\d+/u.exec(results)?.[0];
+    const api = /n\d+ · GET 200 OK · Fetch[^\n]*\n\s+http:\/\/127\.0\.0\.1:\d+\/browser-network-api\?token=%5Bredacted%5D/u.test(results);
+    const missing = /GET 404 Not Found[^\n]*\n\s+http:\/\/127\.0\.0\.1:\d+\/browser-network-missing/u.test(results);
+    const har = /Wrote \d+ requests to [^\n]+\.har[^\n]*redacted/u.exec(results)?.[0];
+    text(response, api && missing && har
+      ? `${captured}. The API request shows token=%5Bredacted%5D, the missing one 404, and ${har}`
+      : `The network check did not complete: captured=${captured ?? "none"}, api=${api}, missing=${missing}, har=${Boolean(har)}.`);
+    return finish(response);
+  }
+
+  // Both frames are inlined in the snapshot; a click inside each lands on its own button.
+  if (source.includes("E2E_BROWSER_FRAME") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-frame-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-frame-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-frame-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-frame-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      open: ["snapshot", { action: "snapshot" }],
+      snapshot: ["same", { action: "act", kind: "click", ref: ref(/button "Same button" \[ref=(e\d+)\]/u) }],
+      same: ["afterSame", { action: "snapshot" }],
+      afterSame: ["cross", { action: "act", kind: "click", ref: ref(/button "Cross button" \[ref=(e\d+)\]/u) }],
+      cross: ["afterCross", { action: "snapshot" }],
+    }[step];
+    const needsRef = (step) => step[1].action === "act" && step[1].kind === "click";
+    if (next && (!needsRef(next) || next[1].ref)) {
+      toolUse(response, `tool-e2e-frame-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const sameClicked = /Same clicked/u.test(results);
+    const crossClicked = /Cross clicked/u.test(results);
+    const inlined = /Iframe "Same frame"[\s\S]*button "Same button"/u.test(results) && /Iframe "Cross frame"[\s\S]*button "Cross button"/u.test(results);
+    text(response, sameClicked && crossClicked && inlined
+      ? "Both frames were in the snapshot, and a click inside each one landed: **Same clicked** and **Cross clicked**."
+      : `The frame check did not complete: inlined=${inlined}, same=${sameClicked}, cross=${crossClicked}.`);
+    return finish(response);
+  }
+
+  // The agent reads and verifies one property at a time instead of re-snapshotting.
+  if (source.includes("E2E_BROWSER_LOOP") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-loop-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id?.startsWith("tool-e2e-loop-")) {
+    await browserPace(body);
+    const step = latestToolResult.id.slice("tool-e2e-loop-".length);
+    const results = toolResultTexts(body.messages).join("\n");
+    const ref = (pattern) => pattern.exec(results)?.[1];
+    const next = {
+      open: ["snapshot", { action: "snapshot", selector: "main", depth: 3 }],
+      snapshot: ["title", { action: "get", what: "title" }],
+      title: ["count", { action: "get", what: "count", selector: "button" }],
+      count: ["enabled", { action: "is", state: "enabled", ref: ref(/button "Greet" \[ref=(e\d+)\]/u) }],
+      enabled: ["type", { action: "act", kind: "type", ref: ref(/textbox "Name" \[ref=(e\d+)\]/u), text: "Loop" }],
+      type: ["value", { action: "get", what: "value", ref: ref(/textbox "Name" \[ref=(e\d+)\]/u) }],
+      value: ["click", { action: "act", kind: "click", ref: ref(/button "Greet" \[ref=(e\d+)\]/u) }],
+      click: ["wait", { action: "act", kind: "wait", state: "visible", selector: "#greeting", text: "Hello, Loop!" }],
+      wait: ["text", { action: "get", what: "text", selector: "#greeting" }],
+    }[step];
+    const needsRef = (step) => (step[1].action === "act" && (step[1].kind === "type" || step[1].kind === "click")) || step[1].action === "is";
+    if (next && (!needsRef(next) || next[1].ref)) {
+      toolUse(response, `tool-e2e-loop-${next[0]}`, "browser", next[1]);
+      return finish(response, "tool_use");
+    }
+    const boundary = /--- HUI_PAGE_CONTENT nonce=[0-9a-f]{16} origin=\S+ ---/u.exec(results)?.[0];
+    const title = /Title: [^\n]+/u.exec(results)?.[0];
+    const count = /\d+ element[s]? match[^\n]*/u.exec(results)?.[0];
+    const enabled = /button "Greet"\) is enabled\./u.exec(results)?.[0];
+    const value = /value of e\d+ \(textbox "Name"\): "[^"]*"/u.exec(results)?.[0];
+    const greeting = /Hello, Loop![^\n]*/u.exec(results)?.[0];
+    const summary = [boundary, title, count, enabled, value, greeting].filter(Boolean);
+    text(response, summary.length >= 6
+      ? `The page was read one property at a time:\n\n${summary.map((line) => `- ${line}`).join("\n")}`
+      : `The reading loop did not complete: step "${step}", reached ${summary.length} of 6 facts.`);
+    return finish(response);
+  }
+
+  // The agent opens the page, then hands the tab to the operator when only a person can finish.
+  if (source.includes("E2E_BROWSER_HANDOFF") && !source.includes("Name this coding-agent session")) {
+    if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
+      text(response, "The browser tool is not available in this session.");
+      return finish(response);
+    }
+    await browserPace(body);
+    toolUse(response, "tool-e2e-handoff-open", "browser", { action: "open", url: `http://127.0.0.1:${port}/browser-handoff-fixture` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-handoff-open") {
+    await browserPace(body);
+    toolUse(response, "tool-e2e-handoff-wait", "browser", {
+      action: "handoff",
+      message: "Type your name into the Name field and click Greet, then press I'm done — continue.",
+      timeoutMs: 300_000,
+    });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-handoff-wait") {
+    // The handoff's result carries the page as the operator left it.
+    const greeting = /Hello, [^\n]*/u.exec(toolResultTexts(body.messages).join("\n"))?.[0];
+    text(response, greeting
+      ? `The operator finished in the browser: **${greeting}**`
+      : "The handoff returned without the greeting page state.");
+    return finish(response);
+  }
+
   // A real PI browser tool call against HUI's managed headless browser:
   // open the fixture page, type into the field found in the snapshot, click,
   // read the text page JavaScript rendered, then capture a screenshot.
-  if (source.includes("E2E_BROWSER") && !source.includes("Name this coding-agent session")) {
+  if (source.includes("E2E_BROWSER") && !source.includes("E2E_BROWSER_HANDOFF") && !source.includes("E2E_BROWSER_BLOCKED") && !source.includes("E2E_BROWSER_SECRET") && !source.includes("E2E_BROWSER_STEPS") && !source.includes("E2E_BROWSER_LOOP") && !source.includes("E2E_BROWSER_FRAME") && !source.includes("E2E_BROWSER_NETWORK") && !source.includes("E2E_BROWSER_SNAPSHOT_DIFF") && !source.includes("E2E_BROWSER_UPLOAD") && !source.includes("E2E_BROWSER_PERFORMANCE") && !source.includes("E2E_BROWSER_SKILL") && !source.includes("E2E_BROWSER_STORAGE") && !source.includes("E2E_BROWSER_ANNOTATE") && !source.includes("Name this coding-agent session")) {
     if (!(Array.isArray(body.tools) ? body.tools : []).some((tool) => tool?.name === "browser")) {
       text(response, "The browser tool is not available in this session.");
       return finish(response);
@@ -544,6 +1195,28 @@ const server = createServer(async (request, response) => {
   }
   if (latestToolResult?.id === "tool-e2e-secret-use") {
     text(response, "I used the secret in a command without seeing it, then deleted its file.");
+    return finish(response);
+  }
+
+  // The shipped browser skill is in a session's prompt and readable from its folder.
+  if (source.includes("E2E_BROWSER_SKILL") && !source.includes("Name this coding-agent session")) {
+    const prompt = flattenedText(body.system);
+    const description = /reading a site that needs JavaScript or a login/u.test(prompt);
+    const path = /<location>([^<]*\/skills\/browser\/SKILL\.md)<\/location>/u.exec(prompt)?.[1];
+    if (!description || !path) {
+      text(response, `The browser skill is not in this session's prompt: described=${description}, path=${path ?? "none"}.`);
+      return finish(response);
+    }
+    toolUse(response, "tool-e2e-skill", "bash", { command: `sed -n '1,3p' '${path}' && grep -c '^## The loop that works' '${path}'` });
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-skill") {
+    const result = String(latestToolResult.result ?? "");
+    const named = /name: browser/u.test(result);
+    const loop = /^1$/mu.test(result.trim().split("\n").at(-1) ?? "");
+    text(response, named && loop
+      ? "The browser skill is listed in this session's prompt, and its file opens with **name: browser** and the loop section."
+      : `The browser skill file did not read as expected: ${result.slice(0, 200)}`);
     return finish(response);
   }
 
@@ -780,6 +1453,14 @@ const server = createServer(async (request, response) => {
     toolUse(response, "tool-e2e-date", "date", { id: 0 }, 3);
     return finish(response, "tool_use");
   }
+  // OptChat's search: a hit, no hit, nothing to search for, and a limit it reports.
+  if (source.includes("E2E_SEARCH")) {
+    toolUse(response, "tool-e2e-search-hits", "search_chat", { query: "OPT_SEARCH_TARGET" }, 0);
+    toolUse(response, "tool-e2e-search-none", "search_chat", { query: "nothing here mentions this phrase" }, 1);
+    toolUse(response, "tool-e2e-search-empty", "search_chat", { query: "   " }, 2);
+    toolUse(response, "tool-e2e-search-limited", "search_chat", { query: "OPT_SEARCH_TARGET", limit: 1 }, 3);
+    return finish(response, "tool_use");
+  }
   if (latestToolResult?.id?.startsWith("tool-e2e-watcher-")) {
     text(response, "Watchers are running; HUI shows them in this conversation.");
     return finish(response);
@@ -797,6 +1478,11 @@ const server = createServer(async (request, response) => {
       purpose: "Wait for #21532 review signals",
       command: "printf 'watching #21532\\n'; sleep 600",
     }, 1);
+    return finish(response, "tool_use");
+  }
+  // A gateway extension's tool, which only exists when the enabled extension declared it.
+  if (source.includes("E2E_GATEWAY_TOOL")) {
+    toolUse(response, "tool-e2e-gateway", "ext_hello_greet", { name: "Ada" });
     return finish(response, "tool_use");
   }
   // A tool a PI extension registers, which only exists when the runtime loaded it.
@@ -881,7 +1567,8 @@ const server = createServer(async (request, response) => {
   }
   // Attachment requests reach this branch. The request log is the proof that
   // PI, not merely HUI's HTTP boundary, received the image/file-expanded input.
-  text(response, source.includes("image") ? "Attachment received by PI." : "Fixture response.");
+  // E2E_SLOW_TTFT keeps the answer going 600 ms after its first token, so the token reaches HUI in its own partial.
+  await text(response, source.includes("image") ? "Attachment received by PI." : "Fixture response.", 0, source.includes("E2E_SLOW_TTFT") ? 600 : 0);
   finish(response);
 }).listen(port, "127.0.0.1", () => {
   port = server.address().port;

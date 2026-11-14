@@ -1,7 +1,8 @@
 # Structured questions (`ask_user_question`) browser verification
 
 The shared tests in `e2e/tests/agent/` (`questions.e2e.ts`, `question-keyboard.e2e.ts`,
-`waiting-cards.e2e.ts`) cover the card itself: one card above the composer, several
+`waiting-cards.e2e.ts`) cover the card itself: one card at the end of the transcript,
+several
 questions, multi-select, previews, the keyboard, Cancel, Stop, a reload, parallel calls,
 invalid calls and untrusted text. This journey keeps the checks no shared test makes
 yet: the question timeout (AGENT-013, SET-056), HUI's tool winning over a PI extension
@@ -60,6 +61,45 @@ Date: 2026-10-17, branch `dani.fernandez/question-timeout`.
   questions and their options, the fixture quoted the timeout text back, and
   both survived a reload. 1440×900 and 390×844: see the pull request's
   screenshots.
+
+Date: 2026-11-08, branch `danifdz/reduce-selection-ui-space`.
+
+- Folded card on Durable, Browser tool, from the committed HEAD with a clean
+  checkout: a three-question `E2E_ASK_USER` card (four described options on the
+  first question) folded from its own top line to one row reading *Questions
+  1/3*, which put the reply above it back on screen. Escape on the folded row
+  opened the card at the same question, and a reload opened the card unfolded.
+  1440×900 and 390×844: see the pull request's screenshots. The shared test
+  `question-fold.e2e.ts` (AGENT-063) covers the fold, its tally of answered
+  questions, the room the transcript gains, the composer draft, Escape and
+  Enter, and that every answer still reaches the agent after folding.
+
+Date: 2026-11-11, branch `danifdz/center-question-prompt`.
+
+- The card is now the transcript's last row. At 1440×900 and 390×844 a
+  `E2E_CALL` question opened it above a free composer, the whole card in view;
+  scrolling the transcript up left it scrolled away with the conversation and
+  nothing pulled the reader back, and *Scroll to latest* returned to it. A
+  reload showed the same card from its first question and kept the session
+  *Waiting for your answer*. Answering left the summary in the card's place, and
+  a `secret_request` used the same row. Screenshots are in the pull request.
+
+Date: 2026-11-11, branch `danifdz/center-question-prompt` (card format).
+
+- A four-step questionnaire (a rooftop cinema night: an opening-film choice, a guest
+  slider, multi-select extras and setup notes) on the same fixture: the card read
+  *Interactive questionnaire*, *STEP 1 OF 4* with a segmented progress bar and one
+  question per step; picking *A neon noir* marked its row; the slider read *110
+  guests* at its start and *90 guests* after two ← steps, between *20 guests* and
+  *200 guests*; the extras question read *Choose all that apply.* and kept
+  *Popcorn cart*, *Coat racks* and *Programme zines* ticked while *Live piano*
+  stayed clear; the notes field took a multi-line note under the agent's
+  placeholder; *Back* stepped back and kept every answer. Checked at 1440×900 and
+  390×844, and the screenshots in the pull request are this run. Submitting is
+  covered by the shared AGENT-074 test and an earlier run on this branch, which
+  returned the value and text to the agent and left the per-header summary in the
+  card's place.
+
 
 ## Limits and gaps
 

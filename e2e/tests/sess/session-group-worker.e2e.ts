@@ -36,6 +36,7 @@ test("New session defaults name a worker, and New Session from that group opens 
   const runOn = () => dialog().getByRole("button", /^Run on/u);
   const save = () => dialog().getByRole("button", "Save");
   const openDefaults = async () => {
+    await hui.sessionList();
     await screen.getByRole("button", `Group options for ${GROUP}`).tap();
     await screen.getByText("New session defaults").tap();
   };
@@ -71,6 +72,7 @@ test("New session defaults name a worker, and New Session from that group opens 
   await openDefaults();
   await expect(runOn()).toContainText(WORKER);
   await dialog().getByRole("button", "Cancel").tap();
+  await hui.sessionList();
   await screen.getByRole("button", "New session in HUI REPO").tap();
   await expect(screen.getByLabel("Choose where the session runs")).toContainText(WORKER);
   await expect(screen.getByPlaceholder("~/")).toHaveValue(remoteRepo);

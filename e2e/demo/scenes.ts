@@ -99,18 +99,27 @@ export const scenes: Scene[] = [
   {
     name: "kanban",
     chapter: "Kanban",
-    path: "/kanban",
-    ready: { contains: "Drag a backlog item" },
-    // Lanes by custom group, Storefront first, instead of long project paths.
+    path: "/dashboard",
+    ready: { contains: "The sessions in flight" },
     storage: { "hui.kanban-options": JSON.stringify({ groupBy: "custom" }) },
     narration: {
-      board: "This is H U I's Kanban board. Every agent session is a card, in the stage its work is in.",
+      dashboard: "Start on the Dashboard. Every session in flight, what needs you first, and how the machine is doing.",
+      board: "The Kanban board puts the same sessions in the stage their work is in.",
       drag: "When the work moves on, drag the card along.",
       backlog: "A backlog item starts its own session, in a fresh Git worktree, with a branch name suggested for you.",
       work: "The agent gets going right away: it reads the code, writes the change, and runs the tests.",
+      progress: "And H U I keeps a task progress card for it, so you can see how far along it is without reading the chat.",
       stage: "Agents keep the board up to date themselves. Tell this one that CI passed, and it moves its own card to Testing.",
     },
     async run({ director: d }) {
+      await d.caption("One page shows what is in flight");
+      await d.say("dashboard");
+      await d.move({ css: "[data-testid='dashboard-needs-you']" });
+      await d.zoom({ css: "[data-testid='dashboard-needs-you']" }, 1.4);
+      await d.pause(2_000);
+      await d.zoom();
+      await d.click(link("Kanban"));
+      await d.waitFor({ contains: "Drag a backlog item" });
       await d.caption("Every session is a card, in the stage its work is in");
       await d.say("board");
       await d.move(card("Apple Pay at checkout"));
@@ -143,6 +152,14 @@ export const scenes: Scene[] = [
       await d.zoom({ x: 860, y: 430 }, 1.3);
       await d.waitFor({ contains: "node --test" }, 30_000);
       await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("HUI keeps a task progress card");
+      await d.say("progress");
+      await d.waitFor({ css: "[data-testid='task-progress']" }, 60_000);
+      await d.pause(600);
+      await d.zoom({ css: "[data-testid='task-progress']" }, 1.45);
+      await d.pause(2_400);
       await d.zoom();
 
       await d.caption("Agents report their own stage");
@@ -298,10 +315,11 @@ export const scenes: Scene[] = [
     ready: "Apple Pay at checkout",
     narration: {
       ask: "Big jobs can be split up. Here, one code review becomes three, running in parallel.",
-      children: "One card tracks every helper while the agent waits for all of them.",
+      children: "Run status tracks every helper while the agent waits for all of them.",
       report: "When they're done, the agent sums up what they found.",
       open: "You can open any of them to see exactly what it did.",
       parent: "Its task shows the session that sent it. Click the name to go back.",
+      goal: "Give the conversation a goal, and it keeps going on its own until the objective is done.",
       watcher: "For things that take a while, like CI, the agent leaves a watcher behind. It waits in the background, and merges once the checks go green.",
     },
     async run({ director: d }) {
@@ -311,20 +329,30 @@ export const scenes: Scene[] = [
       await d.click({ placeholder: "What should this session work on?" });
       await d.type("Review PR #142 before we merge: security, performance and test coverage, in parallel");
       await d.press("Enter");
-      await d.caption("One card tracks every helper");
+      await d.caption("Run status tracks every helper");
       await d.say("children");
-      await d.waitFor({ css: ".chat-swarm" }, 30_000);
-      await d.zoom({ css: ".chat-swarm" }, 1.6);
+      await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
+      await d.click({ css: ".chat-run-status__trigger" });
+      await d.waitFor({ css: ".chat-run-status__helpers-list" }, 30_000);
+      await d.zoom({ css: ".chat-run-status__panel" }, 1.6);
       await d.pause(2_400);
       await d.zoom();
       await d.caption("…and the agent sums them up");
       await d.say("report");
       await d.waitFor({ contains: "All three reviews are in" }, 40_000);
       await d.pause(2_200);
+      await d.caption("Give it a goal, and it keeps going");
+      await d.say("goal");
+      await d.click({ placeholder: "Send a message…" });
+      await d.type("/goal get the ownership check in and #142 merged");
+      await d.press("Enter");
+      await d.waitFor({ css: ".agent-chat__goal" }, 20_000);
+      await d.zoom({ css: ".agent-chat__goal" }, 1.6);
+      await d.pause(2_400);
+      await d.zoom();
       await d.caption("Open any helper to see its work");
       await d.say("open");
-      await d.click({ css: ".chat-swarm__summary" });
-      await d.click({ css: ".chat-subagents__row", contains: "Security review" });
+      await d.click({ css: ".chat-run-status__helper", contains: "Security review" });
       await d.waitFor({ contains: "1 blocking issue" });
       await d.zoom({ contains: "1 blocking issue" }, 1.4);
       await d.pause(2_200);
@@ -338,15 +366,17 @@ export const scenes: Scene[] = [
       await d.caption("Watchers wait on CI for you");
       await d.say("watcher");
       await send(d, "Fix the ownership check, then merge once CI is green");
+      await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
+      await d.click({ css: ".chat-run-status__trigger" });
       await d.waitFor({ css: ".chat-watcher" }, 30_000);
       await d.zoom({ css: ".chat-watcher" }, 1.4);
       await d.pause(1_500);
       // HUI checks on watchers every 10 s; skip to the moment CI is green.
       await d.cut(() => d.waitFor({ contains: "CI green, merged #142" }, 30_000));
       await d.pause(1_200);
-      await d.click({ css: ".chat-watcher" });
-      await d.waitFor({ css: ".chat-watcher__log" });
-      await d.pause(2_200);
+      // A settled watcher folds its last event onto what it reported, so the outcome stays readable.
+      await d.zoom({ css: ".chat-watcher", last: true }, 1.5);
+      await d.pause(2_400);
       await d.zoom();
       await d.caption();
     },
@@ -370,6 +400,7 @@ export const scenes: Scene[] = [
       handoff: "Agents hand a bot work by tagging it. You see what they sent, next to the bot's face.",
       reply: "Scout answers right in the agent's chat, under its own face.",
       follow: "Click a name to open that chat.",
+      usage: "And Usage shows what all of it costs, by model, by session and by pull request.",
     },
     async run({ director: d }) {
       await d.caption("Bots are agents that stay: a face, one chat and a memory");
@@ -423,6 +454,15 @@ export const scenes: Scene[] = [
       await d.click({ css: ".chat-sender-link", text: "Scout" });
       await d.waitFor({ css: ".chat-sender-link", text: "Apple Pay at checkout" }, 15_000);
       await d.zoom({ css: ".chat-group--peer", contains: "Monday" }, 1.4);
+      await d.pause(2_200);
+      await d.zoom();
+      await d.caption("See what all of it costs");
+      await d.say("usage");
+      await d.click({ css: "#sidebar-tab-sessions" });
+      await d.click(link("Usage"));
+      await d.waitFor({ css: "[data-testid='usage-models']" }, 30_000);
+      await d.pause(1_000);
+      await d.zoom({ css: "[data-testid='usage-models']" }, 1.35);
       await d.pause(2_200);
       await d.zoom();
       await d.caption();
@@ -550,7 +590,7 @@ export const scenes: Scene[] = [
     narration: {
       phone: "And it all works on your phone. Reach your laptop over Tailscale, and your sessions are right there.",
       ask: "Check in on an agent from anywhere,",
-      board: "or keep an eye on the whole board, wherever you are.",
+      board: "or keep an eye on everything in flight, wherever you are.",
     },
     async run({ director: d }) {
       await d.caption("HUI works on your phone too");
@@ -566,19 +606,17 @@ export const scenes: Scene[] = [
       await d.zoom({ contains: "Want me to open the pull request?" }, 1.35);
       await d.pause(1_600);
       await d.zoom();
-      await d.caption("The board fits in your pocket");
+      await d.caption("Everything in flight, in your pocket");
       await d.say("board");
       await d.click({ label: "Open navigation" });
       await d.pause(900);
-      await d.click(link("Kanban"));
-      await d.waitFor({ contains: "Drag a backlog item" });
-      await d.pause(800);
-      // Each lane scrolls sideways through the stages.
-      await d.swipe({ css: ".kanban-cell--backlog", nth: 0 }, 260);
+      await d.click(link("Dashboard"));
+      await d.waitFor({ contains: "The sessions in flight" });
       await d.pause(900);
-      await d.swipe({ css: ".kanban-cell--investigation", nth: 0 }, 300);
-      await d.waitFor(card("Apple Pay at checkout"));
+      await d.zoom({ css: "[data-testid='dashboard-needs-you']" }, 1.35);
       await d.pause(1_800);
+      await d.zoom();
+      await d.pause(1_400);
       await d.caption();
     },
   },

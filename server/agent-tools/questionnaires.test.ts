@@ -41,6 +41,20 @@ test("a questionnaire is one pending card in its session, answered all at once",
   assert.deepEqual(changes, ["s1", "s1"], "shown, then gone");
 });
 
+test("an option's HTML mockup reaches the card untouched and is not echoed in the answer", async () => {
+  const { questionnaires } = store();
+  const mockup = `<div class="card" style="padding:8px"><strong>OAuth flow</strong><p>Approve in the browser.</p></div>`;
+  const pending = questionnaires.request("s1", { questions: [
+    { header: "Auth", question: "Which auth method?", options: [option("OAuth", { previewHtml: mockup }), option("API key")] },
+  ] });
+  const [prompt] = questionnaires.questions("s1");
+  assert.deepEqual(prompt?.questions[0]?.options[0], { label: "OAuth", description: "OAuth description", previewHtml: mockup });
+  questionnaires.answer("s1", prompt!.id, { answers: [{ selected: ["OAuth"] }] });
+  assert.deepEqual(await pending, { cancelled: false, answers: [
+    { header: "Auth", question: "Which auth method?", selected: ["OAuth"] },
+  ] }, "the label identifies the choice; the agent already has its HTML");
+});
+
 test("a typed answer replaces a single-select choice, a blank question is left out, and nothing answered is a decline", async () => {
   const { questionnaires } = store();
   const typed = questionnaires.request("s1", ask);
@@ -110,9 +124,45 @@ test("with a question timeout an unanswered card ends as timed out; Off keeps wa
   assert.equal(vi.getTimerCount(), 0, "and its timer is gone");
 });
 
+test("a slider question is a numeric range whose answer reads with its unit, and a long-text question takes the text", async () => {
+  const { questionnaires } = store();
+  const card = questionnaires.request("s1", { questions: [
+    { header: "Budget", question: "Available budget?", input: "slider", min: 100, max: 10_000, step: 50, unit: "€" },
+    { header: "Constraints", question: "Anything else we should know?", input: "text", placeholder: "Daily usable, but capable on track" },
+  ] });
+  const [prompt] = questionnaires.questions("s1");
+  assert.deepEqual(prompt?.questions.map(({ input, options, multiSelect }) => [input, options.length, multiSelect]), [["slider", 0, false], ["text", 0, false]]);
+  assert.equal(prompt?.questions[0]?.min, 100);
+  assert.equal(prompt?.questions[0]?.max, 10_000);
+  assert.equal(prompt?.questions[1]?.placeholder, "Daily usable, but capable on track");
+
+  questionnaires.answer("s1", prompt!.id, { answers: [
+    { selected: [], custom: "1500" },
+    { selected: [], custom: "  Lower it by 10%  " },
+  ] });
+  assert.deepEqual(await card, { cancelled: false, answers: [
+    { header: "Budget", question: "Available budget?", selected: ["1,500 €"] },
+    { header: "Constraints", question: "Anything else we should know?", selected: ["Lower it by 10%"] },
+  ] });
+});
+
+test("a slider answer outside its range or off its steps is refused, and the card stays open", async () => {
+  const { questionnaires } = store();
+  const open = questionnaires.request("s1", { questions: [{ header: "Hours", question: "How many hours?", input: "slider", min: 0, max: 10, step: 2 }] });
+  const id = questionnaires.questions("s1")[0]!.id;
+  for (const custom of ["11", "-1", "3", "not a number"]) {
+    assert.throws(() => questionnaires.answer("s1", id, { answers: [{ selected: [], custom }] }), /between 0 and 10|steps of 2|needs a number/u);
+  }
+  assert.equal(questionnaires.questions("s1").length, 1, "the card still waits");
+  questionnaires.answer("s1", id, { answers: [{ selected: [], custom: "6" }] });
+  assert.deepEqual(await open, { cancelled: false, answers: [{ header: "Hours", question: "How many hours?", selected: ["6"] }] });
+});
+
 test("a malformed call is rejected with a reason the model can fix", async () => {
   const { questionnaires } = store();
   const question = (extra: Record<string, unknown> = {}) => ({ header: "Pick", question: "Which?", options: [option("A"), option("B")], ...extra });
+  /** A slider or long-text question has no options. */
+  const asked = (extra: Record<string, unknown>) => ({ header: "Pick", question: "Which?", ...extra });
   const rejected: [unknown, RegExp][] = [
     [undefined, /at least one question/u],
     [[], /at least one question/u],
@@ -127,11 +177,37 @@ test("a malformed call is rejected with a reason the model can fix", async () =>
     [[question({ header: "A header that is too long" })], /header must be at most 16/u],
     [[question({ header: "" })], /header must be non-empty/u],
     [[question({ options: [option("A", { preview: "x".repeat(2_501) }), option("B")] })], /preview must be at most 2500/u],
+    [[question({ options: [option("A", { previewHtml: "x".repeat(2_501) }), option("B")] })], /previewHtml must be at most 2500/u],
+    [[question({ options: [option("A", { preview: "**A**", previewHtml: "<p>A</p>" }), option("B")] })], /set preview or previewHtml, not both/u],
+    [[question({ options: [option("A", { previewHtml: "<!doctype html><p>A</p>" }), option("B")] })], /must be an HTML fragment/u],
     [[question({ multiSelect: true, options: [option("A", { preview: "x" }), option("B")] })], /single-select questions only/u],
+    [[question({ multiSelect: true, options: [option("A", { previewHtml: "<p>A</p>" }), option("B")] })], /single-select questions only/u],
+    [[question({ input: "slider", options: [option("A"), option("B")] })], /slider question takes no options/u],
+    [[asked({ input: "slider", min: 1 })], /max must be a number/u],
+    [[asked({ input: "slider", min: 10, max: 1 })], /min must be below max/u],
+    [[asked({ input: "slider", min: 0, max: 10, step: 0 })], /step must be above zero/u],
+    [[asked({ input: "slider", min: 0, max: 10_000, step: 1 })], /at most 1000 slider steps/u],
+    [[asked({ input: "slider", min: 0, max: 10, multiSelect: true })], /multiSelect only applies/u],
+    [[question({ input: "text", options: [option("A"), option("B")] })], /text question takes no options/u],
+    [[asked({ input: "text", placeholder: "x".repeat(201) })], /placeholder must be at most 200/u],
+    [[asked({ input: "slider", min: 0, max: 10, unit: "x".repeat(17) })], /unit must be at most 16/u],
+    [[asked({ input: "scale" })], /input must be options, slider or text/u],
+    [[asked({ input: "slider", min: "0", max: 10 })], /min must be a number/u],
     [["not a question"], /must be an object/u],
   ];
   for (const [questions, error] of rejected) await assert.rejects(questionnaires.request("s1", { questions }), error);
   assert.deepEqual(questionnaires.questions("s1"), [], "nothing was shown");
+});
+
+test("the tool offers an HTML mockup preview beside Markdown, bounded like a Markdown preview", () => {
+  const tool = huiToolDefinitions().find(({ name }) => name === "ask_user_question");
+  assert(tool);
+  const properties = (tool.parameters as { properties: { questions: { items: { properties: { options: { items: { properties: Record<string, { maxLength?: number; description?: string }> } } } } } } })
+    .properties.questions.items.properties.options.items.properties;
+  assert.equal(properties["previewHtml"]?.maxLength, 2_500);
+  assert.match(properties["previewHtml"]?.description ?? "", /sandboxed frame/u);
+  assert.match(properties["previewHtml"]?.description ?? "", /ASCII art/u);
+  assert.match(properties["preview"]?.description ?? "", /Markdown/u);
 });
 
 test("the tool tells the model what the operator chose, or that they declined", async () => {

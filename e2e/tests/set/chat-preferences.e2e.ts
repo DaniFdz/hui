@@ -45,16 +45,18 @@ test("Message width narrows or widens the conversation and the composer in every
   });
 });
 
-test("Collapse task progress starts an agent's progress card collapsed but expandable, and off it starts expanded", { tags: ["SET-013"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Collapse task progress starts an agent's plan collapsed but expandable, and off it starts expanded", { tags: ["SET-013"], platforms: ["web"] }, async ({ screen, hui }) => {
   const collapse = screen.getByRole("switch", "Collapse task progress");
   const card = screen.getByTestId("task-progress");
-  const steps = card.getByLabel("Task progress");
+  const steps = card.getByLabel("Task progress steps");
+  const trigger = screen.getByTestId("run-status-trigger");
   const settings = await hui.api<Settings>("GET", "/__hui/settings");
   await hui.api("PUT", "/__hui/settings", { ...settings, models: { ...settings.models, utility: "hui-e2e/fixture" } });
   const progress = async (title: string) => {
     const session = await hui.createSession({ title });
     await hui.prompt(session, "E2E_PROGRESS");
     await hui.open(`/sessions/${session.id}`);
+    await trigger.tap();
     await expect(card).toBeVisible();
   };
 
@@ -62,7 +64,7 @@ test("Collapse task progress starts an agent's progress card collapsed but expan
   await hui.flip(collapse);
   await expect(collapse).toBeChecked();
   await progress("Collapsed progress");
-  await expect(card.getByText("1/2", { visible: true })).toBeVisible();
+  await expect(card.getByText("1 of 2", { visible: true })).toBeVisible();
   await expect(steps).toBeHidden();
   await card.getByText("Verify presentation", { visible: true }).tap();
   await expect(steps.getByText("Read fixture")).toBeVisible();

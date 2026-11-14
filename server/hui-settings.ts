@@ -1,6 +1,13 @@
 /**
  * HUI's own settings file in its config directory: reading and writing it, always normalized.
- * A missing or malformed file reads as the defaults instead of an error.
+ * A missing or malformed file reads as the defaults instead of an error. The gateway's own name
+ * lives here beside the operator's profile (`name`); what a client sees when it is empty is
+ * `control-surfaces.ts`'s effective name.
+ *
+ * Appearance is not here. A theme, colour mode, accent, typeface, text size or conversation
+ * preference belongs to the screen that shows it, kept in that device's own storage
+ * (`src/lib/appearance/store.ts`), because one gateway serves many screens and people.
+ * `cli/doctor-appearance.ts` reports and clears the keys an older file still carries.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,8 +15,9 @@ import { join } from "node:path";
 import { CONFIG_DIR } from "./paths.ts";
 import { isToolIconName } from "./tool-icons.ts";
 import { THINKING_LEVELS } from "./sessions/thinking.ts";
-import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "./api/settings.ts";
-export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "./api/settings.ts";
+import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference, NtfySettings } from "./api/settings.ts";
+import { normalizeOriginPatterns } from "./browser/origins.ts";
+export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference, NtfySettings } from "./api/settings.ts";
 
 const GPT_LIVE_VOICES = ["cove", "arbor", "breeze", "ember", "juniper", "maple", "sol", "spruce", "vale"] as const;
 
@@ -42,93 +50,45 @@ export async function writeHuiSettings(raw: unknown): Promise<Settings> {
   return settings;
 }
 
-type TypefaceId = "instrument-sans" | "geist" | "dm-sans" | "ibm-plex-sans" | "space-grotesk" | "atkinson-hyperlegible" | "fraunces" | "lora" | "jetbrains-mono" | "system";
-type Appearance = { fontUi: TypefaceId; fontChat: TypefaceId; textScale: 90 | 100 | 110 | 125 | 140 };
-type ThemeMode = "system" | "light" | "dark";
-const TYPEFACES: readonly TypefaceId[] = ["instrument-sans", "geist", "dm-sans", "ibm-plex-sans", "space-grotesk", "atkinson-hyperlegible", "fraunces", "lora", "jetbrains-mono", "system"];
-const DEFAULT_APPEARANCE: Appearance = { fontUi: "instrument-sans", fontChat: "instrument-sans", textScale: 100 };
-const TEXT_SCALE_STOPS = [90, 100, 110, 125, 140] as const;
-const THEME_MODES = ["system", "light", "dark"] as const;
-const DEFAULT_TERMINAL_FONT = "JetBrains Mono";
-function normalizeTypeface(value: unknown): TypefaceId {
-  const candidate = typeof value === "string" ? value : "";
-  return TYPEFACES.find((id) => id === candidate) ?? DEFAULT_APPEARANCE.fontUi;
-}
-function normalizeAppearance(fontUi: unknown, fontChat: unknown, textScale: unknown): Appearance {
-  const normalizedUi = normalizeTypeface(fontUi);
-  const scale = Number(textScale);
-  return {
-    fontUi: normalizedUi,
-    fontChat: fontChat === undefined ? normalizedUi : normalizeTypeface(fontChat),
-    textScale: TEXT_SCALE_STOPS.find((stop) => stop === scale) ?? DEFAULT_APPEARANCE.textScale,
-  };
-}
-function normalizeTerminalFont(value: unknown): string {
-  if (typeof value !== "string") return DEFAULT_TERMINAL_FONT;
-  const name = value.trim();
-  return name.length > 0 && name.length <= 128 && !/[\p{Cc}"'\\;,{}<>]/u.test(name)
-    ? name : DEFAULT_TERMINAL_FONT;
-}
-function normalizeThemeMode(value: unknown): ThemeMode {
-  return THEME_MODES.find((mode) => mode === value) ?? "system";
-}
-
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 
 export const DEFAULT_BRANCH_PREFIX = "feature/";
-export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false };
+export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "", mirrorState: false, allowedOrigins: [] };
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
+/** The public ntfy service: a phone subscribes to a topic there, and a gateway that runs its own sets its address. */
+export const DEFAULT_NTFY_SERVER = "https://ntfy.sh";
+export const DEFAULT_NTFY_SETTINGS: NtfySettings = { server: DEFAULT_NTFY_SERVER, topic: "" };
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "claw",
-  themeMode: "system",
-  accent: "",
-  fontUi: DEFAULT_APPEARANCE.fontUi,
-  fontChat: DEFAULT_APPEARANCE.fontChat,
-  fontTerminal: DEFAULT_TERMINAL_FONT,
-  textScale: DEFAULT_APPEARANCE.textScale,
-  chat: {
-    messageWidth: "comfortable",
-    collapseTaskProgress: false,
-    sendShortcut: "enter",
-    githubEmbeds: true,
-    datadogEmbeds: true,
-    toolMarks: {},
-    toolIcons: {},
-  },
+  // A tool's own mark and icon file stay here: the files live in the gateway's config directory, so every device
+  // that draws a tool call reads them from the gateway that serves it.
+  chat: { toolMarks: {}, toolIcons: {} },
   profileName: "HUI Operator",
   profileHandle: "",
+  name: "",
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
   codemode: { enabled: true },
   questions: { timeoutMinutes: 0 },
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
-  notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
-  models: { primary: "", fallback: "", utility: "", thinking: "", routes: [] },
+  notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true, ntfy: DEFAULT_NTFY_SETTINGS },
+  models: { primary: "", fallback: "", utility: "", thinking: "", retryAttempts: 3, routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
-  labs: { denseObservability: false, detailedDebug: false, dashboard: false },
+  labs: { denseObservability: false, detailedDebug: false },
 };
 
 export function normalizeSettings(raw: unknown): Settings {
   const source = isRecord(raw) ? raw : {};
-  const appearance = normalizeAppearance(source["fontUi"], source["fontChat"], source["textScale"]);
-  const theme = source["theme"];
-  const normalizedTheme = typeof theme === "string" ? theme.trim() : "";
   return {
-    theme: normalizedTheme || DEFAULT_SETTINGS.theme,
-    themeMode: normalizeThemeMode(source["themeMode"]),
-    accent: normalizeAccent(source["accent"]),
-    fontUi: appearance.fontUi,
-    fontChat: appearance.fontChat,
-    fontTerminal: normalizeTerminalFont(source["fontTerminal"]),
-    textScale: appearance.textScale,
     chat: normalizeChat(source["chat"]),
     profileName: boundedText(source["profileName"], DEFAULT_SETTINGS.profileName, 80),
     profileHandle: boundedText(source["profileHandle"], "", 80),
+    // Empty is not a name: the gateway reports this machine's hostname until the operator sets one.
+    name: boundedText(source["name"], "", 60),
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
     codemode: { enabled: !isRecord(source["codemode"]) || source["codemode"]["enabled"] !== false },
@@ -159,6 +119,8 @@ export function normalizeBrowserSettings(value: unknown): BrowserSettings {
     executablePath: path.length <= 4_096 && !/[\p{Cc}]/u.test(path) ? path : "",
     // Opt-in: only an explicit true lends a machine's cookies and logins to another.
     mirrorState: source["mirrorState"] === true,
+    // Empty is anywhere; a set list is the browser's whole reach.
+    allowedOrigins: normalizeOriginPatterns(source["allowedOrigins"]),
   };
 }
 
@@ -186,7 +148,38 @@ function normalizeNotifications(value: unknown): Settings["notifications"] {
     runFinished: source["runFinished"] === true,
     runFailed: source["runFailed"] !== false,
     needsInput: source["needsInput"] !== false,
+    ntfy: normalizeNtfySettings(source["ntfy"]),
   };
+}
+
+/**
+ * The ntfy relay a phone subscribes to. A topic is ntfy's own capability: `[-_A-Za-z0-9]` up to 64 characters, and
+ * nothing else means off. The server is an `http(s)` base address with no credentials, query or fragment, so a saved
+ * address cannot smuggle a token into a URL HUI prints, and anything malformed falls back to the public service with
+ * no topic rather than publishing somewhere else.
+ */
+export function normalizeNtfySettings(value: unknown): NtfySettings {
+  const source = isRecord(value) ? value : {};
+  const server = typeof source["server"] === "string" ? source["server"].trim() : "";
+  const topic = typeof source["topic"] === "string" ? source["topic"].trim() : "";
+  return {
+    server: normalizeNtfyServer(server),
+    topic: /^[A-Za-z0-9_-]{1,64}$/u.test(topic) ? topic : "",
+  };
+}
+
+function normalizeNtfyServer(server: string): string {
+  if (!server) return DEFAULT_NTFY_SERVER;
+  if (server.length > 2_048 || /[\p{Cc}\s]/u.test(server)) return DEFAULT_NTFY_SERVER;
+  try {
+    const url = new URL(server);
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.hostname || url.username || url.password || url.search || url.hash) {
+      return DEFAULT_NTFY_SERVER;
+    }
+    return `${url.origin}${url.pathname}`.replace(/\/+$/u, "") || DEFAULT_NTFY_SERVER;
+  } catch {
+    return DEFAULT_NTFY_SERVER;
+  }
 }
 
 function normalizeModelRef(value: unknown): string {
@@ -197,11 +190,13 @@ function normalizeModelRef(value: unknown): string {
 
 function normalizeModels(value: unknown): Settings["models"] {
   const source = isRecord(value) ? value : {};
+  const attempts = Number(source["retryAttempts"]);
   return {
     primary: normalizeModelRef(source["primary"]),
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
     thinking: savedReasoningLevel(source["thinking"]) ?? "",
+    retryAttempts: Number.isFinite(attempts) ? Math.min(5, Math.max(0, Math.trunc(attempts))) : 3,
     routes: normalizeSubagentRoutes(source["routes"]),
   };
 }
@@ -223,9 +218,11 @@ function normalizeSubagentRoutes(value: unknown): Settings["models"]["routes"] {
   for (const item of value) {
     if (!isRecord(item)) continue;
     const name = typeof item["name"] === "string" ? item["name"].trim() : "";
-    const model = normalizeModelRef(item["model"]);
+    const rawModel = typeof item["model"] === "string" ? item["model"].trim() : "";
+    const model = normalizeModelRef(rawModel);
     const thinking = savedReasoningLevel(item["thinking"]);
-    if (!routeNameIsValid(name) || !model || routes.has(name)) continue;
+    // A route with no model inherits the caller's model and thinking; a model that is present but malformed drops the route.
+    if (!routeNameIsValid(name) || (rawModel && !model) || routes.has(name)) continue;
     routes.set(name, {
       name,
       description: boundedText(item["description"], "", 200).replace(/\s+/gu, " ").trim(),
@@ -295,17 +292,11 @@ function normalizeToolIcons(value: unknown): Settings["chat"]["toolIcons"] {
   return icons;
 }
 
+/** A file saved before appearance moved to the device still carries the chat preferences that went with it: they
+ * are not read, so the next save leaves them out and `hui doctor` offers to clear them now. */
 function normalizeChat(value: unknown): Settings["chat"] {
   const source = isRecord(value) ? value : {};
-  const width = source["messageWidth"];
-  const shortcut = source["sendShortcut"];
   return {
-    messageWidth: width === "compact" || width === "wide" ? width : "comfortable",
-    collapseTaskProgress: source["collapseTaskProgress"] === true,
-    sendShortcut: shortcut === "modifierEnter" ? shortcut : "enter",
-
-    githubEmbeds: source["githubEmbeds"] !== false,
-    datadogEmbeds: source["datadogEmbeds"] !== false,
     toolMarks: normalizeToolMarks(source["toolMarks"]),
     toolIcons: normalizeToolIcons(source["toolIcons"]),
   };
@@ -331,12 +322,6 @@ export function normalizeBranchPrefix(value: unknown): string {
   return prefix;
 }
 
-function normalizeAccent(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const normalized = value.trim().toLowerCase();
-  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : "";
-}
-
 function boundedText(value: unknown, fallback: string, maximum: number): string {
   if (typeof value !== "string") return fallback;
   return value.trim().slice(0, maximum);
@@ -347,7 +332,6 @@ function normalizeLabs(value: unknown): Settings["labs"] {
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
-    dashboard: source["dashboard"] === true,
   };
 }
 

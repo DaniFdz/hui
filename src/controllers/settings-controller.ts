@@ -1,8 +1,8 @@
 /**
- * `SettingsController` keeps the settings state outside `hui-app.ts`: the HUI settings and their saves, the theme
- * picker and imports, PI's configuration and its package and skill changes, the resource reader, and the control
- * surfaces (gateway health, macOS power, the workspace inspection and observability). Settings elements that load
- * their own data keep their own requests.
+ * `SettingsController` keeps the settings state outside `hui-app.ts`: this device's appearance and its synchronous
+ * saves, the gateway's settings and their saves, the theme picker and imports, PI's configuration and its package
+ * and skill changes, the resource reader, and the control surfaces (gateway health, macOS power, the workspace
+ * inspection and observability). Settings elements that load their own data keep their own requests.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "../api/observability.ts";
@@ -16,11 +16,13 @@ import {
   type WorkspaceInspection,
 } from "../api/control-surfaces.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
+import { sendTestNotification } from "../api/notifications.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import type { HuiPage } from "../lib/pages.ts";
 import { skillPreferencePath, type PiMutationKind, type PiMutationResult, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import type { Settings } from "../lib/settings/settings.ts";
 import { currentSettings, patchSettings, saveSubagentRoute } from "../lib/settings/settings-store.ts";
+import { applyDeviceAppearance, normalizeDeviceAppearance, readAppearance, saveAppearance, type DeviceAppearance } from "../lib/appearance/store.ts";
 import type { ThemeMode, ThemeVariant } from "../lib/theme/theme.ts";
 import {
   applyAccent,
@@ -42,11 +44,17 @@ type SettingsHost = ReactiveControllerHost & { renderRoot: ParentNode };
 type SettingsEvents = {
   piLoaded: (snapshot: PiSnapshot) => void;
   copyFailed: (message: string) => void;
+  /** An outcome the operator should see, such as the ntfy test notification's result. */
+  notified: (message: string, failed: boolean) => void;
 };
 
 export class SettingsController implements ReactiveController {
   settings: Settings = currentSettings();
+  /** This device's theme, accent, typefaces, text size and chat preferences; saved here, never through the gateway. */
+  appearance: DeviceAppearance = readAppearance();
   saveFailed = false;
+  /** A device store the browser refused to write: the choice applies now and is gone after a reload. */
+  appearanceSaveFailed = false;
   themeId: string = selectedThemeId();
   variant: ThemeVariant = selectedThemeVariant();
   previews: readonly ThemePreview[] = [];
@@ -110,12 +118,74 @@ export class SettingsController implements ReactiveController {
     this.#changed();
   }
 
-  saveSubagentRoute = async (route: Settings["models"]["routes"][number], originalName?: string): Promise<boolean> => {
+  /**
+   * Saves the ntfy relay that Settings → Notifications → Phone (ntfy) edits. The topic is what the phone subscribes to,
+   * so a save that does not land must not be followed by a test that reports the old one.
+   */
+  saveNtfy = async (ntfy: Settings["notifications"]["ntfy"]): Promise<boolean> => {
     const revision = ++this.#saveRevision;
-    const saved = await saveSubagentRoute(route, originalName);
-    if (revision === this.#saveRevision) this.saveFailed = !saved;
+    const saved = await patchSettings({ notifications: { ...this.settings.notifications, ntfy } });
+    if (revision !== this.#saveRevision) return saved;
+    this.saveFailed = !saved;
     this.settings = currentSettings();
     this.#changed();
+    return saved;
+  };
+
+  /** Publishes one test message to the saved topic, then says where it went. */
+  testNtfyNotification = async (ntfy: Settings["notifications"]["ntfy"]): Promise<void> => {
+    if (!(await this.saveNtfy(ntfy))) {
+      this.#events.notified("Could not save the notification settings.", true);
+      return;
+    }
+    if (!this.settings.notifications.ntfy.topic) {
+      this.#events.notified("Set an ntfy topic first.", true);
+      return;
+    }
+    try {
+      await sendTestNotification();
+      this.#events.notified("Test notification sent. Check the ntfy app on your phone.", false);
+    } catch (error) {
+      this.#events.notified(error instanceof Error ? error.message : "The test notification failed.", true);
+    }
+  };
+
+  copyNtfyAddress = (): void => {
+    const { server, topic } = this.settings.notifications.ntfy;
+    if (!topic) {
+      this.#events.notified("Set an ntfy topic first.", true);
+      return;
+    }
+    void writeClipboardText(`${server}/${topic}`).then((copied) => {
+      if (!copied) {
+        this.#events.copyFailed("Could not copy the ntfy address to the clipboard.");
+        return;
+      }
+      this.#events.notified("Copied the ntfy address.", false);
+    });
+  };
+
+  saveSubagentRoute = async (route: Settings["models"]["routes"][number], originalName?: string): Promise<boolean> => {
+    const revision = ++this.#saveRevision;
+    const saved = await saveSubagentRoute(route, originalName);    if (revision === this.#saveRevision) this.saveFailed = !saved;
+    this.settings = currentSettings();
+    this.#changed();
+    return saved;
+  };
+
+  /**
+   * Saves the name this gateway reports to every client, then reads health again so the gateway list and About show
+   * it now rather than at the next poll. Resolves false when the write did not land.
+   */
+  saveGatewayName = async (name: string): Promise<boolean> => {
+    const revision = ++this.#saveRevision;
+    const saved = await patchSettings({ name });
+    if (revision === this.#saveRevision) {
+      this.saveFailed = !saved;
+      this.settings = currentSettings();
+      this.#changed();
+    }
+    if (saved) await this.refreshGatewayHealth();
     return saved;
   };
 
@@ -135,9 +205,22 @@ export class SettingsController implements ReactiveController {
     });
   }
 
+  /**
+   * Saves this device's appearance and applies it at once. Unlike `save`, nothing leaves the page: no request, no
+   * gateway round-trip, and no waiting to hear that it landed. A storage that refuses the write still applies the
+   * change, so the page shows what it is using and the note says the next load forgets it.
+   */
+  saveAppearance = (patch: Partial<DeviceAppearance>) => {
+    const saved = saveAppearance(patch);
+    this.appearanceSaveFailed = saved === undefined;
+    this.appearance = saved ?? normalizeDeviceAppearance({ ...this.appearance, ...patch });
+    applyDeviceAppearance(this.appearance);
+    this.#changed();
+  };
+
   chooseMode = (mode: ThemeMode) => {
     applyMode(mode);
-    void this.save({ themeMode: mode });
+    this.saveAppearance({ themeMode: mode });
   };
 
   chooseTheme = (id: string) => {
@@ -146,7 +229,7 @@ export class SettingsController implements ReactiveController {
 
   chooseAccent = (accent: string) => {
     applyAccent(accent);
-    void this.save({ accent });
+    this.saveAppearance({ accent });
   };
 
   async #applyTheme(id: string) {
@@ -156,9 +239,7 @@ export class SettingsController implements ReactiveController {
     this.themeId = selectedThemeId();
     this.variant = variant ?? this.variant;
     this.#changed();
-    if (variant) {
-      await this.save({ theme: selectedThemeId() });
-    }
+    if (variant) this.saveAppearance({ theme: selectedThemeId() });
   }
 
   importTheme = (url: string) => {
@@ -425,7 +506,8 @@ export class SettingsController implements ReactiveController {
     return this.piError;
   }
 
-  props(): Omit<SettingsProps, keyof AutomationProps | "page" | "worktrees" | "onRefreshObservability" | "onSelectPage" | "onChangeModels" | "onStartChat" | "onClose"> {
+  props(): Omit<SettingsProps, keyof AutomationProps | "page" | "worktrees" | "onRefreshObservability" | "onSelectPage" | "onChangeModels" | "onStartChat" | "onClose"
+    | "gateways" | "onAddGateway" | "onEditGateway" | "onSwitchGateway" | "onRemoveGateway" | "onRetryGateway"> {
     return {
       pi: this.pi,
       piLoading: this.piLoading,
@@ -437,6 +519,7 @@ export class SettingsController implements ReactiveController {
       workspaceError: this.workspaceError,
       observability: this.observability,
       observabilityError: this.observabilityError,
+      canOpenExtensionPanel: false,
       onExportDiagnostics: this.exportDiagnostics,
       onRetryPi: () => this.loadControlSurfaceData(true),
       onSaveSubagentRoute: this.saveSubagentRoute,
@@ -451,12 +534,17 @@ export class SettingsController implements ReactiveController {
       onSelectMode: this.chooseMode,
       onSelectAccent: this.chooseAccent,
       onChangeBranchPrefix: (branchPrefix) => void this.save({ branchPrefix }),
-      onChangeAppearance: (next) => void this.save(next),
-      onChangeChat: (chat) => void this.save({ chat }),
+      appearance: this.appearance,
+      appearanceSaveFailed: this.appearanceSaveFailed,
+      onChangeAppearance: this.saveAppearance,
+      onChangeChat: (chat) => this.saveAppearance({ chat }),
       onChangeBrowser: (browser) => this.save({ browser }),
       onChangeVscode: (vscode) => this.save({ vscode }),
       onChangeCodemode: (codemode) => void this.save({ codemode }),
       onChangeNotifications: (notifications) => void this.save({ notifications }),
+      onSaveNtfy: this.saveNtfy,
+      onTestNtfy: this.testNtfyNotification,
+      onCopyNtfyAddress: this.copyNtfyAddress,
       onChangeQuestions: (questions) => void this.save({ questions }),
       onChangeCalls: (calls) => void this.save({ calls }),
       onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),

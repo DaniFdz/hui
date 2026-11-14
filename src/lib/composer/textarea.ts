@@ -149,3 +149,19 @@ export function scheduleTextareaHeightAdjustment(el: HTMLTextAreaElement) {
     }
   });
 }
+
+const editorsMounted = new WeakSet<HTMLTextAreaElement>();
+
+/** Fills a freshly rendered inline editor once and puts the caret at the end. Lit reuses the same element across
+ * renders, so only the first mount writes the value and steals focus; later renders leave the operator's typing
+ * alone. Shared by the queue's editor and the goal editor in the Run status popover. */
+export function mountEditorAtEnd(element: Element | undefined, value: string) {
+  if (!(element instanceof HTMLTextAreaElement) || editorsMounted.has(element)) return;
+  editorsMounted.add(element);
+  element.value = value;
+  queueMicrotask(() => {
+    if (!element.isConnected) return;
+    element.focus();
+    element.setSelectionRange(value.length, value.length);
+  });
+}

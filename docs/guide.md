@@ -130,12 +130,21 @@ HUI** to restore the window; use `hui gateway stop` for normal gateway shutdown.
 `hui desktop` opens the registered `HUI.app` on macOS (otherwise Electron
 directly) and exits immediately. Without `HUI.app`, the window runs Electron from
 the release that was active when it opened. Updates can delete that release
-later, so restart the window after updating. The window follows HUI's
-Appearance color mode; with **System** (the default) both the page and the
-native title bar track the OS live.
-External web and mail links open in the default browser. The renderer is
-sandboxed without Node integration. Browser-local drafts have a separate Electron
-profile; HUI/PI storage remains shared through the existing gateway.
+later, so restart the window after updating. The window follows the Appearance
+color mode this device stored in the page; with **System** (the default) both the
+page and the native title bar track the OS live. The page reports the mode to the
+shell, which keeps the last one it heard in Electron's `userData` so the next
+launch paints its window in that mode before the page exists. The shell never
+asks the gateway.
+External web and mail links open in the default browser. A link to a gateway this
+device knows opens in the HUI window instead: switching gateway from the sidebar
+footer or Settings → Gateway keeps the window, a link to another gateway you
+added or to one on your own network opens there too, and View → Back returns to
+the one you left. The renderer is sandboxed without Node integration.
+Browser-local drafts have a separate Electron profile; HUI/PI storage remains
+shared through the existing gateway. The [phone app](#install-the-phone-app) keeps
+its own rule: switching rebuilds the app's bridge on the chosen gateway, and a
+link to another gateway opens in the phone's browser.
 
 The app also claims the `hui://` scheme, so a chat can be handed to it. A link
 carrying `?open=app`, which bots can mint, asks the gateway to open that chat in
@@ -160,6 +169,87 @@ System-app registration currently supports macOS only. CLI desktop launching is
 also available on ordinary Linux and Windows, but native execution is not proved
 on this NixOS host. **macOS signature, Spotlight, Dock and native-window behavior
 still need on-device verification**; see [desktop proof](../e2e/desktop-package.browser.md).
+
+## Install the phone app
+
+HUI has an Android app and an iPhone/iPad app. Both are the same shell around the
+web UI of **your** gateway: they bundle only the "Connect to HUI" page, ask for
+the gateway's address and, optionally, the name every client sees, and then load
+that gateway's own UI. There is no store
+account and no copy of the UI in the app, so updating the gateway updates what the
+phone shows. The app needs a gateway it can reach: `https://` through
+`tailscale serve` is the supported setup, and plain `http://` works only for
+`127.0.0.1` and `10.0.2.2` (the emulator's host). On Android 17 and iOS 14 and
+later, the first connection to a gateway on your Wi-Fi asks for local-network
+access; allow it, or the app cannot reach that address.
+
+Every release publishes the phone app beside the CLI archive: the APK, the IPA,
+a SideStore source file and a `.sha256` for each, from the same commit as
+`hui-<version>.tgz`. The rolling `nightly` prerelease carries the same files.
+
+### Android
+
+Download `hui-<version>.apk` from the release's assets and open it; Android asks
+once to allow installs from the app you downloaded it with. To check the
+download, compare it with its checksum (`sha256sum -c hui-<version>.apk.sha256`
+in the folder that holds both). The APK is signed with HUI's release key, so a
+newer release installs over the old app, and an APK signed by anyone else is
+refused.
+
+[Obtainium](https://github.com/ImranR98/Obtainium) installs the updates for you:
+
+- **Stable:** add `https://github.com/DaniFdz/hui` as an app and let it track the
+  repository's releases.
+- **Nightly:** the same app with **Include prereleases** on, so it installs the
+  rolling `nightly` prerelease instead.
+
+Obtainium keeps the signature it installed with and refuses an APK signed by a
+different key, which is what makes taking updates automatically safe.
+
+### iOS
+
+Apple lets an app signed with a free Apple ID run for seven days, so HUI
+publishes its IPA **unsigned** and [SideStore](https://sidestore.io) signs it with
+your own account. A paid Apple Developer account is not needed; TestFlight
+distribution is not set up.
+
+1. Set up SideStore on the device. Its own guide covers the pairing file and the
+   Apple ID sign-in.
+2. Add one HUI source under **Sources**:
+   - **Stable:** `https://github.com/DaniFdz/hui/releases/latest/download/hui-sidestore.json`
+   - **Nightly:** `https://github.com/DaniFdz/hui/releases/download/nightly/hui-sidestore.json`
+3. Install HUI from that source, open it and enter the gateway's address.
+   If the gateway is another machine on your Wi-Fi, iOS asks once whether HUI
+   may access the local network; allow it, or the Connect page cannot reach that
+   address.
+
+The source names the IPA's own version, so a new release shows up as an update.
+The stable source is the channel to use: the nightly one follows the rolling
+prerelease, whose version carries its build stamp
+(`0.2.0-nightly.202611091200.g1a2b3c4`), so treat it as a preview.
+
+**Without waiting for a release, and without a Mac.** Dispatch the Mobile workflow on the branch that has the app and
+ask it for the IPA:
+
+```sh
+gh workflow run mobile.yml --repo DaniFdz/hui --ref <branch> -f ios_ipa=true
+gh run download <run-id> --repo DaniFdz/hui -n ios-ipa -D /tmp/hui-ipa
+```
+
+That job archives the app for a device on a macOS runner, unsigned, and uploads
+`hui-<version>-unsigned.ipa` with its checksum. In SideStore open **+** and import
+that file: SideStore signs it with your Apple ID as it would a release. The same
+seven-day limit applies. Building from a checkout on a Mac works too: `npm ci`,
+`npm run mobile:build`, `npx cap sync ios`, then Run in Xcode with your team
+selected.
+
+The seven days are Apple's limit for a free Apple ID, not HUI's. SideStore
+re-signs HUI for another seven days whenever it refreshes it, and a refresh needs
+the device to be online; you can also start one in SideStore yourself at any
+time. If no refresh happens before the certificate expires, HUI stops launching
+until SideStore signs it again: open SideStore, refresh HUI, and it starts
+normally. Nothing is lost when it lapses, because sessions, bots and settings
+live on the gateway, not on the phone.
 
 ## Desktop notifications (macOS)
 
@@ -187,6 +277,55 @@ you said no, allow them in **System Settings → Notifications → HUI**. They n
 the managed gateway and the current app: `hui update` reinstalls an app left on
 an older version, and a window that was already open needs quitting and
 reopening. Quitting HUI clears its notifications from Notification Center.
+
+## Notifications on your phone (ntfy)
+
+The phone app holds the gateway's page while it is open. iOS and Android stop
+that page soon after you leave the app, so a notification for a run that
+finishes later cannot come from the app itself. HUI instead publishes each
+notification to [ntfy](https://ntfy.sh), and the ntfy app on your phone shows
+it while HUI is closed, locked or in the background.
+
+1. Install **ntfy** on the phone (App Store or Play Store), or run your own ntfy
+   server.
+2. In HUI, open **Settings → Notifications → Phone (ntfy)**. Leave the server at
+   `https://ntfy.sh` (or set your own), press **Generate** for a long random
+   topic, then **Save**.
+3. In the ntfy app, add a subscription to the address HUI shows under the
+   fields (`https://ntfy.sh/<topic>`). **Copy address** copies it.
+4. Press **Send test** in HUI: the phone should show the test notification.
+
+After that, the three switches above cover both the macOS app and the phone, and
+`notify_user` alerts reach both as well. Tapping a notification opens its chat on
+the gateway. Clear the topic to turn phone notifications off; an empty topic
+sends nothing.
+
+The address is the password: anyone who knows the topic can read its
+notifications. HUI never prints it in an error or a diagnostic. Chat names,
+their `Finished`/`Run failed`/`Needs your input` subtitle and a waiting chat's
+first question go to the ntfy server; nothing else from the transcript does. A
+protected ntfy server reads its bearer token from `HUI_NTFY_TOKEN` in the
+gateway's environment, never from settings.
+
+### Run your own ntfy server
+
+`https://ntfy.sh` is the public instance. The server field takes your own, and
+then no notification leaves your network. ntfy is one process: install the
+`ntfy` package or run the `binwiederhier/ntfy` container with `serve` as its
+command, and set `listen-http: :2586` in `server.yml` so it needs neither root
+nor port 80.
+
+The phone has to reach that address. On a tailnet, publish the relay with
+`tailscale serve` (`tailscale serve --bg 2586`) and use the
+`https://<machine>.<tailnet>.ts.net` address it prints, both in HUI and in the
+ntfy app; Tailscale supplies the certificate and keeps the traffic inside the
+tailnet. Without a tailnet, put HTTPS in front of it (Caddy, nginx) or configure
+ntfy's own TLS: iOS wants HTTPS for a server that is not loopback.
+
+Then set that address under **Phone (ntfy)**, generate a topic, save it, and
+subscribe the ntfy app to `<address>/<topic>` as above. The topic stays the
+password on your own server too; a protected one reads its bearer token from
+`HUI_NTFY_TOKEN` in the gateway's environment.
 
 ## Shell completion
 
@@ -328,6 +467,43 @@ provider quota windows and reset times. Unsupported quotas are labeled explicitl
 Reopen existing sessions after changing connections; new sessions use the updated
 configuration. HUI-managed connections require the default PI SDK backend.
 
+### Local model servers
+
+A local model can run on another machine that is normally asleep. Define the
+provider once in PI's `models.json` with its `baseUrl` and models, then open
+**Settings → Models → Model providers → Local model servers**. The group is
+folded; opening it shows one compact row per custom provider from that file, with
+its reachability and one **Start command**. **Set up start command** opens a
+dialog for the command, health URL and timeout. The command is yours: for
+example, send a wake-on-LAN packet, wait, then start the server over SSH. Use SSH keys or another non-interactive
+method; the command runs as your user on the machine that runs the gateway and
+is never given input.
+
+Press **Start server** before using the model. HUI keeps a **Starting…** state
+until the server answers. The health check uses the optional **Health URL**, or
+the provider's `baseUrl` from `models.json` when you leave it empty; any HTTP
+answer counts as ready except 502, 503 and 504. **Ready timeout** (three minutes
+by default) bounds both the command and that wait. Without a health URL the
+command still runs, but HUI reports **Unknown** because it cannot confirm that
+the server is ready. If a chat sends while a start is still running, its model
+request waits and the conversation shows **Waiting for … to start…**; a failed
+start fails that request with the reason. HUI never starts a machine because a
+model request arrived, and it never stops the server: stop it on the machine
+when you are done.
+
+The command is stored in HUI's own `providers/local-providers.json`, not in PI's
+configuration. It is not sent to model providers; the gateway's provider status
+never includes PI's `baseUrl` or credentials.
+
+Each row also has **Metrics**. It opens HUI's measurements for that provider over
+the last 24 hours: generation speed, time to first token, an estimated prompt
+throughput, token counts, averages and a short trend. The chat composer shows
+the latest completed request as a compact speed chip; open the chip for the full
+measurement. HUI takes these numbers itself from each request's stream, so
+prompt throughput includes queueing and prefill and is an estimate, not the
+model server's own prefill counter. The last 5,000 requests are kept in
+`~/.config/hui/model-metrics.jsonl` (mode 0600).
+
 Settings → Models names three roles. The **primary model** does the real work:
 choose the smartest model you have, speed doesn't matter. The **utility model**
 does the quick work (session and branch names, Jira drafts, `/btw`, and for bots
@@ -335,6 +511,11 @@ their memory summaries, quick answers on calls and call summaries): choose the
 fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Calls)
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
+
+**Provider retries** sets how many times a failed model request is retried on the
+same model before the fallback is used (default 3). Retries keep the model and its
+cached context, and wait for the provider's retry hint, so a capacity error does
+not immediately reload the context on another model.
 
 **Default reasoning** on the same page is the effort new sessions and new bots
 start with: one of PI's levels through Maximum, or **Use PI default** to follow
@@ -345,10 +526,12 @@ saved as a default.
 
 **Subagent routes** sit under the same page. Choose **Add route** to open a
 form for its name, one-line description, model and optional reasoning level.
-The model starts on your primary model when available, and thinking inherits
+The model starts on **Inherit the caller's model**, and thinking inherits
 the parent's level. **Add route** saves the completed form; **Cancel** or Escape
 closes it without adding anything. A failed save keeps the form for retry.
 Saved routes show a brief summary of their description, model and thinking level.
+A route without a model runs its subagent on the caller's model and reasoning
+level, so it follows your primary model as that changes.
 Choose **Edit** to open the same form with the current values. **Save changes**
 applies the edit; Cancel or Escape leaves the saved configuration unchanged.
 **Remove** stays beside Edit. An agent that spawns a subagent can pass the name
@@ -376,6 +559,33 @@ popup also shows **Speed**: **Fast** asks the provider for its fast mode
 (Anthropic's fast output, OpenAI's priority tier), which costs more. Both
 choices are kept per session and apply to its next model request; a proxy that
 does not support fast mode serves the request at standard speed or refuses it.
+
+Under Speed, **Autonomy** chooses who drives the session: **Supervised** (the
+default) or **Autonomous**, in the composer and on New Session. Autonomous makes
+the session drive its task to a draft pull request at whatever Effort you picked.
+It investigates, then stops with its plan, and changes nothing until you or its
+chief approve it. The plan takes the form that explains the change: a before/after
+card for a screen or control change, a diagram for an architecture or flow change,
+a table or chart for numbers, and a short text plan when nothing visual helps.
+Either way it gives the goal, the evidence, the risks and where it stops, and ends
+on one question. A session its chief started writes the plan in its reply, because
+the chief reads text. After approval it
+gives every step to a subagent, one task each, and the subagents work in the
+session's own checkout, so the branch and the pull request are the session's and a
+fix round sees what the change before it did. A fresh verifier runs the checks and
+a reviewer tries to break the diff. From there it stops only on a blocker it cannot
+decide or on its report, when the draft pull request is tested and verified.
+
+Pull requests stay drafts. The session never marks one ready for review, merges it
+or deploys it. You decide when it leaves draft.
+
+Who it reports to depends on who started it. A session you start reports in its
+own chat, and HUI notifies you when its run ends. A session a Chief of Staff starts
+runs Autonomous by default and reports to that chief, which brings you only the
+decisions it cannot take. Your own messages always come first in either case.
+Switch to Supervised while the session is idle to take it over: the chief HUI
+chose for it stops watching it, unless the gateway restarted since. New Session
+starts on Supervised each time.
 
 ## Bots
 
@@ -405,8 +615,9 @@ MEMORY.md never leave with an export. Its chat's **history** is
 [OptChat](optchat.md): every message is kept word for word and a cheap model
 condenses it into a tree of one-line summaries, so each turn starts fresh from a
 bounded view of the whole history (64 to 128 KB) and the bot opens a line (`zoom`)
-when it needs the detail. The chat is never compacted or cleared; when a turn has
-to wait for the newest messages to be summarized, `hui bot chat` says
+or searches it (`search_chat`) when it needs the detail. The chat is never
+compacted or cleared; when a turn has to wait for the newest messages to be
+summarized, `hui bot chat` says
 "Summarizing memory…". `hui bot memory` shows MEMORY.md, `hui bot user` USER.md,
 and `hui bot history` the chat's own history (`--zoom`, `--html`).
 
@@ -542,8 +753,105 @@ back on the model and thinking level a new chat gets (*Gateway default* in the
 bot's Settings page), and `--memory-model ""` puts the utility model back on its
 default (Settings' utility model, then the chat's own model).
 
-A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
-and deleting the session all answer with an explanation instead.
+A bot's chat refuses what would shorten or fork it: `/compact`, Compact now, fork
+and deleting the session all answer with an explanation instead. `/clear` empties
+the chat and its memory, and **Rewind to here** on one of your messages keeps the
+bot and its memory to what comes before that message: the abandoned branch is
+forgotten by the memory, though it stays stored.
+
+### The staff pack and the Chief of Staff
+
+A fresh gateway seeds one **Chief of Staff** bot from HUI's **staff pack**. It
+starts idle: it has a SOUL.md and its skills, and it says nothing until you
+message it. Its home folder holds the pack's skills under `skills/`, and the
+bot panel's **Tools & skills** tab lists them as *Its own skills*: `chief-mode`
+with its playbooks, plus `lead`, `delegate`, `plan`, `investigate`, `review`,
+`machines`, `status`, `decision`, `learn`, `lessons`,
+`verify`, `ship`, `resume`, `improve`, `arena`, `swarm`,
+`figure-it-out`, `writing`, `show-me-your-work`, `statechart` and a
+`principles` reference. No other chat loads them.
+
+The same seed adds five **Subagent routes** on Settings → Models: `planner`,
+`explorer`, `worker`, `reviewer` and `verifier`. Each inherits the caller's
+model until you give it one, so they follow your primary model. The chief uses a
+route only for a fast child: a read-only probe, one command, one check, one
+reply. A writing task gets a new session with its own worktree and branch. Before the first delegation the chief calls `worker_stats` and states the
+machine plan: which machines are in play, their load and running sessions, and
+where each piece runs. A session follows its group's New session defaults; when
+the group names no machine, the chief picks one from these stats. `machines` says to spread independent sessions, keep
+headroom on every machine and never fill one; `local` is the main machine.
+
+The chief uses a subagent only for **fast iteration**: a read-only probe, one
+command, one small check, one reply. A child never owns a branch or a pull
+request.
+
+Everything else is a **new session**. The chief writes the brief and creates it
+with `create_session`; the session follows its group's New session defaults for
+directory, machine, Git environment and base ref, and the chief fills in a worker
+or worktree only where the group names none. You can open it in the sidebar. The session owns the work; the chief keeps the ledger row and reads the
+evidence it reports, not its transcript. It is done when its pull request is
+merged and, where the change applies, deployed and validated in production.
+You archive the session then; the chief settles the ledger row and never
+archives it for you. A **lead** is opt-in inside such a session, or when you
+ask for one, not the chief's default.
+
+The session is the **lead** for one PR. HUI adds the PR-lead phase protocol: it runs the phases
+end to end, an `explorer` for investigation, a `worker` in a worktree, a fresh `verifier`, then a
+`reviewer`; it never creates a second session for a phase. It makes technical choices itself and
+stops only for an irreversible action, missing access, an owner-only approval or a material
+preference evidence cannot settle. It reports its final evidence; there is no go between phases. Its own model is the
+orchestrator; set the route models in Settings to change each phase's model. A model-less
+route inherits the lead's model.
+
+| Phase | Route | Model to configure |
+| --- | --- | --- |
+| Investigation | `explorer` | A strong reasoning model |
+| Implementation | `worker` | A coding model |
+| Verification | `verifier` | An independent model |
+| Review | `reviewer` | A different model family from the implementer |
+
+The chief asks you almost never: implementation, scope, test choice, design, retries and model
+routes are decided with a reversible default and recorded. Only an irreversible action, missing
+access, an explicit owner-only approval or a material preference evidence cannot settle uses the
+`decision` skill: one line, a compact table or diagram, a recommendation and one question.
+
+A status answer uses the `status` skill: one table row per session
+(`[title](/sessions/<id>?open=app)`, PR link, status and blockers), then one
+question only if it waits on you. HUI's heartbeat changes use the same shape.
+
+Each session the chief creates is **watched** by default. HUI runs the
+**heartbeat** itself, every 15 minutes, without a turn in a bot's chat. It reports
+a watched session that is idle, waiting, errored or done to the chief; it never
+prompts the watched session. The chief reads the last reply and decides: send
+one specific followup with `sessions_send`, or remove the watch if nothing is
+left. A generic continue is never sent.
+
+After a task that failed, drifted, or needed a step the pack did not know, the chief adds one evidence-backed entry to its own **`lessons`** skill. It never edits the pack's skills: an edited pack file stops taking pack updates. The `lessons` skill is the bot's, and `hui doctor` reports it.
+
+A chief that spawns a child for every task has the wrong model for the role: give it a strong model and high thinking. Routes without a model inherit whatever the chief uses, so set route models explicitly if fast children should be cheaper.
+
+The chief's chat uses OptChat. Its compactor model defaults to Settings' utility
+model; for a chief that lives for months, set a stronger one in the bot's
+Settings → Memory. The ledger in `work/` and MEMORY.md are the durable record;
+the chat is not.
+
+The pack is versioned, and it reaches every chief: the seeded one and each group's.
+On a later start HUI replaces a skill file nobody edited, keeps a skill with any
+edited file whole, and adds only routes whose names are missing; it never writes
+SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md after creation. A chief that got the
+pack before HUI recorded each bot is adopted the first time: a file that already
+matches the pack byte for byte is recorded as pack text, a skill it lacks is
+installed, and a skill that differs is kept and reported, because HUI cannot
+tell your edit from older pack text there. `hui doctor` reports, per chief, a
+skill that can take the shipped text, one you edited, and one the pack no longer
+ships (which you can delete); `hui doctor --fix` installs the untouched updates
+and leaves everything else alone.
+
+A **custom session group** is a project here, so its ⋯ menu offers **Create Chief of Staff**: one bot named *Chief of Staff · <group>* whose chat works in that project's folder, with its own OptChat memory and its own copy of the pack's skills. Asking again opens that same chief. The seeded default chief stays for work that belongs to no group.
+
+Deleting the Chief of Staff is how you opt out: HUI records the seed in
+`staff.json` and does not create another. To get it back, stop the gateway,
+delete `staff.json` from HUI's configuration directory, and start it again.
 
 ### Soul and the first conversation
 
@@ -607,6 +915,8 @@ powerful: it only shows you a Secret card in the bot's chat, and you decide
 whether to answer. Its own tools are always on and listed at the bottom: writing its
 SOUL.md, changing its name, title or look, asking for access, loading its skills, and
 its memory.
+
+Each skill in the bot's own folder shows **Edit**: the whole `SKILL.md` in a textarea, with **Save skill** and **Cancel**; the files beside it stay. A pack update never overwrites an edited skill, and `hui doctor` reports it. Skills HUI ships or PI provides have no Edit.
 
 ```sh
 hui bot tools ada                      # what it has, grouped, on or off
@@ -929,8 +1239,8 @@ hui bot memory ada --html ada.html # the whole memory as one page
 ```
 
 The status line counts the messages, the summaries built and still pending, the
-view's size and lines, and what the compactor spent since the gateway opened the
-memory (calls, tokens, cost). Every view line is `id+n|text`: `n` messages
+view's size and lines, and what the compactor spent in total (calls, tokens,
+cost), across restarts. Every view line is `id+n|text`: `n` messages
 from `id`, in one summary; `--zoom id+n` opens it, down to a single message
 with `n` = 1. The page lists the view, every message and each level of the
 tree; a browser opens it from a link on HUI's own pages, such as the Bots tab
@@ -963,14 +1273,26 @@ Nothing is translated.
 
 The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):
 
-- **GPT-Live talks.** It answers greetings, small talk and what the bot's
-  soul and recent memory already say, about a second after you stop.
+- **It starts with a handoff.** Before the call connects, the bot's utility model
+  writes a short handoff note from its soul, its memory, the newest messages of
+  its chat and the knowledge you saved: what is active, the last decisions, what
+  waits on you and what you may ask about today. The call shows *Connecting…*
+  and plays a ringback tone (425 Hz, a second and a half on, three off) until the
+  bot answers, while the note is written (at most six seconds); it starts without
+  the note if no model answers. GPT-Live speaks from that note, the memory and the
+  newest messages of the chat, so a handoff you gave the bot minutes earlier is
+  there.
+- **GPT-Live talks as the bot.** The greeting it is asked for names the bot, so
+  the voice model opens as your bot and not as ChatGPT, and it answers greetings,
+  small talk and what the bot's soul, the handoff and recent memory already say,
+  about a second after you stop.
 - **Quick questions go to the bot's helper.** When GPT-Live needs to know
   something, it asks the bot: a helper on the bot's utility model answers from
-  the bot's soul (its SOUL.md), the newest part of its memory and the call so far, in
-  a few seconds. What it cannot see there (older memory, files) it hands to the
-  bot's chat instead of saying it does not know. It never waits for the bot's
-  own turn. It has 25 seconds per question; past
+  the bot's soul (its SOUL.md), the newest part of its memory, the newest
+  messages of its chat and the call so far, in a few seconds. What it cannot
+  answer from those (older memory, files, an action) it hands to the bot's chat
+  instead of saying it does not know: the bot never tells you it does not know.
+  It never waits for the bot's own turn. It has 25 seconds per question; past
   them GPT-Live says it is taking long and offers to hand it off.
 - **Real work goes to the bot's chat.** What needs tools, files or current
   information arrives in the chat as a message starting with `[call task]`,
@@ -986,9 +1308,10 @@ The call works like [OpenDots](https://github.com/CopilotKit/OpenDots):
   page vanishes is summarized after 90 seconds without news from it; if the
   summary fails, the card keeps the transcript and says so.
 
-A call ends after 15 minutes. The helper answers six questions per call (then
-everything goes to the chat), a call hands off at most four tasks, and two calls
-can run at once on the gateway. The route is the one ChatGPT's own voice mode
+A call ends after 15 minutes. Every question is answered or handed to the chat
+(there is no per-call count: the helper has 25 seconds per question, and the
+call's own limit ends the talk), and two calls can run at once on the gateway.
+The route is the one ChatGPT's own voice mode
 uses, not a public API: it may change, and calls count against your ChatGPT
 plan's voice usage.
 
@@ -1212,14 +1535,17 @@ never reaches it.
 To draw a widget, HUI asks Datadog for a snapshot of it, which Datadog keeps at a
 long, unguessable link, as it does for its own sharing and its Slack app. HUI
 never shows that link. **Settings → Appearance → Chat → Datadog link
-previews** turns the cards off. [docs/api.md](api.md#datadog-link-previews) has
+previews** turns the cards off, on that device. [docs/api.md](api.md#datadog-link-previews) has
 the full contract.
 
 ## Custom marks for tool calls
 
 A turn's tool calls show a mark per row. HUI picks it in this order: your icon file, your emoji, the built-in emoji for that CLI or tool, then the tinted SVG mark.
 
-Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`):
+Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`),
+and stay on the gateway: the icon files are there, so every device that draws a
+tool call reads the same maps. Everything else on the Appearance page is the
+device's own.
 
 ```json
 {
@@ -1231,6 +1557,114 @@ Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`):
 ```
 
 Icon files go in `HUI_CONFIG_DIR/tool-icons/` and are served read-only at `/__hui/tool-icons/<file>`; the browser only ever draws them in an `<img>`, so an SVG cannot run script. Names are flat file names — no paths — with an `.svg`, `.png`, `.webp`, `.jpg` or `.jpeg` extension, at most 256 KB. Keys are a CLI binary or a tool name, lowercased. Restart the gateway after adding files or editing the maps.
+
+## Gateway extensions
+
+A gateway extension is a small local module that answers JSON routes under
+`/__hui/ext/` and may add a sandboxed panel or page, prompt text and agent tools.
+You put one in `HUI_CONFIG_DIR/extensions/<id>/` and enable it over HTTP or in
+Settings. The extension runs **inside the gateway process** with the gateway's
+full access to your machine, credentials and data — the same trust as a PI
+extension and no sandbox for that code. Only add code you would run yourself.
+[What a gateway extension can and cannot do](extensions.md) is the capability
+matrix; the rest of this section is the working guide.
+
+An extension directory holds a manifest and its entry module:
+
+```
+HUI_CONFIG_DIR/extensions/hello/
+  extension.json
+  index.mjs
+```
+
+```json
+{ "apiVersion": 1, "name": "Hello", "description": "Greets people.", "main": "index.mjs" }
+```
+
+```js
+// index.mjs: one route per method and path below /__hui/ext/hello/
+export const routes = [
+  {
+    method: "GET",
+    path: "hello",
+    description: "Greets a name from the query.",
+    handle: async ({ query }) => ({ body: { greeting: `hello, ${query.get("name") ?? "world"}` } }),
+  },
+];
+```
+
+An id is a lowercase directory name (letters, digits and `-`, at most 32
+characters), `apiVersion` must be `1`, and `main` must stay inside the extension's
+directory. A panel is optional: `"ui": { "title": "Hello panel", "entry": "index.html" }`
+serves the files under the extension's `ui/` directory at `/__hui/ext-ui/<id>/` and
+shows the entry page in a sandboxed Work pane frame that can only call the
+extension's own routes through HUI. Its optional `icon` names the Work pane tab's
+mark — `package` (the default), `github` or `pull-request`; another name is
+refused when the manifest loads. A page is optional too:
+`"ui": { "title": "Hello", "page": { "title": "Hello page", "entry": "page.html" } }`
+adds a sidebar destination at `/ext/<id>` that renders `ui/page.html` in the same
+sandbox; its bridge may also ask HUI to open an allowlisted conversation. A route
+can read read-only gateway data through `context.hui` (`github.contributions`
+first); no service handles or HUI routes are exposed. An extension can also declare static prompt
+sections for Durable conversations and agent tools, whose handlers are exported by
+the entry module under the tool's name, and a route can stream events with
+`stream: true` (see `e2e/fixtures/extensions/hello`). Panel files are public to anyone who can reach
+the gateway, so keep secrets out of them. A route path is one to four clean segments. A handler gets
+`{ method, path, query, body, signal, extension }` and returns
+`{ status?, body }` where `body` is a JSON object (at most 256 KiB); there are no
+response headers, files, redirects or streams, and a request body follows the
+ordinary 64 KiB JSON limit. The same `x-hui` gate as every other route applies.
+
+Installed extensions start out off. **Settings → Extensions** lists each one with
+its state, its routes and any error, and its switch turns it on or off; **Open
+panel** shows an enabled extension's panel in the current conversation's Work pane
+(or add it from the Work pane's + menu). The same
+is available from a terminal (the gateway must be running; replace the port with
+your own):
+
+```sh
+curl -sS http://127.0.0.1:5173/__hui/ext -H 'x-hui: 1'
+curl -sS -X PUT http://127.0.0.1:5173/__hui/ext/hello \
+  -H 'x-hui: 1' -H 'content-type: application/json' -d '{"enabled":true}'
+curl -sS 'http://127.0.0.1:5173/__hui/ext/hello/hello?name=Ada' -H 'x-hui: 1'
+hui extension list
+hui extension enable hello
+hui extension disable hello
+```
+
+A manifest can set `"mode": "process"` to run in a supervised child process (at most
+eight at once): its routes and streams are forwarded, a crash restarts it after 1, 2
+and 4 seconds while routes answer 503, and three crashes in five minutes leave it
+failed until a reload. That is crash isolation, not a sandbox; tools require the
+default in-process mode.
+
+HUI ships some extensions in its package, beside `skills/`; a packaged page
+listed in `extensions/defaults.json` is on until `extensions.json` exists. A config
+copy with the same id overrides it; `hui extension eject <id>` copies the packaged
+source into your config directory without enabling it, so you can edit it and reload.
+
+`hui extension add <path> [--link]` validates a local module and installs it
+(copied, or linked with `--link`), enabling it now when the gateway runs and at the
+next start otherwise; `hui extension remove <id>` needs it disabled, and only
+`--delete` removes its directory. A manifest may carry `version` and `engines.hui`
+bounds; a gateway outside them refuses to load it. **Reload** on Settings →
+Extensions (or `hui extension reload <id>`) re-imports a changed module. `hui
+doctor` reports enabled extensions that cannot load.
+
+The bundled **build-hui-extension** skill walks an agent through this surface,
+copies a working reference extension and verifies it against the gateway; turn it
+off in Settings → Skills if you do not want it offered.
+
+The choice is saved in `HUI_CONFIG_DIR/extensions.json` (`{ "version": 1,
+"enabled": ["hello"] }`) and applies immediately: enabling imports the module,
+disabling withdraws its routes at once (Node keeps the module cached). The same
+call with `"enabled":false` turns it off. A manifest or import failure answers
+200 with `state: "failed"` and an `error`, is listed by the first route above and
+is reported once as a gateway diagnostic; other extensions and the rest of HUI keep
+working. A changed manifest is read again when the extension is toggled off and
+on; changing a module's code takes effect when the gateway restarts. HUI 0.1.5 has
+no Settings page for extensions yet; the HTTP surface in the [API contract](api.md)
+is the operator interface.
 
 ## Codemode: one script, many tool calls
 
@@ -1257,9 +1691,12 @@ older PI worker (before `hui doctor --fix` moved them) never get it.
 
 ## When the agent asks you questions
 
-An agent that needs decisions from you asks them in a card above the composer:
-up to four questions, each with its options and a *Type something…* row for
-your own answer. Pick or type, then **Submit**; **Cancel** or Escape declines.
+An agent that needs decisions from you asks them in a card at the end of the
+transcript, above the composer, where it scrolls with the conversation: up to
+four questions, one at a time, with a progress bar and **Back** / **Next**.
+A question offers choices (plus a *Type something…* row for your own answer), a
+slider for a number such as a budget, or a long text field. Pick, slide or
+type, then **Submit**; **Cancel** or Escape declines.
 The session shows *Waiting* until you answer, and once you do, the transcript
 keeps a short summary of your answers.
 
@@ -1271,6 +1708,65 @@ the rest of the work and list the decisions still open for you in its final
 reply. The transcript marks the questions as expired, with their options, so
 you can see what it asked; reply in the chat to decide. The timeout applies to
 questions asked after you change it.
+
+## When the agent asks you to take over the browser
+
+Some browser steps only a person can finish: a password, a two-factor code, a
+passkey, a payment, or a site's bot check. When an agent gets there it hands the
+tab to you instead of guessing. The chat's browser preview card says **Your
+turn** with the agent's one-line instruction, and **Take over** opens the
+conversation's browser view. Once there, the page is yours: click, type, scroll
+and paste as you would in any browser, then press **I'm done — continue**. The
+agent gets the page as it is then, with fresh element refs, and carries on.
+
+While you have the tab the agent waits and cannot act on the browser, the tab
+never closes, and the view says *You have control; the agent waits*. A tab you
+leave in another view, or a handoff you never answer, ends by itself after ten
+minutes (the agent is told you may be away and gets the tab back); a handoff can
+ask for up to thirty. If the tab closes or the browser stops first, the agent is
+told that instead. Opening the browser view from the header's globe button shows
+the same view: it stays view-only unless a handoff is waiting.
+
+## Storing a password an agent can type
+
+Settings → Tools → Browser → **Site secrets** stores a value under a name and
+an exact origin, such as `github` on `https://github.com`, in a file only you
+can read. The list shows the name and origin — never the value — and **Delete**
+removes one. When an agent reaches that site's sign-in form it can type the
+stored value into the field without being able to see it: the gateway refuses
+unless the field's page is exactly that origin, and the value never appears in
+the chat, a tool result or a log. A close-button prompt or one-time code still
+needs a **handoff**, and once filled the page itself can read the field, so keep
+the origin allowlist narrow. A sign-in form inside an embedded frame works when the browser renders that frame
+in the same process; a frame it isolates cannot be reached, and that needs a
+handoff.
+
+## How the agent browses
+
+HUI ships a `browser` skill: a short procedure the agent reads when a task
+needs a real page. It decides whether a page needs a browser at all (a JSON
+API does not), keeps snapshots small, acts only on refs from the latest
+snapshot, and after each action reads `snapshot` with `diff: true` so it sees
+the lines that changed instead of the whole page.
+
+It also says when to use the rest: `get`/`is` for one property, `steps` for
+transient UI, frames, `upload` for a form that takes a file, `console` and
+`network` when the DOM does not explain a failure, `performance` for weight
+and speed, `secret` for a stored password, and `handoff` only when a person
+has to continue. Skills are on unless you turned them off in settings; the
+agent still decides per task.
+
+## Limiting where the agent's browser goes
+
+Settings → Tools → Browser → **Allowed origins** is empty by default: the
+agent's browser may open any http(s) page. Add one pattern per line to bound
+it — `example.com`, `example.com:8443`, `https://app.example.com`, or
+`*.example.com` for subdomains only (never the bare domain itself). With a list
+set, an agent can only open or navigate to those pages: links, redirects and
+popups that leave the list are stopped and the tab is left blank, the tool
+result says why, and a local file is refused. A loopback or private address
+needs its exact host, and the list follows where a page goes, not what it
+loads, so a page on the list can still fetch its own resources.
 
 ## Giving a conversation a goal
 
@@ -1304,8 +1800,8 @@ finishing a docs pass.
 ## Giving an agent a secret
 
 When an agent needs an API key, a token, a password or a one-time login code,
-it asks for it with a **Secret** card above the composer instead of asking you
-to paste it into the chat. The card names the secret and says why the agent
+it asks for it with a **Secret** card at the end of the transcript instead of
+asking you to paste it into the chat. The card names the secret and says why the agent
 needs it; type or paste the value into the masked field and press **Submit**,
 or **Cancel** to refuse. The session shows *Waiting* until you answer, and the
 request expires after 15 minutes.
@@ -1402,6 +1898,19 @@ of time leaves it unmarked, so run the command again. A bot on a worker keeps it
 home there, and doctor cannot read a worker's files offline: it lists the bot until
 you run the same command once the worker is connected.
 
+### OptChat documents
+
+A bot's chat keeps its OptChat memory across a rewind, which is what made
+OptChat's `hui.optchat` document `fork: "current"`
+([A document an older HUI wrote](optchat.md#a-document-an-older-hui-wrote)); an
+older HUI wrote it `fork: "initial"`, and Durable refuses a document whatever
+wrote it did not define that way. A chat whose document is still the older one
+said *The runtime could not start* after the update. A gateway adopts the document
+when it opens the chat, so the chat starts; `hui doctor` lists the conversations
+it has not opened yet, and `--fix` adopts each one while the gateway is stopped.
+Only the document's record is rewritten: the chat, the bot and OptChat's memory
+files stay as they are, and a bot's settings or its deletion adopt it too.
+
 ### Datadog sessions
 
 HUI lets pup keep its Datadog sessions as files in its own directory
@@ -1413,6 +1922,21 @@ session in its own directory, and signing in again in Settings → Integrations 
 Datadog fixes it. There is no `--fix` for it, since the sign-in runs in a
 browser. Until each org is signed in again, the check fails and `hui doctor`
 exits with status 1.
+
+### Appearance in `settings.json`
+
+Appearance belongs to the device that shows it, so
+`settings.json` should not hold a theme, color mode, accent, typeface, text size
+or chat preference. One an older HUI wrote still does: `hui doctor` lists each of
+those keys and exits 1, and `--fix` rewrites the file without them, keeping every
+setting the gateway still owns. The look alone — theme, color mode, accent, the
+two typefaces, the terminal font and the text size — is first written to
+`~/.config/hui/desktop-appearance.json` for HUI's desktop app, which applies it
+to a device that never stored an appearance of its own and then marks it
+consumed; the chat preferences stay behind, since they are habits rather than how
+a screen looks. Nothing is written when the look is only HUI's defaults. The
+seed is written on the gateway's machine, so a desktop app running on another
+machine needs that file carried over by hand.
 
 ### HUI desktop app
 

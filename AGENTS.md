@@ -9,8 +9,8 @@ details in the owning directory guide.
 - Inspect `git status --short` before editing. This is a shared checkout: preserve
   unrelated and in-progress changes, never stash/reset/clean them, and coordinate
   overlapping edits with the owning agent.
-- Read `SPEC.md`, `docs/api.md`, and the relevant roadmap item before changing a
-  product contract. Inspect the current implementation before adding an abstraction.
+- Read `SPEC.md` and `docs/api.md` before changing a product contract. Inspect
+  the current implementation before adding an abstraction.
 - [docs/map.md](docs/map.md) maps areas to their owning modules. Every source
   module starts with a header comment saying what it owns; keep it true when you
   change the module, write one for each new module, and name new source
@@ -61,6 +61,15 @@ details in the owning directory guide.
   app, in addition to focused automated tests. Exercise the UI rather than only
   calling its HTTP endpoints, inspect the resulting screen, and report any proof
   gap explicitly.
+- Phone shell work: `npm run mobile -- doctor` prints the pinned toolchain,
+  emulator and device state; `dev` builds this checkout's Connect page and debug
+  APK, installs it and launches it against a gateway; `test` runs the shell's JVM
+  tests; `screenshot <path>` captures the screen. The loops, ports and the
+  two-worker setup are in `mobile/AGENTS.md`.
+- The shared suite has `web`, `android` and `webkit-phone` targets; see
+  `e2e/AGENTS.md` for their scope and `mobile/AGENTS.md` for native toolchains.
+  The mobile workflow also builds Android, runs the shell's JVM tests and
+  exercises the iOS simulator.
 - Never weaken assertions, add sleeps, or hide failures to make a check pass.
   Synchronize on observable state and fix defects at their owning boundary.
 
@@ -75,6 +84,7 @@ corrects a new kind of slowness, and enforce it with a type, check or test.
 | --- | --- |
 | A snapshot that leaves the transcript as the page has it goes out without it. | `#broadcast` takes no snapshot, only `#broadcastState` or `#broadcastTranscript` (`server/sessions/live-sessions.ts`, typecheck); `server/live-sessions.test.ts` "answering a question or settling without refreshed history…" and "a browser's stream starts from the transcript it holds…" |
 | A list or card carries what it shows: a subagent's card, not its task or report. | `server/sessions/session-payloads.test.ts` (`Api.SessionSubagent` type); `server/agent-tools/subagents.test.ts` "a parent's snapshot shows each child's card…" |
+| A refresh keeps the list the shell already shows; only a read with no list behind it draws placeholders, because swapping the sidebar's rows collapses its scroll. | `src/controllers/sessions-controller.test.ts` "a refresh keeps the list the sidebar already shows…"; `e2e/tests/sess/archive-restore.e2e.ts` "the sidebar keeps its place when archiving refreshes the list" |
 | The browser reads event streams with `readEventStream`, which is linear. | `src/api/sessions.test.ts` "the browser reads every event stream through readEventStream" |
 | A long conversation draws its latest rows; a folded activity draws its items when it opens. | `src/views/home.test.ts` "a long conversation renders its latest rows…" |
 | The transcript's subagent and watcher cards blur nothing behind them (no `backdrop-filter`). Each blurred card added composited layers, and in a long chat whole rows stayed blank while scrolling. | `src/views/home.test.ts` "subagent and watcher cards blur nothing behind them…" |
@@ -101,10 +111,19 @@ with `role="tooltip"`), never a native `title`.
 
 ## Change Discipline
 
+- Keep plans and progress out of the tree. A plan, a goal, a status ledger or a
+  roadmap describes one run, goes stale, and conflicts with every other run's
+  copy: it lives in the conversation, or in `work/` for the scratch files a run
+  needs, which Git ignores. The repository holds contracts, user docs and
+  evidence notes. Delete a plan file instead of updating it.
 - Keep behavior changes, tests, and contract documentation aligned in one task.
 - A user-visible change adds or updates its use case in `e2e/catalogue/` and ships with a shared test in
   `e2e/tests/` that passes on the web (`npm run e2e`), unless the use case is excluded there; catching up baseline
   use cases follows `e2e/AGENTS.md`, which has the catalogue and test rules.
+- A user-visible change passes the phone targets too: `android`, the shared suite in the app's WebView, and
+  `webkit-phone`, the suite in mobile WebKit. A use case's phone requirement is part of its catalogue entry.
+  A change under `mobile/` carries emulator screenshots captured through the
+  [visual-verification skill](.agents/skills/hui-visual-verification/SKILL.md) and runs the iOS smoke job.
 - Do not add dependencies, alter persisted formats, or delete PI/HUI user data
   without explicit approval. Tests use temporary directories and isolated processes.
 - A change that leaves existing persisted state behind (a format, location or
@@ -127,6 +146,12 @@ with `role="tooltip"`), never a native `title`.
   services, people, channels and workflows that only work inside Datadog. They
   belong in local skills or extensions. Features built on Datadog's public product
   and APIs, such as the Datadog embeds, are fine.
+
+## Repository state rules and what enforces them
+
+| Rule | Enforced by |
+| --- | --- |
+| A plan, a goal, a ledger or a roadmap is never committed; a run's scratch files live under the ignored `work/`. | `.gitignore` (`/work/`); `scripts/repository-docs.test.mjs` "a plan, a goal, a ledger or a roadmap is not committed", "the repository root holds only the project's standard documents" and "a run's scratch files under work/ stay out of Git" |
 
 ## Pull requests
 

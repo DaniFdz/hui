@@ -1,17 +1,6 @@
 /** The CHAT use cases: a conversation's composer, queue, streaming, tool cards, errors, recovery, message actions, compaction, commands, pickers, senders and PI runtimes. */
 import type { UseCase } from "./types.ts";
 
-const KEYBOARD = "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21";
-const keyboardOnly = (control: string) => ({
-  excluded: `A keyboard-only affordance; ${control} is the visible control.`,
-  decision: KEYBOARD,
-});
-const RAIL_DESKTOP = {
-  excluded:
-    '"The desktop transcript has OpenClaw\'s left conversation-position rail"; "The rail is hidden when the transcript is too narrow/short or lacks the original left gutter, including mobile layouts."',
-  decision: "SPEC.md#behaviour",
-};
-
 const cases: UseCase[] = [
   {
     id: "CHAT-001",
@@ -29,7 +18,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "message-metadata"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-002",
@@ -37,12 +26,10 @@ const cases: UseCase[] = [
     behaviour:
       'On a keyboard device plain Enter sends (or steers while a run is busy), Shift+Enter adds a line and Command/Ctrl+Enter queues a follow-up; with the modifier-Enter preference plain Enter is a line break. While busy, the empty composer\'s placeholder names the shortcuts ("↵ adds to this run · ⌘↵ queues for later", Ctrl+↵ off Apple platforms).',
     spec: ["SPEC.md#live-chat-projection"],
-    surfaces: ["setting:chat.sendShortcut"],
+    surfaces: ["appearance:chat.sendShortcut"],
     journeys: ["slash-commands"],
     web: "required",
-    ios: keyboardOnly(
-      "Send message, and Enqueue in the held Send button's menu (CHAT-001, CHAT-005, CHAT-006)",
-    ),
+    phone: { excluded: "A keyboard-only affordance; Send message, and Enqueue in the held Send button's menu (CHAT-001, CHAT-005, CHAT-006) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CHAT-003",
@@ -52,7 +39,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-004",
@@ -66,7 +53,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-005",
@@ -80,7 +67,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/steer"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-006",
@@ -94,7 +81,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/follow-up"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-007",
@@ -107,7 +94,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-008",
@@ -120,7 +107,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-009",
@@ -130,9 +117,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
-    ios: keyboardOnly(
-      "dragging the handle and the Save and Cancel buttons (CHAT-007, CHAT-008)",
-    ),
+    phone: { excluded: "A keyboard-only affordance; dragging the handle and the Save and Cancel buttons (CHAT-007, CHAT-008) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CHAT-010",
@@ -145,7 +130,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-011",
@@ -156,7 +141,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["message-metadata", "slash-commands"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-012",
@@ -167,7 +152,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-013",
@@ -182,7 +167,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-014",
@@ -193,7 +178,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-015",
@@ -210,7 +195,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "position-rail"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-016",
@@ -227,7 +212,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["interrupted-recovery", "message-metadata"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-017",
@@ -241,7 +226,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/events"],
     journeys: ["interrupted-recovery"],
     web: "required",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-018",
@@ -255,7 +240,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["interrupted-recovery"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-019",
@@ -266,7 +251,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/continue"],
     journeys: ["interrupted-recovery"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-020",
@@ -277,7 +262,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/continue", "item:error"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-021",
@@ -287,8 +272,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     journeys: ["continue-error-toast"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-022",
@@ -299,7 +284,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/resume"],
     journeys: ["rewind-continue", "continue-error-toast"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-023",
@@ -319,7 +304,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["chat-composer", "message-metadata"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-024",
@@ -329,7 +314,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#every-assistant-message-stays-in-sight-2026-10-19"],
     surfaces: ["row:messages", "row:activity"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-025",
@@ -340,7 +325,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:read", "item:tool"],
     journeys: ["chat-composer", "durable-extensions", "sdk-backend"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-026",
@@ -350,7 +335,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:bash", "tool:powershell", "item:tool"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-027",
@@ -360,7 +345,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:codemode", "item:tool"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-028",
@@ -371,7 +356,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:grep", "tool:find", "tool:ls", "item:tool"],
     journeys: ["durable-extensions"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-029",
@@ -382,7 +367,7 @@ const cases: UseCase[] = [
     surfaces: ["item:tool"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-030",
@@ -393,7 +378,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-composer", "message-metadata", "clipboard-fallback"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-031",
@@ -404,9 +389,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["message-metadata"],
     web: "backlog",
-    ios: keyboardOnly(
-      "the message's context menu and footer buttons (CHAT-030, CHAT-032)",
-    ),
+    phone: { excluded: "A keyboard-only affordance; the message's context menu and footer buttons (CHAT-030, CHAT-032) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CHAT-032",
@@ -417,7 +400,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["message-metadata"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-033",
@@ -427,19 +410,19 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["message-metadata"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-034",
     title: "Rewind to an earlier message",
     behaviour:
-      'Rewind to here on a settled user message acts at once, without a dialog: the message and everything after it leave the transcript and its exact text and attachments return to the focused composer, with "Message restored to the composer. The previous branch is kept.". It works while a run is busy by stopping it first, and is not offered on messages from bots or sessions, on unsent prompts or in a bot\'s chat.',
+      'Rewind to here on a settled user message acts at once, without a dialog: the message and everything after it leave the transcript and its exact text and attachments return to the focused composer, with "Message restored to the composer. The previous branch is kept.". It works while a run is busy by stopping it first, and is not offered on messages from bots or sessions, on unsent prompts. In a bot\'s chat a rewind keeps the bot and its memory to the kept branch (the abandoned branch is forgotten), and a rewind before its first message clears the chat.',
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisessionsidrewind"],
     surfaces: ["route:POST /__hui/sessions/:id/rewind"],
     journeys: ["rewind-continue", "compaction-rewind"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-035",
@@ -451,8 +434,8 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/fork",
       "route:GET /__hui/git-checkout",
     ],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-036",
@@ -472,7 +455,7 @@ const cases: UseCase[] = [
     ],
     journeys: ["compaction-rewind"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-037",
@@ -489,8 +472,8 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/compact",
     ],
     journeys: ["compaction-rewind"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-038",
@@ -505,18 +488,18 @@ const cases: UseCase[] = [
     ],
     journeys: ["compaction-rewind"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-039",
     title: "Check context usage and compact from the meter",
     behaviour:
-      'The context ring ("Context window: N% used") opens Context usage with the window occupancy, the latest run\'s input and output tokens, estimated cost and Compact now, which is disabled while busy and absent in a bot\'s chat. When there is nothing new to summarize, a "Compaction failed" divider shows the reason while idle and goes away when the next turn starts.',
+      'The context ring ("Context window: N% used") opens Context usage with the window occupancy over a stacked bar of what the context carries: the estimated split between System prompt, Tool definitions (with its tool count), Conversation (with its message count) and Summarized conversation, labelled "Category breakdown is estimated"; a session whose runtime reports no split draws the plain bar. Below it are the latest run\'s input and output tokens, estimated cost and Compact now, which is disabled while busy and absent in a bot\'s chat; a bot\'s chat also shows Bot cost, the total its panel keeps for the bot\'s chat, its subagents and its memory summaries, or where that total is kept when the bot runs on a worker. When there is nothing new to summarize, a "Compaction failed" divider shows the reason while idle and goes away when the next turn starts.',
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisessionsidcompact"],
     surfaces: ["route:POST /__hui/sessions/:id/compact"],
     journeys: ["compaction-rewind"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-040",
@@ -527,20 +510,20 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/rewind", "row:compaction"],
     journeys: ["compaction-rewind"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-041",
     title: "Clear a session with /clear",
     behaviour:
-      '/clear, listed as "Clear this session\'s context and start a fresh PI transcript", keeps the same sidebar row and title, empties the transcript to Start a conversation and says "Session context cleared."; the old transcript is kept on disk. With arguments or attachments it says "Use /clear without arguments or attachments.", while work is active "Finish or stop active work before clearing the session.", and a bot\'s chat neither lists nor runs it.',
+      '/clear, listed as "Clear this session\'s context and start a fresh PI transcript", keeps the same sidebar row and title, empties the transcript to Start a conversation and says "Session context cleared."; the old transcript is kept on disk. With arguments or attachments it says "Use /clear without arguments or attachments.", while work is active "Finish or stop active work before clearing the session.", and a bot\'s chat lists and runs it too: the bot\'s memory empties with the transcript.',
     spec: [
       "SPEC.md#live-chat-projection",
       "docs/api.md#post-__huisessionsidclear",
     ],
     surfaces: ["command:clear", "route:POST /__hui/sessions/:id/clear"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-042",
@@ -553,7 +536,7 @@ const cases: UseCase[] = [
     ],
     surfaces: ["command:reload", "route:POST /__hui/sessions/:id/reload"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-043",
@@ -570,7 +553,7 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/btw",
     ],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-044",
@@ -580,8 +563,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: ["route:POST /__hui/sessions"],
     journeys: ["slash-commands", "command-references"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-045",
@@ -595,7 +578,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:id/commands"],
     journeys: ["slash-commands", "command-references", "durable-extensions"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-046",
@@ -606,7 +589,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["slash-commands", "command-references"],
     web: "required",
-    ios: keyboardOnly("tapping a menu entry (CHAT-045)"),
+    phone: { excluded: "A keyboard-only affordance; tapping a menu entry (CHAT-045) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CHAT-047",
@@ -617,7 +600,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:id/commands"],
     journeys: ["slash-commands"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-048",
@@ -630,8 +613,8 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["slash-commands", "command-references", "sdk-backend"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-049",
@@ -645,7 +628,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["slash-commands", "command-references", "durable-extensions"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-050",
@@ -658,8 +641,8 @@ const cases: UseCase[] = [
     ],
     surfaces: ["route:GET /__hui/local-paths"],
     journeys: ["command-references", "local-path-autocomplete"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-051",
@@ -677,8 +660,8 @@ const cases: UseCase[] = [
       "durable-extensions",
       "sdk-backend",
     ],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-052",
@@ -689,7 +672,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-composer"],
     web: "backlog",
-    ios: keyboardOnly("tapping a choice, Submit and Skip (CHAT-051)"),
+    phone: { excluded: "A keyboard-only affordance; tapping a choice, Submit and Skip (CHAT-051) is the visible control.", decision: "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21" },
   },
   {
     id: "CHAT-053",
@@ -706,8 +689,8 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/model",
     ],
     journeys: ["chat-composer", "configured-models"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-054",
@@ -717,8 +700,8 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessionsidthinking"],
     surfaces: ["route:POST /__hui/sessions/:id/thinking"],
     journeys: ["chat-composer"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-055",
@@ -727,19 +710,30 @@ const cases: UseCase[] = [
       'For a model with a fast mode, the thinking picker adds a Speed choice of Standard or Fast. Fast marks the picker with a lightning badge and reads "Thinking: <level>, fast", and the choice stays with the session.',
     spec: ["docs/api.md#post-__huisessionsidfast"],
     surfaces: ["route:POST /__hui/sessions/:id/fast"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "CHAT-088",
+    title: "Let a session run its task autonomously",
+    behaviour:
+      'The thinking picker adds an Autonomy choice under Speed, Supervised or Autonomous, in the composer of a Durable session, one on a worker included, and on New Session. Autonomous reads "Thinking: <level>, autonomous", applies live, stays with the session across a reload, and New Session starts on Supervised again. An Autonomous session stops on its plan and waits for approval before it changes anything. When the operator supervises it, the plan takes the form that explains the change: a before/after `show_widget` card for a screen or control change, a `mermaid` diagram for an architecture or flow change, a table or chart for numbers, or a short text plan when no picture helps; a visual is never mandatory. It gives the goal, the changes, the evidence, the risks and where it stops, and ends on the question asking for approval or a change. A session a Chief of Staff started writes the plan as text in its reply instead, because the chief cannot see a widget, though a `mermaid` diagram or table still reads. A session a Chief of Staff starts with `create_session` runs Autonomous by default, and its plan reaches that chief\'s chat as "Autonomous session \"<title>\" is …" with its last reply and a line saying it reports to that chief; the session then carries on only once the chief or the operator answers. A session the operator started reports in its own chat, and no chief is given it. Supervised turns the mode off, and pull requests stay drafts until the operator says otherwise.',
+    spec: ["docs/api.md#post-__huisessionsidautonomous", "SPEC.md#autonomous-mode-drives-a-session-to-a-draft-pull-request-2026-11-12", "SPEC.md#an-autonomy-plan-takes-the-form-its-change-needs-2026-11-14"],
+    surfaces: ["route:POST /__hui/sessions/:id/autonomous"],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-056",
     title: "See who sent a bot's message",
     behaviour:
-      "A message a bot delivers shows on the left with the bot's face, a bubble in its color and its name, which opens the bot's chat; a bot HUI no longer knows shows its @handle. The bubble shows the rendered Markdown without the [from @…] header, Copy and Reply take that text, no Rewind is offered, the position rail labels it \"From @<handle>\" and a color change to the bot shows without a reload.",
+      "A message a bot delivers shows on the left with the bot's face, a bubble in its color and its name, which opens the bot's chat; a bot HUI no longer knows shows its @handle. The bubble shows the rendered Markdown without the [from @…] header, Copy and Reply take that text, no Rewind is offered, and a color change to the bot shows without a reload.",
     spec: ["SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
     surfaces: ["row:messages"],
     journeys: ["chat-senders"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-057",
@@ -749,8 +743,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
     surfaces: ["row:messages"],
     journeys: ["chat-senders"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-058",
@@ -760,8 +754,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
     surfaces: ["row:activity", "tool:message_bot"],
     journeys: ["chat-senders"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-060",
@@ -772,7 +766,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["position-rail"],
     web: "backlog",
-    ios: RAIL_DESKTOP,
+    phone: { excluded: "\"The desktop transcript has OpenClaw's left conversation-position rail\"; \"The rail is hidden when the transcript is too narrow/short or lacks the original left gutter, including mobile layouts.\"", decision: "SPEC.md#behaviour" },
   },
   {
     id: "CHAT-061",
@@ -783,7 +777,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["position-rail"],
     web: "backlog",
-    ios: RAIL_DESKTOP,
+    phone: { excluded: "\"The desktop transcript has OpenClaw's left conversation-position rail\"; \"The rail is hidden when the transcript is too narrow/short or lacks the original left gutter, including mobile layouts.\"", decision: "SPEC.md#behaviour" },
   },
   {
     id: "CHAT-062",
@@ -793,8 +787,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["position-rail"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-063",
@@ -804,8 +798,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: [],
     journeys: ["durable-extensions"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-064",
@@ -815,8 +809,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: ["row:compaction"],
     journeys: ["durable-extensions"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-065",
@@ -826,8 +820,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#hui-owns-an-isolated-pi-sdk-backend-not-a-pi-fork"],
     surfaces: [],
     journeys: ["sdk-backend", "rewind-continue", "compaction-rewind"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-066",
@@ -841,7 +835,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "required",
+    phone: "required",
   },
   {
     id: "CHAT-067",
@@ -851,8 +845,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:read", "item:tool"],
     journeys: ["chat-composer"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-068",
@@ -862,7 +856,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:read"],
     web: "required",
-    ios: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-069",
@@ -873,7 +867,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-composer"],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-070",
@@ -883,8 +877,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["rewind-continue"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-071",
@@ -896,8 +890,8 @@ const cases: UseCase[] = [
       "route:GET /__hui/sessions/:id/attachments/:message/files/:file",
     ],
     journeys: ["chat-composer"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "backlog",
   },
   {
     id: "CHAT-080",
@@ -907,7 +901,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-081",
@@ -917,7 +911,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-082",
@@ -926,8 +920,8 @@ const cases: UseCase[] = [
       "At 390 px wide, while a run is busy with a Steer and a Follow up row queued and the draft empty, the Queued messages tray above the composer, the Message field, the composer's controls and Stop all stay on screen, and nothing overflows sideways.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-075",
@@ -937,7 +931,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-076",
@@ -947,7 +941,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-077",
@@ -957,7 +951,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-078",
@@ -970,7 +964,7 @@ const cases: UseCase[] = [
     ],
     surfaces: [],
     web: "backlog",
-    ios: "backlog",
+    phone: "backlog",
   },
   {
     id: "CHAT-079",
@@ -979,8 +973,8 @@ const cases: UseCase[] = [
       "On a 390 px wide screen, messages that arrive while a turn runs and the turn's folded activity fit the width, with no sideways scrolling, and expanding the activity keeps them readable.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    phone: "required",
   },
   {
     id: "CHAT-072",
@@ -991,13 +985,13 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["position-rail", "remote-loading"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-073",
     title: "Give a conversation a goal and manage it",
     behaviour:
-      "Sending /goal <objective> empties the composer, sends the objective as the goal's first turn and shows a pill above the composer reading Pursuing goal with that objective. A clean turn ends with HUI's own continuation turn queued in the transcript. Pause goal turns the pill into Goal paused with Pause replaced by Resume, Resume goal makes it Pursuing goal again, and Clear goal removes the pill. Expanding the pill shows the whole objective, its status note and when it was set; Edit goal objective, a retyped objective and Save goal replace the goal and send the new objective as the next turn. /goal pause, /goal resume and /goal clear do the same from the composer.",
+      "Sending /goal <objective> empties the composer, sends the objective as the goal's first turn and shows the chat header's rightmost Run status trigger reading Pursuing goal (Working while a turn runs). A clean turn ends with HUI's own continuation turn queued in the transcript. Opening the trigger shows a Goal section with Pause goal, Clear goal and Edit goal objective; Pause goal makes it Goal paused with Resume goal, Resume goal makes it Pursuing goal again, and Clear goal removes the trigger. The section reads the whole objective, its status note, when it was set and its automatic turns; Edit goal objective, a retyped objective and Save goal replace the goal and send the new objective as the next turn. It never draws a goal pill above the composer. /goal pause, /goal resume and /goal clear do the same from the composer.",
     spec: ["SPEC.md#goals", "docs/api.md#post-__huisessionsidgoal"],
     surfaces: [
       "command:goal",
@@ -1005,7 +999,7 @@ const cases: UseCase[] = [
       "route:POST /__hui/sessions/:id/goal",
     ],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-074",
@@ -1019,7 +1013,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/connect"],
     journeys: ["interrupted-recovery"],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-083",
@@ -1029,11 +1023,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huiappopen"],
     surfaces: [],
     web: "required",
-    ios: {
-      excluded:
-        "The hand-off opens HUI's macOS desktop app; the iPhone app has no desktop app to hand off to.",
-      decision: "SPEC.md#desktop-distribution",
-    },
+    phone: { excluded: "The hand-off opens HUI's macOS desktop app; the phone app has no desktop app to hand off to.", decision: "SPEC.md#desktop-distribution" },
   },
   {
     id: "CHAT-084",
@@ -1042,7 +1032,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     web: "required",
-    ios: "backlog",
+    phone: "required",
   },
   {
     id: "CHAT-085",
@@ -1052,7 +1042,28 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/steer-now"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "required",
+    phone: "required",
+  },
+  {
+    id: "CHAT-086",
+    title: "Jump back to the prompt you scrolled past",
+    behaviour:
+      'Once the row of a prompt scrolls out through the top of the transcript, a one-line pill over that edge names it ("Jump to your prompt:" and the message text) and activating it brings the prompt back to the top with the pill naming the prompt before it. The pill stays hidden while the prompt it would name is still on screen and at the top of the transcript, and it updates in place as another prompt takes over.',
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["position-rail"],
+    web: "required",
+    phone: "backlog",
+  },
+  {
+    id: "CHAT-087",
+    title: "Name a bot sender on the wide position rail",
+    behaviour: 'On the wide transcript, the position rail labels a bot-delivered message "From @<handle>". The rail stays hidden in the narrow phone layout; the message itself still identifies its sender (CHAT-056).',
+    spec: ["SPEC.md#behaviour", "SPEC.md#chats-show-who-sent-each-message-2026-10-16"],
+    surfaces: [],
+    journeys: ["position-rail"],
+    web: "required",
+    phone: { excluded: "The conversation-position rail is a wide-transcript control, hidden on phones; the sender on the message is shared as CHAT-056.", decision: "SPEC.md#behaviour" },
   },
 ];
 

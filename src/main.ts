@@ -37,10 +37,13 @@ import "./components/media-viewer.ts";
 import { installUiErrorReporting } from "./api/ui-errors.ts";
 import { prepareOffline } from "./api/offline.ts";
 import { applyThemeMode } from "./lib/theme/theme.ts";
+import { applyDeviceAppearance, readAppearance } from "./lib/appearance/store.ts";
+import { adoptAppearanceSeed } from "./lib/appearance/desktop-seed.ts";
 import { loadSettings } from "./lib/settings/settings-store.ts";
 import { applyTheme, loadThemes } from "./lib/theme/theme-store.ts";
 import { finishBoot, rememberBootLook, showBootFailure } from "./lib/boot-screen.ts";
 import { installCodeBlockInteractions } from "./lib/markdown/blocks.ts";
+import { installNativeShell } from "./lib/native-shell-boot.ts";
 import { applySidebarWidth, sidebarWidth } from "./lib/sidebar-width.ts";
 import { viewAssetsLoaded } from "./lib/view-assets.ts";
 import { keepReopenedSubmenuVisible, returnFocusFromClosedMenu } from "./lib/web-awesome.ts";
@@ -53,12 +56,22 @@ const dropdownItem = customElements.get("wa-dropdown-item");
 if (dropdownItem) keepReopenedSubmenuVisible(dropdownItem.prototype);
 
 // Resolve the theme, the type stack and the color mode before the app renders,
-// so a saved appearance never paints its fallback first. Every step degrades to
-// the tokens.css defaults when the config backend is unreachable.
+// so a saved appearance never paints its fallback first. This device's choices
+// are read synchronously from its own storage, so the appearance applies before
+// the first paint even when the gateway is slow or unreachable; only the theme
+// files themselves are fetched, and every step degrades to the tokens.css
+// defaults when that read fails.
 async function resolveAppearance(): Promise<void> {
-  const [, settings] = await Promise.all([loadThemes(), loadSettings()]);
-  applyThemeMode(settings.themeMode, (await applyTheme(settings.theme)) ?? "both");
-  rememberBootLook();
+  // HUI's desktop app may hold a look an older settings.json left behind (`hui doctor --fix` exports it). It applies
+  // only to a device that stored no appearance of its own, so this is a no-op almost everywhere.
+  await adoptAppearanceSeed();
+  const appearance = readAppearance();
+  applyDeviceAppearance(appearance);
+  // The gateway's settings no longer carry appearance, but every page reads them, so they still load beside the
+  // theme files rather than after the first render.
+  await Promise.all([loadThemes(), loadSettings()]);
+  applyThemeMode(appearance.themeMode, (await applyTheme(appearance.theme)) ?? "both");
+  rememberBootLook(appearance.themeMode);
 }
 
 // A theme changed in Settings is remembered once the page is left.
@@ -66,6 +79,8 @@ addEventListener("pagehide", () => rememberBootLook());
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") rememberBootLook(); });
 
 installCodeBlockInteractions();
+// In the phone shell only: other origins open in the shell's browser, and a resume runs the reconnect listeners.
+installNativeShell();
 
 // The app's code downloads meanwhile: over a slow link it is the longest wait,
 // and nothing about it depends on the appearance. index.html's boot screen

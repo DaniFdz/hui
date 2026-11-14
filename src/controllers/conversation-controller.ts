@@ -1,14 +1,16 @@
 /**
  * `ConversationController` owns the open conversation outside `hui-app.ts`: the session on screen, its transcript,
  * subagents, opening and connection state, with the request that opens it and the event stream that keeps it current;
- * the models it can switch to and the one it runs on, its context usage, thinking level and fast mode, with the
+ * the models it can switch to and the one it runs on, its context usage, thinking level, fast and Autonomous modes, with the
  * requests that change them and the once-per-selection model list request; the pending question with the focus it
  * returns to; the live compaction; and the copied-message mark. The shell reads its props and receives the stream's
  * frames that belong to the composer, the backlog and the sidebar.
  */
 import type { LitElement, ReactiveController, ReactiveControllerHost } from "lit";
-import { loadModels, openSession, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
-import { isGatewayUnavailable } from "../api/request.ts";
+import { loadModels, openSession, setSessionAutonomous, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
+import { loadSessionModelMetric } from "../api/model-metrics.ts";
+import type { ModelMetric } from "../api/schema/model-metrics.ts";
+import { isGatewayUnavailable, GatewayHttpError } from "../api/request.ts";
 import { OutdatedBuildError } from "../api/offline.ts";
 import { forgetConversation, readSavedConversation, saveConversation, type SavedConversation } from "../lib/session/offline-store.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
@@ -33,6 +35,37 @@ type ConversationDeps = {
 
 type ConversationHost = ReactiveControllerHost & Pick<LitElement, "renderRoot">;
 
+/** How long the browser waits before each retry after a failed or unanswered open. */
+const OPEN_RETRY_DELAYS_MS = [10_000, 30_000] as const;
+/** A stalled gateway usually answers the next attempt, so navigating retries before asking for an error. */
+const OPEN_ATTEMPTS = 3;
+
+/** A refusal stays refused; a request the gateway never answered may pass on the next attempt. A saved copy needs
+ * no retry: it is already on screen and its stream owns the reconnection. */
+function openFailureMayPass(error: unknown): boolean {
+  if (error instanceof GatewayHttpError) return [502, 503, 504].includes(error.status);
+  return isTimeoutFailure(error);
+}
+
+function isTimeoutFailure(error: unknown): boolean {
+  if (error instanceof DOMException) return error.name === "TimeoutError";
+  return error instanceof Error && error.cause !== undefined && error.cause !== error && isTimeoutFailure(error.cause);
+}
+
+/** Resolves after `ms`, or at once when the view was cancelled. */
+function waitForRetry(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
+}
+
 export class ConversationController implements ReactiveController {
   selected: SessionView | undefined;
   transcript: readonly TranscriptItem[] = [];
@@ -53,9 +86,13 @@ export class ConversationController implements ReactiveController {
   models: readonly RuntimeModel[] = [];
   currentModel: RuntimeModel | undefined;
   usage: RuntimeUsage | undefined;
+  /** HUI's latest completed model request for this session; absent before one completes. */
+  modelMetric: ModelMetric | undefined;
   thinking = "medium";
   /** Fast mode; undefined while the runtime cannot change speed. */
   fast: boolean | undefined;
+  /** Autonomous mode; undefined while the session cannot carry it. */
+  autonomous: boolean | undefined;
   question: RuntimeQuestion | undefined;
   compaction: RuntimeCompaction | undefined;
   readonly #host: ConversationHost;
@@ -67,6 +104,8 @@ export class ConversationController implements ReactiveController {
   #streamStop: (() => void) | undefined;
   /** Monotonic ownership token for open responses from the selected session. */
   #openRequestToken = 0;
+  /** Increments when an event supersedes a pending metric read. */
+  #metricGeneration = 0;
   #readAbort: AbortController | undefined;
   #subagentExpiryTimer: number | undefined;
   #frameUpdate: number | undefined;
@@ -166,17 +205,18 @@ export class ConversationController implements ReactiveController {
     }
     const abort = new AbortController();
     this.#readAbort = abort;
-    const pending = openSession(id, abort.signal);
     let settled = false;
     const saved = readSavedConversation(id);
     void saved.then((copy) => {
       if (!settled && copy && isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) this.#showSaved(copy);
     });
     try {
-      const opened = await pending;
+      const opened = await this.#openWithRetry(id, abort.signal, () =>
+        isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken));
       settled = true;
       if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) return;
       this.savedCopy = undefined;
+      this.connectionNote = "";
       this.selected = opened.session;
       this.applySnapshot(opened.snapshot, true);
       this.thinking = opened.snapshot.thinking ?? opened.session.thinking ?? "medium";
@@ -186,6 +226,7 @@ export class ConversationController implements ReactiveController {
       this.requestModelsWhenReady(id, opened.session.status);
     } catch (error) {
       settled = true;
+      this.connectionNote = "";
       const copy = await readSavedConversation(id);
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
         if (error instanceof OutdatedBuildError) {
@@ -212,6 +253,31 @@ export class ConversationController implements ReactiveController {
     }
   }
 
+  /** Opens the session, retrying an answer the gateway never gave or a transient server failure. A refusal, a
+   * cancelled view or a session that is no longer selected stops at once. */
+  async #openWithRetry(
+    id: string,
+    signal: AbortSignal,
+    current: () => boolean,
+  ): Promise<Awaited<ReturnType<typeof openSession>>> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await openSession(id, signal);
+      } catch (error) {
+        if (signal.aborted || !current() || attempt >= OPEN_ATTEMPTS || this.savedCopy || !openFailureMayPass(error)) throw error;
+        const delay = OPEN_RETRY_DELAYS_MS[attempt - 1] ?? OPEN_RETRY_DELAYS_MS.at(-1)!;
+        this.connectionNote = `HUI did not answer. Trying again in ${Math.round(delay / 1_000)} seconds…`;
+        this.#host.requestUpdate();
+        await waitForRetry(delay, signal);
+        // A cached copy that arrived during the wait is already on screen; its stream owns the reconnection.
+        if (signal.aborted || !current() || this.savedCopy) throw error;
+        // The next attempt is in flight: the skeleton's own "Loading the conversation…" says so again.
+        this.connectionNote = "";
+        this.#host.requestUpdate();
+      }
+    }
+  }
+
   #showSaved(copy: SavedConversation): void {
     this.selected = copy.session;
     this.transcript = normalizeTranscript(copy.transcript);
@@ -233,10 +299,24 @@ export class ConversationController implements ReactiveController {
     await this.#deps.refreshSessions();
   };
 
+  #loadMetric(id: string): Promise<void> {
+    const generation = ++this.#metricGeneration;
+    return loadSessionModelMetric(id)
+      .then(({ metric }) => {
+        if (generation !== this.#metricGeneration || this.selected?.id !== id) return;
+        this.modelMetric = metric;
+        this.#host.requestUpdate();
+      })
+      .catch(() => {
+        // Metrics are a convenience: an unavailable history never blocks the conversation.
+      });
+  }
+
   #startStream(id: string, heldRevision?: number): void {
     // An older attempt may have installed a stream while a newer open request
     // was pending. Replacing it is an ownership transfer, so close it first.
     this.#streamStop?.();
+    void this.#loadMetric(id);
     const requestToken = this.#openRequestToken;
     const current = () => isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken);
     this.#streamStop = subscribeSession(id, {
@@ -275,6 +355,12 @@ export class ConversationController implements ReactiveController {
       onFast: (fast) => {
         if (current()) {
           this.fast = fast;
+          this.#host.requestUpdate();
+        }
+      },
+      onAutonomous: (autonomous) => {
+        if (current()) {
+          this.autonomous = autonomous;
           this.#host.requestUpdate();
         }
       },
@@ -356,6 +442,12 @@ export class ConversationController implements ReactiveController {
     }
     if (event.type === "thinking_level") {
       this.thinking = event.level;
+      this.#host.requestUpdate();
+      return;
+    }
+    if (event.type === "model_metric") {
+      this.#metricGeneration++;
+      this.modelMetric = event.metric;
       this.#host.requestUpdate();
       return;
     }
@@ -447,6 +539,8 @@ export class ConversationController implements ReactiveController {
     this.models = [];
     this.currentModel = undefined;
     this.usage = undefined;
+    this.modelMetric = undefined;
+    this.#metricGeneration++;
     this.#modelsRequestedFor = "";
   }
 
@@ -463,6 +557,7 @@ export class ConversationController implements ReactiveController {
     this.compaction = snapshot.compaction;
     if (snapshot.thinking) this.thinking = snapshot.thinking;
     this.fast = snapshot.fast;
+    this.autonomous = snapshot.autonomous;
     this.#host.requestUpdate();
   }
 
@@ -539,6 +634,8 @@ export class ConversationController implements ReactiveController {
         }
         if (model) {
           this.currentModel = model;
+          this.modelMetric = undefined;
+          this.#metricGeneration++;
           this.#host.requestUpdate();
         }
         // The record now carries the choice, so the sidebar reflects it too.
@@ -588,16 +685,36 @@ export class ConversationController implements ReactiveController {
       });
   };
 
-  props(): Pick<HomeProps, "thinking" | "fast" | "models" | "currentModel" | "usage" | "onSelectModel" | "onSelectThinking" | "onSelectFast"> {
+  #selectAutonomous = (autonomous: boolean) => {
+    const session = this.selected;
+    if (!session || this.streaming || this.connection !== "live") return;
+    void setSessionAutonomous(session.id, autonomous)
+      .then((authoritative) => {
+        if (isSelectedSession(session.id, this.selected?.id)) {
+          this.autonomous = authoritative;
+          this.#host.requestUpdate();
+        }
+      })
+      .catch((error: unknown) => {
+        if (!isSelectedSession(session.id, this.selected?.id)) return;
+        // The gateway broadcasts the mode the session kept.
+        this.#deps.showError(error instanceof Error ? error.message : "Could not change the mode.");
+      });
+  };
+
+  props(): Pick<HomeProps, "thinking" | "fast" | "autonomous" | "models" | "currentModel" | "usage" | "modelMetric" | "onSelectModel" | "onSelectThinking" | "onSelectFast" | "onSelectAutonomous"> {
     return {
       thinking: this.thinking,
       ...(this.fast === undefined ? {} : { fast: this.fast }),
+      ...(this.autonomous === undefined ? {} : { autonomous: this.autonomous }),
       models: this.models,
       currentModel: this.currentModel,
       usage: this.usage,
+      modelMetric: this.modelMetric,
       onSelectModel: this.#selectModel,
       onSelectThinking: this.#selectThinking,
       onSelectFast: this.#selectFast,
+      onSelectAutonomous: this.#selectAutonomous,
     };
   }
 }

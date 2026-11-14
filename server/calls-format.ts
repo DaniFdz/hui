@@ -1,5 +1,5 @@
 /**
- * Realtime calls with bots (HUI-18) through GPT-Live, over the operator's
+ * Realtime calls with bots through GPT-Live, over the operator's
  * ChatGPT subscription: the route ChatGPT's own voice mode uses. The gateway's
  * and the CLI's limits, voices and call records; the browser keeps its own copy
  * of what it calls in src/lib/voice/calls.ts and the payloads are in
@@ -53,16 +53,20 @@ export const CALL_LIMITS = {
   taskSeconds: 600,
   /** The helper's time budget per question; past it, the call offers to hand the question off. */
   helperSeconds: 25,
-  /** Questions the helper answers per call; past them every request is handed off. */
-  helperQuestions: 6,
-  /** Tasks one call may hand to the bot's chat. */
-  handoffs: 4,
   /** A call ends after this long. */
   maxMinutes: 15,
   /** Lines a call keeps for its record. */
   recordLines: 400,
   /** UTF-8 bytes of the bot's memory the helper reads. */
   helperMemoryBytes: 16_000,
+  /** UTF-8 bytes of the newest messages of the bot's chat, verbatim, that a call reads: newer than any summary. */
+  recentBytes: 4_000,
+  /** Characters of one of those messages; a longer one is cut, its start kept. */
+  recentLine: 600,
+  /** Seconds a call waits for the utility model's handoff note before it starts without one. */
+  handoffSeconds: 6,
+  /** Characters of the handoff note that reach the call's instructions. */
+  handoff: 1_600,
 } as const;
 
 /** How a call's record starts in the bot's memory (OptChat's view). */
