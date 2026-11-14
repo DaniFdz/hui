@@ -900,8 +900,9 @@ prefills the existing label. Mistral API-key connections show their reported API
 and Vibe Code monthly allowances, the included amount and a pay-as-you-go note,
 with the plan (EDU) shown as Student. Subscription/usage status and all reported
 hourly, weekly, monthly and model/feature-specific limits stay visible per
-account, including reset times. Unknown plan or billing status stays explicitly
-not reported; stored credentials do not prove an active subscription. SDK requests use the first ready account;
+account, including reset times. Only a plan the connection reports appears, on one
+line with the usage status and the checked time, and HUI never infers a plan, a
+subscription, a renewal or a billing state from stored credentials. SDK requests use the first ready account;
 quota/rate-limit rejection before any output moves to the next account, bounded
 by one attempt per account. Partial output, tool calls, aborts and unrelated errors
 are not replayed. Cooldowns persist across workers/restarts; reported reset times
