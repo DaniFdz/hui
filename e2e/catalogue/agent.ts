@@ -300,7 +300,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-032",
     title: "Queue helpers beyond the parallel limit",
-    behaviour: "With more than 32 collected helpers, the extra ones show as queued (a hollow dot and Waiting for a free slot…) in the Run status popover's Helpers section and start in spawn order as running ones finish; the agent collects every result.",
+    behaviour: "With more than 32 collected helpers, the extra ones show as queued (a hollow dot and Waiting for a free slot…) and start in spawn order as running ones finish; the agent collects every result.",
     spec: SUBAGENTS,
     surfaces: ["tool:sessions_spawn", "tool:agents_wait"],
     journeys: ["swarm"],
@@ -344,7 +344,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-037",
@@ -532,7 +532,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#task-progress"],
     surfaces: ["appearance:chat.collapseTaskProgress", "setting:models.utility"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "AGENT-054",

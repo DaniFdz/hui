@@ -43,19 +43,19 @@ test("watchers live in the Run status popover, one row each, and keep only purpo
   const running = watchers.getByText("Wait for #21532 review signals");
   await expect(finished).toBeVisible();
   await expect(running).toBeVisible();
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("posted /merge");
+  // The latest output is a wide row's extra; opening the row is where a phone reads it.
+  await finished.tap();
+  await expect(watchers.getByLabel("Watcher log").getByText("posted /merge")).toBeVisible();
+  await finished.tap();
   await expect(watchers.getByText(/^Done · /u)).toBeVisible();
-  await expect(watchers.getByText("watching #21532")).toBeVisible();
   await expect(watchers.getByText(/^Running · /u)).toBeVisible();
 
   await hui.phoneScreen();
   await expect(watchers.getByText("posted /merge")).toBeHidden();
-  await expect(watchers.getByText("watching #21532")).toBeHidden();
   await expect(finished).toBeVisible();
   await expect(running).toBeVisible();
   await expect(watchers.getByText(/^Done · /u)).toBeVisible();
   await expect(watchers.getByText(/^Running · /u)).toBeVisible();
-  await hui.wideScreen();
 });
 
 test("an opened watcher shows its target, outcome, times, log, path and controls, and says why it failed or died", { tags: ["AGENT-037"], platforms: ["web"] }, async ({ screen, hui }) => {

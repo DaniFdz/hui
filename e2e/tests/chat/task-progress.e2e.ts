@@ -10,6 +10,10 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   const trigger = screen.getByTestId("run-status-trigger");
   const plan = screen.getByTestId("task-progress");
   const steps = plan.getByLabel("Task progress steps");
+  // The plan starts folded on a phone and on a wide window only when every step is done or the setting asks for it.
+  const openPlan = async () => {
+    if (!(await steps.isVisible())) await plan.getByText(/^\d+ of \d+$/u).tap();
+  };
 
   // HUI writes the card with the utility model; this instance points it at the fixture.
   const settings = await hui.api<Settings>("GET", "/__hui/settings");
@@ -26,6 +30,7 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   await expect(trigger).toHaveAccessibleName(/^Run status:/u);
   await trigger.tap();
   await expect(screen.getByLabel("Run status")).toBeVisible();
+  await openPlan();
   await expect(steps).toBeVisible();
   await expect(plan.getByText("1 of 2")).toBeVisible();
   await expect(plan).toContainText("HUI's utility model writes this");
@@ -37,6 +42,7 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   await send.tap();
   await trigger.tap();
   await expect(screen.getByLabel("Run status")).toBeVisible();
+  await openPlan();
   await expect(plan.getByText("2 of 3")).toBeVisible();
   await expect(plan).toContainText("the plan moved on");
 
@@ -52,6 +58,7 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   await hui.reload();
   await expect(screen.getByLabel("Run status")).toBeHidden();
   await trigger.tap();
+  await openPlan();
   await expect(plan.getByText("2 of 3", { visible: true })).toBeVisible();
   await expect(plan).toContainText("the plan moved on");
 
