@@ -8,7 +8,9 @@ type Pi = { model: { catalog: { provider: string; id: string; name: string }[] }
 
 /** OpenAI's API-key sign-in asks PI for the key and saves it locally, so a card can be added without a live provider. */
 const PROVIDER = "openai";
+const CARD = "OpenAI · all GPT models";
 const KEY = "sk-e2e-not-a-secret";
+const ADDED = `${CARD} added. You can change its models any time.`;
 
 const snapshot = (hui: Hui) => hui.api<Snapshot>("GET", "/__hui/providers");
 const configured = async (hui: Hui, id = PROVIDER) => (await snapshot(hui)).providers.find((provider) => provider.id === id);
@@ -21,8 +23,8 @@ const labels = (models: Provider["models"]) => models.map((model) =>
 /** The PI-ready page replaces the loading page's provider section, folding its disclosures. */
 const modelsReady = async (screen: Screen) => {
   await expect(screen.getByText(/^Saved by HUI\./u)).toBeVisible({ timeout: 60_000 });
-  await expect(screen.getByRole("button", "Add provider")).toBeVisible();
-  await expect(screen.getByRole("button", "Add provider")).toBeEnabled();
+  await expect(screen.getByRole("button", "Connect a provider")).toBeVisible();
+  await expect(screen.getByRole("button", "Connect a provider")).toBeEnabled();
 };
 
 /** Opens Settings → Models once both PI and the final provider section have loaded. */
@@ -31,22 +33,26 @@ const openModels = async (screen: Screen, hui: Hui) => {
   await modelsReady(screen);
 };
 
-/** Signs one account in with an API key in the dialog the page has open. */
+/** Submits the key and leaves the wizard's model step, which saves the one model it holds and closes the dialog. */
 const signIn = async (screen: Screen, name: string, key: string) => {
   await screen.getByLabel("Label when email is unavailable (optional)", { exact: true }).fill(name);
   await screen.getByRole("button", /^API key /u).tap();
   await screen.getByLabel("Enter OpenAI API key", { exact: true }).fill(key);
   await screen.getByRole("button", "Continue").tap();
-  await expect(screen.getByRole("button", "Close provider dialog")).toBeHidden();
+  await expect(screen.getByText("Account connected. Choose a model when you want to test a reply.", { exact: true })).toBeVisible();
+  const close = screen.getByRole("button", "Close provider dialog");
+  await expect(close).toBeEnabled();
+  await close.tap();
+  await expect(close).toBeHidden();
 };
 
 /** Adds the provider connection from Settings → Models and returns the notices it showed. */
 const addProvider = async (screen: Screen, hui: Hui, name: string) => {
   await openModels(screen, hui);
-  await screen.getByRole("button", "Add provider").tap();
+  await screen.getByRole("button", "Connect a provider").tap();
   await screen.getByRole("button", /^OpenAI /u).tap();
   await signIn(screen, name, KEY);
-  await expect(screen.getByText(`OpenAI · API key added. Choose the models you want to use.`, { exact: true })).toBeVisible();
+  await expect(screen.getByText(ADDED, { exact: true })).toBeVisible();
 };
 
 const addAccount = async (screen: Screen, name: string, key: string) => {
@@ -59,7 +65,7 @@ test("Remove asks before dropping a provider connection, Keep connection leaves 
   const pi = await hui.api<Pi>("GET", "/__hui/pi");
   try {
     await addProvider(screen, hui, "Personal");
-    const remove = screen.getByRole("button", "Remove OpenAI · API key");
+    const remove = screen.getByRole("button", `Remove ${CARD}`);
     await expect(remove).toBeVisible();
 
     await remove.tap();
@@ -72,8 +78,9 @@ test("Remove asks before dropping a provider connection, Keep connection leaves 
     await remove.tap();
     await screen.getByRole("button", "Confirm removal").tap();
     await expect(screen.getByText("Connection removed. PI configuration is unchanged.", { exact: true })).toBeVisible();
-    await expect(screen.getByRole("article", { name: "OpenAI · API key" })).toBeHidden();
-    await expect(page.getByText("No providers added yet. Add one to get started.", { exact: true })).toBeVisible();
+    await expect(screen.getByRole("article", { name: CARD })).toBeHidden();
+    await expect(page.getByText("No model providers configured", { exact: true })).toBeVisible();
+    await expect(page.getByText("Sign in to a provider or add an API key, then continue.", { exact: true })).toBeVisible();
     expect((await configured(hui))?.configured).toBe(false);
   } finally {
     await disconnect(hui);
@@ -90,9 +97,9 @@ test("Remove account asks to confirm, Keep account cancels, and Confirm removal 
     await expect(screen.getByRole("article", { name: "Work" })).toBeVisible();
 
     // Save a model selection, so the removal has selections to keep.
-    await screen.getByText("Models Choose models", { exact: true }).tap();
+    await screen.getByText("Models 1 selected", { exact: true }).tap();
     const [first, second] = (await configured(hui))!.models;
-    await screen.getByRole("checkbox", labels([first!])[0]!, { exact: true }).tap();
+    await expect(screen.getByRole("checkbox", labels([first!])[0]!, { exact: true })).toBeChecked();
     await screen.getByRole("checkbox", labels([second!])[0]!, { exact: true }).tap();
     await screen.getByRole("button", "Save models").tap();
     await expect(screen.getByText("Model selection saved.", { exact: true })).toBeVisible();
@@ -128,13 +135,13 @@ test("a provider's Models disclosure lists its models with their limits, filters
     const matching = (query: string) => catalog.filter((model) => `${model.id} ${model.name}`.toLocaleLowerCase().includes(query));
     const disclose = () => screen.getByText("Provider configuration · 1 provider", { exact: true }).tap();
 
-    await screen.getByText("Models Choose models", { exact: true }).tap();
+    await screen.getByText("Models 1 selected", { exact: true }).tap();
     // Every model of the provider is listed, each with its context and output limits.
     await expect.poll(count).toBe(catalog.length);
     for (const model of [catalog[0]!, catalog.at(-1)!]) await expect(screen.getByRole("checkbox", labels([model])[0]!, { exact: true })).toBeVisible();
 
     // The filter keeps the models whose name or id matches.
-    const search = screen.getByLabel("Search OpenAI · API key models", { exact: true });
+    const search = screen.getByLabel(/^Search OpenAI · all GPT models/u);
     const matches = matching("gpt-4o-mini");
     await search.fill("gpt-4o-mini");
     await expect.poll(count).toBe(matches.length);

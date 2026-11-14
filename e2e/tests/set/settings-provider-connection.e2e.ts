@@ -49,11 +49,11 @@ test("Connect a provider offers each brand, asks OpenCode Go for an account name
 
     // The retry is the same save: it succeeds against the gateway and closes with the connection.
     await close.tap();
-    await expect(screen.getByText("OpenAI · API key added. You can change its models any time.", { exact: true })).toBeVisible();
+    await expect(screen.getByText("OpenAI · all GPT models added. You can change its models any time.", { exact: true })).toBeVisible();
     await expect(close).toBeHidden();
     // A confirmed connection opens the provider configuration, whose card keeps its model list closed.
     await expect(screen.getByText("Provider configuration · 1 provider", { exact: true })).toBeVisible();
-    await expect(screen.getByText("OpenAI · API key", { exact: true })).toBeVisible();
+    await expect(screen.getByText("OpenAI · all GPT models", { exact: true })).toBeVisible();
     await expect(screen.getByText("Credentials available", { exact: true })).toBeVisible();
     await expect(screen.getByText("Models 1 selected", { exact: true })).toBeVisible();
     expect((await configured(hui, "openai"))?.authenticated).toBe(true);
@@ -84,10 +84,14 @@ test("Cancel sign-in, or the dialog's close button while it is pending, cancels 
   await cancel.tap();
   await expect(cancel).toBeHidden();
   expect((await snapshot(hui)).login?.phase).not.toBe("pending");
+  // A cancelled sign-in stays in the wizard with its reason and both ways forward.
+  await expect(screen.getByText("Sign-in cancelled", { exact: true })).toBeVisible();
+  await expect(screen.getByRole("button", "Try again")).toBeVisible();
 
   // Closing the dialog while the sign-in is pending asks first, and cancelling there closes it.
   await screen.getByRole("button", "Choose another method").tap();
-  await startClaude();
+  await expect(screen.getByText("Choose how you want to sign in.", { exact: true })).toBeVisible();
+  await screen.getByRole("button", /^Claude Pro \/ Max/u).tap();
   await browserStep();
   await screen.getByRole("button", "Close provider dialog").tap();
   await expect(screen.getByText("Sign-in is still waiting. Close and cancel it?", { exact: true })).toBeVisible();
