@@ -67,6 +67,8 @@ export type TabRequest = {
 
 type Intercepted = {
   arrived(): Promise<void>;
+  /** The request that arrived: what the app sent, for a test that asserts a body rather than an outcome. */
+  request(): { method: string; url: string; body: string };
   /** Matching requests observed at the HTTP barrier, including those still held. */
   count(): number;
   /** Real fetches initiated during a trusted tap's click dispatch, excluding background tasks and deferred work. */
@@ -1019,14 +1021,20 @@ function huiTest(offline: boolean) {
       intercept: async (method, path) => {
         const { arrival, hold, settle } = holding<WebRoute>();
         let count = 0;
+        let seen: { method: string; url: string; body: string } | undefined;
         await browser().route(path, (route) => {
           if (route.request.method !== method) return route.fallback();
           count += 1;
+          seen = { method: route.request.method, url: route.request.url, body: route.request.postData ?? "" };
           return hold(route);
         });
         const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
         return {
           arrived: () => arrival,
+          request: () => {
+            if (!seen) throw new Error("intercept: no request has arrived yet");
+            return seen;
+          },
           count: () => count,
           requestsFromTap: async (target) => {
             // Observe the browser's transport, not app callbacks. Another stream task cannot run inside click

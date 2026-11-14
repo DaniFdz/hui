@@ -2,19 +2,87 @@
  * HUI's provider connections: OAuth and API-key sign-in for PI's built-in providers, several accounts per
  * provider, the models selected for each, and short-lived quota caches. Credentials and selections live in
  * HUI's providers directory through PI's model runtime, while custom providers stay in PI's models.json. One
- * sign-in runs at a time, and its prompts are answered from the UI.
+ * sign-in runs at a time, its prompts and choice of flow are answered from the UI, and its failure is classified
+ * before it leaves the gateway. The installation id PI's all-models ChatGPT sign-in needs is created here on first
+ * use for that provider only; it never leaves the gateway except inside that pending sign-in's authorization URL,
+ * and never in an error, a log or any other payload.
  */
 import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ModelRuntime, readStoredCredential } from "@earendil-works/pi-coding-agent";
-import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../api/providers.ts";
+import type { ProviderLogin, ProviderLoginFailure, ProviderLoginFlow, ProviderQuota, ProviderSnapshot, ProviderSummary, ProviderTest } from "../api/providers.ts";
 import { createHuiModelRuntime, PROVIDERS_DIR, readProviderSelections, writeProviderSelections } from "../runtimes/hui-models.ts";
 import { ProviderAccounts, credentialStore } from "./provider-accounts.ts";
 import { credentialEmail } from "./provider-identity.ts";
 import { fetchProviderQuota } from "./provider-quota.ts";
+import { failureText, testFailed, testProviderModel } from "./provider-test.ts";
 
 type Interaction = Parameters<ModelRuntime["login"]>[2];
 type Prompt = Parameters<Interaction["prompt"]>[0];
 export class ProviderInputError extends Error {}
+
+const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const FLOWS: readonly ProviderLoginFlow[] = ["browser", "device_code", "copy_code"];
+/** PI's device codes are valid for 15 minutes, so that flow is allowed to wait one minute longer. */
+const DEVICE_CODE_TIMEOUT_MS = 16 * 60_000;
+const LOGIN_TIMEOUT_MS = 10 * 60_000;
+
+function loginFlow(value: unknown): ProviderLoginFlow | undefined {
+  if (value === undefined) return undefined;
+  if (FLOWS.includes(value as ProviderLoginFlow)) return value as ProviderLoginFlow;
+  throw new ProviderInputError("Choose a sign-in flow.");
+}
+
+/** Why PI's sign-in stopped. The browser gets the reason and a generic sentence, never PI's raw error. */
+function loginFailure(error: unknown): ProviderLoginFailure {
+  const text = failureText(error);
+  if (/state mismatch/i.test(text)) return "stale_link";
+  if (/port \d+ is in use|EADDRINUSE/i.test(text)) return "port_in_use";
+  if (/expired/i.test(text)) return "expired";
+  if (/fetch failed|network|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|socket hang up|aborted due to timeout/i.test(text)) return "network";
+  return "unknown";
+}
+
+/** The one sign-in PI asks for this installation's id: an OAuth sign-in to the all-models ChatGPT provider, which
+ * embeds it in the authorization URL. Every other flow, an API key included, runs without one and writes no
+ * `device.json`. */
+const DEVICE_ID_PROVIDER = "openai";
+
+/** What a stopped sign-in reports. An operator cancel and the sign-in's own deadline both abort PI's flow, so the
+ * timer says which of the two it was: only the deadline is an expiry. */
+export function stoppedLogin(error: unknown, aborted: boolean, timedOut: boolean): Pick<ProviderLogin, "phase" | "reason" | "message"> {
+  if (aborted) {
+    return timedOut
+      ? { phase: "cancelled", reason: "expired", message: "Sign-in expired. Start again to get a fresh link or code." }
+      : { phase: "cancelled", reason: "cancelled", message: "Sign-in cancelled." };
+  }
+  return { phase: "failed", reason: loginFailure(error), message: "Sign-in failed. Try again." };
+}
+
+/** PI's ChatGPT sign-in identifies the installation it was granted on. It is created on the first sign-in that
+ * needs one, persisted beside HUI's credentials and reused by every later run, so a re-authorisation does not
+ * look like a new client. It is never logged or shown, and reaches a payload only inside the authorization URL
+ * PI builds from it. */
+async function readDeviceId(dir: string): Promise<string> {
+  const path = join(dir, "device.json");
+  try {
+    const stored: unknown = JSON.parse(await readFile(path, "utf8"));
+    const id = (stored as { id?: unknown } | null)?.id;
+    if (typeof id === "string" && UUID.test(id)) return id;
+  } catch { /* absent, unreadable or corrupt: a fresh id replaces it */ }
+  const id = randomUUID();
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const temporary = join(dir, `device.${randomUUID()}.tmp`);
+  await writeFile(temporary, `${JSON.stringify({ id }, null, 2)}\n`, { mode: 0o600 });
+  await rename(temporary, path);
+  return id;
+}
+
+/** The name the browser shows for a connection; the provider's own, except for the Claude subscription. */
+function providerName(provider: { id: string; name: string }): string {
+  return provider.id === "anthropic" ? "Anthropic / Claude Pro & Max" : provider.name;
+}
 
 export class ProviderService {
   #runtime?: Promise<ModelRuntime>;
@@ -22,6 +90,7 @@ export class ProviderService {
   #abort?: AbortController;
   #answer?: { id: string; resolve: (value: string) => void; prompt: Prompt };
   #writes: Promise<unknown> = Promise.resolve();
+  #device?: Promise<string>;
   #quota = new Map<string, { expires: number; value: Promise<ProviderQuota> }>();
   readonly dir: string;
   readonly accounts: ProviderAccounts;
@@ -39,7 +108,7 @@ export class ProviderService {
     const selections = await readProviderSelections(this.dir);
     const allAccounts = await this.accounts.all();
     const providers: ProviderSummary[] = await Promise.all(runtime.getProviders().filter((provider) => provider.auth.apiKey?.login || provider.auth.oauth).map(async (provider) => ({
-      id: provider.id, name: provider.id === "anthropic" ? "Anthropic / Claude Pro & Max" : provider.name,
+      id: provider.id, name: providerName(provider),
       methods: [
         ...(provider.auth.oauth ? [{ id: "oauth" as const, label: provider.auth.oauth.loginLabel ?? provider.auth.oauth.name }] : []),
         ...(provider.auth.apiKey?.login ? [{ id: "api_key" as const, label: provider.auth.apiKey.name }] : []),
@@ -106,9 +175,13 @@ export class ProviderService {
     this.changed();
   }
   #pendingLogin() { return this.#login?.phase === "pending"; }
-  async start(id: string, method: unknown, options: { accountId?: unknown; name?: unknown } = {}): Promise<ProviderLogin> {
+  /** The installation id, created on first use and then re-read from this service's providers directory. A
+   * directory HUI cannot write falls back to an id for this process, so sign-in is never blocked by it. */
+  #deviceId() { return this.#device ??= readDeviceId(this.dir).catch(() => randomUUID()); }
+  async start(id: string, method: unknown, options: { accountId?: unknown; name?: unknown; flow?: unknown } = {}): Promise<ProviderLogin> {
     const provider = await this.#provider(id);
     if (method !== "oauth" && method !== "api_key") throw new ProviderInputError("Choose an authentication method.");
+    const flow = loginFlow(options.flow);
     if (!(method === "oauth" ? provider.auth.oauth : provider.auth.apiKey?.login)) throw new ProviderInputError("This authentication method is unavailable.");
     if (this.#pendingLogin()) throw new ProviderInputError("Finish or cancel the current sign-in first.");
     const accounts = await this.accounts.list(id);
@@ -120,22 +193,39 @@ export class ProviderService {
     const accountId = existing?.id ?? (!accounts.length && !readStoredCredential(id, this.accounts.authPath()) ? "default" : randomUUID());
     const runtime = await this.accounts.runtime(accountId);
     if (!runtime.getProvider(id)) { runtime.registerNativeProvider(provider); await runtime.refresh({ allowNetwork: false }); }
+    // Only the all-models ChatGPT flow asks PI for this installation's id; every other sign-in, an API key included,
+    // runs without one and writes no device.json.
+    const deviceId = method === "oauth" && id === DEVICE_ID_PROVIDER ? await this.#deviceId() : undefined;
     // Recheck after async setup so concurrent login requests cannot both start.
     if (this.#pendingLogin()) throw new ProviderInputError("Finish or cancel the current sign-in first.");
     const controller = new AbortController();
     this.#abort = controller;
-    const state: ProviderLogin = { id: randomUUID(), provider: id, accountId, phase: "pending", message: "Starting sign-in…" };
+    const state: ProviderLogin = { id: randomUUID(), provider: id, accountId, phase: "pending", ...(flow ? { flow } : {}) };
     this.#login = state;
-    const timeout = setTimeout(() => controller.abort(), 10 * 60_000); timeout.unref();
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, flow === "device_code" ? DEVICE_CODE_TIMEOUT_MS : LOGIN_TIMEOUT_MS); timeout.unref();
+    // A requested flow answers the sign-in's first prompt when that prompt is a select; anything else stays with the
+    // operator.
+    let firstPrompt = true;
     void runtime.login(id, method, {
       signal: controller.signal,
       notify: (event) => {
         if (state.phase !== "pending") return;
-        if (event.type === "auth_url") { state.url = safeLoginUrl(event.url); state.message = event.instructions ?? "Open the sign-in page."; }
-        if (event.type === "device_code") { state.url = safeLoginUrl(event.verificationUri); state.code = event.userCode; }
+        // PI's auth_url instructions say what the browser window does on its own; HUI opens a tab only on a click, so
+        // its own step says what to do instead. Progress messages are the sign-in's real state and are kept.
+        if (event.type === "auth_url") state.url = safeLoginUrl(event.url);
+        if (event.type === "device_code") {
+          state.url = safeLoginUrl(event.verificationUri);
+          state.code = event.userCode;
+          state.message = "Enter the code in the sign-in page.";
+          if (typeof event.expiresInSeconds === "number" && Number.isFinite(event.expiresInSeconds) && event.expiresInSeconds > 0) state.expiresAt = Date.now() + event.expiresInSeconds * 1000;
+        }
         if (event.type === "info" || event.type === "progress") state.message = event.message;
       },
       prompt: (prompt) => new Promise<string>((resolve, reject) => {
+        const answer = firstPrompt && flow !== undefined && prompt.type === "select" ? prompt.options.find((option) => option.id === flow) : undefined;
+        firstPrompt = false;
+        if (answer !== undefined) { resolve(answer.id); return; }
         const promptId = randomUUID();
         const signal = prompt.signal ? AbortSignal.any([controller.signal, prompt.signal]) : controller.signal;
         const clear = () => { signal.removeEventListener("abort", abort); if (this.#answer?.id === promptId) { this.#answer = undefined; delete state.prompt; } };
@@ -145,18 +235,22 @@ export class ProviderService {
         state.prompt = { id: promptId, type: prompt.type, message: prompt.message, ...(prompt.type === "select" ? { options: prompt.options.map(({ id, label }) => ({ id, label })) } : {}) };
         this.#answer = { id: promptId, prompt, resolve: (value) => { clear(); resolve(value); } };
       }),
-    }).then(async () => {
+    }, { ...(deviceId ? { getDeviceId: () => deviceId } : {}), agentName: "HUI" }).then(async () => {
       await this.accounts.update(id, (entries) => {
         const updated = { id: accountId, name: name.trim() };
         return entries.some((a) => a.id === accountId) ? entries.map((a) => a.id === accountId ? updated : a) : [...entries, updated];
       });
       state.phase = "complete"; state.message = "Signed in. Select models and save to use this connection.";
       this.#quota.delete(`${id}/${accountId}`); this.changed();
-    }).catch(() => {
-      state.phase = controller.signal.aborted ? "cancelled" : "failed";
-      state.message = controller.signal.aborted ? "Sign-in cancelled or expired." : "Sign-in failed. Try again.";
+    }).catch((error: unknown) => {
+      const stopped = stoppedLogin(error, controller.signal.aborted, timedOut);
+      state.phase = stopped.phase;
+      state.reason = stopped.reason;
+      state.message = stopped.message;
+      // The payload stays generic; the gateway log keeps PI's own cause.
+      if (stopped.phase === "failed") console.error(`[hui] ${id} sign-in failed (${state.reason}): ${failureText(error)}`);
     }).finally(() => {
-      clearTimeout(timeout); delete state.prompt; delete state.url; delete state.code;
+      clearTimeout(timeout); delete state.prompt; delete state.url; delete state.code; delete state.flow; delete state.expiresAt;
       if (this.#login === state) { this.#answer = undefined; this.#abort = undefined; }
     });
     return structuredClone(state);
@@ -169,8 +263,33 @@ export class ProviderService {
   }
   cancel(id: string) {
     if (this.#login?.id !== id || this.#login.phase !== "pending") throw new ProviderInputError("No pending sign-in.");
-    this.#login.phase = "cancelled"; delete this.#login.prompt; delete this.#login.url; delete this.#login.code;
+    // Stop it before the abort settles: a snapshot read in between must not render "Sign-in failed".
+    this.#login.phase = "cancelled";
+    this.#login.reason = "cancelled";
+    this.#login.message = "Sign-in cancelled.";
+    delete this.#login.prompt; delete this.#login.url; delete this.#login.code; delete this.#login.flow; delete this.#login.expiresAt;
     this.#abort?.abort(); this.#answer = undefined;
+  }
+  /** Verifies one catalog model on one account: the one named, otherwise the first connected account that is not
+   * waiting out a cooldown (a rate-limited account must not make every check report `rate_limit` while another is
+   * fine), and the first connected one when they all are. It asks for a one-word reply through that account's own
+   * runtime, never a session or the CLI fallback, and reports whether the account answered and how long it took. */
+  async test(id: string, model: unknown, requestedAccount?: unknown): Promise<ProviderTest> {
+    const provider = await this.#provider(id);
+    if (typeof model !== "string" || !provider.getModels().some((entry) => entry.id === model)) throw new ProviderInputError("Choose a model from this provider's catalog.");
+    const accounts = await this.accounts.list(id);
+    if (requestedAccount !== undefined && (typeof requestedAccount !== "string" || !accounts.some((a) => a.id === requestedAccount))) throw new ProviderInputError("Unknown account.");
+    const name = providerName(provider);
+    const connected = accounts.filter((entry) => Boolean(readStoredCredential(id, this.accounts.authPath(entry.id))));
+    const account = requestedAccount === undefined
+      ? connected.find((entry) => (entry.cooldownUntil ?? 0) <= Date.now()) ?? connected[0]
+      : accounts.find((entry) => entry.id === requestedAccount);
+    if (!account || !readStoredCredential(id, this.accounts.authPath(account.id))) return testFailed("auth", name);
+    const runtime = await this.accounts.runtime(account.id);
+    if (!runtime.getProvider(id)) { runtime.registerNativeProvider(provider); await runtime.refresh({ allowNetwork: false }); }
+    const target = runtime.getModel(id, model);
+    if (!target) return testFailed("unknown", name);
+    return testProviderModel(runtime, target, name);
   }
   async quota(id: string, requestedAccount?: string): Promise<ProviderQuota> {
     await this.#provider(id);

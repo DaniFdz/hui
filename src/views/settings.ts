@@ -10,6 +10,7 @@ import { ACCENTS, TEXT_SCALE_STOPS, TYPEFACES } from "../lib/theme/appearance.ts
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
 import { MESSAGE_WIDTHS, SEND_SHORTCUTS, type ChatAppearance, type DeviceAppearance } from "../lib/appearance/store.ts";
+import { useModelRoles } from "../lib/provider-choices.ts";
 import { PI_THINKING_LEVELS, THINKING_LABELS } from "../lib/thinking.ts";
 import { closeEffortSelector, placeEffortPanel, renderEffortSelector } from "./effort-selector.ts";
 import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
@@ -115,6 +116,8 @@ export type SettingsProps = AutomationProps & {
   onCopyNtfyAddress: () => void;
   onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
+  /** Opens New Session the way the app's own New Session control does. */
+  onStartChat: () => void;
   onSaveSubagentRoute: (route: Settings["models"]["routes"][number], originalName?: string) => Promise<boolean>;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
@@ -673,11 +676,36 @@ function renderCallsSection(props: SettingsProps) {
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
 
+/** The Model providers area: the setup wizard and the folded local model servers share one section, as main's Models
+ * page expects. A verified model fills the roles new sessions use where nothing is chosen yet; existing choices are
+ * never overwritten. */
+function renderProviderSection(props: SettingsProps) {
+  return html`<section class="settings-section hui-providers"><hui-provider-settings
+    @providers-changed=${props.onRetryPi}
+    .onUseModel=${(target: string) => {
+      const next = useModelRoles(props.settings.models, target);
+      props.onChangeModels({ ...props.settings.models, primary: next.primary, utility: next.utility });
+      return next;
+    }}
+    .onStartChat=${props.onStartChat}
+  ></hui-provider-settings><hui-local-provider-settings></hui-local-provider-settings></section>`;
+}
+
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
-  if (!pi) {
-    return html`<section class="settings-section hui-providers"><hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings><hui-local-provider-settings></hui-local-provider-settings></section>${renderCallsSection(props)}${renderPiMissing(props)}`;
-  }
+  // One template shape with or without PI's configuration: the intro joins it once the catalog lands, but the
+  // provider wizard keeps its element, so a sign-in opened while the page was loading is never closed underfoot.
+  return html`
+    ${pi ? html`<p class="settings-page__intro">
+      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
+    </p>` : nothing}
+    ${renderProviderSection(props)}
+    ${pi ? renderModelRouting(props, pi) : html`${renderCallsSection(props)}${renderPiMissing(props)}`}
+  `;
+}
+
+/** The half of Models that waits for PI: model routing, subagent routes, the catalog and its diagnostics. */
+function renderModelRouting(props: SettingsProps, pi: NonNullable<SettingsProps["pi"]>) {
   const model = pi.model;
   const modelOptions = [
     { value: "", label: "Use PI default" },
@@ -714,13 +742,6 @@ function renderModelsPage(props: SettingsProps) {
     },
   });
   return html`
-    <p class="settings-page__intro">
-      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
-    </p>
-    <section class="settings-section hui-providers">
-      <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
-      <hui-local-provider-settings></hui-local-provider-settings>
-    </section>
     ${renderSection(
       "HUI model routing",
       "Saved by HUI. Model choices apply to new sessions; retries apply to every Durable session.",

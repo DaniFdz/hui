@@ -66,7 +66,7 @@ test("each signed-in account shows its plan, usage status, a meter per reported 
   await expect(claude.getByText("Reset not reported", { exact: true })).toHaveCount(2);
 
   // A provider with no subscription API is Not supported rather than an empty meter.
-  const apiKey = card(screen, "OpenAI · API key");
+  const apiKey = card(screen, "OpenAI");
   await expect(apiKey.getByText("Not supported", { exact: true })).toBeVisible();
   await expect(apiKey.getByText("This provider does not expose a supported subscription quota API.", { exact: true })).toBeVisible();
   await expect(apiKey.getByRole("progressbar")).toHaveCount(0);

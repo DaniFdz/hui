@@ -414,10 +414,51 @@ can return; drafts survive that reload too.
 
 ## Model providers
 
-Open **Settings → Models** to connect a built-in provider using its API key or
-supported OAuth sign-in, select one or more models and save. HUI stores these
-connections under `~/.config/hui/providers/` (or `$XDG_CONFIG_HOME/hui/providers/`),
-separately from PI. Credentials are not returned by status/config APIs.
+Open **Settings → Models** and choose **Connect a provider**. The wizard moves through five steps: the provider,
+the way you sign in, the provider's own sign-in, the model you want to start with, and a check of that model with
+a real reply. HUI stores these connections under `~/.config/hui/providers/` (or
+`$XDG_CONFIG_HOME/hui/providers/`), separately from PI. Credentials are not returned by status/config APIs.
+
+**ChatGPT.** Choose **OpenAI** and then one of its two connections:
+
+- **ChatGPT account** signs in with your ChatGPT subscription and gives you the Codex models, Calls with GPT-Live,
+  and the subscription's usage limits.
+- **ChatGPT account · all GPT models** signs in with the same account and gives you every GPT model OpenAI lists. It
+  has no Calls and no usage limits.
+
+Either one signs in with your ChatGPT account; pick the first when you want Calls and usage limits, the second when
+you want every model. OpenAI also offers **API key**, which pays per use instead of using a subscription.
+
+**Claude.** Choose **Claude** and then **Claude Pro / Max** to sign in with your Claude subscription, or **API key**
+to pay per use with an Anthropic API key. OpenCode Go and Mistral are API-key connections; OpenCode Go asks for an
+account name first because it reports neither a name nor an email, and the other sign-ins accept an optional label for
+an account whose email the provider does not report.
+
+**Signing in.** HUI shows the provider's page with **Open sign-in** (or **Copy link** to open it elsewhere) and
+waits. Which sign-in starts follows the address you opened HUI at, not which machine runs it: `localhost` or
+`127.0.0.1` gets the browser sign-in, so the provider sends you back to HUI directly and the wizard finishes on its
+own, while any other address — a phone, another machine, or this Mac reached by its network name — starts the
+provider's code flow. If the page does not load (the browser could not reach HUI's local address, or you
+signed in on another device), open **Use manual entry** and paste what the provider shows: for **ChatGPT account ·
+all GPT models**, the whole callback address — the complete address, starting with `http://localhost`, is required
+and a partial one is refused; for the other sign-ins, the code or address works.
+
+**Use a code instead** switches the ChatGPT account or Claude sign-in to its code flow, and **Sign in in this browser
+instead** switches back. ChatGPT shows a short device code with **Copy code** and its remaining minutes; Claude asks
+for the code its page displays. Continue only when you started that sign-in yourself: a code someone else gave you is
+how an account gets taken over.
+
+**Choosing and checking the model.** Once the provider confirms, the wizard says **Account connected**, preselects one
+model from the provider's catalog and lets you pick another by name or model ID. **Check model** asks that account for
+a real one-word reply through the connection itself and ends on **Connection verified** with how long the reply took,
+or on the reason it failed with the next thing to try. Leaving the model step saves the model it holds: a new
+connection saves exactly that one, and reconnecting a provider keeps the models it already had and adds the one you
+checked. A failed save keeps the wizard open with its error, and a provider whose catalog is empty saves no selection.
+
+**What a verified model changes.** HUI fills the **primary** and **utility** models under **HUI model routing** on the
+same page when they are still empty, and never replaces a choice you saved. New sessions then start on the primary
+model, and the utility model does the quick work below; **Start chatting** opens New Session and **Stay in settings**
+returns to Models. Every choice stays editable there afterwards.
 
 Use PI's `models.json` for custom endpoints/providers. HUI merges those with its
 own selections; adding a built-in to HUI overrides only that provider ID. Model

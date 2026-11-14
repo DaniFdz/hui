@@ -608,17 +608,21 @@ ID and full `provider/id` reference, case-insensitively.
 ### HUI-managed model providers
 
 Settings → Models owns built-in connections separately from PI custom providers.
-The add-provider modal offers OpenCode Go, OpenAI (ChatGPT account or API key),
-and Claude (Pro/Max or API key). The generic routes retain
+The setup wizard offers OpenAI (ChatGPT account or API key), Claude (Pro/Max or
+API key), OpenCode Go and Mistral, in that order. It moves through a provider
+list, that provider's methods, the sign-in, a single-model choice and a model
+check; the sign-in's flow (`browser`, `device_code` or `copy_code`) is chosen by
+the UI and can be switched. The generic routes retain
 existing providers for backwards compatibility; custom setup UI is deferred.
 Only added connections have cards, inside Provider configuration, closed on each
-page visit with a provider count. Add provider and status/error messages stay
-outside; a confirmed connection save opens the group. Folding preserves model
+page visit with a provider count. Connect a provider and status/error messages
+stay outside; a confirmed connection save opens the group. Folding preserves model
 drafts and changes no settings. Unauthenticated cards expose sign-in only;
 authenticated cards load quotas independently and keep model lists collapsed.
 All routes retain the `x-hui` guard and `no-store` responses. Metadata never
 includes saved credentials; a login response may contain a short-lived device
-code, sign-in URL and input prompt for this local user's active login.
+code, its `expiresAt` (epoch ms, taken from PI's own `expiresInSeconds`), a
+sign-in URL and an input prompt for this local user's active login.
 
 ### `GET /__hui/providers`
 
@@ -626,7 +630,16 @@ Built-in names, supported login methods, configured/auth-available flags, select
 
 ### `POST /__hui/providers/:provider/login`
 
-`{ method: "api_key" or "oauth", name?: string, accountId?: string }`; a new account by default, or reconnect exactly `accountId`; starts PI's provider-owned login; returns opaque login ID and pending state.
+`{ method: "api_key" or "oauth", name?: string, accountId?: string, flow?: "browser" | "device_code" | "copy_code" }`;
+a new account by default, or reconnect exactly `accountId`; starts PI's provider-owned login; returns opaque
+login ID, pending state, the requested `flow` and, for a device code, the code and the `expiresAt` the provider gave
+it. A requested flow answers the sign-in's first prompt when that
+prompt is a select offering the flow, so a provider's own choice of browser or device code is made for it and never
+reaches the browser; a first prompt that is not a select, one that does not offer the flow, and any later prompt are
+surfaced as before. An unknown flow is a `400`. The
+Settings → Models wizard asks for `browser` when the page is served from a loopback address, so the provider can
+hand control back to this machine, and for the provider's code flow otherwise; **Use a code instead** restarts a
+waiting sign-in with the other flow.
 
 ### `POST /__hui/providers/login/:id`
 
@@ -660,6 +673,17 @@ Account-specific quota with the same response shape below.
 
 `{ status, checkedAt, windows, plan?, email?, access?, message? }`; status is `available`, `unsupported` or `unavailable`; windows contain measured `usedPercent`, `scope` (`account`, `scoped`, `spend`) and optional epoch-ms `resetAt`.
 
+### `POST /__hui/providers/:provider/test`
+
+`{ model: string, accountId?: string }`; `model` must be in that provider's catalog and `accountId`, when given,
+one of its accounts. Without one it tests the first connected account that is not waiting out a cooldown, so a
+rate-limited account does not decide every check, and the first connected one when they all are; an explicitly named
+account is tested whatever its cooldown. It sends one small request asking for the
+single word `OK` through that account's own runtime — never a session or the CLI fallback — with a 45-second cap,
+and returns `{ ok: true, latencyMs }` or `{ ok: false, reason, message }`. `reason` is `auth`, `rate_limit`,
+`billing`, `timeout`, `format` (no readable text), `unavailable` or `unknown`, decided from the HTTP status and
+PI's own error text but never carrying either back: `message` is one sentence naming the provider. An unknown
+model or account is a `400`.
 ### Local model servers
 
 A custom provider in PI's `models.json` may live on a machine that is asleep or
@@ -748,7 +772,14 @@ Credentials use PI's locked auth storage at `$XDG_CONFIG_HOME/hui/providers/auth
 (default `~/.config/hui/providers/auth.json`, mode 0600). Selections use a separate
 0600 `models.json` mapping provider IDs to `{ models: string[] }`; writes are
 serialized and atomic. Account order, names and optional `cooldownUntil` are a
-0600 `accounts.json` mapping provider IDs to ordered account arrays. The legacy
+0600 `accounts.json` mapping provider IDs to ordered account arrays. PI's ChatGPT
+all-models sign-in identifies the installation it was granted on, so a 0600
+`device.json` holding `{ "id": "<uuid>" }` is created for that provider's OAuth
+sign-in on first use and reused by every later one, including after a restart; a
+missing or corrupt file yields a fresh id. No other sign-in, an API key included,
+creates the file or is handed the id. The id never enters an error message or a
+log, and the only payload that carries it is that pending sign-in's authorization
+URL, where PI embeds it as `ext_agent_host_id`. The legacy
 `auth.json` remains in place as account `default` (fallback label Account 1); new accounts
 use `accounts/<opaque-uuid>/auth.json`, with PI's locks/refresh, never raw secrets in
 metadata. Existing model selection and auth formats remain readable unchanged.
@@ -759,13 +790,24 @@ endpoints, transport options and credentials remain configured through PI.
 A built-in explicitly added to HUI takes precedence over a PI provider of the
 same ID. Removing it reveals the PI configuration again, if present.
 
-Login permits one pending flow, expires after ten minutes and rejects stale
-prompt IDs. Prompt values are bounded to 16 KiB. Completing login stores auth;
-the browser then calls `PUT` with the existing selection or an empty list to
-add the connection. If that separate write fails, sign-in remains saved and the
-modal offers **Use this connection** to retry. **Save models** in each card
-commits its dropdown selection. Auth availability means
-credentials are configured, not that a live request or subscription is verified.
+Login permits one pending flow, expires after ten minutes or sixteen for a
+`device_code` flow (those codes last fifteen), and rejects stale prompt IDs. A
+stopped login keeps a plain sentence for older clients and adds `reason`:
+`cancelled` when the operator stopped it, `expired` when that deadline passed,
+`stale_link`, `port_in_use`, `network` or `unknown`.
+PI's own error text is logged once on the gateway and never returned. Prompt
+values are bounded to 16 KiB. Completing login stores auth;
+the wizard then continues on a model step with one model preselected, and its
+`PUT` saves that model when the step is left — the dialog closes, the
+check starts, or another method is chosen. A new connection saves exactly that
+one; a reconnect keeps the models the provider already had and adds it. A
+provider with an empty catalog
+writes no empty selection. If that separate write fails, sign-in remains saved
+and the dialog stays on the model step with the write error to retry.
+**Save models** in each card
+commits its checked models. Auth availability means
+credentials are configured, not that a live request or subscription is verified;
+the model test route is the explicit check of one model on one account.
 Models expose the pinned SDK's catalog metadata, not invented limits or aliases.
 
 The SDK composes these connections into ordinary PI sessions, including utility

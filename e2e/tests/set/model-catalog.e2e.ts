@@ -8,7 +8,7 @@ test("Models keeps the catalog without PI defaults, cycling or credential sectio
   const catalog = screen.getByText("Available catalog · 3 models", { exact: true });
   await expect(catalog).toBeVisible();
   await expect(screen.getByText(/^(PI defaults|Cycling models|PI credential sources)$/u)).toHaveCount(0);
-  await expect(screen.getByRole("button", "Add provider")).toBeVisible();
+  await expect(screen.getByRole("button", "Connect a provider")).toBeVisible();
   await expect(screen.getByText("HUI model routing", { exact: true })).toBeVisible();
   await expect(screen.getByText("Subagent routes", { exact: true })).toBeVisible();
   await expect(screen.getByRole("button", "Default GPT-Live voice: Cove (GPT-Live's default)")).toBeVisible();
@@ -27,33 +27,41 @@ test("Models keeps the catalog without PI defaults, cycling or credential sectio
 
 test("Provider configuration folds without losing drafts and opens after setup", { tags: ["SET-081"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/settings/models");
-  await expect(screen.getByText("No providers added yet. Add one to get started.", { exact: true })).toBeVisible();
+  await expect(screen.getByText("No model providers configured", { exact: true })).toBeVisible();
   await expect(screen.getByText("Provider configuration · 0 providers", { exact: true })).toBeHidden();
+  const tenant = (await hui.api<ProviderSnapshot>("GET", "/__hui/providers")).providers.find((provider) => provider.id === "anthropic");
+  const firstModel = tenant?.models[0]?.id ?? "";
   const configuration = screen.getByText("Provider configuration · 1 provider", { exact: true });
-  const search = screen.getByLabel("Search Claude models", { exact: true });
+  const search = screen.getByLabel("Search models", { exact: true });
   try {
-    await screen.getByRole("button", "Add provider").tap();
-    await screen.getByRole("button", /^Claude Claude account or API key\./u).tap();
+    await screen.getByRole("button", "Connect a provider").tap();
+    await screen.getByRole("button", /^Claude Claude subscription or API key\./u).tap();
     await screen.getByRole("button", /^API key /u).tap();
     await screen.getByLabel("Enter Anthropic API key", { exact: true }).fill("hui-fixture-not-a-real-key");
     await screen.getByRole("button", "Continue").tap();
-    await expect(screen.getByText("Claude added. Choose the models you want to use.", { exact: true })).toBeVisible();
+    await expect(screen.getByText("Account connected. Choose a model when you want to test a reply.", { exact: true })).toBeVisible();
+    await screen.getByRole("button", "Close provider dialog").tap();
+    await expect(screen.getByText("Claude added. You can change its models any time.", { exact: true })).toBeVisible();
     await expect(configuration).toBeVisible();
-    await expect(screen.getByText("Choose models", { exact: true })).toBeVisible();
+    await expect(screen.getByText(/^Models 1 selected$/u)).toBeVisible();
+    await expect(screen.getByRole("button", "Select visible")).toBeHidden();
+    // Leaving the model step after a completed sign-in saves exactly the model it preselected.
+    await expect.poll(async () => (await hui.api<ProviderSnapshot>("GET", "/__hui/providers")).providers.find((provider) => provider.id === "anthropic")?.selected).toEqual([firstModel]);
 
     await hui.reload();
     await expect(configuration).toBeVisible();
     await expect(screen.getByText("HUI model routing", { exact: true })).toBeVisible();
     await expect(screen.getByRole("button", "Add account")).toBeHidden();
-    await screen.getByRole("button", "Add provider").tap();
+    await screen.getByRole("button", "Connect a provider").tap();
     await screen.getByRole("button", "Close provider dialog").tap();
     await expect(screen.getByRole("button", "Add account")).toBeHidden();
     await configuration.press("Enter");
-    await screen.getByText("Choose models", { exact: true }).tap();
+    await screen.getByText(/^Models 1 selected$/u).tap();
     await search.fill("sonnet");
     await screen.getByRole("button", "Select visible").tap();
     const selected = screen.getByText(/^[1-9]\d* selected$/u);
-    await expect(selected).toBeVisible();
+    // The panel's own counter joins the card's saved count in `selected`; the buttons prove the panel is open.
+    await expect(screen.getByRole("button", "Select visible")).toBeVisible();
     const draft = await selected.allTextContents();
     await configuration.press("Enter");
     await expect(search).toBeHidden();
@@ -67,7 +75,7 @@ test("Provider configuration folds without losing drafts and opens after setup",
     await expect(search).toHaveValue("sonnet");
     await expect.poll(() => selected.allTextContents()).toEqual(draft);
     const snapshot = await hui.api<ProviderSnapshot>("GET", "/__hui/providers");
-    expect(snapshot.providers.find((provider) => provider.id === "anthropic")?.selected).toEqual([]);
+    expect(snapshot.providers.find((provider) => provider.id === "anthropic")?.selected).toEqual([firstModel]);
 
     await hui.reload();
     await expect(configuration).toBeVisible();

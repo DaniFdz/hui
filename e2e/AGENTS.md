@@ -41,7 +41,9 @@ in the order of `AREAS` in `catalogue/types.ts`). It is the checklist the shared
 `tests/<area>/<name>.e2e.ts` are the shared tests, written with [tester-army/e2e](https://e2e.tester.army/docs) and
 run by `../e2e.config.ts` against a disposable gateway that the visual-verification launcher starts. Run them with
 `npm run e2e` after `npx e2e-web install chromium`; a failure leaves `trace.md`, a screenshot and the screen dump in
-`.e2e/results/`.
+`.e2e/results/`. Launched with `--provider-fixture`, that server answers the provider wizard's own routes from memory
+(a sign-in that completes after a short wait, a model choice and a verified check), so Settings → Models can be driven
+for screenshots with no account and no provider call.
 
 The suite has three targets, `web`, `android` and `webkit-phone` (`../e2e.config.ts`), and `ios-smoke` follows. The
 tests stay portable so a phone can run them: every gesture or reading that would differ per platform is a `hui.*` step

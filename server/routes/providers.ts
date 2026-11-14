@@ -1,10 +1,10 @@
 /**
  * `/__hui/providers…`: the model providers' snapshot, their logins (start, answer a prompt, cancel), accounts
- * (order, remove, quota) and saved models, over `providers.ts`. `hui.ts` applies the `x-hui` guard before
- * dispatching here.
+ * (order, remove, quota), a model test and saved models, over `providers.ts`. `hui.ts` applies the `x-hui` guard
+ * before dispatching here.
  */
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
-import { ProviderError, ProviderLogin, ProviderOk, ProviderQuota, ProviderSnapshot } from "../api/providers.ts";
+import { ProviderError, ProviderLogin, ProviderOk, ProviderQuota, ProviderSnapshot, ProviderTest } from "../api/providers.ts";
 export { routeSchemas } from "../api/providers.ts";
 import { ProviderInputError, type ProviderService } from "../pi/providers.ts";
 
@@ -28,7 +28,11 @@ export function createProviderRoutes(deps: { providerService: ProviderService })
       }
       if (id && action === "login" && parts.length === 2 && method === "POST") {
         const body = await request.json() as Record<string, unknown>;
-        return reply(ProviderLogin, await providerService.start(id, body["method"], { accountId: body["accountId"], name: body["name"] }));
+        return reply(ProviderLogin, await providerService.start(id, body["method"], { accountId: body["accountId"], name: body["name"], flow: body["flow"] }));
+      }
+      if (id && action === "test" && parts.length === 2 && method === "POST") {
+        const body = await request.json() as Record<string, unknown>;
+        return reply(ProviderTest, await providerService.test(id, body["model"], body["accountId"]));
       }
       if (id && action === "accounts" && parts.length === 2 && method === "PUT") {
         const body = await request.json() as Record<string, unknown>;
