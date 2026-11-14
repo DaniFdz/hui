@@ -142,10 +142,10 @@ test("a provider's Models disclosure lists its models with their limits, filters
 
     // Select visible takes the listed models and Clear selection empties the draft.
     await screen.getByRole("button", "Select visible").tap();
-    await expect(screen.getByText(`${matches.length} selected`, { exact: true })).toBeVisible();
+    await expect(screen.getByText(`Models ${matches.length} selected`, { exact: true })).toBeVisible();
     await expect(screen.getByRole("checkbox", { checked: true })).toHaveCount(matches.length);
     await screen.getByRole("button", "Clear selection").tap();
-    await expect(screen.getByText("0 selected", { exact: true })).toBeVisible();
+    await expect(screen.getByText("Models Choose models", { exact: true })).toBeVisible();
 
     // Save models keeps the chosen models as the provider's selection.
     const [first, second] = catalog;
@@ -174,7 +174,7 @@ test("a provider's Models disclosure lists its models with their limits, filters
     // A cancelled draft discards what was picked.
     await screen.getByText("Models 2 selected", { exact: true }).tap();
     await screen.getByRole("button", "Select visible").tap();
-    await expect(screen.getByText(`${catalog.length} selected`, { exact: true })).toBeVisible();
+    await expect(screen.getByText(`Models ${catalog.length} selected`, { exact: true })).toBeVisible();
     await screen.getByRole("button", "Cancel").tap();
     await expect(screen.getByText("Models 2 selected", { exact: true })).toBeVisible();
     expect((await configured(hui))!.selected).toEqual([first!.id, second!.id]);
