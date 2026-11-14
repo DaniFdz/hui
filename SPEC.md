@@ -37,7 +37,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   view of the chat in place of that conversation. The latest run's tokens, cost and Compact now stay below it. The split
   fits the occupancy the runtime reports and is labelled as an estimate; a runtime that reports no split draws the plain
   bar. A bot's chat also carries the bot's cost there, as its panel totals it (its chat, its subagents and its memory
-  summaries), or where it is kept when the bot runs on a worker.
+  summaries), or where it is kept when the bot runs on a worker. A Durable session's meter also carries Session total:
+  what every model call of that conversation cost, the compaction summaries and tool-side calls included, with when it
+  was read, since the per-run figure leaves them out.
 
 - Session search is the field directly below the sidebar header; it filters the
   session list and is not duplicated in the Sessions toolbar or a bottom footer.
