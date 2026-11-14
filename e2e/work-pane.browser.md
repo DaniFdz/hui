@@ -46,8 +46,8 @@ Screenshots stay outside Git and go into the PR description.
   A second `Ctrl+Alt+T` adds another terminal tab (seen on the pre-commit tree).
 - The header's **Open terminal** activated the open terminal tab and the globe
   activated the browser tab instead of adding panes (both removed on 2026-11-14;
-  a terminal now always comes from the **+** menu or its shortcut). ArrowLeft/
-  ArrowRight move between tabs with automatic activation.
+  a terminal now comes from the **+** menu, its shortcut or the pane's empty-state
+  launcher). ArrowLeft/ArrowRight move between tabs with automatic activation.
 - Escape inside the pane first closed the tab tooltip, then returned focus to
   the chat composer; the session stayed Idle (no abort).
 - The resizer took focus on click; ArrowLeft ×2 and Shift+ArrowLeft grew the

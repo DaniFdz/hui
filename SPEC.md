@@ -322,10 +322,11 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   stacked panes. Drag a sidebar session to any pane's left/right edge to add a
   column, top/bottom edge to add a row, or center to replace that pane's session.
   **Open in split pane** in another session's row menu adds that session beside
-  the focused pane. The preview uses the original 30% edge bands and half-pane
-  indicator. Each session occupies one pane, so nothing opens a second view of
-  the session already shown; the chat header itself offers no view or split
-  control, only **Close session pane** on the focused pane. Pointer or keyboard focus selects the pane and route.
+  the focused pane, and is disabled for a session already open in a pane; a row
+  dropped on an edge still adds whatever session it carries, even one already
+  shown. The preview uses the original 30% edge bands and half-pane indicator.
+  The chat header offers no view or split control, only **Close session pane**
+  on the focused pane. Pointer or keyboard focus selects the pane and route.
   Each view retains its transcript, composer, draft, queue and detailed stream.
   Column and row dividers support pointer resizing, arrow keys (2%, Shift 5%)
   and Home/End (15%/85%). Layout, focus and weights are browser-local, not registry
@@ -971,14 +972,15 @@ work in the browser and the desktop app whether or not the local font matches.
 
 
 **New terminal** in the Work pane's **+** menu (Ctrl+Alt+Shift+T / ⌥⇧⌘T), or
-its terminal launcher in the pane's empty state, opens a new interactive shell
-in the session's directory/worktree, without calling PI. The chat header has no
-terminal button. Each terminal is its own tab; **New terminal** creates
-another. Closing a tab hides the terminal without ending its process; the **+**
-menu lists running terminals without a tab under *Running* to reopen them.
-**End terminal** in the view's ⋯ menu explicitly terminates the shell and its
-descendants and closes its tab. On narrow screens the panel selector switches
-between chat and terminal while preserving hidden views.
+its terminal launcher in the pane's empty state, opens a new interactive
+shell in the session's directory/worktree, without calling PI; each terminal
+is its own tab, so a launch adds one rather than reusing an open shell. The
+chat header has no terminal button. Closing a tab hides the terminal without
+ending its process; the **+** menu lists running terminals without a tab
+under *Running* to reopen them. **End terminal** in the view's ⋯ menu
+explicitly terminates the shell and its descendants and closes its tab. On
+narrow screens the panel selector switches between chat and terminal while
+preserving hidden views.
 
 A conversation on a remote worker has its terminals on that machine. The PTY,
 its replay and the **terminal** tool stay here: the gateway runs the worker's own
@@ -1145,7 +1147,8 @@ marker where it clicks and its latest action. Only the conversation's latest
 browser activity carries a preview. It streams while the agent's turn runs and
 the preview is on screen, then keeps its last frame; a preview that appears idle
 (a reopened conversation, a reload) takes one fresh frame of the tab if it is
-still open, and nothing is shown when no page is left to show. Selecting the preview, or its expand button (**Open browser view**), opens the conversation's
+still open, and nothing is shown when no page is left to show. Selecting the
+preview, or its expand button (**Open browser view**), opens the conversation's
 **browser view** in its Work pane (at most one per conversation; also launched
 from the pane's **+** menu, Ctrl+Alt+Shift+B / ⌥⇧⌘B): a larger live view beside the chat
 that follows the agent's tab or watches another of the conversation's tabs until

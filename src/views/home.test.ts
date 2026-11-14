@@ -666,10 +666,14 @@ test("a reachable worker session shows neither notice, and a failed one keeps it
   const idle = await renderWorkerSession("idle", { onClosePane: undefined });
   assert.doesNotMatch(idle, /Reconnecting to|Disconnected from|reconnect-session/u);
   assert.equal(sendButton(idle), "false");
-  // The header's trailing corner offers nothing for a plain chat: views and splits live in the Work pane and the
-  // sidebar, never in the chat header.
+  // This plain durable chat has an empty trailing corner: views and splits live in the Work pane and the sidebar. A
+  // bot chat (call, panel, menu), a PI session (Continue) and a split pane (Close) each add their own controls there,
+  // and none of the removed labels reach the page.
   const trailing = idle.slice(idle.indexOf('class="chat-pane__header-trailing"'), idle.indexOf("</header>"));
-  assert.doesNotMatch(trailing, /<button/u, "a conversation's header holds no control of its own");
+  assert.doesNotMatch(trailing, /<button/u, "a plain durable chat keeps its header corner empty");
+  for (const removed of ["Open terminal", "Open browser view", "Open split view", "Split right", "Split down", "Pane actions"]) {
+    assert.doesNotMatch(idle, new RegExp(`aria-label="${removed}"`, "u"), `${removed} is gone from the chat`);
+  }
   assert.match(await renderWorkerSession("error"), /The runtime could not start\./u);
 });
 

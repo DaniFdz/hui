@@ -184,10 +184,14 @@ const click = async (selector) => {
 // A session created a moment ago can still be unknown to a fresh page, which then falls back to Home.
 for (let attempt = 1; ; attempt++) {
   await cdp("Page.navigate", { url: appUrl + "/sessions/" + encodeURIComponent(session.id) });
-  try { await waitFor(() => document.querySelector('button[aria-label="Open Work view"]'), 10_000); break; }
-  catch (error) { if (attempt === 3) throw error; }
+  try {
+    await waitFor(() => document.querySelector('button[aria-label="Show Work pane"]') ?? document.querySelector('button[aria-label="Open Work view"]'), 10_000);
+    break;
+  } catch (error) { if (attempt === 3) throw error; }
 }
-// The chat header has no terminal button: the Work pane's + menu is the entry point.
+// A fresh profile collapses the Work pane to its rail, where only "Show Work pane" exists and the + is not drawn: expand
+// it. The chat header has no terminal button, so the Work pane's + menu is the entry point either way.
+if (await evaluate(() => Boolean(document.querySelector('button[aria-label="Show Work pane"]')))) await click('button[aria-label="Show Work pane"]');
 await click('button[aria-label="Open Work view"]');
 await click('.work-pane__menu-item[value="launch:terminal"]');
 await waitFor(() => { const pane = document.querySelector("hui-terminal-pane"); return pane?.ready && pane.status === "Connected"; });

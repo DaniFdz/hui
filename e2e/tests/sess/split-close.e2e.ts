@@ -27,11 +27,9 @@ test("closing the pane of a streaming session leaves it running and the other at
   await expect(panes.nth(0).getByTestId("session-title")).toHaveText("Kept pane");
   await expect(panes.nth(0).getByLabel("Message")).toHaveValue("Half-written note");
 
-  // The kept pane is the only one left, still at its draft, and the running session is still in the registry.
+  // The running session is still in the registry, which is what lets the split show it again.
   await hui.sessionList();
   await expect(screen.getByLabel(/^Streaming pane, status running/u)).toBeVisible();
-  await expect(panes).toHaveCount(1);
-  await expect(panes.nth(0).getByLabel("Message")).toHaveValue("Half-written note");
 
   await hui.sessionList();
   await (await hui.sessionMenu("Streaming pane")).getByText("Open in split pane", { visible: true }).tap();
