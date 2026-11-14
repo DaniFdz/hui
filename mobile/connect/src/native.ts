@@ -13,6 +13,8 @@ interface HuiGatewayPlugin {
   forget(): Promise<{ gateway: string | null }>;
   /** What this launch knows: the remembered gateway and the one that just failed to answer, if any. */
   getState(): Promise<{ gateway: string | null; failed: string | null }>;
+  /** Ask for local-network access before a LAN probe; iOS has no runtime API and answers granted. */
+  requestLocalNetwork(): Promise<{ status: string }>;
 }
 
 const huiGateway = registerPlugin<HuiGatewayPlugin>("HuiGateway");
@@ -26,6 +28,16 @@ export function isNative(): boolean {
 export async function shellState(): Promise<{ gateway: string | null; failed: string | null }> {
   if (!isNative()) return { gateway: null, failed: null };
   return huiGateway.getState();
+}
+
+/**
+ * Ask the shell for local-network access before a probe. Android 17 needs the runtime permission; older Android and iOS
+ * answer granted, and the iOS prompt is raised by the probe itself. A denial is the Connect page's to report.
+ */
+export async function requestLocalNetwork(): Promise<"granted" | "denied"> {
+  if (!isNative()) return "granted";
+  const { status } = await huiGateway.requestLocalNetwork();
+  return status === "denied" ? "denied" : "granted";
 }
 
 /**

@@ -704,13 +704,24 @@ Runs the saved command unless the health endpoint already answers. Returns at on
 
 ### Model metrics
 
-HUI measures every completed model request in a Durable conversation: request
-start to the first streamed content token (`ttftMs`), that token to completion
-(`generationMs`), output throughput (`tokensPerSecond`), and the input/output
-and cache counts PI reports. `promptTokensPerSecond` divides new input tokens by
-the time to first token, so it includes request queueing and prefill and is an
-estimate; it is labelled as such in the UI. Older PI SDK-worker sessions do not
-produce these measurements.
+HUI measures every completed model request in a Durable conversation: the
+request start PI records on the message to the first content token HUI sees
+(`ttftMs`), that token to completion (`generationMs`), output throughput
+(`tokensPerSecond`) whose denominator is `generationMs`, or the whole request
+when HUI only saw the answer whole, and the input/output and cache counts PI
+reports. `promptTokensPerSecond` divides new input tokens by the time to first
+token, so it includes request queueing and prefill and is an estimate; it is
+labelled as such in the UI. Older PI SDK-worker sessions do not produce these
+measurements.
+
+Durable persists a streaming partial only once it holds a token, and only every
+progress interval, so the partial HUI first sees usually holds the first token
+already: counting from that sight would always measure zero, which is why
+`ttftMs` counts from the request start PI recorded instead, and includes the
+progress interval and commit latency before that partial (about 0.1–0.2 s). A
+response that streams within one interval reaches HUI whole: its sample carries
+PI's own request duration and no `ttftMs`, and the composer shows `—` for the
+time to first token.
 
 The latest 5,000 samples persist in `$XDG_CONFIG_HOME/hui/model-metrics.jsonl`
 (default `~/.config/hui/model-metrics.jsonl`, mode 0600). A sample carries the
@@ -3971,6 +3982,16 @@ and tool results (PI attributes nested tool and model calls to the calling tool'
 result). Prompt-cache refreshes are PI `usage` entries outside the conversation;
 they count toward the observability totals, not this per-run figure. Missing context or
 cost remains `null`/absent rather than being estimated by HUI.
+`usage.breakdown` is the one estimated figure, and only a Durable session reports it: its
+`system` prompt and the `tools` its context declares, the `conversation` and the `summary`
+compaction left, each with its estimated `tokens` and, for tools and messages, the `count` it
+covers. A chat whose memory rewrites its request reports `memory` where the others report a
+conversation: what the prompt and the tools leave of the context is the view the request carries. The prompt and tools come from the system entries the conversation's context stores,
+so a conversation a restarted gateway or a fork reopened still splits, and a model that takes
+system messages mid-conversation reads every one of them where another reads only the replayed
+prompt. The browser fits those estimates to the reported `contextTokens` and labels them as estimates. A runtime that cannot split its context omits the field and
+the meter draws the plain bar. A bot's chat reads the bot's cost beside the session's through
+`GET /__hui/bots/:id/usage`, the same total its panel shows.
 `usage.sessionCost` is separate from that per-run figure: an extension that measured
 the whole session's cost from a source HUI cannot price reports it by appending a
 `hui.session-cost` entry with `{ usd, source, asOf }`, and the session's `usage`

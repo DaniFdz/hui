@@ -28,7 +28,7 @@ const [native, plugin, gateway, launch, page, script, agents, swiftPlugin, swift
 ]);
 
 test("the Connect page and the plugin agree on the plugin name and its methods", () => {
-  const pluginName = /@CapacitorPlugin\(name = "([A-Za-z]+)"\)/u.exec(plugin)?.[1];
+  const pluginName = /@CapacitorPlugin\(name = "([A-Za-z]+)"/u.exec(plugin)?.[1];
   assert.ok(pluginName, "HuiGatewayPlugin.java declares @CapacitorPlugin(name = …)");
   assert.ok(native.includes(`"${pluginName}"`), `native.ts calls the ${pluginName} plugin`);
 
@@ -43,7 +43,7 @@ test("the iOS shell speaks the same protocol as the Android one, and registers i
   const swiftMethods = [...swiftPlugin.matchAll(/CAPPluginMethod\(name: "(\w+)"/gu)].map(([, name]) => name).sort();
   const javaMethods = [...plugin.matchAll(/@PluginMethod\s+public void (\w+)\(/gu)].map(([, name]) => name).sort();
   assert.deepEqual(swiftMethods, javaMethods, "the Swift plugin declares the methods the Java plugin declares");
-  const javaName = /@CapacitorPlugin\(name = "(\w+)"\)/u.exec(plugin)?.[1];
+  const javaName = /@CapacitorPlugin\(name = "(\w+)"/u.exec(plugin)?.[1];
   assert.ok(swiftPlugin.includes(`jsName = "${javaName}"`), "both plugins answer to the name the Connect page calls");
   // Capacitor discovers neither plugin by itself: an unregistered plugin rejects every call, which no screenshot shows.
   assert.ok(/registerPluginInstance\(HuiGatewayPlugin\(\)\)/u.test(swiftBridge), "the iOS bridge registers its plugin");
@@ -128,13 +128,13 @@ test("the Android local-network permission arrives with the SDK 37 target", asyn
   const permission = "android.permission.ACCESS_LOCAL_NETWORK";
   if (target < 37) {
     assert.ok(!manifest.includes(permission), "the manifest declares the local-network permission only at targetSdk 37");
-    assert.ok(!sources.some((source) => source.includes(permission) && /requestPermissions\s*\(/u.test(source)), "the app requests the local-network permission only at targetSdk 37");
+    assert.ok(!sources.some((source) => source.includes("ACCESS_LOCAL_NETWORK") && /(?:requestPermissions|requestPermissionForAlias)\s*\(/u.test(source)), "the app requests the local-network permission only at targetSdk 37");
     return;
   }
   assert.match(manifest, /<uses-permission\s+android:name="android\.permission\.ACCESS_LOCAL_NETWORK"\s*\/>/u, "targetSdk 37 declares ACCESS_LOCAL_NETWORK");
-  const requester = sources.find((source) => source.includes(permission) && /requestPermissions\s*\(/u.test(source));
+  const requester = sources.find((source) => source.includes("ACCESS_LOCAL_NETWORK") && /(?:requestPermissions|requestPermissionForAlias)\s*\(/u.test(source));
   assert.ok(requester, "targetSdk 37 requests ACCESS_LOCAL_NETWORK at runtime, before the first gateway request");
-  assert.match(requester, /Build\.VERSION\.SDK_INT\s*>=\s*(?:37|Build\.VERSION_CODES\.[A-Z_]+)/u, "the request runs only where API 37 exists");
+  assert.match(requester, /Build\.VERSION\.SDK_INT\s*(?:>=|<)\s*(?:37|Build\.VERSION_CODES\.[A-Z_]+)/u, "the request runs only where API 37 exists");
 });
 
 test("both apps declare the microphone a call needs, and iOS explains it", async () => {

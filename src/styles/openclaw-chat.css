@@ -2097,3 +2097,25 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .chat-skill-invoked { display: inline-flex; align-items: center; gap: var(--space-1); margin-bottom: var(--space-1); color: var(--muted); font: var(--control-ui-text-xs)/1.4 var(--font-mono); }
 .chat-skill-invoked__label { border: 1px solid var(--border); border-radius: 999px; padding: 0 var(--space-2); }
 .chat-skill-invoked code { color: var(--text); }
+
+/* HUI's context meter splits the upstream bar by what the context carries. The upstream bar, header and rows'
+ * spacing stay; these segments, dots and rows are HUI's own, so they live outside the pinned reference snapshot. */
+/* Segments share the bar by their tokens alone: a gap or a minimum width would paint more of it than the meter says,
+ * most visibly when the context is nearly empty. */
+.context-usage__bar--breakdown { display: flex; }
+.context-usage__bar--breakdown span { flex-basis: 0; border-radius: 0; box-shadow: none; }
+.context-usage__dot { flex: none; align-self: center; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--part-color, var(--muted)); }
+.context-usage__bar-segment--system, .context-usage__part--system { --part-color: var(--info); }
+.context-usage__bar-segment--tools, .context-usage__part--tools { --part-color: var(--warn); }
+.context-usage__bar-segment--conversation, .context-usage__part--conversation { --part-color: var(--ok); }
+.context-usage__bar-segment--summary, .context-usage__part--summary,
+.context-usage__bar-segment--memory, .context-usage__part--memory { --part-color: color-mix(in srgb, var(--danger) 70%, var(--muted)); }
+.context-usage__bar--breakdown .context-usage__bar-segment { background: var(--part-color); }
+.context-usage__bar--breakdown .context-usage__bar-remaining { background: transparent; }
+.context-usage__breakdown { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.context-usage__part { display: flex; align-items: baseline; gap: 7px; font-size: 12px; }
+.context-usage__part-label { color: var(--text); }
+.context-usage__part-detail { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.context-usage__part-tokens { margin-inline-start: auto; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.context-usage__part-percent { min-width: 26px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: end; }
+.context-usage__note { margin: 8px 0 0; color: var(--muted); font-size: 11px; font-style: italic; }

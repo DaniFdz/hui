@@ -155,6 +155,7 @@ in an app.
 | Links | `ShellLinks.java`, `MainActivity`'s `BridgeWebViewClient` | The gateway's own pages stay in the app, including a link that only changes the scheme; every other origin and every non-web scheme goes to the system through `Bridge.launchIntent`. |
 | Downloads | `ShellDownloads.java`, `ShellPage.java`, `HuiShellPlugin.java`, `res/raw/hui_shell.js` | An `http(s)` file goes to the system download manager with the anchor's name; the page's own `blob:` downloads are read in the page and written to Downloads. One toast says what happened to each. |
 | File chooser | `AndroidManifest.xml` (`<queries>`), Capacitor's `BridgeWebChromeClient` | The composer's photo, file and camera inputs open the system photo picker, DocumentsUI and the camera app. |
+| Local network | `HuiGatewayPlugin.requestLocalNetwork`, `mobile/connect/src/native.ts` | Android 17 asks before the Connect page probes a LAN gateway; iOS has no runtime API and proceeds to its own prompt. |
 | Status bar and insets | `ShellWindow.java` | The page is never under the status bar or the navigation bar, and the status bar takes the page's own colour and icon scheme. |
 | Keyboard | `ShellWindow.java`, `windowSoftInputMode` | The composer stays above the soft keyboard and the page shrinks instead of hiding under it. |
 
@@ -223,16 +224,17 @@ The manifest names `android.media.action.IMAGE_CAPTURE` and `VIDEO_CAPTURE` in a
 `onShowFileChooser` asks the package manager whether a camera app answers before it opens one, and Android 11 hides other
 apps from that question: without the element the camera input silently falls back to the file picker.
 
-### The local-network permission waits for SDK 37
+### The local network needs a runtime permission
 
-Android 16 and lower grant local-network access through `INTERNET`; Android's own guidance says not to declare
-`android.permission.ACCESS_LOCAL_NETWORK` below `targetSdk 37`, because the platform ignores it there. Android 17 blocks
-the local network by default for target 37, so that bump must add the manifest permission and a runtime request before
-the Connect page's first probe or the bridge's first load, and handle a refusal with the page's own message.
-`scripts/mobile-contract.test.mjs` enforces both directions: the permission is absent while the target is below 37, and
-the bump fails the test until the manifest entry and a guarded `requestPermissions` call exist. The guard names
-`requestPermissions` because that is the API this shell uses; if the bump picks a different request API, update the guard
-with the reason.
+Android 17 blocks local-network access by default for `targetSdk 37`. The manifest declares
+`android.permission.ACCESS_LOCAL_NETWORK`; `HuiGatewayPlugin.requestLocalNetwork` requests it on API 37 and answers
+`granted` on older Android, where `INTERNET` already covers the LAN. The Connect page calls it before `probeGateway`, and
+a refusal shows `LOCAL_NETWORK_DENIED` instead of pretending the gateway did not answer. A launch with a remembered
+gateway asks through `LocalNetwork` before the bridge would otherwise wait out its 15 s fallback: it loads Connect,
+requests, and rebuilds on the gateway when the operator allows it (a refusal leaves the address prefilled for Connect to
+retry). The Android e2e fixture grants the permission after installing the debug APK, because the suite launches straight
+onto a gateway and never crosses the Connect page. `scripts/mobile-contract.test.mjs` keeps the manifest entry, the
+request helper and the API guard paired with the target SDK, and rejects the declaration while the target is below 37.
 
 ## Launch, ports and target names
 
@@ -260,14 +262,14 @@ falls back to `fetch` in a plain browser. **Do not change the gateway for this.*
 `nix develop .#android` (`flake.nix`, kept from spike S1) pins what the app needs, and `scripts/mobile.mjs` re-executes
 itself inside it:
 
-- Android SDK 36, **build-tools 35.0.0 and 36.0.0** (the flake's `GRADLE_OPTS` aapt2 override uses 36, and some tooling still asks for 35),
+- Android SDK 37 (platform `37.0`), **build-tools 35.0.0 and 36.0.0** (the flake's `GRADLE_OPTS` aapt2 override uses 36, and some tooling still asks for 35),
   platform-tools and the headless `google_apis` x86_64 system image;
 - **JDK 21** — Capacitor 8 compiles at Java release 21;
 - `agent-device`, the e2e engine's device layer and how an agent drives the emulator, wrapped in an FHS environment
   because it runs `/bin/ps` and NixOS has none.
 
 CI (`mobile / android-build`) does the same with `actions/setup-java` (temurin 21), `android-actions/setup-android` and
-`platforms;android-36 build-tools;36.0.0`.
+`platforms;android-37.0 build-tools;36.0.0`.
 
 ## The loops
 
