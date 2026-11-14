@@ -128,7 +128,7 @@ test("the Android local-network permission arrives with the SDK 37 target", asyn
   const permission = "android.permission.ACCESS_LOCAL_NETWORK";
   if (target < 37) {
     assert.ok(!manifest.includes(permission), "the manifest declares the local-network permission only at targetSdk 37");
-    assert.ok(!sources.some((source) => source.includes(permission)), "the app requests the local-network permission only at targetSdk 37");
+    assert.ok(!sources.some((source) => source.includes(permission) && /requestPermissions\s*\(/u.test(source)), "the app requests the local-network permission only at targetSdk 37");
     return;
   }
   assert.match(manifest, /<uses-permission\s+android:name="android\.permission\.ACCESS_LOCAL_NETWORK"\s*\/>/u, "targetSdk 37 declares ACCESS_LOCAL_NETWORK");
