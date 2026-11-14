@@ -382,7 +382,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/providers/:provider/login", "route:POST /__hui/providers/login/:id", "route:GET /__hui/providers", "route:POST /__hui/providers/:provider/test", "route:PUT /__hui/providers/:provider"],
     journeys: ["providers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-035",
@@ -879,7 +879,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:models", "route:GET /__hui/providers"],
     journeys: ["providers"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-082",
