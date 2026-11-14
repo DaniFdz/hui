@@ -3,6 +3,7 @@
  * AGENT-042). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openWatchers } from "./run-status.ts";
 
 const watcher = (inputs: Record<string, unknown>[]) =>
   `E2E_CALL:${Buffer.from(JSON.stringify(inputs.map((input) => ({ name: "watcher", input })))).toString("base64url")}`;
@@ -24,7 +25,6 @@ const pidOf = (path: string) => Number(/^PID (\d+) · /u.exec(path)?.[1]);
 
 test("a conversation at ten watchers refuses a new one, and the agent's own dismiss frees a slot without a reload", { tags: ["AGENT-041"], platforms: ["web"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
-  const watchers = screen.getByLabel("Background watchers");
   const session = await hui.createSession({ title: "Watcher limit" });
   await hui.open(`/sessions/${session.id}`);
 
@@ -33,15 +33,15 @@ test("a conversation at ten watchers refuses a new one, and the agent's own dism
     start("Settled watcher", "printf 'settled\\n'"),
     ...Array.from({ length: 9 }, (_, index) => start(`Wait ${index + 1}`, "sleep 600")),
   ]));
-  await expect(watchers.getByText("10 watchers")).toBeVisible({ timeout: 90_000 });
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("9 running");
+  const watchers = await openWatchers(screen);
+  await expect(watchers.getByText("9 running", { exact: true })).toBeVisible({ timeout: 90_000 });
+  await watchers.getByText(/^Watcher details/u).tap();
 
   // The cap holds: a new start fails with what to do about it.
   await hui.prompt(session, watcher([start("One too many", "sleep 600")]));
   await expect(transcript.getByText(/This conversation already has 10 watchers\. Dismiss finished ones first\./u)).toBeVisible();
 
   // Dismissing a running watcher is refused, and a restart cannot rewrite a watcher's command.
-  await watchers.getByText("10 watchers").tap();
   await watchers.getByText("Wait 1").tap();
   const runningId = idOf(String(await watchers.getByText(/^PID \d+ · .+\.log$/u).textContent()));
   await watchers.getByText("Wait 1").tap();
@@ -56,25 +56,24 @@ test("a conversation at ten watchers refuses a new one, and the agent's own dism
   const settledId = idOf(String(await watchers.getByText(/^PID \d+ · .+\.log$/u).textContent()));
   await watchers.getByText("Settled watcher").tap();
   await hui.prompt(session, watcher([{ action: "dismiss", id: settledId }]));
-  await expect(watchers.getByText("10 watchers")).toBeHidden();
-  await expect(watchers.getByText("9 watchers")).toBeVisible();
   await expect(watchers.getByText("Settled watcher")).toBeHidden();
+  await expect(watchers.getByText("9 running", { exact: true })).toBeVisible();
 
   // The freed slot takes the new watcher, in the same list.
   await hui.prompt(session, watcher([start("One too many", "sleep 600")]));
-  await expect(watchers.getByText("10 watchers")).toBeVisible();
+  await expect(watchers.getByText("10 running", { exact: true })).toBeVisible();
   await expect(watchers.getByText("One too many")).toBeVisible();
 });
 
 test("a keep-running watcher survives its shell, starts again with a new PID when all its processes die, and Stop ends it", { tags: ["AGENT-042"], platforms: ["web"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
-  const watchers = screen.getByLabel("Background watchers");
-  const log = screen.getByLabel("Watcher log");
   const session = await hui.createSession({ title: "Keep-running watcher" });
   await hui.open(`/sessions/${session.id}`);
   const ticks = async () => (await hui.textOf(log)).split("tick").length - 1;
 
   await hui.prompt(session, watcher([start("Watch the deploy", "i=0; while true; do i=$((i+1)); printf 'tick %s\\n' \"$i\"; sleep 1; done", { keepRunning: true })]));
+  const watchers = await openWatchers(screen);
+  const log = screen.getByLabel("Watcher log");
   await expect(watchers.getByText("Watch the deploy")).toBeVisible({ timeout: 90_000 });
   await watchers.getByText("Watch the deploy").tap();
   await expect(watchers.getByText("Keeps running: HUI starts it again if it dies. Stop ends it.")).toBeVisible();

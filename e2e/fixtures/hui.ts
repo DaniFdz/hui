@@ -1286,13 +1286,26 @@ function huiTest(offline: boolean) {
         return { release: () => control("POST", "/control/release-replay") };
       },
       openSubagent: async ({ title }) => {
-        // The chat's Swarm card holds each child as `Open subagent <title>`, and a new batch folds it: open the card by its
-        // summary title when the row is not on screen yet. The same card is what a phone shows, so no target branches here.
-        const card = fixtures.screen.getByLabel("Parallel tasks");
-        const row = card.getByLabel(new RegExp(`^Open subagent ${escapeRegExp(title)}`, "u"));
-        if (!(await row.isVisible())) await card.getByText(title, { exact: true }).first().tap();
+        // Run status holds each child as `Open subagent <title>`. An all-success batch folds the section, and a batch
+        // over six folds its rows under Child details; open whichever disclosure hides the row. A phone shows the same
+        // popover, so no target branches here.
+        const trigger = fixtures.screen.getByTestId("run-status-trigger");
+        const popover = fixtures.screen.getByLabel("Run status");
+        if (!(await popover.isVisible())) {
+          await expect(trigger).toBeVisible();
+          await trigger.tap();
+        }
+        const helpers = popover.getByRole("region", { name: "Helpers" });
+        const row = helpers.getByLabel(new RegExp(`^Open subagent ${escapeRegExp(title)}`, "u"));
+        if (!(await row.isVisible())) {
+          const children = helpers.getByText(/^Child details/u);
+          if (await children.count()) await children.tap();
+        }
+        if (!(await row.isVisible())) {
+          const completed = helpers.getByText(/^\d+ completed$/u);
+          if (await completed.count()) await completed.tap();
+        }
         await expect(row).toBeVisible();
-        await steps.scrollTo(fixtures.screen.getByTestId("transcript"), row);
         await row.tap();
       },
       createSubagent: async (parent) => {

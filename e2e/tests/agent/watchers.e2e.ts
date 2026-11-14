@@ -92,6 +92,10 @@ test("an opened watcher shows its target, outcome, times, log, path and controls
   await watchers.getByText("Wait for the reboot").tap();
 
   await hui.prompt(session, start({ purpose: "Wait for a review", command: "sleep 600" }));
+  // The fifth watcher folds the rows; open the list before reading the new row.
+  const details = watchers.getByText(/^Watcher details/u);
+  await expect(details).toBeVisible({ timeout: 90_000 });
+  await details.tap();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for a review");
   await watchers.getByText("Wait for a review").tap();
   await expect(screen.getByLabel("Watcher log").getByText("No output yet.")).toBeVisible();
@@ -157,7 +161,7 @@ test("Dismiss removes a settled watcher and its log, folding the list back into 
   await watchers.getByRole("button", "Dismiss").tap();
 
   await expect(watchers.getByText("Post /merge when approved")).toBeHidden();
-  await expect(screen.getByText("1 watcher", { visible: true })).toBeVisible();
+  await expect(watchers.getByText(/^1 (running|watcher)$/u, { visible: true })).toBeVisible();
   await expect(watchers.getByText("Wait for #21532 review signals")).toBeVisible();
   await expect(watchers.getByText(/^Running · /u)).toBeVisible();
   await expect(watchers.getByLabel("Watcher log")).toBeHidden();
