@@ -4714,9 +4714,10 @@ merged back ahead of anything typed after it. This state never enters
 The OpenClaw-style layout is browser presentation state, not an HTTP resource or
 registry format. `hui.chat-split-layout.v1` in localStorage and browser history
 contain columns, pane IDs/session IDs, positive column/row weights and the active
-pane ID. `/sessions/:id` follows the active pane; query strings are dropped.
-Malformed records are ignored and deleted sessions are removed after registry
-loading.
+pane ID. `/sessions/:id` follows the active pane; a session's address focuses the
+pane that already shows it, and a session no pane shows replaces the active
+pane's; query strings are dropped. Malformed records are ignored and deleted
+sessions are removed after registry loading.
 
 ### Browser-owned Work pane
 

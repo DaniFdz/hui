@@ -13,7 +13,7 @@ import { requestFilesViewReveal } from "../lib/files/view-state.ts";
 import type { OpenFileDetail } from "../lib/files/file-link-store.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import {
-  activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, replacePaneSession, SESSION_LAYOUT_KEY,
+  activeSessionPane, addSessionTab, closeSessionPane, findSessionPane, focusSessionPane, isChatPane, moveSessionPane, replacePaneSession, SESSION_LAYOUT_KEY,
   SESSION_SPLIT_MEDIA, sessionPanes, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection,
 } from "../lib/session/multiplexer.ts";
 import { matchesShortcut } from "../lib/shortcut-binding.ts";
@@ -247,7 +247,7 @@ export class WorkLayoutController {
   showView(sessionId: string, ref: WorkViewRef, launched = false): void {
     const layout = this.layout;
     if (layout && activeSessionPane(layout).sessionId !== sessionId) {
-      const chat = sessionPanes(layout).find((pane) => isChatPane(pane) && pane.sessionId === sessionId);
+      const chat = findSessionPane(layout, sessionId);
       if (chat) this.commitLayout(focusSessionPane(layout, chat.id));
     }
     const key = workViewKey(ref);
