@@ -300,8 +300,12 @@ test("the filters narrow every lane together, the counts follow them, and a relo
   await expect(filters.getByRole("button", "Clear", { exact: true })).toBeVisible();
 
   // The pickers combine with the search: Alpha is in Investigation, so Testing has nothing left to show under it.
+  const stages = screen.getByRole("listbox", "Stage");
+  const groups = screen.getByRole("listbox", "Group");
+  const statuses = screen.getByRole("listbox", "Status");
+  const workers = screen.getByRole("listbox", "Worker");
   await filters.getByRole("button", "Stage: Every stage").tap();
-  await screen.getByTestId("picker-list").getByText("Testing (0)", { exact: true }).tap();
+  await stages.getByText("Testing (0)", { exact: true }).tap();
   await expect(count).toContainText("0 of 2 sessions");
   await expect(screen.getByTestId("dashboard-empty")).toContainText("No sessions match these filters.");
   await screen.getByTestId("dashboard-empty").getByRole("button", "Clear filters").tap();
@@ -310,7 +314,7 @@ test("the filters narrow every lane together, the counts follow them, and a relo
 
   // A group choice counts the sessions it would show and leaves the rest of the queue out.
   await filters.getByRole("button", "Group: All groups").tap();
-  await screen.getByTestId("picker-list").getByText("ATLAS (1)", { exact: true }).tap();
+  await groups.getByText("ATLAS (1)", { exact: true }).tap();
   await expect(count).toContainText("1 of 2 sessions");
   await expect(row(screen, "Alpha queue")).toBeVisible();
   await expect(lane(screen, "parked")).toHaveCount(0);
@@ -318,19 +322,18 @@ test("the filters narrow every lane together, the counts follow them, and a relo
   // Another picker's choices are counted under the filters that are on, so a pick draws the rows it names. Alpha is
   // the only session left under ATLAS and it runs, so Status reads Running (1) and Idle (0).
   await filters.getByRole("button", "Status: All statuses").tap();
-  const statuses = screen.getByTestId("picker-list", { visible: true });
   await expect(statuses.getByText("Running (1)", { exact: true })).toBeVisible();
   await expect(statuses.getByText("Idle (0)", { exact: true })).toBeVisible();
   // Tapping the picker's own trigger closes it without choosing, and the filter it was counted under stays on.
   await filters.getByRole("button", "Status: All statuses").tap();
-  await expect(screen.getByTestId("picker-list")).toBeHidden();
+  await expect(statuses).toBeHidden();
   await expect(count).toContainText("1 of 2 sessions");
   await filters.getByRole("button", "Clear", { exact: true }).tap();
   await expect(count).toContainText("2 of 2 sessions");
 
   // Status narrows to the sessions in flight, and every choice stays on the page it was made on.
   await filters.getByRole("button", "Status: All statuses").tap();
-  await screen.getByTestId("picker-list").getByText("Running (1)", { exact: true }).tap();
+  await statuses.getByText("Running (1)", { exact: true }).tap();
   await expect(count).toContainText("1 of 2 sessions");
   await expect(lane(screen, "parked")).toHaveCount(0);
   // Leaving the page and coming back keeps the filters, because only a reload clears them.
@@ -344,7 +347,7 @@ test("the filters narrow every lane together, the counts follow them, and a relo
   await expect(count).toContainText("2 of 2 sessions");
   await expect(filters.getByRole("button", "Status: All statuses")).toBeVisible();
   await filters.getByRole("button", "Worker: Every machine").tap();
-  await screen.getByTestId("picker-list").getByText("This gateway (2)", { exact: true }).tap();
+  await workers.getByText("This gateway (2)", { exact: true }).tap();
   await expect(count).toContainText("2 of 2 sessions");
   await hui.provider.release();
   await expect(lane(screen, "unread")).toContainText("Alpha queue");

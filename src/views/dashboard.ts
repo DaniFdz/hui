@@ -1,17 +1,17 @@
 /**
  * The Dashboard page (Labs → Dashboard): a queue of the decisions the sessions in flight wait on, with the activity
- * monitor beside it. The queue narrows by group, status, worker, stage and a text query, counts what it shows in a
- * stat strip, and lists one lane per reason — Answer, Fix, Unread, In flight, Parked — with the session to pick up
- * first at the top of each and three rows per lane until its Show all button opens it. Every row says when it changed
- * and keeps one link into its session: the title's, beside the option buttons or *Open to answer*. An Answer row
- * answers a select or confirm question in place and a Fix row resumes a session whose last run failed; both report
- * their own failure until the operator dismisses it. An In flight row that has no progress card reads its own status,
- * so a starting or reconnecting session does not claim to be running. A Fix row whose runtime is not connected keeps
- * its reason and only opens the session, because a dead runtime cannot continue. The activity monitor is one chart with
- * a line per selected machine over the last 5, 15 or 30 minutes, a switch for the metric it draws, chips that choose the
- * machines it and the cards show, and a card per host metric for each of them with its value and a bar. A metric that
- * reads above 85% is marked; one the host can't report says so. A value too long for its card wraps between its parts,
- * and the disk path keeps its end on one line.
+ * monitor beside it. The queue narrows by group, status, worker, stage and a text query, a choice's long name shortened
+ * there so the count beside it stays readable; it counts what it shows in a stat strip, and lists one lane per reason —
+ * Answer, Fix, Unread, In flight, Parked — with the session to pick up first at the top of each and three rows per lane
+ * until its Show all button opens it. Every row says when it changed and keeps one link into its session: the title's,
+ * beside the option buttons or *Open to answer*. An Answer row answers a select or confirm question in place and a Fix
+ * row resumes a session whose last run failed; both report their own failure until the operator dismisses it. An In
+ * flight row that has no progress card reads its own status, so a starting or reconnecting session does not claim to be
+ * running. A Fix row whose runtime is not connected keeps its reason and only opens the session, because a dead runtime
+ * cannot continue. The activity monitor is one chart with a line per selected machine over the last 5, 15 or 30 minutes,
+ * a switch for the metric it draws, chips that choose the machines it and the cards show, and a card per host metric for
+ * each of them with its value and a bar. A metric that reads above 85% is marked; one the host can't report says so.
+ * A value too long for its card wraps between its parts, and the disk path keeps its end on one line.
  */
 import { html, nothing, svg, type TemplateResult } from "lit";
 import { live } from "lit/directives/live.js";
@@ -41,6 +41,9 @@ const MAX_ANSWER_OPTIONS = 8;
 const ALL = "all";
 /** What every real choice's value starts with, so a group literally named "all" is still a choice. */
 const CHOICE = "filter:";
+/** The longest name a choice shows before it ends in an ellipsis: a choice draws its name and count on one line that
+ * clips from the end, so a longer name would take the count with it in a narrow filter row. */
+const CHOICE_NAME = 24;
 /** One colour per machine, in the order its chip appears. */
 const SERIES_COLORS = ["var(--session-color-blue)", "var(--session-color-green)", "var(--session-color-purple)", "var(--session-color-orange)", "var(--session-color-pink)", "var(--session-color-cyan)", "var(--session-color-yellow)", "var(--session-color-red)"];
 
@@ -393,12 +396,19 @@ function sessionRow(lane: SessionLane, session: SessionView, props: DashboardPro
   </li>`;
 }
 
+/** A choice's name as its picker shows it: at most CHOICE_NAME characters, ending in an ellipsis, so the count drawn
+ * after it always fits. Only the label shortens: the value keeps the whole name, so the choice still filters by it. */
+function choiceName(label: string): string {
+  return label.length > CHOICE_NAME ? `${label.slice(0, CHOICE_NAME - 1)}…` : label;
+}
+
 /** One picker's choices: every value with the count it would show, under the one that filters nothing. A real value
- * carries `CHOICE`, because the sentinel is a string a group, worker or stage can have too. */
+ * carries `CHOICE`, because the sentinel is a string a group, worker or stage can have too; the sentinel names no value,
+ * so its own label is never shortened. */
 function filterPicker(label: string, all: string, value: string, options: readonly FilterOption[], onChange: (value: string) => void) {
   return renderSettingsPicker(label, value === "" ? ALL : `${CHOICE}${value}`, [
     { value: ALL, label: all },
-    ...options.map((option) => ({ value: `${CHOICE}${option.value}`, label: `${option.label} (${option.count})` })),
+    ...options.map((option) => ({ value: `${CHOICE}${option.value}`, label: `${choiceName(option.label)} (${option.count})` })),
   ], (next) => onChange(next === ALL ? "" : next.slice(CHOICE.length)), { showOptionTooltips: false });
 }
 

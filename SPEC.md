@@ -4212,10 +4212,12 @@ waits, worked from the row that waits.
   AND-combined. A choice carries the count it would show — counted with the
   other filters applied and its own left out, so picking it matches that many
   — and always comes from every session in flight, so a value never vanishes
-  while another filter is set. The lanes' counts and the *n* of *n of m
-  sessions* follow what passes, *m* stays every session in flight with the
-  finished ones after it, nothing matching reads *No sessions match these
-  filters.*, and **Clear** appears while any filter is set. The filters
+  while another filter is set. A name too long for the filter row is shortened
+  in the choice, ending in an ellipsis, so the count it carries stays readable
+  while picking it still filters by the whole name. The lanes' counts and the
+  *n* of *n of m sessions* follow what passes, *m* stays every session in flight
+  with the finished ones after it, nothing matching reads *No sessions match
+  these filters.*, and **Clear** appears while any filter is set. The filters
   survive leaving the page and coming back, and a reload clears them.
 - **The session list carries two more fields for these rows**: `question` (the
   pending question's id, method, one-line title and, for a select, its options)

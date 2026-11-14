@@ -365,6 +365,25 @@ test("the filter bar offers every value with its count and narrows the lanes wit
   assert.deepEqual(rowIds(byGroup), ["ask", "run"], "the lanes stay in order, with each lane's own order inside");
 });
 
+test("a group name too long for its choice is shortened there so the count stays readable", () => {
+  const patches: Partial<SessionFilters>[] = [];
+  const group = "Atlas persistence and replication working group of reviewers";
+  assert.equal(group.length, 60, "the case is a name no 390px filter row draws whole");
+  const [picker] = pickers(view({ groups: listed(session("long", { group, status: "running" })), onFilters: (patch) => patches.push(patch) }));
+  assert.deepEqual(picker!.options.map(({ value, label }) => ({ value, label })), [
+    { value: "all", label: "All groups" },
+    { value: `filter:${group}`, label: "ATLAS PERSISTENCE AND R… (1)" },
+  ], "the choice shows the shortened name with its count, and the sentinel keeps its whole label");
+
+  const choice = picker!.options.find((option) => option.value !== "all")!;
+  const shown = choice.label.slice(0, choice.label.lastIndexOf(" ("));
+  assert.equal(shown.length, 24, "the name a choice shows is at most 24 characters long");
+  assert.ok(shown.endsWith("…"), "ending in an ellipsis in place of the rest");
+
+  picker!.onChange(choice.value);
+  assert.deepEqual(patches, [{ group }], "picking the shortened choice still filters by the whole name");
+});
+
 test("a group literally named all is a choice of its own, not the sentinel", () => {
   const patches: Partial<SessionFilters>[] = [];
   const groups: SessionGroup[] = [
