@@ -31,7 +31,7 @@ const AVD = process.env.HUI_ANDROID_AVD ?? "HUI_Pixel";
 const SERIAL = process.env.ANDROID_SERIAL ?? "emulator-5554";
 // The gateway port the emulator reaches through `adb reverse`; two workers on one machine take different ports.
 const PHONE_PORT = Number(process.env.E2E_PHONE_PORT ?? 47400);
-const IMAGE = "system-images;android-36;google_apis;x86_64";
+const IMAGE = "system-images;android-37.0;google_apis;x86_64";
 const PACKAGE = "dev.hui.app.debug";
 const ACTIVITY = "dev.hui.app.MainActivity";
 const NATIVE = join(root, "mobile/android");
@@ -142,6 +142,9 @@ const commands = {
     await startEmulator();
     commands.build();
     adb("install", "-r", APK);
+    // Android 17 asks for local-network access before the app can reach a LAN gateway; a debug loop grants it as the
+    // e2e fixture does. Android 16 and lower have no such permission.
+    try { adb("shell", "pm", "grant", PACKAGE, "android.permission.ACCESS_LOCAL_NETWORK"); } catch { /* older Android */ }
     // The emulator reaches a gateway on this machine at the same loopback address.
     const url = new URL(gateway);
     if (["127.0.0.1", "localhost"].includes(url.hostname)) adb("reverse", `tcp:${url.port || 80}`, `tcp:${url.port || 80}`);

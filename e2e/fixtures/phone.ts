@@ -288,6 +288,10 @@ async function prepare({ relaunch, gateway, signal }: { relaunch: boolean; gatew
     // outside. After this, a test's clearState() clears it in the page.
     if (APK !== undefined) adb("install", "-r", APK);
     adb("shell", "pm", "clear", PACKAGE);
+    // Android 17 blocks the local network until this runtime permission is granted; the suite launches straight onto a
+    // gateway and never crosses the Connect page. Android 16 and lower have no such permission, so the grant is best
+    // effort there.
+    try { adb("shell", "pm", "grant", PACKAGE, "android.permission.ACCESS_LOCAL_NETWORK"); } catch { /* older Android */ }
     first = false;
     relaunch = true;
   }
