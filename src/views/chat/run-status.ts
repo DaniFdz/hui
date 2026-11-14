@@ -118,6 +118,10 @@ function renderHelpers(props: RunStatusProps, model: RunStatusModel, id: string)
       : "Child runs finished. Check the conversation for the final response."
     : undefined;
   const rows = html`<div class="chat-run-status__helpers-list">${helpers.tasks.map((task) => helperRow(props, task))}</div>${outcome ? html`<p class="chat-run-status__outcome">${outcome}</p>` : nothing}`;
+  // A big batch folds its per-child rows behind one disclosure; the counts and dots stay visible above it.
+  const children = helpers.tasks.length > 6
+    ? html`<details class="chat-run-status__children"><summary>Child details<span class="chat-run-status__meta">${helpers.tasks.length}</span><span class="chat-run-status__chevron" aria-hidden="true">${icons.chevronDown}</span></summary>${rows}</details>`
+    : rows;
   // A wholly successful batch is history, so it starts folded.
   if (helpers.allSucceeded) {
     return html`<section class="chat-run-status__section" aria-labelledby=${`${id}-helpers-title`}>
@@ -139,7 +143,7 @@ function renderHelpers(props: RunStatusProps, model: RunStatusModel, id: string)
     </div>
     <div class="chat-run-status__markers" aria-hidden="true">${helpers.tasks.map(helperMark)}</div>
     <p class="chat-run-status__counts">${counts}</p>
-    ${rows}
+    ${children}
   </section>`;
 }
 

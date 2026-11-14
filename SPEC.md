@@ -2013,7 +2013,8 @@ joins its batch): "complete of total", one dot per child (running, queued, faile
 or stopped, done), the running/queued/failed-or-stopped counts, and once all have
 finished, a note that the parent is processing their results or that its final
 response is in the conversation. Each child's row names its status, latest summary or error and run time; activating one opens the real child transcript. A
-batch that all succeeded folds into a single "N completed" row. The batch stays in
+batch larger than six folds those rows behind **Child details** while its counts and dots stay visible; a batch that all
+succeeded folds into a single "N completed" row. The batch stays in
 the popover for an hour after it finished (OpenClaw's retention). Child sessions
 nest below their parent in the sidebar, except collected children, which have no
 sidebar row (as in OpenClaw): the Helpers section lists and opens them, and the

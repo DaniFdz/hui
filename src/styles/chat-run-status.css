@@ -123,7 +123,8 @@
 .chat-run-status__panel {
   display: flex;
   flex-direction: column;
-  max-height: min(72dvh, 640px);
+  /* Keep the popover above the composer on a short phone or in landscape. */
+  max-height: min(72dvh, 640px, calc(100dvh - 160px));
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -212,7 +213,11 @@
 }
 
 .chat-run-status__objective {
+  max-height: min(160px, 24dvh);
   margin: 5px 0 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   font-size: 12.5px;
   font-weight: 500;
   line-height: 1.45;
@@ -546,10 +551,6 @@
     --max-width: calc(100vw - 12px);
   }
 
-  .chat-run-status__panel {
-    max-height: min(78dvh, 640px);
-  }
-
   .chat-run-status__section {
     padding-inline: 11px;
   }
@@ -593,4 +594,39 @@
 
 .chat-run-status__watchers .chat-watcher__path {
   font-size: 10px;
+}
+
+/* A large batch keeps the counts and dots, and folds the per-child rows behind one disclosure. */
+.chat-run-status__children {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.chat-run-status__children > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 2px;
+  color: var(--muted);
+  font-size: 10.5px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.chat-run-status__children > summary::-webkit-details-marker {
+  display: none;
+}
+
+.chat-run-status__children > summary .chat-run-status__meta {
+  margin-inline-start: auto;
+}
+
+.chat-run-status__children[open] > summary .chat-run-status__chevron svg {
+  transform: rotate(180deg);
+}
+
+.chat-run-status__children .chat-run-status__helpers-list {
+  margin-top: 2px;
 }

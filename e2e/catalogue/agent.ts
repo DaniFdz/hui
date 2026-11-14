@@ -290,7 +290,7 @@ const cases: UseCase[] = [
   {
     id: "AGENT-031",
     title: "Follow parallel helpers in the Parallel tasks card",
-    behaviour: "When an agent spawns collected helpers and waits for them, the Run status popover in the chat header has a Helpers section reading complete of total, one dot per child, and N running · N queued · N failed or stopped; each child is listed with its status, latest summary or error and run time, and a timed-out one reads The subagent exceeded N seconds. Helpers get no sidebar rows and no completion card, and never draw above the composer. Once all finish it reads N completed · N failed or stopped and Child runs finished. Check the conversation for the final response. (The parent is processing their results. while it still runs).",
+    behaviour: "When an agent spawns collected helpers and waits for them, the Run status popover in the chat header has a Helpers section reading complete of total, one dot per child, and N running · N queued · N failed or stopped; each child is listed with its status, latest summary or error and run time (a batch larger than six folds those rows behind Child details while its counts and dots stay visible), and a timed-out one reads The subagent exceeded N seconds. Helpers get no sidebar rows and no completion card, and never draw above the composer. Once all finish it reads N completed · N failed or stopped and Child runs finished. Check the conversation for the final response. (The parent is processing their results. while it still runs).",
     spec: SUBAGENTS,
     surfaces: ["tool:sessions_spawn", "tool:agents_wait"],
     journeys: ["swarm", "subagents"],

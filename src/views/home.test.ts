@@ -722,6 +722,12 @@ test("the Run status popover counts the latest batch of helpers and folds a batc
   assert.match(finished, /1 completed · 1 failed or stopped/u);
   assert.match(finished, /Child runs finished\. The parent is processing their results\./u);
 
+  const many = await renderWorkerSession("idle", { subagents: Array.from({ length: 7 }, (_, index) => task(`m${index}`, "running")) });
+  assert.match(many, /class="chat-run-status__children"/u);
+  assert.match(many, /Child details/u);
+  assert.equal(many.match(/class="chat-run-status__helper /gu)?.length, 7, "the rows are there behind the disclosure");
+  assert.doesNotMatch(active, /chat-run-status__children/u, "a small batch shows its rows directly");
+
   const succeeded = await renderWorkerSession("idle", { subagents: [task("a", "completed", { endedAt }), task("b", "completed", { endedAt })] });
   assert.match(succeeded, /class="chat-run-status__success"/u);
   assert.match(succeeded, /<span class="chat-run-status__meta">2 completed<\/span>/u);
