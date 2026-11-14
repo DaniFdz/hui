@@ -2289,10 +2289,9 @@ function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => 
       <div class="context-usage__bar ${breakdown.length ? "context-usage__bar--breakdown" : ""}" role="progressbar" aria-label="Context window used" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${percent === null || percent === undefined ? nothing : String(Math.round(percent))}>${bar}</div>
       ${breakdown.length ? html`<ul class="context-usage__breakdown">${breakdown.map((row) => html`<li class="context-usage__part context-usage__part--${row.id}"><span class="context-usage__dot"></span><span class="context-usage__part-label">${row.label}</span>${row.detail ? html`<span class="context-usage__part-detail">${row.detail}</span>` : nothing}<span class="context-usage__part-tokens">${compactTokens(row.tokens)}</span><span class="context-usage__part-percent">${Math.round(row.percent)}%</span></li>`)}</ul>
         <p class="context-usage__note">Category breakdown is estimated</p>` : nothing}
-        <div class="context-usage__section-label">Latest run tokens</div>
-        ${usage
-          ? html`<dl class="context-usage__stats"><div><dt>Input</dt><dd>${compactTokens(usage.inputTokens)}</dd></div><div><dt>Output</dt><dd>${compactTokens(usage.outputTokens)}</dd></div><div><dt>Est. cost</dt><dd>${usage.costUsd === null ? "Unavailable" : `$${usage.costUsd.toFixed(2)}`}</dd></div></dl>`
-          : html`<p>The runtime has not reported usage for this session yet.</p>`}
+        ${!usage ? html`<p>The runtime has not reported usage for this session yet.</p>` : usage.sessionTotal || botCost ? nothing : html`
+          <div class="context-usage__section-label">Latest run tokens</div>
+          <dl class="context-usage__stats"><div><dt>Input</dt><dd>${compactTokens(usage.inputTokens)}</dd></div><div><dt>Output</dt><dd>${compactTokens(usage.outputTokens)}</dd></div><div><dt>Est. cost</dt><dd>${usage.costUsd === null ? "Unavailable" : `$${usage.costUsd.toFixed(2)}`}</dd></div></dl>`}
         ${botCost ? html`<div class="context-usage__section-label">Bot cost</div>
           <dl class="context-usage__stats"><div><dt>${botCost.remote ? "Kept on" : botCost.reading ? "Reading" : botCost.unavailable ? "Could not read" : botCost.subagents ? (botCost.subagents === 1 ? "Includes one subagent" : `Includes ${botCost.subagents} subagents`) : "Chat, subagents and memory"}</dt><dd>${botCost.remote ?? (botCost.reading ? "cost…" : botCost.unavailable ? "Unavailable" : botCost.usd === null || (botCost.usd === undefined && !botCost.memory) ? "Not reported" : `$${((botCost.usd ?? 0) + (botCost.memory ?? 0)).toFixed(2)}`)}</dd></div></dl>` : nothing}
         ${usage?.sessionTotal && !botCost ? html`<div class="context-usage__section-label">Session total</div>

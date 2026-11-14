@@ -34,7 +34,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - The composer's context ring opens Context usage: the window occupancy over a stacked bar of what the context carries,
   and the estimated split between the system prompt, the tool definitions (with how many tools), the conversation (with
   how many messages) and the summaries compaction left; a bot's chat whose memory rewrites its request shows its memory's
-  view of the chat in place of that conversation. The latest run's tokens, cost and Compact now stay below it. The split
+  view of the chat in place of that conversation. Compact now stays below it, beside the spend: a Durable session's
+  Session total, what every model call of that conversation cost, its compaction summaries and tool-side calls included,
+  with when it was read; a runtime that reports no total shows the latest run's tokens and cost there instead. The split
   fits the occupancy the runtime reports and is labelled as an estimate; a runtime that reports no split draws the plain
   bar. A bot's chat also carries the bot's cost there, as its panel totals it (its chat, its subagents and its memory
   summaries), or where it is kept when the bot runs on a worker. A Durable session's meter also carries Session total:

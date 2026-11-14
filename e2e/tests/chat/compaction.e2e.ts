@@ -59,7 +59,7 @@ test("The context ring opens Context usage with occupancy over the estimate of w
   await startSession(screen, hui, "Check context usage", ["A short turn"]);
 
   await ring.tap();
-  await expect(usage).toHaveText(/Context window\s*\S+ \/ \S+ · \d+%.*System prompt\s+\S+\s+\d+%.*Tool definitions\s+\d[\d,]* tools\s+\S+\s+\d+%.*Conversation\s+\d+ messages\s+\S+\s+\d+%.*Category breakdown is estimated.*Latest run tokens\s*Input\s*\S+\s*Output\s*\S+\s*Est\. cost\s*\$\d+\.\d\d\s*Session total\s*All model calls\s*\S+ tokens · \$\d+\.\d\d\s*Checked\s*.+?\s*Compact now/isu);
+  await expect(usage).toHaveText(/Context window\s*\S+ \/ \S+ · \d+%.*System prompt\s+\S+\s+\d+%.*Tool definitions\s+\d[\d,]* tools\s+\S+\s+\d+%.*Conversation\s+\d+ messages\s+\S+\s+\d+%.*Category breakdown is estimated.*Session total\s*All model calls\s*\S+ tokens · \$\d+\.\d\d\s*Checked\s*.+?\s*Compact now/isu);
   await expect(compactNow).toBeEnabled();
   await compactNow.tap();
   await expect(chat(screen).compacted).toBeVisible();

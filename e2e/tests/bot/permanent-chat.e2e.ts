@@ -27,7 +27,7 @@ test("a bot's chat lists and runs /clear and offers Rewind to here, while it nev
   await expect(transcript.getByLabel("Fork into a new session from here")).toHaveCount(0);
 
   await screen.getByLabel(/^Context window:/u).tap();
-  await expect(screen.getByText("Latest run tokens")).toBeVisible();
+  await expect(screen.getByText("Bot cost")).toBeVisible();
   await expect(screen.getByText("Compact now")).toHaveCount(0);
 
   await screen.getByLabel(/^Model: /u).tap();
