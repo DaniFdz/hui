@@ -127,6 +127,9 @@
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+  /* The inner scroll box carries the body's corner radius: its background and sticky header would otherwise paint
+     four square corners over the popover's rounded border. */
+  border-radius: 14px;
   background: var(--card);
   color: var(--text);
 }
