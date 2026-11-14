@@ -564,7 +564,7 @@ test("call routes take the x-hui guard like every other route, and say what call
   // says where to sign in.
   const unavailable = await call("/__hui/bots/mem/calls", "POST", { sdp: offer });
   assert.equal(unavailable.status, 409);
-  assert.equal(unavailable.body["error"], "Sign in to ChatGPT in Settings → Models (OpenAI Codex) to call bots with GPT-Live.");
+  assert.equal(unavailable.body["error"], "Sign in to ChatGPT in Settings → Models → OpenAI → ChatGPT account to call bots with GPT-Live.");
   assert.equal((await call("/__hui/bots/mem/calls/0f8fad5b-d9cb-469f-a165-70867728950e/heartbeat", "POST")).status, 404, "no such call");
 });
 

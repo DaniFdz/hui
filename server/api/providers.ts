@@ -32,6 +32,8 @@ export const ProviderLogin = Type.Object({
   phase: Type.Union([Type.Literal("pending"), Type.Literal("complete"), Type.Literal("failed"), Type.Literal("cancelled")]),
   accountId: Type.Optional(Type.String()), message: Type.Optional(Type.String()), url: Type.Optional(Type.String()), code: Type.Optional(Type.String()),
   flow: Type.Optional(ProviderLoginFlow), reason: Type.Optional(ProviderLoginFailure),
+  /** When a device code stops working, epoch ms, from the provider's own lifetime. */
+  expiresAt: Type.Optional(Type.Number()),
   prompt: Type.Optional(Type.Object({
     id: Type.String(), type: Type.Union([Type.Literal("text"), Type.Literal("secret"), Type.Literal("select"), Type.Literal("manual_code")]),
     message: Type.String(), options: Type.Optional(Type.Array(Type.Object({ id: Type.String(), label: Type.String() }))),

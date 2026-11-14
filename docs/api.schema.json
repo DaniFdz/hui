@@ -7433,6 +7433,9 @@
         "reason": {
           "$ref": "#/$defs/ProviderLoginFailure"
         },
+        "expiresAt": {
+          "type": "number"
+        },
         "prompt": {
           "type": "object",
           "required": [

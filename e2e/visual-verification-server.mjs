@@ -35,17 +35,25 @@ function fixtureLogin() {
   const base = { id: "hui-fixture-login", provider: providerState.provider, phase: providerState.phase };
   if (providerState.phase !== "pending") return { ...base, message: "Signed in." };
   if (!providerState.flow) {
-    return { ...base, message: "Enter the provider's API key.", prompt: { id: "hui-fixture-prompt", type: "text", message: "Enter API key" } };
+    return { ...base, prompt: { id: "hui-fixture-prompt", type: "text", message: "Enter API key" } };
   }
+  // The gateway repeats no browser instructions in `message`, and a device code says what to do with the code.
   return {
     ...base, flow: providerState.flow, url: "https://example.com/device", code: "HUI7-DEMO",
-    message: providerState.flow === "device_code" ? "Enter the code at example.com/device, then return here." : "Waiting for the browser sign-in.",
+    ...(providerState.flow === "device_code" ? { message: "Enter the code in the sign-in page.", expiresAt: Date.now() + 900_000 } : {}),
     prompt: { id: "hui-fixture-prompt", type: "manual_code", message: "Paste the callback address" },
   };
 }
 
+/**
+ * The scripted sign-in completes after about forty polls (~48 s at the wizard's 1.2 s poll), which is long enough for a
+ * person to reach and capture the browser step and the device-code screen; once complete it stays complete, whatever
+ * later polls arrive. Twelve polls (~14 s) were too tight to screenshot it.
+ */
+const FIXTURE_POLLS_BEFORE_COMPLETE = 40;
+
 function fixtureSnapshot() {
-  if (providerState.phase === "pending" && ++providerState.polls >= 12) providerState.phase = "complete";
+  if (providerState.phase === "pending" && ++providerState.polls >= FIXTURE_POLLS_BEFORE_COMPLETE) providerState.phase = "complete";
   const connected = providerState.phase === "complete";
   const provider = (id, name, methods, models) => ({
     id, name, methods, accounts: [],

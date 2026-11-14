@@ -19,6 +19,9 @@ const snapshot = (providers: ProviderSnapshot["providers"], login: ProviderLogin
   ...(login ? { login } : {}),
 });
 
+/** What the gateway leaves after a completed sign-in: no flow, URL or code, and its own message. */
+const completed = (login: ProviderLogin): ProviderLogin => ({ id: login.id, provider: login.provider, accountId: "default", phase: "complete", message: "Signed in. Select models and save to use this connection." });
+
 /**
  * `hui.answerAll` stops by pattern source, so a standing answer spells the snapshot route with one more empty group
  * than the last one; every spelling matches the same URL and stopping one leaves the next standing.
@@ -35,7 +38,7 @@ test("a ChatGPT sign-in shows its browser step, restarts with a device code and 
     url: "https://example.com/sign-in", message: "Waiting for the browser sign-in.",
     prompt: { id: "hui-fixture-prompt", type: "manual_code", message: "Paste the callback address" },
   };
-  const codeLogin: ProviderLogin = { ...browserLogin, flow: "device_code", url: "https://example.com/device", code: "HUI7-DEMO", message: "Enter the code in your browser." };
+  const codeLogin: ProviderLogin = { ...browserLogin, flow: "device_code", url: "https://example.com/device", code: "HUI7-DEMO", message: "Enter the code in the sign-in page.", expiresAt: Date.now() + 900_000 };
   try {
     await hui.open("/settings/models");
     await expect(screen.getByRole("button", "Connect a provider")).toBeVisible();
@@ -76,7 +79,7 @@ test("a ChatGPT sign-in shows its browser step, restarts with a device code and 
     await expect(screen.getByText(/^Expires in \d+ minutes$/u)).toBeVisible();
     await expect(screen.getByText("Continue only if you started this sign-in yourself. If a website or another person gave you this code, cancel.", { exact: true })).toBeVisible();
 
-    await hui.answerAll("GET", snapshotRoute(), snapshot(real.providers, { ...codeLogin, phase: "complete" }, "signed-in"));
+    await hui.answerAll("GET", snapshotRoute(), snapshot(real.providers, completed(codeLogin), "signed-in"));
     await codes.stop();
     await expect(screen.getByText("Account connected. Choose a model when you want to test a reply.", { exact: true })).toBeVisible();
     await expect(screen.getByText("Choose a model", { exact: true })).toBeVisible();
@@ -91,13 +94,17 @@ test("a ChatGPT sign-in shows its browser step, restarts with a device code and 
     expect(JSON.parse(save.request().body)).toEqual({ models: ["gpt-5.1-codex-mini"] });
     await save.answer(JSON.stringify({ ok: true }));
     await check.arrived();
-    expect(JSON.parse(check.request().body)).toEqual({ model: "gpt-5.1-codex-mini" });
+    // Saving the model cleared the completed login on the gateway, so the account has to come from the wizard.
+    expect(JSON.parse(check.request().body)).toEqual({ model: "gpt-5.1-codex-mini", accountId: "default" });
     await check.answer(JSON.stringify({ ok: true, latencyMs: 412 }));
     await expect(screen.getByText("Connection verified", { exact: true })).toBeVisible();
     await expect(screen.getByText("Verified in", { exact: true })).toBeVisible();
     await expect(screen.getByText("412 ms", { exact: true })).toBeVisible();
     await expect(screen.getByRole("button", "Start chatting")).toBeEnabled();
     await expect(screen.getByText("New sessions now use GPT-5.1 Codex Mini as their primary model.", { exact: true })).toBeVisible();
+    // What the verified model filled is stored, not only drawn: the settings the gateway holds name it.
+    await expect.poll(async () => (await hui.api<{ models: Record<string, unknown> }>("GET", "/__hui/settings")).models)
+      .toMatchObject({ primary: "openai-codex/gpt-5.1-codex-mini", utility: "openai-codex/gpt-5.1-codex-mini" });
   } finally {
     await hui.api("PUT", "/__hui/settings", { ...settings, models: settings.models });
   }
@@ -120,7 +127,7 @@ test("leaving the model step after a completed sign-in saves exactly one model a
   await start.answer(JSON.stringify(login));
   await expect(screen.getByText("Complete sign-in in your browser, then return here.", { exact: true })).toBeVisible();
 
-  const connected = await hui.answerAll("GET", snapshotRoute(), snapshot(real.providers, { ...login, phase: "complete" }, "connected"));
+  const connected = await hui.answerAll("GET", snapshotRoute(), snapshot(real.providers, completed(login), "connected"));
   await pending.stop();
   await expect(screen.getByText("Account connected. Choose a model when you want to test a reply.", { exact: true })).toBeVisible();
 

@@ -1,10 +1,11 @@
 /**
  * The provider setup wizard's rules and copy: the featured brands and the hints their methods produce, the sign-in
  * method labels and hints, which flow HUI picks and how the other one is offered, the paste-field copy, the sentences
- * for a stopped sign-in or a failed model check, and the model step's single-choice rules. PI owns the providers and
- * credentials; this module only names and describes them.
+ * for a stopped sign-in or a failed model check, a device code's remaining life, and what the model step saves. PI
+ * owns the providers and credentials; this module only names, describes and adds up what the wizard shows.
  */
 import type {
+  ProviderLogin,
   ProviderLoginFailure,
   ProviderLoginFlow,
   ProviderModel,
@@ -162,9 +163,11 @@ export function signInHost(url: string | undefined): string {
   }
 }
 
-/** How long a device code still has, rounded up. PI's codes last fifteen minutes and the payload carries no expiry. */
-export function expiresInMinutes(startedAt: number, now = Date.now(), lifeMinutes = 15): number {
-  return Math.max(0, Math.ceil((startedAt + lifeMinutes * 60_000 - now) / 60_000));
+/** How long a device code still has, rounded up, from the expiry the gateway took from PI. A payload without one (an
+ * older gateway, or a flow that reported none) falls back to PI's fifteen minutes counted from the sign-in's start. */
+export function expiresInMinutes(login: Pick<ProviderLogin, "expiresAt">, startedAt: number, now = Date.now()): number {
+  const deadline = login.expiresAt ?? startedAt + 15 * 60_000;
+  return Math.max(0, Math.ceil((deadline - now) / 60_000));
 }
 
 export type FailureCopy = { title: string; sentence: string };
@@ -198,14 +201,24 @@ export function testFailure(reason: ProviderTestFailure | undefined): TestFailur
 
 export type ModelStep = { options: readonly ProviderModel[]; selected: string; saved: string[] };
 
-/** Step 4: the catalog to list and the model it preselects. A saved choice wins, then the first model, so leaving the
- * step after a completed sign-in always saves exactly one model; only a provider with no model saves nothing. */
+/** What leaving the model step writes. A new connection saves exactly the model it holds; a provider that already had
+ * models keeps every one of them and gains this one, so a reconnect never narrows the selection. A provider with no
+ * model writes nothing, never an empty selection. */
+export function modelsToSave(saved: readonly string[], selected: string): string[] {
+  if (!selected) return [];
+  return [...new Set([...saved, selected])];
+}
+
+/** Step 4: the catalog to list, the model it preselects and what leaving it saves. A saved or chosen model wins, then
+ * the first model; a saved model the catalog no longer lists cannot be written back, because the gateway accepts
+ * catalog IDs only. */
 export function modelsForStep(models: readonly ProviderModel[], saved: readonly string[], chosen?: string): ModelStep {
   const selected = (chosen && models.some((model) => model.id === chosen) ? chosen : "")
     || saved.find((id) => models.some((model) => model.id === id))
     || models[0]?.id
     || "";
-  return { options: models, selected, saved: selected ? [selected] : [] };
+  const kept = saved.filter((id) => models.some((model) => model.id === id));
+  return { options: models, selected, saved: modelsToSave(kept, selected) };
 }
 
 /** The model rows a search leaves, matching every term against the display name or the model ID. */

@@ -55,6 +55,9 @@ export class HuiProviderSettings extends LitElement {
   #flow: ProviderLoginFlow | "" = "";
   #attempt = "";
   #completed = "";
+  /** The gateway stopped holding the sign-in this dialog started (it restarted, or the start's own read failed), so
+   * the step says so instead of spinning on "Starting…" forever. */
+  #ended = false;
   #accountId?: string;
   #accountName = "";
   #providerQuery = "";
@@ -135,6 +138,11 @@ export class HuiProviderSettings extends LitElement {
       else if (login && login.id === this.#attempt) {
         if (login.phase === "pending") this.#step = "signin";
         if (login.phase === "complete" && this.#step === "signin") this.#enterModels(login);
+      } else if (this.#attempt && this.#step === "signin" && !this.#busy) {
+        // The snapshot no longer carries this sign-in: the gateway restarted or dropped it. Polling stops here, so the
+        // step must not keep promising a start that already happened.
+        this.#attempt = "";
+        this.#ended = true;
       }
       for (const provider of next.providers) {
         if (provider.configured && provider.authenticated) {
@@ -153,6 +161,7 @@ export class HuiProviderSettings extends LitElement {
     // A resumed login no longer says which method started it; only an OAuth flow is recorded.
     this.#method = login.flow ? "oauth" : "api_key";
     this.#startedAt = Date.now();
+    this.#ended = false;
     this.#step = "signin";
     this.requestUpdate();
     await this.updateComplete;
@@ -164,6 +173,9 @@ export class HuiProviderSettings extends LitElement {
     const provider = this.#providers().find((entry) => entry.id === login.provider);
     if (!provider?.authenticated) return;
     this.#completed = login.id;
+    // Remember the account this sign-in created: saving the model clears the gateway's login, so every later check of
+    // this sign-in reads it from here instead of falling back to the provider's first account.
+    if (login.accountId) this.#accountId = login.accountId;
     this.#chosen = modelsForStep(provider.models, provider.selected, this.#chosen).selected;
     this.#check = undefined;
     this.#report = undefined;
@@ -191,7 +203,7 @@ export class HuiProviderSettings extends LitElement {
     this.#brand = brand; this.#providerId = providerId; this.#accountId = accountId;
     this.#accountName = providerId === "opencode-go" && accountId ? this.#accountLabelById(providerId, accountId) : "";
     this.#providerQuery = ""; this.#modelQuery = ""; this.#chosen = ""; this.#check = undefined; this.#report = undefined;
-    this.#attempt = ""; this.#completed = ""; this.#flow = ""; this.#method = "oauth"; this.#manualOpen = false;
+    this.#attempt = ""; this.#completed = ""; this.#flow = ""; this.#method = "oauth"; this.#manualOpen = false; this.#ended = false;
     this.#confirm = ""; this.#confirmClose = false; this.#error = ""; this.#notice = ""; this.#copied = "";
     this.requestUpdate(); await this.updateComplete; this.#showDialog();
   }
@@ -202,8 +214,17 @@ export class HuiProviderSettings extends LitElement {
     this.#dialog()?.close();
     this.#step = "provider"; this.#brand = ""; this.#providerId = ""; this.#accountId = undefined; this.#accountName = "";
     this.#providerQuery = ""; this.#modelQuery = ""; this.#chosen = ""; this.#check = undefined; this.#report = undefined;
-    this.#attempt = ""; this.#completed = ""; this.#flow = ""; this.#confirmClose = false; this.#manualOpen = false;
+    this.#attempt = ""; this.#completed = ""; this.#flow = ""; this.#confirmClose = false; this.#manualOpen = false; this.#ended = false;
     this.#error = ""; this.#copied = ""; this.requestUpdate();
+    void this.updateComplete.then(() => this.#focusOpener());
+  }
+  /** Returns focus to the control that opened the wizard. The empty state's own button disappears once the first
+   * provider is added, so the page's header button takes its place instead of focus falling to the page. */
+  #focusOpener() {
+    if (!this.isConnected || this.#dialog()?.open) return;
+    const opener = this.querySelector<HTMLElement>(".hui-provider-empty .btn")
+      ?? this.querySelector<HTMLElement>(".settings-section__header .btn");
+    opener?.focus();
   }
   async #close() {
     if (this.#busy) return;
@@ -223,27 +244,35 @@ export class HuiProviderSettings extends LitElement {
     if (this.#confirmClose) { this.#confirmClose = false; this.requestUpdate(); return; }
     void this.#close();
   }
-  /** Writes the model a completed sign-in chose, and reveals the card it configures. A provider with an empty
-   * catalog writes nothing: an empty selection is never saved. */
+  /** Writes the model selection a completed sign-in chose and reveals the card it configures. A provider that already
+   * had models keeps them all and gains this one; a new connection saves exactly one. A completed sign-in is always
+   * written, even when its selection is already saved, because that write is what clears it on the gateway. */
   async #persistModels(step: ReturnType<typeof modelsForStep>): Promise<boolean> {
     const provider = this.#provider();
     if (!provider || !step.saved.length) return true;
     const same = provider.selected.length === step.saved.length && step.saved.every((id) => provider.selected.includes(id));
-    if (same) return true;
+    if (same && !this.#completed) return true;
     try {
       await providerRequest(provider.id, "PUT", { models: step.saved });
-      this.#notice = `${connectionName(provider)} added. You can change its models any time.`;
-      this.#snapshot = await loadProviders();
-      this.querySelector("details.hui-provider-configuration")?.setAttribute("open", "");
-      this.#changed();
-      return true;
     } catch (error) {
       this.#error = error instanceof Error ? error.message : "The model selection could not be saved. Try again.";
       return false;
     }
+    this.#completed = "";
+    this.#notice = `${connectionName(provider)} added. You can change its models any time.`;
+    const refreshed = await loadProviders().then((next) => next, () => undefined);
+    this.#changed();
+    // The selection is saved. A refresh that fails is reported on its own, so it is never mistaken for the write.
+    if (!refreshed) {
+      this.#error = "The model selection is saved, but the provider list could not be refreshed.";
+      return false;
+    }
+    this.#snapshot = refreshed;
+    this.querySelector("details.hui-provider-configuration")?.setAttribute("open", "");
+    return true;
   }
   /** Saves the model after a completed sign-in before the dialog leaves it. A failed write keeps the dialog open so
-   * it can be retried, and a completed sign-in always leaves exactly one model saved. */
+   * it can be retried, and a completed sign-in always saves at least the one model it holds. */
   async #saveCompleted(): Promise<boolean> {
     if (!this.#completed) return true;
     const provider = this.#provider();
@@ -258,9 +287,9 @@ export class HuiProviderSettings extends LitElement {
     clearTimeout(this.#poll);
     const flow = method === "oauth" ? flowOverride ?? defaultFlow(providerId, this.#origin()) : undefined;
     this.#providerId = providerId; this.#method = method; this.#flow = flow ?? "";
-    this.#chosen = ""; this.#check = undefined; this.#report = undefined; this.#confirmClose = false; this.#manualOpen = false;
+    this.#chosen = ""; this.#check = undefined; this.#report = undefined; this.#confirmClose = false; this.#manualOpen = false; this.#ended = false;
     this.#step = "signin"; this.#startedAt = Date.now(); this.#error = ""; this.#busy = true; this.#copied = ""; this.requestUpdate();
-    const name = providerId === "opencode-go" ? this.#accountName.trim() : "";
+    const name = this.#accountName.trim();
     try {
       const login = await startProviderLogin(providerId, { method, ...(flow ? { flow } : {}), ...(name ? { name } : {}), ...(this.#accountId ? { accountId: this.#accountId } : {}) });
       this.#attempt = login.id;
@@ -308,9 +337,9 @@ export class HuiProviderSettings extends LitElement {
     if (!provider) return;
     const step = modelsForStep(provider.models, provider.selected, this.#chosen);
     if (!step.selected) return;
-    // Read the account before saving: saving clears the completed login on the gateway.
-    const login = this.#currentLogin();
-    const accountId = login?.provider === provider.id ? login.accountId : this.#accountId;
+    // The account this sign-in created, recorded when the model step opened: saving the model clears the gateway's
+    // login, so there is nothing left to read here.
+    const accountId = this.#accountId;
     this.#chosen = step.selected;
     this.#step = "checking"; this.#busy = true; this.#error = ""; this.#check = undefined; this.#report = undefined; this.requestUpdate();
     try {
@@ -408,12 +437,13 @@ export class HuiProviderSettings extends LitElement {
   #accountStep() {
     const nameRequired = this.#providerId === "opencode-go";
     return html`
-      ${nameRequired ? html`<div class="hui-provider-field">
-        <label for="hui-provider-account-name">Account name</label>
-        <input id="hui-provider-account-name" maxlength="80" required aria-describedby="hui-provider-account-name-help" .value=${this.#accountName} placeholder="Personal, Work…"
+      <div class="hui-provider-field">
+        <label for="hui-provider-account-name">${nameRequired ? "Account name" : "Label when email is unavailable (optional)"}</label>
+        <input id="hui-provider-account-name" maxlength="80" ?required=${nameRequired}
+          aria-describedby=${nameRequired ? "hui-provider-account-name-help" : nothing} .value=${this.#accountName} placeholder="Personal, Work…"
           @input=${(event: Event) => { this.#accountName = (event.target as HTMLInputElement).value; }} />
-        <small id="hui-provider-account-name-help" class="hui-provider-field-help">A name is required because OpenCode does not report the account name or email.</small>
-      </div>` : nothing}
+        ${nameRequired ? html`<small id="hui-provider-account-name-help" class="hui-provider-field-help">A name is required because OpenCode does not report the account name or email.</small>` : nothing}
+      </div>
       <div class="hui-provider-choices">${connectionMethods(this.#brand || this.#providerId, this.#providers()).map((choice) => html`<button class="hui-provider-choice" ?disabled=${this.#busy} @click=${() => {
         if (choice.provider.id === "opencode-go" && !this.#accountName.trim()) {
           this.#error = "Enter a name for this OpenCode account.";
@@ -489,7 +519,7 @@ export class HuiProviderSettings extends LitElement {
         ${login.url ? html`<button class="btn" @click=${() => this.#openSignIn(login.url)}>Open sign-in</button>` : nothing}
       </div>
       ${this.#copied === "code" ? html`<p role="status" class="hui-provider-notice">Code copied.</p>` : nothing}
-      ${login.code ? html`<p class="hui-provider-meta">Expires in ${expiresInMinutes(this.#startedAt)} minutes</p>` : nothing}
+      ${login.code ? html`<p class="hui-provider-meta">Expires in ${expiresInMinutes(login, this.#startedAt)} minutes</p>` : nothing}
       <p class="hui-provider-warning" role="note">Continue only if you started this sign-in yourself. If a website or another person gave you this code, cancel.</p>`;
   }
   #copyCodeLogin(login: ProviderLogin) {
@@ -530,9 +560,18 @@ export class HuiProviderSettings extends LitElement {
         <button class="btn" ?disabled=${this.#busy} @click=${() => void this.#chooseMethod()}>Choose another method</button>
       </div>`;
   }
+  #signInEnded() {
+    return html`<p role="alert">This sign-in session ended. Start it again to continue.</p>
+      <div class="hui-provider-actions">
+        <button class="btn primary" ?disabled=${this.#busy} @click=${() => void this.#restart()}>Try again</button>
+        <button class="btn" ?disabled=${this.#busy} @click=${() => void this.#chooseMethod()}>Choose another method</button>
+      </div>`;
+  }
   #signInStep() {
     const login = this.#currentLogin();
     if (!login) {
+      // Nothing to show progress for: either the start is still in flight, or the gateway no longer holds it.
+      if (this.#ended || (this.#attempt && !this.#busy)) return this.#signInEnded();
       return html`<p role="status" class="hui-provider-status"><span class="hui-provider-spinner" aria-hidden="true"></span>Starting provider sign-in…</p>
         <div class="hui-provider-actions"><button class="btn" ?disabled=${this.#busy} @click=${() => void this.#chooseMethod()}>Back</button></div>`;
     }
@@ -580,7 +619,7 @@ export class HuiProviderSettings extends LitElement {
     const latency = this.#check?.ok ? this.#check.latencyMs : 0;
     const note = this.#roleNote(label);
     return html`
-      <p>HUI received a real reply from ${label}. You can start chatting now.</p>
+      <p>HUI received a real reply from ${label}.${this.onStartChat ? " You can start chatting now." : ""}</p>
       <dl class="hui-provider-verified"><div><dt>Verified in</dt><dd>${Math.round(latency).toLocaleString()} ms</dd></div></dl>
       ${note ? html`<p class="hui-provider-notice">${note}</p>` : nothing}
       <div class="hui-provider-actions">
@@ -602,7 +641,7 @@ export class HuiProviderSettings extends LitElement {
   #body() {
     if (this.#confirmClose) {
       return html`<div class="hui-provider-confirm">
-        <p>Sign-in is still waiting. Close and cancel it?</p>
+        <p role="alert">Sign-in is still waiting. Close and cancel it?</p>
         <div class="hui-provider-actions">
           <button class="btn primary" ?disabled=${this.#busy} @click=${() => { this.#confirmClose = false; this.requestUpdate(); }}>Keep waiting</button>
           <button class="btn" ?disabled=${this.#busy} @click=${() => void this.#cancelAndClose()}>Cancel sign-in</button>
@@ -622,10 +661,12 @@ export class HuiProviderSettings extends LitElement {
   #modal() {
     const icon = this.#step === "provider" ? nothing : renderProviderBrandIcon(this.#providerId || (this.#brandInfo()?.providers[0] ?? this.#brand), "hui-provider-icon");
     const subtitle = this.#subtitle();
+    // Escape itself is handled once, by the dialog's cancel event. The keydown guard only keeps Escape from reaching
+    // Settings' own handler, which would otherwise leave Settings behind the dialog.
     return html`<dialog class="hui-provider-dialog" aria-labelledby="hui-provider-dialog-title"
       @click=${(event: MouseEvent) => { if (event.target === event.currentTarget) void this.#close(); }}
       @cancel=${(event: Event) => this.#escape(event)}
-      @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") this.#escape(event); }}>
+      @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") event.stopPropagation(); }}>
       <div class="hui-provider-heading"><div class="hui-provider-dialog-title">${icon}<h3 id="hui-provider-dialog-title">${this.#title()}</h3></div><button class="btn" aria-label="Close provider dialog" ?disabled=${this.#busy} @click=${() => void this.#close()}>✕</button></div>
       ${subtitle ? html`<p class="settings-section__desc">${subtitle}</p>` : nothing}
       ${this.#error ? html`<p role="alert" class="hui-provider-error">${this.#error}</p>` : nothing}

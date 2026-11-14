@@ -788,19 +788,28 @@ Calls and no usage limits; **Claude Pro / Max** signs in with the Claude
 subscription. The sign-in step shows the flow the gateway is running: a browser
 page with **Open sign-in**, **Copy link** and **Use manual entry** for the
 callback address that did not load, or a code with **Copy code**, its remaining
-minutes and the warning to continue only when the sign-in was started here. A
-browser sign-in is the default on the machine that runs HUI; elsewhere the
-provider's code flow starts instead, and **Use a code instead** restarts a
-browser sign-in with it. When the provider confirms, the wizard says **Account
-connected**, preselects one model and offers **Check model**, which asks that
+minutes (from the provider's own expiry) and the warning to continue only when
+the sign-in was started here. Which flow starts is decided by the page's own
+address, not by which machine runs HUI: a page served from `localhost`,
+`127.0.0.1` or `[::1]` gets the browser sign-in, because only then can the
+provider hand control back to it, and any other address — a phone, another
+machine, or this Mac reached by its network name — starts the provider's code
+flow; **Use a code instead** restarts a browser sign-in with it. A sign-in the
+gateway no longer holds — it restarted, or the read after starting it failed —
+says **This sign-in session ended** and offers **Try again** or **Choose another
+method** instead of claiming to start. When the provider confirms, the wizard
+says **Account connected**, preselects one model and offers **Check model**,
+which asks that
 account for a real one-word reply through its own runtime and ends on
 **Connection verified** with the measured latency or on the failed check with
 the next thing to try. A verified model fills the empty primary and utility
 roles and never replaces a saved choice; **Start chatting** opens New Session.
 Leaving the model step — closing, checking or choosing another method — saves
-exactly the model it holds and never an empty selection, so a completed sign-in
-always leaves one model saved unless the provider's catalog is empty. A failed
-model save keeps the dialog on that step with its error. Added cards load quota
+the model it holds and never an empty selection: a new connection saves exactly
+that one, while a provider that already had models keeps every one of them and
+may add the tested one, unless its catalog is empty. A failed model save keeps
+the dialog on that step with its error, and a refresh that fails after the write
+is reported on its own, never as a failed save. Added cards load quota
 independently and expose multiple models in a collapsed searchable dropdown.
 Disconnected cards show only sign-in, not quota or model controls. The model
 dropdown shows per-model context/output limits,
@@ -816,7 +825,9 @@ label when unavailable. Emails are display-only: accounts with the same email
 remain separate. OpenCode Go API-key connections show their reported 5-hour,
 weekly and monthly limits. Their connection dialog requires a name and explains
 below the input that OpenCode does not report an account name or email. Reconnect
-prefills the existing label. Mistral API-key connections show their reported API
+prefills the existing label. Every provider's sign-in offers an optional label
+for the account, used when no email is reported; OpenCode Go requires one.
+Mistral API-key connections show their reported API
 and Vibe Code monthly allowances, the included amount and a pay-as-you-go note,
 with the plan (EDU) shown as Student. Subscription/usage status and all reported
 hourly, weekly, monthly and model/feature-specific limits stay visible per

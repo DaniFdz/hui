@@ -4,7 +4,7 @@ export type ProviderAnswerRequest = { "promptId": string; "value": string; };
 
 export type ProviderError = { "error": string; };
 
-export type ProviderLogin = { "id": string; "provider": string; "phase": ("pending") | ("complete") | ("failed") | ("cancelled"); "accountId"?: string; "message"?: string; "url"?: string; "code"?: string; "flow"?: ProviderLoginFlow; "reason"?: ProviderLoginFailure; "prompt"?: { "id": string; "type": ("text") | ("secret") | ("select") | ("manual_code"); "message": string; "options"?: Array<{ "id": string; "label": string; }>; }; };
+export type ProviderLogin = { "id": string; "provider": string; "phase": ("pending") | ("complete") | ("failed") | ("cancelled"); "accountId"?: string; "message"?: string; "url"?: string; "code"?: string; "flow"?: ProviderLoginFlow; "reason"?: ProviderLoginFailure; "expiresAt"?: number; "prompt"?: { "id": string; "type": ("text") | ("secret") | ("select") | ("manual_code"); "message": string; "options"?: Array<{ "id": string; "label": string; }>; }; };
 
 export type ProviderLoginFailure = ("cancelled") | ("expired") | ("stale_link") | ("port_in_use") | ("network") | ("unknown");
 

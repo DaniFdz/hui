@@ -554,7 +554,8 @@ drafts and changes no settings. Unauthenticated cards expose sign-in only;
 authenticated cards load quotas independently and keep model lists collapsed.
 All routes retain the `x-hui` guard and `no-store` responses. Metadata never
 includes saved credentials; a login response may contain a short-lived device
-code, sign-in URL and input prompt for this local user's active login.
+code, its `expiresAt` (epoch ms, taken from PI's own `expiresInSeconds`), a
+sign-in URL and an input prompt for this local user's active login.
 
 ### `GET /__hui/providers`
 
@@ -564,9 +565,11 @@ Built-in names, supported login methods, configured/auth-available flags, select
 
 `{ method: "api_key" or "oauth", name?: string, accountId?: string, flow?: "browser" | "device_code" | "copy_code" }`;
 a new account by default, or reconnect exactly `accountId`; starts PI's provider-owned login; returns opaque
-login ID, pending state and the requested `flow`. A requested flow answers the first select prompt whose options
-offer it, so a provider's own choice of browser or device code is made for it and never reaches the browser; a
-prompt the flow does not offer, or any later prompt, is surfaced as before. An unknown flow is a `400`. The
+login ID, pending state, the requested `flow` and, for a device code, the code and the `expiresAt` the provider gave
+it. A requested flow answers the sign-in's first prompt when that
+prompt is a select offering the flow, so a provider's own choice of browser or device code is made for it and never
+reaches the browser; a first prompt that is not a select, one that does not offer the flow, and any later prompt are
+surfaced as before. An unknown flow is a `400`. The
 Settings → Models wizard asks for `browser` when the page is served from a loopback address, so the provider can
 hand control back to this machine, and for the provider's code flow otherwise; **Use a code instead** restarts a
 waiting sign-in with the other flow.
@@ -606,7 +609,9 @@ Account-specific quota with the same response shape below.
 ### `POST /__hui/providers/:provider/test`
 
 `{ model: string, accountId?: string }`; `model` must be in that provider's catalog and `accountId`, when given,
-one of its accounts; the first connected account is tested otherwise. It sends one small request asking for the
+one of its accounts. Without one it tests the first connected account that is not waiting out a cooldown, so a
+rate-limited account does not decide every check, and the first connected one when they all are; an explicitly named
+account is tested whatever its cooldown. It sends one small request asking for the
 single word `OK` through that account's own runtime — never a session or the CLI fallback — with a 45-second cap,
 and returns `{ ok: true, latencyMs }` or `{ ok: false, reason, message }`. `reason` is `auth`, `rate_limit`,
 `billing`, `timeout`, `format` (no readable text), `unavailable` or `unknown`, decided from the HTTP status and
@@ -617,11 +622,14 @@ Credentials use PI's locked auth storage at `$XDG_CONFIG_HOME/hui/providers/auth
 (default `~/.config/hui/providers/auth.json`, mode 0600). Selections use a separate
 0600 `models.json` mapping provider IDs to `{ models: string[] }`; writes are
 serialized and atomic. Account order, names and optional `cooldownUntil` are a
-0600 `accounts.json` mapping provider IDs to ordered account arrays. PI's ChatGPT sign-in
-identifies the installation it was granted on, so a 0600 `device.json` holding
-`{ "id": "<uuid>" }` is created on the first sign-in that needs one and reused by
-every later one, including after a restart; a missing or corrupt file yields a
-fresh id. That id never enters a payload, an error message or a log. The legacy
+0600 `accounts.json` mapping provider IDs to ordered account arrays. PI's ChatGPT
+all-models sign-in identifies the installation it was granted on, so a 0600
+`device.json` holding `{ "id": "<uuid>" }` is created for that provider's OAuth
+sign-in on first use and reused by every later one, including after a restart; a
+missing or corrupt file yields a fresh id. No other sign-in, an API key included,
+creates the file or is handed the id. The id never enters an error message or a
+log, and the only payload that carries it is that pending sign-in's authorization
+URL, where PI embeds it as `ext_agent_host_id`. The legacy
 `auth.json` remains in place as account `default` (fallback label Account 1); new accounts
 use `accounts/<opaque-uuid>/auth.json`, with PI's locks/refresh, never raw secrets in
 metadata. Existing model selection and auth formats remain readable unchanged.
@@ -634,13 +642,16 @@ same ID. Removing it reveals the PI configuration again, if present.
 
 Login permits one pending flow, expires after ten minutes or sixteen for a
 `device_code` flow (those codes last fifteen), and rejects stale prompt IDs. A
-stopped login keeps the generic sentence for older clients and adds `reason`:
-`cancelled`, `expired`, `stale_link`, `port_in_use`, `network` or `unknown`.
+stopped login keeps a plain sentence for older clients and adds `reason`:
+`cancelled` when the operator stopped it, `expired` when that deadline passed,
+`stale_link`, `port_in_use`, `network` or `unknown`.
 PI's own error text is logged once on the gateway and never returned. Prompt
 values are bounded to 16 KiB. Completing login stores auth;
 the wizard then continues on a model step with one model preselected, and its
-`PUT` saves exactly that model when the step is left — the dialog closes, the
-check starts, or another method is chosen. A provider with an empty catalog
+`PUT` saves that model when the step is left — the dialog closes, the
+check starts, or another method is chosen. A new connection saves exactly that
+one; a reconnect keeps the models the provider already had and adds it. A
+provider with an empty catalog
 writes no empty selection. If that separate write fails, sign-in remains saved
 and the dialog stays on the model step with the write error to retry.
 **Save models** in each card

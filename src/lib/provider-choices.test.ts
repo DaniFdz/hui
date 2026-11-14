@@ -14,6 +14,7 @@ import {
   loginFailure,
   manualEntryCopy,
   modelsForStep,
+  modelsToSave,
   providerBrand,
   providerBrands,
   signInHost,
@@ -149,6 +150,18 @@ test("a completed sign-in with an empty selection saves exactly one model", () =
   assert.equal(step.saved.length, 1);
 });
 
+test("a reconnect keeps the models it already had and adds the one it holds", () => {
+  const models = catalog("a", "b", "c");
+  const reconnect = modelsForStep(models, ["a", "b"], "c");
+  assert.equal(reconnect.selected, "c");
+  assert.deepEqual(reconnect.saved, ["a", "b", "c"], "the saved selection is never narrowed");
+  assert.deepEqual(modelsForStep(models, ["a", "b"], "a").saved, ["a", "b"], "a model that is already saved adds nothing");
+  assert.deepEqual(modelsForStep(models, ["gone"], "b").saved, ["b"], "a saved model the catalog dropped cannot be written back");
+  assert.deepEqual(modelsToSave([], "a"), ["a"], "a new connection saves exactly one model");
+  assert.deepEqual(modelsToSave(["a"], ""), [], "nothing is written without a model");
+  assert.deepEqual(modelsToSave(["a", "b"], "b"), ["a", "b"], "the union never repeats a model");
+});
+
 test("the model step keeps a saved or chosen model and never invents one", () => {
   assert.equal(modelsForStep(catalog("a", "b"), ["b"]).selected, "b");
   assert.equal(modelsForStep(catalog("a", "b"), ["gone"], "b").selected, "b");
@@ -171,11 +184,15 @@ test("a checked model fills only the roles that are still empty", () => {
   assert.deepEqual(useModelRoles({ primary: "a", utility: "b" }, "c"), { primary: "a", utility: "b", assignedPrimary: false, assignedUtility: false });
 });
 
-test("a device code names its page and rounds its remaining life up", () => {
+test("a device code names its page and counts down from the gateway's own expiry", () => {
   assert.equal(signInHost("https://auth.openai.com/codex/device"), "auth.openai.com/codex/device");
   assert.equal(signInHost(undefined), "the sign-in page");
   const started = Date.parse("2026-11-14T10:00:00Z");
-  assert.equal(expiresInMinutes(started, started), 15);
-  assert.equal(expiresInMinutes(started, started + 14 * 60_000 + 1), 1);
-  assert.equal(expiresInMinutes(started, started + 20 * 60_000), 0);
+  assert.equal(expiresInMinutes({ expiresAt: started + 900_000 }, started, started), 15, "PI's own lifetime is used as given");
+  assert.equal(expiresInMinutes({ expiresAt: started + 900_000 }, started, started + 14 * 60_000 + 1), 1);
+  assert.equal(expiresInMinutes({ expiresAt: started + 900_000 }, started, started + 20 * 60_000), 0, "an expired code counts no minutes");
+  // A payload without an expiry (an older gateway) keeps the estimate HUI always had.
+  assert.equal(expiresInMinutes({}, started, started), 15);
+  assert.equal(expiresInMinutes({}, started, started + 14 * 60_000 + 1), 1);
+  assert.equal(expiresInMinutes({}, started, started + 20 * 60_000), 0);
 });
