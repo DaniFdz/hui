@@ -49,11 +49,11 @@ test("Connect a provider offers each brand, asks OpenCode Go for an account name
 
     // The retry is the same save: it succeeds against the gateway and closes with the connection.
     await close.tap();
-    await expect(screen.getByText("OpenAI · all GPT models added. You can change its models any time.", { exact: true })).toBeVisible();
+    await expect(screen.getByText("OpenAI added. You can change its models any time.", { exact: true })).toBeVisible();
     await expect(close).toBeHidden();
     // A confirmed connection opens the provider configuration, whose card keeps its model list closed.
     await expect(screen.getByText("Provider configuration · 1 provider", { exact: true })).toBeVisible();
-    await expect(screen.getByText("OpenAI · all GPT models", { exact: true })).toBeVisible();
+    await expect(screen.getByRole("article", { name: "OpenAI" })).toBeVisible();
     await expect(screen.getByText("Credentials available", { exact: true })).toBeVisible();
     await expect(screen.getByText("Models 1 selected", { exact: true })).toBeVisible();
     expect((await configured(hui, "openai"))?.authenticated).toBe(true);

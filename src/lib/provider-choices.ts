@@ -30,7 +30,7 @@ export function providerBrand(id: string): ProviderBrand | undefined {
 /** The name a connection card shows; the provider's own, except where HUI distinguishes the two OpenAI routes. */
 export function connectionName(provider: ProviderSummary): string {
   if (provider.id === "openai-codex") return "OpenAI · ChatGPT account";
-  if (provider.id === "openai") return "OpenAI · all GPT models";
+  if (provider.id === "openai") return "OpenAI";
   if (provider.id === "anthropic") return "Claude";
   return provider.name;
 }

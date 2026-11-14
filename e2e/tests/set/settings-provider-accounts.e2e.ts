@@ -8,7 +8,7 @@ type Pi = { model: { catalog: { provider: string; id: string; name: string }[] }
 
 /** OpenAI's API-key sign-in asks PI for the key and saves it locally, so a card can be added without a live provider. */
 const PROVIDER = "openai";
-const CARD = "OpenAI · all GPT models";
+const CARD = "OpenAI";
 const KEY = "sk-e2e-not-a-secret";
 const ADDED = `${CARD} added. You can change its models any time.`;
 
@@ -141,7 +141,7 @@ test("a provider's Models disclosure lists its models with their limits, filters
     for (const model of [catalog[0]!, catalog.at(-1)!]) await expect(screen.getByRole("checkbox", labels([model])[0]!, { exact: true })).toBeVisible();
 
     // The filter keeps the models whose name or id matches.
-    const search = screen.getByLabel(/^Search OpenAI · all GPT models/u);
+    const search = screen.getByLabel(/^Search models/u);
     const matches = matching("gpt-4o-mini");
     await search.fill("gpt-4o-mini");
     await expect.poll(count).toBe(matches.length);

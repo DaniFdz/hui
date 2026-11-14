@@ -587,7 +587,7 @@ export class HuiProviderSettings extends LitElement {
     const selectedModel = step.options.find((model) => model.id === step.selected);
     return html`
       ${selectedModel && !models.some((model) => model.id === step.selected) ? html`<p class="hui-provider-meta">Chosen: <strong>${selectedModel.name}</strong></p>` : nothing}
-      <label class="hui-provider-field">Search ${connectionName(provider)} models
+      <label class="hui-provider-field">Search models
         <input type="search" autocomplete="off" spellcheck="false" placeholder="Name or model ID" .value=${this.#modelQuery}
           @input=${(event: Event) => { this.#modelQuery = (event.target as HTMLInputElement).value; this.requestUpdate(); }} />
       </label>
@@ -684,7 +684,7 @@ export class HuiProviderSettings extends LitElement {
     return html`<details class="hui-provider-picker">
       <summary>Models <span>${provider.selected.length ? `${provider.selected.length} selected` : "Choose models"}</span></summary>
       <div class="hui-provider-picker-panel">
-        <label class="hui-provider-field">Search ${connectionName(provider)} models<input type="search" .value=${state.query} placeholder="Name or model ID" @input=${(event: Event) => { state.query = (event.target as HTMLInputElement).value; this.requestUpdate(); }} /></label>
+        <label class="hui-provider-field">Search models<input type="search" .value=${state.query} placeholder="Name or model ID" @input=${(event: Event) => { state.query = (event.target as HTMLInputElement).value; this.requestUpdate(); }} /></label>
         <div class="hui-provider-actions"><button class="btn" @click=${() => { for (const model of models) state.models.add(model.id); this.requestUpdate(); }}>Select visible</button><button class="btn" @click=${() => { state.models.clear(); this.requestUpdate(); }}>Clear selection</button><span class="hui-provider-method">${state.models.size} selected</span></div>
         <div class="hui-provider-models">${models.length ? models.map((model) => html`<label class="hui-provider-model"><input type="checkbox" .checked=${state.models.has(model.id)} @change=${(event: Event) => { if ((event.target as HTMLInputElement).checked) state.models.add(model.id); else state.models.delete(model.id); this.requestUpdate(); }} /><span><strong>${model.name}</strong><code>${model.id}</code><small>Context: ${model.contextWindow?.toLocaleString() ?? "reported during the session"} · Max output: ${model.maxTokens?.toLocaleString() ?? "CLI-managed"}</small></span></label>`) : html`<p>No matching models.</p>`}</div>
         <div class="hui-provider-actions"><button class="btn primary" ?disabled=${this.#busy} @click=${async (event: Event) => {

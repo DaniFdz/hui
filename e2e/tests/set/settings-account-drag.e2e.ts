@@ -11,7 +11,7 @@ type Provider = { id: string; configured: boolean; authenticated: boolean; accou
 type Snapshot = { providers: Provider[] };
 
 const PROVIDER = "openai";
-const CARD = "OpenAI · all GPT models";
+const CARD = "OpenAI";
 const KEY = "sk-e2e-not-a-secret";
 const ADDED = `${CARD} added. You can change its models any time.`;
 /** The answer an OpenAI API-key account gets when the page asks for a subscription's limits: never a network read. */

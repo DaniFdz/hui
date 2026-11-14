@@ -32,7 +32,7 @@ test("Provider configuration folds without losing drafts and opens after setup",
   const tenant = (await hui.api<ProviderSnapshot>("GET", "/__hui/providers")).providers.find((provider) => provider.id === "anthropic");
   const firstModel = tenant?.models[0]?.id ?? "";
   const configuration = screen.getByText("Provider configuration · 1 provider", { exact: true });
-  const search = screen.getByLabel("Search Claude models", { exact: true });
+  const search = screen.getByLabel("Search models", { exact: true });
   try {
     await screen.getByRole("button", "Connect a provider").tap();
     await screen.getByRole("button", /^Claude Claude subscription or API key\./u).tap();

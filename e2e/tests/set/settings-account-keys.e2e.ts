@@ -11,7 +11,7 @@ type Provider = { id: string; configured: boolean; accounts: Account[] };
 type Snapshot = { providers: Provider[] };
 
 const PROVIDER = "openai";
-const CARD = "OpenAI · all GPT models";
+const CARD = "OpenAI";
 const KEY = "sk-e2e-not-a-secret";
 const ADDED = `${CARD} added. You can change its models any time.`;
 const PICKED_UP = "Picked up Personal. Use arrow keys to choose a position, Space to drop, or Escape to cancel.";

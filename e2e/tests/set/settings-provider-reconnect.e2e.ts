@@ -14,7 +14,7 @@ type Snapshot = { providers: Provider[] };
 
 /** OpenAI's API-key sign-in asks PI for the key and saves it locally, so a card can be signed in without a live provider. */
 const PROVIDER = "openai";
-const CARD = "OpenAI · all GPT models";
+const CARD = "OpenAI";
 const KEY = "sk-e2e-not-a-secret";
 const ADDED = `${CARD} added. You can change its models any time.`;
 
