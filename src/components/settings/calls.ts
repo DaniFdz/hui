@@ -16,7 +16,7 @@ export function chatGptLoginSummary(status: CallsStatus["chatgpt"] | undefined, 
   if (!status) return "Checking the ChatGPT login…";
   if (status.account) return `Calls use ${status.account.name}${status.account.email ? ` (${status.account.email})` : ""}, the first ChatGPT account not waiting for its quota.`;
   if (status.signedIn && status.waitingUntil && status.waitingUntil > now) return `Every ChatGPT account is waiting for its quota until ${new Date(status.waitingUntil).toLocaleString()}.`;
-  return "No ChatGPT login yet. Sign in under Providers above: OpenAI Codex, with your ChatGPT Plus or Pro account.";
+  return "No ChatGPT login yet. Sign in under Providers above: OpenAI, with your ChatGPT account.";
 }
 
 export class HuiCallSettings extends LitElement {

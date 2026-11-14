@@ -541,12 +541,15 @@ ID and full `provider/id` reference, case-insensitively.
 ### HUI-managed model providers
 
 Settings → Models owns built-in connections separately from PI custom providers.
-The add-provider modal offers OpenCode Go, OpenAI (ChatGPT account or API key),
-and Claude (Pro/Max or API key). The generic routes retain
+The setup wizard offers OpenAI (ChatGPT account or API key), Claude (Pro/Max or
+API key), OpenCode Go and Mistral, in that order. It moves through a provider
+list, that provider's methods, the sign-in, a single-model choice and a model
+check; the sign-in's flow (`browser`, `device_code` or `copy_code`) is chosen by
+the UI and can be switched. The generic routes retain
 existing providers for backwards compatibility; custom setup UI is deferred.
 Only added connections have cards, inside Provider configuration, closed on each
-page visit with a provider count. Add provider and status/error messages stay
-outside; a confirmed connection save opens the group. Folding preserves model
+page visit with a provider count. Connect a provider and status/error messages
+stay outside; a confirmed connection save opens the group. Folding preserves model
 drafts and changes no settings. Unauthenticated cards expose sign-in only;
 authenticated cards load quotas independently and keep model lists collapsed.
 All routes retain the `x-hui` guard and `no-store` responses. Metadata never
@@ -632,10 +635,13 @@ stopped login keeps the generic sentence for older clients and adds `reason`:
 `cancelled`, `expired`, `stale_link`, `port_in_use`, `network` or `unknown`.
 PI's own error text is logged once on the gateway and never returned. Prompt
 values are bounded to 16 KiB. Completing login stores auth;
-the browser then calls `PUT` with the existing selection or an empty list to
-add the connection. If that separate write fails, sign-in remains saved and the
-modal offers **Use this connection** to retry. **Save models** in each card
-commits its dropdown selection. Auth availability means
+the wizard then continues on a model step with one model preselected, and its
+`PUT` saves exactly that model when the step is left — the dialog closes, the
+check starts, or another method is chosen. A provider with an empty catalog
+writes no empty selection. If that separate write fails, sign-in remains saved
+and the dialog stays on the model step with the write error to retry.
+**Save models** in each card
+commits its checked models. Auth availability means
 credentials are configured, not that a live request or subscription is verified;
 the model test route is the explicit check of one model on one account.
 Models expose the pinned SDK's catalog metadata, not invented limits or aliases.

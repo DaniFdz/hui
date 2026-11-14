@@ -8,6 +8,7 @@ import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib
 import { ACCENTS, TEXT_SCALE_STOPS, TYPEFACES } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
+import { useModelRoles } from "../lib/provider-choices.ts";
 import { PI_THINKING_LEVELS, THINKING_LABELS } from "../lib/thinking.ts";
 import { closeEffortSelector, placeEffortPanel, renderEffortSelector } from "./effort-selector.ts";
 import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
@@ -89,6 +90,8 @@ export type SettingsProps = AutomationProps & {
   onChangeNotifications: (next: Settings["notifications"]) => void;
   onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
+  /** Opens New Session the way the app's own New Session control does. */
+  onStartChat: () => void;
   onSaveSubagentRoute: (route: Settings["models"]["routes"][number], originalName?: string) => Promise<boolean>;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
@@ -661,10 +664,24 @@ function renderCallsSection(props: SettingsProps) {
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
 
+/** The provider wizard. A verified model fills the roles new sessions use where nothing is chosen yet; existing
+ * choices are never overwritten. */
+function renderProviderSection(props: SettingsProps) {
+  return html`<hui-provider-settings
+    @providers-changed=${props.onRetryPi}
+    .onUseModel=${(target: string) => {
+      const next = useModelRoles(props.settings.models, target);
+      props.onChangeModels({ ...props.settings.models, primary: next.primary, utility: next.utility });
+      return next;
+    }}
+    .onStartChat=${props.onStartChat}
+  ></hui-provider-settings>`;
+}
+
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
   if (!pi) {
-    return html`<hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>${renderCallsSection(props)}${renderPiMissing(props)}`;
+    return html`${renderProviderSection(props)}${renderCallsSection(props)}${renderPiMissing(props)}`;
   }
   const model = pi.model;
   const modelOptions = [
@@ -704,7 +721,7 @@ function renderModelsPage(props: SettingsProps) {
     <p class="settings-page__intro">
       Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
     </p>
-    <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
+    ${renderProviderSection(props)}
     ${renderSection(
       "HUI model routing",
       "Saved by HUI and applied to new sessions.",

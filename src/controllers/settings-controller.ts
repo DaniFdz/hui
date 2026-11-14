@@ -425,7 +425,7 @@ export class SettingsController implements ReactiveController {
     return this.piError;
   }
 
-  props(): Omit<SettingsProps, keyof AutomationProps | "page" | "worktrees" | "onRefreshObservability" | "onSelectPage" | "onChangeModels" | "onClose"> {
+  props(): Omit<SettingsProps, keyof AutomationProps | "page" | "worktrees" | "onRefreshObservability" | "onSelectPage" | "onChangeModels" | "onStartChat" | "onClose"> {
     return {
       pi: this.pi,
       piLoading: this.piLoading,

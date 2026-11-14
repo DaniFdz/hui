@@ -2986,6 +2986,7 @@ export class HuiApp extends HuiElement {
             this.launcher.selectDefaultThinking(models.thinking);
             void this.control.save({ models });
           },
+          onStartChat: () => this.openNewSession(),
           onClose: this.closeSettings,
           ...this.automationProps(),
         })}
