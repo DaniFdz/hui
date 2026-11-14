@@ -2,8 +2,8 @@
  * The Connect page's DOM wiring: restore what the shell remembers, probe the typed address, show the refusal or the
  * development-gateway notice, then hand the address to the app. All wording and checks live in `gateway.ts`.
  */
-import { CHANGE_GATEWAY, CONNECTING, NAME_NOT_SAVED, NOT_AN_ADDRESS, REFUSED, normalizeGateway, normalizeGatewayName, readSnapshot, versionNotice } from "./gateway";
-import { connectGateway, forgetGateway, isNative, probeGateway, saveGatewayName, shellState } from "./native";
+import { CHANGE_GATEWAY, CONNECTING, LOCAL_NETWORK_DENIED, NAME_NOT_SAVED, NOT_AN_ADDRESS, REFUSED, normalizeGateway, normalizeGatewayName, readSnapshot, versionNotice } from "./gateway";
+import { connectGateway, forgetGateway, isNative, probeGateway, requestLocalNetwork, saveGatewayName, shellState } from "./native";
 import "./style.css";
 
 const form = document.querySelector<HTMLFormElement>("#connect-form");
@@ -32,6 +32,9 @@ async function restore(): Promise<void> {
     if (failed !== null) {
       input!.value = failed;
       say(`The gateway at ${failed} didn't answer.`, "error");
+    } else if (gateway !== null) {
+      // A launch held here for Android 17's local-network prompt keeps the address in front so Connect can retry it.
+      input!.value = gateway;
     }
     showChange(gateway, failed);
   } catch (error) {
@@ -49,6 +52,10 @@ async function submit(): Promise<void> {
   connect!.disabled = true;
   say(`Checking ${base}…`);
   try {
+    if (await requestLocalNetwork() === "denied") {
+      say(LOCAL_NETWORK_DENIED, "error");
+      return;
+    }
     const { status: code, body } = await probeGateway(base);
     const snapshot = code === 200 ? readSnapshot(body) : null;
     if (snapshot === null) {

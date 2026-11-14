@@ -58,6 +58,10 @@
          runtime permission behind these two. Undeclared, the request is refused before the operator sees a prompt. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- A gateway can live on the same Wi-Fi. Android 17 blocks local-network access by default for targetSdk 37; the
+         app asks for this at runtime before the Connect page probes, and Android 16 and lower grant it through INTERNET
+         without a prompt (the plugin skips the request there). -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <!--
         The camera and video intents the WebView's file chooser starts for an input with `capture`

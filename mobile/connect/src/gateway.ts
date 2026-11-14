@@ -6,6 +6,8 @@
 
 /** An address that answers with something else. */
 export const REFUSED = "This address doesn't answer as a HUI gateway.";
+/** The operator refused the local-network prompt an Android 17 LAN gateway needs. */
+export const LOCAL_NETWORK_DENIED = "HUI needs local network access to reach a gateway on your Wi-Fi. Allow it in Settings and try again.";
 /** The gateway accepted the address but not the name chosen for it. */
 export const NAME_NOT_SAVED = "The gateway refused its name. Clear the name to connect without saving it.";
 /** A gateway with no release version (a development checkout). */

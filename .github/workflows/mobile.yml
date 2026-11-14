@@ -66,9 +66,9 @@ jobs:
           distribution: temurin
           java-version: "21"
       # The runner's preinstalled cmdline-tools are the wrong version, so this downloads its own and accepts the
-      # licences. The platform and build-tools are what AGP 8.13 needs for compileSdk 36.
+      # licences. The platform and build-tools are what AGP 8.13 needs for compileSdk 37.
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
-      - run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - run: sdkmanager --install "platforms;android-37.0" "build-tools;36.0.0"
       - run: npm ci --ignore-scripts
       # Builds the Connect page and runs `cap sync android`, which writes the plugin list the Gradle project reads.
       - run: npm run mobile:build
@@ -140,7 +140,7 @@ jobs:
           set -euo pipefail
           # `yes` outlives sdkmanager and dies of SIGPIPE, so pipefail stands down for the pipe.
           set +o pipefail
-          yes | sdkmanager --install "emulator" "platforms;android-36" "system-images;android-36;google_apis;x86_64"
+          yes | sdkmanager --install "emulator" "platforms;android-37.0" "system-images;android-37.0;google_apis;x86_64"
           set -o pipefail
       # No AVD cache/seed: a previous runner's booted graphics state must never enter this runner.
       - run: npm ci --ignore-scripts
@@ -164,7 +164,7 @@ jobs:
           if [ ! -f "$ANDROID_AVD_HOME/$avd.ini" ]; then
             device=$(avdmanager list device -c 2>/dev/null | grep -E '^pixel_[0-9]+$' | sort -V | tail -1 || true)
             echo "device profile: ${device:-pixel}"
-            echo no | avdmanager create avd -n "$avd" -k "system-images;android-36;google_apis;x86_64" -d "${device:-pixel}" --force
+            echo no | avdmanager create avd -n "$avd" -k "system-images;android-37.0;google_apis;x86_64" -d "${device:-pixel}" --force
             # A hardware keyboard so typed text never waits on the soft one, and no device frame or camera.
             {
               echo 'hw.keyboard=yes'

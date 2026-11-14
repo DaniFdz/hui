@@ -179,7 +179,9 @@ that gateway's own UI. There is no store
 account and no copy of the UI in the app, so updating the gateway updates what the
 phone shows. The app needs a gateway it can reach: `https://` through
 `tailscale serve` is the supported setup, and plain `http://` works only for
-`127.0.0.1` and `10.0.2.2` (the emulator's host).
+`127.0.0.1` and `10.0.2.2` (the emulator's host). On Android 17 and iOS 14 and
+later, the first connection to a gateway on your Wi-Fi asks for local-network
+access; allow it, or the app cannot reach that address.
 
 Every release publishes the phone app beside the CLI archive: the APK, the IPA,
 a SideStore source file and a `.sha256` for each, from the same commit as
