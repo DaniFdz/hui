@@ -98,7 +98,7 @@ const cases: UseCase[] = [
     id: "SHELL-011",
     title: "Use the navigation drawer on a narrow screen",
     behaviour:
-      "On a phone-sized or short landscape screen the sidebar is hidden behind **Open navigation**. Opening it shows the drawer, the button reads **Close navigation**, and the content and any update notice behind it cannot be reached; choosing a destination such as Sessions closes the drawer and opens it, and tapping outside the drawer closes it and returns focus to **Open navigation**. Nothing overflows horizontally.",
+      "On a phone-sized or short landscape screen the sidebar is hidden behind **Open navigation**. Opening it shows the drawer, the button reads **Close navigation**, and the content and any update notice behind it cannot be reached; choosing a destination such as Sessions closes the drawer and opens it, and tapping outside the drawer closes it and returns focus to **Open navigation**. A group's + keeps **Open navigation** on New Session instead of leaving its launch form without a way back to the drawer. Nothing overflows horizontally.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:page"],
     journeys: [
