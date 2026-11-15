@@ -38,14 +38,16 @@ Screenshots stay outside Git and go into the PR description.
 - After `E2E_BROWSER` the agent's real browser calls finished ("The headless
   browser rendered: **Hello, HUI agent!…**"). The inline preview's **Open browser
   view** opened a "Browser" tab streaming the page ("Live · headless", watched-tab
-  picker); the conversation header gained the globe button.
+  picker); the conversation header gained the globe button (removed again on
+  2026-11-14: the preview card and the **+** menu are the entry points).
 - The **+** menu lists both launchers with their shortcuts. Terminal 1's
   element and PTY were the same after opening the browser view and switching
   tabs (a DOM marker set on it survived; status stayed Connected, no replay).
   A second `Ctrl+Alt+T` adds another terminal tab (seen on the pre-commit tree).
 - The header's **Open terminal** activated the open terminal tab and the globe
-  activated the browser tab instead of adding panes. ArrowLeft/ArrowRight move
-  between tabs with automatic activation.
+  activated the browser tab instead of adding panes (both removed on 2026-11-14;
+  a terminal now comes from the **+** menu, its shortcut or the pane's empty-state
+  launcher). ArrowLeft/ArrowRight move between tabs with automatic activation.
 - Escape inside the pane first closed the tab tooltip, then returned focus to
   the chat composer; the session stayed Idle (no abort).
 - The resizer took focus on click; ArrowLeft ×2 and Shift+ArrowLeft grew the
@@ -180,14 +182,15 @@ each press.
   **Hide Work pane** reads *Hide Work pane (Ctrl+Alt+Shift+P)* with
   `aria-keyshortcuts="Control+Alt+Shift+P"`.
 - **Rebalance.** One chat beside the pane: 622 px chat, 560 px pane (row 1182 px).
-  **Open split view**: two 420 px columns and a 336 px pane, no horizontal
-  scroll. **Split right** to three columns: the pane collapsed to its 44 px rail
-  and the columns shared the room equally (376/375/375 px). Closing the third
-  column left weights 2:1 (the case that gave 514/320 px before) and showed two
-  420 px columns, the pane back at 336 px and the divider at
-  `aria-valuemin/now/max` 50/50/50. With the pane hidden the same divider moved
-  between 320 px columns (Home: 320/812, End: 812/320); showing the pane again
-  rebalanced them to 420/420.
+  A split (then the header's **Open split view**, today **Open in split pane** in
+  another session's row menu): two 420 px columns and a 336 px pane, no horizontal
+  scroll. A third column (then **Split right**, today one more **Open in split
+  pane**): the pane collapsed to its 44 px rail and the columns shared the room
+  equally (376/375/375 px). Closing the third column left weights 2:1 (the case
+  that gave 514/320 px before) and showed two 420 px columns, the pane back at
+  336 px and the divider at `aria-valuemin/now/max` 50/50/50. With the pane
+  hidden the same divider moved between 320 px columns (Home: 320/812, End:
+  812/320); showing the pane again rebalanced them to 420/420.
 - **Settings link.** **Open Settings → Tools → VS Code** landed with the VS Code
   section 24 px below the top of the settings scroller (`scroll-margin-top`
   24 px, `--space-6`), at 1440×900 and at 390×844 (there below the sticky

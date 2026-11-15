@@ -17,15 +17,13 @@ test("a narrow split shows only the active pane, switches with the Active panel 
   await hui.createSession({ title: "Pane two" });
 
   await hui.open(`/sessions/${first.id}`);
-  await screen.getByRole("button", "Open split view").tap();
-  await expect(panes).toHaveCount(2);
   await hui.sessionList();
   await (await hui.sessionMenu("Pane two")).getByText("Open in split pane", { visible: true }).tap();
-  await expect(panes).toHaveCount(3);
+  await expect(panes).toHaveCount(2);
   await panes.nth(0).getByLabel("Message").fill("E2E_REPLAY");
   await panes.nth(0).getByRole("button", "Send message").tap();
   await hui.provider.held();
-  await panes.nth(2).getByLabel("Message").fill("Draft in the second chat");
+  await panes.nth(1).getByLabel("Message").fill("Draft in the second chat");
 
   await hui.phoneScreen();
   await expect(shown()).toHaveCount(1);
@@ -34,7 +32,7 @@ test("a narrow split shows only the active pane, switches with the Active panel 
   expect(await hui.overflowsSideways()).toBe(false);
 
   await selector.tap();
-  await screen.getByTestId("picker-list").getByText("3 · Chat", { exact: true }).tap();
+  await screen.getByTestId("picker-list").getByText("2 · Chat", { exact: true }).tap();
   await expect(shown()).toHaveCount(1);
   await expect.poll(shownTitle).toBe("Pane two");
   await expect(shown().getByLabel("Message")).toHaveValue("Draft in the second chat");
@@ -50,7 +48,7 @@ test("a narrow split shows only the active pane, switches with the Active panel 
   await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${first.id}`);
 
   await selector.tap();
-  await screen.getByTestId("picker-list").getByText("3 · Chat", { exact: true }).tap();
+  await screen.getByTestId("picker-list").getByText("2 · Chat", { exact: true }).tap();
   await expect(shown().getByLabel("Message")).toHaveValue("Draft in the second chat");
   expect(await hui.overflowsSideways()).toBe(false);
 
