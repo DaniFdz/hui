@@ -11,8 +11,9 @@ import org.junit.Test;
 
 /**
  * What another app's Share sheet hands the app, and the address it becomes: the text a share offers (and everything it
- * refuses), the two bounds on it, and the encoding of `<gateway>/new-session?share=…`. Pure Java and JUnit 4, so it runs
- * on the host JVM beside {@code DeepLinkTest}: the intent reads themselves are {@link MainActivity}'s and a device's.
+ * refuses), the bounds on it — 8 000 characters and a 12 KiB address — and the encoding of
+ * `<gateway>/new-session?share=…`. Pure Java and JUnit 4, so it runs on the host JVM beside {@code DeepLinkTest}: the
+ * intent reads themselves are {@link MainActivity}'s and a device's.
  */
 public class ShareTargetTest {
 
@@ -82,6 +83,27 @@ public class ShareTargetTest {
     }
 
     @Test
+    public void aPhotoWithNoStreamExtraIsStillAnImage() {
+        // Some apps send the photo in clip data, or in the intent's own data, with no EXTRA_STREAM at all. The type is
+        // the only thing that says so, and "nothing to start a session with" would be the wrong answer.
+        ShareTarget.Share clipData = ShareTarget.parse("image/png", null, null, false);
+        assertNull(clipData.text);
+        assertTrue("an image/* type is an image even without EXTRA_STREAM", clipData.image);
+
+        ShareTarget.Share fromData = ShareTarget.parse("image/jpeg", null, "content://media/external/images/2", false);
+        assertNull(fromData.text);
+        assertTrue(fromData.image);
+
+        // Text beside such a photo is the text, as it is beside an EXTRA_STREAM one.
+        ShareTarget.Share mixed = ShareTarget.parse("image/png", "Look at this", "content://media/external/images/3", false);
+        assertEquals("Look at this", mixed.text);
+        assertTrue(mixed.image);
+
+        // A text share is not one, whatever else it carries.
+        assertFalse(ShareTarget.parse("text/plain", null, "https://x.com/a", false).image);
+    }
+
+    @Test
     public void aShareWithNoTextHuiCanHoldOffersNothing() {
         assertNull(ShareTarget.parse("text/plain", null, null, false).text);
         assertNull("an empty extra is no text", ShareTarget.parse("text/plain", "", null, false).text);
@@ -123,18 +145,40 @@ public class ShareTargetTest {
     }
 
     @Test
-    public void anAddressPastThirtyTwoKilobytesIsRefused() {
-        // Nine bytes per character once encoded: 8 000 of them are past the address's own bound, even though the text is
-        // inside its cap. The whole share is refused rather than half-opened.
+    public void aLongShareOpensWithItsFirstPart() {
+        assertEquals("the gateway's request head needs the rest of its 16 KiB", 12 * 1024, ShareTarget.MAX_URL_BYTES);
+        // Nine bytes per character once encoded: 8 000 Chinese characters are past the address's own bound, even though
+        // the text is inside its cap. The share still opens, with the beginning of what was shared.
         String wide = "\u5B57".repeat(ShareTarget.MAX_CHARACTERS);
         String text = ShareTarget.parse("text/plain", wide, null, false).text;
         assertEquals(ShareTarget.MAX_CHARACTERS, text.codePointCount(0, text.length()));
-        assertNull(ShareTarget.url(GATEWAY, text));
+        String address = ShareTarget.url(GATEWAY, text);
+        assertTrue(address.startsWith(GATEWAY + "/new-session?share="));
+        assertTrue("the gateway's 16 KiB request head refuses an address past 12 KiB",
+            address.getBytes(StandardCharsets.UTF_8).length <= ShareTarget.MAX_URL_BYTES);
+        String kept = URLDecoder.decode(
+            address.substring(address.indexOf("?share=") + "?share=".length()), StandardCharsets.UTF_8);
+        assertTrue("what opened is the beginning of the share", wide.startsWith(kept));
+        assertTrue("and one more character would not have fitted",
+            address.getBytes(StandardCharsets.UTF_8).length + 9 > ShareTarget.MAX_URL_BYTES);
 
         // 8 000 ASCII characters fit, so the bound is the address's and not a second text cap.
         String ascii = ShareTarget.url(GATEWAY, "a".repeat(ShareTarget.MAX_CHARACTERS));
         assertTrue(ascii.startsWith(GATEWAY + "/new-session?share="));
         assertTrue(ascii.getBytes(StandardCharsets.UTF_8).length <= ShareTarget.MAX_URL_BYTES);
+    }
+
+    @Test
+    public void aCutAddressEndsOnAWholeCodePoint() {
+        String emoji = "\uD83D\uDE00";
+        // Twelve bytes each once escaped: 8 000 of them are far past the bound, so this is the cut and not the fit.
+        String address = ShareTarget.url(GATEWAY, emoji.repeat(ShareTarget.MAX_CHARACTERS));
+        assertTrue(address.getBytes(StandardCharsets.UTF_8).length <= ShareTarget.MAX_URL_BYTES);
+        String kept = URLDecoder.decode(
+            address.substring(address.indexOf("?share=") + "?share=".length()), StandardCharsets.UTF_8);
+        assertFalse("no pair is split", Character.isHighSurrogate(kept.charAt(kept.length() - 1)));
+        assertFalse("nor a low one", Character.isLowSurrogate(kept.charAt(0)));
+        assertEquals(kept.length() / 2, kept.codePointCount(0, kept.length()));
     }
 
     @Test

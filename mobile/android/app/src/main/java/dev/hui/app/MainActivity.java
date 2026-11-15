@@ -42,13 +42,6 @@ public class MainActivity extends BridgeActivity {
      */
     private boolean ready;
 
-    /**
-     * This activity was created by the launch it applies, rather than handed one while it ran (singleTask goes to
-     * {@link #onNewIntent}). An image-only share — the one share HUI answers by leaving — closes the activity only when
-     * the share is what started it.
-     */
-    private boolean launchedForShare;
-
     /** A launch that arrives while the app runs (singleTask) must honour a different gateway, not ignore it. */
     private static final long CONNECT_DEADLINE_MS = 15_000;
 
@@ -59,7 +52,6 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(HuiGatewayPlugin.class);
         registerPlugin(HuiShellPlugin.class);
-        launchedForShare = isShare(getIntent());
         gateway = Gateway.resolve(this);
         // Android 17 blocks the local network until this app holds ACCESS_LOCAL_NETWORK. An install upgrading with a
         // remembered gateway would otherwise spend the fallback's 15 s on a load the platform refuses: load Connect,
@@ -84,8 +76,9 @@ public class MainActivity extends BridgeActivity {
                 ShellPage.attach(bridge);
             }
         }
-        // What this launch carried — a `hui://open` path or a share — opens over the gateway it loaded, if any.
-        openLaunch();
+        // What this launch carried — a `hui://open` path or a share — opens over the gateway it loaded, if any. This is
+        // the launch that created the activity, which is what an image-only share may close again.
+        openLaunch(true);
         ready = true;
         if (waitingForLocalNetwork) getWindow().getDecorView().post(() -> LocalNetwork.request(this));
     }
@@ -127,13 +120,19 @@ public class MainActivity extends BridgeActivity {
             recreate();
             return;
         }
-        openLaunch();
+        // A launch handed to an activity that is already running: whatever it carries lands in the session HUI is in,
+        // so an image-only share leaves that session alone rather than closing it.
+        openLaunch(false);
     }
 
-    /** What this launch carried: the screen a `hui://open` link names, then the share another app sent. */
-    private void openLaunch() {
+    /**
+     * What this launch carried: the screen a `hui://open` link names, then the share another app sent. `cold` says this
+     * delivery created the activity (`onCreate`) rather than arriving at one that was already running
+     * (`onNewIntent`).
+     */
+    private void openLaunch(boolean cold) {
         openDeepLink();
-        openShare();
+        openShare(cold);
     }
 
     /**
@@ -174,11 +173,12 @@ public class MainActivity extends BridgeActivity {
      *
      * <p>A share HUI cannot take is dropped with a toast instead of being applied later: an image on its own (the
      * composer has no place for one yet, and the sheet is where it came from), a share with nothing the composer can
-     * hold, a value whose address would be past {@link ShareTarget#MAX_URL_BYTES}, and a launch with no gateway to open
-     * anything on. An image-only share also finishes the activity when the share is what started it, so the operator
-     * lands back in the app they shared from rather than in an empty HUI.
+     * hold, and a launch with no gateway to open anything on. A share too long for the address opens with its first part
+     * ({@link ShareTarget#MAX_URL_BYTES}). An image-only share also finishes the activity when this delivery created it
+     * — `cold`, from `onCreate` — so the operator lands back in the app they shared from rather than in an empty HUI; a
+     * share handed to an app that is already running leaves the session it arrived in alone.
      */
-    private void openShare() {
+    private void openShare(boolean cold) {
         Intent intent = getIntent();
         if (!isShare(intent)) return;
         // Android 17's local-network question restarts this activity, and that restart is where a share opens.
@@ -199,7 +199,7 @@ public class MainActivity extends BridgeActivity {
         consumeShare(intent);
         if (share.text == null) {
             say(share.image ? R.string.share_image : R.string.share_nothing);
-            if (share.image && launchedForShare) finish();
+            if (share.image && cold) finish();
             return;
         }
         if (gateway == null) {
@@ -210,6 +210,8 @@ public class MainActivity extends BridgeActivity {
         if (web == null) return;
         String address = ShareTarget.url(gateway, share.text);
         if (address == null) {
+            // A long share is cut to the bound rather than refused, so only a value that cannot be encoded at all lands
+            // here; saying so beats an empty load.
             say(R.string.share_too_long);
             return;
         }

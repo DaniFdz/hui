@@ -189,7 +189,9 @@ test("the Android share is the page's own address, within the page's own bounds"
   // The two bounds are the page's and the iOS half's, so one share cannot be cut differently on each phone.
   assert.match(share, /MAX_CHARACTERS = 8_000;/u, "the text is capped at the page's 8 000 characters");
   assert.match(page, /SHARE_SEED_LIMIT = 8000/u, "the page caps the same value at the same 8 000 characters");
-  assert.match(share, /MAX_URL_BYTES = 32 \* 1024;/u, "the finished address is bounded at 32 KiB");
+  // The address bound is the gateway's: Node's createServer refuses a request head past its default 16 KiB, and the
+  // request line counts against it, so a share may not spend the whole budget on its own value.
+  assert.match(share, /MAX_URL_BYTES = 12 \* 1024;/u, "the finished address stays inside the gateway's 16 KiB request head, at 12 KiB");
   assert.doesNotMatch(share, /^import android\./mu, "the parser stays pure Java, so the host JVM can run ShareTargetTest");
 });
 
@@ -231,7 +233,7 @@ test("the iOS app opens a share on the gateway it remembers, as the Android one 
   assert.match(swiftDeepLink, /static func share\(url: String\?, gateway: String\) -> URL\?/u, "DeepLink.share builds the address");
   assert.match(swiftDeepLink, /"\/new-session"/u, "the same route the Android half builds");
   assert.match(swiftDeepLink, /maxShareCharacters = 8_000/u, "the same 8 000-character cap as the Android half");
-  assert.match(swiftDeepLink, /maxShareQueryBytes = 32 \* 1024/u, "the same 32 KiB bound as the Android half");
+  assert.match(swiftDeepLink, /maxShareQueryBytes = 12 \* 1024/u, "the same 12 KiB query bound as the Android half");
 });
 
 test("both workflows refuse a build whose Share Extension is missing from the app", async () => {

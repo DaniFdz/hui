@@ -16,15 +16,18 @@ import java.util.Locale;
  * <p>A share carries text, an image or both. Text wins: it is `EXTRA_TEXT`, read as a {@link CharSequence} because X and
  * others send a {@code SpannedString}. An image that arrives beside text is left out of the address rather than
  * refused, and an image on its own is a share New Session cannot take yet: the composer takes words, and a photo would
- * need an upload the shell cannot make. An app that names its link in the intent's own data instead (`ACTION_SEND` with
- * `setData`) is read too, but only for a `text/*` type and only for an `http(s)` address, so the `content:` URI another
- * app offers is never mistaken for text.
+ * need an upload the shell cannot make. A share is an image when it carries {@code EXTRA_STREAM}, and also when its type
+ * is {@code image/*} — a photo can arrive in clip data or in the intent's own data with no extra at all, and calling
+ * that share "nothing" would say the wrong thing. An app that names its link in the intent's own data instead
+ * (`ACTION_SEND` with `setData`) is read too, but only for a `text/*` type and only for an `http(s)` address, so the
+ * `content:` URI another app offers is never mistaken for text.
  *
  * <p>The value is percent-encoded exactly once, and {@link URLEncoder} is the encoder: its `+` for a space is what the
  * page's `URLSearchParams` reads back as a space, a literal `+` becomes `%2B`, and `&` and `#` are escaped so a share
  * cannot break the query it travels in. It is bounded twice — {@link #MAX_CHARACTERS} of text, cut on a character
- * boundary, and {@link #MAX_URL_BYTES} for the finished address — so no share builds an address a WebView, a proxy or
- * the gateway would refuse, and the two bounds are the ones the iOS half applies (`DeepLink.swift`).
+ * boundary, and {@link #MAX_URL_BYTES} for the finished address — so no share builds an address the gateway would refuse.
+ * A share past the address's bound opens with its first part instead of not at all: the text is cut to the budget on a
+ * code point boundary, as the iOS half's `fittedShare` cuts its query.
  *
  * <p>Pure Java, with no `android.*` import: `ShareTargetTest` pins it on the host JVM, where `android.net.Uri` is a stub
  * that throws. {@link MainActivity} is what reads the intent, opens the address and drops the share again.
@@ -37,14 +40,23 @@ final class ShareTarget {
     /** The most text one share may seed: the cap the page applies to the same value (`SHARE_SEED_LIMIT`). */
     static final int MAX_CHARACTERS = 8_000;
 
-    /** The longest address a share may build: past this a WebView, a proxy or the gateway may refuse it outright. */
-    static final int MAX_URL_BYTES = 32 * 1024;
+    /**
+     * The longest address a share may build. **The bound is the gateway's:** it is Node's `createServer`, whose 16 KiB
+     * request-head budget (`maxHeaderSize`, the default) counts the request line this address is, and the other headers
+     * need the remainder. Past it the page's own navigation answers 431 and the WebView marks the gateway failed, so a
+     * long share is cut to this budget rather than refused. The iOS half applies the same 12 KiB to its query
+     * (`DeepLink.swift`).
+     */
+    static final int MAX_URL_BYTES = 12 * 1024;
 
     /** What one share offers the composer. */
     static final class Share {
         /** The text New Session starts with, or `null` when the share carried none HUI can take. */
         final String text;
-        /** Whether the share carried an image or a file (`EXTRA_STREAM`), text or not. */
+        /**
+         * Whether the share offers an image: it carries `EXTRA_STREAM`, or its type is `image/*` with the photo in clip
+         * data or in the intent's own data instead. Text or not.
+         */
         final boolean image;
 
         private Share(String text, boolean image) {
@@ -58,28 +70,53 @@ final class ShareTarget {
     /**
      * What one share offers New Session. `type` is `Intent#getType()`, `text` the value of `Intent.EXTRA_TEXT` — an
      * {@link Object} because another app can put anything under that key, and the read on the intent side throws for the
-     * wrong one — `data` the intent's own URI, and `stream` whether it carries `EXTRA_STREAM`.
+     * wrong one — `data` the intent's own URI, and `stream` whether it carries `EXTRA_STREAM`. The type is what says a
+     * photo arrived in clip data or in `data` with no extra beside it: `parse` answers that share as an image, not as
+     * nothing.
      */
     static Share parse(String type, Object text, String data, boolean stream) {
         String shared = text instanceof CharSequence ? text.toString() : null;
         if (shared == null || shared.isBlank()) shared = link(type, data) ? data : null;
-        return new Share(shared == null ? null : normalise(shared), stream);
+        return new Share(shared == null ? null : normalise(shared), stream || image(type));
     }
 
     /**
      * `<gateway>/new-session?share=<encoded text>`: the address the page fills its composer from. `null` when there is no
-     * gateway or no text, when the value cannot be encoded, or when the finished address would be longer than
-     * {@link #MAX_URL_BYTES}.
+     * gateway or no text, when the value cannot be encoded, and for a gateway long enough to leave no room for even one
+     * character.
+     *
+     * <p>A share longer than the address's bound opens with its first part rather than not at all: the text is cut to the
+     * longest prefix whose address stays inside {@link #MAX_URL_BYTES}, on a code point boundary, so half an emoji is
+     * never the last thing the composer gets. {@link #normalise} applies the 8 000-character cap first; this is the
+     * address's own bound. The search is a binary one because an address is as long as the text it carries, once
+     * escaped, so "it fits" holds for every shorter prefix too.
      */
     static String url(String gateway, String text) {
         if (gateway == null || text == null || text.isEmpty()) return null;
-        String address;
         try {
-            address = gateway + PATH + URLEncoder.encode(text, StandardCharsets.UTF_8.name());
+            String whole = address(gateway, text);
+            if (fits(whole)) return whole;
+            int accepted = 0;
+            int rejected = text.codePointCount(0, text.length());
+            while (accepted < rejected) {
+                int middle = (accepted + rejected + 1) / 2;
+                String prefix = text.substring(0, text.offsetByCodePoints(0, middle));
+                if (fits(address(gateway, prefix))) accepted = middle;
+                else rejected = middle - 1;
+            }
+            if (accepted == 0) return null;
+            return address(gateway, text.substring(0, text.offsetByCodePoints(0, accepted)));
         } catch (UnsupportedEncodingException | IllegalArgumentException refused) {
             return null;
         }
-        return address.getBytes(StandardCharsets.UTF_8).length <= MAX_URL_BYTES ? address : null;
+    }
+
+    private static boolean fits(String address) {
+        return address.getBytes(StandardCharsets.UTF_8).length <= MAX_URL_BYTES;
+    }
+
+    private static String address(String gateway, String text) throws UnsupportedEncodingException {
+        return gateway + PATH + URLEncoder.encode(text, StandardCharsets.UTF_8.name());
     }
 
     /**
@@ -121,5 +158,14 @@ final class ShareTarget {
         } catch (URISyntaxException notAnAddress) {
             return false;
         }
+    }
+
+    /**
+     * Whether the share offers an image. `EXTRA_STREAM` is the usual place, but a share whose type is `image/*` is one
+     * even when it names its photo in clip data or in the intent's own data instead, and nothing else in the intent
+     * would say so.
+     */
+    private static boolean image(String type) {
+        return type != null && type.toLowerCase(Locale.ROOT).startsWith("image/");
     }
 }

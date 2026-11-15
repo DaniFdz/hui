@@ -39,9 +39,11 @@
             </intent-filter>
 
             <!--
-                Another app's Share sheet: a text or a link opens New Session with it (ShareTarget). Only the two kinds
-                the composer can hold are offered — `text/plain` and `image/*` — so the sheet never offers HUI for a
-                share it would only refuse. A `text/*` type would offer it for markup and contact cards as well.
+                Another app's Share sheet: a text or a link opens New Session with it (ShareTarget). `text/plain` is the
+                words the composer holds. `image/*` is listed so that a share offering text and a photo still reaches its
+                text, which also means an image-only share is offered HUI here and then refused with a toast: the
+                composer has no place for a photo yet. A `text/*` type would offer it for markup and contact cards as
+                well.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

@@ -3218,8 +3218,8 @@ a link by hand. The web owns the intake; a phone's share only has to open that a
 - **The iOS transport is best-effort.** Apple documents `NSExtensionContext.open(_:)` — how a share extension asks
   iOS to open its app — as unsupported, and it is reported to fail on iOS 18 and later cold starts. When the link
   does not open, the extension shows the share with a Copy action instead of failing silently. The known upgrade path
-  is an App Group the extension writes the share into, which the app reads on its next start; it touches the
-  extension alone, not this contract nor the web intake.
+  is an App Group the extension writes the share into, which the app reads on its next start; it touches the two
+  native targets and their entitlement, not this contract nor the web intake.
 
 ### Android replaces the iOS app as HUI's native client (2026-11-09)
 
