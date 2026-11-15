@@ -27,7 +27,13 @@ function elementLabel(template: { strings: readonly string[]; values: readonly u
     const inline = rest.slice(1, close).trim();
     if (inline) return inline;
   }
-  return text(template).replace(/<[^>]*>/gu, "").trim();
+  // Nested tags re-form when the outer ones go, so strip until the text stops changing.
+  let plain = text(template);
+  for (let previous = ""; previous !== plain;) {
+    previous = plain;
+    plain = plain.replace(/<[^>]*>/gu, "");
+  }
+  return plain.trim();
 }
 
 /** The elements a view binds one template attribute to, with the text they show, in document order. */
