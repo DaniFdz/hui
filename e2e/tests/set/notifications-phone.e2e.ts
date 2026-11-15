@@ -36,7 +36,7 @@ test("a test notification reaches the saved ntfy topic", { tags: ["SET-099"], pl
     await expect.poll(() => topic.inputValue()).toMatch(/^hui-[a-z0-9]+$/u);
     await topic.fill("hui-e2e-topic");
     await page.getByRole("button", "Save", { exact: true }).tap();
-    await expect.poll(saved).toEqual({ server, topic: "hui-e2e-topic" });
+    await expect.poll(saved).toEqual({ server, topic: "hui-e2e-topic", link: "web" });
     await page.getByRole("button", "Copy address", { exact: true }).tap();
     await expect.poll(() => hui.copied()).toBe(`${server}/hui-e2e-topic`);
 
@@ -47,10 +47,17 @@ test("a test notification reaches the saved ntfy topic", { tags: ["SET-099"], pl
     expect(received[0]?.message?.message).toContain("test notification");
     await expect(screen.getByText("Test notification sent. Check the ntfy app on your phone.")).toBeVisible();
 
+    // What a tap opens is part of the relay's settings: the HUI app on the phone, saved beside the topic it subscribes to.
+    await page.getByRole("button", { name: "Notification link: Browser" }).tap();
+    await screen.getByTestId("picker-list", { visible: true }).getByText("HUI on my phone", { exact: true }).tap();
+    await page.getByRole("button", "Save", { exact: true }).tap();
+    await expect.poll(saved).toEqual({ server, topic: "hui-e2e-topic", link: "phone" });
+    await expect(page.getByRole("button", { name: "Notification link: HUI on my phone" })).toBeVisible();
+
     // A blank topic publishes nothing and says so instead of claiming a delivery.
     await topic.fill("");
     await page.getByRole("button", "Send test", { exact: true }).tap();
-    await expect.poll(saved).toEqual({ server, topic: "" });
+    await expect.poll(saved).toEqual({ server, topic: "", link: "phone" });
     await expect(screen.getByText("Set an ntfy topic first.")).toBeVisible();
     expect(received.length).toBe(1);
   } finally {
@@ -59,7 +66,7 @@ test("a test notification reaches the saved ntfy topic", { tags: ["SET-099"], pl
     if (settings) {
       await hui.api("PUT", "/__hui/settings", {
         ...settings,
-        notifications: { ...settings.notifications, ntfy: { server: "https://ntfy.sh", topic: "" } },
+        notifications: { ...settings.notifications, ntfy: { server: "https://ntfy.sh", topic: "", link: "web" } },
       }).catch(() => undefined);
     }
     await new Promise<void>((resolve) => relay.close(() => resolve()));
