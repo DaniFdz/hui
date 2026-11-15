@@ -1,14 +1,18 @@
-/** The chat header's Run status popover: the one place the shared tests read a conversation's helpers and watchers. */
+/** The chat header's Run status popover: how the shared tests open it, and the one place they read a conversation's
+ * helpers and watchers from it. */
 import { expect, type Locator, type Screen } from "e2e";
 
-/** Opens Run status when it is closed and returns the popover. */
+/** Opens Run status and returns the popover. */
 export async function openRunStatus(screen: Screen): Promise<Locator> {
   const trigger = screen.getByTestId("run-status-trigger");
   const popover = screen.getByLabel("Run status");
-  if (!(await popover.isVisible())) {
-    await expect(trigger).toBeVisible();
-    await trigger.tap();
-  }
+  await expect(trigger).toBeVisible();
+  const expanded = async () => (await trigger.getAttribute("aria-expanded")) === "true";
+  // A wide window opens and closes it by itself around a run, and Web Awesome's dialog stays on screen through its show
+  // and hide animations. Wait until the trigger's own state and what is on screen agree, so the one toggle is pressed in
+  // the settled state and never mid-animation.
+  await expect.poll(async () => (await expanded()) === (await popover.isVisible())).toBe(true);
+  if (!(await expanded())) await trigger.tap();
   await expect(popover).toBeVisible();
   return popover;
 }

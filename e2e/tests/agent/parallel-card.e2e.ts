@@ -46,10 +46,13 @@ test("helpers wait in one Helpers section that counts them and lists them, witho
 
   // The parent waits for them, and a helper the parent waited for arrives in the section, never as a completion card.
   await hui.open(`/sessions/${session.id}`);
-  const openedHelpers = await openHelpers(screen);
+  await openHelpers(screen);
   await hui.prompt(session, calls(call("agents_wait", { ids: await children(hui, session.id), timeoutSeconds: 120 })));
   await expect(screen.getByLabel("Session status: Running")).toBeVisible();
   await hui.provider.release();
+  // The panel closed with the run that opened it, so the operator opens it again over the finished batch.
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  const openedHelpers = await openHelpers(screen);
   await expect(openedHelpers.getByText("2 completed")).toBeVisible({ timeout: 90_000 });
   // Success folds the batch into its summary; reopen it before reading the rows kept under that disclosure.
   const completedFirst = openedHelpers.getByRole("button", { name: /^Open subagent First helper(?:, .+)?$/u });

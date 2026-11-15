@@ -9,7 +9,16 @@ import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import type { SessionGoal, SessionView, SubagentTaskView } from "../../api/sessions.ts";
 import { mountEditorAtEnd } from "../../lib/composer/textarea.ts";
-import { goalStatusLabel, runStatus, type RunStatusModel, type RunStatusTone } from "../../lib/chat/run-status.ts";
+import {
+  goalStatusLabel,
+  runStatus,
+  runStatusPanel,
+  runStatusPanelChosen,
+  runStatusPanelOpen,
+  type RunStatusModel,
+  type RunStatusPanelState,
+  type RunStatusTone,
+} from "../../lib/chat/run-status.ts";
 import { renderMarkdown } from "../../lib/markdown/markdown.ts";
 import { relativeTime } from "../../lib/message-metadata.ts";
 import { subagentElapsed, subagentVisualState, type SubagentVisualState } from "../../lib/subagent-activity.ts";
@@ -33,6 +42,8 @@ export type RunStatusProps = {
   waiting: boolean;
   sending: boolean;
   connectionLive: boolean;
+  /** A wide window, where the popover opens by itself while a run streams; a phone keeps it collapsed. */
+  wide: boolean;
   goalPanel: GoalPanelState;
   /** "Collapse task progress": the plan starts folded inside the popover. */
   collapsePlan: boolean;
@@ -246,6 +257,112 @@ function renderGoal(props: RunStatusProps, model: RunStatusModel, id: string) {
   </section>`;
 }
 
+/** A `wa-popover` as this view drives it: `open` is the real state and updateComplete settles its first update. */
+type RunStatusPopover = HTMLElement & {
+  open: boolean;
+  updateComplete: Promise<unknown>;
+  hide: () => Promise<void> | void;
+};
+
+/** One popover's panel state, kept by element so a streamed frame never loses the operator's choice. */
+type RunStatusPopoverState = {
+  panel: RunStatusPanelState;
+  wide: boolean;
+  /** The open value HUI set itself, until its own wa-show or wa-hide arrives. */
+  expect: boolean | undefined;
+  /** Where focus was before HUI opened the popover by itself, until that open can give it back. */
+  focus: HTMLElement | undefined;
+  /** Web Awesome has completed its first update, so setting open now fires wa-show and wa-hide. */
+  ready: boolean;
+};
+
+const popoverStates = new WeakMap<Element, RunStatusPopoverState>();
+
+/**
+ * Gives focus back after HUI's own open: Web Awesome focuses its dialog, and an automatic open must leave the operator
+ * where they were. The element can still be disabled by the send that started the run, so the render that re-enables it
+ * calls this again instead of polling.
+ */
+function restoreRunStatusFocus(popover: RunStatusPopover, state: RunStatusPopoverState): void {
+  const focus = state.focus;
+  if (!focus) return;
+  const active = document.activeElement;
+  if (active !== popover && !(active instanceof Node && popover.contains(active))) {
+    // Web Awesome has not taken the focus into its dialog yet, and the disabled composer leaves the page with none: only
+    // an operator who moved to another control ends the wait.
+    if (active !== focus && active !== null && active !== document.body) state.focus = undefined;
+    return;
+  }
+  if (!focus.isConnected) {
+    state.focus = undefined;
+    return;
+  }
+  if (focus.matches(":disabled")) return;
+  focus.focus({ preventScroll: true });
+  if (document.activeElement === focus) state.focus = undefined;
+}
+
+/** Records an open or close Web Awesome performed, whichever way it was caused. */
+function settleRunStatusPanel(popover: RunStatusPopover, open: boolean): void {
+  const trigger = document.getElementById(popover.getAttribute("for") ?? "");
+  if (trigger && trigger.getAttribute("aria-expanded") !== String(open)) trigger.setAttribute("aria-expanded", String(open));
+  const state = popoverStates.get(popover);
+  if (!state) return;
+  const ours = state.expect === open;
+  state.expect = undefined;
+  if (ours) return;
+  // The operator's own open or close is their choice for this run, and it ends any focus an automatic open would return.
+  state.focus = undefined;
+  state.panel = runStatusPanelChosen(state.panel, open);
+}
+
+/** Sets the popover's open state and the trigger's aria-expanded, writing nothing when both already agree. */
+function applyRunStatusPanel(trigger: HTMLElement, popover: RunStatusPopover, panelId: string, state: RunStatusPopoverState): void {
+  if (trigger.getAttribute("aria-controls") !== panelId) trigger.setAttribute("aria-controls", panelId);
+  const open = runStatusPanelOpen(state.panel, { running: state.panel.running, wide: state.wide });
+  if (state.ready && popover.open !== open) {
+    state.expect = open;
+    state.focus = open && document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    popover.open = open;
+  } else {
+    restoreRunStatusFocus(popover, state);
+  }
+  if (trigger.getAttribute("aria-expanded") !== String(popover.open)) trigger.setAttribute("aria-expanded", String(popover.open));
+}
+
+/**
+ * Keeps one popover's state in step with its run and window. The trigger's ref calls this after every render, including
+ * each streamed frame, so it finds the popover it anchors and only touches it when something actually changed. The ref
+ * runs while its part is still a detached fragment, which is why a missing popover retries once after the commit.
+ */
+function driveRunStatusPanel(trigger: Element | undefined, panelId: string, input: { running: boolean; wide: boolean }, retry = true): void {
+  if (!(trigger instanceof HTMLElement)) return;
+  const popover = document.getElementById(`${panelId}-surface`);
+  if (!(popover instanceof HTMLElement) || !("open" in popover) || popover.getAttribute("for") !== trigger.id) {
+    if (retry) queueMicrotask(() => driveRunStatusPanel(trigger, panelId, input, false));
+    return;
+  }
+  const surface = popover as RunStatusPopover;
+  let state = popoverStates.get(surface);
+  if (!state) {
+    state = { panel: runStatusPanel(undefined, { running: input.running }), wide: input.wide, expect: undefined, focus: undefined, ready: false };
+    popoverStates.set(surface, state);
+    surface.addEventListener("wa-show", () => settleRunStatusPanel(surface, true));
+    surface.addEventListener("wa-hide", () => settleRunStatusPanel(surface, false));
+    // Web Awesome moves the focus into its dialog just after the show; HUI's own open gives it back once it has.
+    surface.addEventListener("wa-after-show", () => restoreRunStatusFocus(surface, state!));
+    // Setting open before Web Awesome's first update skips its open-change handling; wait for it once.
+    void surface.updateComplete.then(() => {
+      state!.ready = true;
+      applyRunStatusPanel(trigger, surface, panelId, state!);
+    });
+  } else {
+    state.panel = runStatusPanel(state.panel, { running: input.running });
+    state.wide = input.wide;
+  }
+  applyRunStatusPanel(trigger, surface, panelId, state);
+}
+
 /** The Run status trigger and its popover, or nothing when this conversation has no goal, plan or recent batch. */
 export function renderRunStatus(props: RunStatusProps) {
   if (props.loading) return nothing;
@@ -260,8 +377,17 @@ export function renderRunStatus(props: RunStatusProps) {
   if (!model.visible) return nothing;
   const triggerId = `${props.id}-trigger`;
   const panelId = `${props.id}-panel`;
-  const setExpanded = (event: Event, open: boolean) =>
-    (event.currentTarget as Element).previousElementSibling?.setAttribute("aria-expanded", String(open));
+  const closePanel = () => {
+    const popover = document.getElementById(`${panelId}-surface`) as RunStatusPopover | null;
+    const state = popover ? popoverStates.get(popover) : undefined;
+    if (popover && state) {
+      // The X is the operator's close, not HUI's: the wa-hide it causes records the same choice.
+      state.panel = runStatusPanelChosen(state.panel, false);
+      state.expect = undefined;
+      void popover.hide();
+    }
+    document.getElementById(triggerId)?.focus();
+  };
   return html`
     <button
       id=${triggerId}
@@ -272,6 +398,7 @@ export function renderRunStatus(props: RunStatusProps) {
       aria-label=${model.summary}
       aria-haspopup="dialog"
       aria-expanded="false"
+      ${ref((element) => driveRunStatusPanel(element, panelId, { running: props.streaming, wide: props.wide }))}
     >
       <span class="chat-run-status__mark" aria-hidden="true">${renderRunStatusMark(model.tone)}</span>
       <span class="chat-run-status__label">${model.label}</span>
@@ -279,20 +406,20 @@ export function renderRunStatus(props: RunStatusProps) {
       <span class="chat-run-status__trigger-chevron" aria-hidden="true">${icons.chevronDown}</span>
     </button>
     <wa-popover
+      id=${`${panelId}-surface`}
       class="chat-run-status__popover"
       for=${triggerId}
       placement="bottom-end"
       distance="6"
       without-arrow
-      @wa-show=${(event: Event) => setExpanded(event, true)}
-      @wa-hide=${(event: Event) => setExpanded(event, false)}
     >
       <div class="chat-run-status__panel" id=${panelId} data-testid="run-status" role="dialog" aria-label="Run status">
         <header class="chat-run-status__head">
           <strong>Run status</strong>
-          <span class="chat-run-status__state" data-tone=${model.tone}>
-            <span class="chat-run-status__state-mark" aria-hidden="true">${renderRunStatusMark(model.tone)}</span>${model.label}
+          <span class="chat-run-status__state" data-tone=${model.tone} aria-hidden="true">
+            <span class="chat-run-status__state-mark">${renderRunStatusMark(model.tone)}</span>
           </span>
+          <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-run-status__close" aria-label="Close run status" @click=${closePanel}>${icons.close}</button>
         </header>
         ${renderGoal(props, model, panelId)}
         ${renderPlan(props, model, panelId)}

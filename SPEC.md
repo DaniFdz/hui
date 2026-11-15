@@ -1912,17 +1912,42 @@ helpers' or watchers' count) beside it. Its accessible name names the goal, plan
 and helper facts it summarizes. On a narrow pane or a phone the trigger keeps
 only its mark and count.
 
-Clicking the trigger opens one popover anchored to its right edge: **Goal** (the
-objective, its status note, when it was set, its automatic turns, and
-Pause/Resume, Edit and Clear), **Plan** (the Task progress steps and summary),
-**Helpers** (the latest batch, its counts, one dot per child and each child's
-row) and **Watchers** (each watcher's purpose, latest output, state, details,
-log tail and Stop/Restart/Dismiss; a list longer than four folds its rows behind
-Watcher details while the section header keeps the running count). Empty sections are absent. The popover
-scrolls inside itself, closes on Escape or an outside click, and never resizes
-the conversation. None of those surfaces draws above the composer or in the
-transcript; a helper or watcher that settles still writes its own transcript
-event.
+Clicking the trigger opens one popover anchored to its right edge, and clicking
+it again closes it. On a wide window it opens by itself while a run streams, so
+the run's state is readable without a press, and closes again when that run
+ends; the operator's own open or close holds for that run and the next run
+starts from the default, and a reload forgets that choice, so the wide window's
+default applies again: open while the run still streams, closed once it has
+settled. A phone keeps it collapsed until the operator opens it.
+Its head names Run status and marks the current tone once, without repeating the
+trigger's state word, and a Close run status X at the head's right closes the
+panel and returns focus to the trigger.
+The popover holds **Goal** (the objective, its status note, when it was set, its
+automatic turns, and Pause/Resume, Edit and Clear), **Plan** (the Task progress
+steps and summary), **Helpers** (the latest batch, its counts, one dot per child
+and each child's row) and **Watchers** (each watcher's purpose, latest output,
+state, details, log tail and Stop/Restart/Dismiss; a list longer than four folds
+its rows behind Watcher details while the section header keeps the running
+count). Empty sections are absent. The popover scrolls inside itself, closes on
+Escape or an outside click, and never resizes the conversation. None of those
+surfaces draws above the composer or in the transcript; a helper or watcher that
+settles still writes its own transcript event.
+
+### Run status opens by itself on a wide window (2026-11-15)
+
+On a wide window the chat header has room for the popover beside the
+conversation, and the question it answers — what is this run doing? — is the one
+the operator looks for while it works, so it opens as soon as a run streams. On
+a phone the same panel would cover the conversation it describes, so it waits
+for the operator there; that is the phone's own limit, not a second behaviour.
+The panel follows the run, so an explicit open or close answers the run it was
+made in: it holds for the rest of that run, which keeps a streamed frame from
+overriding it, and the next run starts from the default. Neither choice is
+stored, past that run or a reload: a stored one would hide a run's panel or
+reopen one the operator already shut, so an arrival re-reads the window and the
+run instead of a preference. The trigger stays the one
+toggle, the head does not repeat the state word the trigger already says, and the
+X is the operator's close with focus returning to the trigger.
 
 ## Goals
 

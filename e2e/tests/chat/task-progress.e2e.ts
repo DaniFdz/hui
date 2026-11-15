@@ -2,14 +2,19 @@
  * and the session row's hovercard reads the same stored card without opening the session (SESS-043). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openRunStatus } from "../agent/run-status.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
 
 test("Task progress follows the work in the Run status popover, folds, and survives a reload", { tags: ["AGENT-053"], platforms: ["web"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const trigger = screen.getByTestId("run-status-trigger");
+  const popover = screen.getByLabel("Run status");
   const plan = screen.getByTestId("task-progress");
   const steps = plan.getByLabel("Task progress steps");
+  // A wide window opens the popover itself while the turn streams; the shared helper presses the one toggle only when
+  // the panel has settled closed.
+  const openPanel = () => openRunStatus(screen);
   // The plan starts folded on a phone and on a wide window only when every step is done or the setting asks for it.
   const openPlan = async () => {
     if (!(await steps.isVisible())) await plan.getByText(/^\d+ of \d+$/u).tap();
@@ -28,8 +33,12 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   // The plan lives in the popover and starts open on a wide window: the title, the count, the utility model's note and
   // each step's state.
   await expect(trigger).toHaveAccessibleName(/^Run status:/u);
-  await trigger.tap();
-  await expect(screen.getByLabel("Run status")).toBeVisible();
+  await openPanel();
+  // Close run status is the operator's close on a phone too, and it gives focus back to the trigger.
+  await screen.getByLabel("Close run status").tap();
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await openPanel();
   await openPlan();
   await expect(steps).toBeVisible();
   await expect(plan.getByText("1 of 2")).toBeVisible();
@@ -40,8 +49,7 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   // The next turn rewrites it from the conversation: the plan moved on.
   await message.fill("E2E_PROGRESS_TWO");
   await send.tap();
-  await trigger.tap();
-  await expect(screen.getByLabel("Run status")).toBeVisible();
+  await openPanel();
   await openPlan();
   await expect(plan.getByText("2 of 3")).toBeVisible();
   await expect(plan).toContainText("the plan moved on");
@@ -56,8 +64,8 @@ test("Task progress follows the work in the Run status popover, folds, and survi
 
   // HUI stores the card with the session, so reopening the popover after a reload shows the same one.
   await hui.reload();
-  await expect(screen.getByLabel("Run status")).toBeHidden();
-  await trigger.tap();
+  await expect(popover).toBeHidden();
+  await openPanel();
   await openPlan();
   await expect(plan.getByText("2 of 3", { visible: true })).toBeVisible();
   await expect(plan).toContainText("the plan moved on");
@@ -65,7 +73,7 @@ test("Task progress follows the work in the Run status popover, folds, and survi
   // Collapse task progress starts it folded even with work left.
   await hui.saveAppearance({ chat: { collapseTaskProgress: true } });
   await hui.reload();
-  await trigger.tap();
+  await openPanel();
   await expect(plan.getByText("2 of 3", { visible: true })).toBeVisible();
   await expect(steps).toBeHidden();
 });
@@ -78,7 +86,7 @@ test("a session's stored card shows in its row hovercard without opening it", { 
   await hui.open(`/sessions/${session.id}`);
   await screen.getByLabel("Message").fill("E2E_PROGRESS");
   await screen.getByRole("button", "Send message").tap();
-  await screen.getByTestId("run-status-trigger").tap();
+  await openRunStatus(screen);
   await expect(screen.getByText("1 of 2")).toBeVisible();
 
   // Home lists the session on its own: the stored card reaches the row's preview without opening anything.

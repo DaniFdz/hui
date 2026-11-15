@@ -260,6 +260,7 @@ test("Task progress lives in the Run status popover and never draws in the trans
   });
   assert.match(html, /class="chat-run-status__trigger"[^>]*data-tone=running/u);
   assert.match(html, /aria-label=Run status: Working, 1 of 2 steps done/u);
+  assert.equal(html.match(/>Working</gu)?.length, 1, "the trigger carries the state word and the popover head does not repeat it");
   assert.match(html, /data-testid="task-progress"/u);
   assert.match(html, /Check the build/u);
   assert.match(html, /1 of 2/u);

@@ -1001,7 +1001,7 @@ const cases: UseCase[] = [
     id: "CHAT-073",
     title: "Give a conversation a goal and manage it",
     behaviour:
-      "Sending /goal <objective> empties the composer, sends the objective as the goal's first turn and shows the chat header's rightmost Run status trigger reading Pursuing goal (Working while a turn runs). A clean turn ends with HUI's own continuation turn queued in the transcript. Opening the trigger shows a Goal section with Pause goal, Clear goal and Edit goal objective; Pause goal makes it Goal paused with Resume goal, Resume goal makes it Pursuing goal again, and Clear goal removes the trigger. The section reads the whole objective, its status note, when it was set and its automatic turns; Edit goal objective, a retyped objective and Save goal replace the goal and send the new objective as the next turn. It never draws a goal pill above the composer. /goal pause, /goal resume and /goal clear do the same from the composer.",
+      "Sending /goal <objective> empties the composer, sends the objective as the goal's first turn and shows the chat header's rightmost Run status trigger reading Pursuing goal (Working while a turn runs). A clean turn ends with HUI's own continuation turn queued in the transcript. Opening the trigger (or the popover a wide window already opened while the turn runs) shows a Goal section with Pause goal, Clear goal and Edit goal objective; Pause goal makes it Goal paused with Resume goal, Resume goal makes it Pursuing goal again, and Clear goal removes the trigger. The section reads the whole objective, its status note, when it was set and its automatic turns; Edit goal objective, a retyped objective and Save goal replace the goal and send the new objective as the next turn. It never draws a goal pill above the composer. /goal pause, /goal resume and /goal clear do the same from the composer.",
     spec: ["SPEC.md#goals", "docs/api.md#post-__huisessionsidgoal"],
     surfaces: [
       "command:goal",
@@ -1074,6 +1074,17 @@ const cases: UseCase[] = [
     journeys: ["position-rail"],
     web: "required",
     phone: { excluded: "The conversation-position rail is a wide-transcript control, hidden on phones; the sender on the message is shared as CHAT-056.", decision: "SPEC.md#behaviour" },
+  },
+  {
+    id: "CHAT-090",
+    title: "Open Run status while a run works",
+    behaviour:
+      "While a run streams on a wide window the chat header's Run status popover opens by itself, with the trigger reading one state word and its count (Working 1/2) and the head naming Run status with only the tone mark, never the word again. Close run status (an X at the head's right) or a second press of the trigger closes it and leaves the trigger focused; the operator's own open or close holds for that run, so a streamed frame never overrides it and the next run starts from the default (open on a wide window, collapsed on a phone), Escape and an outside click still close it, and a reload forgets the choice, so the wide window's default applies again. A phone keeps the panel collapsed until its trigger is pressed, and the same X closes it.",
+    spec: ["SPEC.md#run-status", "SPEC.md#run-status-opens-by-itself-on-a-wide-window-2026-11-15"],
+    surfaces: [],
+    journeys: ["chat-composer"],
+    web: "required",
+    phone: { excluded: "A phone has no wide window: its Run status panel stays collapsed until the operator opens it, and its controls are the shared ones (CHAT-073, AGENT-053).", decision: "SPEC.md#run-status-opens-by-itself-on-a-wide-window-2026-11-15" },
   },
 ];
 

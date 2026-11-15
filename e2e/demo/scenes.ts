@@ -335,7 +335,8 @@ export const scenes: Scene[] = [
       await d.caption("Run status tracks every helper");
       await d.say("children");
       await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
-      await d.click({ css: ".chat-run-status__trigger" });
+      // A wide window already opened the popover while the helpers run; the trigger is one toggle.
+      if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
       await d.waitFor({ css: ".chat-run-status__helpers-list" }, 30_000);
       await d.zoom({ css: ".chat-run-status__panel" }, 1.6);
       await d.pause(2_400);
@@ -370,7 +371,7 @@ export const scenes: Scene[] = [
       await d.say("watcher");
       await send(d, "Fix the ownership check, then merge once CI is green");
       await d.waitFor({ css: ".chat-run-status__trigger" }, 30_000);
-      await d.click({ css: ".chat-run-status__trigger" });
+      if (!(await d.find({ css: ".chat-run-status__trigger[aria-expanded='true']" }))) await d.click({ css: ".chat-run-status__trigger" });
       await d.waitFor({ css: ".chat-watcher" }, 30_000);
       await d.zoom({ css: ".chat-watcher" }, 1.4);
       await d.pause(1_500);

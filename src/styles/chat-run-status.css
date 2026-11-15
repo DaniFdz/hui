@@ -19,7 +19,7 @@
   background: var(--card);
   color: var(--text);
   font: inherit;
-  font-size: 11.5px;
+  font-size: 12.5px;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -113,7 +113,9 @@
 /* The popover's shadow body owns the padding; the panel supplies its own so
    section rules run edge to edge. */
 .chat-run-status__popover {
-  --max-width: min(400px, calc(100vw - 16px));
+  --max-width: min(420px, calc(100vw - 16px));
+  --show-duration: var(--duration-fast);
+  --hide-duration: var(--duration-fast);
   --wa-space-l: 0;
   --wa-color-surface-default: var(--card);
   --wa-color-surface-border: var(--border-strong);
@@ -126,7 +128,7 @@
   box-sizing: border-box;
   /* The popover body shrink-wraps its content; a fixed panel width keeps a watchers-only or goal-only popover
      as wide as the full one, and leaves room for a watcher row's purpose. */
-  width: min(398px, calc(100vw - 16px));
+  width: min(420px, calc(100vw - 16px));
   /* Keep the popover above the composer on a short phone or in landscape. */
   max-height: min(72dvh, 640px, calc(100dvh - 160px));
   overflow: auto;
@@ -158,14 +160,47 @@
   font-weight: 600;
 }
 
+/* The X sits at the head's right edge; the trigger already carries the chevron that says the panel is open. */
+.chat-run-status__close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin-inline-start: auto;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+}
+
+.chat-run-status__close > svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chat-run-status__close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.chat-run-status__close:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
 .chat-run-status__state {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-inline-start: auto;
   color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
 }
 
 .chat-run-status__state-mark {
@@ -192,7 +227,7 @@
 
 .chat-run-status__section-title {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: .09em;
   text-transform: uppercase;
@@ -202,7 +237,7 @@
   margin-inline-start: auto;
   overflow: hidden;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -222,7 +257,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 500;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -244,7 +279,7 @@
 .chat-run-status__set {
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 1.35;
 }
 
@@ -281,7 +316,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 11.5px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -319,7 +354,7 @@
   align-items: flex-start;
   gap: 8px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -365,7 +400,7 @@
   padding-top: 8px;
   border-top: 1px dashed var(--border);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -467,7 +502,7 @@
 
 .chat-run-status__helper-title {
   overflow: hidden;
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -476,7 +511,7 @@
 .chat-run-status__helper-snippet {
   overflow: hidden;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -565,6 +600,12 @@
   .chat-run-status__chevron svg {
     transition: none;
   }
+
+  /* Web Awesome's scale-in and scale-out are the popover's only animation and never check this itself. */
+  .chat-run-status__popover {
+    --show-duration: 0ms;
+    --hide-duration: 0ms;
+  }
 }
 
 /* Watchers keep their rows and their own disclosures, compacted for the popover. */
@@ -580,12 +621,12 @@
 }
 
 .chat-run-status__watchers .chat-subagents__label {
-  font-size: 11.5px;
+  font-size: 12.5px;
 }
 
 .chat-run-status__watchers .chat-subagents__snippet,
 .chat-run-status__watchers .chat-subagents__time {
-  font-size: 10.5px;
+  font-size: 11.5px;
 }
 
 .chat-run-status__watchers .chat-watcher__details {

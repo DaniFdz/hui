@@ -2,6 +2,7 @@
  * the goal pauses itself, and its Run status popover pauses, edits and clears it (CHAT-073). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openRunStatus } from "../agent/run-status.ts";
 
 test("a goal starts from /goal, continues by itself, and pauses, edits and clears from its Run status popover", { tags: ["CHAT-073"], platforms: ["web"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
@@ -9,6 +10,8 @@ test("a goal starts from /goal, continues by itself, and pauses, edits and clear
   const transcript = screen.getByTestId("transcript");
   const trigger = screen.getByTestId("run-status-trigger");
   const popover = screen.getByLabel("Run status");
+  // A wide window opens the popover itself while a turn streams and closes it again when that run ends.
+  const openPanel = () => openRunStatus(screen);
 
   // Start a goal whose first turn the provider holds, so the operator can pause it while it runs.
   const paused = await hui.createSession({ title: "Paused goal" });
@@ -18,13 +21,14 @@ test("a goal starts from /goal, continues by itself, and pauses, edits and clear
   await expect(transcript.getByText("E2E_REPLAY get CI green on PR 1")).toBeVisible();
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveAccessibleName(/^Run status: Working, goal pursuing/u);
-  await trigger.tap();
-  await expect(popover).toBeVisible();
+  await openPanel();
   await expect(popover.getByText("Pursuing goal", { exact: true }).first()).toBeVisible();
   await expect(popover).toContainText("E2E_REPLAY get CI green on PR 1");
   await popover.getByRole("button", "Pause goal").tap();
   await hui.provider.release();
   await expect(trigger).toHaveAccessibleName(/^Run status: Goal paused/u);
+  // Pausing ended the run, so the panel it opened by itself closed with it; the operator opens it to read the pause.
+  await openPanel();
   await expect(popover.getByRole("button", "Resume goal")).toBeVisible();
   // A paused goal is not pursued: no continuation turn is queued behind the paused run.
   await expect(transcript.getByText("Continue the goal", { exact: false })).toBeHidden();
@@ -39,6 +43,7 @@ test("a goal starts from /goal, continues by itself, and pauses, edits and clear
   await expect(trigger).toHaveAccessibleName(/^Run status: Working, goal pursuing/u);
   await expect(transcript.getByText("and the nightly job", { exact: false })).toBeVisible();
 
+  await openPanel();
   await popover.getByRole("button", "Clear goal").tap();
   await expect(trigger).toBeHidden();
 

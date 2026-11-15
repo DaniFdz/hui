@@ -2,17 +2,9 @@
  * Stop, Restart, Dismiss, and what a gateway restart and a deleted conversation leave behind (AGENT-036 to AGENT-040,
  * AGENT-043, AGENT-044). */
 import { readFile, stat } from "node:fs/promises";
-import { expect, type Screen } from "e2e";
+import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-
-/** Opens the chat header's Run status popover and returns its Background watchers group. */
-async function openWatchers(screen: Screen) {
-  const trigger = screen.getByTestId("run-status-trigger");
-  await expect(trigger).toBeVisible();
-  await trigger.tap();
-  await expect(screen.getByLabel("Run status")).toBeVisible();
-  return screen.getByLabel("Background watchers");
-}
+import { openWatchers } from "./run-status.ts";
 
 const start = (input: { purpose: string; command: string }) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name: "watcher", input: { action: "start", ...input } })).toString("base64url")}`;

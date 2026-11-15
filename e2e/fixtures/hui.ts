@@ -1324,10 +1324,13 @@ function huiTest(offline: boolean) {
         // popover, so no target branches here.
         const trigger = fixtures.screen.getByTestId("run-status-trigger");
         const popover = fixtures.screen.getByLabel("Run status");
-        if (!(await popover.isVisible())) {
-          await expect(trigger).toBeVisible();
-          await trigger.tap();
-        }
+        await expect(trigger).toBeVisible();
+        const expanded = async () => (await trigger.getAttribute("aria-expanded")) === "true";
+        // A wide window opens and closes it by itself around a run, and the dialog stays on screen through its show and
+        // hide animations, so the one toggle is pressed only once its state and the screen agree.
+        await expect.poll(async () => (await expanded()) === (await popover.isVisible())).toBe(true);
+        if (!(await expanded())) await trigger.tap();
+        await expect(popover).toBeVisible();
         const helpers = popover.getByRole("region", { name: "Helpers" });
         const row = helpers.getByLabel(new RegExp(`^Open subagent ${escapeRegExp(title)}`, "u"));
         if (!(await row.isVisible())) {

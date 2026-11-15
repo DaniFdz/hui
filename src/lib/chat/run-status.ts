@@ -1,8 +1,8 @@
 /**
  * The chat header's Run status: the compact summary of a conversation's goal,
- * its Task progress plan and the latest batch of helpers, plus the numbers the
- * trigger and its popover print. The view in `views/chat/run-status.ts` owns
- * the markup and the app owns the state behind it.
+ * its Task progress plan and the latest batch of helpers, the numbers the
+ * trigger and its popover print, and whether that popover is open. The view in
+ * `views/chat/run-status.ts` owns the markup and the app owns the state behind it.
  */
 import type { ProgressCard, ProgressStep, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
 import type { Watcher } from "../../api/watchers.ts";
@@ -58,6 +58,31 @@ export type RunStatusModel = {
 
 export function goalStatusLabel(status: SessionGoal["status"]): string {
   return { active: "Pursuing goal", paused: "Goal paused", blocked: "Goal blocked", complete: "Goal achieved" }[status];
+}
+
+/**
+ * The Run status popover across renders. On a wide window it opens by itself while a run streams; the operator's own
+ * open or close is a `choice` that belongs to the run it was made in: it holds for the rest of that run and its end, so a
+ * streamed frame never overrides it, and the next run starts from the default. A reload starts from the default too, so it
+ * never reopens a panel the operator closed.
+ */
+export type RunStatusPanelState = { running: boolean; choice: boolean | undefined };
+
+/** The state after a render, with the operator's choice kept for its run and cleared when the next run starts. */
+export function runStatusPanel(previous: RunStatusPanelState | undefined, input: { running: boolean }): RunStatusPanelState {
+  if (!previous) return { running: input.running, choice: undefined };
+  const started = input.running && !previous.running;
+  return { running: input.running, choice: started ? undefined : previous.choice };
+}
+
+/** Whether the popover is open: the operator's choice wins, else a wide window opens it while a run streams. */
+export function runStatusPanelOpen(state: RunStatusPanelState, input: { running: boolean; wide: boolean }): boolean {
+  return state.choice ?? (input.wide && input.running);
+}
+
+/** Records the operator's own open or close. */
+export function runStatusPanelChosen(state: RunStatusPanelState, open: boolean): RunStatusPanelState {
+  return { running: state.running, choice: open };
 }
 
 /** The current step: the one in progress, else the first still to do, else the last one. */
