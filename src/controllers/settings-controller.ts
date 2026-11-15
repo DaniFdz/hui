@@ -506,7 +506,7 @@ export class SettingsController implements ReactiveController {
     return this.piError;
   }
 
-  props(): Omit<SettingsProps, keyof AutomationProps | "page" | "worktrees" | "onRefreshObservability" | "onSelectPage" | "onChangeModels" | "onClose"
+  props(): Omit<SettingsProps, keyof AutomationProps | "page" | "worktrees" | "onRefreshObservability" | "onSelectPage" | "onChangeModels" | "onStartChat" | "onClose"
     | "gateways" | "onAddGateway" | "onEditGateway" | "onSwitchGateway" | "onRemoveGateway" | "onRetryGateway"> {
     return {
       pi: this.pi,

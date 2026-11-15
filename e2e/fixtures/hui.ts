@@ -67,6 +67,8 @@ export type TabRequest = {
 
 type Intercepted = {
   arrived(): Promise<void>;
+  /** The request that arrived: what the app sent, for a test that asserts a body rather than an outcome. */
+  request(): { method: string; url: string; body: string };
   /** Matching requests observed at the HTTP barrier, including those still held. */
   count(): number;
   /** Real fetches initiated during a trusted tap's click dispatch, excluding background tasks and deferred work. */
@@ -854,6 +856,10 @@ function huiTest(offline: boolean) {
         const to = await centre(onto);
         await browser().mouse.move(from.x, from.y);
         await browser().mouse.down();
+        // HTML5 drag and drop commits on `dragover`: cross into the destination, then move there again, as the
+        // engine's own pointer drag does.
+        await browser().mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2);
+        await browser().mouse.move(to.x, to.y);
         await browser().mouse.move(to.x, to.y);
         await whileOver();
         await browser().mouse.up();
@@ -864,6 +870,10 @@ function huiTest(offline: boolean) {
         const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
         await browser().mouse.move(from.x, from.y);
         await browser().mouse.down();
+        // HTML5 drag and drop commits on `dragover`: cross into the destination, then move there again, as the
+        // engine's own pointer drag does.
+        await browser().mouse.move(from.x + dx / 2, from.y + dy / 2);
+        await browser().mouse.move(from.x + dx, from.y + dy);
         await browser().mouse.move(from.x + dx, from.y + dy);
         await whileOver();
         await browser().mouse.up();
@@ -1019,14 +1029,20 @@ function huiTest(offline: boolean) {
       intercept: async (method, path) => {
         const { arrival, hold, settle } = holding<WebRoute>();
         let count = 0;
+        let seen: { method: string; url: string; body: string } | undefined;
         await browser().route(path, (route) => {
           if (route.request.method !== method) return route.fallback();
           count += 1;
+          seen = { method: route.request.method, url: route.request.url, body: route.request.postData ?? "" };
           return hold(route);
         });
         const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
         return {
           arrived: () => arrival,
+          request: () => {
+            if (!seen) throw new Error("intercept: no request has arrived yet");
+            return seen;
+          },
           count: () => count,
           requestsFromTap: async (target) => {
             // Observe the browser's transport, not app callbacks. Another stream task cannot run inside click

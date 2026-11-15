@@ -437,7 +437,7 @@ export class CallBroker {
       if (!ready.length) {
         throw new CallUnavailableError(waiting.length
           ? `Every ChatGPT account is waiting for its quota until ${new Date(Math.min(...waiting.map((account) => account.cooldownUntil ?? 0))).toLocaleString()}.`
-          : "Sign in to ChatGPT in Settings → Models (OpenAI Codex) to call bots with GPT-Live.");
+          : "Sign in to ChatGPT in Settings → Models → OpenAI → ChatGPT account to call bots with GPT-Live.");
       }
       let last: CallUpstreamError | undefined;
       for (const account of ready) {

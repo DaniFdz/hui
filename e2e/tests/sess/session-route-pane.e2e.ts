@@ -41,9 +41,16 @@ test("a session's address or a Sessions row opens the pane that already shows it
   await expect(panes.nth(0)).toHaveAttribute("aria-current", "true");
 
   // A reload keeps the focused pane when it shows the addressed session, so a deliberate second view of it is not
-  // reassigned to its sibling.
+  // reassigned to its sibling. The header offers no split control, so the second view comes from dropping the row on
+  // the pane's right band, whose drop indicator reads Split rather than the centre's Open here.
   await title(1).tap();
-  await panes.nth(1).getByRole("button", "Split right").tap();
+  await hui.sessionList();
+  const row = screen.getByTestId("session-row").filter({ hasText: "Second width" });
+  const rowBox = (await row.boundingBox())!;
+  const paneBox = (await panes.nth(1).boundingBox())!;
+  await hui.dragBy(row, { dx: paneBox.x + paneBox.width - 24 - (rowBox.x + rowBox.width / 2), dy: paneBox.y + paneBox.height / 2 - (rowBox.y + rowBox.height / 2) }, async () => {
+    await expect(screen.getByText("Split", { exact: true, visible: true })).toBeVisible();
+  });
   await expect(panes).toHaveCount(3);
   await expect(title(2)).toHaveText("Second width");
   const focused = panes.nth(2);

@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createAssistantMessageEventStream, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { expectTypeOf, test, type TestContext, vi } from "vitest";
-import { ProviderSnapshot, ProviderLogin, ProviderQuota, type ProviderModel, type ProviderSummary } from "../api/providers.ts";
+import { ProviderSnapshot, ProviderLogin, ProviderQuota, ProviderTest, type ProviderModel, type ProviderSummary } from "../api/providers.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
 
 
@@ -17,9 +19,15 @@ type OriginalProviderLogin = {
   id: string; provider: string; phase: "pending" | "complete" | "failed" | "cancelled";
   accountId?: string;
   message?: string; url?: string; code?: string;
+  flow?: "browser" | "device_code" | "copy_code";
+  reason?: "cancelled" | "expired" | "stale_link" | "port_in_use" | "network" | "unknown";
+  expiresAt?: number;
   prompt?: { id: string; type: "text" | "secret" | "select" | "manual_code"; message: string; options?: { id: string; label: string }[] };
 };
 type OriginalProviderSnapshot = { providers: OriginalProviderSummary[]; login?: OriginalProviderLogin };
+type OriginalProviderTest =
+  | { ok: true; latencyMs: number }
+  | { ok: false; reason: "auth" | "rate_limit" | "billing" | "timeout" | "format" | "unavailable" | "unknown"; message: string };
 type OriginalProviderQuota = {
   status: "available" | "unsupported" | "unavailable";
   message?: string; checkedAt: number;
@@ -32,8 +40,9 @@ expectTypeOf<ProviderModel>().toEqualTypeOf<OriginalProviderModel>();
 expectTypeOf<ProviderSummary>().toEqualTypeOf<OriginalProviderSummary>();
 expectTypeOf<ProviderLogin>().toEqualTypeOf<OriginalProviderLogin>();
 expectTypeOf<ProviderSnapshot>().toEqualTypeOf<OriginalProviderSnapshot>();
+expectTypeOf<ProviderTest>().toEqualTypeOf<OriginalProviderTest>();
 expectTypeOf<ProviderQuota>().toEqualTypeOf<OriginalProviderQuota>();
-import { ProviderService, ProviderInputError } from "./providers.ts";
+import { ProviderService, ProviderInputError, stoppedLogin } from "./providers.ts";
 import { createSessionModelRuntime, readProviderSelections, writeProviderSelections } from "../runtimes/hui-models.ts";
 import { filterConfiguredModels } from "../runtimes/pi-models.ts";
 import { waitFor } from "../test-support/wait-for.ts";
@@ -50,6 +59,9 @@ async function until<T extends object>(read: () => Promise<T>, predicate: (value
     return predicate(last) ? last : undefined;
   }, { state: () => last });
 }
+
+const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const fixtureCredential = { type: "oauth" as const, access: "fixture-access", refresh: "fixture-refresh", expires: Date.now() + 3600_000 };
 
 test("built-in API key login stores credentials only in HUI and redacts snapshots", async (t) => {
   const { dir, service } = await fixture(t);
@@ -79,6 +91,7 @@ test("built-in API key login stores credentials only in HUI and redacts snapshot
   await restarted.disconnect("openai");
   assert.deepEqual(await readProviderSelections(dir), {});
   assert.equal(JSON.parse(await readFile(join(dir, "auth.json"), "utf8")).openai, undefined);
+  await assert.rejects(readFile(join(dir, "device.json"), "utf8"), { code: "ENOENT" }, "an API-key sign-in needs no installation id");
 });
 
 test("cancellation and bounded input do not save a pending credential", async (t) => {
@@ -90,6 +103,8 @@ test("cancellation and bounded input do not save a pending credential", async (t
   await assert.rejects(service.start("anthropic", "api_key"), /Finish or cancel/);
   assert.throws(() => service.answer(login.id, waiting.login!.prompt!.id, "x".repeat(16385)), /valid sign-in/);
   service.cancel(login.id);
+  // The state is stopped before the abort settles: an immediate read never renders a failure.
+  assert.deepEqual((await service.snapshot()).login, { id: login.id, provider: "openai", accountId: "default", phase: "cancelled", reason: "cancelled", message: "Sign-in cancelled." });
   assert.throws(() => service.answer(login.id, waiting.login!.prompt!.id, "unused"), /expired/);
   assert.equal((await service.snapshot()).login?.phase, "cancelled");
   const auth = await readFile(join(dir, "auth.json"), "utf8").catch(() => "{}");
@@ -152,7 +167,8 @@ test("OAuth interaction forwards device links and prompts but never returned tok
   const base = runtime.getProvider("openai")!;
   runtime.registerNativeProvider({ ...base, id: "fixture-oauth", name: "Fixture OAuth", auth: { oauth: {
     name: "Fixture subscription",
-    async login(interaction) {
+    async login(interaction, options) {
+      assert.equal(options?.getDeviceId, undefined, "only the all-models ChatGPT sign-in needs an installation id");
       interaction.notify({ type: "device_code", userCode: "FIXTURE", verificationUri: "https://example.invalid/verify" });
       const answer = await interaction.prompt({ type: "manual_code", message: "Paste the callback" });
       assert.equal(answer, "fixture-callback");
@@ -318,4 +334,274 @@ test("Mistral quota reads both allowances from the HUI-saved key without cooling
   assert.equal(calls.length, 2, "a second read inside the minute reuses the cached reply without refetching");
   assert.equal((await service.accounts.list("mistral"))[0]?.cooldownUntil, undefined, "a spend allowance never disables the account");
   vi.unstubAllGlobals();
+});
+
+test("a browser sign-in's own instructions never become HUI's progress line", async (t) => {
+  const { service } = await fixture(t);
+  const runtime = await service.runtime();
+  let showUrl = () => {};
+  let exchanged = () => {};
+  const atUrl = new Promise<void>((resolve) => { showUrl = resolve; });
+  const atProgress = new Promise<void>((resolve) => { exchanged = resolve; });
+  t.onTestFinished(() => { showUrl(); exchanged(); });
+  runtime.registerNativeProvider({ ...runtime.getProvider("openai")!, id: "fixture-browser", name: "Fixture browser", auth: { oauth: {
+    name: "Fixture browser",
+    async login(interaction) {
+      interaction.notify({ type: "auth_url", url: "https://example.invalid/authorize", instructions: "A browser window should open. Complete login to finish." });
+      await atUrl;
+      interaction.notify({ type: "progress", message: "Exchanging authorization code for tokens..." });
+      await atProgress;
+      return fixtureCredential;
+    },
+    refresh: async (credential) => credential,
+    toAuth: async (credential) => ({ apiKey: credential.access }),
+  } } });
+  await service.start("fixture-browser", "oauth");
+  const opening = await until(() => service.snapshot(), (snapshot) => Boolean(snapshot.login?.url));
+  assert.equal(opening.login?.phase, "pending");
+  assert.equal(opening.login?.message, undefined, "PI's browser instructions say what a window HUI never opens would do");
+  showUrl();
+  const progress = await until(() => service.snapshot(), (snapshot) => Boolean(snapshot.login?.message));
+  assert.equal(progress.login?.message, "Exchanging authorization code for tokens...", "a genuine progress message is kept");
+  exchanged();
+  await until(() => service.snapshot(), (snapshot) => snapshot.login?.phase === "complete");
+});
+
+test("a device code reports its page, a truthful message and the provider's own expiry", async (t) => {
+  const { service } = await fixture(t);
+  const runtime = await service.runtime();
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  t.onTestFinished(() => release());
+  runtime.registerNativeProvider({ ...runtime.getProvider("openai")!, id: "fixture-code", name: "Fixture code", auth: { oauth: {
+    name: "Fixture code",
+    async login(interaction) {
+      interaction.notify({ type: "device_code", userCode: "FIXTURE-CODE", verificationUri: "https://example.invalid/device", expiresInSeconds: 900 });
+      await held;
+      return fixtureCredential;
+    },
+    refresh: async (credential) => credential,
+    toAuth: async (credential) => ({ apiKey: credential.access }),
+  } } });
+  const before = Date.now();
+  const login = await service.start("fixture-code", "oauth", { flow: "device_code" });
+  const pending = await until(() => service.snapshot(), (snapshot) => Boolean(snapshot.login?.code));
+  assert.equal(pending.login?.phase, "pending");
+  assert.equal(pending.login?.url, "https://example.invalid/device");
+  assert.equal(pending.login?.message, "Enter the code in the sign-in page.", "the line says what to do with the code, not that it is still starting");
+  assert(pending.login!.expiresAt! >= before + 900_000 && pending.login!.expiresAt! <= Date.now() + 900_000, "the expiry comes from PI's own lifetime");
+  const first = pending.login!.expiresAt!;
+  await until(() => service.snapshot(), (snapshot) => Boolean(snapshot.login?.code));
+  assert.equal((await service.snapshot()).login?.expiresAt, first, "the expiry does not move as the wizard polls");
+  service.cancel(login.id);
+  await until(() => service.snapshot(), (snapshot) => snapshot.login?.phase === "cancelled");
+  assert.equal((await service.snapshot()).login?.expiresAt, undefined, "a stopped sign-in carries no expiry");
+});
+
+test("an operator cancel is cancelled and the sign-in's own deadline is expired", () => {
+  assert.deepEqual(stoppedLogin(new Error("Sign-in cancelled."), true, false), { phase: "cancelled", reason: "cancelled", message: "Sign-in cancelled." });
+  assert.deepEqual(stoppedLogin(new Error("Sign-in cancelled."), true, true), { phase: "cancelled", reason: "expired", message: "Sign-in expired. Start again to get a fresh link or code." });
+  assert.deepEqual(stoppedLogin(new Error("fetch failed: ENOTFOUND auth.example.invalid"), false, false), { phase: "failed", reason: "network", message: "Sign-in failed. Try again." });
+  assert.deepEqual(stoppedLogin(new Error("state mismatch"), false, false), { phase: "failed", reason: "stale_link", message: "Sign-in failed. Try again." });
+});
+
+test("only the all-models ChatGPT sign-in creates the installation id, and it survives a restart", async (t) => {
+  const { dir, service } = await fixture(t);
+  // The same provider with an API key needs no installation id and writes no file.
+  const key = await service.start("openai", "api_key");
+  const prompt = await until(() => service.snapshot(), (snapshot) => Boolean(snapshot.login?.prompt));
+  service.answer(key.id, prompt.login!.prompt!.id, "hui-fixture-key-not-real");
+  await until(() => service.snapshot(), (snapshot) => snapshot.login?.phase === "complete");
+  await assert.rejects(readFile(join(dir, "device.json"), "utf8"), { code: "ENOENT" }, "an API-key sign-in needs no installation id");
+
+  // PI's own all-models ChatGPT flow is the one sign-in that asks for it. That flow binds a local callback port before
+  // it hands out the authorization URL; a busy port is the only other outcome, so the check names both rather than
+  // pretending the URL is always reached.
+  const signIn = async (target: ProviderService) => {
+    const login = await target.start("openai", "oauth");
+    const stored = JSON.parse(await readFile(join(dir, "device.json"), "utf8")) as { id?: string };
+    assert.match(stored.id ?? "", UUID, "the all-models ChatGPT flow is handed a UUID for this installation");
+    assert.deepEqual(Object.keys(stored), ["id"]);
+    assert.equal((await stat(join(dir, "device.json"))).mode & 0o777, 0o600);
+    const pending = await until(() => target.snapshot(), (snapshot) => Boolean(snapshot.login?.url) || snapshot.login?.phase === "failed");
+    if (pending.login?.url) {
+      assert.equal(new URL(pending.login.url).searchParams.get("ext_agent_host_id"), `urn:uuid:${stored.id}`, "the pending sign-in URL is the one payload that carries the id");
+      const { url: _url, ...rest } = pending.login;
+      assert(!JSON.stringify(rest).includes(stored.id!), "the id enters no other payload");
+    } else {
+      assert.equal(pending.login?.reason, "port_in_use", "PI builds that URL only after its callback port has bound");
+    }
+    target.cancel(login.id);
+    await until(() => target.snapshot(), (snapshot) => snapshot.login?.phase === "cancelled");
+    assert(!JSON.stringify(await target.snapshot()).includes(stored.id!), "a stopped sign-in no longer carries it");
+    return stored.id!;
+  };
+  const first = await signIn(service);
+
+  const restarted = new ProviderService(dir);
+  assert.equal(await signIn(restarted), first, "a restarted gateway reuses the persisted id");
+
+  await writeFile(join(dir, "device.json"), "{");
+  const repaired = new ProviderService(dir);
+  assert.notEqual(await signIn(repaired), first, "a corrupt file is replaced rather than reused");
+});
+
+test("a requested sign-in flow answers the first select prompt silently, and an unsupported one still asks", async (t) => {
+  const { service } = await fixture(t);
+  const chosen: Record<string, string> = {};
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  t.onTestFinished(() => release());
+  const register = (runtime: ModelRuntime, id: string, gate?: Promise<void>) => runtime.registerNativeProvider({ ...runtime.getProvider("openai")!, id, name: `Fixture ${id}`, auth: { oauth: {
+    name: "Fixture flow",
+    login: async (interaction) => {
+      chosen[id] = await interaction.prompt({ type: "select", message: "How do you want to sign in?", options: [{ id: "browser", label: "In the browser" }, { id: "device_code", label: "With a device code" }] });
+      await gate;
+      return fixtureCredential;
+    },
+    refresh: async (credential) => credential,
+    toAuth: async (credential) => ({ apiKey: credential.access }),
+  } } });
+  const runtime = await service.runtime();
+  register(runtime, "fixture-flow", held);
+  const login = await service.start("fixture-flow", "oauth", { flow: "device_code" });
+  assert.equal(login.flow, "device_code", "the requested flow is echoed while the sign-in is pending");
+  await waitFor("the flow's prompt to be answered on the gateway", () => chosen["fixture-flow"] === undefined ? undefined : true);
+  const waiting = await service.snapshot();
+  assert.equal(waiting.login?.prompt, undefined, "an auto-answered prompt never reaches the browser");
+  assert.equal(waiting.login?.phase, "pending");
+  release();
+  const complete = await until(() => service.snapshot(), (snapshot) => snapshot.login?.phase === "complete");
+  assert.equal(chosen["fixture-flow"], "device_code");
+  assert.equal(complete.login?.prompt, undefined);
+
+  register(runtime, "fixture-unmatched");
+  const unmatched = await service.start("fixture-unmatched", "oauth", { flow: "copy_code" });
+  const asking = await until(() => service.snapshot(), (snapshot) => Boolean(snapshot.login?.prompt));
+  assert.equal(asking.login?.prompt?.type, "select");
+  assert.deepEqual(asking.login?.prompt?.options?.map((option) => option.id), ["browser", "device_code"]);
+  assert.equal(asking.login?.flow, "copy_code", "a flow the provider does not offer is still reported");
+  service.answer(unmatched.id, asking.login!.prompt!.id, "browser");
+  const answered = await until(() => service.snapshot(), (snapshot) => snapshot.login?.phase === "complete");
+  assert.equal(chosen["fixture-unmatched"], "browser");
+  assert.equal(answered.login?.reason, undefined, "a completed sign-in reports no failure");
+
+  await assert.rejects(service.start("openai", "oauth", { flow: "sms" }), ProviderInputError);
+});
+
+test("a failed sign-in reports why, keeping PI's own error out of the payload and in the log", async (t) => {
+  const { service } = await fixture(t);
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  t.onTestFinished(() => logged.mockRestore());
+  const runtime = await service.runtime();
+  const failing = (id: string, message: string) => runtime.registerNativeProvider({ ...runtime.getProvider("openai")!, id, name: "Fixture failure", auth: { oauth: {
+    name: "Fixture failure",
+    login: async () => { throw new Error(message); },
+    refresh: async (credential) => credential,
+    toAuth: async (credential) => ({ apiKey: credential.access }),
+  } } });
+  const cases = [
+    ["fixture-port", "listen EADDRINUSE: port 1455 is in use", "port_in_use"],
+    ["fixture-stale", "OAuth state mismatch. Start the sign-in again.", "stale_link"],
+    ["fixture-network", "fetch failed: getaddrinfo ENOTFOUND auth.example.invalid", "network"],
+  ] as const;
+  for (const [id, message, reason] of cases) {
+    failing(id, message);
+    await service.start(id, "oauth");
+    const failed = await until(() => service.snapshot(), (snapshot) => snapshot.login?.phase === "failed");
+    expectSchema(ProviderSnapshot, failed);
+    assert.equal(failed.login?.reason, reason);
+    assert.equal(failed.login?.message, "Sign-in failed. Try again.", "the generic sentence stays for older clients");
+    assert(!JSON.stringify(failed).includes(message), "PI's raw error never reaches the browser");
+  }
+  const log = logged.mock.calls.flat().map(String).join("\n");
+  for (const [, message] of cases) assert(log.includes(message), `the gateway log keeps PI's cause: ${message}`);
+  assert.equal(log.split("port 1455 is in use").length - 1, 1, "each cause is logged once");
+});
+
+test("a model test measures a one-word reply and classifies a rejected credential safely", async (t) => {
+  const { service } = await fixture(t);
+  const { credentialStore } = await import("./provider-accounts.ts");
+  const runtime = await service.runtime();
+  const template = runtime.getModels("openai")[0]!;
+  const model = (id: string) => ({ ...template, id: `${id}-model`, provider: id, name: `${id} model` });
+  const register = (id: string, reply: "ok" | "empty" | "auth") => runtime.registerNativeProvider({
+    ...runtime.getProvider("openai")!, id, name: `Fixture ${id}`,
+    getModels: () => [model(id)],
+    getAllModels: () => [model(id)],
+    streamSimple: () => {
+      const output = createAssistantMessageEventStream();
+      if (reply === "auth") output.push({ type: "error", reason: "error", error: fauxAssistantMessage("", { stopReason: "error", errorMessage: "401 Unauthorized: invalid key sk-fixture-not-real" }) });
+      else output.push({ type: "done", reason: "stop", message: fauxAssistantMessage(reply === "ok" ? "OK" : "") });
+      output.end();
+      return output;
+    },
+  });
+  for (const [id, reply] of [["fixture-model", "ok"], ["fixture-empty", "empty"], ["fixture-denied", "auth"]] as const) {
+    register(id, reply);
+    await credentialStore(service.accounts.authPath()).modify(id, async () => ({ type: "api_key", key: "sk-fixture-not-real" }));
+  }
+  const ok = await service.test("fixture-model", "fixture-model-model");
+  expectSchema(ProviderTest, ok);
+  assert(ok.ok, `the fixture model answers: ${JSON.stringify(ok)}`);
+  assert(Number.isFinite(ok.latencyMs) && ok.latencyMs >= 0);
+
+  const empty = await service.test("fixture-empty", "fixture-empty-model");
+  expectSchema(ProviderTest, empty);
+  assert(!empty.ok, "an empty answer fails");
+  assert.equal(empty.reason, "format");
+  assert.match(empty.message, /Fixture fixture-empty/);
+
+  const denied = await service.test("fixture-denied", "fixture-denied-model", "default");
+  expectSchema(ProviderTest, denied);
+  assert(!denied.ok, "a rejected credential fails");
+  assert.equal(denied.reason, "auth");
+  assert.match(denied.message, /Fixture fixture-denied rejected the saved credentials/);
+  assert(!JSON.stringify(denied).includes("sk-fixture-not-real"));
+  assert(!JSON.stringify(denied).includes("401"));
+
+  register("fixture-signed-out", "ok");
+  const signedOut = await service.test("fixture-signed-out", "fixture-signed-out-model");
+  assert(!signedOut.ok, "an unconnected provider is not tested");
+  assert.equal(signedOut.reason, "auth");
+
+  await assert.rejects(service.test("fixture-model", "missing-model"), ProviderInputError);
+  await assert.rejects(service.test("fixture-model", "fixture-model-model", "missing-account"), ProviderInputError);
+  await assert.rejects(service.test("custom", "fixture-model-model"), /custom providers in PI/);
+});
+
+test("a model test skips an account waiting out its cooldown while another can answer", async (t) => {
+  const { service } = await fixture(t);
+  const { credentialStore } = await import("./provider-accounts.ts");
+  const runtime = await service.runtime();
+  const template = runtime.getModels("openai")[0]!;
+  const model = { ...template, id: "rotation-model", provider: "fixture-rotation", name: "Rotation model" };
+  const asked: (string | undefined)[] = [];
+  runtime.registerNativeProvider({
+    ...runtime.getProvider("openai")!, id: "fixture-rotation", name: "Fixture rotation",
+    getModels: () => [model],
+    getAllModels: () => [model],
+    streamSimple: (_model, _context, options) => {
+      asked.push(options?.apiKey);
+      const output = createAssistantMessageEventStream();
+      output.push({ type: "done", reason: "stop", message: fauxAssistantMessage("OK") });
+      output.end();
+      return output;
+    },
+  });
+  const backup = "55555555-5555-4555-8555-555555555555";
+  await service.accounts.update("fixture-rotation", () => [{ id: "default", name: "Primary" }, { id: backup, name: "Backup" }]);
+  await credentialStore(service.accounts.authPath()).modify("fixture-rotation", async () => ({ type: "api_key", key: "first-key" }));
+  await credentialStore(service.accounts.authPath(backup)).modify("fixture-rotation", async () => ({ type: "api_key", key: "backup-key" }));
+
+  await service.accounts.cooldown("fixture-rotation", "default", Date.now() + 3_600_000);
+  assert((await service.test("fixture-rotation", "rotation-model")).ok);
+  assert.deepEqual(asked, ["backup-key"], "the account waiting out a cooldown is not asked first");
+
+  await service.accounts.cooldown("fixture-rotation", backup, Date.now() + 3_600_000);
+  await service.test("fixture-rotation", "rotation-model");
+  assert.deepEqual(asked, ["backup-key", "first-key"], "with every account cooling down, the first connected one is still tested");
+
+  await service.test("fixture-rotation", "rotation-model", backup);
+  assert.deepEqual(asked, ["backup-key", "first-key", "backup-key"], "a named account is tested whatever its cooldown");
 });

@@ -22,7 +22,7 @@ const SIGNED_IN = JSON.stringify({
 });
 
 /** The broker's answer when no account is signed in: the shared gateway's own, which the page reads word for word. */
-const NO_LOGIN = "Sign in to ChatGPT in Settings → Models (OpenAI Codex) to call bots with GPT-Live.";
+const NO_LOGIN = "Sign in to ChatGPT in Settings → Models → OpenAI → ChatGPT account to call bots with GPT-Live.";
 
 /**
  * The reasons the call route refuses a start beyond the login, with the message and the status it gives each

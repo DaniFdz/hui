@@ -1,12 +1,12 @@
 /**
  * One chat pane of the split workspace: an embedded `<hui-app>` bound to its pane's session, presentation and the
- * shell callbacks it reports to (close, split, Work views, navigation, the session registry and drafts). Terminals and
+ * shell callbacks it reports to (close, Work views, navigation, the session registry and drafts). Terminals and
  * the browser view live in the Work pane.
  */
 import { html, type TemplateResult } from "lit";
 import type { Attachment, SessionGroup, SessionView } from "../api/sessions.ts";
 import type { BotView } from "../lib/bots/bots.ts";
-import type { SessionPane, SplitDirection } from "../lib/session/multiplexer.ts";
+import type { SessionPane } from "../lib/session/multiplexer.ts";
 import type { PanePresentation } from "../components/session-multiplexer.ts";
 
 export type SessionPaneProps = {
@@ -20,8 +20,6 @@ export type SessionPaneProps = {
   panelPicker?: TemplateResult;
   bots: readonly BotView[];
   onClose: (() => void) | undefined;
-  onSplit: ((direction: SplitDirection) => void) | undefined;
-  onTerminal: () => Promise<void>;
   onBrowser: () => void;
   onNavigate: (id: string) => void;
   onRegistryChange: () => Promise<void>;
@@ -43,8 +41,6 @@ export const renderSessionPane = (props: SessionPaneProps) => html`
       .paneMobileNav=${props.mobileNav}
       .panePanelPicker=${props.panelPicker}
       .onPaneClose=${props.onClose}
-      .onPaneSplit=${props.onSplit}
-      .onPaneTerminal=${props.onTerminal}
       .onPaneBrowser=${props.onBrowser}
       .onPaneNavigate=${props.onNavigate}
       .onPaneRegistryChange=${props.onRegistryChange}
