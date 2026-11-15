@@ -1786,7 +1786,10 @@ not on that worker, and refuses `watcher`, the `GATEWAY_ONLY_TOOLS` of
 conversation's terminals live in the gateway but open that worker's own shell,
 and its browser runs on the host),
 `bot.section {botId}` (`{ section: string | null }`, the `bots` prompt section of
-a bot whose chat runs on that worker; any other bot is refused) and
+a bot whose chat runs on that worker; any other bot is refused),
+`bot.project {botId}` (`{ cwd: string | null }`, the project directory of that
+bot's group, whose context file its chat's prompt carries; any other bot is
+refused, and a bot of no group gets `null`) and
 `secret-request {key,params}`, whose answer `{status:"provided",label,value}`
 (or `cancelled`/`expired`) only the host sees: it writes the value to its own
 private file and gives the agent the path. The gateway answers it only for a
@@ -2963,7 +2966,12 @@ Durable session is;
 its tags reach the gateway the same way
 (its tool call reaches the gateway through the agent-tool bridge, as any HUI
 tool of a remote session). With no gateway attached the section is left out,
-as `message_bot` could not deliver anything then either. OptChat's compactor
+as `message_bot` could not deliver anything then either. A chief's group is this
+gateway's too: the host asks `bot.project` for the directory of the group the bot
+works for, and the chat's prompt carries that project's context file beside its
+own folder's, as a local chief's does; a bot of no group carries none, and with
+no gateway attached it is left out, as a gateway that keeps no groups leaves it.
+OptChat's compactor
 runs on the worker with the bot's utility model, else the utility model of the
 Settings the gateway mirrors there, else the chat's own model, as locally.
 

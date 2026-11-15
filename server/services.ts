@@ -385,13 +385,23 @@ durableHost().configureDurableBots(createDurableBots(durableHost(), {
   },
   // A bot's chat that turns tools back on (the operator allowed a request there) updates the roster's copy of its lists.
   recorded: (botId, access) => bots.accessRecorded(botId, access),
-  // A group chief works in its own folder, so its group's project lends its prompt the project's context file.
+  // A group chief works in its own folder, so its group's project lends its prompt the project's context file; a
+  // worker's host asks for that directory too (`bot.project`).
   projectDir: async (botId) => (await groupForBot(botId))?.cwd,
 }));
 workers.serve("bot.section", async (workerId, params) => {
   const botId = typeof params["botId"] === "string" ? params["botId"] : undefined;
   const section = await bots.workerSection(workerId, botId);
   return { section: section ?? null, name: botId === undefined ? null : bots.identity(botId)?.name ?? null };
+});
+// A bot's chat on a worker asks which directory its group's project is, so its prompt carries that project's context
+// file as a local chat's does; the same rule as `bot.section` answers only for a bot that runs on that worker, and a bot
+// of no group names none.
+workers.serve("bot.project", async (workerId, params) => {
+  // A bot only, never a session's section: the same rule as `bot.section` refuses one that runs elsewhere, or none.
+  const botId = typeof params["botId"] === "string" ? params["botId"] : "";
+  await bots.workerSection(workerId, botId);
+  return { cwd: (await groupForBot(botId))?.cwd ?? null };
 });
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 export const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
