@@ -1487,10 +1487,10 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `create_session` | Only a Chief of Staff bot may call this; a normal agent is refused and uses `sessions_spawn`. `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker (its id, its name, or `local` for this machine). The target group's stored New session defaults decide its directory, machine, Git environment (`workspaceMode`) and base ref; the call fills in only what the group leaves unset. A group chief's own group is the default, then the caller's directory, group, worker, model and thinking. The brief is the session's first prompt, tagged from the calling bot like every message a bot sends into a chat; it becomes the PR lead, with HUI's phase protocol, and is not a child, so `sessions_list` and `sessions_history` do not show it |
+| `create_session` | Only a Chief of Staff bot may call this; a normal agent is refused and uses `sessions_spawn`. `{ prompt, cwd?, title?, group?, worker?, worktree?, branchName?, baseRef?, model?, thinking? }`: create an ordinary top-level session in a group, optionally in a new Git worktree and on a worker (its id, its name, or `local` for this machine). The target group's stored New session defaults decide its directory, machine, Git environment (`workspaceMode`) and base ref; the call fills in only what the group leaves unset. A group chief's own group is the default, then the caller's directory, group, worker, model and thinking. A group never lends a session the chief's own bot folder: with neither the group's directory nor one in the call, the call is refused with "This group has no project directory. Set it in the group's New session defaults." The brief is the session's first prompt, tagged from the calling bot like every message a bot sends into a chat; it becomes the PR lead, with HUI's phase protocol, and is not a child, so `sessions_list` and `sessions_history` do not show it |
 | `watch_session` | `{ action: "list" | "add" | "remove", session? }`: list the sessions the caller watches with their status, goal and watchers; add a session in the caller's group; or remove it. A watched session becomes visible to the caller's `sessions_list`, `sessions_history` and `sessions_send`; HUI's gateway heartbeat continues it when it stops. An archived session, a bot's chat and a session in another group cannot be watched |
 | `worker_stats` | `{}`: this machine and every configured worker with CPU, memory, disk, GPU, connection state and running session counts, plus the least loaded connected machine within headroom (CPU under 70%, memory under 80%, disk under 85%, fewer running sessions than half its cores). A disconnected or erroring worker has no metrics and is not recommended; when every machine is over a limit the reply carries `leastLoaded` instead; `local` is the gateway's machine |
-| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/route or model/thinking, a bounded run timeout and `collect`; a `route` resolves to its model and pinned reasoning level from HUI settings before the child exists, and a route that is unknown, sent together with `model`, or whose model is missing from the caller's available models is rejected before any child is created, naming the route to fix or the configured route names; a raw `model` missing from that catalog names close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
+| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/route or model/thinking, a bounded run timeout and `collect`; a `route` resolves to its model and pinned reasoning level from HUI settings before the child exists, and a route that is unknown, sent together with `model`, or whose model is missing from the caller's available models is rejected before any child is created, naming the route to fix or the configured route names; a raw `model` missing from that catalog names close matches (an unavailable or empty catalog does not block); a child of a group chief's chat takes the group's stored directory as its own and for a `worktree`, and the group's machine (`worker`), refusing like `create_session` when the group names no directory; returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
 | `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished, at the timeout (default 600, 1-3600 s), or as soon as a message is steered to the caller (once per change of its steering queue in a tool round), with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId], interrupted?: string }`; `interrupted` says a steered message ended the wait while tasks were pending. An abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
 | `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |
@@ -1836,7 +1836,12 @@ not on that worker, and refuses `watcher`, the `GATEWAY_ONLY_TOOLS` of
 conversation's terminals live in the gateway but open that worker's own shell,
 and its browser runs on the host),
 `bot.section {botId}` (`{ section: string | null }`, the `bots` prompt section of
-a bot whose chat runs on that worker; any other bot is refused) and
+a bot whose chat runs on that worker; any other bot is refused),
+`bot.project {botId}` (`{ cwd: string | null }`, the project directory of that
+Chief of Staff's group, whose context file its chat's prompt carries; any other
+bot is refused, a bot the operator filed under a group is of none, and a bot of
+no group gets `null`; a directory typed from that machine's home (`~/work`) is
+expanded by the host against its own home) and
 `secret-request {key,params}`, whose answer `{status:"provided",label,value}`
 (or `cancelled`/`expired`) only the host sees: it writes the value to its own
 private file and gives the agent the path. The gateway answers it only for a
@@ -2255,7 +2260,7 @@ goal's status. It never prompts the watched session itself; the chief reads the 
 
 ### `POST /__hui/staff/chiefs`
 
-201 `BotResponse`. `{ group, cwd }`, nothing else: the custom session group's label (1-200 characters) and its project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its home, its `group` set, and its chat in `cwd`; the pack's routes are added to Settings when missing. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, cwd or an unknown field
+201 `BotResponse`. `{ group }`, nothing else: the custom session group's label (1-200 characters, trimmed as `POST /__hui/session-groups` trims it), which must name a configured group that states a project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its own folder, its `group` set, and its chat in that folder (`<HUI config>/bots/<id>`) on the machine the group runs on: the group's `worker` when it names one, this gateway otherwise. The group's project directory is where the sessions its chief creates run, not where the chief's own chat works; the chief's prompt carries the project's context file (the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` there) beside its own folder's. The pack's routes are added to Settings when missing. The pack's skills are written in the bot's own folder on the host that keeps it: its group's worker, or this gateway; a worker that keeps no bot skills gets no write. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, an unknown group, a group with no project directory ("This group has no project directory. Set it in the group's New session defaults.") or an unknown field. A group that already has its chief still answers it, whatever its directory
 
 ### `GET /__hui/bots/:id/catalog`
 
@@ -3013,7 +3018,12 @@ Durable session is;
 its tags reach the gateway the same way
 (its tool call reaches the gateway through the agent-tool bridge, as any HUI
 tool of a remote session). With no gateway attached the section is left out,
-as `message_bot` could not deliver anything then either. OptChat's compactor
+as `message_bot` could not deliver anything then either. A chief's group is this
+gateway's too: the host asks `bot.project` for the directory of the group the bot
+works for, and the chat's prompt carries that project's context file beside its
+own folder's, as a local chief's does; a bot of no group carries none, and with
+no gateway attached it is left out, as a gateway that keeps no groups leaves it.
+OptChat's compactor
 runs on the worker with the bot's utility model, else the utility model of the
 Settings the gateway mirrors there, else the chat's own model, as locally.
 
@@ -3427,11 +3437,27 @@ expose custom-group mutations; their New Session action preselects `cwd` only.
 
 ### `POST /__hui/session-groups`
 
-Creates an empty HUI group. Body: `{ "name": "Research" }`. Group names are
-trimmed, limited to 200 characters and unique; `ungrouped` is reserved.
-The sidebar's permanent New Group button uses this route even when no custom
-groups exist. On confirmed creation the UI reveals the empty group by clearing
-search/status filters and selecting custom groups with default empty visibility.
+Creates an empty HUI group, with its New session defaults when it is given some.
+Body: `{ "name": "Research" }`, or:
+
+```json
+{ "name": "Research", "cwd": "/abs/path", "worker": "1f718aa4-b8b4-4284-957c-d59b716e8d9d", "workspaceMode": "worktree", "baseRef": "main" }
+```
+
+Group names are trimmed, limited to 200 characters, carry no control
+characters and are unique; `ungrouped` is reserved. The optional defaults are
+validated and stored exactly as
+[`PATCH /__hui/session-groups/:name`](#patch-__huisession-groupsname) defines
+them (`cwd` must be an existing local directory, or an absolute or `~/` path
+when a `worker` is named; the worker must exist; `workspaceMode` is `branch`,
+`worktree` or an empty string; `baseRef` is trimmed text of up to 200
+characters), and an empty string leaves that default unset. The group and its
+defaults are written in one registry write, so a rejected name or default
+creates no group at all. Responds with the refreshed list. The sidebar's
+permanent New Group button uses this route even when no custom groups exist.
+On confirmed creation the UI reveals the empty group by clearing
+search/status filters and selecting custom groups with default empty
+visibility.
 
 ### `PUT /__hui/session-groups`
 

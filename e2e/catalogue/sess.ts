@@ -212,9 +212,9 @@ const cases: UseCase[] = [
   {
     id: "SESS-023",
     title: "Create a session group",
-    behaviour: "The Sessions toolbar always offers New group, which opens a dialog with Group name and Create group. The group appears at once in uppercase, above OTHER, even when filters hid everything (search and status reset, sort kept), and focus returns to New group. A rejected name is shown in the dialog. On a phone the drawer closes before the dialog opens and focus returns to Open navigation.",
+    behaviour: "The Sessions toolbar always offers New group, which opens a dialog with Group name, Run on when a worker is configured, Working directory and Create a Chief of Staff, and one Create group saves the group's directory and creates its chief. The group appears at once in uppercase, above OTHER, even when filters hid everything (search and status reset, sort kept), the Bots tab lists Chief of Staff · <group>, and focus returns to New group. A rejected name is shown in the dialog. On a phone the drawer closes before the dialog opens and focus returns to Open navigation.",
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisession-groups"],
-    surfaces: ["route:POST /__hui/session-groups"],
+    surfaces: ["route:POST /__hui/session-groups", "route:POST /__hui/staff/chiefs"],
     journeys: ["session-groups", "session-registry"],
     web: "required",
     phone: "required",
@@ -759,6 +759,16 @@ const cases: UseCase[] = [
     journeys: ["session-multiplexing"],
     web: "required",
     phone: { excluded: "Two panes side by side need the wide layout: below 1100px only the active pane is visible and no second pane can be created, so a route can never name a session another pane shows.", decision: "SPEC.md#behaviour" },
+  },
+  {
+    id: "SESS-079",
+    title: "Create a group with its machine, project and chief in one dialog",
+    behaviour: "New group also collects the group's New session defaults: Run on with Local and every worker, Working directory, and Environment (Branch or New worktree) and Base branch for a Git repository. One Create group saves them and creates the Chief of Staff in the same submit, so the group holds that machine, directory and Git choice with no session of its own, and the Bots tab lists Chief of Staff · <group>, whose chat works in its own folder rather than in that project. Create a Chief of Staff with no working directory is refused in the dialog (\"Choose a working directory first: a Chief of Staff starts this group's sessions there.\") and creates no group.",
+    spec: ["SPEC.md#behaviour", "SPEC.md#a-custom-groups-chief-is-its-own-bot-2026-11-08", "docs/api.md#post-__huisession-groups", "docs/api.md#post-__huistaffchiefs"],
+    surfaces: ["route:POST /__hui/session-groups", "route:POST /__hui/staff/chiefs"],
+    journeys: ["session-groups", "bots"],
+    web: "required",
+    phone: "required",
   },
 ];
 

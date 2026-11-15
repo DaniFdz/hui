@@ -1,12 +1,13 @@
 /** Browser client for the staff pack's own route: the Chief of Staff for one custom session group. */
 import type { BotView } from "./schema/bots.ts";
+import type { StaffChiefInput } from "./schema/staff.ts";
 import { parseBot } from "../lib/bots/bots.ts";
 import { CLIENT_HEADERS, fetchJson } from "./request.ts";
 
 /** A chief is a bot creation, conversation and skills in one request, so it can take longer than a plain read. */
 const CHIEF_TIMEOUT_MS = 120_000;
 
-export async function createStaffChief(input: { group: string; cwd: string }): Promise<BotView> {
+export async function createStaffChief(input: StaffChiefInput): Promise<BotView> {
   const body = await fetchJson<unknown>("/__hui/staff/chiefs", {
     method: "POST",
     headers: { ...CLIENT_HEADERS, "content-type": "application/json" },

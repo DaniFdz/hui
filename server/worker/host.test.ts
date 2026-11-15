@@ -31,6 +31,7 @@ const { resolveBrowserExecutable } = await import("../browser/executable.ts");
 type Store = ReturnType<typeof brokeredStore>;
 type Frame = import("./protocol.ts").Frame;
 type HostInfo = import("./protocol.ts").HostInfo;
+type Peer = import("./protocol.ts").Peer;
 
 const host = new WorkerHost(workerPaths());
 await host.listen();
@@ -117,16 +118,24 @@ test("transcript search reads the worker's own session files", async () => {
   }
 });
 
-/** A gateway's view of the host's bot operations: requests, and the frames the host sends it. */
-async function botGateway() {
+/** A gateway's view of the host's bot operations: requests, and the frames the host sends it. `project` is its
+ * answer to a bot's `bot.project`; without it the gateway predates that request. */
+async function botGateway(options: { project?: string | null } = {}) {
   const socket = connect(host.paths.socket);
   const peer = attachPeer(socket, socket);
   const frames: Frame[] = [];
+  const projects: unknown[] = [];
   peer.onFrame((frame) => frames.push(frame));
   // No logins: the host's models list nothing.
   peer.handle("credential", (params) => params["op"] === "list" ? [] : null);
+  if (options.project !== undefined) {
+    peer.handle("bot.project", (params) => {
+      projects.push(params);
+      return { cwd: options.project };
+    });
+  }
   const hello = await peer.request<HostInfo>("hello");
-  return { peer, frames, hello, disconnect: () => socket.destroy() };
+  return { peer, frames, hello, projects, disconnect: () => socket.destroy() };
 }
 
 async function until<T>(read: () => T | undefined, label: string): Promise<T> {
@@ -135,6 +144,18 @@ async function until<T>(read: () => T | undefined, label: string): Promise<T> {
     if (value !== undefined) return value;
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}.`);
     await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+/** A bot's chat as its model requests see it: the host's inspection renders the prompt they lead with, so what it says a
+ * chat carries is what the gateway's own inspection of a local chief says. */
+async function chatPrompt(peer: Peer, key: string, chat: { reference: string; cwd: string }): Promise<string> {
+  await peer.request("session.start", { key, tool: "durable", launch: { cwd: chat.cwd, sessionFile: chat.reference } });
+  try {
+    const called = await peer.request<{ result?: { prompt?: string } }>("session.call", { key, method: "inspect" });
+    return called.result?.prompt ?? "";
+  } finally {
+    await peer.request("session.dispose", { key });
   }
 }
 
@@ -287,6 +308,52 @@ test("a bot's tool and skill lists live in its document here: made with it, read
     await assert.rejects(peer.request("bot.access.read", { reference: "/tmp/session.jsonl" }), /conversation reference is required/u);
     await peer.request("bot.forget", { reference });
     await assert.rejects(peer.request("bot.access.write", { reference, access: { disabledTools: [] } }), /no bot's chat/u);
+  } finally {
+    gateway.disconnect();
+  }
+});
+
+test("a bot's chat here carries its group's project file, as the gateway answers it, and none without a project", async () => {
+  const project = join(root, "chief-project");
+  await mkdir(project, { recursive: true });
+  await writeFile(join(project, "AGENTS.md"), "PROJECT_RULES\n");
+  // The project a bot's group names is the gateway's (`bot.project`): this host keeps none.
+  const gateway = await botGateway({ project });
+  try {
+    const chat = await gateway.peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-chief", memory: { name: "Chief" }, soul: "# Who I am\nChief." });
+    const prompt = await chatPrompt(gateway.peer, "chief-chat", chat);
+    assert.ok(prompt.includes(`<project_instructions path="${join(project, "AGENTS.md")}">`), prompt);
+    assert.match(prompt, /PROJECT_RULES/u);
+    assert.deepEqual(gateway.projects, [{ botId: "bot-chief" }], "asked for this bot's group, by its id only");
+  } finally {
+    gateway.disconnect();
+  }
+
+  // A bot of no group, and a gateway too old to answer (its reply refuses the request): no project's context file.
+  for (const [label, options, botId] of [["a bot of no group", { project: null }, "bot-nogroup"], ["a gateway that does not serve it", {}, "bot-oldgateway"]] as const) {
+    const other = await botGateway(options);
+    try {
+      const chat = await other.peer.request<{ reference: string; cwd: string }>("bot.create", { botId, memory: { name: "Chief" }, soul: "# Who I am\nChief." });
+      const prompt = await chatPrompt(other.peer, `${botId}-chat`, chat);
+      assert.doesNotMatch(prompt, /<project_instructions|PROJECT_RULES/u, `${label} carries none`);
+    } finally {
+      other.disconnect();
+    }
+  }
+});
+
+test("a group's project named from the worker's home reaches its chief's prompt", async () => {
+  const project = join(root, "home-project");
+  await mkdir(project, { recursive: true });
+  await writeFile(join(project, "AGENTS.md"), "HOME_PROJECT_RULES\n");
+  // A group stores its remote directory as typed, and only this host knows what `~` names: the answer is expanded here,
+  // before the context file is read.
+  const gateway = await botGateway({ project: "~/home-project" });
+  try {
+    const chat = await gateway.peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-home-project", memory: { name: "Chief" }, soul: "# Who I am\nChief." });
+    const prompt = await chatPrompt(gateway.peer, "home-project-chat", chat);
+    assert.ok(prompt.includes(`<project_instructions path="${join(project, "AGENTS.md")}">`), prompt);
+    assert.match(prompt, /HOME_PROJECT_RULES/u);
   } finally {
     gateway.disconnect();
   }

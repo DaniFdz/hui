@@ -752,6 +752,32 @@
   color: var(--danger);
 }
 
+.app-shell .group-action-dialog__chief {
+  display: grid;
+  gap: 3px;
+  cursor: var(--cursor-action);
+}
+
+.app-shell .group-action-dialog__chief-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: var(--control-ui-text-sm);
+}
+
+.app-shell .group-action-dialog__chief-choice input {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.app-shell .group-action-dialog__chief .exec-approval-sub {
+  margin-top: 0;
+  padding-left: 24px;
+}
+
 .app-shell .session-group__toggle {
   display: flex;
   align-items: center;

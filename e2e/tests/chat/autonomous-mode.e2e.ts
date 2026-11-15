@@ -3,8 +3,6 @@
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
-const GROUP = "Autonomy E2E";
-
 const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
 
 const reply = (text: string) => `E2E_REPLY:${Buffer.from(text, "utf8").toString("base64url")}`;
@@ -97,8 +95,9 @@ test("Autonomous mode reaches a session on a worker, and stays with it", { tags:
 });
 
 test("a session a Chief of Staff starts runs Autonomous and its stop reaches that chief", { tags: ["CHAT-088"], platforms: ["web"] }, async ({ screen, hui }) => {
-  // A chief of its own group, so the fixtures delete it and its chat with the rest of the test.
-  const { bot: chief } = await hui.api<{ bot: { id: string; sessionId: string } }>("POST", "/__hui/staff/chiefs", { group: GROUP, cwd: hui.workspace });
+  // A chief of its own group, which names this test's workspace as the directory its sessions run in, so the fixtures
+  // delete it and its chat with the rest of the test.
+  const chief = await hui.createChief();
   const find = async () => (await hui.api<Listed>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions)
     .find((session) => session.title === "Autonomous lead");
   try {
@@ -106,7 +105,7 @@ test("a session a Chief of Staff starts runs Autonomous and its stop reaches tha
       prompt: reply("Ready for review: one pull request, its checks pass."),
       cwd: hui.workspace,
       title: "Autonomous lead",
-      group: GROUP,
+      group: chief.group,
       worker: "local",
       worktree: false,
     }));

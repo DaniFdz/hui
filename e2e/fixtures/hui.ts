@@ -88,7 +88,11 @@ export type Hui = {
   gateway: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
-  /** A real group chief owned by this test, so its conversation and usage are removed by the normal bot cleanup. */
+  /**
+   * A real group chief owned by this test, so its conversation and usage are removed by the normal bot cleanup. It gets a
+   * group of its own, which names this checkout's workspace as the project its sessions run in: without a directory a
+   * group refuses `create_session` and `sessions_spawn` rather than place the work in the chief's own folder.
+   */
   createChief(): Promise<{ id: string; name: string; sessionId: string; group: string }>;
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   prompt(session: { id: string }, text: string): Promise<void>;
@@ -1289,9 +1293,10 @@ function huiTest(offline: boolean) {
       createChief: async () => {
         // Never prompt the launcher's shared seeded chief: its real usage otherwise leaks into later tests.
         const group = `E2E ${randomUUID()}`;
-        await api("POST", "/__hui/session-groups", { name: group });
+        await api("POST", "/__hui/session-groups", { name: group, cwd: receipt.workspace });
+        // The chief works in the bot folder the gateway makes for it; its group names the directory its sessions run in.
         const { bot } = await api<{ bot: { id: string; name: string; sessionId: string; group: string } }>(
-          "POST", "/__hui/staff/chiefs", { group, cwd: receipt.workspace },
+          "POST", "/__hui/staff/chiefs", { group },
         );
         expect(existingBots.has(bot.id)).toBe(false);
         return bot;

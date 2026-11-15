@@ -10,6 +10,7 @@ import { RESPONSE_TIMEOUT_MS } from "./request.ts";
 import {
   OPEN_HEADER_TIMEOUT_MS,
   STATUS_STREAM_STALL_MS,
+  createSessionGroup,
   openSession,
   subscribeSessionStatuses,
   subscribeSession,
@@ -251,6 +252,31 @@ for (const blocked of ["ticket", "handshake", "first snapshot"]) {
     assert.equal(tickets, expected, "a healthy idle stream keeps no establishment deadline");
   });
 }
+
+test("creating a group sends its name and every New session default in one request", async () => {
+  const original = globalThis.fetch;
+  const calls: { url: string; method: string; body: unknown; headers: Record<string, string> }[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    calls.push({ url: String(input), method: init.method ?? "GET", body: JSON.parse(String(init.body)), headers: init.headers as Record<string, string> });
+    return new Response(JSON.stringify({
+      revision: 4,
+      groups: [{ label: "Remote", cwd: "/srv/checkout", workspaceMode: "worktree", baseRef: "release/1.0", worker: "w1", sessions: [] }],
+    }), { status: 201, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const list = await createSessionGroup({ name: "Remote", cwd: "/srv/checkout", worker: "w1", workspaceMode: "worktree", baseRef: "release/1.0" });
+    assert.equal(list.revision, 4);
+    assert.deepEqual(list.groups.map((group) => [group.label, group.cwd, group.workspaceMode, group.baseRef, group.worker]),
+      [["Remote", "/srv/checkout", "worktree", "release/1.0", "w1"]]);
+    assert.deepEqual(calls.map(({ url, method, body }) => [url, method, body]), [["/__hui/session-groups", "POST", {
+      name: "Remote", cwd: "/srv/checkout", worker: "w1", workspaceMode: "worktree", baseRef: "release/1.0",
+    }]]);
+    assert.equal(calls[0]?.headers["content-type"], "application/json");
+    assert.equal(calls[0]?.headers["x-hui"], "1");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 
 test("the browser reads every event stream through readEventStream", () => {
   const src = new URL("../", import.meta.url);

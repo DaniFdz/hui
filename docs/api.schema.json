@@ -9965,6 +9965,42 @@
         }
       }
     },
+    "SessionGroupCreateRequest": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "worker": {
+          "type": "string"
+        },
+        "workspaceMode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "branch"
+            },
+            {
+              "type": "string",
+              "const": "worktree"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        },
+        "baseRef": {
+          "type": "string"
+        }
+      }
+    },
     "SessionJiraIssue": {
       "type": "object",
       "required": [
@@ -11637,14 +11673,10 @@
     "StaffChiefInput": {
       "type": "object",
       "required": [
-        "group",
-        "cwd"
+        "group"
       ],
       "properties": {
         "group": {
-          "type": "string"
-        },
-        "cwd": {
           "type": "string"
         }
       }
@@ -15149,6 +15181,7 @@
       "SessionGoalRequest",
       "SessionGoalStatus",
       "SessionGroup",
+      "SessionGroupCreateRequest",
       "SessionJiraIssue",
       "SessionList",
       "SessionListLayoutGroup",
@@ -16508,6 +16541,9 @@
     {
       "method": "POST",
       "path": "/__hui/session-groups",
+      "request": {
+        "$ref": "#/$defs/SessionGroupCreateRequest"
+      },
       "response": {
         "$ref": "#/$defs/SessionList"
       }

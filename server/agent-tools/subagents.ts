@@ -12,10 +12,12 @@ import { recordDiagnosticEvent } from "../observability.ts";
 import {
   readRegistry,
   updateRegistry,
+  type SessionGroupConfig,
   type SessionRecord,
   type SubagentStatus,
 } from "../sessions/sessions.ts";
 import { AgentToolInputError, rootSessionId } from "../sessions/session-tree.ts";
+import { projectDirectory } from "../sessions/group-session-defaults.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { piThinking } from "../runtimes/model-controls.ts";
 import { isThinkingLevel } from "../sessions/thinking.ts";
@@ -177,6 +179,12 @@ export class SubagentService {
    * reaches the model only once the tool round ends, so it does not end another wait of the same round (a script
    * waiting in a loop would spin). */
   #steeredWaits = new Map<string, string>();
+  /**
+   * The group a chat's bot belongs to, by its bot id: a chief works in its own folder, so the child it starts belongs to
+   * the project and machine the group states (`group-session-defaults.ts`). `services.ts` answers from its registries;
+   * a host without them leaves this, and every child stays in its caller's folder.
+   */
+  botGroup: (botId: string) => Promise<Pick<SessionGroupConfig, "cwd" | "worker"> | undefined> = async () => undefined;
   private readonly sessions: SessionAccess;
   private readonly registryReader: typeof readRegistry;
   private readonly registryUpdater: typeof updateRegistry;
@@ -320,12 +328,20 @@ export class SubagentService {
       throw new AgentToolInputError(`Unsupported thinking level: ${thinking}`);
     }
     const picked = route ? await this.#resolveRoute(route) : undefined;
+    const chat = (await this.registryReader()).find((record) => record.id === callerId);
+    if (!chat) throw new AgentToolInputError(`Unknown caller session: ${callerId}`);
+    // A chief's chat works in its own folder; the child belongs to the project its group states, on the group's machine.
+    // Without one (a lead, or a chat of no bot) the caller's own checkout and machine stand, as they always did.
+    const group = chat.bot ? await this.botGroup(chat.bot) : undefined;
+    const cwd = projectDirectory(group, undefined, chat.cwd);
+    const worker = group?.worker ?? chat.worker;
     // Before a child exists: a checkout that cannot be made refuses the spawn, and the caller can retry.
     let createdWorktree: { cwd: string; branch: string; rollback: () => Promise<void> } | undefined;
     if (worktree) {
-      const caller = (await this.registryReader()).find((record) => record.id === callerId);
-      if (!caller) throw new AgentToolInputError(`Unknown caller session: ${callerId}`);
-      createdWorktree = await this.sessions.subagentWorktree(caller, label ?? truncate(task.replace(/\s+/g, " "), 72)).catch((error: unknown) => {
+      createdWorktree = await this.sessions.subagentWorktree(
+        { ...chat, cwd, ...(worker ? { worker } : {}) },
+        label ?? truncate(task.replace(/\s+/g, " "), 72),
+      ).catch((error: unknown) => {
         throw new AgentToolInputError(error instanceof Error ? error.message : "Could not create a worktree for the subagent.");
       });
     }
@@ -366,11 +382,11 @@ export class SubagentService {
           title: label ?? truncate(task.replace(/\s+/g, " "), 72),
           group: caller.group,
           ...(caller.archived ? { archived: true } : {}),
-          cwd: createdWorktree?.cwd ?? caller.cwd,
+          cwd: createdWorktree?.cwd ?? cwd,
           // A subagent of a bot's chat loads the bot's own skills, and so do its own children (the staff pack).
           ...(caller.bot ?? caller.botSkills ? { botSkills: caller.bot ?? caller.botSkills } : {}),
           // A remote session's children run on the same worker.
-          ...(caller.worker ? { worker: caller.worker } : {}),
+          ...(worker ? { worker } : {}),
           tool: caller.tool,
           model: childModel ?? caller.model,
           // Ultra stays with the session that chose it; its children work at the same level without delegating on their own.
