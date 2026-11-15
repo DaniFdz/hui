@@ -53,7 +53,9 @@ const fixtureModels = [
 ];
 // `signedIn` outlives `phase`: the gateway keeps the connection when a save clears the finished login, so a reload
 // after the model step must show the card and no wizard.
-const providerState = { phase: "idle", signedIn: false, provider: "openai-codex", flow: "", polls: 0, selected: [] };
+// The connection belongs to the provider whose sign-in ran, not to one fixed provider, and each keeps its own saved
+// models, so a Claude or OpenCode Go run shows its own card and model step.
+const providerState = { phase: "idle", signedIn: false, provider: "openai-codex", flow: "", polls: 0, selected: {} };
 
 /** The sign-in this fixture is running: a device code for a subscription flow, a prompt for an API key. */
 function fixtureLogin() {
@@ -85,8 +87,8 @@ function fixtureSnapshot() {
   const connected = providerState.signedIn;
   const provider = (id, name, methods, models) => ({
     id, name, methods, accounts: [],
-    configured: connected && id === "openai-codex", authenticated: connected && id === "openai-codex",
-    selected: connected && id === "openai-codex" ? providerState.selected : [],
+    configured: connected && id === providerState.provider, authenticated: connected && id === providerState.provider,
+    selected: connected && id === providerState.provider ? providerState.selected[id] ?? [] : [],
     models: id === "openai-codex" ? fixtureModels : models,
   });
   return {
@@ -113,13 +115,13 @@ async function fixtureProviderRoutes(request, response) {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const { flow, method } = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-    Object.assign(providerState, { phase: "pending", signedIn: false, provider: start[1], flow: method === "api_key" ? "" : flow ?? "browser", polls: 0, selected: [] });
+    Object.assign(providerState, { phase: "pending", signedIn: false, provider: start[1], flow: method === "api_key" ? "" : flow ?? "browser", polls: 0 });
     json(response, 200, fixtureLogin());
     return true;
   }
   const pending = /^\/__hui\/providers\/login\/[^/]+$/u.exec(path);
   if (pending && (request.method === "POST" || request.method === "DELETE")) {
-    if (request.method === "DELETE") Object.assign(providerState, { phase: "idle", signedIn: false, polls: 0, selected: [] });
+    if (request.method === "DELETE") Object.assign(providerState, { phase: "idle", signedIn: false, polls: 0 });
     // An API-key sign-in is done once its prompt is answered; a subscription waits for the poll below.
     else if (!providerState.flow) providerState.phase = "complete";
     if (providerState.phase === "complete") providerState.signedIn = true;
@@ -136,7 +138,7 @@ async function fixtureProviderRoutes(request, response) {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-    providerState.selected = Array.isArray(body.models) ? body.models : [];
+    providerState.selected[providerState.provider] = Array.isArray(body.models) ? body.models : [];
     // The gateway's save clears the finished login, so a later reload shows the card, not the wizard.
     providerState.phase = "idle";
     json(response, 200, { ok: true });
