@@ -2,7 +2,7 @@
  * the same terminals, the same shell processes and their output, and a shell that still answers (SET-084). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { reopenWork } from "./work-views.ts";
+import { openWork, reopenWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -24,7 +24,7 @@ test("choosing another Terminal font keeps every open shared terminal on its own
   const pane = screen.getByLabel("Work pane");
 
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Open terminal").tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByText("Shared · Connected", { visible: true })).toBeVisible();
   const first = (await terminals(hui, session.id))[0]!;
   await expect.poll(async () => (await replay(hui, session.id, first.id)).trim(), { timeout: 60_000 }).not.toBe("");

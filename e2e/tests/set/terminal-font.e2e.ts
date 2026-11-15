@@ -9,7 +9,7 @@
  */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
-import { reopenWork } from "../work/work-views.ts";
+import { openWork, reopenWork } from "../work/work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited" };
 
@@ -39,7 +39,7 @@ test("another Terminal font reaches a terminal that is already open: the same sh
   const pane = screen.getByLabel("Work pane");
 
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", { name: "Open terminal" }).tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByRole("tab", { name: "Terminal 1" })).toHaveAttribute("aria-selected", "true");
   // The shell prints its own pid and a marker, which a terminal that had restarted could not keep.
   await run(hui, screen, session.id, "printf 'FONT-PROOF %s\\n' \"$$\"", /FONT-PROOF \d+/u);
