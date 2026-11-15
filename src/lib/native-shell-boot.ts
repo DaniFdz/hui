@@ -60,9 +60,20 @@ export function installNativeShell(): () => void {
   // watches, so there is one retry path rather than a second one for the phone.
   const stopResume = shell.onResume(() => { window.dispatchEvent(new Event("online")); });
 
+  // The phone's keyboard lifts the page above it. The page pays its own home-indicator gap below the composer, so the
+  // open keyboard marks the root and the stylesheet drops that gap: the composer sits on the keyboard instead of
+  // floating over it. A hide removes the mark; a stale one would leave the composer flush while the keyboard is gone.
+  const root = document.documentElement;
+  const stopKeyboard = shell.onKeyboard(({ open }) => {
+    if (open) root.setAttribute("data-hui-keyboard", "open");
+    else root.removeAttribute("data-hui-keyboard");
+  });
+
   return () => {
     document.removeEventListener("click", onClick, true);
     window.open = open;
     stopResume();
+    stopKeyboard();
+    root.removeAttribute("data-hui-keyboard");
   };
 }

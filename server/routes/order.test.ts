@@ -100,6 +100,7 @@ const CASES: Case[] = [
   ["GET /__hui/bots/missing/triggers", 404, ["error"], true],
   ["GET /__hui/bots/missing", 404, ["error"], true],
   ["GET /__hui/providers/a/b/c/d", 405, ["error"], true],
+  ["POST /__hui/providers/openai/test", 400, ["error"], true],
   ["POST /__hui/pi", 405, ["error"], true],
   ["PUT /__hui/power", 400, ["error"], true],
   ["GET /__hui/host-metrics/history", 200, ["history"], false],

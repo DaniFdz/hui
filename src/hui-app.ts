@@ -123,7 +123,7 @@ import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
-import { activeSessionPane, closeSessionPane, isChatPane, parseSessionLayout, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, showSessionLayout, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
+import { activeSessionPane, closeSessionPane, isChatPane, parseSessionLayout, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, showSessionLayout, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
   retainWorkSessions, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, workPaneMaximized, workViewKey, workViewKind,
@@ -390,12 +390,8 @@ export class HuiApp extends HuiElement {
   /** The destination chooser a phone shows in this pane's header instead of a row of its own. */
   @property({ attribute: false }) panePanelPicker?: TemplateResult;
   @property(paneCallback) onPaneClose: (() => void) | undefined;
-  @property(paneCallback) onPaneSplit: ((direction: SplitDirection) => void) | undefined;
-  @property(paneCallback) onPaneTerminal: (() => Promise<void>) | undefined;
   /** Opens this session's browser view in the Work pane: the larger live view beside the chat. */
   @property(paneCallback) onPaneBrowser: (() => void) | undefined;
-  @state() private terminalOpening = false;
-  @state() private terminalError = "";
   @property(paneCallback) onPaneNavigate: ((id: string) => void) | undefined;
   @property(paneCallback) onPaneRegistryChange: (() => Promise<void>) | undefined;
   /** Worktree progress while the gateway still creates this pane's session;
@@ -1501,15 +1497,6 @@ export class HuiApp extends HuiElement {
       target?.focus({ preventScroll: true });
     });
   }
-
-  private openTerminal = async () => {
-    if (this.conversation.connection !== "live") return;
-    this.terminalOpening = true;
-    this.terminalError = "";
-    try { await this.onPaneTerminal?.(); }
-    catch (error) { this.terminalError = error instanceof Error ? error.message : "Could not open terminal."; }
-    finally { this.terminalOpening = false; }
-  };
 
   private dropSession = (id: string, paneId: string, zone: DropZone) => {
     if (!this.work.layout || !this.sessions.groups.some((group) => group.sessions.some((session) => session.id === id))) return;
@@ -2963,16 +2950,9 @@ export class HuiApp extends HuiElement {
       onSelectSession: this.selectSession,
       onClosePane: this.onPaneClose,
       paneMovable: Boolean(this.onPaneClose) && !this.paneNarrow,
-      onSplitPane: this.paneNarrow ? undefined : this.onPaneSplit,
-      onOpenTerminal: this.onPaneTerminal ? this.openTerminal : undefined,
-      onOpenBrowser: this.onPaneBrowser && this.conversation.connection === "live" && this.control.settings.browser.enabled && this.conversation.transcript.some((item) => item.kind === "tool" && item.name === "browser")
-        ? () => { if (this.conversation.connection === "live") this.onPaneBrowser?.(); }
-        : undefined,
       browserPreview: this.conversation.connection === "live" && this.control.settings.browser.enabled
         ? { visible: this.paneVisible, ...(this.onPaneBrowser ? { onExpand: () => this.onPaneBrowser?.() } : {}) }
         : undefined,
-      terminalOpening: this.terminalOpening,
-      terminalError: this.terminalError,
       onSelectSubagent: (sessionId) => {
         const openBot = this.embeddedPane ? this.onPaneOpenBot : this.openBot;
         const open = (session: SessionView) => session.bot && openBot ? openBot(session.bot.id) : this.selectSession(session);
@@ -3114,8 +3094,6 @@ export class HuiApp extends HuiElement {
       panelPicker: pane.id === this.work.layout?.activePaneId ? this.narrowPicker : undefined,
       bots: this.mentionable(),
       onClose: controls.close,
-      onSplit: controls.split,
-      onTerminal: () => this.work.openTerminal(pane),
       onBrowser: () => this.work.openBrowser(pane),
       onNavigate: (id) => this.work.changePaneSession(pane.id, id),
       onRegistryChange: () => this.refreshSessions(true).then(() => this.updateComplete).then(() => {}),
@@ -3254,9 +3232,17 @@ export class HuiApp extends HuiElement {
           onToggleMachine: this.dashboard.toggleMachine,
         },
         expandedLists: this.dashboard.expandedLists,
+        filters: this.dashboard.filters,
+        busy: this.dashboard.busy,
+        actionError: this.dashboard.actionError,
         now: Date.now(),
         onRetry: this.dashboard.refresh,
         onToggleList: this.dashboard.toggleList,
+        onFilters: this.dashboard.setFilters,
+        onClearFilters: this.dashboard.clearFilters,
+        onDismissActionError: this.dashboard.dismissActionError,
+        onAnswer: this.dashboard.answer,
+        onResume: this.dashboard.resume,
         onOpenSession: this.selectSession,
       }),
       onOpenSettings: () => this.navigate({ kind: "settings", page: "integrations" }),
@@ -3305,6 +3291,7 @@ export class HuiApp extends HuiElement {
             this.launcher.selectDefaultThinking(models.thinking);
             void this.control.save({ models });
           },
+          onStartChat: () => this.openNewSession(),
           onClose: this.closeSettings,
           ...this.automationProps(),
         })}
@@ -3409,10 +3396,12 @@ export class HuiApp extends HuiElement {
       onSearch: this.updateSearch,
     };
 
+    // New Session draws the launch form, not a chat pane, so it keeps the
+    // shell's topbar on a phone: merging the chrome would leave the page with
+    // no Open navigation control and no way back to the drawer.
     const chatLikeRoute =
       (this.view === "home" && Boolean(this.conversation.selected)) ||
-      this.view === "bot" ||
-      (this.view === "surface" && this.activePage?.id === "new-session");
+      this.view === "bot";
 
     return html`<div
       class="shell app-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${chatLikeRoute ? "shell--chat" : ""} ${chatLikeRoute && this.mobileNavLayout ? "shell--merged-chat-chrome" : ""} ${this.floatingCall() ? "shell--call-bar" : ""}"

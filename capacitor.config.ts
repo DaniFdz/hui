@@ -30,6 +30,13 @@ const config: CapacitorConfig = {
     App: {
       disableBackButtonHandler: true,
     },
+    // iOS resizes the WebView above the keyboard; the window the keyboard uncovers behind its rounded glass was left
+    // black. `dom` repaints that backdrop with `document.body`'s colour every time the keyboard shows, so it follows
+    // the page's light or dark theme instead of staying black. `src/lib/theme/theme.ts` resolves a custom theme's
+    // `oklch()`/`color-mix()` body colour to hex first, because this native reader only understands hex and rgb().
+    Keyboard: {
+      autoBackdropColor: "dom",
+    },
   },
   server: {
     // A real gateway needs https (default only for loopback and `10.0.2.2` tests, see the app's network security

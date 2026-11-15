@@ -67,6 +67,8 @@ export type TabRequest = {
 
 type Intercepted = {
   arrived(): Promise<void>;
+  /** The request that arrived: what the app sent, for a test that asserts a body rather than an outcome. */
+  request(): { method: string; url: string; body: string };
   /** Matching requests observed at the HTTP barrier, including those still held. */
   count(): number;
   /** Real fetches initiated during a trusted tap's click dispatch, excluding background tasks and deferred work. */
@@ -138,6 +140,9 @@ export type Hui = {
   /** The statuses recorded since `recordStatuses()`, in the order the page added them. */
   statuses(): Promise<string[]>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
+  /** Models the phone shell's soft keyboard from the Keyboard plugin's show/hide events: the root mark it sets and the
+   * CSS viewport a phone leaves above the keys. Browser-only; the Android app's keyboard is the system's. */
+  softKeyboard(open: boolean): Promise<void>;
   type(text: string): Promise<void>;
   peek(target: Locator): Promise<void>;
   sessionList(): Promise<void>;
@@ -610,6 +615,14 @@ function huiTest(offline: boolean) {
       },
       statuses: () => browser().evaluate(() => (window as unknown as { huiStatuses?: string[] }).huiStatuses ?? []),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+      softKeyboard: async (open) => {
+        await browser().setViewport(open ? { width: 390, height: 664 } : { width: 390, height: 844 });
+        await browser().evaluate((open) => {
+          if (open) document.documentElement.setAttribute("data-hui-keyboard", "open");
+          else document.documentElement.removeAttribute("data-hui-keyboard");
+          return null;
+        }, open);
+      },
       type: (text) => browser().keyboard.type(text),
       phoneScreen: async (orientation = "portrait") => {
         const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
@@ -858,6 +871,10 @@ function huiTest(offline: boolean) {
         const to = await centre(onto);
         await browser().mouse.move(from.x, from.y);
         await browser().mouse.down();
+        // HTML5 drag and drop commits on `dragover`: cross into the destination, then move there again, as the
+        // engine's own pointer drag does.
+        await browser().mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2);
+        await browser().mouse.move(to.x, to.y);
         await browser().mouse.move(to.x, to.y);
         await whileOver();
         await browser().mouse.up();
@@ -868,6 +885,10 @@ function huiTest(offline: boolean) {
         const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
         await browser().mouse.move(from.x, from.y);
         await browser().mouse.down();
+        // HTML5 drag and drop commits on `dragover`: cross into the destination, then move there again, as the
+        // engine's own pointer drag does.
+        await browser().mouse.move(from.x + dx / 2, from.y + dy / 2);
+        await browser().mouse.move(from.x + dx, from.y + dy);
         await browser().mouse.move(from.x + dx, from.y + dy);
         await whileOver();
         await browser().mouse.up();
@@ -1023,14 +1044,20 @@ function huiTest(offline: boolean) {
       intercept: async (method, path) => {
         const { arrival, hold, settle } = holding<WebRoute>();
         let count = 0;
+        let seen: { method: string; url: string; body: string } | undefined;
         await browser().route(path, (route) => {
           if (route.request.method !== method) return route.fallback();
           count += 1;
+          seen = { method: route.request.method, url: route.request.url, body: route.request.postData ?? "" };
           return hold(route);
         });
         const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
         return {
           arrived: () => arrival,
+          request: () => {
+            if (!seen) throw new Error("intercept: no request has arrived yet");
+            return seen;
+          },
           count: () => count,
           requestsFromTap: async (target) => {
             // Observe the browser's transport, not app callbacks. Another stream task cannot run inside click
@@ -1122,6 +1149,7 @@ function huiTest(offline: boolean) {
               return size!;
             },
             insets: async () => { throw new Error("Android owns its frame insets; use safeDisplay for real native measurements"); },
+            softKeyboard: async () => { throw new Error("The Android app's soft keyboard is the system's: its frame is not a page state a test can state."); },
             safeDisplay: async (insets) => {
               nativeDisplay!.prepare();
               if (insets) {

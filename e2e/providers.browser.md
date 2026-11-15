@@ -16,15 +16,18 @@ fixed endpoints, response bounds and failure redaction), and
 ## Browser journey
 
 1. Open the launch receipt URL. Navigate Settings → Models.
-2. Verify the empty state has **Add provider**, no provider model lists and no
-   quota section. Add provider opens a modal with exactly OpenCode Go, OpenAI,
-   Claude and Mistral. OpenAI groups ChatGPT account and API key; Claude groups
-   Pro/Max and API key; Mistral offers its API key. Escape closes the modal and
-   restores focus.
+2. Verify the empty state says **No model providers configured** with **Connect a
+   provider**, no provider model lists and no quota section. Connect a provider
+   opens the wizard with exactly OpenAI, Claude, OpenCode Go and Mistral. OpenAI
+   groups ChatGPT account, ChatGPT account · all GPT models and API key; Claude
+   groups Claude Pro / Max and API key; Mistral offers its API key. Escape closes
+   the wizard and restores focus.
 3. Choose OpenCode Go → API key. Submit the synthetic key in the password input.
-   The modal closes, Provider configuration opens and the added card appears; quota loads independently and
-   truthfully reports unsupported. Models remain collapsed until opened.
-   Open Models, select two entries, inspect context/output limits and save.
+   The wizard moves to **Choose a model** with its first model preselected; closing
+   it saves that one model, Provider configuration opens and the added card appears;
+   quota loads independently and truthfully reports unsupported. Models stay
+   collapsed until opened. Open Models, select two entries, inspect context/output
+   limits and save.
 4. Reload, open Provider configuration, then its Models dropdown. Both selections persist. Search, change a selection
    and cancel: reopening must retain the saved selection. Add Claude → API key,
    cancel the pending sign-in and close the modal: no Claude card is added.
@@ -48,16 +51,16 @@ fixed endpoints, response bounds and failure redaction), and
 SET-081 owns the parent disclosure. Use `--quota-fixture` for the configured
 layout: Provider configuration shows five providers and starts closed, with
 Mistral showing its Student plan, API and Vibe Code allowances and included
-amounts. Add provider, status messages and HUI model routing remain outside it.
+amounts. Connect a provider, status messages and HUI model routing remain outside it.
 Open the parent with Enter and inspect the unchanged accounts, quotas and model
 pickers.
 Open a Models dropdown, change its search and unsaved selections, fold the parent
 with Space, then reopen it. The dropdown and draft must stay intact, including
-after Refresh limits. From the folded state, Add provider can open and cancel
+after Refresh limits. From the folded state, Connect a provider can open and cancel
 without opening the group. A successful synthetic Claude API-key connection in
 the default fixture opens it automatically. Reload closes the parent again;
 with no configured connections there is no empty disclosure. Check desktop and
-390×844, plus the Add provider dialog at 844×390. Do not use real credentials.
+390×844, plus the Connect a provider dialog at 844×390. Do not use real credentials.
 
 ## Boundaries of this proof
 
@@ -70,7 +73,7 @@ responsive layout, not native mobile touch behavior.
 
 ## Multiple accounts and priority (2026-09-27)
 
-Use synthetic credentials only. Settings → Models → Add provider → OpenCode Go:
+Use synthetic credentials only. Settings → Models → Connect a provider → OpenCode Go:
 name the first account Personal and submit a synthetic API key. Add account on
 its provider card, name it Backup and submit a different synthetic key. Verify
 both named accounts are retained, Personal is Next to use and Backup is Standby.
@@ -92,9 +95,10 @@ subscription access or real external OAuth approvals.
 
 ### Drag-and-drop priority
 
-There are no up/down priority buttons. Each account has a 44px grip. Dragging
-shows the picked account and an insertion line; only dropping commits the order.
-Test mouse dragging and touch-emulated dragging separately, including a list
+There are no up/down priority buttons. Each account has a 24px-wide grip
+(44px wide on touch pointers). Dragging shows the picked account and an insertion
+line; only dropping commits the order. Test mouse dragging and touch-emulated
+dragging separately, including a list
 long enough to scroll. Dropping outside the account section or pointer cancellation
 must leave the saved order unchanged. Reconnect/remove/limits controls must still
 work without starting a drag. Tab to a grip, Space to pick up, arrows or Home/End
@@ -111,10 +115,17 @@ test-only Vite entrypoint; the production parser and UI handle synthetic upstrea
 payloads. Other provider routes stay real, including unsupported API-key usage.
 No external credentials, OAuth, billing verification or provider requests occur.
 
-1. Navigate Settings → Models and open Provider configuration. Within each
-   account, limits are visible without another disclosure. Claude shows 5 hours,
-   weekly, Sonnet weekly and monthly extra usage;
-   absent plan/billing/reset data is explicitly not reported.
+1. Navigate Settings → Models and open Provider configuration. Each provider card
+   is one content column: its heading, each account row (grip, name and status,
+   with Reconnect and Remove account sharing that line on a wide window and
+   taking their own line on a phone) and the Models disclosure share one left
+   edge, separated by hairlines instead of nested borders. Within each account,
+   limits are visible without another disclosure, under "Subscription and
+   limits" as a single meta line: the usage status, `Plan <value>` only when the
+   connection reports a plan, and when it was checked.
+   Claude shows 5 hours, weekly, Sonnet weekly and monthly extra usage; each
+   period keeps its reset time or "Reset not reported", and there is no
+   subscription-status row or billing note.
 2. OpenAI ChatGPT Personal shows plan plus, usage Available and five meters:
    5 hours, weekly, code review weekly, Spark 5 hours and monthly credits. Backup
    shows plan pro and Limit reached. Refresh each account independently and
@@ -158,9 +169,27 @@ This is not a live external subscription test.
 
 ### OpenCode account-name help
 
-Open Add provider → OpenCode Go (or Add account on its card). The Account name
+Open Connect a provider → OpenCode Go (or Add account on its card). The Account name
 input is required and a muted small note immediately below explains that OpenCode
 does not report the account name or email. Empty/whitespace input must stay in
 the dialog without starting login; entering a name enables the API-key prompt.
 Reconnect prefills the stored label. OpenAI/Claude retain optional labels and do
 not show this note. Check desktop, mobile and landscape dialog scrolling.
+
+### Guided sign-in and model check (SET-034, SET-035)
+
+Launch `node e2e/visual-verification.mjs launch --branch <branch> --provider-fixture`.
+That flag replaces only the provider wizard's routes in the test-only server, so no
+provider is contacted and no account or credential is needed. Open Settings → Models →
+**Connect a provider** → OpenAI → **ChatGPT account**: the sign-in step says
+**Complete sign-in in your browser, then return here.** with **Open sign-in**,
+**Copy link** and **Use manual entry**; **Use a code instead** restarts it with the
+device code HUI7-DEMO, **Copy code**, **Expires in** and the warning to continue only
+when the sign-in was started here. After a few polls the wizard turns to **Account
+connected**, preselects one model, and **Check model** ends on **Connection verified**
+with 412 ms. Leaving the model step — the close button, for instance — saves exactly
+one model, never an empty selection. **Cancel sign-in** stops a waiting sign-in; the
+dialog's close button asks **Sign-in is still waiting. Close and cancel it?** first,
+where **Keep waiting** leaves it and **Cancel sign-in** stops it and closes. Capture
+desktop and 390×844; these screens are scripted UI proof, not a real sign-in, a real
+model reply or a live subscription.

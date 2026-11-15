@@ -24,15 +24,17 @@ test("Message width narrows or widens the conversation and the composer in every
     await expect(screen.getByRole("button", `Message width: ${to}`)).toBeVisible();
   };
 
+  // A width caps the conversation and the composer at 40rem, 48rem or 64rem, so each side-by-side pane stays wider
+  // than Comfortable's 48rem for the setting, not the pane, to be what the measurement reads.
+  await hui.wideScreen(2200);
   await hui.open(`/sessions/${first.id}`);
   await hui.sessionMenu("Second width");
   await screen.getByText("Open in split pane", { visible: true }).tap();
-  await screen.getByRole("button", "Pane actions").tap();
-  await screen.getByText("Split down", { visible: true }).tap();
-  await expect(titles).toHaveCount(3);
-  await titles.filter({ hasText: "First width" }).tap();
-  await screen.getByRole("button", "Close session pane").tap();
   await expect(titles).toHaveCount(2);
+  // The split opens active, and a session route replaces the active pane's session: focusing the First width pane first
+  // makes every later /sessions/<first> open land on the pane that already shows that session instead of replacing it.
+  await titles.filter({ hasText: "First width" }).tap();
+  await expect(screen.getByTestId("session-pane").first()).toHaveAttribute("aria-current", "true");
   const comfortable = await widths();
   await choose("Comfortable", "Compact");
   const compact = await widths();

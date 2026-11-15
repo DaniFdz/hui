@@ -5,6 +5,7 @@
  * would find the previous screen's link, or miss this one, and fail the assertions instead of passing them. */
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { openWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string };
 
@@ -21,7 +22,7 @@ test("a link printed in the terminal opens in a new tab, and a scheme HUI does n
 
   await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Open terminal").tap();
+  await openWork(screen, "New terminal");
   await expect(status).toBeVisible();
   const { id } = (await hui.api<{ terminals: Terminal[] }>("GET", `/__hui/sessions/${session.id}/terminals`)).terminals[0]!;
   await expect.poll(async () => (await replay(hui, session.id, id)).trim(), { timeout: 60_000 }).not.toBe("");

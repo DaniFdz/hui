@@ -98,7 +98,7 @@ const cases: UseCase[] = [
     id: "SHELL-011",
     title: "Use the navigation drawer on a narrow screen",
     behaviour:
-      "On a phone-sized or short landscape screen the sidebar is hidden behind **Open navigation**. Opening it shows the drawer, the button reads **Close navigation**, and the content and any update notice behind it cannot be reached; choosing a destination such as Sessions closes the drawer and opens it, and tapping outside the drawer closes it and returns focus to **Open navigation**. Nothing overflows horizontally.",
+      "On a phone-sized or short landscape screen the sidebar is hidden behind **Open navigation**. Opening it shows the drawer, the button reads **Close navigation**, and the content and any update notice behind it cannot be reached; choosing a destination such as Sessions closes the drawer and opens it, and tapping outside the drawer closes it and returns focus to **Open navigation**. A group's + keeps **Open navigation** on New Session instead of leaving its launch form without a way back to the drawer. Nothing overflows horizontally.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:page"],
     journeys: [
@@ -558,6 +558,21 @@ const cases: UseCase[] = [
       excluded:
         "A phone has no window to keep and no View → Back: switching rebuilds its native bridge on the chosen gateway (SHELL-049, proved on the android target), and its WebView hands a link to another origin to the system browser (SPEC.md \"The phone apps wrap the web UI\").",
       decision: "SPEC.md#the-window-belongs-to-the-gateways-this-device-knows",
+    },
+  },
+  {
+    id: "SHELL-053",
+    title: "Sit the composer on the phone's keyboard",
+    behaviour:
+      "While the phone's soft keyboard is open the composer ends on its top edge instead of keeping the home-indicator gap, and the native strip the keyboard uncovers is painted in the page's own background rather than black. New Session's recent chats below the composer make way until the keyboard closes.",
+    spec: [LAYOUT, "SPEC.md#the-phone-apps-wrap-the-web-ui-2026-11-09"],
+    surfaces: [],
+    journeys: ["phone"],
+    web: "required",
+    phone: {
+      excluded:
+        "Neither phone target can open a soft keyboard: the Android app's is the system's and WebKit has none. The device procedure in e2e/phone.browser.md checks the real keyboard and the iOS window colour.",
+      decision: "SPEC.md#the-phone-apps-wrap-the-web-ui-2026-11-09",
     },
   },
 ];
