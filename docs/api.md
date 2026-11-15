@@ -735,7 +735,10 @@ request start PI records on the message to the first content token HUI sees
 when HUI only saw the answer whole, and the input/output and cache counts PI
 reports. `promptTokensPerSecond` divides new input tokens by the time to first
 token, so it includes request queueing and prefill and is an estimate; it is
-labelled as such in the UI. Older PI SDK-worker sessions do not produce these
+labelled as such in the UI. A request's cache hit share is its cache reads over
+new input plus cache reads and cache writes; the provider summary's
+`cacheHitRate` covers it, and a request that reports no cache counts contributes
+none rather than a miss. Older PI SDK-worker sessions do not produce these
 measurements.
 
 Durable persists a streaming partial only once it holds a token, and only every
@@ -758,9 +761,11 @@ session stream.
 
 A provider's measurements in the window (default 24 hours, at most 7 days):
 `requests`, the latest `last` sample, `average`, `p50` and `p95` for
-`tokensPerSecond`, `ttftMs` and `promptTokensPerSecond`, and up to 80 recent
-`samples` oldest first. Samples have `at` (epoch ms), `provider`, `model`,
-`status` (`ok` or `error`), optional token counts and the timings above.
+`tokensPerSecond`, `ttftMs`, `promptTokensPerSecond` and `cacheHitRate`, and up
+to 80 recent `samples` oldest first. A request's `cacheHitRate` is that
+request's share; `average` is the mean of those shares and `p50`/`p95` their
+percentiles. Samples have `at` (epoch ms), `provider`, `model`, `status` (`ok` or
+`error`), optional token counts and the timings above.
 
 ### `GET /__hui/model-metrics/sessions/:session`
 

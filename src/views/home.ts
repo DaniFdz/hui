@@ -7,6 +7,7 @@
  */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
 import { contextBreakdown } from "../lib/context-breakdown.ts";
+import { metricCache, metricCount, metricDecode, metricPrefill, metricRate, metricSeconds } from "../lib/model-metrics.ts";
 import { messageShare, nativeShell, type NativeShell } from "../lib/native-shell.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";
@@ -2029,15 +2030,7 @@ function compactTokens(value: number): string {
   return `${(value / 1_000_000).toFixed(1)}m`;
 }
 
-function metricRate(value: number | undefined): string {
-  return value === undefined ? "—" : `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} tok/s`;
-}
-
-function metricSeconds(value: number | undefined): string {
-  return value === undefined ? "—" : value < 10_000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value / 1000)} s`;
-}
-
-/** The latest request's speed in the composer, with the full HUI-measured detail behind it. */
+/** The latest request's speed in the composer, with the HUI-measured prefill, decode and cache detail behind it. */
 function renderModelMetric(metric: ModelMetric | undefined) {
   if (!metric) return nothing;
   const speed = metricRate(metric.tokensPerSecond);
@@ -2049,14 +2042,14 @@ function renderModelMetric(metric: ModelMetric | undefined) {
     <section class="chat-metrics__popover" popover="manual" aria-label="Last model request metrics">
       <div class="chat-metrics__header"><span>Last model request</span><code>${metric.provider}/${metric.model}</code></div>
       <dl class="chat-metrics__stats">
-        <div><dt>Generation</dt><dd>${speed}</dd></div>
-        <div><dt>Time to first token</dt><dd>${ttft}</dd></div>
-        <div><dt>Prompt (est.)</dt><dd>${metricRate(metric.promptTokensPerSecond)}</dd></div>
-        <div><dt>Tokens in / out</dt><dd>${metric.inputTokens === undefined ? "—" : metric.inputTokens.toLocaleString()} / ${metric.outputTokens === undefined ? "—" : metric.outputTokens.toLocaleString()}</dd></div>
+        <div><dt>Prefill</dt><dd>${metricPrefill(metric)}</dd></div>
+        <div><dt>Decode</dt><dd>${metricDecode(metric)}</dd></div>
+        <div><dt>Cache</dt><dd>${metricCache(metric)}</dd></div>
+        <div><dt>Tokens</dt><dd>${metricCount(metric.inputTokens)} in / ${metricCount(metric.outputTokens)} out</dd></div>
         <div><dt>Duration</dt><dd>${metricSeconds(metric.durationMs)}</dd></div>
         <div><dt>Status</dt><dd>${metric.status === "error" ? "Error" : "OK"}</dd></div>
       </dl>
-      <p class="chat-metrics__note">Measured by HUI from request start to first token and completion. Prompt throughput includes queue and prefill, so it is an estimate.</p>
+      <p class="chat-metrics__note">Measured by HUI from request start to first token and completion. Prefill includes queue and prompt processing, so it is an estimate; decode divides output tokens by the generation span; cache is the cache-read share of the prompt tokens the provider reported.</p>
     </section>
   </details></div>`;
 }

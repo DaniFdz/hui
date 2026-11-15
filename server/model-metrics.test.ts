@@ -35,6 +35,25 @@ test("summarizes a provider's window and strips the session id", async () => {
   }
 });
 
+test("averages each request's cache hit share and leaves out requests without cache counts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-model-metrics-"));
+  try {
+    const store = new ModelMetricsStore(dir);
+    store.record(sample(1_000, "llama-local", { cacheReadTokens: 300, cacheWriteTokens: 0 }));
+    store.record(sample(2_000, "llama-local", { cacheReadTokens: 0, cacheWriteTokens: 0 }));
+    store.record(sample(3_000, "other"));
+    await store.flush();
+    const summary = await store.summary("llama-local", 0);
+    // 300 of 400 prompt tokens hit, then 0 of 100: the mean of the two requests, not a token-weighted sum.
+    assert.equal(summary.average.cacheHitRate, 0.375);
+    assert.equal(summary.p50.cacheHitRate, 0);
+    assert.equal(summary.p95.cacheHitRate, 0.75);
+    assert.equal((await store.summary("other", 0)).average.cacheHitRate, undefined, "a provider that reports no cache counts has no rate");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("reloads the persisted history after a gateway restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hui-model-metrics-"));
   try {

@@ -963,11 +963,13 @@ for that provider waits and its chat shows **Waiting for <name> to start…**; a
 failed start fails the request with its reason. PI's base URL and credentials
 are never returned to the browser.
 Each provider row opens a **Metrics** dialog for HUI's own measurements of its
-completed model requests: time to first token, generation tok/s, prompt tok/s
-(an estimate that includes queue and prefill), token counts, averages and a
-recent trend. The chat composer shows the latest request's speed and opens its
-detail. The last 5,000 samples persist in HUI's `model-metrics.jsonl` (mode
-0600); older PI SDK-worker sessions are not measured.
+completed model requests: prefill (time to first token and an estimated prompt
+tok/s that includes queue and prefill), decode tok/s over the generation span,
+the cache hit share of the prompt with its read and write counts, token counts,
+averages and a recent trend. The chat composer shows the latest request's decode
+speed and opens the same prefill, decode and cache detail. The last 5,000 samples
+persist in HUI's `model-metrics.jsonl` (mode 0600); older PI SDK-worker sessions
+are not measured.
 The same page saves the **default reasoning** new sessions and bots start on:
 PI's levels from Off through Maximum, or **Use PI default** (the default), which
 follows PI's own `defaultThinkingLevel` at the runtime. A model that supports

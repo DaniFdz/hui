@@ -11,6 +11,7 @@ import type { LocalProvider, LocalProviderSnapshot } from "../../api/schema/loca
 import { loadLocalProviders, removeLocalProvider, saveLocalProvider, startLocalProvider } from "../../api/local-providers.ts";
 import { loadModelMetrics } from "../../api/model-metrics.ts";
 import type { ModelMetric, ModelMetricSummary } from "../../api/schema/model-metrics.ts";
+import { cacheHitRate, metricCount, metricPercent, metricRate, metricSeconds } from "../../lib/model-metrics.ts";
 import { loadViewAssets } from "../../lib/view-assets.ts";
 
 loadViewAssets(() => import("../../styles/providers.css"), () => import("../../styles/local-providers.css"));
@@ -21,18 +22,6 @@ type Draft = { startCommand: string; healthUrl: string; timeout: string };
 
 function timeoutSeconds(provider: LocalProvider): number {
   return Math.round((provider.readyTimeoutMs ?? DEFAULT_TIMEOUT_SECONDS * 1000) / 1000);
-}
-
-function tokPerSecond(value: number | undefined): string {
-  return value === undefined ? "—" : `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} tok/s`;
-}
-
-function seconds(ms: number | undefined): string {
-  return ms === undefined ? "—" : ms < 10_000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms / 1000)} s`;
-}
-
-function count(value: number | undefined): string {
-  return value === undefined ? "—" : value.toLocaleString();
 }
 
 function checkedAt(at: number): string {
@@ -364,7 +353,7 @@ export class HuiLocalProviderSettings extends LitElement {
     const points = values.map(point).join(" ");
     const first = values[0] ?? 0;
     const last = values[values.length - 1] ?? 0;
-    return html`<svg class="hui-model-metrics__trend" viewBox="0 0 ${width} ${height}" role="img" aria-label=${`Generation speed over the last ${values.length} requests, from ${tokPerSecond(first)} to ${tokPerSecond(last)}`} preserveAspectRatio="none">
+    return html`<svg class="hui-model-metrics__trend" viewBox="0 0 ${width} ${height}" role="img" aria-label=${`Decode speed over the last ${values.length} requests, from ${metricRate(first)} to ${metricRate(last)}`} preserveAspectRatio="none">
       <line x1="0" y1="${height - 2}" x2="${width}" y2="${height - 2}" class="hui-model-metrics__axis" />
       <polyline points=${points} fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" />
       ${values.length === 1 ? html`<circle cx=${point(first, 0).split(",")[0]} cy=${point(first, 0).split(",")[1]} r="2.5" fill="currentColor" />` : nothing}
@@ -376,30 +365,32 @@ export class HuiLocalProviderSettings extends LitElement {
     if (this.#metricsBusy && !metrics) return html`<p class="hui-local-provider-note">Loading model metrics…</p>`;
     if (!metrics) return nothing;
     const last = metrics.last;
+    const cache = last ? cacheHitRate(last) : undefined;
     return html`
       <div class="hui-model-metrics__meta" data-testid="model-metrics-meta">
         <span>Last 24 hours · ${metrics.requests} completed request${metrics.requests === 1 ? "" : "s"}</span>
         ${last ? html`<span>Last ${checkedAt(last.at)}</span>` : nothing}
       </div>
       ${last ? html`<div class="hui-model-metrics__last" data-testid="model-metrics-last">
-        <div><span>Generation</span><strong>${tokPerSecond(last.tokensPerSecond)}</strong></div>
-        <div><span>Time to first token</span><strong>${seconds(last.ttftMs)}</strong></div>
-        <div><span>Prompt (est.)</span><strong>${tokPerSecond(last.promptTokensPerSecond)}</strong></div>
-        <div><span>Tokens in / out</span><strong>${count(last.inputTokens)} / ${count(last.outputTokens)}</strong></div>
+        <div><span>Prefill (est.)</span><strong>${metricRate(last.promptTokensPerSecond)}</strong><small>${metricSeconds(last.ttftMs)} TTFT</small></div>
+        <div><span>Decode</span><strong>${metricRate(last.tokensPerSecond)}</strong>${last.generationMs === undefined ? nothing : html`<small>${metricSeconds(last.generationMs)} generation</small>`}</div>
+        <div><span>Cache hit</span><strong>${cache === undefined ? "Not reported" : metricPercent(cache)}</strong>${cache === undefined ? nothing : html`<small>${metricCount(last.cacheReadTokens)} read · ${metricCount(last.cacheWriteTokens)} written</small>`}</div>
+        <div><span>Tokens in / out</span><strong>${metricCount(last.inputTokens)} / ${metricCount(last.outputTokens)}</strong></div>
       </div>` : html`<p class="hui-local-provider-empty">No completed model requests for ${provider.name} in the last 24 hours. Send a message on this provider, then refresh.</p>`}
       ${metrics.requests ? html`
         <dl class="hui-model-metrics__summary">
-          <div><dt>Average</dt><dd>${tokPerSecond(metrics.average.tokensPerSecond)}</dd></div>
-          <div><dt>p50</dt><dd>${tokPerSecond(metrics.p50.tokensPerSecond)}</dd></div>
-          <div><dt>p95</dt><dd>${tokPerSecond(metrics.p95.tokensPerSecond)}</dd></div>
-          <div><dt>Avg. TTFT</dt><dd>${seconds(metrics.average.ttftMs)}</dd></div>
-          <div><dt>Prompt est.</dt><dd>${tokPerSecond(metrics.average.promptTokensPerSecond)}</dd></div>
+          <div><dt>Average</dt><dd>${metricRate(metrics.average.tokensPerSecond)}</dd></div>
+          <div><dt>p50</dt><dd>${metricRate(metrics.p50.tokensPerSecond)}</dd></div>
+          <div><dt>p95</dt><dd>${metricRate(metrics.p95.tokensPerSecond)}</dd></div>
+          <div><dt>Avg. TTFT</dt><dd>${metricSeconds(metrics.average.ttftMs)}</dd></div>
+          <div><dt>Prefill est.</dt><dd>${metricRate(metrics.average.promptTokensPerSecond)}</dd></div>
+          <div><dt>Cache hit</dt><dd>${metricPercent(metrics.average.cacheHitRate)}</dd></div>
         </dl>
         ${this.#trend(metrics.samples)}
-        <div class="hui-model-metrics__recent"><table><thead><tr><th>When</th><th>Model</th><th>tok/s</th><th>TTFT</th><th>Out</th></tr></thead><tbody>
-          ${[...metrics.samples].slice(-8).reverse().map((sample) => html`<tr><td>${checkedAt(sample.at)}</td><td><code>${sample.model}</code></td><td>${tokPerSecond(sample.tokensPerSecond)}</td><td>${seconds(sample.ttftMs)}</td><td>${count(sample.outputTokens)}</td></tr>`)}
+        <div class="hui-model-metrics__recent"><table><thead><tr><th>When</th><th>Model</th><th>Prefill</th><th>Decode</th><th>TTFT</th><th>Cache</th><th>In / out</th></tr></thead><tbody>
+          ${[...metrics.samples].slice(-8).reverse().map((sample) => html`<tr><td>${checkedAt(sample.at)}</td><td><code>${sample.model}</code></td><td>${metricRate(sample.promptTokensPerSecond)}</td><td>${metricRate(sample.tokensPerSecond)}</td><td>${metricSeconds(sample.ttftMs)}</td><td>${metricPercent(cacheHitRate(sample))}</td><td>${metricCount(sample.inputTokens)} / ${metricCount(sample.outputTokens)}</td></tr>`)}
         </tbody></table></div>` : nothing}
-      <p class="hui-local-provider-help">Measured by HUI from each model request's start to its first token and completion. Prompt throughput divides new input tokens by time to first token, so it includes queue and prefill and is an estimate. HUI keeps the last 5,000 completed requests.</p>`;
+      <p class="hui-local-provider-help">Measured by HUI from each model request's start to its first token and completion. Prefill divides new input tokens by the time to first token, so it includes queue and prompt processing and is an estimate; decode divides output tokens by the generation span; cache hit is the cache-read share of the prompt tokens the provider reported. HUI keeps the last 5,000 completed requests.</p>`;
   }
 
   #metricsDialogTemplate() {

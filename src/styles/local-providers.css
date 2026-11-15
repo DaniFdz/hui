@@ -83,6 +83,7 @@
 .hui-model-metrics__last > div { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); min-width: 0; }
 .hui-model-metrics__last span { color: var(--muted); font-size: 11px; }
 .hui-model-metrics__last strong { font-size: 15px; overflow-wrap: anywhere; }
+.hui-model-metrics__last small { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .hui-model-metrics__summary { display: flex; flex-wrap: wrap; gap: 16px; margin: 14px 0 8px; }
 .hui-model-metrics__summary div { display: flex; flex-direction: column; gap: 2px; }
 .hui-model-metrics__summary dt { color: var(--muted); font-size: 11px; }

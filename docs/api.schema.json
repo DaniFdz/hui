@@ -7516,6 +7516,9 @@
         },
         "promptTokensPerSecond": {
           "type": "number"
+        },
+        "cacheHitRate": {
+          "type": "number"
         }
       }
     },

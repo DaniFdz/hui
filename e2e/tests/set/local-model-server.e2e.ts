@@ -88,7 +88,7 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     await hui.open(`/sessions/${session.id}`);
     await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
     await expect.poll(async () => (await hui.api<LocalProviderSnapshot>("GET", "/__hui/local-providers")).providers.find((provider) => provider.id === "local-e2e")?.status).toBe("starting");
-    await screen.getByLabel("Message").fill("Hello local model E2E_SLOW_TTFT");
+    await screen.getByLabel("Message").fill("Hello local model E2E_SLOW_TTFT E2E_CACHE:3:1");
     await screen.getByRole("button", { name: "Send message" }).tap();
     await expect(screen.getByText("Waiting for Local fixture to start…", { exact: true })).toBeVisible();
     await writeFile(release, "");
@@ -103,8 +103,10 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     await metricPill.tap();
     const metricDetail = screen.getByLabel("Last model request metrics");
     await expect(metricDetail).toBeVisible();
-    await expect(metricDetail).toContainText("Time to first token");
-    await expect(metricDetail).toContainText("Prompt (est.)");
+    await expect(metricDetail).toContainText("Prefill");
+    await expect(metricDetail).toContainText("Decode");
+    // The fixture reported 3 cache-read and 1 cache-write token against 1 new input token: 3 of 5 prompt tokens hit.
+    await expect(metricDetail).toContainText("60.0% hit · 3 read · 1 written");
 
     await hui.open("/settings/models");
     await expect(screen.getByText("HUI model routing", { exact: true })).toBeVisible();
@@ -117,6 +119,11 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     const metricsDialog = screen.getByTestId("local-provider-metrics-dialog");
     await expect(metricsDialog).toBeVisible();
     await expect(metricsDialog.getByTestId("model-metrics-last")).toContainText("tok/s", { timeout: 10_000 });
+    await expect(metricsDialog.getByTestId("model-metrics-last")).toContainText("Cache hit");
+    await expect(metricsDialog.getByTestId("model-metrics-last")).toContainText("60.0%");
+    await expect(metricsDialog.getByRole("columnheader", { name: "Prefill" })).toBeVisible();
+    await expect(metricsDialog.getByRole("columnheader", { name: "Decode" })).toBeVisible();
+    await expect(metricsDialog.getByRole("columnheader", { name: "Cache" })).toBeVisible();
     await expect(metricsDialog.getByTestId("model-metrics-meta")).toContainText(/completed request/u);
     await metricsDialog.getByRole("button", "Close model metrics").tap();
     const snapshot = await hui.api<LocalProviderSnapshot>("GET", "/__hui/local-providers");

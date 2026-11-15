@@ -38,9 +38,9 @@ const json = (response, status, body) => {
   response.end(JSON.stringify(body));
 };
 const event = (response, value) => response.write(`event: ${value.type}\ndata: ${JSON.stringify(value)}\n\n`);
-const messageStart = (response) => event(response, {
+const messageStart = (response, usage = undefined) => event(response, {
   type: "message_start",
-  message: { id: `msg_${Date.now()}`, type: "message", role: "assistant", model: "fixture", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } },
+  message: { id: `msg_${Date.now()}`, type: "message", role: "assistant", model: "fixture", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0, ...usage } },
 });
 const finish = (response, reason = "end_turn") => {
   event(response, { type: "message_delta", delta: { stop_reason: reason, stop_sequence: null }, usage: { output_tokens: 1 } });
@@ -492,7 +492,9 @@ const server = createServer(async (request, response) => {
   }
 
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
-  messageStart(response);
+  // A test can give PI prompt-cache counts: E2E_CACHE:<read>:<write> credits those tokens to this request.
+  const cache = /E2E_CACHE:(\d+):(\d+)/u.exec(source);
+  messageStart(response, cache ? { cache_read_input_tokens: Number(cache[1]), cache_creation_input_tokens: Number(cache[2]) } : undefined);
 
   if (flattenedText(body.system).includes("context summarization assistant")) {
     if (source.includes("E2E_SLOW_COMPACT") && !(await heldUntilRelease(response))) return;
