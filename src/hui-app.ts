@@ -2884,11 +2884,11 @@ export class HuiApp extends HuiElement {
         ` : state.action === "new" ? html`
           <label class="field input-dialog__field"><span>Group name</span><input class="settings-input" name="name" type="text" required maxlength="200" /></label>
           ${this.renderGroupTargetFields()}
-          <label class="input-dialog__field group-action-dialog__chief">
-            <span class="group-action-dialog__chief-choice"><input type="checkbox" .checked=${this.groupCreateChief} ?disabled=${this.groupMutationPending}
-              @change=${(event: Event) => { this.groupCreateChief = (event.currentTarget as HTMLInputElement).checked; }} /><span>Create a Chief of Staff</span></span>
-            <span class="exec-approval-sub">A chief plans and starts this group's work from its own chat, using this directory for the sessions it creates.</span>
-          </label>
+          <div class="input-dialog__field group-action-dialog__chief">
+            <label class="group-action-dialog__chief-choice"><input type="checkbox" aria-describedby="group-action-chief-description" .checked=${this.groupCreateChief} ?disabled=${this.groupMutationPending}
+              @change=${(event: Event) => { this.groupCreateChief = (event.currentTarget as HTMLInputElement).checked; }} /><span>Create a Chief of Staff</span></label>
+            <span class="exec-approval-sub" id="group-action-chief-description">A chief plans and starts this group's work from its own chat, using this directory for the sessions it creates.</span>
+          </div>
         ` : action === "delete" ? html`
           <div class="exec-approval-sub">The group is removed. Its sessions move back to OTHER.</div>
         ` : html`

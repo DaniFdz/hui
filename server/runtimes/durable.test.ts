@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -417,6 +417,25 @@ test("a group chief's prompt carries its own folder's context and its group's pr
   const moved = await prompt.render(folder, ["read"], 1 as ConversationId);
   assert.match(moved, /PROJECT_RULES_V2/u);
   assert.doesNotMatch(moved, /PROJECT_RULES\n/u);
+});
+
+test("a symlinked project directory lists its context file once", { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const project = join(f.dir, "project");
+  const link = join(f.dir, "project-link");
+  await mkdir(project, { recursive: true });
+  await writeFile(join(project, "AGENTS.md"), "PROJECT_RULES\n");
+  await symlink(project, link, "dir");
+  const prompt = new DurablePrompt(f.agentDir, async () => settings);
+  const once = async (cwd: string, path: string) => {
+    prompt.projectContextFor = async () => ({ path: join(path, "AGENTS.md"), content: "PROJECT_RULES\n" });
+    const rendered = await prompt.render(cwd, ["read"], 1 as ConversationId);
+    assert.equal(rendered.split("<project_instructions").length - 1, 1, `${cwd} and ${path} name one file`);
+    assert.equal(rendered.split("PROJECT_RULES").length - 1, 1, "the file's text is listed once");
+  };
+  // Either path may be the symlink: the loader reads the conversation's directory, and the group may store the other.
+  await once(project, link);
+  await once(link, project);
 });
 
 test("a project's context file is the first of PI's names the directory holds", async (t) => {

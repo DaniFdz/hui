@@ -4,9 +4,10 @@
  * directory (or clearing the instructions a bot had before SOUL.md); what the
  * operator turned off in it and what they can turn off; the model and thinking
  * level a new chat would get; and reading its newest message while no session
- * has it loaded. The gateway is the store's only writer, so these
- * run in it. A bot's persona is not in its conversation: it is the SOUL.md the
- * `soul` section reads on every request.
+ * has it loaded. The gateway is the store's only writer, so these run in it;
+ * `hui doctor --fix` also moves a chief's chat while the gateway is stopped, and
+ * uses `configureBotConversation` for that. A bot's persona is not in its
+ * conversation: it is the SOUL.md the `soul` section reads on every request.
  */
 import { clampThinkingLevel, type Message, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { ResetEntry, SystemEntry, type Conversation, type EntryRecord } from "@earendil-works/pi-durable";
@@ -38,13 +39,29 @@ export type BotConversationOptions = {
   defaultThinking?: () => Promise<string | undefined>;
 };
 
+/** The Durable conversation a bot's reference names, or the error every read and write reports when it is absent. */
+async function botConversation(host: DurableHost, reference: string): Promise<Conversation> {
+  const id = durableConversationId(reference);
+  const found = id === undefined ? undefined : await (await host.open()).conversation(id, durableContext);
+  if (!found) throw new BotNotFoundError("This bot's conversation is not in this gateway's Durable store.");
+  return found;
+}
+
+/** Changes a bot's conversation in its own commit, as Settings → Workspace does: the gateway passes its live store, and
+ * `hui doctor --fix` a store it opened with the gateway stopped, so an upgrade can move a chief's chat too. */
+export async function configureBotConversation(
+  host: DurableHost,
+  reference: string,
+  change: { instructions?: null; cwd?: string },
+): Promise<void> {
+  await (await botConversation(host, reference)).configure({
+    ...(change.instructions !== undefined ? { instructions: change.instructions } : {}),
+    ...(change.cwd !== undefined ? { cwd: change.cwd } : {}),
+  }, durableContext);
+}
+
 export function durableBotConversations(host: DurableHost, memory: BotMemory, options: BotConversationOptions = {}): BotConversations {
-  const conversation = async (reference: string): Promise<Conversation> => {
-    const id = durableConversationId(reference);
-    const found = id === undefined ? undefined : await (await host.open()).conversation(id, durableContext);
-    if (!found) throw new BotNotFoundError("This bot's conversation is not in this gateway's Durable store.");
-    return found;
-  };
+  const conversation = (reference: string): Promise<Conversation> => botConversation(host, reference);
   const checkModel = async (value: string): Promise<void> => {
     await host.open();
     await host.refreshModels();
@@ -147,10 +164,7 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
     },
 
     async configure(reference, change) {
-      await (await conversation(reference)).configure({
-        ...(change.instructions !== undefined ? { instructions: change.instructions } : {}),
-        ...(change.cwd !== undefined ? { cwd: change.cwd } : {}),
-      }, durableContext);
+      await configureBotConversation(host, reference, change);
     },
 
     // What the dialog calls "Gateway default": Settings' primary model, as for a new session, else PI's default.

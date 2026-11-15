@@ -9,7 +9,7 @@ import { homedir, hostname, userInfo } from "node:os";
 
 import { browserMirror, workers } from "./workers.ts";
 import { createWorkerRoutes } from "./routes/workers.ts";
-import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots/bots.ts";
+import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotNotFoundError, BotRegistry } from "./bots/bots.ts";
 import { BotService } from "./bots/service.ts";
 import { remoteBots } from "./bots/remote.ts";
 import { createBotRoutes } from "./routes/bots.ts";
@@ -401,9 +401,10 @@ workers.serve("bot.section", async (workerId, params) => {
 // file as a local chat's does; the same rule as `bot.section` answers only for a bot that runs on that worker, and a bot
 // of no group names none.
 workers.serve("bot.project", async (workerId, params) => {
-  // A bot only, never a session's section: the same rule as `bot.section` refuses one that runs elsewhere, or none.
+  // A bot only, never a session's section: the same rule as `bot.section` refuses one that runs elsewhere, or none,
+  // without building the section this answer does not carry.
   const botId = typeof params["botId"] === "string" ? params["botId"] : "";
-  await bots.workerSection(workerId, botId);
+  if (!await bots.runsOn(workerId, botId)) throw new BotNotFoundError("That bot does not run on this worker.");
   return { cwd: (await groupForBot(botId))?.cwd ?? null };
 });
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */

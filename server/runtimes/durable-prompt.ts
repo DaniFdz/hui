@@ -17,7 +17,7 @@
  * folder's own on every request (`projectContextFor`); a conversation with no bot
  * or no group carries exactly the files it carried before.
  */
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { DefaultResourceLoader, type BuildSystemPromptOptions, type Skill } from "@earendil-works/pi-coding-agent";
 import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
@@ -71,11 +71,15 @@ export async function projectContextFile(dir: string): Promise<ContextFile | und
   return undefined;
 }
 
-/** The files a directory carries, then the project's: a path is listed once, and a conversation without one gets exactly
- * the files it already had. */
-function withProjectContext(own: readonly ContextFile[], project: ContextFile | undefined): ContextFile[] {
+/** The files a directory carries, then the project's: a path is listed once, even when a symlinked directory names the
+ * same file, and a conversation without one gets exactly the files it already had. A path that does not resolve is
+ * compared as given. */
+async function withProjectContext(own: readonly ContextFile[], project: ContextFile | undefined): Promise<ContextFile[]> {
   const files = own.map((file) => ({ ...file }));
-  if (project && !files.some(({ path }) => path === project.path)) files.push(project);
+  if (!project || files.some(({ path }) => path === project.path)) return files;
+  const canonical = (path: string) => realpath(path).catch(() => path);
+  const [projectPath, ...ownPaths] = await Promise.all([canonical(project.path), ...files.map(({ path }) => canonical(path))]);
+  if (!ownPaths.includes(projectPath!)) files.push(project);
   return files;
 }
 
@@ -304,7 +308,7 @@ export class DurablePrompt {
         ...(conversation.autonomous ? { hui_autonomous: autonomousSection(selectedTools.includes("sessions_spawn"), conversation.supervisedByChief === true) } : {}),
       },
       cwd,
-      contextFiles: withProjectContext(loader.getAgentsFiles().agentsFiles, conversation.projectFile),
+      contextFiles: await withProjectContext(loader.getAgentsFiles().agentsFiles, conversation.projectFile),
       skills: own ? [] : skills,
     };
   }
