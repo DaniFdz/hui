@@ -1,10 +1,13 @@
 /**
  * The chat view and the New Session form, as render functions of `HomeProps`: launch form, transcript (with who sent
  * each message HUI delivered from a bot, a session, a routine or a trigger, and what the agent handed a bot),
- * composer and its pickers, queue, questions, session header and bot identity. All state arrives in props and changes
- * leave through callbacks; the app element owns that state, and the chat projection decides the transcript's rows.
+ * composer and its pickers, queue, the pending question at the transcript's end, session header and bot identity. All state
+ * arrives in props and changes leave through callbacks; the app element owns that state, and the chat projection decides
+ * the transcript's rows.
  */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
+import { contextBreakdown } from "../lib/context-breakdown.ts";
+import { messageShare, nativeShell, type NativeShell } from "../lib/native-shell.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
@@ -25,7 +28,6 @@ import type {
   TranscriptAttachment,
   SessionConnection,
   SessionGroup,
-  SessionGoal,
   SessionView,
   SubagentTaskView,
   TranscriptItem,
@@ -33,16 +35,18 @@ import type {
   WorktreeProgress,
 } from "../api/sessions.ts";
 import type { WorkerView } from "../api/workers.ts";
+import type { ModelMetric } from "../api/schema/model-metrics.ts";
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
-import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
+import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { composerEnterMode, composerPlaceholder, queueRows } from "../lib/composer/state.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
 import { sessionStatusLabel } from "../lib/session/labels.ts";
-import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer/textarea.ts";
+import { adjustTextareaHeight as syncComposerTextarea, mountEditorAtEnd } from "../lib/composer/textarea.ts";
 import { icons } from "../lib/icons.ts";
 import { renderEffortSelector } from "./effort-selector.ts";
+import { renderRunStatus, type GoalPanelState } from "./chat/run-status.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import type { SplitDirection } from "../lib/session/multiplexer.ts";
@@ -64,13 +68,14 @@ import { expandedSkillText, splitSkillBlock } from "../lib/skill-block.ts";
 import { activityLabel, attributedMessage, questionnaireSummary, type QuestionnaireSummary, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../lib/chat-projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
+import { stickyPrompt } from "./chat/sticky-prompt.ts";
 import { renderReadToolCard, renderToolFileReference } from "./chat/read-tool-card.ts";
 import { renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
 import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
-import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath } from "../lib/tool-cards.ts";
+import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath, toolTiming } from "../lib/tool-cards.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
-import { renderWatcherActivity, renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
+import { renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
@@ -99,9 +104,6 @@ if (typeof document !== "undefined") {
       if (event.target instanceof Node && !picker.contains(event.target)) picker.open = false;
     });
   });
-  window.addEventListener("resize", () => {
-    document.querySelectorAll<HTMLDetailsElement>(".agent-chat__input details[open]").forEach(positionNativePicker);
-  });
 }
 
 const SEND_LONG_PRESS_MS = 450;
@@ -114,9 +116,10 @@ const composerDragDepth = new WeakMap<HTMLElement, number>();
 const arrowUpIcon = icons.arrowUp;
 const chevronDownIcon = icons.chevronDown;
 const checkIcon = icons.check;
-const circleIcon = icons.circle;
 const stopIcon = icons.stop;
 const copyIcon = icons.copy;
+/** Lucide "share": the phone's own sheet, which a browser never draws (see `renderShare`). */
+const shareIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" x2="12" y1="2" y2="15"></line></svg>`;
 const rewindIcon = icons.rotateCcw;
 const continueIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 5 11 7-11 7Z"></path></svg>`;
 const queueIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 5H3"></path><path d="M16 12H3"></path><path d="M9 19H3"></path><path d="m16 16-3 3 3 3"></path><path d="M21 5v12a2 2 0 0 1-2 2h-6"></path></svg>`;
@@ -205,9 +208,8 @@ function focusComposerFromSurface(event: MouseEvent) {
   (event.currentTarget as HTMLElement).querySelector<HTMLTextAreaElement>("textarea")?.focus();
 }
 
-/** The goal pill's transient state: whether its detail block is open, whether the objective is being retyped, and a
- * refused save. */
-export type GoalPanelState = { expanded: boolean; editing: boolean; error: string };
+/** The goal editor's transient state, owned by the composer controller and read by the Run status popover. */
+export type { GoalPanelState };
 
 export type HomeProps = {
   session: SessionView | undefined;
@@ -248,6 +250,8 @@ export type HomeProps = {
   thinking: string;
   /** Fast mode; absent while the runtime cannot change speed. */
   fast?: boolean;
+  /** Autonomous mode; absent while the session cannot carry it. */
+  autonomous?: boolean;
   question: RuntimeQuestion | undefined;
   connection: SessionConnection;
   copiedId: string;
@@ -260,6 +264,10 @@ export type HomeProps = {
   /** The model in use, when the tool reports one. */
   currentModel: RuntimeModel | undefined;
   usage: RuntimeUsage | undefined;
+  /** The latest model request HUI measured for this session; absent until one completes. */
+  modelMetric: ModelMetric | undefined;
+  /** What a bot has cost: its chat's, its subagents' and its memory summaries' spend, as its panel totals it. */
+  botCost?: { usd?: number | null; memory?: number; subagents?: number; reading?: true; unavailable?: true; remote?: string };
   /** A running compaction, or one that ended without a summary. */
   compaction: RuntimeCompaction | undefined;
   /** Files picked but not yet sent. */
@@ -267,21 +275,15 @@ export type HomeProps = {
   launching: boolean;
   note: string;
   noteLevel: NoteLevel;
-  sideChat?: {
-    question: string;
-    answer: string;
-    model: string;
-    loading: boolean;
-    error: string;
-  };
-  onCloseSideChat: () => void;
+  /** The chat draws the inline side chat rail: it has no Work pane to put the Side chat view in (a bot's chat). */
+  sideChatRail?: boolean;
   onDismissNote: () => void;
   /** The composer status line under the editor: why the stream stopped, when it is not simply reconnecting. */
   connectionNote: string;
   savedCopy?: { savedAt: number; truncated: boolean };
   offlineSupported?: boolean;
   onForgetSaved?: () => void;
-  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
+  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; autonomous?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
   onSelectSession: (session: SessionView) => void;
   /** Pane identity keeps controls unique when the same session is split twice. */
   controlScope?: string;
@@ -312,11 +314,10 @@ export type HomeProps = {
   onLocalPathKeydown: (event: KeyboardEvent) => void;
   onSendPrompt: (text: string, attachments: readonly Attachment[], mode: PromptMode) => void;
   onContinueInterrupted: () => void;
-  /** Pauses, resumes or clears the conversation's goal from the pill above the composer. */
+  /** Pauses, resumes or clears the conversation's goal from the Run status popover. */
   onGoalChange: (action: "pause" | "resume" | "clear") => void;
-  /** The goal pill's detail block: whether it is open, whether the objective is being retyped, and a refused save. */
+  /** The goal editor inside the Run status popover: whether the objective is being retyped, and a refused save. */
   goalPanel: GoalPanelState;
-  onGoalToggle: () => void;
   onGoalEdit: () => void;
   onGoalSave: (objective: string) => void;
   onGoalCancelEdit: () => void;
@@ -338,6 +339,7 @@ export type HomeProps = {
   onSelectModel: (provider: string, modelId: string) => void;
   onSelectThinking: (level: string) => void;
   onSelectFast: (fast: boolean) => void;
+  onSelectAutonomous: (autonomous: boolean) => void;
   onAbort: () => void;
   onContinue: () => void;
   /** Rewind to before a user message, restoring its text and attachments to the composer. */
@@ -380,9 +382,11 @@ export type HomeProps = {
   launchModel: RuntimeModel | undefined;
   launchThinking: string;
   launchFast: boolean;
+  launchAutonomous: boolean;
   onSelectLaunchModel: (provider: string, modelId: string) => void;
   onSelectLaunchThinking: (level: string) => void;
   onSelectLaunchFast: (fast: boolean) => void;
+  onSelectLaunchAutonomous: (autonomous: boolean) => void;
   directorySuggestions: readonly string[];
   onDirectoryInput: (value: string) => void;
   branchPrefix: string;
@@ -484,6 +488,7 @@ function onSubmit(props: HomeProps) {
       ...(props.launchModel ? { model: modelValue(props.launchModel) } : {}),
       ...(props.launchThinking ? { thinking: props.launchThinking } : {}),
       ...(props.launchFast && props.launchModel?.fast ? { fast: true } : {}),
+      ...(props.launchAutonomous ? { autonomous: true } : {}),
       ...(props.launchWorker ? { worker: props.launchWorker } : {}),
       ...(props.workspaceWorktree ? {
         worktree: true,
@@ -822,6 +827,7 @@ function renderLaunchForm(props: HomeProps) {
                     disabled: props.launching,
                     onSelect: props.onSelectLaunchThinking,
                     ...(props.launchModel?.fast ? { fast: { on: props.launchFast, onSelect: props.onSelectLaunchFast } } : {}),
+                    autonomy: { on: props.launchAutonomous, onSelect: props.onSelectLaunchAutonomous },
                     onToggle: positionComposerPicker,
                     onKeydown: closeComposerPicker,
                     onOpen: prepareComposerPicker,
@@ -894,6 +900,13 @@ function renderCopy(props: HomeProps, text: string, id: string, label = "Copy") 
   return renderActionTooltip(tooltipId, copied ? "Copied" : "Copy", html`<button type="button" class="chat-copy-btn turn__copy" data-copy-state=${copied ? "copied" : "idle"} aria-label=${copied ? "Copied" : label} aria-describedby=${tooltipId} @click=${() => props.onCopy(text, id)}>
     <span class="chat-copy-btn__icon chat-tool-card__action-icon">${copied ? checkIcon : copyIcon}</span>
   </button>`);
+}
+
+/** Offers the phone's own sheet beside Copy, and is drawn only where `nativeShell()` answers a shell: a browser keeps
+ * exactly the action row it had. The row's words are what Copy hands over, so both actions share what is on screen. */
+function renderShare(sheet: NativeShell, props: HomeProps, text: string, id: string, label: string) {
+  const tooltipId = sessionControlId(props, `share-tooltip-${id}`);
+  return renderActionTooltip(tooltipId, "Share", html`<button type="button" class="chat-copy-btn chat-group-share" aria-label=${label} aria-describedby=${tooltipId} @click=${() => void sheet.share(messageShare({ text, session: props.session }, window.location.href))}>${shareIcon}</button>`);
 }
 
 /** Long prompts collapse by default, like ChatGPT; expansion is session-scoped UI state. */
@@ -999,7 +1012,7 @@ function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResul
       onCopy: (text) => props.onCopy(text, `tool-${item.id}`),
     });
   }
-  const statusLabel = status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed";
+  const statusLabel = `${status === "running" ? "Running" : status === "failed" ? "Failed" : "Completed"}${toolTiming(item)}`;
   const summary = item.name === "browser" ? browserToolSummary(item.args) : "";
   const filePath = toolFilePath(item);
   return html`<details class="chat-tool-msg-collapse ${status === "running" ? "chat-tool-row--running" : ""}"
@@ -1271,6 +1284,8 @@ function renderCompaction(row: Extract<ChatProjectionRow, { kind: "compaction" }
 
 function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow[], start: number): TemplateResult {
   const latestAssistantRowId = rows.findLast((row) => row.kind === "messages" && row.role === "assistant")?.id;
+  // Asked once per draw rather than once per row: a browser answers `null`, and its action rows are what they were.
+  const sheet = nativeShell();
   const latestSent = (role: ChatMessage["role"]) => rows.flatMap((row) => row.kind === "messages" && row.role === role ? row.messages : []).findLast((item) => !item.pending && !item.failed);
   const withEmbeds = [latestSent("user"), latestSent("assistant")];
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
@@ -1350,16 +1365,15 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     const lastText = row.sender && last ? attributedMessage(last.text)?.body ?? last.text : last?.text;
     // History refreshed from PI carries entry ids; a prompt sent this run has
     // none yet. A prompt PI refused (failed) was never persisted: no rewind.
-    // A bot's chat is permanent: the gateway refuses rewinds, so none is offered.
     // Someone else's message was never the operator's to edit and send again.
-    const rewindTo: RewindTarget | undefined = props.connection !== "live" || row.role !== "user" || sender || !last || last.failed || props.session?.bot ? undefined
+    const rewindTo: RewindTarget | undefined = props.connection !== "live" || row.role !== "user" || sender || !last || last.failed ? undefined
       : last.entryId ?? { userFromEnd: new Set(props.transcript.slice(props.transcript.indexOf(last) + 1)
           .flatMap((item) => item.kind === "message" && item.role === "user" && !item.failed ? [item.entryId ?? item.id] : [])).size };
     const rewindTooltipId = sessionControlId(props, `rewind-tooltip-${row.id}`);
     // Only Pi Durable copies a history into a new conversation; a bot's chat is never forked.
     const forkAt = props.connection === "live" && props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
     const forkTooltipId = sessionControlId(props, `fork-tooltip-${row.id}`);
-    return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-chat-row-key=${row.id}
+    return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-testid="message-row" data-chat-row-key=${row.id}
       style=${sender?.color ? `--chat-sender-color: ${sender.color}` : nothing}>
       ${sender ? html`<span class="chat-sender-avatar" aria-hidden="true">${sender.avatar}</span>` : nothing}
       <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, props.connection === "live" && withEmbeds.includes(item), row.sender ? attributedMessage(item.text) : undefined))}</div>
@@ -1368,7 +1382,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
         ${last && lastText ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
           <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, lastText)}>${icons.messageSquare}</button>
-        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
+        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}${sheet ? renderShare(sheet, props, lastText, `message-${last.id}`, sender ? "Share message" : row.role === "assistant" ? "Share response" : "Share prompt") : nothing}</div>` : nothing}
         ${rewindTo ? html`<div class="chat-group-footer-actions">
           ${renderActionTooltip(rewindTooltipId, props.rewindPending ? "Rewinding…" : "Rewind", html`
             <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "", last?.attachments)}>${rewindIcon}</button>
@@ -1406,10 +1420,7 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
     </div>`;
   }
   if (props.opening) {
-    return html`<div class="agent-chat__empty agent-chat__creating" role="status" aria-live="polite">
-      <span>Loading the conversation…</span>
-      <wa-progress-bar label="Loading the conversation" indeterminate></wa-progress-bar>
-    </div>`;
+    return renderConversationSkeleton("Loading the conversation…", props.connectionNote);
   }
   if (props.openError) {
     return html`<div class="agent-chat__empty" role="alert">
@@ -1418,17 +1429,59 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
       <button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Try again</button>
     </div>`;
   }
-  if (props.session?.status === "starting") {
-    return html`<div class="agent-chat__empty" role="status">
-      Starting pi — this takes a few seconds.
-    </div>`;
+  if (props.transcript.length === 0 && props.session?.status === "starting") {
+    return renderConversationSkeleton("Preparing the session…", props.connectionNote);
   }
   if (props.transcript.length === 0) {
     return props.bot
       ? html`<div class="agent-chat__empty bot-chat-empty" data-face-stage>${renderBotAvatar(props.bot.bot, "lg", { state: botFaceState(props) })}<strong>Say hi to ${props.bot.bot.name}</strong>${props.bot.bot.title ? html`<span>${props.bot.bot.title}</span>` : nothing}</div>`
       : html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
-  return html`${renderTranscriptRows(props, rows, start)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+  return html`${renderTranscriptRows(props, rows, start)}${renderCachedTail(props)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+}
+
+/** The conversation's place before its first rows arrive, or while its runtime starts. Full-width rows
+ * keep the watcher and activity cards below in the conversation's own column instead of after a centered
+ * empty state. */
+function renderConversationSkeleton(label: string, note: string) {
+  return html`<div class="chat-skeleton" role="status" aria-live="polite" data-testid="conversation-skeleton">
+    <div class="chat-skeleton__status">
+      <span class="hui-orbit" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>${label}</span>
+    </div>
+    ${note ? html`<p class="chat-skeleton__note">${note}</p>` : nothing}
+    <div class="chat-skeleton__rows" aria-hidden="true">
+      <div class="chat-skeleton__row chat-skeleton__row--user"><span class="skeleton skeleton-line"></span></div>
+      <div class="chat-skeleton__row">
+        <span class="skeleton skeleton-line skeleton-line--long"></span>
+        <span class="skeleton skeleton-line skeleton-line--medium"></span>
+      </div>
+      <div class="chat-skeleton__row chat-skeleton__row--user"><span class="skeleton skeleton-line"></span></div>
+      <div class="chat-skeleton__row">
+        <span class="skeleton skeleton-line"></span>
+        <span class="skeleton skeleton-line skeleton-line--long"></span>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** Under the last row of a cached copy: the live conversation may have more than was saved. */
+function renderCachedTail(props: HomeProps) {
+  if (!props.savedCopy || props.connection !== "saved") return nothing;
+  return html`<div class="chat-cached-tail" role="status" aria-label="The live conversation may have newer messages">
+    <div class="chat-cached-tail__rows" aria-hidden="true">
+      <span class="skeleton chat-cached-tail__line"></span>
+      <span class="skeleton chat-cached-tail__line chat-cached-tail__line--short"></span>
+    </div>
+  </div>`;
+}
+
+/** A resumed conversation keeps its history while its runtime starts; this is the only line that says so. */
+function renderStartingSession() {
+  return html`<div class="chat-starting" role="status">
+    <span class="hui-orbit" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span>Preparing the session…</span>
+  </div>`;
 }
 
 /** The same divider while PI summarizes, or why it wrote no summary. The
@@ -1463,17 +1516,6 @@ function renderWorkingIndicator(props: HomeProps) {
   </div>`;
 }
 
-function subagentSnippet(task: SubagentTaskView): string {
-  if (task.status === "queued") return "Waiting for a free slot…";
-  if (task.status === "starting") return "Starting…";
-  if (task.status === "running") return task.summary?.trim() || "Running…";
-  if (task.status === "completed") return task.summary?.trim() || "Completed";
-  if (task.status === "cancelled") return task.error?.trim() || "Cancelled";
-  if (task.status === "timed_out") return task.error?.trim() || "Timed out";
-  if (task.status === "interrupted") return task.error?.trim() || "Interrupted";
-  return task.error?.trim() || "Failed";
-}
-
 function renderSubagentStatusIcon(status: string) {
   const state = subagentVisualState(status);
   if (state === "running") return orbitIcon;
@@ -1481,74 +1523,6 @@ function renderSubagentStatusIcon(status: string) {
   if (state === "queued") return html`<span class="hui-subagent-status hui-subagent-status--queued">${icons.circle}</span>`;
   if (state === "cancelled") return html`<span class="hui-subagent-status hui-subagent-status--cancelled">${icons.circleX}</span>`;
   return html`<span class="hui-subagent-status hui-subagent-status--failed">${icons.alertTriangle}</span>`;
-}
-
-function renderSubagentRow(props: HomeProps, task: SubagentTaskView, now: number) {
-  const snippet = subagentSnippet(task).replace(/\s+/g, " ");
-  const elapsed = task.status === "queued" ? undefined : subagentElapsed(task, now);
-  return html`<button
-    class="chat-subagents__row chat-subagents__row--${subagentVisualState(task.status)}"
-    data-subagent-task-id=${task.taskId}
-    data-subagent-session-id=${task.sessionId}
-    type="button"
-    aria-label=${`Open subagent ${task.title}${elapsed ? `, ${elapsed}` : ""}`}
-    @click=${() => props.onSelectSubagent(task.sessionId)}
-  >
-    <span class="chat-subagents__icon">${renderSubagentStatusIcon(task.status)}</span>
-    <span class="chat-subagents__label">${task.title}</span>
-    <span class="chat-subagents__snippet">${snippet}</span>
-    ${elapsed ? html`<span class="chat-subagents__time">${elapsed}</span>` : nothing}
-  </button>`;
-}
-
-/** OpenClaw's Swarm card, between the transcript and the composer, for the latest batch of this session's subagents:
- * one dot per child, counts, and under Child details the children, each opening its session. A batch that all
- * succeeded folds into one row. */
-function renderSubagentActivity(props: HomeProps) {
-  const now = Date.now();
-  const tasks = latestSubagentBatch(props.subagents, now);
-  if (tasks.length === 0) return nothing;
-  const states = tasks.map((task) => subagentVisualState(task.status));
-  const count = (state: SubagentVisualState) => states.filter((each) => each === state).length;
-  const running = count("running");
-  const queued = count("queued");
-  const done = count("completed");
-  const failed = tasks.length - running - queued - done;
-  const finished = running + queued === 0;
-  const succeeded = finished && failed === 0;
-  const title = tasks.length === 1 ? tasks[0]!.title : "Parallel tasks";
-  const counts = finished
-    ? `${done} completed · ${failed} failed or stopped`
-    : `${running} running · ${queued} queued · ${failed} failed or stopped`;
-  const outcome = html`<span class="chat-swarm__outcome">${props.streaming
-    ? "Child runs finished. The parent is processing their results."
-    : "Child runs finished. Check the conversation for the final response."}</span>`;
-  const markers = (["running", "queued", "failed", "done"] as const).flatMap((marker) =>
-    Array.from({ length: { running, queued, failed, done }[marker] }, () => html`<span class="chat-swarm__marker chat-swarm__marker--${marker}"></span>`));
-  // Per batch, so a new batch starts folded.
-  const id = `subagents:${tasks[0]!.taskId}`;
-  const expanded = props.expandedActivityIds.has(id);
-  return html`<aside class="chat-swarm" aria-label="Parallel tasks">
-    <details class="chat-swarm__group ${succeeded ? "chat-swarm__group--completed" : ""}" .open=${expanded}
-      @toggle=${(event: Event) => {
-        const open = (event.currentTarget as HTMLDetailsElement).open;
-        if (open !== expanded) props.onActivityExpanded(id, open);
-      }}>
-      <summary class="chat-swarm__summary">${succeeded
-        ? html`<span class="chat-swarm__task-icon chat-swarm__task-icon--done" aria-hidden="true">${icons.check}</span>
-          <span class="chat-swarm__header"><strong title=${title}>${title}</strong></span>
-          <span class="chat-swarm__counts">${done} completed</span>
-          <span class="chat-swarm__disclosure"><span class="sr-only">Child details</span>${chevronDownIcon}</span>`
-        : html`<span class="chat-swarm__header"><strong title=${title}>${title}</strong><span>${done + failed} of ${tasks.length}</span></span>
-          <span class="chat-swarm__markers" aria-hidden="true">${markers}</span>
-          <span class="chat-swarm__counts">${counts}</span>
-          ${finished ? outcome : nothing}
-          <span class="chat-swarm__disclosure">Child details ${chevronDownIcon}</span>`}
-      </summary>
-      ${succeeded ? outcome : nothing}
-      <div class="chat-swarm__tasks">${tasks.map((task) => renderSubagentRow(props, task, now))}</div>
-    </details>
-  </aside>`;
 }
 
 function submitPromptFromForm(props: HomeProps, form: HTMLFormElement, mode: PromptMode) {
@@ -1748,20 +1722,24 @@ function renderComposer(props: HomeProps) {
   const booting = props.opening || props.session?.status === "starting";
   // Unreachable, the session runs elsewhere: drafting stays open, sending waits.
   const saved = props.connection === "saved" || props.connection === "outdated";
+  const savedCopy = props.connection === "saved" && props.savedCopy !== undefined;
   const unreachable = props.session && !saved ? unreachableHost(props.session) : undefined;
   const disconnected = props.connection !== "live" || unreachable !== undefined;
-  // One status lane under the composer: the chat never repeats it in the transcript.
-  const connectionStatus = saved
-    ? "Saved conversation · draft preserved. Send waits for a live connection."
-    : unreachable
-      ?? (props.connection === "reconnecting" ? "Reconnecting…" : props.connection === "stopped" ? props.connectionNote || "Stream stopped." : undefined);
-  // A saved copy offers no action it cannot honour, and nothing is retrying there.
-  const reconnecting = !saved && (props.session?.status === "reconnecting" || (unreachable === undefined && props.connection === "reconnecting"));
+  // One status lane under the composer: a cached copy says the live connection is still being sought, including the
+  // scheduled retry, and spins while it does. An outdated page has nothing to retry.
+  const connectionStatus = savedCopy
+    ? props.connectionNote || "Saved conversation · waiting for the live connection."
+    : saved
+      ? "Saved conversation · draft preserved. Send waits for a live connection."
+      : unreachable
+        ?? (props.connection === "reconnecting" ? "Reconnecting…" : props.connection === "stopped" ? props.connectionNote || "Stream stopped." : undefined);
+  // A saved copy offers no action it cannot honour; its own live request is retrying.
+  const reconnecting = savedCopy || (!saved && (props.session?.status === "reconnecting" || (unreachable === undefined && props.connection === "reconnecting")));
   const reconnect = !saved && props.session?.status === "disconnected";
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
   return html`
-    <div class="agent-chat__composer-shell ${props.question ? "agent-chat__composer-shell--question-composer" : ""}"
+    <div class="agent-chat__composer-shell"
       @dragenter=${onComposerDragEnter}
       @dragleave=${onComposerDragLeave}
       @dragover=${(event: DragEvent) => {
@@ -1776,7 +1754,6 @@ function renderComposer(props: HomeProps) {
         if (surface instanceof HTMLElement) clearComposerDrag(surface);
         if (!props.sending && event.dataTransfer?.files.length) props.onAddAttachments(Array.from(event.dataTransfer.files));
       }}>
-      ${renderQuestion(props)}
       ${renderRunError(props, booting || disconnected)}
       ${renderSavedNotice(props)}
       ${props.session?.interrupted && !booting ? html`
@@ -1788,9 +1765,8 @@ function renderComposer(props: HomeProps) {
           <button type="button" class="btn btn--sm" ?disabled=${props.sending || disconnected} @click=${props.onContinueInterrupted}>Continue run</button>
         </div>
       ` : nothing}
-      ${renderTaskProgress(props)}
+      ${props.session?.status === "starting" && props.transcript.length ? renderStartingSession() : nothing}
       ${renderQueue(props)}
-      ${renderGoalPill(props)}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
         @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
         @click=${focusComposerFromSurface}>
@@ -1847,7 +1823,8 @@ function renderComposer(props: HomeProps) {
           </div>
           <div class="agent-chat__composer-trail">
             <div class="agent-chat__composer-controls">
-          ${renderContextPicker(props.usage, disconnected || props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot)}
+          ${renderModelMetric(props.modelMetric)}
+          ${renderContextPicker(props.usage, disconnected || props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot, props.botCost)}
           <div class="chat-controls__session chat-controls__model chat-controls__model-settings">${renderModelPicker({
             models: props.models,
             current: props.currentModel,
@@ -1861,6 +1838,7 @@ function renderComposer(props: HomeProps) {
             disabled: disconnected || props.streaming || props.opening,
             onSelect: props.onSelectThinking,
             ...(props.fast !== undefined && props.currentModel?.fast ? { fast: { on: props.fast, onSelect: props.onSelectFast } } : {}),
+            ...(props.autonomous === undefined ? {} : { autonomy: { on: props.autonomous, onSelect: props.onSelectAutonomous } }),
             onToggle: positionComposerPicker,
             onKeydown: closeComposerPicker,
             onOpen: prepareComposerPicker,
@@ -1917,118 +1895,6 @@ function renderRunError(props: HomeProps, blocked: boolean) {
   </div>`;
 }
 
-const goalTargetIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3" /></svg>`;
-const goalPauseIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5v14M14.5 5v14" /></svg>`;
-const goalPlayIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none" /></svg>`;
-
-/** The goal above the composer, in OpenClaw's own pill: status, objective, the operator's controls, and the detail
- * block the row expands into. The detail carries the whole objective, why the goal stopped, and the objective's editor,
- * so reading, retyping and acting on a goal all happen in the pill. */
-function renderGoalPill(props: HomeProps) {
-  const session = props.session;
-  const goal = session?.goal;
-  if (!session || !goal) return nothing;
-  const label = goalStatusLabel(goal.status);
-  const icon = goal.status === "complete" ? checkIcon
-    : goal.status === "blocked" ? icons.alertTriangle
-      : goal.status === "paused" ? goalPauseIcon
-        : goalTargetIcon;
-  const { expanded, editing, error } = props.goalPanel;
-  // Starting a goal also sends its objective, so a turn in flight refuses it.
-  const editable = !props.sending && props.connection === "live" && !props.streaming && session.status === "idle";
-  const detailId = sessionControlId(props, "goal-detail");
-  const toggle = (event: Event) => {
-    if ((event.target as Element).closest("button, form")) return;
-    props.onGoalToggle();
-  };
-  const action = (kind: "pause" | "resume" | "clear", icon: unknown, disabled: boolean) => html`<button
-    type="button" class="agent-chat__goal-action" aria-label=${`${GOAL_ACTIONS[kind]} goal`} title=${`${GOAL_ACTIONS[kind]} goal`}
-    ?disabled=${disabled} @click=${() => props.onGoalChange(kind)}>${icon}<span class="agent-chat__goal-action-label">${GOAL_ACTIONS[kind]}</span></button>`;
-  return html`<div class="agent-chat__goal-float">
-    <div class="agent-chat__goal agent-chat__goal--${goal.status}" data-expanded=${expanded} title=${goal.note ?? goal.objective} @click=${toggle}>
-      <div class="agent-chat__goal-row">
-        <span class="agent-chat__goal-icon" aria-hidden="true">${icon}</span>
-        <span class="agent-chat__goal-copy">
-          <span class="agent-chat__goal-label">${label}</span>
-          <span class="agent-chat__goal-objective">${goal.objective}</span>
-        </span>
-        <span class="agent-chat__goal-actions">
-          <span class="agent-chat__goal-command-actions">
-            ${goal.status === "active"
-              ? action("pause", goalPauseIcon, props.sending)
-              : goal.status === "complete"
-                ? nothing
-                : action("resume", goalPlayIcon, props.sending)}
-            ${action("clear", icons.trash, props.sending)}
-            <button type="button" class="agent-chat__goal-action" aria-label="Edit goal objective" title="Edit goal objective"
-              ?disabled=${!editable || editing} @click=${props.onGoalEdit}>${icons.edit}<span class="agent-chat__goal-action-label">Edit</span></button>
-          </span>
-          <button type="button" class="agent-chat__goal-action agent-chat__goal-expand" aria-expanded=${expanded}
-            aria-controls=${detailId} aria-label=${expanded ? "Collapse goal" : "Expand goal"} title=${expanded ? "Collapse goal" : "Expand goal"}
-            @click=${props.onGoalToggle}>${expanded ? icons.chevronUp : icons.chevronDown}</button>
-        </span>
-      </div>
-      <div class="agent-chat__goal-detail" id=${detailId} data-testid="goal-detail" data-expanded=${expanded} ?inert=${!expanded}>
-        <div class="agent-chat__goal-detail-content">
-          ${editing ? html`<form class="goal-edit" @submit=${(event: Event) => {
-            event.preventDefault();
-            const field = (event.currentTarget as HTMLFormElement).elements.namedItem("objective");
-            if (field instanceof HTMLTextAreaElement) props.onGoalSave(field.value);
-          }}>
-            <textarea name="objective" rows="3" aria-label="Goal objective" spellcheck="true"
-              ${ref((element) => mountEditor(element, goal.objective))}></textarea>
-            ${error ? html`<p class="goal-edit__error" role="alert">${error}</p>` : nothing}
-            <p class="goal-edit__hint">${editable
-              ? "Saving starts the goal again with this objective and sends it as the next turn."
-              : "Finish or stop the active turn before changing the objective."}</p>
-            <div class="goal-edit__actions">
-              <button type="submit" class="btn btn--sm primary" ?disabled=${!editable}>Save goal</button>
-              <button type="button" class="btn btn--sm" @click=${props.onGoalCancelEdit}>Cancel</button>
-            </div>
-          </form>` : html`<p class="agent-chat__goal-detail-objective">${goal.objective}</p>`}
-          ${goal.note ? html`<p class="agent-chat__goal-detail-note">${goal.note}</p>` : nothing}
-          ${editing ? nothing : html`<div class="agent-chat__goal-detail-meta">
-            <span class="agent-chat__goal-detail-duration">Set ${relativeTime(Date.parse(goal.createdAt))}</span>
-          </div>`}
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-
-const GOAL_ACTIONS = { pause: "Pause", resume: "Resume", clear: "Clear" } as const;
-
-function goalStatusLabel(status: SessionGoal["status"]): string {
-  return { active: "Pursuing goal", paused: "Goal paused", blocked: "Goal blocked", complete: "Goal achieved" }[status];
-}
-
-function renderTaskProgress(props: HomeProps) {
-  const card = props.session?.progress;
-  if (!card) return nothing;
-  const completed = card.steps.filter((step) => step.status === "completed").length;
-  const current = card.steps.find((step) => step.status === "in_progress")
-    ?? card.steps.find((step) => step.status === "pending")
-    ?? card.steps.at(-1);
-  const allComplete = card.steps.length > 0 && completed === card.steps.length;
-  // A phone's card sits over the conversation it documents, so it starts folded to its current step there.
-  const folded = props.chatPreferences.collapseTaskProgress || allComplete || Boolean(props.mobileNavLayout);
-  return html`<div class="agent-chat__progress-float">
-    <details class="session-progress-card session-progress-card--composer" data-testid="task-progress" ?open=${!folded}>
-      <summary class="session-progress-card__summary" data-testid="task-progress-summary">
-        <span class="session-progress-card__summary-indicator ${allComplete ? "session-progress-card__summary-indicator--complete" : ""}" data-status=${current?.status ?? "pending"} aria-hidden="true">${allComplete ? checkIcon : current?.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span>
-        <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
-        <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
-        <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
-        <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
-      </summary>
-      <div class="session-progress-card__body" role="region" aria-label="Task progress" data-testid="task-progress-steps">
-        ${card.markdown ? html`<div class="session-progress-card__markdown">${renderMarkdown(card.markdown)}</div>` : nothing}
-        ${card.steps.length ? html`<ol class="session-progress-card__steps">${card.steps.map((step) => html`<li class="session-progress-card__step session-progress-card__step--${step.status}" data-testid="task-progress-step" data-status=${step.status}><span class="session-progress-card__step-marker" aria-hidden="true">${step.status === "completed" ? checkIcon : step.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span><span>${step.step}</span></li>`)}</ol>` : nothing}
-      </div>
-    </details>
-  </div>`;
-}
-
 /** The time a saved copy was taken; today's copies leave out the date. */
 function savedCopyTime(savedAt: number): string {
   const at = new Date(savedAt);
@@ -2082,18 +1948,68 @@ function positionComposerPicker(event: Event) {
   if (picker instanceof HTMLDetailsElement) positionNativePicker(picker);
 }
 
-function positionNativePicker(picker: HTMLDetailsElement) {
+const composerPickerLifecycles = new WeakMap<HTMLDetailsElement, () => void>();
+
+/** Track only an open picker: native resize can precede the composer's relayout by a frame. */
+export function positionNativePicker(picker: HTMLDetailsElement) {
   const trigger = picker.querySelector<HTMLElement>("summary");
-  const menu = picker.querySelector<HTMLElement>(".chat-controls__inline-select-menu, .agent-chat__attach-popup, .context-usage__popover");
+  const menu = picker.querySelector<HTMLElement>(".chat-controls__inline-select-menu, .agent-chat__attach-popup, .context-usage__popover, .chat-metrics__popover");
   if (!trigger || !menu) return;
-  if (!picker.open) { menu.hidePopover?.(); return; }
+  if (!picker.open || !picker.isConnected) {
+    composerPickerLifecycles.get(picker)?.();
+    menu.hidePopover?.();
+    return;
+  }
+  if (composerPickerLifecycles.has(picker)) return;
+  const viewport = window.visualViewport;
+  let frame = 0;
+  const setStyle = (name: string, value: string) => {
+    if (menu.style.getPropertyValue(name) !== value) menu.style.setProperty(name, value);
+  };
+  const stop = () => {
+    window.cancelAnimationFrame(frame);
+    window.removeEventListener("resize", schedule);
+    window.removeEventListener("scroll", schedule, true);
+    viewport?.removeEventListener("resize", schedule);
+    viewport?.removeEventListener("scroll", schedule);
+    composerPickerLifecycles.delete(picker);
+    menu.hidePopover?.();
+  };
+  const schedule = () => {
+    if (!frame) frame = window.requestAnimationFrame(update);
+  };
+  const update = () => {
+    frame = 0;
+    if (!picker.open || !picker.isConnected) { stop(); return; }
+    const rect = trigger.getBoundingClientRect();
+    const left = viewport?.offsetLeft ?? 0;
+    const top = viewport?.offsetTop ?? 0;
+    const right = left + (viewport?.width ?? window.innerWidth);
+    const bottom = top + (viewport?.height ?? window.innerHeight);
+    const above = Math.max(top + 12, Math.min(rect.top - 8, bottom - 12));
+    const below = Math.min(bottom - 12, Math.max(top + 12, rect.bottom + 8));
+    const aboveHeight = Math.max(0, above - top - 12);
+    const belowHeight = Math.max(0, bottom - 12 - below);
+    const opensAbove = aboveHeight >= 80 || aboveHeight >= belowHeight;
+    setStyle("--auto-size-available-height", `${opensAbove ? aboveHeight : belowHeight}px`);
+    setStyle("max-width", `${Math.max(0, right - left - 24)}px`);
+    const size = menu.getBoundingClientRect();
+    setStyle("left", `${Math.max(left + 12, Math.min(rect.right - size.width, right - size.width - 12))}px`);
+    setStyle("top", `${opensAbove ? Math.max(top + 12, above - size.height) : below}px`);
+    // A keyboard can move the anchor without another viewport event. Read once per open frame;
+    // unchanged frames write nothing, and closing/removing the picker cancels the lane entirely.
+    schedule();
+  };
+  composerPickerLifecycles.set(picker, stop);
+  setStyle("position", "fixed");
+  setStyle("right", "auto");
+  setStyle("bottom", "auto");
   menu.showPopover?.();
-  const rect = trigger.getBoundingClientRect();
-  menu.style.position = "fixed";
-  menu.style.right = "auto";
-  menu.style.left = `${Math.max(12, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 12))}px`;
-  menu.style.bottom = `${window.innerHeight - rect.top + 8}px`;
-  menu.style.setProperty("--auto-size-available-height", `${Math.max(80, rect.top - 20)}px`);
+  window.addEventListener("resize", schedule);
+  window.addEventListener("scroll", schedule, true);
+  viewport?.addEventListener("resize", schedule);
+  viewport?.addEventListener("scroll", schedule);
+  update();
 }
 
 function closeComposerPicker(event: KeyboardEvent) {
@@ -2120,9 +2036,41 @@ function compactTokens(value: number): string {
   return `${(value / 1_000_000).toFixed(1)}m`;
 }
 
+function metricRate(value: number | undefined): string {
+  return value === undefined ? "—" : `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} tok/s`;
+}
+
+function metricSeconds(value: number | undefined): string {
+  return value === undefined ? "—" : value < 10_000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value / 1000)} s`;
+}
+
+/** The latest request's speed in the composer, with the full HUI-measured detail behind it. */
+function renderModelMetric(metric: ModelMetric | undefined) {
+  if (!metric) return nothing;
+  const speed = metricRate(metric.tokensPerSecond);
+  const ttft = metricSeconds(metric.ttftMs);
+  return html`<div class="chat-metrics"><details class="chat-metrics__details" @keydown=${closeComposerPicker} @toggle=${positionComposerPicker}>
+    <summary class="chat-metrics__summary" aria-label=${`Last model request: ${speed}, time to first token ${ttft}`} @click=${prepareComposerPicker}>
+      <span class="chat-metrics__speed">${speed}</span><span class="chat-metrics__ttft">${ttft} TTFT</span>
+    </summary>
+    <section class="chat-metrics__popover" popover="manual" aria-label="Last model request metrics">
+      <div class="chat-metrics__header"><span>Last model request</span><code>${metric.provider}/${metric.model}</code></div>
+      <dl class="chat-metrics__stats">
+        <div><dt>Generation</dt><dd>${speed}</dd></div>
+        <div><dt>Time to first token</dt><dd>${ttft}</dd></div>
+        <div><dt>Prompt (est.)</dt><dd>${metricRate(metric.promptTokensPerSecond)}</dd></div>
+        <div><dt>Tokens in / out</dt><dd>${metric.inputTokens === undefined ? "—" : metric.inputTokens.toLocaleString()} / ${metric.outputTokens === undefined ? "—" : metric.outputTokens.toLocaleString()}</dd></div>
+        <div><dt>Duration</dt><dd>${metricSeconds(metric.durationMs)}</dd></div>
+        <div><dt>Status</dt><dd>${metric.status === "error" ? "Error" : "OK"}</dd></div>
+      </dl>
+      <p class="chat-metrics__note">Measured by HUI from request start to first token and completion. Prompt throughput includes queue and prefill, so it is an estimate.</p>
+    </section>
+  </details></div>`;
+}
+
 /** `onCompact` is absent while the session is busy; `compactable` is false
  * for a bot's permanent chat, whose memory summarizes older messages itself. */
-function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => void, compactable = true) {
+function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => void, compactable = true, botCost?: HomeProps["botCost"]) {
   const percent = usage?.percent;
   const label = percent === null || percent === undefined
     ? (usage?.contextWindow ? `Context window: ${compactTokens(usage.contextWindow)} · usage unavailable` : "Context usage unavailable")
@@ -2130,17 +2078,27 @@ function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => 
   const circumference = 2 * Math.PI * 6.5;
   const warningMix = Math.min(1, Math.max(0, ((percent ?? 0) - 85) / 10));
   const color = (percent ?? 0) >= 85 ? `color-mix(in srgb, var(--warn) ${(1 - warningMix) * 100}%, var(--danger))` : "var(--muted)";
+  const breakdown = contextBreakdown(usage?.breakdown ?? [], usage?.contextTokens ?? 0, usage?.contextWindow ?? 0);
+  const remaining = usage ? usage.contextWindow - (usage.contextTokens ?? 0) : 0;
+  const bar = breakdown.length
+    ? [...breakdown.map((row) => html`<span class="context-usage__bar-segment context-usage__bar-segment--${row.id}" style=${`flex-grow: ${row.tokens}`}></span>`),
+      ...(remaining > 0 ? [html`<span class="context-usage__bar-remaining" style=${`flex-grow: ${remaining}`}></span>`] : [])]
+    : html`<span style=${`width: ${percent ?? 0}%`}></span>`;
   return html`<div class="context-usage" style=${`--ctx-color: ${color}`}><details class="chat-controls__context-picker" @keydown=${closeComposerPicker} @toggle=${positionComposerPicker}>
     <summary class="context-ring" aria-label=${label} title=${label} @click=${prepareComposerPicker}>
       <svg class="context-ring__dial" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle class="context-ring__track" cx="8" cy="8" r="6.5" /><circle class="context-ring__fill" cx="8" cy="8" r="6.5" stroke-dasharray=${circumference.toFixed(2)} stroke-dashoffset=${(circumference * (1 - Math.min(100, Math.max(0, percent ?? 0)) / 100)).toFixed(2)} /></svg>
     </summary>
     <section class="context-usage__popover" popover="manual" aria-label="Context usage">
       <div class="context-usage__header"><span class="context-usage__title">Context window</span><strong class="context-usage__context-value">${usage?.contextTokens === null || usage?.contextTokens === undefined ? (usage?.contextWindow ? `${compactTokens(usage.contextWindow)} · occupancy unavailable` : "Unavailable") : `${compactTokens(usage.contextTokens)} / ${compactTokens(usage.contextWindow)} · ${Math.round(percent ?? 0)}%`}</strong></div>
-      <div class="context-usage__bar" role="progressbar" aria-label="Context window used" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${percent === null || percent === undefined ? nothing : String(Math.round(percent))}><span style=${`width: ${percent ?? 0}%`}></span></div>
+      <div class="context-usage__bar ${breakdown.length ? "context-usage__bar--breakdown" : ""}" role="progressbar" aria-label="Context window used" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${percent === null || percent === undefined ? nothing : String(Math.round(percent))}>${bar}</div>
+      ${breakdown.length ? html`<ul class="context-usage__breakdown">${breakdown.map((row) => html`<li class="context-usage__part context-usage__part--${row.id}"><span class="context-usage__dot"></span><span class="context-usage__part-label">${row.label}</span>${row.detail ? html`<span class="context-usage__part-detail">${row.detail}</span>` : nothing}<span class="context-usage__part-tokens">${compactTokens(row.tokens)}</span><span class="context-usage__part-percent">${Math.round(row.percent)}%</span></li>`)}</ul>
+        <p class="context-usage__note">Category breakdown is estimated</p>` : nothing}
         <div class="context-usage__section-label">Latest run tokens</div>
         ${usage
           ? html`<dl class="context-usage__stats"><div><dt>Input</dt><dd>${compactTokens(usage.inputTokens)}</dd></div><div><dt>Output</dt><dd>${compactTokens(usage.outputTokens)}</dd></div><div><dt>Est. cost</dt><dd>${usage.costUsd === null ? "Unavailable" : `$${usage.costUsd.toFixed(2)}`}</dd></div></dl>`
           : html`<p>The runtime has not reported usage for this session yet.</p>`}
+        ${botCost ? html`<div class="context-usage__section-label">Bot cost</div>
+          <dl class="context-usage__stats"><div><dt>${botCost.remote ? "Kept on" : botCost.reading ? "Reading" : botCost.unavailable ? "Could not read" : botCost.subagents ? (botCost.subagents === 1 ? "Includes one subagent" : `Includes ${botCost.subagents} subagents`) : "Chat, subagents and memory"}</dt><dd>${botCost.remote ?? (botCost.reading ? "cost…" : botCost.unavailable ? "Unavailable" : botCost.usd === null || (botCost.usd === undefined && !botCost.memory) ? "Not reported" : `$${((botCost.usd ?? 0) + (botCost.memory ?? 0)).toFixed(2)}`)}</dd></div></dl>` : nothing}
         ${usage?.sessionCost ? html`<div class="context-usage__section-label">Session cost</div>
           <dl class="context-usage__stats"><div><dt>${usage.sessionCost.source}</dt><dd>$${usage.sessionCost.usd.toFixed(2)}</dd></div><div><dt>Checked</dt><dd>${relativeTime(usage.sessionCost.asOf)}</dd></div></dl>` : nothing}
         ${compactable ? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact" ?disabled=${!onCompact}
@@ -2198,20 +2156,6 @@ function renderModelPicker(options: ModelPickerOptions) {
 }
 
 const QUEUE_DRAG_MIME = "application/x-hui-queued-message";
-/** One editor per element: Lit re-rendering around a textarea must not overwrite what the operator is typing. */
-const mountedEditors = new WeakSet<HTMLTextAreaElement>();
-
-function mountEditor(element: Element | undefined, value: string) {
-  if (!(element instanceof HTMLTextAreaElement) || mountedEditors.has(element)) return;
-  mountedEditors.add(element);
-  element.value = value;
-  queueMicrotask(() => {
-    if (!element.isConnected) return;
-    element.focus();
-    element.setSelectionRange(value.length, value.length);
-  });
-}
-
 function renderQueue(props: HomeProps) {
   const editable = props.queue.items ?? [];
   const rows = queueRows(props.queue);
@@ -2279,7 +2223,7 @@ function renderQueue(props: HomeProps) {
             <span class="chat-queue__grip-state chat-queue__grip-state--active" aria-hidden="true">${gripIcon}</span>
           </button>` : html`<span class="chat-queue__leading chat-queue__icon" aria-hidden="true">${queueIcon}</span>`}
           ${editing ? html`<textarea class="chat-queue__edit-input" rows="1"
-            ${ref((element) => mountEditor(element, props.queueEditingText))}
+            ${ref((element) => mountEditorAtEnd(element, props.queueEditingText))}
             aria-label="Edit queued message"
             @input=${(event: Event) => props.onQueueEditChange((event.currentTarget as HTMLTextAreaElement).value)}
             @keydown=${(event: KeyboardEvent) => {
@@ -2324,7 +2268,7 @@ function renderQuestion(props: HomeProps) {
   if (!question) return nothing;
   if (question.method === "questionnaire") {
     // Its previews' code blocks copy and wrap as the transcript's do.
-    return html`<div class="agent-chat__question-dock" aria-live="polite">
+    return html`<div class="chat-question-dock" aria-live="polite">
       <hui-questionnaire-card .prompt=${question} .onAnswer=${props.onAnswerQuestion} .idPrefix=${sessionControlId(props, "questionnaire")}></hui-questionnaire-card>
     </div>`;
   }
@@ -2354,7 +2298,7 @@ function renderQuestion(props: HomeProps) {
   const secret = question.method === "secret";
   const titleId = sessionControlId(props, "question-title");
   const reasonId = sessionControlId(props, "question-reason");
-  return html`<div class="agent-chat__question-dock" aria-live="polite">
+  return html`<div class="chat-question-dock" aria-live="polite">
     <form class="session-question-card chat-question-panel" data-testid="question-card" aria-labelledby=${titleId} @submit=${submit}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key === "Escape") {
@@ -2541,7 +2485,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
       </div>
       <div class="chat-pane__header-trailing">
         <div class="chat-pane__actions chat-pane__header-actions">
-          ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall }) : nothing}
+          ${props.bot && props.call ? renderCallButton({ botName: props.bot.bot.name, inCall: props.call.inCall, onCall: props.call.onCall, labelled: Boolean(props.mobileNavLayout) }) : nothing}
           ${props.bot ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn bot-panel-toggle"
             aria-label=${props.bot.panelOpen ? "Hide the bot panel" : "Show the bot panel"} title="Bot panel"
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
@@ -2575,6 +2519,24 @@ function renderHeader(props: HomeProps, session: SessionView) {
                 @click=${props.onClosePane}
               >${icons.close}</button>
             ` : nothing}
+          ${renderRunStatus({
+            id: sessionControlId(props, "run-status"),
+            session,
+            loading: props.opening || session.status === "starting",
+            subagents: props.subagents,
+            ...(props.watchers ? { watchers: props.watchers } : {}),
+            streaming: props.streaming,
+            waiting: Boolean(props.question),
+            sending: props.sending,
+            connectionLive: props.connection === "live",
+            goalPanel: props.goalPanel,
+            collapsePlan: props.chatPreferences.collapseTaskProgress || Boolean(props.mobileNavLayout),
+            onGoalChange: props.onGoalChange,
+            onGoalEdit: props.onGoalEdit,
+            onGoalSave: props.onGoalSave,
+            onGoalCancelEdit: props.onGoalCancelEdit,
+            onSelectSubagent: props.onSelectSubagent,
+          })}
         </div>
       </div>
     </header>
@@ -2594,6 +2556,8 @@ function projectedRows(transcript: readonly TranscriptItem[]): readonly ChatProj
 function renderTranscript(props: HomeProps, session: SessionView) {
   const rows = projectedRows(props.transcript);
   const start = transcriptWindowStart(rows.length, props.transcriptWindowStart);
+  const loadingConversation = props.opening || session.status === "starting";
+  const markers = loadingConversation ? [] : conversationMarkers(rows);
   const reveal = (messageId: string) => {
     const row = rowOfMessage(rows, messageId);
     return row >= 0 && row < start ? props.onShowEarlier(row) : undefined;
@@ -2613,34 +2577,18 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                   : nothing}
                 <div class="chat-main__conversation">
                   ${props.taskSuggestions?.suggestions.length ? html`<div class="chat-gutter-stack">${renderTaskSuggestionCard(props.taskSuggestions)}</div>` : nothing}
+                  ${stickyPrompt({ prompts: markers.filter((marker) => marker.role === "user"), onNavigate: props.onTranscriptNavigate })}
                   <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript" data-window-start=${start}
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}>
-                    ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
-                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
+                    ${positionRail({ sessionId: session.id, markers, onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
+                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${renderQuestion(props)}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>
-                ${renderSubagentActivity(props)}
                 ${renderComposer(props)}
               </div>
             </div>
-            ${props.sideChat ? html`
-              <aside class="chat-session-rail" aria-label="Side chat">
-                <header class="chat-session-rail__header">
-                  <div><strong>Side chat</strong><span>Ephemeral · ${props.sideChat.model || "utility model"}</span></div>
-                  <button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Close side chat" @click=${props.onCloseSideChat}>${icons.close}</button>
-                </header>
-                <div class="chat-session-rail__thread" role="status" aria-live="polite">
-                  <div class="chat-session-rail__question">${props.sideChat.question}</div>
-                  ${props.sideChat.loading
-                    ? html`<div class="chat-working-indicator"><span class="chat-working-indicator__mark" aria-hidden="true"><i></i><i></i><i></i></span><span>Asking utility model…</span></div>`
-                    : props.sideChat.error
-                      ? html`<div class="chat-session-rail__error" role="alert">${props.sideChat.error}</div>`
-                      : html`<div class="chat-session-rail__answer">${renderMarkdown(props.sideChat.answer)}</div>`}
-                </div>
-                <p class="chat-session-rail__note">This exchange is not added to the main transcript.</p>
-              </aside>
-            ` : nothing}
+            ${props.sideChatRail ? html`<hui-side-chat-view class="chat-session-rail" rail role="complementary" aria-label="Side chat" .sessionId=${session.id}></hui-side-chat-view>` : nothing}
           </div>
         </div>
       </div>

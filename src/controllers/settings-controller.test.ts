@@ -47,6 +47,7 @@ afterEach(() => {
 function setup() {
   const controllers: ReactiveController[] = [];
   const failures: string[] = [];
+  const notices: { message: string; failed: boolean }[] = [];
   const host = {
     updates: 0,
     addController: (controller: ReactiveController) => { controllers.push(controller); },
@@ -55,8 +56,12 @@ function setup() {
     updateComplete: Promise.resolve(true),
     renderRoot: { querySelector: () => null } as unknown as ParentNode,
   };
-  const controller = new SettingsController(host, { piLoaded: () => {}, copyFailed: (message) => failures.push(message) });
-  return { controller, host, controllers, failures };
+  const controller = new SettingsController(host, {
+    piLoaded: () => {},
+    copyFailed: (message) => failures.push(message),
+    notified: (message, failed) => notices.push({ message, failed }),
+  });
+  return { controller, host, controllers, failures, notices };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));

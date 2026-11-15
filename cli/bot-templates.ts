@@ -191,6 +191,8 @@ export function formatExportReview(bot: BotView, review: BotExportReview, picks:
     `Review of @${bot.handle} (${bot.name}) as a template for someone else${review.model ? `, read by ${review.model} after HUI's cleanup` : ""}.`,
     ...(review.warning ? [`Warning: ${review.warning}`] : []),
     `It saves as ${build.fileName}: ${build.files.map((file) => file.path).join(", ")}.`,
+    `Its setup (BOOTSTRAP.md) is ${build.setup.characters.toLocaleString("en-US")} of ${build.setup.limit.toLocaleString("en-US")} characters.`,
+    ...(build.setup.dropped.length ? ["", "Left out of its setup (the new owner never sees it):", ...build.setup.dropped.map((line) => `  - ${line}`)] : []),
   ];
   if (review.changes.length) {
     lines.push("", `Changes (move one with --set <id>=${BOT_EXPORT_GROUPS.join("|")}):`);

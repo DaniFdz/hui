@@ -1,15 +1,17 @@
 /** A bot's explicit memory: what the operator saves by hand, corrects, pins and deletes, kept across a reload (BOT-037, BOT-038, BOT-039). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { panelOverview } from "./bot-panel.ts";
 
-async function openMemory(screen: Screen, hui: Hui, bot: { id: string }) {
+async function openMemory(screen: Screen, hui: Hui, bot: { id: string; name: string }) {
   await hui.open(`/bots/${bot.id}`);
+  await panelOverview(screen, bot.name);
   await screen.getByText("Facts, preferences & decisions").tap();
   await expect(screen.getByText(/^\d+ \/ 40 memories$/u)).toBeVisible();
 }
 
 const makeBot = async (hui: Hui, name: string) =>
-  (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name, soul: "# Who I am\nA terse fixture bot.\n" })).bot;
+  (await hui.api<{ bot: { id: string; name: string } }>("POST", "/__hui/bots", { name, soul: "# Who I am\nA terse fixture bot.\n" })).bot;
 
 test("Memory saves a fact with its kind, source and count, keeps it across a reload and never runs a model", { tags: ["BOT-037"], platforms: ["web"] }, async ({ screen, hui }) => {
   const bot = await makeBot(hui, "Memo");

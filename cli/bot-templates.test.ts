@@ -193,6 +193,7 @@ test("the review as text keeps what a pick moves", () => {
   assert.match(text, /What it needs \(--set <id>=remove leaves one out\):\n  n1 keep    The GitHub CLI signed in/u);
   assert.match(text, /Cleaned automatically, before any model read it:\n  SOUL\.md: your name \(Dani\)/u);
   assert.match(text, /It saves as nova\.hui-bot\.zip: BOOTSTRAP\.md, bot\.json, SOUL\.md\./u);
+  assert.match(text, /Its setup \(BOOTSTRAP\.md\) is [\d,]+ of 6,000 characters\./u);
 });
 
 test("the CLI parses import and export with their own flags only", () => {

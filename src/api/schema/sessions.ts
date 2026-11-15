@@ -9,11 +9,15 @@ export type ProgressStep = { "step": string; "status": ("pending") | ("in_progre
 
 export type QuestionnaireAnswer = { "header": string; "question": string; "selected": Array<string>; "preview"?: string; };
 
-export type QuestionnaireOption = { "label": string; "description": string; "preview"?: string; };
+export type QuestionnaireInput = ("options") | ("slider") | ("text");
 
-export type QuestionnaireQuestion = { "header": string; "question": string; "multiSelect": boolean; "options": Array<QuestionnaireOption>; };
+export type QuestionnaireOption = { "label": string; "description": string; "preview"?: string; "previewHtml"?: string; };
+
+export type QuestionnaireQuestion = { "header": string; "question": string; "multiSelect": boolean; "options": Array<QuestionnaireOption>; "input": QuestionnaireInput; "min"?: number; "max"?: number; "step"?: number; "unit"?: string; "placeholder"?: string; };
 
 export type QuestionnaireResult = { "cancelled": boolean; "answers": Array<QuestionnaireAnswer>; "timedOut"?: true; "timeoutMinutes"?: number; };
+
+export type SessionAutonomousResponse = { "autonomous": boolean; };
 
 export type SessionConnectResponse = { "url": string; };
 

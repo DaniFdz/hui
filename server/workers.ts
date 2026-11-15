@@ -441,13 +441,14 @@ class WorkerConnection {
     };
   }
 
-  async startSession(key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
+  async startSession(key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string; botSkills?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
     const launch: RemoteLaunch = {
       ...await this.#launchDefaults(this.#sync?.pluginIds ?? new Map()), cwd: options.cwd,
       ...(options.sessionFile ? { sessionFile: options.sessionFile } : {}),
       ...(options.model ? { model: options.model } : {}),
       ...(options.thinking ? { thinking: options.thinking } : {}),
       ...(options.title ? { title: options.title } : {}),
+      ...(options.botSkills ? { botSkills: options.botSkills } : {}),
     };
     // Registered before the request: events can arrive in the same chunk as
     // the reply, before the awaiting code below resumes.
@@ -876,7 +877,7 @@ export class WorkerService {
   }
 
   /** Starts (or reattaches to) one HUI session's runtime on the worker. */
-  async startSession(id: string, key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
+  async startSession(id: string, key: string, tool: string, options: { cwd: string; sessionFile?: string; model?: string; thinking?: string; title?: string; botSkills?: string }, sink: RemoteSessionSink): Promise<RemoteSessionLink> {
     // An unreachable (or removed) worker says nothing about the session, which
     // may well be running there.
     const unreachable = (error: unknown) => new RuntimeUnreachableError(error instanceof Error ? error.message : String(error), this.#reconnect.has(id));

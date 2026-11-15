@@ -1,5 +1,6 @@
 /** New Session starts on the chosen model, effort and speed, and reopens recent chats (SESS-004, SESS-006). */
 import { expect } from "e2e";
+import { expectChatTitle } from "./chat-header.ts";
 import { test } from "../../fixtures/hui.ts";
 
 type Listed = { groups: { sessions: { id: string; title: string; model?: string }[] }[] };
@@ -49,6 +50,6 @@ test("Recent chats lists the five most recently updated top-level sessions that 
   await expect.poll(() => recent.getByRole("button").allTextContents())
     .toEqual(["Recent 0", "Recent parent", "Recent 4", "Recent 3", "Recent 2"].map((title) => `${title} this hour`));
   await recent.getByRole("button", "Open Recent 3").tap();
-  await expect(screen.getByTestId("session-title")).toHaveText("Recent 3");
+  await expectChatTitle(screen, "Recent 3");
   expect(await hui.url()).toMatch(new RegExp(`/sessions/${ids[3]}$`, "u"));
 });

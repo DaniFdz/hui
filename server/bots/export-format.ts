@@ -1,5 +1,5 @@
 /**
- * A bot's export as a template someone else imports (HUI-18; SPEC.md, "Bot exports are templates, reviewed for
+ * A bot's export as a template someone else imports (SPEC.md, "Bot exports are templates, reviewed for
  * personal information" and "An export is a setup document"): `BOOTSTRAP.md` (`setupDocument`: the goal, what the new
  * owner gives the bot, what to agree before it acts and what its schedules need), `bot.json` version 2
  * (`BotExportManifest`), the review the gateway answers before a download (`BotExportReview`: the bot's parts after its
@@ -8,7 +8,7 @@
  * (`src/lib/bots/export-preview.ts`) makes the dialog show exactly the files the gateway then saves.
  * See docs/api.md#importing-and-exporting-bots.
  */
-import { handleFromName, type BotTagging, type BotVoice } from "../bots-format.ts";
+import { BOT_LIMITS, handleFromName, type BotTagging, type BotVoice } from "../bots-format.ts";
 import type {
   BotExportAddition, BotExportAvatar, BotExportChange, BotExportGroup, BotExportPart, BotExportReview, BotExportSchedule, BotOpenPoint, BotTemplateTrigger,
 } from "../api/bot-templates.ts";
@@ -24,8 +24,9 @@ export const BOT_EXPORT_VERSION = 2;
 /** The zip's files: `BOOTSTRAP.md` (the setup document, written for whoever imports it), `bot.json`, `SOUL.md`, each own skill's folder under `skills/`; `memory.md` only in version 1. */
 export const BOT_EXPORT_FILES = { manifest: "bot.json", soul: "SOUL.md", bootstrap: "BOOTSTRAP.md", memory: "memory.md", skills: "skills" } as const;
 
-/** How long the setup document may be: a template's points in one read, before it stops being read at all. */
-export const BOT_SETUP_CHARACTERS = 8_000;
+/** How long the setup document may be: the import keeps it as the new bot's own `BOOTSTRAP.md`, so it can be no longer
+ * than one (`BOT_LIMITS.bootstrap`). A longer document would be refused there, after the review that made it. */
+export const BOT_SETUP_CHARACTERS = BOT_LIMITS.bootstrap;
 
 /** What `setupDocument` writes: the goal as the profile states it, the open points, what it needs, its schedules, and
  * the previous owner's own onboarding body, as the picks left it. */
@@ -39,6 +40,9 @@ export type BotSetupInput = {
   triggers: readonly { name: string }[];
   onboarding?: string;
 };
+
+/** The setup document and what its budget left out, one line each: the dialog says it, since the new owner never sees it. */
+export type BotSetupDocument = { text: string; dropped: string[] };
 
 /** `bot.json`, version 2: what of a bot travels once its review is done. No handle, path, date or memory. */
 export type BotExportManifest = {
@@ -82,14 +86,16 @@ export function changeGroups(part: string): readonly BotExportGroup[] {
   return part === "profile" ? ["keep", "remove"] : BOT_EXPORT_GROUPS;
 }
 
-/** What `buildExport` makes: the bot's final name, the zip's file name, its files in order, its open points, and what each
- * change picked comes to in them (what a passage becomes, what it asks), for the dialog to say. */
+/** What `buildExport` makes: the bot's final name, the zip's file name, its files in order, its open points, what each
+ * change picked comes to in them (what a passage becomes, what it asks), and the setup document's budget and what it
+ * left out, for the dialog to say. */
 export type BotExportBuild = {
   name: string;
   fileName: string;
   files: { path: string; text: string }[];
   open: BotOpenPoint[];
   outcomes: Record<string, { replacement?: string; question?: string }>;
+  setup: { characters: number; limit: number; dropped: string[] };
 };
 
 /** The mark an asked passage becomes. */
@@ -255,20 +261,31 @@ export function applyChanges(text: string, changes: readonly { quote: string; re
  * point lands), what it must agree before it acts, what has to be in place before its schedules are worth turning on,
  * what the previous owner wrote, and that its memory never travelled: everything about them, in their words, never
  * the previous owner's (the review's cleanup and the picks already saw to that). Bounded by `BOT_SETUP_CHARACTERS`:
- * beyond it items are left out and counted, never cut mid-sentence.
+ * beyond it items are left out and counted, never cut mid-sentence, and the previous owner's own body goes first, so
+ * the setup itself is never the part that gives way.
  */
-export function setupDocument(input: BotSetupInput): string {
-  const points = input.open.map((point) => point.kind === "ask"
-    ? `- Ask, in ${point.where}${point.operator ? " (only they can change it)" : ""}: ${point.question}`
-    : `- Agree, in ${point.where}${point.operator ? " (only they can change it)" : ""}: ${point.question}${point.excerpt && !point.question.includes(point.excerpt) ? ` “${point.excerpt}”` : ""}`);
-  const needs = input.needs.map((need) => `- ${need}`);
-  const schedules = [
-    ...input.routines.map((routine) => `- Routine “${routine.name}”, ${scheduleWords(routine.schedule)}: check the time on its Routines page, then turn it on.`),
-    ...input.triggers.map((trigger) => `- Trigger “${trigger.name}”: check what wakes it on its Triggers page, then turn it on.`),
+export function setupDocument(input: BotSetupInput): BotSetupDocument {
+  type Item = { line: string; name: string };
+  const points: Item[] = input.open.map((point) => ({
+    line: point.kind === "ask"
+      ? `- Ask, in ${point.where}${point.operator ? " (only they can change it)" : ""}: ${point.question}`
+      : `- Agree, in ${point.where}${point.operator ? " (only they can change it)" : ""}: ${point.question}${point.excerpt && !point.question.includes(point.excerpt) ? ` “${point.excerpt}”` : ""}`,
+    name: `Open point in ${point.where}: ${oneLine(point.question, 100)}`,
+  }));
+  const needs: Item[] = input.needs.map((need) => ({ line: `- ${need}`, name: `Need: ${oneLine(need, 120)}` }));
+  const schedules: Item[] = [
+    ...input.routines.map((routine) => ({
+      line: `- Routine “${routine.name}”, ${scheduleWords(routine.schedule)}: check the time on its Routines page, then turn it on.`,
+      name: `Routine “${routine.name}”`,
+    })),
+    ...input.triggers.map((trigger) => ({ line: `- Trigger “${trigger.name}”: check what wakes it on its Triggers page, then turn it on.`, name: `Trigger “${trigger.name}”` })),
   ];
   const goal = [input.title?.trim(), input.description?.trim()].filter(Boolean).join(" — ");
   const lists = [points, needs, schedules];
-  let dropped = 0;
+  const dropped: string[] = [];
+  // The previous owner's body is context; the points, needs and schedules are the setup. Over the budget it goes
+  // first, whole: a half-written document would be worse than one left out.
+  let onboarding = input.onboarding;
   const render = (): string => {
     const lines = [
       `# Setting up ${input.name}`,
@@ -277,15 +294,15 @@ export function setupDocument(input: BotSetupInput): string {
       "",
       "Nothing here is the previous owner's: their name, their links and their accounts were taken out before it left. In its soul, an [ask: …] mark is a blank for your answer.",
       ...(goal ? ["", "## What it does", "", goal] : []),
-      ...(points.length ? ["", "## What it needs from you", "", ...points] : []),
-      ...(needs.length ? ["", "## Before it can run", "", ...needs] : []),
-      ...(schedules.length ? ["", "## Its routines and triggers", "", "They arrive turned off: nothing runs until you switch it on.", "", ...schedules] : []),
-      ...(input.onboarding ? ["", "## What the previous owner wrote", "", "Their own onboarding body came with it:", "", input.onboarding] : []),
+      ...(points.length ? ["", "## What it needs from you", "", ...points.map((point) => point.line)] : []),
+      ...(needs.length ? ["", "## Before it can run", "", ...needs.map((need) => need.line)] : []),
+      ...(schedules.length ? ["", "## Its routines and triggers", "", "They arrive turned off: nothing runs until you switch it on.", "", ...schedules.map((schedule) => schedule.line)] : []),
+      ...(onboarding ? ["", "## What the previous owner wrote", "", "Their own onboarding body came with it:", "", onboarding] : []),
       "",
       "## What it doesn't know about you",
       "",
       "Its memory never travels: it starts knowing nothing about you, your team or your accounts, and builds that up as you work together.",
-      ...(dropped ? ["", `${dropped} more ${dropped === 1 ? "point" : "points"} left out to keep this short: the import preview lists ${dropped === 1 ? "it" : "them"}.`] : []),
+      ...(dropped.length ? ["", `${dropped.length} ${dropped.length === 1 ? "item was" : "items were"} left out to keep this short: ask whoever exported it for the rest.`] : []),
       "",
       "## How to run this",
       "",
@@ -294,16 +311,19 @@ export function setupDocument(input: BotSetupInput): string {
     return lines.join("\n");
   };
   let text = render();
-  // Over the budget the longest list gives up its last item until it fits, and the count is said: a half-written point
-  // would be worse than one left out.
   while (text.length > BOT_SETUP_CHARACTERS) {
-    const longest = lists.reduce((most, list) => list.length > most.length ? list : most, lists[0]!);
-    if (!longest.length) break;
-    longest.pop();
-    dropped += 1;
+    if (onboarding) {
+      dropped.push(`The previous owner's onboarding body (${onboarding.length.toLocaleString("en-US")} characters)`);
+      onboarding = undefined;
+    } else {
+      const longest = lists.reduce((most, list) => list.length > most.length ? list : most, lists[0]!);
+      const item = longest.pop();
+      if (!item) break;
+      dropped.push(item.name);
+    }
     text = render();
   }
-  return text;
+  return { text, dropped };
 }
 
 /** A routine's schedule in words, and whether it runs in whoever imports it time zone. */
@@ -460,7 +480,7 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
     ...(onboarding ? { onboarding } : {}),
   });
   const files: BotExportBuild["files"] = [
-    { path: BOT_EXPORT_FILES.bootstrap, text: ending(setup) },
+    { path: BOT_EXPORT_FILES.bootstrap, text: ending(setup.text) },
     { path: BOT_EXPORT_FILES.manifest, text: ending(JSON.stringify(manifest, null, 2)) },
   ];
   // SOUL.md and the setup document are the bot's; USER.md and MEMORY.md describe the operator and never enter a review.
@@ -471,5 +491,8 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
     if (change && group(change.id, change.group) === "remove") continue;
     files.push({ path: part.id, text: ending(fields(part.id)["text"] ?? "") });
   }
-  return { name, fileName: botExportFileName(name), files, open, outcomes };
+  return {
+    name, fileName: botExportFileName(name), files, open, outcomes,
+    setup: { characters: setup.text.length, limit: BOT_SETUP_CHARACTERS, dropped: setup.dropped },
+  };
 }

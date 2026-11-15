@@ -16,7 +16,7 @@ type LegacyUpdateJob = {
   version: string;
   message: string;
 };
-type LegacyUpdateSnapshot = { currentVersion: string | null; check: LegacyUpdateCheck | null; job: LegacyUpdateJob | null };
+type LegacyUpdateSnapshot = { name: string; currentVersion: string | null; check: LegacyUpdateCheck | null; job: LegacyUpdateJob | null };
 
 test("updates schemas preserve the existing payload types", () => {
   expectTypeOf<LegacyReleaseInfo>().toMatchTypeOf<Api.ReleaseInfo>();

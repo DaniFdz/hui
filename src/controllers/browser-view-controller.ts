@@ -5,7 +5,7 @@
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { decodeBrowserFrame, parseBrowserViewMessage } from "../api/browser.ts";
-import type { BrowserViewAction, BrowserViewState } from "../api/schema/browser.ts";
+import type { BrowserViewAction, BrowserViewControl, BrowserViewState } from "../api/schema/browser.ts";
 import { pointPosition, type BrowserViewConnection, type PreviewFrame } from "../lib/browser-view.ts";
 
 /** `stream` follows the page while it repaints; `snapshot` takes the current
@@ -116,7 +116,12 @@ export class BrowserViewController implements ReactiveController {
 
   /** Watch one of the conversation's tabs; null follows the agent. */
   select(tabId: string | null): void {
-    if (this.#socket?.readyState === WebSocket.OPEN) this.#socket.send(JSON.stringify({ action: "select", tabId }));
+    this.send({ action: "select", tabId });
+  }
+
+  /** Operator input or Continue for a tab the agent handed over; dropped while disconnected. */
+  send(control: BrowserViewControl): void {
+    if (this.#socket?.readyState === WebSocket.OPEN) this.#socket.send(JSON.stringify(control));
   }
 
   async #attempt(generation: number): Promise<void> {

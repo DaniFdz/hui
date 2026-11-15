@@ -1,6 +1,6 @@
 /**
- * The chat's rows as the iOS core hands them to the app, in one call per change: `projectChatTranscript`'s rows with
- * each activity row's labels, its question summary (`questionnaireSummary`) and each tool's card presentation and
+ * The chat's rows as a client that draws the chat itself takes them (the web draws its own and doesn't import this),
+ * in one call per change: `projectChatTranscript`'s rows with each activity row's labels, its question summary (`questionnaireSummary`) and each tool's card presentation and
  * printed input attached, each message's shown text (a bot's or session's without HUI's header) and whether it renders
  * as Markdown (the agent's and those senders', not the operator's, a routine's or a trigger's), each message row's footer (the text Reply and Copy use, without a sender's header, and the
  * Copy button's label, as the web's footer reads them), and a `key` on every row

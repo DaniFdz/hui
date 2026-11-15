@@ -13,8 +13,13 @@ test("on a phone held either way Open navigation shows the drawer over unreachab
 
   for (const orientation of ["portrait", "landscape"] as const) {
     const phone = await hui.phoneScreen(orientation);
-    const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
     await hui.open("/");
+    await expect(screen.getByRole("button", "Start session")).toBeVisible();
+    // The update notice is the page load's own check: the worker an earlier load registered must not answer it, so it
+    // goes before the route and the reload that asks.
+    await hui.clearOffline();
+    const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
+    await hui.reload();
     await check.answer(available);
     await expect(review).toBeVisible();
     await expect(open).toBeVisible();

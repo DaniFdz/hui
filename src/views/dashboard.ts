@@ -1,5 +1,5 @@
 /**
- * The Dashboard page (Labs → Dashboard): a queue of the decisions the sessions in flight wait on, with the activity
+ * The Dashboard page: a queue of the decisions the sessions in flight wait on, with the activity
  * monitor beside it. The queue narrows by group, status, worker, stage and a text query, a choice's long name shortened
  * there so the count beside it stays readable; it counts what it shows in a stat strip, and lists one lane per reason —
  * Answer, Fix, Unread, In flight, Parked — with the session to pick up first at the top of each and three rows per lane

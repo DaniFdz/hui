@@ -8,6 +8,7 @@
 <p align="center">
   <a href="https://github.com/DaniFdz/hui/releases/latest"><img src="https://img.shields.io/github/v/release/DaniFdz/hui?style=flat-square&label=release" alt="Latest release"></a>
   <a href="https://github.com/DaniFdz/hui/actions/workflows/nix.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaniFdz/hui/nix.yml?branch=main&style=flat-square&label=ci" alt="CI status"></a>
+  <a href="https://github.com/DaniFdz/hui/actions/workflows/nightly.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaniFdz/hui/nightly.yml?branch=main&style=flat-square&label=nightly" alt="Nightly build status"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A524-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js 24 or newer"></a>
   <a href="https://pi.dev"><img src="https://img.shields.io/badge/runtime-PI-8b5cf6?style=flat-square" alt="Runtime: PI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License: MIT"></a>
@@ -41,45 +42,45 @@ offline reading only.
 
 ### Kanban
 
-Every session is a card in the stage its work is in, agents move their own cards, and a backlog item starts in its own worktree.
+The Dashboard shows what every session is doing and what needs you first; the board puts the same sessions in their stage. Agents move their own cards, a backlog item starts in its own worktree, and every session gets a task progress card.
 
-https://github.com/user-attachments/assets/f8591a87-ea6a-4107-8bfc-f4f5e2bed13f
+https://github.com/user-attachments/assets/087b9089-c693-4c8d-88c4-ee0d6f79490e
 
 ### Rich results in the chat
 
 Interactive widgets, a browser the agent drives with a live preview, and GitHub, Slack and Datadog links that unfurl.
 
-https://github.com/user-attachments/assets/a4e1ddfb-b8b8-47b9-8312-ecc37fd5952c
+https://github.com/user-attachments/assets/23af240f-153f-4dcd-8493-527cb2614e27
 
 ### Work pane
 
 A terminal you share with the agent, and the Diff, Files and VS Code views of what it changed, beside the chat.
 
-https://github.com/user-attachments/assets/804bb631-9b12-4a8a-bf9c-f6c8eec8747c
+https://github.com/user-attachments/assets/2f9174e7-41ee-428f-87bd-60480ec1b1cf
 
 ### Subagents and watchers
 
-Parallel reviewers tracked on one card, and a watcher that waits for CI and merges.
+Parallel reviewers tracked on one card, a goal the conversation keeps pursuing, and a watcher that waits for CI and merges.
 
-https://github.com/user-attachments/assets/f20a20f1-b34e-4654-8e97-6d757e0d4a94
+https://github.com/user-attachments/assets/5b495fa9-2295-4a63-b11a-197a75687b59
 
 ### Bots
 
-Long-lived agents with a face, one chat, a memory and routines they schedule themselves.
+Long-lived agents with a face, one chat, a memory and routines they schedule themselves, and a Usage page that reports what all of it cost.
 
-https://github.com/user-attachments/assets/e7bb9bc2-a1f4-4c40-a57b-3c0c6a43d3ea
+https://github.com/user-attachments/assets/7dcb06ef-3652-4b4b-aecd-6cf56ef2696b
 
 ### Bots working together
 
 Agents hand bots their pull requests and get questions back, triggers wake a bot when a page comes in, and bots tag each other.
 
-https://github.com/user-attachments/assets/fd8bdd23-7932-4b18-b92f-88067b177b6a
+https://github.com/user-attachments/assets/6e5a1f8c-ade3-4770-b573-debb9595e903
 
 ### On your phone
 
-Open the gateway over Tailscale and check in on your agents, or the board, from anywhere.
+Reach your gateway over Tailscale and check in on your agents, or on everything in flight, from anywhere.
 
-https://github.com/user-attachments/assets/105d3a04-aeca-449e-a575-cd95eb36bbce
+https://github.com/user-attachments/assets/ace294f5-b185-4603-b9f6-4703a7184f2d
 
 ## Install
 
@@ -259,8 +260,11 @@ hui update --force            # replace a busy or unresponsive gateway
 ```
 
 `--nightly` installs the build CI publishes for each `main` commit, from the
-rolling `nightly` prerelease. Run it again to follow `main`; a plain
-`hui update` brings you back to stable once a newer stable release ships.
+rolling `nightly` prerelease. The badge above and the
+[Nightly workflow](https://github.com/DaniFdz/hui/actions/workflows/nightly.yml)
+show whether the current `main` commit passed its checks and published. Run it
+again to follow `main`; a plain `hui update` brings you back to stable once a
+newer stable release ships.
 
 From the chat, `/update` opens the update flow in a dedicated **HUI update**
 session under **OTHER**. The command stays in the composer and is never sent to
@@ -327,6 +331,7 @@ Please report security issues privately as described in [SECURITY.md](SECURITY.m
 | Connect model providers                   | [Model providers](docs/guide.md#model-providers)                                                |
 | Reach the gateway through a proxy         | [Remote access](docs/guide.md#remote-access-through-a-reverse-proxy)                            |
 | Run bots, their routines and memory       | [Bots](docs/guide.md#bots)                                                                      |
+| Write a gateway extension                 | [What an extension can do](docs/extensions.md)                                                  |
 | Understand the product and its contracts  | [SPEC.md](SPEC.md) · [Browser/server API](docs/api.md)                                          |
 | Contribute or cut a release               | [CONTRIBUTING.md](CONTRIBUTING.md)                                                              |
 

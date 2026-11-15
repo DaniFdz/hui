@@ -2,7 +2,7 @@
  * `ComposerController` owns the open conversation's composer outside `hui-app.ts`: its draft and attachments, kept
  * per session through `lib/composer/drafts.ts`, with the sessions that hold a draft (the sidebar's pencil); the slash
  * command menu and the commands it lists; local path and bot mention completion; sending a prompt, a steer, a
- * follow-up or a composer command (`/clear`, `/reload`, `/compact`, `/btw` with its side chat), with the first prompt
+ * follow-up or a composer command (`/clear`, `/reload`, `/compact`, `/btw` with its side chat view), with the first prompt
  * of a launched session held until it is idle; stopping a turn, compacting, rewinding to a message, the Fork dialog's
  * target and answering a question; and the session's message queue, with the edit of one queued message and the
  * requests that edit, remove, move and steer queued messages, or send the steered ones now. The shell reads its
@@ -20,13 +20,14 @@ import { SendRequests } from "../lib/composer/send-requests.ts";
 import { EMPTY_QUEUE, streamingAfterSubmission } from "../lib/composer/state.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "../lib/local-paths.ts";
 import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
+import { clearSideChat, settleSideChat, startSideChat } from "../lib/session/side-chat-store.ts";
 import { completeCommandReference, composerCommands, composerSendAction, filterSlashCommands, parseGoalCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
 import { appendPendingUser, dropDuplicateSend, failPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
 import type { GoalPanelState, HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";
 
-/** The goal pill's detail block starts closed. */
-const CLOSED_GOAL_PANEL: GoalPanelState = { expanded: false, editing: false, error: "" };
+/** The goal editor starts closed; the Run status popover reads it. */
+const CLOSED_GOAL_PANEL: GoalPanelState = { editing: false, error: "" };
 
 type ComposerDeps = {
   conversation: ConversationController;
@@ -77,7 +78,6 @@ export class ComposerController {
   rewindPending = false;
   /** The Fork from here dialog: the session and reply it forks from. While it is open, the chat's fork buttons rest. */
   forkTarget: ForkTarget | undefined;
-  sideChat: HomeProps["sideChat"];
   /** First prompt composed on New Session, released only after PI reports idle. */
   pendingLaunchPrompt = "";
   pendingLaunchAttachments: readonly Attachment[] = [];
@@ -222,7 +222,6 @@ export class ComposerController {
     if (!session || session.status === "starting" || session.status === "error" || this.commandsLoading) return;
     const request = ++this.#commandsRequest;
     const current = () => this.#conversation.selected?.id === session.id && request === this.#commandsRequest;
-    const returnFocus = document.activeElement?.closest(".slash-menu") !== null;
     this.commandsLoading = true;
     this.commandsError = "";
     this.#host.requestUpdate();
@@ -231,9 +230,6 @@ export class ComposerController {
       this.commands = commands;
       this.#commandsLoaded = true;
       this.slashActiveIndex = 0;
-      if (returnFocus) void this.#host.updateComplete.then(() => {
-        if (current() && this.slashQuery !== null) this.#deps.textarea()?.focus();
-      });
     }).catch((error: unknown) => {
       if (current()) this.commandsError = error instanceof Error ? error.message : "Could not load commands.";
     }).finally(() => {
@@ -241,6 +237,17 @@ export class ComposerController {
       this.commandsLoading = false;
       this.#host.requestUpdate();
     });
+  };
+
+  #retryCommands = () => {
+    const textarea = this.#deps.textarea();
+    if (textarea) {
+      // Touch can blur the editor without focusing Retry. Restore its query and
+      // focus before loading replaces that button, not after the reply arrives.
+      textarea.focus();
+      this.#setCommandQuery(slashCommandQuery(this.draft, textarea.selectionStart, textarea.selectionEnd));
+    }
+    this.#requestCommands();
   };
 
   #runtimeCommands(): readonly RuntimeCommand[] {
@@ -523,7 +530,6 @@ export class ComposerController {
     this.pendingCommandBrowse = false;
     this.sending = false;
     this.adoptQueue(EMPTY_QUEUE);
-    this.sideChat = undefined;
   }
 
   clearSession(): void {
@@ -531,16 +537,6 @@ export class ComposerController {
     this.pendingLaunchPrompt = "";
     this.pendingLaunchAttachments = [];
     this.rewindPending = false;
-    this.#host.requestUpdate();
-  }
-
-  closeSideChat(): void {
-    this.sideChat = undefined;
-    this.#host.requestUpdate();
-  }
-
-  #showSideChat(sideChat: NonNullable<HomeProps["sideChat"]>): void {
-    this.sideChat = sideChat;
     this.#host.requestUpdate();
   }
 
@@ -591,7 +587,7 @@ export class ComposerController {
         ? clearSession(session.id).then((snapshot) => {
           if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
           this.#conversation.applySnapshot(snapshot);
-          this.closeSideChat();
+          clearSideChat(session.id);
           this.#deps.showNote("Session context cleared.");
         })
         : reloadSession(session.id).then(() => {
@@ -639,22 +635,13 @@ export class ComposerController {
       this.draftEdit += 1;
       this.setDraft("");
       void this.persistDraft(sessionDraftKey(session.id), "", []);
-      this.#showSideChat({ question: sideQuestion, answer: "", model: "", loading: true, error: "" });
-      void askSideQuestion(session.id, sideQuestion).then((result) => {
-        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
-          this.#showSideChat({ ...result, loading: false, error: "" });
-        }
-      }).catch((error: unknown) => {
-        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
-          this.#showSideChat({
-            question: sideQuestion,
-            answer: "",
-            model: "",
-            loading: false,
-            error: error instanceof Error ? error.message : "The side question failed.",
-          });
-        }
-      });
+      // The exchange belongs to the conversation, so it stays when the answer arrives after focus moves away.
+      startSideChat(session.id, sideQuestion);
+      void askSideQuestion(session.id, sideQuestion)
+        .then((result) => settleSideChat(session.id, result))
+        .catch((error: unknown) => settleSideChat(session.id, {
+          error: error instanceof Error ? error.message : "The side question failed.",
+        }));
       return;
     }
     const pendingId = localTranscriptId("user");
@@ -748,9 +735,9 @@ export class ComposerController {
       });
   };
 
-  /** The goal pill's detail block; the row and its chevron toggle it, and a session switch closes it. */
+  /** The goal editor; a completed change and a session switch close it. */
   goalPanel: GoalPanelState = CLOSED_GOAL_PANEL;
-  /** `/goal`, the goal pill and the Goal dialog all land here. `typed` is the command line to put back if the gateway
+  /** `/goal`, the Run status popover and the Goal dialog all land here. `typed` is the command line to put back if the gateway
    * refuses, and a refusal answers where the operator made the change: in the dialog's own field while it edits. */
   changeGoal = (action: "start" | "pause" | "resume" | "clear", objective?: string, typed?: string) => {
     const session = this.#conversation.selected;
@@ -795,20 +782,15 @@ export class ComposerController {
     this.#host.requestUpdate();
   }
 
-  #toggleGoal = () => {
-    if (!this.#conversation.selected?.goal) return;
-    this.#setGoalPanel(this.goalPanel.expanded ? CLOSED_GOAL_PANEL : { expanded: true, editing: false, error: "" });
-  };
-
   #editGoal = () => {
     if (!this.#conversation.selected?.goal) return;
-    this.#setGoalPanel({ expanded: true, editing: true, error: "" });
+    this.#setGoalPanel({ editing: true, error: "" });
   };
 
-  #cancelGoalEdit = () => this.#setGoalPanel({ ...this.goalPanel, editing: false, error: "" });
+  #cancelGoalEdit = () => this.#setGoalPanel({ editing: false, error: "" });
 
   /** Replacing the objective is the `/goal <objective>` path: the new objective starts the goal and is sent as its
-   * next turn. A refusal stays in the pill's editor, where the operator is still typing. */
+   * next turn. A refusal stays in the popover's editor, where the operator is still typing. */
   #saveGoal = (objective: string) => {
     const text = objective.trim();
     if (!text) {
@@ -960,15 +942,13 @@ export class ComposerController {
       });
   };
 
-  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "sideChat" | "onCloseSideChat" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "onGoalToggle" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer" | "onQueueSteerNow"> {
+  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "goalPanel" | "onGoalEdit" | "onGoalSave" | "onGoalCancelEdit" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer" | "onQueueSteerNow"> {
     const conversation = this.#conversation;
     const sending = this.sending;
     return {
       sending,
       rewindPending: this.rewindPending,
       forkPending: Boolean(this.forkTarget),
-      sideChat: this.sideChat,
-      onCloseSideChat: () => this.closeSideChat(),
       onSendPrompt: this.send,
       onContinueInterrupted: this.continueStoppedRun,
       onAbort: this.abort,
@@ -979,7 +959,6 @@ export class ComposerController {
       onAnswerQuestion: this.#answerQuestion,
       onGoalChange: (action) => this.changeGoal(action),
       goalPanel: this.goalPanel,
-      onGoalToggle: this.#toggleGoal,
       onGoalEdit: this.#editGoal,
       onGoalSave: this.#saveGoal,
       onGoalCancelEdit: this.#cancelGoalEdit,
@@ -1001,7 +980,7 @@ export class ComposerController {
         error: this.commandsError,
         streaming: conversation.streaming,
         onSelect: this.#selectSlashCommand,
-        onRetry: this.#requestCommands,
+        onRetry: this.#retryCommands,
       },
       onCommandQuery: this.#setCommandQuery,
       onCommandKeydown: this.#commandKeydown,

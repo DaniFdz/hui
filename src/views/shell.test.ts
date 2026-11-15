@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import {
   type DrawerMediaQuery,
   APP_SHELL_DRAWER_MEDIA,
+  closeNavigationDrawerOnBack,
   filterSessionGroups,
   isSessionGroupCollapsed,
   PRIMARY_NAV,
@@ -25,9 +26,10 @@ import {
 } from "./settings.ts";
 import { ACCENTS } from "../lib/theme/appearance.ts";
 import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
+import { DEFAULT_DEVICE_APPEARANCE } from "../lib/appearance/store.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
 import { DEFAULT_SIDEBAR_SESSION_OPTIONS } from "../lib/session/sidebar-sessions.ts";
-import { HUI_PAGES, availablePages } from "../lib/pages.ts";
+import { HUI_PAGES } from "../lib/pages.ts";
 
 function renderedText(value: unknown): string {
   if (Array.isArray(value)) return value.map(renderedText).join("");
@@ -72,6 +74,12 @@ const SESSION_GROUPS: SessionGroup[] = [
   },
 ];
 
+const GATEWAYS = [
+  { url: "http://127.0.0.1:8787", name: "Studio Mac", state: "current" as const },
+  { url: "http://loft.local:8787", name: "Loft", state: "known" as const, lastSeen: 1 },
+  { url: "http://attic.local:8787", name: "Attic", state: "offline" as const, lastSeen: 2 },
+];
+
 function controlledMedia(initialMatches = true) {
   let matches = initialMatches;
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
@@ -99,27 +107,36 @@ function controlledMedia(initialMatches = true) {
   };
 }
 
-test("the primary sidebar lists work destinations above a Settings footer", () => {
+test("the primary sidebar lists work destinations, ending with Settings, above the gateway footer", () => {
   assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["dashboard", "contributions", "sessions", "usage"]);
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
-  const nav = source.slice(source.indexOf('<nav class="sidebar-nav"'), source.indexOf("</nav>", source.indexOf('<nav class="sidebar-nav"')));
+  const navStart = source.indexOf('<nav class="sidebar-nav"');
+  const nav = source.slice(navStart, source.indexOf("</nav>", navStart));
   assert.doesNotMatch(nav, /(?<![A-Z_])NAV\.map|icons\.home/u);
   // Kanban is a HUI route rendered directly below Contributions.
   assert.match(nav, /item\.id === "contributions" \? kanbanNavItem\(props\)/u);
-  // Settings is not a destination in that tab panel: it closes the sidebar below both lists.
-  assert.doesNotMatch(nav, /sidebar-nav__settings/u);
+  // Settings is the last destination, below Usage and every extension page, in the list both tabs share.
+  assert.ok(nav.indexOf("sidebar-nav__settings") > nav.indexOf("props.extensionPages.map"), "Settings follows the mapped destinations");
+  assert.match(nav.slice(nav.indexOf("sidebar-nav__settings")), /props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>/u);
+  // The top row holds only the collapse control and the tabs.
+  const top = source.slice(source.indexOf('<div class="sidebar-brand"'), source.indexOf('<label class="sidebar-search'));
+  assert.doesNotMatch(top, /nav-settings|onOpenSettings|sidebar-brand__settings/u);
+  // The footer is the gateway this page came from, not a Settings link.
   const footer = source.indexOf('class="sidebar-footer"');
   assert.ok(footer > source.indexOf('class="sidebar-shell__content"'), "the footer follows the scrolling content");
-  assert.match(source.slice(footer), /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>/u);
+  const footerMarkup = source.slice(footer, source.indexOf('<div\n      class="sidebar-resize-handle"'));
+  assert.match(footerMarkup, /\$\{renderGatewayPicker\(props\)\}/u);
+  assert.doesNotMatch(footerMarkup, /sidebar-nav__settings|>Settings<\/span>/u);
 });
 
 test("each destination marks itself current, and Settings never does", () => {
   const rendered = markup(renderSidebar({
-    view: "surface", activePage: { id: "usage" }, pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [], draftSessionIds: new Set(),
+    view: "surface", activePage: { id: "usage" }, pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [], draftSessionIds: new Set(),
     collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "", importFailed: false, search: "",
     sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "",
     sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
     bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
   } as unknown as Parameters<typeof renderSidebar>[0]));
   const current = (path: string) => new RegExp(`href=\\${path}\\b[\\s\\S]{0,160}?aria-current=page`, "u");
   assert.match(rendered, current("/usage"));
@@ -127,26 +144,74 @@ test("each destination marks itself current, and Settings never does", () => {
   assert.doesNotMatch(rendered, current("/settings/appearance"));
 });
 
-test("the sidebar lists Dashboard only while Labs → Dashboard is on", () => {
-  const rendered = (dashboard: boolean) => markup(renderSidebar({
-    view: "home", pages: availablePages({ ...DEFAULT_SETTINGS.labs, dashboard }), selectedSessionId: "", splitSessionId: "", groups: [],
+test("the sidebar lists Dashboard with the other destinations", () => {
+  const rendered = markup(renderSidebar({
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "",
     importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "",
     draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined,
     groupReorderPending: false, bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
   } as unknown as Parameters<typeof renderSidebar>[0]));
-  assert.doesNotMatch(rendered(false), /href=\/dashboard\b/u);
-  assert.match(rendered(true), /href=\/dashboard\b[\s\S]*>Dashboard</u);
-  assert.match(rendered(false), /href=\/usage\b/u, "the other destinations stay");
+  assert.match(rendered, /href=\/dashboard\b[\s\S]*>Dashboard</u);
+  assert.match(rendered, /href=\/usage\b/u, "the other destinations stay");
 });
 
-test("Settings stays available while the Bots list is showing", () => {
-  assert.match(sidebar(1), /sidebar-nav__settings[\s\S]*>Settings</u);
-  assert.match(sidebar(1, "", "bots"), /sidebar-nav__settings[\s\S]*>Settings</u);
-  assert.doesNotMatch(sidebar(1, "", "bots"), /Primary navigation/u, "the Agents navigation stays out of the Bots list");
+test("both sidebar lists show the same destinations and Settings", () => {
+  for (const tab of ["agents", "bots"] as const) {
+    const rendered = sidebar(1, "", tab);
+    assert.match(rendered, /data-testid="primary-navigation"/u);
+    for (const label of ["Contributions", "Kanban", "Sessions", "Usage", "Settings"]) {
+      assert.match(rendered, new RegExp(`>${label}<`), `${tab} lists ${label}`);
+    }
+  }
 });
 
-test("settings navigation contains only the fourteen accepted regions", () => {
+test("the footer is this page's gateway, and its menu lists the others with the current one marked", () => {
+  const switched: string[] = [];
+  let openedAdd = 0;
+  const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
+  assert.match(source, /<wa-dropdown class="session-menu sidebar-gateway-menu"[^>]*@keydown=\$\{closeDropdownOnEscape\}/u, "Escape closes it and returns focus to the trigger, as the session menus do");
+  const view = renderSidebar({
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "",
+    groups: [], draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "",
+    importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "",
+    draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined,
+    groupReorderPending: false, bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
+    onSwitchGateway: (url: string) => switched.push(url),
+    onAddGateway: () => { openedAdd += 1; },
+  } as unknown as Parameters<typeof renderSidebar>[0]);
+  const rendered = markup(view);
+  // One button, showing the gateway serving this page.
+  assert.match(rendered, /data-testid="sidebar-gateway"[\s\S]{0,200}?aria-label=Gateway: Studio Mac/u);
+  assert.match(rendered, /class="sidebar-gateway__name">Studio Mac</u);
+  assert.match(rendered, /class="sidebar-gateway__dot sidebar-gateway__dot--current"/u);
+  // Every gateway this device knows, with the current one marked and not offered again.
+  assert.match(rendered, /data-url=http:\/\/127\.0\.0\.1:8787[\s\S]{0,160}?data-state=current[\s\S]{0,500}?>Current</u);
+  assert.match(rendered, /data-url=http:\/\/loft\.local:8787[\s\S]{0,160}?data-state=known/u);
+  assert.match(rendered, /data-url=http:\/\/attic\.local:8787[\s\S]{0,160}?data-state=offline[\s\S]{0,500}?>Offline</u);
+  assert.match(rendered, />Loft</u);
+  assert.match(rendered, />Attic</u);
+  assert.match(rendered, />Add a gateway…</u);
+  // Choosing another one navigates; the last item opens the Add gateway dialog in place.
+  const select = handlers(view, "@wa-select=").at(-1);
+  assert.equal(typeof select, "function", "the menu reports the chosen item");
+  const choose = (value: string) => select!({
+    currentTarget: { querySelector: () => null },
+    detail: { item: { value } },
+    preventDefault: () => undefined,
+  } as unknown as { preventDefault(): void });
+  choose("switch:http://loft.local:8787");
+  assert.deepEqual(switched, ["http://loft.local:8787"]);
+  // The drawer helpers need a DOM; this menu closes the phone drawer before it navigates.
+  vi.stubGlobal("HTMLElement", class HTMLElement {});
+  choose("add");
+  assert.equal(openedAdd, 1);
+  vi.unstubAllGlobals();
+});
+
+test("settings navigation contains only the fifteen accepted regions", () => {
   assert.deepEqual(
     SETTINGS_PAGES.map((page) => page.id),
     [
@@ -157,6 +222,7 @@ test("settings navigation contains only the fourteen accepted regions", () => {
       "workers",
       "models",
       "plugins",
+      "extensions",
       "skills",
       "tools",
       "memory",
@@ -179,7 +245,7 @@ test("settings search is case-insensitive and also matches group names", () => {
   assert.deepEqual(filterSettingsPages("  MODEL  ").map((page) => page.id), ["models"]);
   assert.deepEqual(
     filterSettingsPages("agents & tools").map((page) => page.id),
-    ["models", "plugins", "skills", "tools", "memory", "automation"],
+    ["models", "plugins", "extensions", "skills", "tools", "memory", "automation"],
   );
   assert.deepEqual(filterSettingsPages("does not exist"), []);
   assert.equal(filterSettingsPages("").length, SETTINGS_PAGES.length);
@@ -378,9 +444,9 @@ test("active search reveals matches without changing the collapsed preference", 
   assert.equal(isSessionGroupCollapsed(collapsed, "Frontend", "   "), true);
 });
 
-test("group menus expose the same four actions as OpenClaw", () => {
+test("group menus expose OpenClaw's four actions and a chief for the project", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
-  for (const label of ["New session defaults", "Rename group", "New group", "Delete group"]) {
+  for (const label of ["New session defaults", "Rename group", "New group", "Create Chief of Staff", "Delete group"]) {
     assert.match(source, new RegExp(label));
   }
   assert.match(source, /aria-label=\$\{`Group options for \$\{group\.label\}`\}/);
@@ -466,23 +532,23 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   assert.match(source, /class="sidebar-shell sidebar-drawer__body"/);
   assert.doesNotMatch(source, /sidebar-shell__footer|sidebar-footer-bar|renderFooter/);
   assert.doesNotMatch(source, /sidebar-agent-card|deck-card/);
-  // The header's only control is the collapse toggle, first in the top row: New session
-  // and search left it on 2026-10-06 (owner). New sessions start from a group's + or
-  // the Ctrl+K palette, which also finds sessions; the mobile top bar keeps its search.
+  // The top row's only control is the collapse toggle: New session and search left it
+  // on 2026-10-06 (owner), and Settings moved into the navigation on 2026-11-12.
   const header = source.slice(source.indexOf('<div class="sidebar-brand"'), source.indexOf('<label class="sidebar-search'));
   assert.match(header, /^<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"/u);
   assert.deepEqual([...header.matchAll(/aria-label=(?:"([^"]+)"|\$\{(\w+)\})/gu)].map((match) => match[1] ?? match[2]), ["Collapse sidebar"]);
-  assert.doesNotMatch(source, /sidebar-brand__(new-thread|search|utilities|actions)/u);
+  assert.doesNotMatch(source, /sidebar-brand__(new-thread|search|utilities|actions|settings)/u);
   assert.match(source, /aria-label=\$\{`New session in \$\{sessionGroupLabel\(group\.label\)\}`\}/u);
   assert.match(source, /class="topbar-search" aria-label=\$\{searchLabel\} @click=\$\{focusSessionSearch\}/u);
   assert.match(source, /const searchLabel = botsTab \? "Search bots" : "Search sessions";/);
-  assert.doesNotMatch(header, /sidebar-brand__settings|aria-label="Settings"/);
+  // The footer keeps one button: the gateway this page came from.
+  assert.match(source.slice(source.indexOf('<div class="sidebar-footer">')), /^<div class="sidebar-footer">\s*\$\{renderGatewayPicker\(props\)\}/u);
   assert.match(source.slice(source.indexOf('<label class="sidebar-search')), /^<label class="sidebar-search /u);
   assert.doesNotMatch(source.slice(source.indexOf('<div class="sidebar-sessions">')), /aria-label="Search sessions"/);
   assert.doesNotMatch(source, /sidebar-identity-card/);
 });
 
-test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only the roster", () => {
+test("the Bots tab's Agents | Bots switch tops the sidebar, and both tabs keep the navigation", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
   const tabs = source.slice(source.indexOf("function renderSidebarTabs"), source.indexOf("export function renderSidebar("));
@@ -494,14 +560,15 @@ test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only 
     assert.notEqual(index, -1, marker);
     return index;
   };
-  // The top row: the collapse toggle, then the switch. Nothing sits above them, and each
-  // tab has a sidebar of its own below.
+  // The top row: the collapse toggle and the switch. Nothing sits above them, and each tab
+  // keeps the navigation above its own list.
   const top = sidebar.slice(at('<div class="sidebar-shell sidebar-drawer__body">'), at('<label class="sidebar-search'));
   assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>\s*<\/div>\s*$/u);
   assert.ok(at('<label class="sidebar-search') < at('<nav class="sidebar-nav"'));
   assert.equal(sidebar.split("renderSidebarTabs(").length, 2, "one switch, not one per list");
-  // Bots: no primary navigation, and the toolbar names the roster.
-  assert.match(sidebar, /\$\{botsTab \? nothing : html`<nav class="sidebar-nav"/u);
+  // Both tabs keep the primary navigation above their list; the toolbar names the roster.
+  assert.match(sidebar, /<nav class="sidebar-nav"/u);
+  assert.doesNotMatch(sidebar, /\$\{botsTab \? nothing : html`<nav class="sidebar-nav"/u);
   assert.match(sidebar, /<span>\$\{botsTab \? "Bots" : "Sessions"\}<\/span>/u);
   // The lists under the header are its tab panel, labelled by the selected tab.
   assert.match(sidebar, /role="tabpanel" aria-labelledby="sidebar-tab-\$\{props\.bots\.tab\}"/u);
@@ -590,7 +657,8 @@ test("appearance exposes OpenClaw accent presets and a custom color", () => {
   const result = renderedText(
     renderSettingsPage({
       page: "appearance",
-      settings: { ...DEFAULT_SETTINGS, accent: "#ff8066" },
+      settings: DEFAULT_SETTINGS,
+      appearance: { ...DEFAULT_DEVICE_APPEARANCE, accent: "#ff8066" },
       previews: [],
       variant: "dark",
       themeId: "claw",
@@ -663,6 +731,34 @@ test("navigation drawer makes main inert and clears it before returning focus", 
   assert.equal(attributes.get("aria-expanded"), "false");
   assert.equal(attributes.get("aria-label"), "Open navigation");
   assert.deepEqual(sequence, ["set-inert", "clear-inert", "focus-trigger"]);
+});
+
+test("a back press closes the narrow drawer and leaves a wide sidebar alone", () => {
+  const narrow = controlledMedia(true);
+  vi.stubGlobal("matchMedia", () => narrow.media);
+  const attributes = new Map<string, string>();
+  let focused = 0;
+  const trigger = { setAttribute: (name: string, value: string) => attributes.set(name, value), focus: () => { focused += 1; } };
+  const sidebar = {
+    dataset: {} as DOMStringMap,
+    querySelector: () => trigger,
+  } as unknown as HTMLElement;
+  const root = { querySelector: (selector: string) => (selector === '.sidebar[data-open="true"]' && sidebar.dataset.open === "true" ? sidebar : null) } as unknown as ParentNode;
+
+  assert.equal(closeNavigationDrawerOnBack(root), false, "nothing is open: the press falls through to the next thing");
+
+  sidebar.dataset.open = "true";
+  assert.equal(closeNavigationDrawerOnBack(root), true);
+  assert.equal(sidebar.dataset.open, "false", "the drawer is closed, the way Escape closes it");
+  assert.equal(attributes.get("aria-expanded"), "false");
+  assert.equal(focused, 1, "focus goes back to the toggle that opened it");
+
+  // A wide layout keeps its sidebar: there is no drawer to close, so back belongs to something else.
+  sidebar.dataset.open = "true";
+  const wide = controlledMedia(false);
+  vi.stubGlobal("matchMedia", () => wide.media);
+  assert.equal(closeNavigationDrawerOnBack(root), false);
+  assert.equal(sidebar.dataset.open, "true");
 });
 
 test("settings drawer makes its workspace inert and clears it before returning focus", () => {
@@ -837,12 +933,13 @@ function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents", lo
   const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
   if (open) sessions.push(session(open, "Open", "Work"));
   const data = {
-    view: "home", pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading, error: "",
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: open,
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
     groupDropTarget: undefined, groupReorderPending: false,
     bots: { tab, search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
   };
   return markup(renderSidebar(data as unknown as Parameters<typeof renderSidebar>[0]));
 }
@@ -864,17 +961,53 @@ test("the session list draws placeholder rows until its first read answers", () 
   assert.doesNotMatch(sidebar(2), /sidebar-placeholder/u, "rows replace the placeholder");
 });
 
+test("a parent opened on its own keeps its subagents folded until its disclosure opens the tree", () => {
+  const tree = (selectedId: string, toggled: string[] = []): string => markup(renderSidebar({
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined,
+    selectedSessionId: selectedId, splitSessionId: "",
+    groups: [{ label: "Work", sessions: [session("parent", "Parent task", "Work"), session("child", "Child task", "Work", { parentId: "parent" }) ] }],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(toggled), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "",
+    groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
+    groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
+  } as unknown as Parameters<typeof renderSidebar>[0]));
+
+  // The open parent shows no subagent row: its disclosure is the only thing that opens the tree.
+  const parentOpen = tree("parent");
+  assert.match(parentOpen, /aria-current=true/u, "the parent is the open chat");
+  assert.match(parentOpen, /class="session-tree-toggle"\s+aria-label=Expand subagents of Parent task\s+aria-expanded=false\s+@click=/u);
+  assert.doesNotMatch(parentOpen, /Child task/u, "opening the parent is not an opening of its subagents");
+
+  // Its own choice opens the whole subtree, and the button now offers to fold it again.
+  const unfolded = tree("parent", ["parent"]);
+  assert.match(unfolded, /aria-label=Collapse subagents of Parent task\s+aria-expanded=true/u);
+  assert.match(unfolded, />Child task</u);
+
+  // Loading or opening the subagent itself shows the path down to it.
+  const childOpen = tree("child");
+  assert.match(childOpen, /aria-current=true[^]{0,120}Child task/u, "the subagent is the open chat");
+  assert.match(childOpen, /aria-label=Collapse subagents of Parent task\s+aria-expanded=true/u);
+  assert.match(childOpen, />Child task</u);
+  // A row without children has no disclosure to offer.
+  const childRow = childOpen.slice(childOpen.indexOf("data-session-id=child"));
+  assert.ok(childRow.length < childOpen.length, "the subagent's own row is drawn");
+  assert.doesNotMatch(childRow, /session-tree-toggle/u);
+});
+
 test("a right click on a session row asks for the actions menu its button opens", () => {
   const menus: string[] = [];
   const selected: string[] = [];
   const view = renderSidebar({
-    view: "home", pages: HUI_PAGES, selectedSessionId: "other", splitSessionId: "",
+    view: "home", pages: HUI_PAGES, extensionPages: [], activeExtensionPageId: "", onOpenExtensionPage: () => undefined, selectedSessionId: "other", splitSessionId: "",
     groups: [{ label: "Work", sessions: [session("ctx", "Build", "Work")] }],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "",
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
     groupDropTarget: undefined, groupReorderPending: false,
     bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
     onToggleMenu: (id: string) => menus.push(id),
     onSelectSession: (row: SessionView) => selected.push(row.id),
   } as unknown as Parameters<typeof renderSidebar>[0]);
@@ -887,6 +1020,24 @@ test("a right click on a session row asks for the actions menu its button opens"
   assert.deepEqual(selected, [], "a right click never opens the session");
 });
 
+test("an enabled extension page is a primary destination with its own icon", () => {
+  const rendered = markup(renderSidebar({
+    view: "surface", activePage: undefined, activeExtensionPageId: "hello",
+    pages: HUI_PAGES, extensionPages: [{ id: "hello", title: "Hello page", icon: "github" }],
+    onOpenExtensionPage: () => undefined, selectedSessionId: "", splitSessionId: "", groups: [],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS,
+    menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "",
+    draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    gateways: GATEWAYS,
+  } as unknown as Parameters<typeof renderSidebar>[0]));
+  assert.match(rendered, /href=\/ext\/hello\b/u);
+  assert.match(rendered, /aria-current=page/u);
+  assert.match(rendered, />Hello page</u);
+  assert.match(rendered, /viewBox="0 0 16 16"/u, "the named icon is drawn");
+});
+
 test("the sidebar's right edge is a separator the arrow keys move, with none in the drawer", () => {
   const css = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
   const handle = sidebar(1).match(/<div\s+class="sidebar-resize-handle"[\s\S]*?>/u)?.[0] ?? "";
@@ -897,7 +1048,13 @@ test("the sidebar's right edge is a separator the arrow keys move, with none in 
   assert.match(handle, /aria-valuemin=200/);
   assert.match(handle, /aria-valuemax=460/);
   assert.match(handle, /aria-valuenow=258/);
-  assert.match(css, /\.app-shell \.sidebar-resize-handle \{[^}]*cursor: col-resize/);
+  assert.match(css, /:is\(\.app-shell, \.settings-shell\) \.sidebar-resize-handle \{[^}]*cursor: col-resize/u);
   // The drawer has its own width, so it shows no boundary.
-  assert.match(css, /@media \(max-width: 900px\)[^@]*?\.app-shell \.sidebar-resize-handle \{\s*display: none;/u);
+  assert.match(css, /@media \(max-width: 900px\)[^@]*?:is\(\.app-shell, \.settings-shell\) \.sidebar-resize-handle \{\s*display: none;/u);
+  // Settings' rail is the same sidebar: same stored width, same handle.
+  const workspaces = readFileSync(new URL("../styles/openclaw-workspaces.css", import.meta.url), "utf8");
+  assert.match(workspaces, /\.settings-shell \{[^}]*grid-template-columns: var\(--hui-sidebar-width, 258px\) minmax\(0, 1fr\)/u);
+  assert.match(workspaces, /@media \(max-width: 900px\)[^@]*?\.settings-shell \.sidebar-resize-handle \{\s*display: none;/u);
+  const settingsSource = readFileSync(new URL("./settings.ts", import.meta.url), "utf8");
+  assert.match(settingsSource, /class="sidebar-resize-handle"[\s\S]*?aria-label="Resize sidebar"[\s\S]*?@pointerdown=\$\{startSidebarResize\}[\s\S]*?@keydown=\$\{resizeSidebarWithKeys\}/u);
 });

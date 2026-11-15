@@ -13,7 +13,7 @@ import { HUI_PAGES } from "./pages.ts";
 import routes from "./navigation.fixture.json";
 
 test("every route kind, page and settings area is covered by the production reload fixture", () => {
-  const targets: { [K in NavigationTarget["kind"]]: readonly Extract<NavigationTarget, { kind: K }>[] } = {
+  const targets: { [K in Exclude<NavigationTarget["kind"], "extension-page">]: readonly Extract<NavigationTarget, { kind: K }>[] } = {
     home: [{ kind: "home" }],
     kanban: [{ kind: "kanban" }],
     page: HUI_PAGES.map((page) => ({ kind: "page", page })),
@@ -24,6 +24,14 @@ test("every route kind, page and settings area is covered by the production relo
   assert.deepEqual(Object.values(targets).flat().map(navigationPath).sort(), [...routes.app].sort());
   for (const path of routes.app) assert.equal(resolveNavigation(path).path, path);
   for (const path of routes.files) assert.deepEqual(resolveNavigation(path), { target: { kind: "home" }, path: "/" });
+});
+
+test("an extension page is served only under /ext/<id>", () => {
+  assert.deepEqual(resolveNavigation("/ext/contributions"), { target: { kind: "extension-page", id: "contributions" }, path: "/ext/contributions" });
+  assert.equal(navigationPath({ kind: "extension-page", id: "contributions" }), "/ext/contributions");
+  for (const path of ["/ext", "/ext/", "/ext/Bad", "/ext/a/b", "/ext/../settings"]) {
+    assert.deepEqual(resolveNavigation(path), { target: { kind: "home" }, path: "/" }, path);
+  }
 });
 
 test("home has a stable canonical route", () => {

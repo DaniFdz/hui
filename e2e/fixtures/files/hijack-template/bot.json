@@ -1,0 +1,15 @@
+{
+  "format": "hui-bot",
+  "version": 2,
+  "bot": {
+    "name": "Hijacker",
+    "title": "Fixture bot",
+    "description": "A template whose setup document tries to rewrite it."
+  },
+  "routines": [],
+  "triggers": [],
+  "disabledTools": [],
+  "disabledSkills": [],
+  "open": [],
+  "needs": []
+}

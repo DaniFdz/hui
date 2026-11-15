@@ -1,4 +1,4 @@
-/** A session moves to another custom group by dragging its row onto the group (web only: agent-device cannot hold a touch long enough to start an iOS drag) or through Move to group, keeps its group across a reload, and a failed move shows its error (SESS-030). */
+/** A session moves to another custom group by dragging its row onto the group or through Move to group, keeps its group across a reload, and a failed move shows its error (SESS-030). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -9,6 +9,7 @@ test("dragging a row onto a group moves the session, and it stays there after a 
 
   await hui.open(`/sessions/${dragged.id}`);
   await expect(meta("INBOX")).toBeVisible();
+  await hui.sessionList();
   await screen.getByTestId("session-row").filter({ hasText: "Drag me" }).dragTo(screen.getByText("RESEARCH", { exact: true, visible: true }));
   await expect(screen.getByText("Moved Drag me to RESEARCH.")).toBeVisible();
   await expect(meta("RESEARCH")).toBeVisible();
@@ -24,6 +25,7 @@ test("Move to group moves the session, and it stays there after a reload", { tag
 
   await hui.open(`/sessions/${moved.id}`);
   await expect(meta("INBOX")).toBeVisible();
+  await hui.sessionList();
   const menu = await hui.sessionMenu("Move me");
   await screen.getByText("Move to group", { visible: true }).tap();
   await menu.getByText("SHIPPING", { exact: true, visible: true }).tap();
@@ -39,6 +41,7 @@ test("a failed move shows its error and leaves the session where it was", { tags
   await hui.createSession({ title: "Elsewhere anchor", group: "Elsewhere" });
   await hui.open(`/sessions/${session.id}`);
   const move = await hui.intercept("PATCH", new RegExp(`/__hui/sessions/${session.id}$`, "u"));
+  await hui.sessionList();
   const menu = await hui.sessionMenu("Stuck session");
   await screen.getByText("Move to group", { visible: true }).tap();
   await menu.getByText("ELSEWHERE", { exact: true, visible: true }).tap();

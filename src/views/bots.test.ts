@@ -198,7 +198,7 @@ test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bo
 
 test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceStudio", () => {
   const home = read("./home.ts");
-  assert.match(home, /renderCallButton\(\{ botName: props\.bot\.bot\.name, inCall: props\.call\.inCall, onCall: props\.call\.onCall \}\)/u, "the phone button");
+  assert.match(home, /renderCallButton\(\{ botName: props\.bot\.bot\.name, inCall: props\.call\.inCall, onCall: props\.call\.onCall, labelled: Boolean\(props\.mobileNavLayout\) \}\)/u, "the phone button, with its word beside the glyph");
   assert.doesNotMatch(home, /renderVoiceNoteButton|renderVoiceNoteStatus|renderReadAloud|chat-read-aloud|chat-voice-btn/u, "no microphone in the composer, no Read aloud under replies");
 });
 

@@ -1,6 +1,6 @@
 /** Offline reading and connection recovery in a production build (SHELL-044, SHELL-045, SHELL-046, CHAT-074). */
 import { expect, type Screen } from "e2e";
-import { test, type Hui } from "../../fixtures/hui.ts";
+import { offlineTest as test, type Hui } from "../../fixtures/hui.ts";
 
 const MESSAGE = "Offline reading proof";
 const DRAFT = "A draft that stays";
@@ -27,12 +27,15 @@ test("a conversation saved on this device opens again without the gateway", { ta
   await hui.reload();
 
   await expect(screen.getByText("Message text is saved on this device.", { exact: false })).toBeVisible();
-  await expect(screen.getByText("Reconnecting; your draft stays on this device.", { exact: false })).toBeHidden();
+  await expect(screen.getByLabel("The live conversation may have newer messages")).toBeVisible();
+  await expect(screen.getByText("Reconnecting; your draft stays on this device.", { exact: false })).toBeVisible();
+  await expect(screen.getByTestId("composer-status").getByText("Reconnecting", { exact: false })).toBeVisible();
   await expect(transcript.getByText(MESSAGE)).toBeVisible();
+  // The saved conversation's row lies in the sidebar, which a phone keeps in its drawer.
+  await hui.sessionList();
   await expect(screen.getByLabel("Sessions").getByText("Saved offline", { exact: true })).toBeVisible();
   await expect(screen.getByRole("button", "Group options for")).toHaveCount(0);
   await expect(message).toHaveValue(DRAFT);
-  await expect(screen.getByText("Send waits for a live connection.", { exact: false })).toBeVisible();
   await expect(send).toBeDisabled();
   await expect(screen.getByRole("button", "Open terminal")).toBeDisabled();
 });
@@ -51,6 +54,7 @@ test("reconnecting keeps the draft and sends nothing by itself", { tags: ["SHELL
   await hui.network("online");
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(screen.getByText("Message text is saved on this device.", { exact: false })).toBeHidden();
+  await expect(screen.getByLabel("The live conversation may have newer messages")).toBeHidden();
   await expect(message).toHaveValue(DRAFT);
   await expect(transcript.getByText(MESSAGE)).toHaveCount(1);
   await expect(transcript.getByText(DRAFT)).toBeHidden();
@@ -77,6 +81,7 @@ test("forgetting the saved conversations keeps the draft and stops restoring the
   await expect(screen.getByRole("button", "Forget saved conversations")).toBeHidden();
 
   await hui.reload();
+  await hui.sessionList();
   await expect(screen.getByText("Could not reach HUI. Check the connection and try again.")).toBeVisible();
   await expect(screen.getByLabel("Sessions").getByText("Forgotten offline", { exact: true })).toBeHidden();
   await expect(screen.getByText(MESSAGE)).toBeHidden();

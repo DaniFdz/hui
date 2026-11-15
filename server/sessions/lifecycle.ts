@@ -102,7 +102,9 @@ async function createSession(
   if (body["worker"] !== undefined && (typeof body["worker"] !== "string" || !body["worker"].trim())) {
     throw new Error("Worker must be a worker id.");
   }
-  const worker = typeof body["worker"] === "string" ? body["worker"].trim() : undefined;
+  // `worker_stats` calls this machine `local`, which is no entry in workers.json: a session there records no worker.
+  const asked = typeof body["worker"] === "string" ? body["worker"].trim() : undefined;
+  const worker = asked === "local" ? undefined : asked;
   let cwd: string;
   if (worker) {
     // The remote checks the directory when the session starts, so creating
@@ -174,8 +176,12 @@ async function createSession(
     throw new Error("Fast mode must be true or false.");
   }
   const fast = body["fast"] === true;
+  if (body["autonomous"] !== undefined && typeof body["autonomous"] !== "boolean") {
+    throw new Error("Autonomous mode must be true or false.");
+  }
   // A worker runs the same runtime a local session would.
   const runtimeTool = tool || defaultSessionTool();
+  const autonomous = body["autonomous"] === true && runtimeTool === "durable";
   const settings = await readHuiSettings();
   // Sessions started without a choice (suggestions, backlog items) use the
   // primary route rather than whatever PI currently treats as its default.
@@ -195,6 +201,7 @@ async function createSession(
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
     ...(fast ? { fast } : {}),
+    ...(autonomous ? { autonomous } : {}),
     ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
     ...(seed.bot ? { bot: seed.bot.id, piSessionFile: seed.bot.piSessionFile } : {}),
     ...(seed.piSessionFile ? { piSessionFile: seed.piSessionFile } : {}),

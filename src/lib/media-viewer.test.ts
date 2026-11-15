@@ -11,6 +11,7 @@ import {
   fitScale,
   formatZoom,
   svgIntrinsicSize,
+  viewBoxHolding,
   wheelZoomFactor,
   zoomAround,
 } from "./media-viewer.ts";
@@ -91,4 +92,18 @@ test("derives an SVG's intrinsic size from its viewBox before numeric attributes
   assert.deepEqual(svgIntrinsicSize(null, "640", "280px"), { width: 640, height: 280 });
   assert.equal(svgIntrinsicSize("0 0 0 10", "100%", "auto"), undefined);
   assert.equal(svgIntrinsicSize(null, null, null), undefined);
+});
+
+test("widens a rendered SVG's viewBox to hold what the renderer drew outside it", () => {
+  // The Android WebView's mermaid spread this flowchart past the box it declared, so its labels sat outside the embed.
+  assert.equal(viewBoxHolding("-91.5 -92 2805.40478515625 2100", { x: -91.5, y: -92, width: 3370, height: 2260 }),
+    "-91.5 -92 3370 2260");
+  assert.equal(viewBoxHolding("4 4 626.6875 184", { x: -10, y: 4, width: 646, height: 184 }), "-10 4 646 184");
+  // A box that already holds the drawing stays as the renderer declared it, rounding and all.
+  assert.equal(viewBoxHolding("4 4 626.6875 184", { x: 4, y: 4, width: 626, height: 183.6 }), undefined);
+  assert.equal(viewBoxHolding("4 4 626.6875 184", { x: 4.2, y: 4, width: 626.9, height: 184 }), undefined);
+  // A declaration there is nothing to widen, or a drawing with no box, changes nothing.
+  assert.equal(viewBoxHolding(null, { x: 0, y: 0, width: 10, height: 10 }), undefined);
+  assert.equal(viewBoxHolding("0 0 0 10", { x: 0, y: 0, width: 10, height: 10 }), undefined);
+  assert.equal(viewBoxHolding("0 0 100 100", { x: 0, y: 0, width: 0, height: 0 }), undefined);
 });

@@ -158,7 +158,7 @@ export function sidebarSessionGroups(
   const hideEmpty = options.hideEmpty === "always" || (options.hideEmpty === "filtering" && filtering);
   return projected.flatMap((group) => {
     const groupMatches = group.kind !== "none" && `${group.label} ${sessionGroupLabel(group.label)}`.toLocaleLowerCase().includes(query);
-    // Like OpenClaw, Swarm helpers and their own subagents get no rows: the parent's Parallel tasks card lists and opens them.
+    // Like OpenClaw, Swarm helpers and their own subagents get no rows: the parent's Run status Helpers section lists and opens them.
     const sessions = group.sessions.filter((session) =>
       !session.archived && !swarmIds.has(session.id) &&
       (options.status === "all" || session.status === options.status) &&

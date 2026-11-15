@@ -1,0 +1,17 @@
+# Gateway addresses the Connect page and the app both accept or refuse, one case per line: the typed value, "->", and
+# the normalised address, or nothing when it is refused. mobile/connect/src/gateway.test.ts and the app's
+# GatewayAddressTest.java both read this file, so the two checks cannot drift apart.
+https://my-machine.example.ts.net -> https://my-machine.example.ts.net
+https://my-machine.example.ts.net/ -> https://my-machine.example.ts.net
+http://127.0.0.1:47402 -> http://127.0.0.1:47402
+  http://localhost:47400/   -> http://localhost:47400
+https://host.example/hui -> https://host.example/hui
+https://192.168.1.20:47400 -> https://192.168.1.20:47400
+https://Host.Example/hui/ -> https://host.example/hui
+https://host.example/hui/?a=1 ->
+https://host.example/hui/#b ->
+https://user:secret@host ->
+ftp://host ->
+javascript:alert(1) ->
+my-machine ->
+ ->

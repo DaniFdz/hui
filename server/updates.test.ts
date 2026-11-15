@@ -34,7 +34,6 @@ test("update routes keep the local-client guard, narrow arguments and method con
   const address = server.address(); assert(address && typeof address !== "string");
   const url = `http://127.0.0.1:${address.port}/__hui/update`;
   assert.equal((await fetch(url)).status, 403);
-  assert.equal((await fetch(url, { method: "OPTIONS", headers: { "x-hui": "1" } })).status, 403);
   assert.equal((await fetch(url, { method: "DELETE", headers: { "x-hui": "1" } })).status, 405);
   assert.equal((await fetch(`${url}/check`)).status, 403);
   const background = await fetch(`${url}/check`, { headers: { "x-hui": "1" } });
@@ -44,6 +43,38 @@ test("update routes keep the local-client guard, narrow arguments and method con
   assert.equal((await fetch(url, { method: "POST", headers: { "x-hui": "1" }, body: "{" })).status, 400);
   for (const body of [null, {}, { version: "latest" }, { version: "1.0.0", force: true }, { version: "1.0.0", from: "https://evil.example" }]) assert.equal((await post(body)).status, 400);
   assert.equal((await post({ version: "1.0.0" })).status, 409);
+});
+
+test("only the update route answers another origin, with the gateway's own name in the handshake", async (t) => {
+  const server = createServer((req, res) => middleware(req, res, () => res.writeHead(404).end()));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.onTestFinished(() => new Promise<void>((resolve) => { server.close(() => resolve()); server.closeAllConnections(); }));
+  const address = server.address(); assert(address && typeof address !== "string");
+  const base = `http://127.0.0.1:${address.port}`;
+  const from = { origin: "http://another-gateway.test", "x-hui": "1" };
+
+  // The preflight a browser sends before `GET /__hui/update` with x-hui: answered here, refused everywhere else.
+  const preflight = await fetch(`${base}/__hui/update`, { method: "OPTIONS", headers: { origin: from.origin, "access-control-request-method": "GET", "access-control-request-headers": "x-hui" } });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
+  assert.equal(preflight.headers.get("access-control-allow-headers"), "x-hui");
+  assert.equal(preflight.headers.get("access-control-allow-methods"), "GET");
+  assert.match(preflight.headers.get("vary") ?? "", /origin/iu);
+  assert.equal((await fetch(`${base}/__hui/health`, { method: "OPTIONS" })).status, 403);
+
+  const snapshot = await fetch(`${base}/__hui/update`, { headers: from });
+  assert.equal(snapshot.status, 200);
+  assert.equal(snapshot.headers.get("access-control-allow-origin"), "*");
+  assert.match(snapshot.headers.get("vary") ?? "", /origin/iu);
+  const body = await snapshot.json();
+  expectSchema(UpdateSnapshot, body);
+  assert.equal(body.name, (await (await fetch(`${base}/__hui/health`, { headers: { "x-hui": "1" } })).json()).name);
+
+  // Every other route stays same-origin: its answer carries no CORS header at all.
+  const health = await fetch(`${base}/__hui/health`, { headers: from });
+  assert.equal(health.status, 200);
+  assert.equal(health.headers.get("access-control-allow-origin"), null);
+  assert.equal((await fetch(`${base}/__hui/update/check`, { headers: from, method: "OPTIONS" })).status, 403);
 });
 
 test("background checks share a gateway cache; explicit checks bypass freshness and requests coalesce", async (t) => {

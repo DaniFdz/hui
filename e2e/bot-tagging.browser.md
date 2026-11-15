@@ -1,6 +1,6 @@
 # Bot tagging browser verification
 
-Journey for tagging bots by `@handle` (HUI-18, SPEC.md "Agents and bots tag
+Journey for tagging bots by `@handle` (SPEC.md "Agents and bots tag
 bots by @handle"): a bot's Settings page has a Tagging section (*When to tag
 it*, its description, and *Who can tag it*), which its panel's Setup lists
 first as *Tagging*, every session lists the bots it

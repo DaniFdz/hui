@@ -1,0 +1,129 @@
+/** Collected helpers: the Helpers section of Run status folds into one row once every helper succeeded and opens each of
+ * them, and Stop on a waiting parent cancels the whole batch (AGENT-034, AGENT-033). */
+import { expect } from "e2e";
+import { test, type Hui } from "../../fixtures/hui.ts";
+import { expectChatTitle } from "../sess/chat-header.ts";
+import { openHelpers } from "./run-status.ts";
+
+const call = (name: string, input: Record<string, unknown>) => ({ name, input });
+const calls = (...list: { name: string; input: Record<string, unknown> }[]) =>
+  `E2E_CALL:${Buffer.from(JSON.stringify(list)).toString("base64url")}`;
+
+type Session = {
+  id: string;
+  parentId?: string;
+  status: string;
+  runtime?: { active: true };
+  subagent?: { status: string; completionDelivery?: string };
+};
+const sessions = async (hui: Hui) =>
+  (await hui.api<{ groups: { sessions: Session[] }[] }>("GET", "/__hui/sessions"))
+    .groups.flatMap(({ sessions }) => sessions);
+
+/** The child session ids the two spawns returned, which are the ids `agents_wait` takes. */
+const children = async (hui: Hui, parent: string) =>
+  (await sessions(hui)).filter(({ parentId }) => parentId === parent).map(({ id }) => id);
+
+test("a batch whose helpers all succeed folds into one Helpers row that still opens each of them", { tags: ["AGENT-034"] }, async ({ screen, hui }) => {
+  const session = await hui.createSession({ title: "Swarm parent" });
+  await hui.open(`/sessions/${session.id}`);
+  await hui.prompt(session, calls(
+    call("sessions_spawn", { task: "E2E_SUBAGENT_CHILD quick", label: "Quick researcher", collect: true }),
+    call("sessions_spawn", { task: "E2E_SUBAGENT_CHILD_SLOW", label: "Slow verifier", collect: true }),
+  ));
+  await expect.poll(async () => (await children(hui, session.id)).length).toBe(2);
+
+  // Spawning and collecting are separate turns here. An idle parent receives any uncollected completion as a real
+  // new turn, so idle alone races that delivery. Let this batch's results reach the parent and its review settle
+  // before asking it to collect them; never race the notification's prompt or suppress the notification.
+  await expect.poll(async () => {
+    const all = await sessions(hui);
+    const batch = all.filter(({ parentId }) => parentId === session.id);
+    const parent = all.find(({ id }) => id === session.id);
+    return batch.length === 2 && batch.every((child) => child.subagent?.status === "completed"
+      && child.subagent.completionDelivery === "delivered")
+      && parent?.runtime?.active === true && parent.status === "idle";
+  }, { timeout: 30_000 }).toBe(true);
+  await expect(screen.getByTestId("transcript").getByText("Parent reviewed", { exact: false }).first()).toBeVisible();
+
+  // The parent collects both results, which the Helpers section shows as one completed batch.
+  await hui.prompt(session, calls(call("agents_wait", { ids: await children(hui, session.id), timeoutSeconds: 120 })));
+  const helpers = await openHelpers(screen);
+
+  // Every helper succeeded, so the section folds into one row and its children stay behind the disclosure.
+  await expect(helpers.getByText("2 completed")).toBeVisible();
+  const rows = helpers.getByRole("button", { name: /^Open subagent /u });
+  await expect(rows).toHaveCount(0);
+
+  await helpers.getByText("2 completed").tap();
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toBeVisible();
+  await expect(helpers.getByText("Child runs finished. Check the conversation for the final response.")).toBeVisible();
+  const quick = helpers.getByRole("button", { name: /^Open subagent Quick researcher, /u });
+  const slow = helpers.getByRole("button", { name: /^Open subagent Slow verifier, /u });
+  await expect(quick).toContainText("Subagent child result: the fixture contract is working.");
+  await expect(slow).toContainText("Slow verifier result: all checks passed.");
+
+  // A collected helper opens its own transcript the same way a spawned child does.
+  await slow.tap();
+  await expectChatTitle(screen, "Slow verifier");
+  await expect(screen.getByTestId("transcript").getByText("E2E_SUBAGENT_CHILD_SLOW")).toBeVisible();
+  await screen.getByRole("button", { name: "Open parent" }).tap();
+  await expectChatTitle(screen, "Swarm parent");
+});
+
+test("Stop on a parent waiting for its helpers cancels the wait and every helper, and nothing follows", { tags: ["AGENT-033"] }, async ({ screen, hui }) => {
+  const transcript = screen.getByTestId("transcript");
+  const session = await hui.createSession({ title: "Stopped swarm" });
+  await hui.open(`/sessions/${session.id}`);
+  // A fixed-duration child can finish while a phone reads the card, legitimately removing Stop. These real model
+  // responses instead stay held at the provider until released or aborted, independent of the speed of the UI.
+  await hui.prompt(session, calls(
+    call("sessions_spawn", { task: "E2E_REPLAY first helper", label: "First helper", collect: true }),
+    call("sessions_spawn", { task: "E2E_REPLAY second helper", label: "Second helper", collect: true }),
+  ));
+  await expect.poll(async () => (await children(hui, session.id)).length).toBe(2);
+  const batch = await children(hui, session.id);
+  type Entry = { kind: string; role?: string; text?: string; name?: string; output?: string };
+  const snapshot = async (id: string) =>
+    (await hui.api<{ snapshot: { status: string; transcript: Entry[] } }>("POST", `/__hui/sessions/${id}/open`)).snapshot;
+  // Each child's own streamed prefix proves its response reached the provider's hold, not just runtime startup.
+  await expect.poll(async () => Promise.all(batch.map(async (id) =>
+    (await snapshot(id)).transcript.some((entry) => entry.kind === "message" && entry.role === "assistant"
+      && entry.text === "Replay prefix — ")))).toEqual([true, true]);
+  await hui.provider.held();
+  await hui.prompt(session, calls(call("agents_wait", { ids: batch, timeoutSeconds: 120 })));
+  await expect.poll(async () => {
+    const parent = await snapshot(session.id);
+    return parent.status === "running" && parent.transcript.some((entry) =>
+      entry.kind === "tool" && entry.name === "agents_wait" && entry.output === undefined);
+  }).toBe(true);
+
+  await expect(screen.getByLabel("Session status: Running")).toBeVisible();
+  const helpers = await openHelpers(screen);
+  await expect.poll(async () => hui.textOf(helpers)).toContain("0 of 2");
+  await screen.getByRole("button", { name: "Stop" }).tap();
+
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  // Stop lives in the composer, so it closed the popover; reopen it for the stopped batch.
+  const stoppedHelpers = await openHelpers(screen);
+  const counts = stoppedHelpers.getByText("0 completed · 2 failed or stopped");
+  await expect(counts).toBeVisible();
+  const rows = stoppedHelpers.getByRole("button", { name: /^Open subagent /u });
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("Stopped with its parent.");
+  await expect(rows.last()).toContainText("Stopped with its parent.");
+
+  // Stop, not provider release, must cancel every helper. Releasing any remaining holds afterwards must start no
+  // follow-up or completion turn and leave no running child behind.
+  await expect.poll(async () => (await sessions(hui)).filter(({ id }) => batch.includes(id))
+    .map((child) => [child.subagent?.status, child.subagent?.completionDelivery]))
+    .toEqual([["cancelled", "delivered"], ["cancelled", "delivered"]]);
+  await hui.provider.release();
+  await expect.poll(async () => (await sessions(hui)).filter(({ id }) => id === session.id || batch.includes(id))
+    .every(({ status }) => status === "idle")).toBe(true);
+
+  // A stopped batch delivers nothing back, so no completion card and no new turn.
+  await expect(transcript.getByLabel(/subagents? finished/iu)).toHaveCount(0);
+  await expect(transcript.getByText("Parent reviewed", { exact: false })).toHaveCount(0);
+});

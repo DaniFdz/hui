@@ -228,7 +228,7 @@ function jiraChip(issues: readonly SessionJiraIssue[] | undefined) {
   const data: JiraBadgeData = { issue, others: (issues ?? []).slice(0, -1) };
   return html`<a class="kanban-card__jira session-jira-badge-anchor" href=${issue.url} target="_blank" rel="noopener noreferrer" draggable="false"
     aria-label=${jiraIssueAccessibleLabel(issue, issues?.length ?? 1)}>
-    <span class="session-jira-badge kanban-card__jira-mark" data-state=${issue.statusCategory ?? "unknown"} .jira=${data}>${brandIcons.jira}</span>
+    <span class="session-jira-badge kanban-card__jira-mark" data-testid="jira-mark" data-state=${issue.statusCategory ?? "unknown"} .jira=${data}>${brandIcons.jira}</span>
     <span class="kanban-card__jira-key">${issue.key}</span>
     <span class="kanban-card__jira-status" data-state=${issue.statusCategory ?? "unknown"}>${jiraStatusLabel(issue)}</span>
   </a>`;

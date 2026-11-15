@@ -14,7 +14,9 @@ Follow .agents/skills/hui-visual-verification/SKILL.md for UI work. -->
 - [ ] `npm run build`
 - [ ] `npm run test:package` (package or lifecycle changes)
 - [ ] `npm run e2e`
-- [ ] `npm run e2e:ios` (after `npm run ios:build`)
+- [ ] `npm run mobile -- test` and the Android procedure for `mobile/**`
+      (.agents/skills/hui-visual-verification/references/android.md); the `android`
+      e2e target once `e2e.config.ts` has one
 - [ ] Browser-tool E2E (user-visible changes)
 
 - Verified commit:
@@ -23,8 +25,8 @@ Follow .agents/skills/hui-visual-verification/SKILL.md for UI work. -->
 
 ## Use cases
 
-<!-- The e2e/catalogue/ IDs this PR adds or changes, and the platforms where each
-is required. If a test changed but the behaviour it proves didn't, or a new
+<!-- The e2e/catalogue/ IDs this PR adds or changes, and whether each is
+required. If a test changed but the behaviour it proves didn't, or a new
 accessible name labels a control that already existed, put the IDs, and the names
 in quotes, separated by commas, on the line below. The E2E catalogue job reads it. -->
 
@@ -46,11 +48,15 @@ still require the desktop/mobile smoke. -->
 
 <!-- Attach the affected rendered state; include landscape when relevant. -->
 
-### iPhone
+### Phone — Android, 432×960
 
-<!-- Attach the iOS app's affected screens: the screenshots the tests take,
-copied out of .e2e/results/, or `xcrun simctl io booted screenshot <path>`.
-Say why when the change doesn't reach the app. -->
+<!-- Changes under mobile/: the affected screens from the emulator, light and dark
+(.agents/skills/hui-visual-verification/references/android.md). -->
+
+### Phone — iOS, from CI
+
+<!-- When mobile/ios/** changed: the ios-smoke job's screenshots from this HEAD's CI run
+(once WP5 adds that job), and what it does not show (.agents/skills/hui-visual-verification/references/ios.md). -->
 
 ## Proof gaps
 

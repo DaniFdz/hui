@@ -38,6 +38,7 @@ export function browserViewStatus(state: BrowserViewState | undefined, connectio
   if (connection === "reconnecting") return "Reconnecting…";
   if (connection === "disconnected") return "Disconnected";
   if (!state?.running) return "Browser stopped";
+  if (operatorDriving(state)) return "Your turn";
   const mode = state.mode === "windowed" ? "visible window" : "headless";
   return state.watching ? `Live · ${mode}` : `Idle · ${mode}`;
 }
@@ -100,4 +101,41 @@ export function relativeTime(iso: string, now = Date.now()): string {
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.round(seconds / 60);
   return minutes < 60 ? `${minutes}m ago` : `${Math.round(minutes / 60)}h ago`;
+}
+
+/** True when the view is showing the tab its agent handed to the operator. */
+export function operatorDriving(state: BrowserViewState | undefined): boolean {
+  return Boolean(state?.handoff && state.watching === state.handoff.tabId);
+}
+
+/** A pointer position in the operator's view as a page coordinate in the frame. */
+export function operatorPoint(
+  event: { clientX: number; clientY: number },
+  rect: { left: number; top: number; width: number; height: number },
+  frame: Size,
+): { x: number; y: number } | undefined {
+  if (!(rect.width > 0 && rect.height > 0 && frame.width > 0 && frame.height > 0)) return undefined;
+  const clamp = (value: number, maximum: number) => Math.min(maximum, Math.max(0, Math.round(value)));
+  return {
+    x: clamp(((event.clientX - rect.left) / rect.width) * frame.width, frame.width),
+    y: clamp(((event.clientY - rect.top) / rect.height) * frame.height, frame.height),
+  };
+}
+
+/** Keys a page never sees as a keystroke: modifiers alone, dead keys and IME in progress. */
+const INVISIBLE_KEYS: ReadonlySet<string> = new Set([
+  "Shift", "Control", "Alt", "Meta", "CapsLock", "NumLock", "ScrollLock", "AltGraph", "Fn", "Dead", "Unidentified", "Process",
+]);
+
+/**
+ * A KeyboardEvent as the key name the browser tool understands, or undefined
+ * when the pane should leave the key alone. Modified keys become the tool's
+ * chord form ("Control+a"); Shift is already in a printable character.
+ */
+export function operatorKey(event: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): string | undefined {
+  const { key } = event;
+  if (!key || INVISIBLE_KEYS.has(key)) return undefined;
+  const modifier = event.ctrlKey ? "Control+" : event.metaKey ? "Meta+" : event.altKey ? "Alt+" : "";
+  if (!modifier) return key;
+  return key.length === 1 ? `${modifier}${key.toLowerCase()}` : `${modifier}${key}`;
 }

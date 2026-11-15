@@ -16,6 +16,7 @@ export const ROUTABLE_SETTINGS_PAGES = [
   "skills",
   "automation",
   "plugins",
+  "extensions",
   "memory",
   "security",
   "diagnostics",
@@ -27,6 +28,8 @@ export type NavigationTarget =
   | { kind: "home" }
   | { kind: "kanban" }
   | { kind: "page"; page: HuiPage }
+  /** A page contributed by an enabled gateway extension, at /ext/<id>. */
+  | { kind: "extension-page"; id: string }
   | { kind: "settings"; page: RoutableSettingsPage }
   | { kind: "session"; id: string }
   /** A bot's one permanent chat, opened from the sidebar's Bots tab. */
@@ -69,6 +72,13 @@ export function resolveNavigation(pathname: string): NavigationResolution {
     return resolveNavigation("/sessions");
   }
 
+  if (segments.length === 2 && segments[0] === "ext") {
+    const id = decodeSegment(segments[1] ?? "");
+    return id && /^[a-z][a-z0-9-]{0,31}$/u.test(id)
+      ? { target: { kind: "extension-page", id }, path: navigationPath({ kind: "extension-page", id }) }
+      : { target: { kind: "home" }, path: "/" };
+  }
+
   if (segments.length === 1) {
     const page = ROUTABLE_PAGES.get(decodeSegment(segments[0] ?? "") ?? "");
     return page
@@ -105,6 +115,8 @@ export function navigationPath(target: NavigationTarget): string {
       return "/kanban";
     case "page":
       return `/${encodeURIComponent(target.page.id)}`;
+    case "extension-page":
+      return `/ext/${encodeURIComponent(target.id)}`;
     case "settings":
       return `/settings/${encodeURIComponent(target.page)}`;
     case "session":

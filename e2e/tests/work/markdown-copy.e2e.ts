@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openWork } from "./work-views.ts";
 
 const MARKDOWN = "# Copy me\n\n| Area | Status |\n| --- | --- |\n| Files | Done |\n";
 
@@ -10,8 +11,7 @@ test("Copy Markdown copies a Markdown file's source and confirms it", { tags: ["
   await writeFile(join(hui.workspace, "copy-markdown.md"), MARKDOWN);
   const session = await hui.createSession({ title: "Copy a Markdown file" });
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await screen.getByRole("button", /^Files/u).tap();
+  await openWork(screen, "Files");
   await screen.getByRole("button", "copy-markdown.md").tap();
   await expect(screen.getByTestId("files-markdown").getByText("Copy me")).toBeVisible();
 

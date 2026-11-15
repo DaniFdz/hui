@@ -5,8 +5,6 @@ import type { HostMetrics } from "../api/schema/host.ts";
 import type { SessionGroup, SessionView } from "../api/schema/sessions.ts";
 import type { WorkerMetrics } from "../api/workers.ts";
 import { EMPTY_FILTERS, type SessionFilters } from "../lib/dashboard.ts";
-import { HUI_PAGES, availablePages, isPageAvailable } from "../lib/pages.ts";
-import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 import { renderDashboard, type DashboardChartProps, type DashboardProps } from "./dashboard.ts";
 
 /** A template's text with every nested template and value in place; handlers and directives drop out. */
@@ -162,14 +160,6 @@ function actionAt(value: unknown, attribute: string, label: string): (event: unk
 }
 
 const click = {} as MouseEvent;
-
-test("Dashboard is a page only while Labs → Dashboard is on", () => {
-  const dashboard = HUI_PAGES.find((entry) => entry.id === "dashboard")!;
-  assert.equal(isPageAvailable(dashboard, DEFAULT_SETTINGS.labs), false);
-  assert.equal(availablePages(DEFAULT_SETTINGS.labs).some((entry) => entry.id === "dashboard"), false);
-  assert.equal(isPageAvailable(dashboard, { ...DEFAULT_SETTINGS.labs, dashboard: true }), true);
-  assert.equal(availablePages(DEFAULT_SETTINGS.labs).length, HUI_PAGES.length - 1, "every other page stays");
-});
 
 test("each reason for a session in flight is a lane, in queue order, holding its own rows", () => {
   const groups = listed(

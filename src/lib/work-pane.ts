@@ -15,7 +15,9 @@ export type WorkViewRef =
   | { kind: "browser" }
   | { kind: "files"; id: string }
   | { kind: "vscode" }
-  | { kind: "diff"; id: string };
+  | { kind: "diff"; id: string }
+  | { kind: "extension"; id?: string; icon?: string }
+  | { kind: "side-chat" };
 
 export type WorkViewContext = {
   /** The conversation owning the Work pane. */
@@ -44,14 +46,21 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   label: string;
   /** 16px SVG, explicit size. */
   icon: TemplateResult;
+  /** The tab and rail icon when it depends on the ref; defaults to `icon`. */
+  tabIcon?(ref: R): TemplateResult;
   /** e.g. "Mod+Alt+Shift+KeyF" (display + binding); the entry in `WORK_SHORTCUTS`. */
   shortcut?: string;
   /** Visible reason when it cannot launch (for this conversation, when given). */
   unavailable?(sessionId?: string): string | undefined;
+  /** Not listed at all while this answers true (a launcher with nothing to open). */
+  hidden?(): boolean;
   /** When `unavailable` answers, the Settings page that changes it (e.g. "Open Settings → Tools → VS Code"). */
   settingsLink?(sessionId?: string): WorkViewSettingsLink | undefined;
   /** Calls `listener` whenever `unavailable` may answer differently; returns the unsubscribe. */
   onAvailabilityChange?(listener: () => void): () => void;
+  /** Calls `listener` whenever `title` may answer differently for a ref already open — a terminal's name arrives from
+   * the gateway after a reload restored its tab; returns the unsubscribe. */
+  onTitleChange?(listener: () => void): () => void;
   /** Launcher action → new (or reused) ref. */
   create(sessionId: string): Promise<R> | R;
   /** Stable identity within a session. */
@@ -67,6 +76,8 @@ export type WorkViewKind<R extends WorkViewRef = WorkViewRef> = {
   /** At most one view of this kind per conversation (its key is constant): once open, the view itself is listed
    * instead of its launcher where both would appear side by side (the narrow destination chooser). */
   single?: boolean;
+  /** The view's content lives only for this page: the saved record drops its tab rather than restore an empty one. */
+  ephemeral?: true;
 };
 
 const kinds = new Map<string, WorkViewKind<any>>();
@@ -84,9 +95,14 @@ export function workViewKinds(): WorkViewKind[] {
   return [...kinds.values()];
 }
 
-/** Launchers worth listing beside a conversation's open views: every kind except a single-view kind already open. */
+/** Kinds the launcher UI may list: registered ones whose launcher has something to open. */
+export function listedWorkViewKinds(): WorkViewKind[] {
+  return workViewKinds().filter((kind) => !kind.hidden?.());
+}
+
+/** Launchers worth listing beside a conversation's open views: every listed kind except a single-view kind already open. */
 export function launchableWorkViewKinds(pane: Pick<SessionWorkPane, "views">): WorkViewKind[] {
-  return workViewKinds().filter((kind) => !kind.single || !pane.views.some((view) => view.kind === kind.kind));
+  return listedWorkViewKinds().filter((kind) => !kind.single || !pane.views.some((view) => view.kind === kind.kind));
 }
 
 /** Used for kinds that are not registered (yet): the same keys the built-in kinds use. */
@@ -94,6 +110,7 @@ export function defaultWorkViewKey(ref: WorkViewRef): string {
   if (ref.kind === "terminal") return `terminal:${ref.terminalId}`;
   if (ref.kind === "files") return `files:${ref.id}`;
   if (ref.kind === "diff") return `diff:${ref.id}`;
+  if (ref.kind === "extension") return `extension:${ref.id ?? "all"}`;
   return ref.kind;
 }
 
@@ -300,7 +317,13 @@ export function parseWorkViewRef(value: unknown, isKnown: (kind: string) => bool
   if (raw.kind === "files" || raw.kind === "diff") {
     return typeof raw.id === "string" && raw.id.trim() && raw.id.length <= 128 && !CONTROL.test(raw.id) ? { kind: raw.kind, id: raw.id } : undefined;
   }
-  if (raw.kind === "browser" || raw.kind === "vscode") return { kind: raw.kind };
+  if (raw.kind === "browser" || raw.kind === "vscode" || raw.kind === "side-chat") return { kind: raw.kind };
+  if (raw.kind === "extension") {
+    if (raw.id === undefined) return { kind: "extension" };
+    if (typeof raw.id !== "string" || !raw.id.trim() || raw.id.length > 128 || CONTROL.test(raw.id)) return undefined;
+    const icon = typeof raw.icon === "string" && raw.icon.length <= 32 && !CONTROL.test(raw.icon) ? raw.icon : undefined;
+    return { kind: "extension", id: raw.id, ...(icon ? { icon } : {}) };
+  }
   return undefined;
 }
 
@@ -339,8 +362,16 @@ export function parseWorkPaneStore(value: unknown, isKnown?: (kind: string) => b
 export function serializeWorkPaneStore(store: WorkPaneStore): { version: 1; sessions: Record<string, SessionWorkPane> } {
   const sessions: Record<string, SessionWorkPane> = {};
   for (const [id, pane] of Object.entries(store)) {
-    if (!pane.open && !pane.views.length && pane.width === WORK_PANE_DEFAULT_WIDTH) continue;
-    sessions[id] = pane;
+    const views = pane.views.filter((view) => kinds.get(view.kind)?.ephemeral !== true);
+    // An ephemeral view was the only thing keeping the pane open: never restore an empty open pane in its place.
+    const open = pane.open && (views.length > 0 || views.length === pane.views.length);
+    if (!open && !views.length && pane.width === WORK_PANE_DEFAULT_WIDTH) continue;
+    const active = views.find((view) => workViewKey(view) === pane.active);
+    sessions[id] = {
+      open, width: pane.width, views,
+      ...(pane.maximized === true && open ? { maximized: true } : {}),
+      ...(active ? { active: workViewKey(active) } : {}),
+    };
   }
   return { version: 1, sessions };
 }

@@ -41,15 +41,14 @@ const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 /** Prompts may carry images inline, so they get their own, larger ceiling. */
 export const MAX_PROMPT_BYTES = 24 * 1024 * 1024;
 
-/** Why a bot's chat refuses an operation that would end, shorten or fork it (409). Without a handle (an unreadable
- * bot registry), the record's `bot` field alone refuses. */
-export function foreverChatRefusal(handle: string | undefined, operation: "clear" | "compact" | "rewind" | "fork" | "delete"): string {
+/** Why a bot's chat refuses an operation that would shorten, fork or delete it (409). A clear and a rewind are allowed:
+ * they keep the bot's memory to what the chat still holds. Without a handle (an unreadable bot registry), the record's
+ * `bot` field alone refuses. */
+export function foreverChatRefusal(handle: string | undefined, operation: "compact" | "fork" | "delete"): string {
   const chat = handle ? `@${handle}'s` : "a bot's";
   return {
-    clear: `This is ${chat} forever chat: it cannot be cleared. Its memory keeps everything; archive the bot when you are done with it.`,
     compact: `This is ${chat} forever chat: its memory condenses it by itself, so it is not compacted by hand.`,
-    rewind: `This is ${chat} forever chat: it cannot be rewound or forked.`,
-    fork: `This is ${chat} forever chat: it cannot be rewound or forked.`,
+    fork: `This is ${chat} forever chat: it cannot be forked. Rewind to a message instead.`,
     delete: `This is ${chat} forever chat: archive the bot instead${handle ? ` (hui bot remove ${handle})` : ""}, which keeps its chat and memory, or delete the bot${handle ? ` (hui bot delete ${handle})` : ""} with its chat, memory and folder.`,
   }[operation];
 }

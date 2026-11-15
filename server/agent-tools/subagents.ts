@@ -27,7 +27,8 @@ const MAX_RUNNING_COLLECTED = 32;
 /** …and at most this many are queued, starting or running; more are refused. */
 const MAX_LIVE_COLLECTED = 50;
 const MAX_WAIT_IDS = 100;
-const READY_TIMEOUT_MS = 30_000;
+/** A boot after a restart waits for Durable's resume, which holds every start for up to 30 seconds. */
+const READY_TIMEOUT_MS = 60_000;
 const CARD_SUMMARY_CHARS = 280;
 const DELIVERY_RETRY_MS = 5_000;
 const HISTORY_MAX_BYTES = 80 * 1024;
@@ -46,9 +47,11 @@ type SessionAccess = Pick<
   | "followUp"
   | "models"
   | "subagentRoutes"
+  | "subagentWorktree"
   | "notifySnapshot"
   | "prompt"
   | "release"
+  | "resumesRun"
   | "setSubagentSnapshotProvider"
   | "snapshot"
   | "status"
@@ -96,7 +99,9 @@ function integer(
 
 function visibleTree(records: readonly SessionRecord[], callerId: string): SessionRecord[] {
   const root = rootSessionId(records, callerId);
-  return records.filter((record) => rootSessionId(records, record.id) === root);
+  const caller = records.find((record) => record.id === callerId);
+  const watched = new Set(caller?.watches ?? []);
+  return records.filter((record) => rootSessionId(records, record.id) === root || watched.has(record.id));
 }
 
 /** The session and its ancestors. */
@@ -196,7 +201,7 @@ export class SubagentService {
   async initialize(): Promise<void> {
     const now = this.now().toISOString();
     const records = await this.registryUpdater((current) => current.map((record) =>
-      record.subagent && ACTIVE_STATUSES.has(record.subagent.status)
+      record.subagent && ACTIVE_STATUSES.has(record.subagent.status) && !this.sessions.resumesRun(record)
         ? {
             ...record,
             subagent: {
@@ -211,8 +216,31 @@ export class SubagentService {
         : record,
     ));
     this.#replaceCache(records);
+    this.#resumeChildren(records);
     // Startup must not wait for a parent model/runtime to become available.
     this.#scheduleDelivery();
+  }
+
+  /** A child whose runtime continues its run across a gateway restart stays active, and the end of that run reaches
+   * the parent as any other result. A queued collected child goes back to the queue that saves it as `starting`. */
+  #resumeChildren(records: readonly SessionRecord[]): void {
+    for (const record of records) {
+      const subagent = record.subagent;
+      if (!subagent || !ACTIVE_STATUSES.has(subagent.status) || !this.sessions.resumesRun(record)) continue;
+      // No run marker: the task never reached the runtime, so it starts now, as the spawn would have.
+      if (!record.runStartedAt) {
+        if (subagent.collect) {
+          this.#queue.set(subagent.taskId, { child: record, root: rootSessionId(records, record.id), runTimeoutSeconds: 0 });
+          continue;
+        }
+        if (this.sessions.ensure(record)) void this.#run(record, 0);
+        continue;
+      }
+      if (!this.sessions.ensure(record)) continue;
+      if (subagent.collect) this.#running.set(subagent.taskId, rootSessionId(records, record.id));
+      void this.#resumeRun(record);
+    }
+    this.#pump();
   }
 
   dispose(): void {
@@ -281,6 +309,7 @@ export class SubagentService {
     const thinking = text(params, "thinking", 16, true);
     const runTimeoutSeconds = integer(params, "runTimeoutSeconds", 0, 0, 3_600);
     const collect = params["collect"] === true;
+    const worktree = params["worktree"] === true;
     if (route && model) {
       throw new AgentToolInputError("Pass route or model, not both: a route already names a model.");
     }
@@ -291,7 +320,17 @@ export class SubagentService {
       throw new AgentToolInputError(`Unsupported thinking level: ${thinking}`);
     }
     const picked = route ? await this.#resolveRoute(route) : undefined;
-    const childModel = picked?.model ?? model;
+    // Before a child exists: a checkout that cannot be made refuses the spawn, and the caller can retry.
+    let createdWorktree: { cwd: string; branch: string; rollback: () => Promise<void> } | undefined;
+    if (worktree) {
+      const caller = (await this.registryReader()).find((record) => record.id === callerId);
+      if (!caller) throw new AgentToolInputError(`Unknown caller session: ${callerId}`);
+      createdWorktree = await this.sessions.subagentWorktree(caller, label ?? truncate(task.replace(/\s+/g, " "), 72)).catch((error: unknown) => {
+        throw new AgentToolInputError(error instanceof Error ? error.message : "Could not create a worktree for the subagent.");
+      });
+    }
+    // A route without a model inherits the caller's, as an omitted route does.
+    const childModel = picked?.model || model;
     const childThinking = thinking ?? picked?.thinking;
     if (childModel) await this.#assertModelAvailable(callerId, childModel, route);
     const taskId = this.uuid();
@@ -299,58 +338,67 @@ export class SubagentService {
     const now = this.now().toISOString();
     let child: SessionRecord | undefined;
     let root = "";
-    const records = await this.registryUpdater((current) => {
-      const caller = current.find((record) => record.id === callerId);
-      if (!caller) throw new AgentToolInputError(`Unknown caller session: ${callerId}`);
-      root = rootSessionId(current, callerId);
-      // Ordinary and collected children have separate limits.
-      const active = current.filter((record) =>
-        record.subagent && ACTIVE_STATUSES.has(record.subagent.status) &&
-        (record.subagent.collect === true) === collect &&
-        rootSessionId(current, record.id) === root,
-      ).length;
-      if (collect) {
-        // One level of collected children: their caps and the parent's lane assume a flat group.
-        if (lineage(current, callerId).some((record) => record.subagent?.collect)) {
-          throw new AgentToolInputError("A collected subagent cannot spawn collected subagents of its own; return the work to its parent.");
+    let records: readonly SessionRecord[];
+    try {
+      records = await this.registryUpdater((current) => {
+        const caller = current.find((record) => record.id === callerId);
+        if (!caller) throw new AgentToolInputError(`Unknown caller session: ${callerId}`);
+        root = rootSessionId(current, callerId);
+        // Ordinary and collected children have separate limits.
+        const active = current.filter((record) =>
+          record.subagent && ACTIVE_STATUSES.has(record.subagent.status) &&
+          (record.subagent.collect === true) === collect &&
+          rootSessionId(current, record.id) === root,
+        ).length;
+        if (collect) {
+          // One level of collected children: their caps and the parent's lane assume a flat group.
+          if (lineage(current, callerId).some((record) => record.subagent?.collect)) {
+            throw new AgentToolInputError("A collected subagent cannot spawn collected subagents of its own; return the work to its parent.");
+          }
+          if (active >= MAX_LIVE_COLLECTED) {
+            throw new AgentToolInputError(`At most ${MAX_LIVE_COLLECTED} collected subagents may be queued or running in one session tree.`);
+          }
+        } else if (active >= MAX_ACTIVE_SUBAGENTS) {
+          throw new AgentToolInputError(`At most ${MAX_ACTIVE_SUBAGENTS} subagents may run in one session tree.`);
         }
-        if (active >= MAX_LIVE_COLLECTED) {
-          throw new AgentToolInputError(`At most ${MAX_LIVE_COLLECTED} collected subagents may be queued or running in one session tree.`);
-        }
-      } else if (active >= MAX_ACTIVE_SUBAGENTS) {
-        throw new AgentToolInputError(`At most ${MAX_ACTIVE_SUBAGENTS} subagents may run in one session tree.`);
-      }
-      child = {
-        id: sessionId,
-        title: label ?? truncate(task.replace(/\s+/g, " "), 72),
-        group: caller.group,
-        ...(caller.archived ? { archived: true } : {}),
-        cwd: caller.cwd,
-        // A remote session's children run on the same worker.
-        ...(caller.worker ? { worker: caller.worker } : {}),
-        tool: caller.tool,
-        model: childModel ?? caller.model,
-        // Ultra stays with the session that chose it; its children work at the same level without delegating on their own.
-        thinking: childThinking ?? (caller.thinking && piThinking(caller.thinking)),
-        parentId: caller.id,
-        subagent: {
-          taskId,
-          task,
-          ...(label ? { label } : {}),
-          status: "starting",
-          startedAt: now,
+        child = {
+          id: sessionId,
+          title: label ?? truncate(task.replace(/\s+/g, " "), 72),
+          group: caller.group,
+          ...(caller.archived ? { archived: true } : {}),
+          cwd: createdWorktree?.cwd ?? caller.cwd,
+          // A subagent of a bot's chat loads the bot's own skills, and so do its own children (the staff pack).
+          ...(caller.bot ?? caller.botSkills ? { botSkills: caller.bot ?? caller.botSkills } : {}),
+          // A remote session's children run on the same worker.
+          ...(caller.worker ? { worker: caller.worker } : {}),
+          tool: caller.tool,
+          model: childModel ?? caller.model,
+          // Ultra stays with the session that chose it; its children work at the same level without delegating on their own.
+          thinking: childThinking ?? (caller.thinking && piThinking(caller.thinking)),
+          parentId: caller.id,
+          subagent: {
+            taskId,
+            task,
+            ...(label ? { label } : {}),
+            status: "starting",
+            startedAt: now,
+            updatedAt: now,
+            ...(collect ? { collect: true as const } : {}),
+          },
+          createdAt: now,
           updatedAt: now,
-          ...(collect ? { collect: true as const } : {}),
-        },
-        createdAt: now,
-        updatedAt: now,
-        source: "hui",
-      };
-      return [
-        ...current.map((record) => record.id === caller.id ? { ...record, updatedAt: now } : record),
-        child,
-      ];
-    });
+          source: "hui",
+        };
+        return [
+          ...current.map((record) => record.id === caller.id ? { ...record, updatedAt: now } : record),
+          child,
+        ];
+      });
+    } catch (error) {
+      // A worktree exists for a child HUI never registered: put the checkout back.
+      await createdWorktree?.rollback().catch(() => undefined);
+      throw error;
+    }
     if (collect) this.#queue.set(taskId, { child: child!, root, runTimeoutSeconds });
     this.#replaceCache(records);
     if (collect) this.#pump();
@@ -430,7 +478,7 @@ export class SubagentService {
     try {
       await this.#waitUntilReady(child.id);
       const completion = this.#waitForCompletion(child, runTimeoutSeconds);
-      // Only from `starting`: a task cancelled meanwhile stays cancelled.
+      // Only an active task: one cancelled meanwhile stays cancelled.
       if (!(await this.#markRunning(child.id))) {
         completion.cancel();
         return;
@@ -444,12 +492,7 @@ export class SubagentService {
           throw error;
         }
       }
-      const outcome = await completion.promise;
-      if (outcome.status === "cancelled") return; // #cancel records it
-      const summary = outcome.status === "completed"
-        ? truncate(lastAssistant(this.sessions.transcript(child.id)), 20_000)
-        : "";
-      await this.#finishTask(child.id, outcome.status, summary, outcome.error);
+      await this.#settleTask(child, await completion.promise);
     } catch (error) {
       await this.#finishTask(
         child.id,
@@ -463,7 +506,30 @@ export class SubagentService {
     }
   }
 
-  #waitForCompletion(child: SessionRecord, runTimeoutSeconds: number): {
+  /** A child whose runtime resumed its run: wait for that run to end, with no timeout left to honour, and record its
+   * result as this gateway would have. */
+  async #resumeRun(child: SessionRecord): Promise<void> {
+    const taskId = child.subagent!.taskId;
+    try {
+      await this.#settleTask(child, await this.#waitForCompletion(child, 0, true).promise);
+    } catch (error) {
+      await this.#finishTask(child.id, "failed", "", error instanceof Error ? error.message : "The subagent failed.");
+    } finally {
+      this.#controls.delete(taskId);
+      if (this.#running.delete(taskId)) this.#pump();
+    }
+  }
+
+  /** Records how a child's run ended. A cancel recorded itself. */
+  async #settleTask(child: SessionRecord, outcome: { status: SubagentStatus; error?: string }): Promise<void> {
+    if (outcome.status === "cancelled") return;
+    const summary = outcome.status === "completed"
+      ? truncate(lastAssistant(this.sessions.transcript(child.id)), 20_000)
+      : "";
+    await this.#finishTask(child.id, outcome.status, summary, outcome.error);
+  }
+
+  #waitForCompletion(child: SessionRecord, runTimeoutSeconds: number, resumed = false): {
     promise: Promise<{ status: SubagentStatus; error?: string }>;
     cancel: () => void;
   } {
@@ -495,9 +561,13 @@ export class SubagentService {
           settle("failed", "HUI is disconnected from the machine the subagent runs on.");
         } else if (message.kind === "closed") {
           settle("failed", "The subagent runtime exited.");
+        } else if (resumed && message.kind === "status" && message.status === "idle") {
+          settle("completed");
         }
       });
       unsubscribe = watched.unsubscribe;
+      // A run that ended while this gateway was away reports no settle, so the state it left says so.
+      if (resumed && watched.snapshot.status === "idle") settle("completed");
       if (runTimeoutSeconds > 0) {
         timer = setTimeout(() => {
           settle("timed_out", `The subagent exceeded ${runTimeoutSeconds} seconds.`);
@@ -1016,8 +1086,9 @@ export class SubagentService {
     let started = false;
     const now = this.now().toISOString();
     const records = await this.registryUpdater((current) => current.map((record) => {
-      if (record.id !== sessionId || record.subagent?.status !== "starting") return record;
+      if (record.id !== sessionId || !record.subagent || !ACTIVE_STATUSES.has(record.subagent.status)) return record;
       started = true;
+      if (record.subagent.status === "running") return record;
       return { ...record, subagent: { ...record.subagent, status: "running" as const, updatedAt: now }, updatedAt: now };
     }));
     this.#replaceCache(records);

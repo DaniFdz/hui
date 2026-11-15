@@ -1,4 +1,4 @@
-/** Public bot trigger payloads (HUI-18) and the routes that exchange them; the stored record with its token hash is not one. */
+/** Public bot trigger payloads and the routes that exchange them; the stored record with its token hash is not one. */
 import { Type, type Static } from "typebox";
 
 export const BotTriggerSource = Type.Literal("listener", { $id: "BotTriggerSource" });

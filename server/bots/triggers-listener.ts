@@ -1,5 +1,5 @@
 /**
- * Triggers' one source (HUI-18): a program the operator runs outside HUI, a listener, watches something HUI doesn't
+ * Triggers' one source: a program the operator runs outside HUI, a listener, watches something HUI doesn't
  * read itself (a work Slack through its MCP server, a Jira board, a repo) and, after every check, reports what it found
  * to its trigger's URL, `POST /__hui/hooks/<token>`:
  *

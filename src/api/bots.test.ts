@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { createBot, loadBots, subscribeBots } from "./bots.ts";
+import { RESPONSE_TIMEOUT_MS } from "./request.ts";
 
 const RECORD = {
   id: "b1",
@@ -61,6 +62,25 @@ test("the bot stream reads SSE frames, reports a gateway without it, and stops w
     subscribeBots({ onUpdate: () => {}, onConnection: resolve }, async () => new Response("{}", { status: 404 }));
   });
   assert.equal(unsupported, "unsupported");
+});
+
+test("the bot stream retries when the gateway accepts its connection and never answers", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  let connections = 0;
+  const fetcher = ((_input: RequestInfo | URL, init?: RequestInit) => {
+    connections += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    });
+  }) as typeof fetch;
+  const stop = subscribeBots({ onUpdate: () => {}, onConnection: () => {} }, fetcher);
+  t.onTestFinished(stop);
+
+  await vi.advanceTimersByTimeAsync(RESPONSE_TIMEOUT_MS);
+  assert.equal(connections, 1);
+  await vi.advanceTimersByTimeAsync(2_000);
+  assert.equal(connections, 2, "the roster must not sit on a connection the gateway never answered");
 });
 
 test("reading the list asks for active and archived bots, as the stream lists both", async () => {

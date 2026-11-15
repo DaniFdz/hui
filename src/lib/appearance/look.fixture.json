@@ -1,0 +1,177 @@
+[
+  {
+    "case": "nothing stored reads as HUI's defaults",
+    "input": null,
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100
+    }
+  },
+  {
+    "case": "every value is trimmed and normalized",
+    "input": {
+      "theme": "  miami ",
+      "themeMode": "dark",
+      "accent": " #5B9CF6 ",
+      "fontUi": "geist",
+      "fontChat": "lora",
+      "fontTerminal": " MesloLGS NF ",
+      "textScale": 125
+    },
+    "expected": {
+      "theme": "miami",
+      "themeMode": "dark",
+      "accent": "#5b9cf6",
+      "fontUi": "geist",
+      "fontChat": "lora",
+      "fontTerminal": "MesloLGS NF",
+      "textScale": 125
+    }
+  },
+  {
+    "case": "an unknown theme id is kept, so a missing theme file is not a forgotten choice",
+    "input": { "theme": "not-installed" },
+    "expected": {
+      "theme": "not-installed",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100
+    }
+  },
+  {
+    "case": "a blank theme is the default",
+    "input": { "theme": "   " },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100
+    }
+  },
+  {
+    "case": "a chat preference is no part of the look and changes nothing",
+    "input": {
+      "theme": "rose",
+      "chat": { "messageWidth": "wide", "collapseTaskProgress": true, "sendShortcut": "modifierEnter", "githubEmbeds": false, "datadogEmbeds": false }
+    },
+    "expected": {
+      "theme": "rose",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100
+    }
+  },
+  {
+    "case": "junk in every field lands on the defaults",
+    "input": {
+      "theme": 42,
+      "themeMode": "chartreuse",
+      "accent": "red",
+      "fontUi": {},
+      "fontChat": [],
+      "fontTerminal": "bad;name",
+      "textScale": "big"
+    },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100
+    }
+  },
+  {
+    "case": "only a complete hex accent reads, in lower case",
+    "input": { "accent": "#A78BFA" },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "#a78bfa",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100
+    }
+  },
+  {
+    "case": "a short or named accent is the theme's own",
+    "input": { "accent": "#fff" },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100
+    }
+  },
+  {
+    "case": "every text-size stop is accepted",
+    "input": { "textScale": 140 },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 140
+    }
+  },
+  {
+    "case": "a stop outside the five is the default",
+    "input": { "textScale": 1 },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100
+    }
+  },
+  {
+    "case": "a malformed terminal font is the bundled one",
+    "input": { "fontTerminal": "bad\nname" },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100
+    }
+  },
+  {
+    "case": "a missing chat font inherits the interface font",
+    "input": { "fontUi": "fraunces" },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "fraunces",
+      "fontChat": "fraunces",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100
+    }
+  }
+]

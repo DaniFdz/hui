@@ -19,11 +19,10 @@ test("Escape in the Work pane returns focus to the chat composer and leaves the 
   await pane.getByRole("button", { name: /^New terminal/u }).tap();
   const terminal = pane.getByRole("tab", "Terminal 1");
   await expect(terminal).toBeVisible();
-  // Adding the view disables the launcher that had focus, so give the pane's tab the keyboard again.
-  await terminal.tap();
-
-  await hui.keyboard.down("Escape");
-  await hui.keyboard.up("Escape");
+  // Startup takes keyboard focus before connecting the terminal. Wait for that real readiness before pressing Escape
+  // on the pane's tab: a cold renderer must not move the key into the terminal, where Escape belongs to the shell.
+  await expect(pane.getByRole("status").getByText("Shared · Connected", { exact: true })).toBeVisible();
+  await terminal.press("Escape");
   await expect(message).toBeFocused();
   await expect(transcript.getByText("Using 1 tool")).toBeVisible();
 

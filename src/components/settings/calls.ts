@@ -1,5 +1,5 @@
 /**
- * Settings → Models → Calls (HUI-18): calls with bots run on GPT-Live; this sets its default voice and says which
+ * Settings → Models → Calls: calls with bots run on GPT-Live; this sets its default voice and says which
  * ChatGPT login calls use. The page passes the setting in and saves it; the login status comes from `/__hui/calls` and
  * never carries a token.
  */

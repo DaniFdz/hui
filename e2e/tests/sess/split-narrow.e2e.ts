@@ -19,6 +19,7 @@ test("a narrow split shows only the active pane, switches with the Active panel 
   await hui.open(`/sessions/${first.id}`);
   await screen.getByRole("button", "Open split view").tap();
   await expect(panes).toHaveCount(2);
+  await hui.sessionList();
   await (await hui.sessionMenu("Pane two")).getByText("Open in split pane", { visible: true }).tap();
   await expect(panes).toHaveCount(3);
   await panes.nth(0).getByLabel("Message").fill("E2E_REPLAY");

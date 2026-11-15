@@ -1,5 +1,5 @@
 /**
- * How a bot's chat shows its GPT-Live calls (HUI-18), in one place. A call
+ * How a bot's chat shows its GPT-Live calls, in one place. A call
  * leaves one record (the gateway writes a `hui.call` entry at hang-up; no turn
  * runs for it): this module draws it as a card with the call's duration, the
  * summary the bot's utility model wrote and the whole transcript, both sides,

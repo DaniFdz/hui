@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
     <link rel="icon" type="image/png" href="/pi-logo-3d.png" />
+    <!-- A phone's home-screen shortcut is the app's own icon and window mode: without these iOS draws a screenshot of the
+         page and opens it in a browser tab, which is neither the app's look nor the layout this page is tested in. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>HUI</title>
     <script>
       // The boot screen (src/lib/boot-screen.ts) paints in the colours HUI last

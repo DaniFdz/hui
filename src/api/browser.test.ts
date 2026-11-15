@@ -35,7 +35,7 @@ test("golden frames decode and malformed frames are rejected", async () => {
 
 test("view messages are validated before the pane uses them", () => {
   assert.deepEqual(parseBrowserViewMessage({ type: "state", running: true, mode: "windowed", tabs: [{ id: "t1", title: 7, url: "u" }, { id: "../x" }, null], current: "t1", watching: "bogus", following: false }), {
-    type: "state", running: true, mode: "windowed", tabs: [{ id: "t1", title: "", url: "u" }], current: "t1", watching: null, following: false,
+    type: "state", running: true, mode: "windowed", tabs: [{ id: "t1", title: "", url: "u" }], current: "t1", watching: null, following: false, handoff: null,
   });
   assert.deepEqual(parseBrowserViewMessage({ type: "action", tabId: "t2", text: "Clicked e2", point: { x: 5, y: "7" }, at: "now" }), {
     type: "action", tabId: "t2", text: "Clicked e2", at: "now",

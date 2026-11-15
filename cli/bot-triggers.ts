@@ -1,5 +1,5 @@
 /**
- * `hui bot trigger`: a bot's triggers (HUI-18) from a terminal, through the running gateway's trigger routes, as the
+ * `hui bot trigger`: a bot's triggers from a terminal, through the running gateway's trigger routes, as the
  * Triggers section of the Bots tab uses them: list, add, remove and test. Every trigger is a listener's: `add` prints
  * the URL its listener reports to, this once.
  */

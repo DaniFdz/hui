@@ -16,7 +16,9 @@ const CHIP_TEXT = { live: "Live", connecting: "Connecting…", closed: "Closed" 
  * What the agent's browser shows, in the chat under its latest browser
  * activity. It streams while the agent's turn runs and the card is on screen,
  * then keeps the last frame; an idle card takes one fresh frame when it first
- * appears. View-only: selecting it opens the conversation's browser view in the Work pane.
+ * appears. Selecting it opens the conversation's browser view in the Work pane.
+ * When the agent hands the tab over, the card says so and opens that view,
+ * where the operator can answer it.
  *
  * No decorators: the chat view (and so this module) also loads in Node tests.
  */
@@ -47,6 +49,8 @@ export class BrowserPreview extends HuiElement {
   private clock: ReturnType<typeof setInterval> | undefined;
   /** An idle preview refreshes once per mount, then stays still. */
   private snapshotTaken = false;
+  /** A cached/previous frame does not count as a frame from the current stream. */
+  private streamStartFrame: BrowserViewController["frame"];
 
   constructor() {
     super();
@@ -77,17 +81,27 @@ export class BrowserPreview extends HuiElement {
 
   protected override willUpdate(changed: PropertyValues) {
     if (!changed.has("sessionId") && !changed.has("live") && !changed.has("visible") && !changed.has("onScreen")) return;
-    if (changed.has("sessionId")) this.snapshotTaken = false;
+    if (changed.has("sessionId")) {
+      this.browser.disconnect();
+      this.snapshotTaken = false;
+    }
     const shown = Boolean(this.sessionId) && this.visible && this.onScreen;
     if (shown && this.live) {
+      this.snapshotTaken = false;
+      const starting = this.browser.mode !== "stream";
       this.browser.connect(this.sessionId, "stream");
-    } else if (this.browser.mode === "stream") {
-      // The turn ended or the card left the screen: keep the frame, stop streaming.
-      this.browser.disconnect();
-      if (!this.live) this.snapshotTaken = true;
-    } else if (shown && !this.snapshotTaken) {
-      this.snapshotTaken = true;
-      this.browser.connect(this.sessionId, "snapshot");
+      if (starting) this.streamStartFrame = this.browser.frame;
+    } else {
+      if (this.browser.mode === "stream") {
+        // Cancellation is not a snapshot: a hidden turn still needs its final page,
+        // and even a visible stream may stop before its first frame arrives.
+        this.browser.disconnect();
+        if (shown && this.browser.frame && this.browser.frame !== this.streamStartFrame) this.snapshotTaken = true;
+      }
+      if (shown && !this.snapshotTaken) {
+        this.snapshotTaken = true;
+        this.browser.connect(this.sessionId, "snapshot");
+      }
     }
   }
 
@@ -118,6 +132,12 @@ export class BrowserPreview extends HuiElement {
       ${expand && frame
         ? html`<button type="button" class="hui-browser-preview__screen" aria-label=${`Open ${display.title} in the browser view`} @click=${expand}>${screen}</button>`
         : html`<div class="hui-browser-preview__screen">${screen}</div>`}
+      ${this.browser.view?.handoff
+        ? html`<div class="hui-browser-preview__handoff">
+            <span class="hui-browser-preview__handoff-text"><strong>Your turn.</strong> ${this.browser.view.handoff.message}</span>
+            ${expand ? html`<button type="button" class="btn btn--sm" @click=${expand}>Take over</button>` : nothing}
+          </div>`
+        : nothing}
       ${action ? html`<div class="hui-browser-preview__footer">
           <span class="hui-browser-preview__action" title=${action.text}>${action.text}</span>
           <time datetime=${action.at}>${relativeTime(action.at, Math.max(this.now, Date.parse(action.at) || 0))}</time>

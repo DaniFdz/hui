@@ -1,6 +1,6 @@
 # Bot setup browser verification
 
-Journey for setting bots up like Grok Bot (HUI-18, SPEC.md "Bots are set up
+Journey for setting bots up like Grok Bot (SPEC.md "Bots are set up
 like Grok Bot"): + creates a bot at once, with no form, and its first message
 asks what to call it; while a remote worker exists + is a menu, New bot on
 Local or on the worker; the bot panel's Settings tab (Profile, Model, Calls,

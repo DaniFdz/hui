@@ -1,18 +1,21 @@
-/** The sidebar's work destinations, and the Settings footer both of its lists end with (SHELL-001, SHELL-002). */
+/** The sidebar's work destinations, ending with Settings, and this page's gateway in its footer for both lists
+ * (SHELL-001, SHELL-002, SHELL-049). */
 import assert from "node:assert/strict";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 /** Each destination, and text only its own page shows: the label alone also exists in the sidebar. */
 const DESTINATIONS = [
+  ["Dashboard", "The sessions in flight and the resource use of the machines that run them."],
   ["Contributions", "Commits and pull requests of the GitHub accounts signed in to"],
   ["Kanban", "Backlog items and where each session is in development."],
   ["Sessions", "Active sessions and defaults."],
   ["Usage", "Recorded tokens and PI cost estimates."],
 ] as const;
 
-test("the sidebar lists its work destinations above a Settings footer", { tags: ["SHELL-001", "smoke"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the sidebar lists its work destinations, ending with Settings, above this page's gateway", { tags: ["SHELL-001", "SHELL-049", "smoke"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.open("/");
+  await hui.sessionList();
   const navigation = screen.getByTestId("primary-navigation");
 
   await expect(navigation).toBeVisible();
@@ -28,19 +31,33 @@ test("the sidebar lists its work destinations above a Settings footer", { tags: 
     previous = box.y;
   }
 
-  // Settings closes the sidebar instead of sitting among the destinations, so the tab panel cannot scroll it away.
-  await expect(navigation.getByText("Settings")).toHaveCount(0);
-  const settings = screen.getByTestId("nav-settings");
+  // Settings is the last destination in the same list, so the list scrolls as one piece.
+  const settings = navigation.getByTestId("nav-settings");
   await expect(settings).toBeVisible();
+  await expect(settings).toHaveText("Settings");
   const settingsBox = await settings.boundingBox();
   assert(settingsBox);
   expect(settingsBox.y).toBeGreaterThan(previous);
-  await expect(screen.getByLabel("Collapse sidebar")).toBeVisible();
 
-  // The Bots list shows no destinations, and keeps Settings.
+  // The footer below both lists is the gateway serving this page, not a Settings link.
+  const gateway = screen.getByTestId("sidebar-gateway");
+  await expect(gateway).toBeVisible();
+  const gatewayBox = await gateway.boundingBox();
+  assert(gatewayBox);
+  expect(gatewayBox.y).toBeGreaterThan(settingsBox.y);
+  // A wide sidebar collapses in place; a phone's open drawer closes instead.
+  const close = screen.getByRole("button", "Close navigation", { visible: true });
+  if (await close.count() > 0) await expect(close.first()).toBeVisible();
+  else await expect(screen.getByLabel("Collapse sidebar")).toBeVisible();
+
+  // The Bots list keeps the same destinations, Settings included, and the gateway.
   await screen.getByRole("tab", "Bots").tap();
-  await expect(navigation).toBeHidden();
+  await expect(navigation).toBeVisible();
+  for (const [label] of DESTINATIONS) {
+    await expect(navigation.getByText(label)).toBeVisible();
+  }
   await expect(settings).toBeVisible();
+  await expect(gateway).toBeVisible();
 
   await screen.getByRole("tab", "Agents").tap();
   await expect(navigation).toBeVisible();
@@ -51,12 +68,14 @@ test("a destination opens its page and keeps it across a reload", { tags: ["SHEL
   await hui.open("/");
 
   for (const [label, page] of DESTINATIONS) {
+    await hui.sessionList();
     await screen.getByTestId("primary-navigation").getByText(label).tap();
     await expect(screen.getByText(page, { exact: false }).first()).toBeVisible();
     await hui.reload();
     await expect(screen.getByText(page, { exact: false }).first()).toBeVisible();
   }
 
+  await hui.sessionList();
   await screen.getByTestId("nav-settings").tap();
   await expect(screen.getByText("HUI and PI preferences for this workspace.").first()).toBeVisible();
   await hui.reload();

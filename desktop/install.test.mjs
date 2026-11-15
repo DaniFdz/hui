@@ -36,6 +36,7 @@ test('macOS install creates a discoverable bundle and updates only owned apps', 
   const main = await readFile(join(installed, 'Contents/Resources/app/main.cjs'), 'utf8');
   assert.equal(main, await readFile(new URL('./main.cjs', import.meta.url), 'utf8'));
   assert.equal(await readFile(join(installed, 'Contents/Resources/app/policy.cjs'), 'utf8'), await readFile(new URL('./policy.cjs', import.meta.url), 'utf8'));
+  assert.equal(await readFile(join(installed, 'Contents/Resources/app/preload.cjs'), 'utf8'), await readFile(new URL('./preload.cjs', import.meta.url), 'utf8'));
   await assert.rejects(readFile(join(installed, 'Contents/Resources/default_app.asar')), { code: 'ENOENT' });
   await installMacApp({ ...options, version: '1.2.3' });
   assert.match(await readFile(join(installed, 'Contents/Info.plist'), 'utf8'), /<string>1.2.3<\/string>/);
@@ -128,8 +129,8 @@ test('only the app HUI installed for this installation, on another version, is r
 
 test('desktop navigation remains local and external launching rejects executable protocols', () => {
   const origin = 'http://127.0.0.1:5174';
-  assert.equal(policy.isInternal(`${origin}/sessions`, origin), true);
-  for (const url of ['http://127.0.0.1:5175/', 'https://127.0.0.1:5174', 'https://example.com', 'file:///etc/passwd', 'javascript:alert(1)', 'not a URL']) assert.equal(policy.isInternal(url, origin), false);
+  assert.equal(policy.isGatewayPage(`${origin}/sessions`, origin), true);
+  for (const url of ['http://127.0.0.1:5175/', 'https://127.0.0.1:5174', 'https://example.com', 'file:///etc/passwd', 'javascript:alert(1)', 'not a URL']) assert.equal(policy.isGatewayPage(url, origin), false);
   for (const url of ['https://example.com', 'http://example.com', 'mailto:user@example.com', 'vscode://file/Users/me/skill/SKILL.md']) assert.equal(policy.isExternal(url), true);
   for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'data:text/html,test', 'hui:run', 'vscode://vscode.git/clone?url=x', 'not a URL']) assert.equal(policy.isExternal(url), false);
 });

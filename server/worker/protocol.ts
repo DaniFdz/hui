@@ -57,6 +57,7 @@ export type RemoteState = {
   usage?: RuntimeUsage;
   thinking?: string;
   fast?: true;
+  autonomous?: true;
   queue?: RuntimeQueue;
   questions?: readonly RuntimeQuestion[];
 };

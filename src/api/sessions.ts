@@ -10,21 +10,24 @@ import type {
 /** One question's answer from the questionnaire card: chosen labels and typed text. */
 export type QuestionnaireReply = { selected: readonly string[]; custom?: string };
 import type { CallRecord } from "./schema/calls.ts";
+import type { ModelMetric } from "./schema/model-metrics.ts";
 import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionThinkingResponse, SideQuestionResult, SubagentTaskView } from "./schema/session-events.ts";
 import type { TaskSuggestion } from "./schema/task-suggestions.ts";
 import type { Watcher } from "./schema/watchers.ts";
-import { CLIENT_HEADERS, fetchJson, RESPONSE_TIMEOUT_MS, trackedFetch } from "./request.ts";
+import { CLIENT_HEADERS, fetchEventStream, fetchJson, RESPONSE_TIMEOUT_MS, trackedFetch } from "./request.ts";
 import { decodeSseFrame, reconnectDelay } from "../lib/event-stream.ts";
 import { OutdatedBuildError } from "./offline.ts";
 import { GatewayHttpError, isGatewayUnavailable } from "./gateway-error.ts";
 
-export type { SessionGoal, SessionGroup, SessionList, SessionSearchResult, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
+export type { ProgressCard, ProgressStep, SessionGoal, SessionGroup, SessionList, SessionSearchResult, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
 export type {
   QueuedMessage, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SubagentTaskView,
 } from "./schema/session-events.ts";
 
 const SESSIONS_URL = "/__hui/sessions";
 const CREATE_SESSION_TIMEOUT_MS = 120_000;
+/** The gateway must start answering an open within five seconds; the body may keep arriving after that. */
+export const OPEN_HEADER_TIMEOUT_MS = 5_000;
 /** Mirrors the server's close code for a session that no longer exists. */
 const SESSION_STREAM_GONE = 4404;
 const SESSION_STATUSES_URL = `${SESSIONS_URL}/events`;
@@ -91,6 +94,7 @@ export type RuntimeEvent =
   | { type: "turn_end" }
   | { type: "compaction_start"; reason: RuntimeCompaction["reason"]; blocking?: false; background?: true }
   | { type: "compaction_end"; reason: RuntimeCompaction["reason"]; outcome: "done" | "failed" | "cancelled"; willRetry: boolean; message?: string }
+  | { type: "model_metric"; metric: ModelMetric }
   | { type: "settled"; historyRefreshed?: boolean }
   | { type: "error"; message: string };
 
@@ -135,6 +139,8 @@ export type SessionSnapshot = {
   thinking?: string;
   /** Fast mode; absent when the runtime cannot change speed. */
   fast?: boolean;
+  /** Autonomous mode; absent when the session cannot carry it. */
+  autonomous?: boolean;
   queue: QueueSnapshot;
   questions: RuntimeQuestion[];
   subagents: SubagentTaskView[];
@@ -221,6 +227,7 @@ export async function createSession(input: {
   model?: string;
   thinking?: string;
   fast?: boolean;
+  autonomous?: boolean;
   worktree?: boolean;
   branchName?: string;
   baseRef?: string;
@@ -262,6 +269,7 @@ export async function openSession(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/open`,
     { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
     signal,
+    OPEN_HEADER_TIMEOUT_MS,
   );
   if (!body.session || !body.snapshot) {
     throw new Error("Could not open that session.");
@@ -435,6 +443,15 @@ export async function setSessionThinking(id: string, level: string): Promise<str
   return body.level ?? level;
 }
 
+export async function setSessionAutonomous(id: string, autonomous: boolean): Promise<boolean> {
+  const body = await fetchJson<{ autonomous?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/autonomous`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ autonomous }),
+  });
+  return body.autonomous ?? autonomous;
+}
+
 export async function setSessionFast(id: string, fast: boolean): Promise<boolean> {
   const body = await fetchJson<{ fast?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/fast`, {
     method: "POST",
@@ -555,6 +572,7 @@ export type SessionStreamHandlers = {
   onModel: (model: RuntimeModel) => void;
   onThinking: (level: string) => void;
   onFast?: (fast: boolean) => void;
+  onAutonomous?: (autonomous: boolean) => void;
   /**
    * Called on every connect and reconnect. `live` means the stream delivered,
    * `reconnecting` means a retry is scheduled, `stopped` means no more retries
@@ -584,6 +602,8 @@ export type SessionStatusesHandlers = {
   onStatus: (update: SessionStatusUpdate) => void;
   /** The gateway's shared session list: full on connect unless it is still `heldRevision`, then only changes. */
   onSessions?: (update: SessionListUpdate) => void;
+  /** The stream ended and will not reconnect by itself (a refusal or this client's stop). */
+  onStop?: () => void;
   heldRevision?: () => number;
 };
 
@@ -597,13 +617,17 @@ export function subscribeSessionStatuses(
   let attempt = 0;
 
   void (async () => {
-    while (!abort.signal.aborted) {
-      const outcome = await connectStatusesOnce(handlers, abort.signal, fetcher, () => {
-        attempt = 0;
-      });
-      if (abort.signal.aborted || outcome.kind === "refused") return;
-      attempt += 1;
-      await sleep(reconnectDelay(attempt), abort.signal);
+    try {
+      while (!abort.signal.aborted) {
+        const outcome = await connectStatusesOnce(handlers, abort.signal, fetcher, () => {
+          attempt = 0;
+        });
+        if (abort.signal.aborted || outcome.kind === "refused") return;
+        attempt += 1;
+        await sleep(reconnectDelay(attempt), abort.signal);
+      }
+    } finally {
+      handlers.onStop?.();
     }
   })();
 
@@ -787,7 +811,7 @@ async function connectOnce(
       if (settled) return;
       try {
         const frame = JSON.parse(String(message.data)) as { event: string; data: unknown };
-        const stateFrame = ["snapshot", "transcript", "event", "status", "model", "thinking_level", "fast"].includes(frame.event);
+        const stateFrame = ["snapshot", "transcript", "event", "status", "model", "thinking_level", "fast", "autonomous"].includes(frame.event);
         if (!admitted && (!stateFrame || (heldRevision === undefined && frame.event !== "snapshot"))) {
           if (frame.event === "closed") finish({ kind: "ended" });
           else if (frame.event === "heartbeat" && !awaitingState) {
@@ -826,7 +850,7 @@ async function connectStatusesOnce(
   let response: Response;
   try {
     const held = handlers.heldRevision?.();
-    response = await fetcher(held ? `${SESSION_STATUSES_URL}?revision=${held}` : SESSION_STATUSES_URL, {
+    response = await fetchEventStream(fetcher, held ? `${SESSION_STATUSES_URL}?revision=${held}` : SESSION_STATUSES_URL, {
       headers: { ...CLIENT_HEADERS, accept: "text/event-stream" },
       cache: "no-store",
       signal,
@@ -912,6 +936,9 @@ function dispatch(name: string, payload: unknown, handlers: SessionStreamHandler
       break;
     case "fast":
       handlers.onFast?.((payload as { fast: boolean }).fast);
+      break;
+    case "autonomous":
+      handlers.onAutonomous?.((payload as { autonomous: boolean }).autonomous);
       break;
     case "closed":
       return true;

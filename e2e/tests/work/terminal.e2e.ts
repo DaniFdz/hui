@@ -4,6 +4,7 @@
  * terminal the pane is connected to. */
 import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { backToChat, openWork } from "./work-views.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
 
@@ -51,7 +52,6 @@ test("Open terminal in the chat header shows the conversation's terminal in the 
   const pane = screen.getByLabel("Work pane");
   const open = screen.getByRole("button", "Open terminal");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await open.tap();
 
@@ -59,12 +59,20 @@ test("Open terminal in the chat header shows the conversation's terminal in the 
   await expect(pane.getByText(repository.path, { exact: true })).toBeVisible();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   expect(await terminals(hui, session.id)).toHaveLength(1);
+  // The sidebar is a drawer a phone opens over the chat, which the full-screen Work destination is not.
+  await backToChat(screen);
   await hui.sessionList();
   expect((await hui.glyph("Open terminal")).animated).toBe(false);
 
-  await screen.getByRole("button", "Open Work view").tap();
-  await item(screen, "F").first().tap();
+  // Coming back to the conversation leaves the drawer behind and restores its Work views, so the header's
+  // Open terminal shows the terminal this conversation already has.
+  await hui.open(`/sessions/${session.id}`);
+  await open.tap();
+  await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
+  await openWork(screen, "Files");
   await expect(pane.getByRole("tab", "Files")).toHaveAttribute("aria-selected", "true");
+  // The header is the chat's; a phone reaches it again by leaving the full-screen destination.
+  await backToChat(screen);
   await open.tap();
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
   expect(await terminals(hui, session.id)).toHaveLength(1);
@@ -83,7 +91,6 @@ test("typing a command into the terminal runs it in a real shell and its output,
   const session = await hui.createSession({ title: "Run a command", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
@@ -96,8 +103,11 @@ test("typing a command into the terminal runs it in a real shell and its output,
   expect(printed).toContain("\u001b[31mRED\u001b[0m plain");
 
   await hui.prompt(session, "E2E_REPLY:V2hhdCBhIHNoZWxs");
-  await expect(screen.getByText("What a shell")).toBeVisible();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
+  // A phone shows the Work destination instead of the chat, so the reply is read after leaving it; the terminal
+  // stays mounted and connected behind the chat either way.
+  await backToChat(screen);
+  await expect(screen.getByText("What a shell")).toBeVisible();
   await expect(screen.getByLabel("Message")).toBeVisible();
   await expect(screen.getByTestId("transcript")).toBeVisible();
 });
@@ -107,7 +117,6 @@ test("New terminal adds a second tab with its own shell, and each tab keeps its 
   const session = await hui.createSession({ title: "Two terminals", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
@@ -142,7 +151,6 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   const session = await hui.createSession({ title: "Share a terminal", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
@@ -152,6 +160,7 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   await expect.poll(() => replay(hui, session.id, id)).toContain("SET hello-from-operator");
 
   await hui.prompt(session, "E2E_SHARED_TERMINAL");
+  await backToChat(screen);
   await expect(screen.getByText("I sent the command to your shared terminal.", { exact: false })).toBeVisible();
   await expect.poll(() => replay(hui, session.id, id)).toContain("Shared variable: hello-from-operator");
   expect(await replay(hui, session.id, id)).toContain("PI_SHARED_TERMINAL");
@@ -174,7 +183,6 @@ test("End terminal stops its shell and closes its tab while the other terminals 
   const session = await hui.createSession({ title: "End a terminal", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
@@ -256,7 +264,6 @@ test("a scrolled-back terminal keeps its place while output arrives, and Jump to
   const terminal = screen.getByLabel("Shared terminal input", { visible: true });
   const jump = screen.getByLabel("Jump to bottom");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
   await expect(screen.getByText("Shared · Connected")).toBeVisible();
@@ -268,7 +275,8 @@ test("a scrolled-back terminal keeps its place while output arrives, and Jump to
   await expect(jump).toHaveAttribute("aria-hidden", "true");
 
   await run(hui, screen, "for i in $(seq 1 40); do echo LATE$i; sleep 0.2; done");
-  await hui.wheel(terminal, -2_000);
+  // Exercise the terminal's real touch adapter rather than bypassing it with a synthetic wheel.
+  await hui.touch(terminal, { drag: 2_000 });
   await expect(jump).toHaveAttribute("aria-hidden", "false");
   await expect.poll(() => replay(hui, session.id, id)).toContain("LATE40");
   await expect(jump).toHaveAttribute("aria-hidden", "false");

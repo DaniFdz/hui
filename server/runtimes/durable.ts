@@ -8,16 +8,18 @@
  * events through it.
  */
 import { createHash } from "node:crypto";
-import type { ImageContent, Message, ModelThinkingLevel, TextContent } from "@earendil-works/pi-ai";
+import type { ImageContent, Message, ModelThinkingLevel, SystemMessage, TextContent } from "@earendil-works/pi-ai";
 import {
   CompactionEntry, InboxDoc, LiveDoc, ResetEntry, SystemEntry, UserEntry,
   type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
-  type EntryId, type EntryRecord, type Harness, type SubmissionRecord, type TaskId, type ToolRegistration,
+  type EntryId, type EntryRecord, type Harness, type SubmissionRecord, type TaskId, type ToolRegistration, type Tx,
 } from "@earendil-works/pi-durable";
 import { watchEvents, type AgentEvent } from "./durable-events.ts";
 import { CODEMODE_TOOL_NAME, type CodemodeNestedCall } from "@earendil-works/pi-durable/codemode";
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
-import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { calculateContextTokens, estimateMessageTokens, estimateTextTokens } from "@earendil-works/pi-ai/utils/estimate";
+import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai/utils/transcript";
+import { getSystemMessageText } from "@earendil-works/pi-ai/utils/text";
 import { SettingsManager, type Skill } from "@earendil-works/pi-coding-agent";
 import { botTurnOrigin, type BotTurnOrigin } from "./turn-origins.ts";
 import { resolveCommandReference } from "./command-references.ts";
@@ -33,9 +35,10 @@ import {
   fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
 import { RuntimeTimings } from "./transcript-metrics.ts";
+import { ModelRequestTimer } from "./model-timing.ts";
 import { disabledSkillNotice } from "./skill-policy-extension.mjs";
 import type {
-  AgentRuntime, CompactionReason, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQuestion,
+  AgentRuntime, CompactionReason, ContextUsagePart, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQuestion,
   RuntimePromptOptions, RuntimePromptResult, RuntimeQuestionResponse, RuntimeQueue, RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions,
   TranscriptEntry,
 } from "./types.ts";
@@ -58,6 +61,63 @@ type CompactionOutcome = { outcome: "done" | "failed" | "cancelled"; message?: s
 type CompactionStart = Extract<RuntimeEvent, { type: "compaction_start" }>;
 /** One running compaction, of the kind Durable gave it (`createCompaction`). */
 type Compaction = { readonly reason: CompactionReason; readonly blocking: boolean; readonly background: boolean };
+/** One message of a context, and whether a compaction summary wrote it. */
+type ContextMessage = { message: Message; summary: boolean };
+
+/**
+ * What a context carries: its prompt and tool declarations as the system messages it leads with record them (so a
+ * conversation a restarted gateway or a fork reopened still splits), the conversation, and the summaries compaction
+ * left. The messages are ordered as Durable orders them, so a result it drops or synthesizes counts the way the model
+ * reads it. Estimating re-serializes every tool call, so each message is measured once.
+ */
+export function contextParts(collected: readonly ContextMessage[], systemUpdates: boolean, memoryView = false, tokens = 0): Measurement["parts"] {
+  const parts = { system: 0, tools: 0, toolsCount: 0, conversation: 0, summary: 0, memory: 0, messages: 0 };
+  const systems: SystemMessage[] = [];
+  const summaries = new Set(collected.filter((each) => each.summary).map((each) => each.message));
+  // A memory chat's request carries its memory's view of the chat instead of these messages, so only its prompt counts:
+  // what the prompt and tools leave of the context is that view, and the run's own input.
+  const shown = memoryView
+    ? collected.filter((each) => each.message.role === "system").map((each) => each.message)
+    : orderedMessages(collected.map((each) => each.message));
+  for (const message of shown) {
+    if (message.role === "system") { systems.push(message); continue; }
+    const tokens = sizeOf(message);
+    if (summaries.has(message)) parts.summary += tokens;
+    else { parts.conversation += tokens; parts.messages += 1; }
+  }
+  const tools = getCurrentTools(systems);
+  // A model that takes system messages mid-conversation reads every one of them; the others read the replayed prompt
+  // alone, which is what pi-ai sends them.
+  parts.system = systemUpdates
+    ? systems.reduce((sum, message) => sum + estimateTextTokens(getSystemMessageText(message)), 0)
+    : estimateTextTokens(getCurrentSystemPrompt(systems));
+  parts.tools = estimateTextTokens(JSON.stringify(tools));
+  parts.toolsCount = tools.length;
+  if (memoryView) parts.memory = Math.max(0, tokens - parts.system - parts.tools);
+  return parts;
+}
+
+/** The size of a context, and what it carries: its prompt and tool declarations, its conversation and its summaries. */
+type Measurement = { tokens: number; parts: { system: number; tools: number; toolsCount: number; conversation: number; summary: number; memory: number; messages: number } };
+/** Durable's own ordering of a context's messages: each assistant's tool results follow it in call order, an unmatched
+ * result goes and a missing one is synthesized, in the settled history and in the open round alike (`harness/context.js`,
+ * not in the package's exports). */
+const { orderToolResults } = await import(new URL("./harness/context.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
+  orderToolResults(messages: readonly Message[]): Message[];
+};
+function orderedMessages(messages: readonly Message[]): Message[] {
+  const last = messages.findLastIndex((message) => message.role === "assistant");
+  return last <= 0 ? orderToolResults(messages) : [...orderToolResults(messages.slice(0, last)), ...orderToolResults(messages.slice(last))];
+}
+
+/** Each message's estimated size, measured once: estimating re-serializes every tool call, and the meter walks the whole
+ * context again whenever the history changes. */
+const sizes = new WeakMap<Message, number>();
+function sizeOf(message: Message): number {
+  let tokens = sizes.get(message);
+  if (tokens === undefined) sizes.set(message, tokens = estimateMessageTokens(message));
+  return tokens;
+}
 /** How input reaches the conversation: `reject` starts a run, the others queue into one. */
 type Delivery = "reject" | "steer" | "followUp";
 type Sending = { readonly attachments?: readonly PromptAttachment[]; readonly images?: readonly ImageContent[]; readonly source: "rpc" | "extension"; readonly expand: boolean; readonly requestId?: string };
@@ -228,7 +288,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #readThrough: EntryId | undefined;
   /** What the transcript shows and the context size, rebuilt when the history changes. */
   #shown: unknown[] | undefined;
-  #contextSize: number | undefined;
+  /** The cached size of the whole context, and where it goes. */
+  #measurement: Measurement | undefined;
   /** Durable compactions running now, by task. */
   #compactions = new Map<TaskId, Compaction>();
   /** Manual compactions `compact()` started that the stream has not listed yet. */
@@ -241,6 +302,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   /** Callers waiting for this view to see work end, each with the state it waits for. */
   #waiters = new Set<{ done: () => boolean; resolve: () => void }>();
   #timings = new RuntimeTimings();
+  #modelTiming = new ModelRequestTimer();
   #agent: AgentState = {};
   #queue: RuntimeQueue = { steering: [], followUp: [] };
   #toolOutput = new Map<string, string>();
@@ -277,6 +339,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #botOffer: readonly OfferedTool[] = [];
   /** A bot's chat keeps its bot's PI levels: no Ultra (`applyTools` learns it). */
   #botChat = false;
+  /** The conversation's request is OptChat's memory view of the chat, not its history (`applyTools` asks). */
+  #optchat = false;
   /** The message that started the latest run this view started; who started the turn (`runInput`). */
   #runInput: string | undefined;
   /** Concurrent retries of one tracked input share its extension handlers as well as its admission. */
@@ -354,8 +418,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     // After the session's extensions, so OptChat's zoom and date win over same-named extension tools where OptChat is
     // on, and only there. Each is selected per conversation; every other conversation's selection stays as it was.
     const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
+    this.#optchat = optchat !== undefined;
     const botTools = bot ? await this.#host.botToolsFor(this.#conversation.id) : undefined;
-    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : []), ...(tag ? [tag] : [])];
+    const gateway = this.#host.gatewayExtension();
+    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(gateway ? [gateway] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : []), ...(tag ? [tag] : [])];
     let withCodemode = codemode.enabled;
     const remove = [...inactive.values()];
     this.#botOffer = [];
@@ -364,6 +430,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       const offered = this.#composed([
         [this.#host.codingTools, () => ({ kind: "coding" })],
         [this.#host.huiTools, () => ({ kind: "hui" })],
+        [gateway?.tools ?? [], () => ({ kind: "hui" })],
         [withCodemode ? modelCallable(this.#host.codemode) : [], () => ({ kind: "coding" })],
         [this.#extensions?.extension.tools ?? [], (tool) => ({ kind: "extension", ...this.#extensions!.describe(tool.name) })],
         [optchat?.tools ?? [], () => ({ kind: "hui" })],
@@ -515,6 +582,9 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** Attach to the conversation's committed state, read its history, then follow every commit. */
   async attach(): Promise<void> {
+    // An update can leave the conversation's OptChat document a fork semantics behind: adopt it before anything reads it,
+    // since a fork of a legacy incarnation would drop the chat's OptChat (docs/optchat.md).
+    await this.#host.optchat.adopt(this.#conversation.id);
     const stream = await watchEvents(this.#harness, this.#conversation.id, context);
     this.#history = [];
     this.#ids.clear();
@@ -550,7 +620,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   }
 
   #syncSnapshot(snapshot: SnapshotEvent): void {
-    this.#agent = snapshot.agent;
+    this.#useAgent(snapshot.agent);
     this.#streaming = snapshot.run !== undefined;
     for (const slot of snapshot.tools) {
       this.#toolOutput.set(slot.callId, slot.output ?? "");
@@ -607,7 +677,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     // An extension's custom message is context only; PI sessions do not show it either. A call's record shows as one
     // card, without an entry id: no turn ran for it, so nothing rewinds to it.
     const shown = SystemEntry.is(entry) || ExtensionMessageEntry.is(entry) || isCustomInput(entry.model?.[0]) ? []
-      : CompactionEntry.is(entry) ? [{ role: "compaction", summary: compactionSummary(entry), tokensBefore: this.#contextTokens(index) }]
+      : CompactionEntry.is(entry) ? [{ role: "compaction", summary: compactionSummary(entry), tokensBefore: this.#measure(index).tokens }]
       : CallEntry.is(entry) ? [{ role: "call", record: entry.data }]
       : (entry.model ?? []).map((message) => ({ ...message, entryId: String(entry.id) }));
     this.#history.splice(index, 0, { entry, shown });
@@ -616,7 +686,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   #changed(): void {
     this.#shown = undefined;
-    this.#contextSize = undefined;
+    this.#measurement = undefined;
     this.#rows = undefined;
   }
 
@@ -640,15 +710,22 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
    * the newest request answered after the head marker, plus estimates of every message after it; without one,
    * estimates of the whole context, system prompt entries included. The head marker is the newest compaction or
    * reset; its context starts at the entry it heads, and later entries' context edits omit or replace earlier ones
-   * (Durable re-baselines its system entries that way).
+   * (Durable re-baselines its system entries that way). Alongside the total, what the context carries: its prompt and
+   * tool declarations as the stored system entries record them (so a conversation a restarted gateway or a fork
+   * reopened still splits), the conversation and the summaries compaction left.
    */
-  #contextTokens(end: number): number {
+  #measure(end: number): Measurement {
     let head: EntryRecord | undefined;
     for (let index = end - 1; index >= 0 && !head; index--) {
       if (this.#history[index]!.entry.head !== undefined) head = this.#history[index]!.entry;
     }
     const edits = new Map<EntryId, readonly Message[]>();
-    let tokens = 0;
+    /** The context's messages, newest first. */
+    const collected: ContextMessage[] = [];
+    /** The usage of the newest request answered after the head marker, once the walk meets it. */
+    let measured: number | undefined;
+    /** Estimates of the messages newer than that request: what its usage does not cover yet. */
+    let trailing = 0;
     for (let index = end - 1; index >= 0; index--) {
       const entry = this.#history[index]!.entry;
       if (head?.head !== undefined && entry.id < head.head) break;
@@ -662,11 +739,27 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         const message = messages[position]!;
         if (!inContext(message)) continue;
         const usage = message.role === "assistant" ? message.usage : undefined;
-        if (usage && (!head || entry.id > head.id) && calculateContextTokens(usage) > 0) return tokens + calculateContextTokens(usage);
-        tokens += estimateMessageTokens(message);
+        if (measured === undefined && usage && (!head || entry.id > head.id) && calculateContextTokens(usage) > 0) measured = calculateContextTokens(usage);
+        if (measured === undefined) trailing += sizeOf(message);
+        collected.push({ message, summary: message.role !== "system" && CompactionEntry.is(entry) });
       }
     }
-    return tokens;
+    const tokens = (measured ?? 0) + trailing;
+    return { tokens, parts: contextParts(collected.reverse(), this.#systemUpdates(), this.#optchat, tokens) };
+  }
+
+  /** The agent as Durable reports it. A model of another kind reads the context differently, so the meter's split is
+   * measured again. */
+  #useAgent(agent: AgentState): void {
+    if (agent.model?.provider !== this.#agent.model?.provider || agent.model?.modelId !== this.#agent.model?.modelId) this.#measurement = undefined;
+    this.#agent = agent;
+  }
+
+  /** Whether the model reads system messages sent mid-conversation, or only the prompt they replay to. */
+  #systemUpdates(): boolean {
+    const ref = this.#agent.model;
+    const compat = (ref ? this.#host.models.getModel(ref.provider, ref.modelId)?.compat : undefined) as { supportsMidConvoSystemMessages?: boolean } | undefined;
+    return compat?.supportsMidConvoSystemMessages === true;
   }
 
   async #refreshQueue(): Promise<void> {
@@ -700,9 +793,13 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         return;
       case "message_start":
         this.#streamedText.clear();
-        if (event.message.role === "assistant") event.message.content.forEach((block, index) => this.#streamBlock(index, block));
+        if (event.message.role === "assistant") {
+          if (this.#streaming) this.#modelTiming.start(event.message, performance.now());
+          event.message.content.forEach((block, index) => this.#streamBlock(index, block));
+        }
         return;
       case "message_update":
+        this.#modelTiming.update(event.changes, performance.now());
         for (const change of event.changes) {
           if (change.type === "text_delta" && change.delta) {
             this.#streamedText.set(change.contentIndex, (this.#streamedText.get(change.contentIndex) ?? "") + change.delta);
@@ -713,7 +810,12 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         return;
       case "message_end":
       case "entry_appended":
-        if (event.type === "message_end") this.#streamedText.clear();
+        if (event.type === "message_end") {
+          this.#streamedText.clear();
+          const completed = [...(event.entry.model ?? [])].reverse().find((message) => message.role === "assistant");
+          const metric = this.#modelTiming.finish(completed, performance.now());
+          if (metric) this.#emit({ type: "model_metric", metric });
+        }
         this.#add(event.entry);
         // A call's record, written while no run streams: the chat shows it now rather than at the next settle.
         if (event.type === "entry_appended" && !this.#streaming) {
@@ -772,7 +874,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         this.#emit({ type: "queue_update", queue: this.pendingQueue() });
         return;
       case "agent_changed":
-        this.#agent = event.agent;
+        this.#useAgent(event.agent);
         return;
       case "auto_retry_start":
         this.#emit({ type: "notice", level: "warning", message: `Retrying after a provider error (attempt ${event.attempt}): ${event.errorMessage}`, recovery: true });
@@ -1242,20 +1344,36 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     };
   }
 
-  /** Context use as Durable measures it against its compaction thresholds, the latest run's spend, and any session
-   * cost an extension reported from a source Durable cannot price. */
+  /** Context use as Durable measures it against its compaction thresholds, the latest run's spend, any session
+   * cost an extension reported from a source Durable cannot price, and the estimated split of what it carries. */
   currentUsage(): RuntimeUsage | undefined {
     const window = this.currentModel()?.contextWindow;
     if (!window) return undefined;
-    const tokens = this.#history.length ? this.#contextSize ??= this.#contextTokens(this.#history.length) : null;
+    const measurement = this.#history.length ? this.#measurement ??= this.#measure(this.#history.length) : undefined;
+    const tokens = measurement ? measurement.tokens : null;
     this.rows();
     return {
       contextTokens: tokens,
       contextWindow: window,
       percent: tokens === null ? null : Math.min(100, (tokens / window) * 100),
+      ...(measurement ? { breakdown: this.#breakdown(measurement.parts) } : {}),
       ...latestRunUsage(this.#visible()),
       ...(this.#reportedCost ? { sessionCost: this.#reportedCost } : {}),
     };
+  }
+
+  /** Where this conversation's context goes: the prompt and tool declarations it leads with, the conversation itself and
+   * the summaries compaction left. A memory chat counts its memory's view of the chat where the others count the
+   * conversation: its request carries that view, not this history. */
+  #breakdown(parts: Measurement["parts"]): ContextUsagePart[] {
+    return [
+      { id: "system", tokens: parts.system },
+      ...(parts.toolsCount ? [{ id: "tools" as const, tokens: parts.tools, count: parts.toolsCount }] : []),
+      ...(this.#optchat ? [{ id: "memory" as const, tokens: parts.memory }] : [
+        { id: "conversation" as const, tokens: parts.conversation, count: parts.messages },
+        { id: "summary" as const, tokens: parts.summary },
+      ]),
+    ];
   }
 
   async listModels(): Promise<readonly RuntimeModel[]> {
@@ -1283,7 +1401,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     const thinking = fitThinking(model, this.#chosenThinking ?? this.#agent.thinkingLevel ?? "off");
     const previous = this.currentModel();
     await this.#conversation.configure({ model: { provider, modelId: id }, thinkingLevel: thinking }, context);
-    this.#agent = { ...this.#agent, model: { provider, modelId: id }, thinkingLevel: thinking };
+    this.#useAgent({ ...this.#agent, model: { provider, modelId: id }, thinkingLevel: thinking });
     this.#extensions?.modelSelected(previous);
   }
 
@@ -1304,7 +1422,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     const model = ref ? this.#host.models.getModel(ref.provider, ref.modelId) : undefined;
     const sent = model ? fitThinking(model, level) : piThinking(level) as ModelThinkingLevel;
     await this.#conversation.configure({ thinkingLevel: sent }, context);
-    this.#agent = { ...this.#agent, thinkingLevel: sent };
+    this.#useAgent({ ...this.#agent, thinkingLevel: sent });
     this.#chosenThinking = level;
     if (this.#huiSessionId) this.#host.setUltra(this.#huiSessionId, level === "ultra");
     this.#extensions?.thinkingSelected(previous, sent);
@@ -1324,6 +1442,16 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   async setFast(on: boolean): Promise<void> {
     if (this.#huiSessionId === undefined) throw new Error("Fast mode needs a HUI session.");
     this.#host.setFast(this.#huiSessionId, on);
+  }
+
+  currentAutonomous(): boolean {
+    return this.#huiSessionId !== undefined && this.#host.isAutonomous(this.#huiSessionId);
+  }
+
+  /** Kept per HUI session by the host, whose prompt carries the mode for that session. */
+  async setAutonomous(on: boolean): Promise<void> {
+    if (this.#huiSessionId === undefined) throw new Error("Autonomous mode needs a HUI session.");
+    this.#host.setAutonomous(this.#huiSessionId, on);
   }
 
   pendingQueue(): RuntimeQueue {
@@ -1398,7 +1526,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   /** Durable history is append-only, so a rewind forks the conversation at that point and continues in the fork; the
    * abandoned branch stays stored. The fork holds the history up to that point and nothing placed after it, a later
    * summary included, so the model reads the original turns again and Durable compacts the fork when it needs to. A
-   * compaction still running beside the conversation finishes on the abandoned branch. */
+   * compaction still running beside the conversation finishes on the abandoned branch. A bot's chat keeps its bot and
+   * OptChat in the fork: its memory is rebuilt from the kept branch and the abandoned branch's memory is forgotten, and
+   * the abandoned branch stops being a bot's chat. A rewind to before the first message of an OptChat chat is a clear
+   * instead, so the chat stays the bot's. */
   async rewind(target: RuntimeRewindTarget, options?: RuntimeRewindOptions): Promise<void> {
     if (this.#streaming) throw new Error("Wait for the current run to finish before rewinding.");
     await this.#read();
@@ -1419,6 +1550,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     }
     const at = options?.excludeUserMessage === true && isUser ? this.#history[before - 1]?.entry.id : row.entry.id;
     const optchat = await this.#host.optchat.enabled(this.#conversation.id);
+    if (!at && optchat) {
+      await this.clear();
+      return;
+    }
     const next = at
       ? await this.#conversation.fork(at, { ownership: { kind: "ownerless" } }, context)
       : await this.#harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
@@ -1426,6 +1561,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
           ...(this.#agent.thinkingLevel ? { thinkingLevel: this.#agent.thinkingLevel } : {}),
           cwd: this.#cwd,
         } }, context);
+    const abandoned = this.#conversation.id;
     await this.#stop?.();
     this.#host.bindCallerLike(this.#conversation.id, next.id);
     this.#conversation = next;
@@ -1433,15 +1569,22 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     this.#nestedCalls.clear();
     this.#changedCalls.clear();
     await this.attach();
-    // A fork keeps its parent's agent; a conversation started over needs the session's extensions and tools again, and
-    // a fork of an OptChat conversation, which starts without OptChat, gives up its tools.
+    // The branch a rewind leaves is forgotten by OptChat, and it stops being a bot's chat; the fork keeps the bot's
+    // document and OptChat on. A failure to give up the old one leaves a stale record, never a broken chat, so the rewind
+    // goes on.
+    if (optchat) {
+      await this.#host.bots?.release?.(abandoned).catch(() => undefined);
+      await this.#host.optchat.abandon(abandoned);
+    }
+    // A fork keeps its parent's agent, and a conversation started over needs the session's extensions and tools again.
     if (!at || optchat) await this.applyTools();
     this.#extensions?.rewound();
   }
 
   /** A fork into another session: the history up to one entry (the latest point a fork can carry on from when absent)
    * copied into a new conversation of the same harness. This conversation is not touched and may keep running. The
-   * copy keeps the agent (model, thinking, tools) as of that entry and, like a rewind's fork, starts without OptChat.
+   * copy keeps the agent (model, thinking, tools) as of that entry and its documents, OptChat included; a bot's chat is
+   * never forked (the route refuses it), so only a conversation without OptChat is copied this way.
    * `cwd` moves the copy's agent to another directory, such as a worktree made for it. */
   async fork(entryId?: string, options?: { cwd?: string }): Promise<string> {
     await this.#read();
@@ -1528,11 +1671,17 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
     const known = model ? host.models.getModel(model.provider, model.modelId) : undefined;
     const requestedThinking = options.thinking ?? defaultThinking(host, options.cwd);
     const thinking = requestedThinking && known ? fitThinking(known, requestedThinking) : undefined;
-    conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
-      cwd: options.cwd,
-      ...(model ? { model } : {}),
-      ...(thinking ? { thinkingLevel: thinking } : {}),
-    } }, context);
+    const bots = host.bots;
+    conversation = await harness.createConversation({
+      ownership: { kind: "ownerless" },
+      agent: {
+        cwd: options.cwd,
+        ...(model ? { model } : {}),
+        ...(thinking ? { thinkingLevel: thinking } : {}),
+      },
+      // A bot's subagent loads the bot's own skills from its first request, and nothing of the bot's chat besides them.
+      ...(options.botSkills && bots ? { init: (tx: Tx, conversationId: ConversationId) => bots.writeSkills(tx, conversationId, options.botSkills!) } : {}),
+    }, context);
   }
   host.bindCaller(conversation.id, options.huiSessionId);
   if (options.huiSessionId) host.setUltra(options.huiSessionId, options.thinking === "ultra");
@@ -1554,5 +1703,6 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
 
 export const durableRuntime = {
   id: "durable",
+  resumesInterruptedRuns: true,
   start: (options: StartOptions) => startDurable(options),
 } satisfies AgentRuntime;

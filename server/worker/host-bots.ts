@@ -1,5 +1,5 @@
 /**
- * Bots on this worker (HUI-18): what a gateway asks the host for a bot whose
+ * Bots on this worker: what a gateway asks the host for a bot whose
  * chat runs here. Its conversation and OptChat memory live in the host's own
  * Durable store, so these reuse the gateway's adapters (`bots/conversations.ts`
  * and `bots/memory.ts`) against the host's DurableHost: a bot's conversation is

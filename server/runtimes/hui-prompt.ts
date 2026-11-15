@@ -36,7 +36,7 @@ export function modelRoutesFrom(raw: string | undefined): readonly RouteLine[] {
 export function routeGuidelines(routes: readonly RouteLine[]): string {
   if (!routes.length) return "";
   return [
-    "Model routes for `sessions_spawn`: pass `route` to choose one, or leave it out to inherit your own model.",
+    "Model routes for `sessions_spawn`: pass `route` to choose one, or leave it out to inherit your own model. A route without a model inherits your model and thinking.",
     ...routes.map((route) => `- ${route.name}: ${route.description || "no description"}`),
   ].join("\n");
 }

@@ -5,13 +5,13 @@
  */
 import type { Plugin } from "vite";
 import { attachLiveStreams, middleware } from "./hui.ts";
-import { startBackend, stopBackend } from "./backend.ts";
+import { startBackend, stopBackend, type BackendOptions } from "./backend.ts";
 import { attachTerminalTransport } from "./terminals/transport.ts";
 import { recordDiagnosticEvent } from "./observability.ts";
 
 const GESPENST_NODE_STUB = "\0hui:gespenst-node-builtin";
 
-export function huiConfig(): Plugin {
+export function huiConfig(options: BackendOptions = {}): Plugin {
   return {
     name: "hui-config",
     // Gespenst (the terminal renderer) loads its worker and WebAssembly relative to its own module; pre-bundling
@@ -33,17 +33,17 @@ export function huiConfig(): Plugin {
         // Vite restarts by creating this server, closing the previous one (its
         // `closeBundle` stops that backend and releases the Durable store) and
         // only then listening. Starting here keeps the two backends apart.
-        server.httpServer.once("listening", () => { void startBackend(); });
+        server.httpServer.once("listening", () => { void startBackend(options); });
         const detach = attachTerminalTransport(server.httpServer);
         const detachStreams = attachLiveStreams(server.httpServer);
         server.httpServer.once("close", () => { detach(); detachStreams(); });
       } else {
-        void startBackend();
+        void startBackend(options);
       }
       server.middlewares.use(middleware);
     },
     configurePreviewServer(server) {
-      void startBackend();
+      void startBackend(options);
       const detach = attachTerminalTransport(server.httpServer);
       const detachStreams = attachLiveStreams(server.httpServer);
       server.httpServer.once("close", () => { detach(); detachStreams(); });

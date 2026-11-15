@@ -25,6 +25,8 @@ export type SummaryMessage =
   | { readonly role: "assistant"; readonly content: string };
 export type SummaryRequest = { readonly system: string; readonly messages: readonly SummaryMessage[] };
 export type SummaryUsage = { readonly input: number; readonly output: number; readonly cacheRead: number; readonly cacheWrite: number; readonly cost?: number };
+/** What a memory's compactor spent in total: the calls it made, their tokens, and their cost in dollars. */
+export type OptChatUsage = { calls: number; input: number; output: number; cacheRead: number; cacheWrite: number; cost: number };
 export type SummaryReply = string | { readonly text: string; readonly usage?: SummaryUsage };
 /** The model call, injected: the engine knows no model or provider. */
 export type Summarize = (request: SummaryRequest, signal: AbortSignal) => Promise<SummaryReply>;

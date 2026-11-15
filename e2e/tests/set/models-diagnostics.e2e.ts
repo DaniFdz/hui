@@ -19,9 +19,12 @@ test("Models reports PI's configuration diagnostics and recovers after a failed 
   await page.getByRole("button", "Retry").click();
   await expect(page.getByText(pi.settings.path, { exact: true })).toBeVisible();
 
-  const crafted = await hui.answerAll("GET", /\/__hui\/pi$/u, JSON.stringify({ ...pi, diagnostics: ["The OpenAI key expires tomorrow."] }));
+  // A held request answers PI's read with the crafted diagnostics: the phone target's WebView cannot take the engine's
+  // answer-every-request stub, so the one read after the reload is held and answered.
+  const crafted = await hui.intercept("GET", /\/__hui\/pi$/u);
   await hui.reload();
+  await crafted.arrived();
+  await crafted.answer(JSON.stringify({ ...pi, diagnostics: ["The OpenAI key expires tomorrow."] }));
   await expect(page.getByText("Configuration diagnostic", { exact: true })).toBeVisible();
   await expect(page.getByText("The OpenAI key expires tomorrow.", { exact: true })).toBeVisible();
-  await crafted.stop();
 });

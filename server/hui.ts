@@ -16,13 +16,14 @@ import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE } from "./routes/bots.ts
 import { BOT_TRIGGERS_ROUTE } from "./routes/bot-triggers.ts";
 import { isHookPath } from "./bots/triggers-listener.ts";
 import { CLIENT_HEADER, responseFailures, routeRequest, sendFile, sendJson, sendStream, type RouteRequest, type RouteResult } from "./http/route.ts";
-import { HEARTBEAT_MS, watchSessionEvents, writeEvent } from "./http/events.ts";
+import { HEARTBEAT_MS, sendEventStream, watchSessionEvents, writeEvent } from "./http/events.ts";
 import { CALLS_ROUTE } from "./routes/calls.ts";
 import type { BotsUpdate } from "./bots-format.ts";
 
 import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode/proxy.ts";
 import { VSCODE_ENTER_PATH } from "./vscode/contract.ts";
 import { attachBrowserTransport } from "./browser/transport.ts";
+import { EXTENSION_ASSET_ROUTE, serveExtensionAsset } from "./extensions/assets.ts";
 import type { EventEmitter } from "node:events";
 import { liveSessions } from "./sessions/live-sessions.ts";
 import { diagnosticPath, recordDiagnosticEvent } from "./observability.ts";
@@ -53,12 +54,18 @@ import {
   datadogRoutes,
   diagnosticsRoutes,
   diffRoutes,
+  extensionRoutes,
   fileRoutes,
   githubRoutes,
+  heartbeatRoutes,
   hostMetricsRoutes,
   jiraRoutes,
   localPathRoutes,
   managedBrowser,
+  localProviderRoutes,
+  modelMetricRoutes,
+  extensions,
+  notificationRoutes,
   piRoutes,
   powerRoutes,
   appRoutes,
@@ -67,6 +74,7 @@ import {
   sessionList,
   sessionRoutes,
   settingsRoutes,
+  staffRoutes,
   taskSuggestionRoutes,
   terminalRoutes,
   themeRoutes,
@@ -81,6 +89,7 @@ import {
 
 const PREFIX = "/__hui/";
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
+const UPDATE_ROUTE = `${PREFIX}update`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
 const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 
@@ -106,6 +115,7 @@ function sendHtml(response: ServerResponse, status: number, html: string): void 
 /** A route module's answer, or its 404 when no route of the module matched. */
 function sendRouteResult(response: ServerResponse, path: string, result: RouteResult | undefined): void {
   if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else if ("sse" in result) sendEventStream(response, result.sse.events, result.sse);
   else if ("stream" in result) sendStream(response, result.status, result.stream);
   else if ("file" in result) sendFile(response, result.status, result.file);
   else if ("html" in result) sendHtml(response, result.status, result.html);
@@ -118,6 +128,24 @@ function sendRouteResult(response: ServerResponse, path: string, result: RouteRe
 function answered(response: ServerResponse, path: string, result: RouteResult | undefined): boolean {
   if (result) sendRouteResult(response, path, result);
   return Boolean(result);
+}
+
+/**
+ * The one route another origin may read: `GET /__hui/update` answers with a version, a job id and the gateway's own
+ * name, never user data, so a client that keeps several gateways can probe one before adding it (SPEC.md "A device
+ * keeps a list of gateways"). A browser only sends `x-hui` after a preflight, so this route answers that too; every
+ * other route keeps refusing both. Returns true when this answered the request.
+ */
+function allowUpdateFromAnotherOrigin(request: Connect.IncomingMessage, response: ServerResponse): boolean {
+  response.setHeader("access-control-allow-origin", "*");
+  response.setHeader("vary", "origin");
+  if (request.method !== "OPTIONS") return false;
+  response.statusCode = 204;
+  response.setHeader("access-control-allow-methods", "GET");
+  response.setHeader("access-control-allow-headers", CLIENT_HEADER);
+  response.setHeader("access-control-max-age", "600");
+  response.end();
+  return true;
 }
 
 /** The SSE form of a session's events, for scripts and other HTTP clients.
@@ -245,6 +273,13 @@ async function handleRequest(
     serveWidgetSandbox(request, response);
     return;
   }
+  // An extension panel's files cannot send x-hui either: the frame is sandboxed and its only channel is the parent
+  // bridge. Served before the gate, like the widget sandbox, and only while the extension is loaded (docs/api.md).
+  const panelAsset = EXTENSION_ASSET_ROUTE.exec(path);
+  if (panelAsset) {
+    await serveExtensionAsset(request, response, panelAsset[1]!, panelAsset[2]!, await extensions.panelRoot(panelAsset[1]!));
+    return;
+  }
   const presentedMedia = path.match(PRESENTED_MEDIA_ROUTE);
   // Native img/audio/video elements cannot set x-hui. Their opaque random id is
   // the read capability, and CORP prevents embedding it from another origin.
@@ -314,6 +349,10 @@ async function handleRequest(
     return;
   }
 
+  // Before the gate and the blanket OPTIONS refusal below: this is the one header-carrying request another origin may
+  // make, and only to the route that answers with the gateway's identity.
+  if (path === UPDATE_ROUTE && allowUpdateFromAnotherOrigin(request, response)) return;
+
   if (request.method === "OPTIONS") {
     sendJson(response, 403, { error: "cross-origin requests are not accepted" });
     return;
@@ -369,6 +408,9 @@ async function handleRequest(
 
   if (answered(response, path, await piRoutes.handle(routed))) return;
 
+  // Gateway extensions (`routes/extensions.ts`): a path-confined namespace, so it cannot shadow any HUI route above.
+  if (answered(response, path, await extensionRoutes.handle(routed))) return;
+
   if (path === WORKERS_ROUTE || path.startsWith(`${WORKERS_ROUTE}/`)) {
     const result = await workerRoutes.handle(routed);
     if (result) sendRouteResult(response, path, result);
@@ -387,6 +429,16 @@ async function handleRequest(
     return;
   }
 
+  if (path === "/__hui/heartbeat") {
+    sendRouteResult(response, path, await heartbeatRoutes(routed));
+    return;
+  }
+
+  if (path === "/__hui/staff/chiefs") {
+    sendRouteResult(response, path, await staffRoutes.handle(routed));
+    return;
+  }
+
   if (path === BOTS_ROUTE || path.startsWith(`${BOTS_ROUTE}/`)) {
     await (BOT_TRIGGERS_ROUTE.test(path) ? serveTriggerRoute(response, routed) : serveBotRoute(response, routed));
     return;
@@ -394,7 +446,12 @@ async function handleRequest(
 
   if (answered(response, path, await providerRoutes.handle(routed))) return;
 
+  if (answered(response, path, await localProviderRoutes.handle(routed))) return;
+
+  if (answered(response, path, await modelMetricRoutes.handle(routed))) return;
+
   if (answered(response, path, await powerRoutes.handle(routed))) return;
+  if (answered(response, path, await notificationRoutes.handle(routed))) return;
 
   if (answered(response, path, await appRoutes.handle(routed))) return;
   if (answered(response, path, await hostMetricsRoutes.handle(routed))) return;

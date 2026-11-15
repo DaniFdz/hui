@@ -4,6 +4,7 @@ import { QuestionnaireQuestion, SessionConnectResponse, SessionStatus, SessionVi
 import { CallRecord } from "./calls.ts";
 import { TaskSuggestion } from "./task-suggestions.ts";
 import { Watcher } from "./watchers.ts";
+import { ModelMetric } from "./model-metrics.ts";
 
 export const TranscriptAttachment = Type.Object({
   name: Type.String(), kind: Type.Union([Type.Literal("image"), Type.Literal("file")]), mimeType: Type.Optional(Type.String()), url: Type.Optional(Type.String()),
@@ -45,10 +46,20 @@ export const SessionCostReport = Type.Object({
 }, { $id: "SessionCostReport" });
 export type SessionCostReport = Static<typeof SessionCostReport>;
 
+/** One kind of content a context holds, as the runtime estimated it: the system prompt, the tool definitions, the
+ * conversation, the summaries compaction left, or a chat whose memory replaces its history with one view. `count` is how
+ * many tools or messages it covers. */
+export const ContextUsagePart = Type.Object({
+  id: Type.Union([Type.Literal("system"), Type.Literal("tools"), Type.Literal("conversation"), Type.Literal("summary"), Type.Literal("memory")]),
+  tokens: Type.Number(), count: Type.Optional(Type.Number()),
+}, { $id: "ContextUsagePart" });
+export type ContextUsagePart = Static<typeof ContextUsagePart>;
+
 export const RuntimeUsage = Type.Object({
   contextTokens: Type.Union([Type.Number(), Type.Null()]), contextWindow: Type.Number(), percent: Type.Union([Type.Number(), Type.Null()]),
   inputTokens: Type.Number(), outputTokens: Type.Number(), costUsd: Type.Union([Type.Number(), Type.Null()]),
   sessionCost: Type.Optional(SessionCostReport),
+  breakdown: Type.Optional(Type.Immutable(Type.Array(ContextUsagePart))),
 }, { $id: "RuntimeUsage" });
 export type RuntimeUsage = Static<typeof RuntimeUsage>;
 
@@ -103,6 +114,7 @@ export const SessionSnapshot = Type.Object({
   usage: Type.Optional(RuntimeUsage),
   thinking: Type.Optional(Type.String()),
   fast: Type.Optional(Type.Boolean()),
+  autonomous: Type.Optional(Type.Boolean()),
   queue: RuntimeQueue,
   questions: Type.Immutable(Type.Array(SessionQuestion)),
   subagents: Type.Immutable(Type.Array(SubagentTaskView)),
@@ -132,6 +144,7 @@ export const SessionEvent = Type.Union([
     type: Type.Literal("compaction_end"), reason: CompactionReason,
     outcome: Type.Union([Type.Literal("done"), Type.Literal("failed"), Type.Literal("cancelled")]), willRetry: Type.Boolean(), message: Type.Optional(Type.String()),
   }),
+  Type.Object({ type: Type.Literal("model_metric"), metric: ModelMetric }),
   Type.Object({ type: Type.Literal("settled"), historyRefreshed: Type.Optional(Type.Boolean()) }),
   Type.Object({ type: Type.Literal("error"), message: Type.String() }),
 ], { $id: "SessionEvent" });
@@ -150,6 +163,7 @@ export const SessionStreamFrame = Type.Union([
   Type.Object({ event: Type.Literal("model"), data: RuntimeModel }),
   Type.Object({ event: Type.Literal("thinking_level"), data: Type.Object({ level: Type.String() }) }),
   Type.Object({ event: Type.Literal("fast"), data: Type.Object({ fast: Type.Boolean() }) }),
+  Type.Object({ event: Type.Literal("autonomous"), data: Type.Object({ autonomous: Type.Boolean() }) }),
   Type.Object({ event: Type.Literal("heartbeat"), data: Type.Object({}) }),
   Type.Object({ event: Type.Literal("closed"), data: Type.Object({}) }),
 ], { $id: "SessionStreamFrame" });

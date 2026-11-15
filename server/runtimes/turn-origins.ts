@@ -5,11 +5,12 @@
  * tools judge.
  */
 import { defineEntry } from "@earendil-works/pi-durable";
+import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { AGENT_TAG, BOT_IMPORTED_KICKOFF_LINE, botKickoffName } from "../bots-format.ts";
 import type { CallRecord } from "../calls-format.ts";
 
 /**
- * The record of one GPT-Live call with the bot (HUI-18): its summary and its whole transcript (`CallRecord`), written
+ * The record of one GPT-Live call with the bot: its summary and its whole transcript (`CallRecord`), written
  * once at hang-up as a passive entry, so no model turn runs for it. It carries no model messages: the chat shows it
  * as one card, OptChat logs it (its transcript and summary, marked `[call]`), and Durable places it at a running
  * turn's next boundary.
@@ -17,14 +18,17 @@ import type { CallRecord } from "../calls-format.ts";
 export const CallEntry = defineEntry<CallRecord>("hui.call");
 
 /** Who started a bot's turn, by the message that started it: a routine (`[routine: name] …`), a trigger
- * (`[trigger: name · …] …`), another bot (`[from @handle] …`), a session's agent (`[from agent: title] …`), HUI's
- * kickoff of a new bot, an imported bot's first turn (a kickoff with `from: template`), or else the operator. */
+ * (`[trigger: name · …] …`), another bot (`[from @handle] …`), a session's agent (`[from agent: title] …`), a
+ * subagent's completion report, HUI's kickoff of a new bot, an imported bot's first turn (a kickoff with
+ * `from: template`), or else the operator. */
 export type BotTurnOrigin =
   | { kind: "operator" } | { kind: "kickoff" } | { kind: "imported" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string }
-  | { kind: "bot"; handle: string } | { kind: "agent"; title: string };
+  | { kind: "bot"; handle: string } | { kind: "agent"; title: string } | { kind: "subagent" };
 
 export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   if (!text) return { kind: "operator" };
+  // A child's report is evidence, never the operator's words: it must not change SOUL.md, USER.md or MEMORY.md.
+  if (text.startsWith(SUBAGENT_COMPLETION_MARKER)) return { kind: "subagent" };
   if (text.startsWith("[routine: ")) return { kind: "routine", name: /^\[routine: (.*?)\] /u.exec(text)?.[1] ?? "" };
   // A trigger's name holds no `[`, `]` or `·`: it ends at the summary's ` · ` or at the bracket.
   if (text.startsWith("[trigger: ")) return { kind: "trigger", name: /^\[trigger: ([^\]·\n]*?)(?: · |\])/u.exec(text)?.[1] ?? "" };
@@ -56,7 +60,7 @@ export function parseRunOrigins(value: unknown): BotTurnOrigin[] | undefined {
   const origins: BotTurnOrigin[] = [];
   for (const item of value) {
     const { kind, name, handle, title } = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
-    if (kind === "operator" || kind === "kickoff" || kind === "imported") origins.push({ kind });
+    if (kind === "operator" || kind === "kickoff" || kind === "imported" || kind === "subagent") origins.push({ kind });
     else if ((kind === "routine" || kind === "trigger") && typeof name === "string") origins.push({ kind, name });
     else if (kind === "bot" && typeof handle === "string") origins.push({ kind, handle });
     else if (kind === "agent" && typeof title === "string") origins.push({ kind, title });

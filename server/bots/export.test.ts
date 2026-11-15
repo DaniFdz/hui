@@ -165,7 +165,9 @@ test("a long list of what the bot needs is merged by one quick request, and kept
   const needs = ["GitHub CLI signed in", "A GitHub account", "Slack access", "Slack MCP", "A listener", "A trigger", "Network access"];
   for (const fails of [false, true]) {
     const merges: { least?: boolean }[] = [];
+    const sessions = new Set<string>();
     const service = new BotExportService({ ...harnessDeps(), completion: async (_model, request) => {
+      sessions.add(request.session);
       if (request.system !== NEEDS_MERGE_PROMPT) return JSON.stringify({ changes: [], needs: request.prompt.startsWith("Part: SOUL.md") ? needs : [] });
       merges.push(request);
       if (fails) throw new Error("down");
@@ -174,6 +176,7 @@ test("a long list of what the bot needs is merged by one quick request, and kept
     const review = await service.review("ada");
     assert.deepEqual(review.needs.map((need) => need.text), fails ? needs : ["GitHub signed in", "Slack access and a listener"]);
     assert.deepEqual(merges.map((request) => request.least), [true]);
+    assert.deepEqual([...sessions], ["b1"], "every read and the merge go as the bot's provider session");
   }
 });
 

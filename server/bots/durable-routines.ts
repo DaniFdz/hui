@@ -1,5 +1,5 @@
 /**
- * A bot's own routines (HUI-18; SPEC.md, "Schedules are a CLI, and bots schedule their own routines"): the
+ * A bot's own routines (SPEC.md, "Schedules are a CLI, and bots schedule their own routines"): the
  * `routines` tool lists, adds, changes and removes the Automation tasks aimed at the bot's own chat, temporary ones
  * included. It lives in the `hui-bots-tools` extension beside `write_soul`, `set_profile` and `request_access`, so
  * only bots' chats are offered it, and it reaches the gateway through HUI's agent-tool bridge as the chat's session,
