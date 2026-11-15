@@ -699,8 +699,10 @@ function renderModelsPage(props: SettingsProps) {
     ${pi ? html`<p class="settings-page__intro">
       Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
     </p>` : nothing}
-    ${renderProviderSection(props)}
-    ${pi ? renderModelRouting(props, pi) : html`${renderCallsSection(props)}${renderPiMissing(props)}`}
+    <div class="settings-stack">
+      ${renderProviderSection(props)}
+      ${pi ? renderModelRouting(props, pi) : html`${renderCallsSection(props)}${renderPiMissing(props)}`}
+    </div>
   `;
 }
 

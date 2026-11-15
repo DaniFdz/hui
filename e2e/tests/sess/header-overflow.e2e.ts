@@ -97,7 +97,9 @@ test("a long title and its metadata shorten to one line with the full title in t
   await hui.open(`/sessions/${worker.id}`);
   const phonePane = screen.getByTestId("session-pane", { visible: true });
   await expect(phonePane).toHaveCount(1);
-  await expect(phonePane.getByRole("button", /^Active panel: 1 · Chat · Worker chat$/u)).toBeVisible();
+  // The address focuses the pane already showing the worker, its second view here, instead of repeating it in the
+  // first: the panel selector names the second pane.
+  await expect(phonePane.getByRole("button", /^Active panel: 2 · Chat · Worker chat$/u)).toBeVisible();
   const phoneHeader = phonePane.getByTestId("chat-header");
   for (const control of [phonePane.getByRole("button", "Open terminal"), phonePane.getByRole("button", "Continue without a prompt"),
     phonePane.getByRole("button", "Close session pane"), phonePane.getByRole("button", /^Active panel:/u)]) {

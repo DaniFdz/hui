@@ -123,7 +123,7 @@ import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
-import { activeSessionPane, closeSessionPane, focusSessionPane, isChatPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
+import { activeSessionPane, closeSessionPane, isChatPane, parseSessionLayout, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, showSessionLayout, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
   retainWorkSessions, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, workPaneMaximized, workViewKey, workViewKind,
@@ -895,8 +895,7 @@ export class HuiApp extends HuiElement {
           window.history.replaceState({ ...window.history.state, huiSessionLayout: saved }, "");
         }
       }
-      this.work.layout = saved ?? singleSessionLayout(resolved.target.id);
-      if (activeSessionPane(this.work.layout).sessionId !== resolved.target.id) this.work.layout = replacePaneSession(this.work.layout, this.work.layout.activePaneId, resolved.target.id);
+      this.work.layout = showSessionLayout(saved ?? singleSessionLayout(resolved.target.id), resolved.target.id);
     }
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     const canonical = resolved.path;
@@ -923,7 +922,7 @@ export class HuiApp extends HuiElement {
     }
     if (target.kind === "session") {
       const layout = this.work.layout ?? singleSessionLayout(target.id);
-      this.work.layout = replacePaneSession(layout, layout.activePaneId, target.id);
+      this.work.layout = showSessionLayout(layout, target.id);
       this.work.persistLayout();
     }
     const path = navigationPath(target);
@@ -1438,8 +1437,6 @@ export class HuiApp extends HuiElement {
     }
     // Choosing a conversation shows its chat; its Work pane stays one selector choice away on narrow screens.
     this.work.hideNarrow();
-    const existing = this.work.layout && sessionPanes(this.work.layout).find((pane) => isChatPane(pane) && pane.sessionId === session.id);
-    if (existing && this.work.layout) this.work.layout = focusSessionPane(this.work.layout, existing.id);
     this.navigate({ kind: "session", id: session.id });
   };
 

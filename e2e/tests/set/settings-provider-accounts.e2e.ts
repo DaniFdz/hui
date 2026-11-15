@@ -97,7 +97,10 @@ test("Remove account asks to confirm, Keep account cancels, and Confirm removal 
     await expect(screen.getByRole("article", { name: "Work" })).toBeVisible();
 
     // Save a model selection, so the removal has selections to keep.
-    await screen.getByText("Models 1 selected", { exact: true }).tap();
+    // The card re-renders with the saved selection once the wizard's write lands; open it only then.
+    const disclosure = screen.getByText("Models 1 selected", { exact: true });
+    await expect(disclosure).toBeVisible();
+    await disclosure.tap();
     const [first, second] = (await configured(hui))!.models;
     await expect(screen.getByRole("checkbox", labels([first!])[0]!, { exact: true })).toBeChecked();
     await screen.getByRole("checkbox", labels([second!])[0]!, { exact: true }).tap();
@@ -135,7 +138,10 @@ test("a provider's Models disclosure lists its models with their limits, filters
     const matching = (query: string) => catalog.filter((model) => `${model.id} ${model.name}`.toLocaleLowerCase().includes(query));
     const disclose = () => screen.getByText("Provider configuration · 1 provider", { exact: true }).tap();
 
-    await screen.getByText("Models 1 selected", { exact: true }).tap();
+    // The card re-renders with the saved selection once the wizard's write lands; open it only then.
+    const disclosure = screen.getByText("Models 1 selected", { exact: true });
+    await expect(disclosure).toBeVisible();
+    await disclosure.tap();
     // Every model of the provider is listed, each with its context and output limits.
     await expect.poll(count).toBe(catalog.length);
     for (const model of [catalog[0]!, catalog.at(-1)!]) await expect(screen.getByRole("checkbox", labels([model])[0]!, { exact: true })).toBeVisible();
@@ -147,12 +153,14 @@ test("a provider's Models disclosure lists its models with their limits, filters
     await expect.poll(count).toBe(matches.length);
     await expect(screen.getByRole("checkbox", labels([matches[0]!])[0]!, { exact: true })).toBeVisible();
 
-    // Select visible takes the listed models and Clear selection empties the draft.
+    // The wizard saved one model, so the draft starts with it: empty it, then Select visible takes the listed models.
+    await screen.getByRole("button", "Clear selection").tap();
+    await expect(screen.getByText("Models Choose models", { exact: true })).toBeVisible();
     await screen.getByRole("button", "Select visible").tap();
-    await expect(screen.getByText(`${matches.length} selected`, { exact: true })).toBeVisible();
+    await expect(screen.getByText(`Models ${matches.length} selected`, { exact: true })).toBeVisible();
     await expect(screen.getByRole("checkbox", { checked: true })).toHaveCount(matches.length);
     await screen.getByRole("button", "Clear selection").tap();
-    await expect(screen.getByText("0 selected", { exact: true })).toBeVisible();
+    await expect(screen.getByText("Models Choose models", { exact: true })).toBeVisible();
 
     // Save models keeps the chosen models as the provider's selection.
     const [first, second] = catalog;
@@ -181,7 +189,7 @@ test("a provider's Models disclosure lists its models with their limits, filters
     // A cancelled draft discards what was picked.
     await screen.getByText("Models 2 selected", { exact: true }).tap();
     await screen.getByRole("button", "Select visible").tap();
-    await expect(screen.getByText(`${catalog.length} selected`, { exact: true })).toBeVisible();
+    await expect(screen.getByText(`Models ${catalog.length} selected`, { exact: true })).toBeVisible();
     await screen.getByRole("button", "Cancel").tap();
     await expect(screen.getByText("Models 2 selected", { exact: true })).toBeVisible();
     expect((await configured(hui))!.selected).toEqual([first!.id, second!.id]);
