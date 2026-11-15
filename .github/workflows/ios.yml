@@ -9,6 +9,9 @@ name: iOS
 # lockfile: `mobile.yml` builds the same bundle on Linux, and a dependency bump reaches the native proof through the
 # nightly's `ios` job on main.
 on:
+  # A deliberate dispatch is how a branch that is neither `main` nor `mobile/**` gets this proof before its pull request
+  # exists: a push is not one of its triggers, and a pull request only wakes it for the paths below.
+  workflow_dispatch:
   pull_request:
     paths:
       - "mobile/ios/**"
@@ -79,6 +82,23 @@ jobs:
           xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App -configuration Debug \
             -sdk iphonesimulator -destination "id=$HUI_IOS_UDID" ONLY_ACTIVE_ARCH=YES \
             -derivedDataPath "$HOME/iosbuild" CODE_SIGNING_ALLOWED=NO build | tee "$RUNNER_TEMP/xcodebuild.log" | tail -20
+      # A project that builds the Share Extension but never embeds it still passes the build above, and the appex would
+      # then be missing from the archive and from the IPA. This reads the built bundle, not the project file.
+      - name: Check the Share Extension is embedded
+        run: |
+          set -euo pipefail
+          app=$(find "$HOME/iosbuild/Build/Products" -maxdepth 3 -name "App.app" -print -quit)
+          test -n "$app"
+          test -d "$app/PlugIns" || { echo "$app has no PlugIns: nothing was embedded"; exit 1; }
+          appex=$(find "$app/PlugIns" -maxdepth 1 -name "*.appex" -print -quit)
+          test -n "$appex" || { echo "no .appex under $app/PlugIns"; exit 1; }
+          point=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$appex/Info.plist")
+          short=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$appex/Info.plist")
+          build=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$appex/Info.plist")
+          echo "embedded: $appex ($point) $short ($build)"
+          test "$point" = "com.apple.share-services"
+          test "$short" = "$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Info.plist")"
+          test "$build" = "$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app/Info.plist")"
       - name: Compile and self-test the rendered-readiness oracle
         run: |
           set -euo pipefail

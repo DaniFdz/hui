@@ -131,7 +131,10 @@ export class ComposerController {
     });
   }
 
-  switchDraft(key: string): void {
+  /** Loads `key`'s draft into the composer. `seed` is text that came with the address (a share from another app):
+   * it goes ahead of what the key already holds, never over it, so a draft the operator was writing survives below it
+   * and both are stored once. */
+  switchDraft(key: string, seed?: string): void {
     if (!mayUseComposerDraftKey(this.#deps.embeddedPane(), key)) return;
     if (key === this.draftKey && this.draftHydrated) return;
     if (key !== this.draftKey) {
@@ -146,8 +149,11 @@ export class ComposerController {
     this.attachments = [];
     void readComposerDraft(key).then((draft) => {
       if (load !== this.draftLoad || edit !== this.draftEdit || key !== this.draftKey) return;
-      this.setDraft(draft.text);
-      this.attachments = draft.attachments;
+      // The seed is merged, not typed: bumping `draftEdit` for it would discard the stored draft instead.
+      const merged = seed ? mergeComposerDraft(draft, { text: seed, attachments: [] }) : draft;
+      this.setDraft(merged.text);
+      this.attachments = merged.attachments;
+      if (merged !== draft) void this.persistDraft(key, merged.text, merged.attachments);
     });
   }
 

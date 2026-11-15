@@ -3193,6 +3193,34 @@ one cannot be built or tested without a Mac.
   phone-app decisions (keyboard and wide-layout mechanics stay on the web, a tap opens a preview, one gateway at a
   time) apply to the phone apps. Kotlin/Compose as the Android client does not.
 
+### Share to HUI opens New Session prefilled (2026-11-16)
+
+Choosing HUI in the phone's Share sheet opens `<gateway>/new-session?share=<percent-encoded text or link>` with what
+was shared already in the composer, so an agent can look at the post the operator is reading without anyone copying
+a link by hand. The web owns the intake; a phone's share only has to open that address.
+
+- **The address carries the share.** `?share=` holds the text or the link, percent-encoded exactly once
+  (URLComponents plus an escaped `+` on iOS, `URLEncoder` on Android). HUI reads it on the New Session route only,
+  before the route's canonicalising `replaceState` drops every query, and consumes it once: the address on screen has
+  no `share` again, and a popstate, a reload or a later visit to New Session never pastes it a second time.
+- **The copy is one sentence, with no colon.** The first `http://` or `https://` link in the share becomes
+  `Look this post in <site> <URL>`, with the URL exactly as shared. The site is X for x.com and twitter.com, Reddit
+  for reddit.com and redd.it, YouTube for youtube.com and youtu.be, Instagram for instagram.com, and otherwise the
+  bare host without a leading `www.`. A share with no link is seeded as it was shared.
+- **A share fills, it never sends or replaces.** The text lands in the composer, ready to edit, and Start session
+  still needs a project directory, so a share creates no session. A New Session draft the operator was already
+  writing stays below the seed after one blank line (`seed\n\nstored`) and is stored once, and a share brings no
+  attachments.
+- **One share seeds at most 8 000 characters**, cut on a character boundary, so a link with a long message cannot
+  hand the composer an unbounded draft.
+- **Both phones, and the web.** The same address opens New Session prefilled in any browser, and `SESS-080` proves
+  the intake in the shared suite, which runs on the web and inside the Android app.
+- **The iOS transport is best-effort.** Apple documents `NSExtensionContext.open(_:)` — how a share extension asks
+  iOS to open its app — as unsupported, and it is reported to fail on iOS 18 and later cold starts. When the link
+  does not open, the extension shows the share with a Copy action instead of failing silently. The known upgrade path
+  is an App Group the extension writes the share into, which the app reads on its next start; it touches the
+  extension alone, not this contract nor the web intake.
+
 ### Android replaces the iOS app as HUI's native client (2026-11-09)
 
 The owner moves from an iPhone to Android: "I will be moving to android, can we

@@ -68,6 +68,7 @@ import { renderPowerNotice } from "./views/power-notice.ts";
 import { renderAppLinkNotice } from "./views/app-link-notice.ts";
 import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
+import { shareSeedFromSearch } from "./lib/composer/share-seed.ts";
 import {
   deleteComposerDraft,
   mergeComposerDraft,
@@ -878,8 +879,18 @@ export class HuiApp extends HuiElement {
     }
   }
 
+  /** The text a phone's Share sheet opened this page with, `<gateway>/new-session?share=…`, and whether the address has
+   * been read for it. Read once, before the route's canonicalising `replaceState` drops the query, and consumed by the
+   * New Session route, so a second sync cannot seed the composer again. */
+  private shareSeed: string | undefined;
+  private shareSeedRead = false;
+
   private syncFromLocation() {
     const resolved = resolveNavigation(window.location.pathname);
+    if (!this.embeddedPane && !this.shareSeedRead && resolved.target.kind === "page" && resolved.target.page.id === "new-session") {
+      this.shareSeedRead = true;
+      this.shareSeed = shareSeedFromSearch(window.location.search);
+    }
     if (resolved.target.kind === "session") {
       let saved = parseSessionLayout(window.history.state?.huiSessionLayout);
       if (!saved) try { saved = parseSessionLayout(JSON.parse(localStorage.getItem(SESSION_LAYOUT_KEY) ?? "null")); } catch { /* Use a single view. */ }
@@ -1009,7 +1020,11 @@ export class HuiApp extends HuiElement {
       this.conversation.suspend();
       this.resetSessionEphemeral();
       if (target.page.id === "new-session") {
-        this.composer.switchDraft(NEW_SESSION_DRAFT_KEY);
+        // A share's text seeds the composer ahead of any draft the form already holds, and only once: the address that
+        // carried it is canonical again by now, so a popstate or a later visit must not paste it a second time.
+        const seed = this.shareSeed;
+        this.shareSeed = undefined;
+        this.composer.switchDraft(NEW_SESSION_DRAFT_KEY, seed);
         this.loadLaunchPreferences();
         this.launcher.requestCheckout(this.launcher.defaults?.cwd ?? "~/");
         this.launcher.loadWorkers();
