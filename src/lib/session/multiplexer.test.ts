@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { addSessionTab, isChatPane, moveSessionPane, visibleSessionPanes, sessionPaneMoveTarget } from "./multiplexer.ts";
-import { activeSessionPane, closeSessionPane, focusSessionPane, locateSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, resizeSessionWeights, SESSION_SPLIT_MEDIA, sessionDropRect, sessionDropZone, sessionPanes, singleSessionLayout, splitSessionPane, type SessionLayout, type SessionPane, type SplitDirection } from "./multiplexer.ts";
+import { activeSessionPane, closeSessionPane, findSessionPane, focusSessionPane, locateSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, resizeSessionWeights, SESSION_SPLIT_MEDIA, sessionDropRect, sessionDropZone, sessionPanes, showSessionLayout, singleSessionLayout, splitSessionPane, type SessionLayout, type SessionPane, type SplitDirection } from "./multiplexer.ts";
 
 // Terminal and browser panes are no longer created (they live in the Work pane), but layouts saved before it hold
 // them; these build that stored shape so the format stays readable and movable until loading migrates it.
@@ -262,6 +262,34 @@ test("tabs share a spot, show one pane and survive a save", () => {
   const withSpot = (pane: object) => parseSessionLayout({ ...tabbed, columns: [{ ...tabbed.columns[0], panes: [pane] }, tabbed.columns[1]] });
   assert.equal(withSpot({ ...spot, tabIndex: 9 }), undefined);
   assert.equal(withSpot({ ...spot, tabs: [{ ...spot.tabs![0], tabs: [{ id: "p9", sessionId: "x" }], tabIndex: 0 }] }), undefined, "no tabs inside tabs");
+});
+
+test("a session's route keeps the focused pane that shows it, focuses another pane that does, and replaces only otherwise", () => {
+  const layout = splitSessionPane(singleSessionLayout("first"), "p1", "second", "right");
+  // The route names another pane's session: that pane takes focus and the layout keeps its one view of each session.
+  const routed = showSessionLayout(layout, "first");
+  assert.equal(routed.activePaneId, "p1");
+  assert.deepEqual(sessionPanes(routed).map(({ id, sessionId }) => `${id}:${sessionId}`), ["p1:first", "p2:second"]);
+  assert.strictEqual(showSessionLayout(routed, "first"), routed, "the pane already focused is left alone");
+  assert.strictEqual(showSessionLayout(layout, "second"), layout);
+  // A session no pane shows takes the active pane's place.
+  const replaced = showSessionLayout(layout, "third");
+  assert.deepEqual(sessionPanes(replaced).map(({ id, sessionId }) => `${id}:${sessionId}`), ["p1:first", "p2:third"]);
+  assert.equal(replaced.activePaneId, "p2");
+  // A session open as a hidden tab comes forward in its own spot, not as a copy in the active one.
+  const tabbed = addSessionTab(layout, "p1", "third");
+  assert.equal(findSessionPane(tabbed, "first")?.id, "p1");
+  const shown = showSessionLayout(tabbed, "first");
+  assert.deepEqual(visibleSessionPanes(shown).map(({ sessionId }) => sessionId), ["first", "second"]);
+  assert.equal(shown.activePaneId, "p1");
+  assert.equal(sessionPanes(shown).length, 3);
+  // A same-session split is the operator's: when the focused pane already shows the session, its sibling stays focused.
+  const duplicate = splitSessionPane(layout, "p2", "first", "down");
+  assert.equal(activeSessionPane(duplicate).id, "p3");
+  assert.strictEqual(showSessionLayout(duplicate, "first"), duplicate);
+  // From another session, the first pane showing the routed one takes focus and the duplicate is untouched.
+  assert.equal(showSessionLayout(duplicate, "second").activePaneId, "p2");
+  assert.equal(sessionPanes(showSessionLayout(duplicate, "second")).length, 3);
 });
 
 test("moving a pane adds it as a tab, splits it out, or swaps just that pane", () => {
