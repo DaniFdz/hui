@@ -30,13 +30,13 @@ function fakeShell(options: { platform?: string; history?: string[]; plugins?: r
   let pops = 0;
   const pushed: string[] = [];
   const plugins: Record<string, Record<string, unknown>> = {};
-  for (const name of options.plugins ?? ["App", "Browser", "LocalNotifications", "Share", "StatusBar", "HuiGateway"]) {
+  for (const name of options.plugins ?? ["App", "Browser", "Keyboard", "LocalNotifications", "Share", "StatusBar", "HuiGateway"]) {
     const instance: Record<string, unknown> = {
       getState: () => Promise.resolve({ isActive: active }),
       addListener: (event: string, listener: (data: unknown) => void) => {
         const key = `${name}:${event}`;
         listeners.set(key, [...(listeners.get(key) ?? []), listener]);
-        return { remove: async () => undefined };
+        return { remove: async () => { listeners.set(key, (listeners.get(key) ?? []).filter((item) => item !== listener)); } };
       },
     };
     for (const action of PLUGIN_ACTIONS) {
@@ -185,6 +185,24 @@ test("the status bar follows the mode the page resolved", async () => {
     { plugin: "StatusBar", method: "setStyle", options: { style: "DARK" } },
     { plugin: "StatusBar", method: "setStyle", options: { style: "LIGHT" } },
   ]);
+});
+
+test("the keyboard reports its height while open and a closed state when it hides", async () => {
+  const harness = fakeShell({ platform: "ios" });
+  const states: Array<{ open: boolean; height: number }> = [];
+  const stop = harness.shell.onKeyboard((state) => states.push(state));
+  harness.emit("Keyboard", "keyboardWillShow", { keyboardHeight: 336 });
+  harness.emit("Keyboard", "keyboardWillShow", { keyboardHeight: 0 });
+  harness.emit("Keyboard", "keyboardWillHide", undefined);
+  assert.deepEqual(states, [
+    { open: true, height: 336 },
+    { open: true, height: 0 },
+    { open: false, height: 0 },
+  ], "a missing or unusable height still says the keyboard is open");
+  stop();
+  await Promise.resolve();
+  harness.emit("Keyboard", "keyboardWillShow", { keyboardHeight: 300 });
+  assert.equal(states.length, 3, "the unsubscribe stops listening");
 });
 
 test("a back press runs every callback, and one answering true keeps it for the page", () => {

@@ -560,6 +560,21 @@ const cases: UseCase[] = [
       decision: "SPEC.md#the-window-belongs-to-the-gateways-this-device-knows",
     },
   },
+  {
+    id: "SHELL-053",
+    title: "Sit the composer on the phone's keyboard",
+    behaviour:
+      "While the phone's soft keyboard is open the composer ends on its top edge instead of keeping the home-indicator gap, and the native strip the keyboard uncovers is painted in the page's own background rather than black. New Session's recent chats below the composer make way until the keyboard closes.",
+    spec: [LAYOUT, "SPEC.md#the-phone-apps-wrap-the-web-ui-2026-11-09"],
+    surfaces: [],
+    journeys: ["phone"],
+    web: "required",
+    phone: {
+      excluded:
+        "Neither phone target can open a soft keyboard: the Android app's is the system's and WebKit has none. The device procedure in e2e/phone.browser.md checks the real keyboard and the iOS window colour.",
+      decision: "SPEC.md#the-phone-apps-wrap-the-web-ui-2026-11-09",
+    },
+  },
 ];
 
 export default cases;

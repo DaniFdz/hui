@@ -47,6 +47,9 @@ export type NativeShell = {
   setStatusBar(options: { dark: boolean }): Promise<void>;
   /** Calls back when the shell comes back to the foreground; returns the unsubscribe. */
   onResume(callback: () => void): () => void;
+  /** Calls back when the phone's soft keyboard opens or closes, with the height it covers. The shell resizes the page
+   * above the keyboard on iOS; the page only has to stop paying the home-indicator gap that the keyboard now covers. */
+  onKeyboard(callback: (keyboard: { open: boolean; height: number }) => void): () => void;
   /** Hands the page the system back button: the shell dispatches a cancelable `hui:back` event on the document, and
    * every registered callback runs. Answer `true` to keep the press (a dialog, the drawer or the Work pane closed), and
    * the event's `preventDefault()` tells the shell so; a press nothing consumed is the shell's, which goes back in the
@@ -151,6 +154,7 @@ function shellFor(cap: CapacitorBridge, platform: NativePlatform): NativeShell {
   const share = plugin<SharePlugin>(cap, "Share");
   const statusBar = plugin<StatusBarPlugin>(cap, "StatusBar");
   const gateway = plugin<GatewayPlugin>(cap, "HuiGateway");
+  const keyboard = plugin<Plugin>(cap, "Keyboard");
   const background = backgroundState(cap);
   const resume: Array<() => void> = [];
   const back: Array<() => boolean> = [];
@@ -219,6 +223,17 @@ function shellFor(cap: CapacitorBridge, platform: NativePlatform): NativeShell {
       return () => {
         const index = resume.indexOf(callback);
         if (index >= 0) resume.splice(index, 1);
+      };
+    },
+    onKeyboard(callback) {
+      const stopShow = listen(keyboard, "keyboardWillShow", (data) => {
+        const height = (data as { keyboardHeight?: unknown } | undefined)?.keyboardHeight;
+        callback({ open: true, height: typeof height === "number" && Number.isFinite(height) && height > 0 ? height : 0 });
+      });
+      const stopHide = listen(keyboard, "keyboardWillHide", () => callback({ open: false, height: 0 }));
+      return () => {
+        stopShow();
+        stopHide();
       };
     },
     onBack(callback) {
