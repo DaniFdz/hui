@@ -717,67 +717,69 @@ function renderModelsPage(props: SettingsProps) {
     <p class="settings-page__intro">
       Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
     </p>
-    <section class="settings-section hui-providers">
-      <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
-      <hui-local-provider-settings></hui-local-provider-settings>
-    </section>
-    ${renderSection(
-      "HUI model routing",
-      "Saved by HUI. Model choices apply to new sessions; retries apply to every Durable session.",
-      html`
-        ${renderRow(
-          "Primary model",
-          `The smartest model you have. Speed doesn't matter: it does the real work of new sessions and bots.`,
-          routePicker("Primary model", "primary"),
-        )}
-        ${renderRow(
-          "Fallback model",
-          "Tried when the primary fails before producing useful output. Example: Anthropic Sonnet when OpenAI is unavailable.",
-          routePicker("Fallback model", "fallback"),
-        )}
-        ${renderRow(
-          "Provider retries",
-          "How many times a failed model request is retried on the same model before the fallback is tried. Retries keep the same model and cached context, and wait as long as the provider asks.",
-          renderSettingsPicker("Provider retries", String(retryAttempts),
-            [0, 1, 2, 3, 4, 5].map((attempts) => ({ value: String(attempts), label: attempts ? String(attempts) : "Off" })),
-            (value) => props.onChangeModels({ ...props.settings.models, retryAttempts: Number(value) })),
-        )}
-        ${renderRow(
-          "Utility model",
-          `The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries.`,
-          routePicker("Utility model", "utility"),
-        )}
-        ${renderRow(
-          "Default reasoning",
-          "The effort new sessions and new bots start with. A model that supports fewer levels uses the closest one it has. PI's own default applies while this is unset.",
-          reasoningSelector,
-        )}
-      `,
-    )}
-    <hui-subagent-routes .routes=${props.settings.models.routes} .models=${modelOptions.filter((option) => option.value)}
-      .onSave=${props.onSaveSubagentRoute}
-      .onRemove=${(name: string) => props.onChangeModels({ ...props.settings.models, routes: props.settings.models.routes.filter((route) => route.name !== name) })}
-    ></hui-subagent-routes>
-    ${renderCallsSection(props)}
-    <details class="hui-provider-catalog"><summary>Available catalog · ${model.catalog.length} models</summary>
-    ${renderSection(
-      "Available catalog",
-      model.catalog.length === 0
-        ? "No available models match your PI configuration."
-        : `${model.catalog.length} available model${model.catalog.length === 1 ? "" : "s"}. Includes HUI selections and PI custom providers.`,
-      model.catalog.length === 0
-        ? renderRow("No models", "Check PI provider configuration and refresh.", html`<span class="settings-row__muted">—</span>`)
-        : html`${model.catalog.map((entry) => renderRow(entry.name, `${entry.provider}/${entry.id}`, html`<span class="settings-row__muted">${entry.contextWindow ? `${entry.contextWindow.toLocaleString()} context` : "Context not reported"}${entry.maxTokens ? ` · ${entry.maxTokens.toLocaleString()} max output` : ""}</span>`))}`,
-    )}
-    </details>
-    ${pi.diagnostics.length > 0
-      ? renderSection(
-          "Diagnostics",
-          "Problems reading pi's configuration.",
-          html`${pi.diagnostics.map((note) => renderRow("Configuration diagnostic", note, html`<span class="settings-row__muted">Review</span>`))}`,
-        )
-      : nothing}
-    ${renderPiOrigin(props)}
+    <div class="settings-stack">
+      <section class="settings-section hui-providers">
+        <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
+        <hui-local-provider-settings></hui-local-provider-settings>
+      </section>
+      ${renderSection(
+        "HUI model routing",
+        "Saved by HUI. Model choices apply to new sessions; retries apply to every Durable session.",
+        html`
+          ${renderRow(
+            "Primary model",
+            `The smartest model you have. Speed doesn't matter: it does the real work of new sessions and bots.`,
+            routePicker("Primary model", "primary"),
+          )}
+          ${renderRow(
+            "Fallback model",
+            "Tried when the primary fails before producing useful output. Example: Anthropic Sonnet when OpenAI is unavailable.",
+            routePicker("Fallback model", "fallback"),
+          )}
+          ${renderRow(
+            "Provider retries",
+            "How many times a failed model request is retried on the same model before the fallback is tried. Retries keep the same model and cached context, and wait as long as the provider asks.",
+            renderSettingsPicker("Provider retries", String(retryAttempts),
+              [0, 1, 2, 3, 4, 5].map((attempts) => ({ value: String(attempts), label: attempts ? String(attempts) : "Off" })),
+              (value) => props.onChangeModels({ ...props.settings.models, retryAttempts: Number(value) })),
+          )}
+          ${renderRow(
+            "Utility model",
+            `The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries.`,
+            routePicker("Utility model", "utility"),
+          )}
+          ${renderRow(
+            "Default reasoning",
+            "The effort new sessions and new bots start with. A model that supports fewer levels uses the closest one it has. PI's own default applies while this is unset.",
+            reasoningSelector,
+          )}
+        `,
+      )}
+      <hui-subagent-routes .routes=${props.settings.models.routes} .models=${modelOptions.filter((option) => option.value)}
+        .onSave=${props.onSaveSubagentRoute}
+        .onRemove=${(name: string) => props.onChangeModels({ ...props.settings.models, routes: props.settings.models.routes.filter((route) => route.name !== name) })}
+      ></hui-subagent-routes>
+      ${renderCallsSection(props)}
+      <details class="hui-provider-catalog"><summary>Available catalog · ${model.catalog.length} models</summary>
+      ${renderSection(
+        "Available catalog",
+        model.catalog.length === 0
+          ? "No available models match your PI configuration."
+          : `${model.catalog.length} available model${model.catalog.length === 1 ? "" : "s"}. Includes HUI selections and PI custom providers.`,
+        model.catalog.length === 0
+          ? renderRow("No models", "Check PI provider configuration and refresh.", html`<span class="settings-row__muted">—</span>`)
+          : html`${model.catalog.map((entry) => renderRow(entry.name, `${entry.provider}/${entry.id}`, html`<span class="settings-row__muted">${entry.contextWindow ? `${entry.contextWindow.toLocaleString()} context` : "Context not reported"}${entry.maxTokens ? ` · ${entry.maxTokens.toLocaleString()} max output` : ""}</span>`))}`,
+      )}
+      </details>
+      ${pi.diagnostics.length > 0
+        ? renderSection(
+            "Diagnostics",
+            "Problems reading pi's configuration.",
+            html`${pi.diagnostics.map((note) => renderRow("Configuration diagnostic", note, html`<span class="settings-row__muted">Review</span>`))}`,
+          )
+        : nothing}
+      ${renderPiOrigin(props)}
+    </div>
   `;
 }
 
