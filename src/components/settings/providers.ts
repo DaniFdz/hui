@@ -10,6 +10,7 @@ import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } 
 import { loadProviderQuota, loadProviders, providerRequest } from "../../api/providers.ts";
 import { renderProviderBrandIcon } from "../../lib/provider-icons.ts";
 import { connectionMethods, connectionName, providerBrand, providerBrands } from "../../lib/provider-choices.ts";
+import { quotaMetaLine, reorderAccountIds } from "../../lib/provider-quota.ts";
 import { loadViewAssets } from "../../lib/view-assets.ts";
 
 loadViewAssets(() => import("../../styles/providers.css"));
@@ -193,10 +194,10 @@ export class HuiProviderSettings extends LitElement {
     const query = state.query.toLowerCase().trim().split(/\s+/);
     const models = provider.models.filter((model) => query.every((term) => `${model.id} ${model.name}`.toLowerCase().includes(term)));
     return html`<details class="hui-provider-picker">
-      <summary>Models <span>${provider.selected.length ? `${provider.selected.length} selected` : "Choose models"}</span></summary>
+      <summary><span class="hui-provider-caret" aria-hidden="true"></span>Models <span class="hui-provider-picker-count">${state.models.size ? `${state.models.size} selected` : "Choose models"}</span></summary>
       <div class="hui-provider-picker-panel">
         <label class="hui-provider-field">Search ${connectionName(provider)} models<input type="search" .value=${state.query} placeholder="Name or model ID" @input=${(event: Event) => { state.query = (event.target as HTMLInputElement).value; this.requestUpdate(); }} /></label>
-        <div class="hui-provider-actions"><button class="btn" @click=${() => { for (const model of models) state.models.add(model.id); this.requestUpdate(); }}>Select visible</button><button class="btn" @click=${() => { state.models.clear(); this.requestUpdate(); }}>Clear selection</button><span class="hui-provider-method">${state.models.size} selected</span></div>
+        <div class="hui-provider-actions"><button class="btn" @click=${() => { for (const model of models) state.models.add(model.id); this.requestUpdate(); }}>Select visible</button><button class="btn" @click=${() => { state.models.clear(); this.requestUpdate(); }}>Clear selection</button></div>
         <div class="hui-provider-models">${models.length ? models.map((model) => html`<label class="hui-provider-model"><input type="checkbox" .checked=${state.models.has(model.id)} @change=${(event: Event) => { if ((event.target as HTMLInputElement).checked) state.models.add(model.id); else state.models.delete(model.id); this.requestUpdate(); }} /><span><strong>${model.name}</strong><code>${model.id}</code><small>Context: ${model.contextWindow?.toLocaleString() ?? "reported during the session"} · Max output: ${model.maxTokens?.toLocaleString() ?? "CLI-managed"}</small></span></label>`) : html`<p>No matching models.</p>`}</div>
         <div class="hui-provider-actions"><button class="btn primary" ?disabled=${this.#busy} @click=${async (event: Event) => {
           const details = (event.currentTarget as HTMLElement).closest("details");
@@ -207,21 +208,17 @@ export class HuiProviderSettings extends LitElement {
   }
   #accountQuota(key: string) {
     const quota = this.#quotas.get(key);
-    return html`<section class="hui-provider-quota" aria-label="Subscription and limits"><div class="hui-provider-heading"><h4>Subscription and limits</h4><button class="btn" ?disabled=${this.#quotaLoading.has(key)} @click=${() => this.#loadQuota(key)}>${this.#quotaLoading.has(key) ? "Checking…" : "Refresh limits"}</button></div>
+    const checking = this.#quotaLoading.has(key);
+    return html`<section class="hui-provider-quota" aria-label="Subscription and limits">
+      <div class="hui-provider-heading"><h4>Subscription and limits</h4><button class="btn" ?disabled=${checking} @click=${() => this.#loadQuota(key)}>${checking ? "Checking…" : "Refresh limits"}</button></div>
       ${quota ? html`
-        <dl class="hui-subscription-status">
-          <div><dt>Plan</dt><dd>${quota.plan ?? "Not reported"}</dd></div>
-          <div><dt>Subscription status</dt><dd>Not reported</dd></div>
-          <div><dt>Usage status</dt><dd>${quota.access === "limited" ? "Limit reached" : quota.access === "available" ? "Available" : quota.status === "available" ? "Usage reported" : quota.status === "unsupported" ? "Not supported" : "Unavailable"}</dd></div>
-        </dl>
-        <p class="hui-subscription-note">Billing status and renewal dates are not exposed by this connection.</p>
-        <div class="hui-provider-windows">${quota.windows.map((window) => html`<div class="hui-provider-window" data-exhausted=${window.usedPercent >= 100}>
+        <p class="hui-provider-quota-meta">${quotaMetaLine(quota, new Date(quota.checkedAt).toLocaleString())}</p>
+        ${quota.message ? html`<p>${quota.message}</p>` : nothing}
+        ${quota.windows.length ? html`<div class="hui-provider-windows">${quota.windows.map((window) => html`<div class="hui-provider-window" data-exhausted=${window.usedPercent >= 100}>
           <div><strong>${window.label}</strong><span>${Number(window.usedPercent.toFixed(1))}% used</span></div>
           <progress max="100" value=${Math.min(100, window.usedPercent)} aria-label=${`${window.label}: ${Number(window.usedPercent.toFixed(1))}% used`}></progress>
           <small>${window.detail ? `${window.detail} · ` : ""}${window.resetAt ? `Resets ${new Date(window.resetAt).toLocaleString()}` : "Reset not reported"}</small>
-        </div>`)}</div>
-        ${quota.message ? html`<p>${quota.message}</p>` : nothing}
-        <small>Checked ${new Date(quota.checkedAt).toLocaleString()}</small>
+        </div>`)}</div>` : nothing}
       ` : html`<p role="status">Loading subscription and limits…</p>`}
     </section>`;
   }
@@ -301,7 +298,7 @@ export class HuiProviderSettings extends LitElement {
     this.#dragNotice = save ? "" : "Reordering cancelled.";
     this.requestUpdate();
     if (!save || !drag.moved || drag.from === drag.to) return;
-    const order = drag.order.filter((id) => id !== drag.id); order.splice(drag.to, 0, drag.id);
+    const order = reorderAccountIds(drag.order, drag.id, drag.to);
     void this.#mutate(`${drag.provider}/accounts`, "PUT", { order }, "Account priority saved.").then(async () => {
       await this.updateComplete;
       if (this.isConnected) drag.handle.focus();
@@ -324,7 +321,7 @@ export class HuiProviderSettings extends LitElement {
         const before = drag && drag.to !== drag.from && remaining[drag.to]?.id === account.id;
         const after = drag && drag.to !== drag.from && drag.to === remaining.length && remaining.at(-1)?.id === account.id;
         return html`<article class="hui-provider-account ${drag?.id === account.id ? "is-dragging" : ""} ${before ? "drop-before" : after ? "drop-after" : ""}" data-account-id=${account.id} aria-label=${this.#accountLabel(provider, account)}>
-          <div class="hui-provider-heading">
+          <div class="hui-account-row">
             <button class="hui-account-grip" type="button" aria-label=${`Reorder ${this.#accountLabel(provider, account)}`} aria-describedby=${`account-drag-help-${provider.id}`} aria-pressed=${drag?.id === account.id ? "true" : "false"} ?disabled=${this.#busy || accounts.length < 2}
               @pointerdown=${(event: PointerEvent) => this.#beginDrag(event, provider, account.id)}
               @pointermove=${(event: PointerEvent) => this.#moveDrag(event)}
@@ -337,10 +334,10 @@ export class HuiProviderSettings extends LitElement {
               @keydown=${(event: KeyboardEvent) => this.#dragKey(event, provider, account.id)}>
               <svg width="18" height="24" viewBox="0 0 18 24" aria-hidden="true" fill="currentColor"><circle cx="6" cy="6" r="1.6"/><circle cx="12" cy="6" r="1.6"/><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/></svg>
             </button>
-            <div><strong class="hui-account-name"><span>${index + 1}.</span><span>${at > 0 ? html`${label.slice(0, at)}<wbr>${label.slice(at)}` : label}</span></strong><p>${!account.authenticated ? "Sign in to reconnect" : waiting ? `Waiting until ${new Date(account.cooldownUntil!).toLocaleString()}` : account.id === firstReady ? "Next to use" : "Standby"}</p></div>
+            <div class="hui-account-identity"><strong class="hui-account-name"><span>${index + 1}.</span><span>${at > 0 ? html`${label.slice(0, at)}<wbr>${label.slice(at)}` : label}</span></strong><p>${!account.authenticated ? "Sign in to reconnect" : waiting ? `Waiting until ${new Date(account.cooldownUntil!).toLocaleString()}` : account.id === firstReady ? "Next to use" : "Standby"}</p></div>
+            <div class="hui-account-actions"><button class="btn" ?disabled=${this.#busy} @click=${() => this.#open(providerBrand(provider.id)?.id ?? provider.id, provider.id, account.id)}>${account.authenticated ? "Reconnect" : "Sign in"}</button><button class="btn" aria-label=${`Remove account ${this.#accountLabel(provider, account)}`} ?disabled=${this.#busy} @click=${() => { this.#confirm = key; this.requestUpdate(); }}>Remove account</button></div>
           </div>
-          <div class="hui-provider-actions"><button class="btn" ?disabled=${this.#busy} @click=${() => this.#open(providerBrand(provider.id)?.id ?? provider.id, provider.id, account.id)}>${account.authenticated ? "Reconnect" : "Sign in"}</button><button class="btn" aria-label=${`Remove account ${this.#accountLabel(provider, account)}`} ?disabled=${this.#busy} @click=${() => { this.#confirm = key; this.requestUpdate(); }}>Remove account</button></div>
-          ${this.#confirm === key ? html`<p>Remove ${this.#accountLabel(provider, account)}? Other accounts and model selections are kept.</p><button class="btn" ?disabled=${this.#busy} @click=${async () => { if (await this.#mutate(key, "DELETE", undefined, "Account removed.")) { this.#confirm = ""; this.#quotas.delete(key); } }}>Confirm removal</button> <button class="btn" @click=${() => { this.#confirm = ""; this.requestUpdate(); }}>Keep account</button>` : nothing}
+          ${this.#confirm === key ? html`<div class="hui-provider-confirm"><p>Remove ${this.#accountLabel(provider, account)}? Other accounts and model selections are kept.</p><div class="hui-provider-confirm-actions"><button class="btn" ?disabled=${this.#busy} @click=${async () => { if (await this.#mutate(key, "DELETE", undefined, "Account removed.")) { this.#confirm = ""; this.#quotas.delete(key); } }}>Confirm removal</button><button class="btn" @click=${() => { this.#confirm = ""; this.requestUpdate(); }}>Keep account</button></div></div>` : nothing}
           ${account.authenticated ? this.#accountQuota(key) : nothing}
         </article>`;
       })}
@@ -355,18 +352,18 @@ export class HuiProviderSettings extends LitElement {
         ${this.#accounts(provider)}
         ${this.#modelPicker(provider)}
       ` : nothing}
-      ${this.#confirm === provider.id ? html`<div class="hui-provider-login"><p>Remove this HUI connection and its saved credentials? PI configuration is kept. Existing sessions keep their current runtime until reopened.</p><button class="btn" ?disabled=${this.#busy} @click=${async () => {
+      ${this.#confirm === provider.id ? html`<div class="hui-provider-confirm"><p>Remove this HUI connection and its saved credentials? PI configuration is kept. Existing sessions keep their current runtime until reopened.</p><div class="hui-provider-confirm-actions"><button class="btn" ?disabled=${this.#busy} @click=${async () => {
         if (await this.#mutate(provider.id, "DELETE", undefined, "Connection removed. PI configuration is unchanged.")) { this.#confirm = ""; this.#drafts.delete(provider.id); this.#quotas.delete(provider.id); this.requestUpdate(); }
-      }}>Confirm removal</button> <button class="btn" @click=${() => { this.#confirm = ""; this.requestUpdate(); }}>Keep connection</button></div>` : nothing}
+      }}>Confirm removal</button><button class="btn" @click=${() => { this.#confirm = ""; this.requestUpdate(); }}>Keep connection</button></div></div>` : nothing}
     </article>`;
   }
   override render() {
     const providers = this.#snapshot?.providers.filter((provider) => provider.configured) ?? [];
-    return html`<div class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Model providers</h2><p class="settings-section__desc">Connect an account and choose models, or start a custom local server when you need its models.</p></div><button class="btn primary" ?disabled=${this.#busy || !this.#snapshot} @click=${() => this.#open()}>Add provider</button></div>
+    return html`<div class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Model providers</h2><p class="settings-section__desc">Connect an account and choose models, or start a custom local server when you need its models.</p></div><div class="settings-section__actions"><button class="btn primary" ?disabled=${this.#busy || !this.#snapshot} @click=${() => this.#open()}>Add provider</button></div></div>
       ${this.#error && !this.#dialog()?.open ? html`<p role="alert" class="hui-provider-error">${this.#error}</p><button class="btn" @click=${() => this.#refresh()}>Retry loading providers</button>` : nothing}
       ${this.#notice ? html`<p role="status" class="hui-provider-notice">${this.#notice}</p>` : nothing}
       <span class="hui-account-drag-status" role="status">${this.#dragNotice}</span>
-      ${!this.#snapshot ? html`<p>Loading providers…</p>` : providers.length ? nothing : html`<p class="hui-provider-empty">No providers added yet. Add one to get started.</p>`}
+      ${!this.#snapshot ? html`<p class="hui-provider-loading">Loading providers…</p>` : providers.length ? nothing : html`<div class="settings-group"><p class="hui-provider-empty">No providers added yet. Add one to get started.</p></div>`}
       <details class="hui-provider-configuration" ?hidden=${providers.length === 0}>
         <summary>${`Provider configuration · ${providers.length} provider${providers.length === 1 ? "" : "s"}`}</summary>
         <div class="hui-provider-cards">${repeat(providers, (provider) => provider.id, (provider) => this.#provider(provider))}</div>

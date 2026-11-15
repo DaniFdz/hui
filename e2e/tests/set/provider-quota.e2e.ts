@@ -42,8 +42,8 @@ test("each signed-in account shows its plan, usage status, a meter per reported 
   await expect(codex.getByText("Subscription and limits", { exact: true })).toHaveCount(2);
 
   // The plan, the usage status, and a meter per period the provider reported with its percentage and reset time.
-  await expect(personal.getByText("plus", { exact: true })).toBeVisible();
-  await expect(personal.getByText("Available", { exact: true })).toBeVisible();
+  await expect(personal.getByText(/Plan plus/u)).toBeVisible();
+  await expect(personal.getByText(/^Available\b/u)).toBeVisible();
   await expect(personal.getByRole("progressbar", { name: "5 hours: 34% used" })).toBeVisible();
   await expect(personal.getByRole("progressbar", { name: "Weekly: 62% used" })).toBeVisible();
   await expect(personal.getByRole("progressbar", { name: "Code review · Weekly: 12% used" })).toBeVisible();
@@ -51,23 +51,23 @@ test("each signed-in account shows its plan, usage status, a meter per reported 
   await expect(personal.getByRole("progressbar", { name: "Monthly credits: 18% used" })).toBeVisible();
   await expect(personal.getByRole("progressbar")).toHaveCount(5);
   await expect(personal.getByText(/^Resets /u)).toHaveCount(5);
-  await expect(personal.getByText(/^Checked /u)).toBeVisible();
+  await expect(personal.getByText(/Checked /u)).toBeVisible();
   await expect(personal.getByRole("button", { name: "Refresh limits" })).toBeVisible();
 
   // An account over its limit says so, with the meter that reached it.
-  await expect(backup.getByText("pro", { exact: true })).toBeVisible();
-  await expect(backup.getByText("Limit reached", { exact: true })).toBeVisible();
+  await expect(backup.getByText(/Plan pro/u)).toBeVisible();
+  await expect(backup.getByText(/^Limit reached\b/u)).toBeVisible();
   await expect(backup.getByRole("progressbar", { name: "5 hours: 100% used" })).toBeVisible();
 
   // A period the provider reported without a reset time says so.
   const claude = account(card(screen, "Claude"), "alex.claude@example.com");
-  await expect(claude.getByText("Student", { exact: true })).toHaveCount(0);
+  await expect(claude.getByText(/Plan Student/u)).toHaveCount(0);
   await expect(claude.getByRole("progressbar", { name: "Sonnet weekly: 100% used" })).toBeVisible();
   await expect(claude.getByText("Reset not reported", { exact: true })).toHaveCount(2);
 
   // A provider with no subscription API is Not supported rather than an empty meter.
   const apiKey = card(screen, "OpenAI · API key");
-  await expect(apiKey.getByText("Not supported", { exact: true })).toBeVisible();
+  await expect(apiKey.getByText(/^Not supported\b/u)).toBeVisible();
   await expect(apiKey.getByText("This provider does not expose a supported subscription quota API.", { exact: true })).toBeVisible();
   await expect(apiKey.getByRole("progressbar")).toHaveCount(0);
 
@@ -79,19 +79,19 @@ test("each signed-in account shows its plan, usage status, a meter per reported 
   await expect(personal.getByRole("button", { name: "Checking…" })).toBeVisible();
   await reread.answer(JSON.stringify({ status: "available", checkedAt: Date.now(), plan: "team", access: "available",
     windows: [{ label: "Weekly", usedPercent: 11, scope: "account", resetAt: Date.now() + 86_400_000 }] }));
-  await expect(personal.getByText("team", { exact: true })).toBeVisible();
+  await expect(personal.getByText(/Plan team/u)).toBeVisible();
   await expect(personal.getByRole("progressbar", { name: "Weekly: 11% used" })).toBeVisible();
   await expect(personal.getByRole("progressbar")).toHaveCount(1);
   await expect(backup.getByRole("button", { name: "Checking…" })).toHaveCount(0);
   await expect(backup.getByRole("progressbar", { name: "5 hours: 100% used" })).toBeVisible();
-  await expect(backup.getByText("Limit reached", { exact: true })).toBeVisible();
+  await expect(backup.getByText(/^Limit reached\b/u)).toBeVisible();
 
   // A read that fails says so rather than drawing zero usage.
   const failing = await hui.intercept("GET", /\/__hui\/providers\/openai-codex\/accounts\/default\/quota$/u);
   await personal.getByRole("button", { name: "Refresh limits" }).tap();
   await failing.reject(503, "Quota is down.");
   await expect(personal.getByText("Usage could not be retrieved. Try refreshing limits.", { exact: true })).toBeVisible();
-  await expect(personal.getByText("Unavailable", { exact: true })).toBeVisible();
+  await expect(personal.getByText(/^Unavailable\b/u)).toBeVisible();
   await expect(personal.getByRole("progressbar")).toHaveCount(0);
   await expect(backup.getByRole("progressbar")).toHaveCount(5);
 });
