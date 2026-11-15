@@ -136,6 +136,17 @@ const groupDefaults = {
   worker: Type.Optional(Type.String()),
 };
 
+/** Creating a group together with the New session defaults it starts with; an
+ * empty string leaves a default unset, as PATCH does. */
+export const SessionGroupCreateRequest = Type.Object({
+  name: Type.String(),
+  cwd: Type.Optional(Type.String()),
+  worker: Type.Optional(Type.String()),
+  workspaceMode: Type.Optional(Type.Union([Type.Literal("branch"), Type.Literal("worktree"), Type.Literal("")])),
+  baseRef: Type.Optional(Type.String()),
+}, { $id: "SessionGroupCreateRequest" });
+export type SessionGroupCreateRequest = Static<typeof SessionGroupCreateRequest>;
+
 export const SessionGroup = Type.Object({ ...groupDefaults, sessions: Type.Array(SessionView) }, { $id: "SessionGroup" });
 export type SessionGroup = Static<typeof SessionGroup>;
 
@@ -248,7 +259,7 @@ export const sessionRouteSchemas = [
   { method: "POST", path: "/__hui/sessions", response: SessionResponse },
   { method: "PATCH", path: "/__hui/sessions/:id", response: SessionResponse },
   { method: "DELETE", path: "/__hui/sessions/:id", response: SessionOk },
-  { method: "POST", path: "/__hui/session-groups", response: SessionList },
+  { method: "POST", path: "/__hui/session-groups", request: SessionGroupCreateRequest, response: SessionList },
   { method: "PUT", path: "/__hui/session-groups", response: SessionList },
   { method: "PATCH", path: "/__hui/session-groups/:name", response: SessionList },
   { method: "DELETE", path: "/__hui/session-groups/:name", response: SessionList },

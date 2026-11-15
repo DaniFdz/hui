@@ -3377,11 +3377,26 @@ expose custom-group mutations; their New Session action preselects `cwd` only.
 
 ### `POST /__hui/session-groups`
 
-Creates an empty HUI group. Body: `{ "name": "Research" }`. Group names are
-trimmed, limited to 200 characters and unique; `ungrouped` is reserved.
-The sidebar's permanent New Group button uses this route even when no custom
-groups exist. On confirmed creation the UI reveals the empty group by clearing
-search/status filters and selecting custom groups with default empty visibility.
+Creates an empty HUI group, with its New session defaults when it is given some.
+Body: `{ "name": "Research" }`, or:
+
+```json
+{ "name": "Research", "cwd": "/abs/path", "worker": "1f718aa4-b8b4-4284-957c-d59b716e8d9d", "workspaceMode": "worktree", "baseRef": "main" }
+```
+
+Group names are trimmed, limited to 200 characters and unique; `ungrouped` is
+reserved. The optional defaults are validated and stored exactly as
+[`PATCH /__hui/session-groups/:name`](#patch-__huisession-groupsname) defines
+them (`cwd` must be an existing local directory, or an absolute or `~/` path
+when a `worker` is named; the worker must exist; `workspaceMode` is `branch`,
+`worktree` or an empty string; `baseRef` is trimmed text of up to 200
+characters), and an empty string leaves that default unset. The group and its
+defaults are written in one registry write, so a rejected name or default
+creates no group at all. Responds with the refreshed list. The sidebar's
+permanent New Group button uses this route even when no custom groups exist.
+On confirmed creation the UI reveals the empty group by clearing
+search/status filters and selecting custom groups with default empty
+visibility.
 
 ### `PUT /__hui/session-groups`
 

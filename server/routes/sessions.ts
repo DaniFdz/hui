@@ -20,6 +20,7 @@ import {
   reorderSessionGroups,
   SessionNotFoundError,
   SessionRegistryError,
+  type SessionGroupDefaults,
   updateSessionGroup,
 } from "../sessions/sessions.ts";
 import type { WorkerService } from "../workers.ts";
@@ -79,25 +80,21 @@ function sessionGroupOrder(body: Record<string, unknown>): string[] {
   });
 }
 
-export async function sessionGroupPatch(body: Record<string, unknown>, options: {
+/** A group's New session defaults from a request body, validated the one way
+ * creation and PATCH both define them: an absent key is left alone and an
+ * empty string clears it. */
+async function sessionGroupDefaults(body: Record<string, unknown>, options: {
   /** The worker the group runs on now; a patch that names none keeps it. */
   currentWorker?: string;
   hasWorker: (id: string) => Promise<boolean>;
-}): Promise<{
-  label?: string;
-  cwd?: string;
-  workspaceMode?: "branch" | "worktree" | "";
-  baseRef?: string;
-  worker?: string;
-}> {
-  const patch: { label?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string; worker?: string } = {};
-  if ("name" in body) patch.label = sessionGroupName(body);
+}): Promise<SessionGroupDefaults> {
+  const defaults: SessionGroupDefaults = {};
   let worker = options.currentWorker;
   if ("worker" in body) {
     if (typeof body["worker"] !== "string") throw new Error("Worker must be a worker id.");
     const value = body["worker"].trim();
     if (value && !(await options.hasWorker(value))) throw new Error(`No worker named ${value}. See Settings → Workers.`);
-    patch.worker = value;
+    defaults.worker = value;
     worker = value || undefined;
   }
   if ("cwd" in body) {
@@ -118,14 +115,26 @@ export async function sessionGroupPatch(body: Record<string, unknown>, options: 
         if (!info.isDirectory()) throw new Error(`Not a directory: ${cwd}`);
       }
     }
-    patch.cwd = cwd;
+    defaults.cwd = cwd;
   }
   if ("workspaceMode" in body) {
     const mode = body["workspaceMode"];
     if (mode !== "" && mode !== "branch" && mode !== "worktree") throw new Error("Environment must be branch or worktree.");
-    patch.workspaceMode = mode;
+    defaults.workspaceMode = mode;
   }
-  if ("baseRef" in body) patch.baseRef = sessionText(body, "baseRef", SESSION_TITLE_MAX, { optional: false, allowEmpty: true })!;
+  if ("baseRef" in body) defaults.baseRef = sessionText(body, "baseRef", SESSION_TITLE_MAX, { optional: false, allowEmpty: true })!;
+  return defaults;
+}
+
+export async function sessionGroupPatch(body: Record<string, unknown>, options: {
+  /** The worker the group runs on now; a patch that names none keeps it. */
+  currentWorker?: string;
+  hasWorker: (id: string) => Promise<boolean>;
+}): Promise<SessionGroupDefaults & { label?: string }> {
+  const patch = {
+    ...("name" in body ? { label: sessionGroupName(body) } : {}),
+    ...(await sessionGroupDefaults(body, options)),
+  };
   if (Object.keys(patch).length === 0) throw new Error("Nothing to change.");
   return patch;
 }
@@ -149,11 +158,13 @@ export function createSessionRoutes(deps: {
     const { sessionList, bots } = deps;
     const { createSession, startWorktreeSession, deleteSession, updateSession } = deps.lifecycle;
     const { toView } = deps.views;
+    const hasWorker = async (id: string) => (await deps.workers.list()).some((worker) => worker.id === id);
 
     if (path === SESSION_GROUPS_ROUTE && method === "POST") {
       try {
         const body = (await request.json()) as Record<string, unknown>;
-        await createSessionGroup(sessionGroupName(body));
+        const label = sessionGroupName(body);
+        await createSessionGroup(label, await sessionGroupDefaults(body, { hasWorker }));
         return reply(SessionList, await sessionList.refresh());
       } catch (error) {
         return reply(SessionError, {
@@ -187,7 +198,7 @@ export function createSessionRoutes(deps: {
             label,
             await sessionGroupPatch(body, {
               ...(current?.worker ? { currentWorker: current.worker } : {}),
-              hasWorker: async (id) => (await deps.workers.list()).some((worker) => worker.id === id),
+              hasWorker,
             }),
           );
         }

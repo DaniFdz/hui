@@ -33,6 +33,8 @@ export type SessionGoalStatus = ("active") | ("paused") | ("blocked") | ("comple
 
 export type SessionGroup = { "label": string; "cwd"?: string; "workspaceMode"?: ("branch") | ("worktree"); "baseRef"?: string; "worker"?: string; "sessions": Array<SessionView>; };
 
+export type SessionGroupCreateRequest = { "name": string; "cwd"?: string; "worker"?: string; "workspaceMode"?: ("branch") | ("worktree") | (""); "baseRef"?: string; };
+
 export type SessionJiraIssue = { "key": string; "url": string; "summary"?: string; "status"?: string; "statusCategory"?: JiraStatusCategory; "issueType"?: string; "description"?: string; };
 
 export type SessionList = { "revision": number; "groups": Array<SessionGroup>; };

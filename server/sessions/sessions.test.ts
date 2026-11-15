@@ -16,6 +16,7 @@ const {
   readRegistry,
   readSessionGroups,
   reorderSessionGroups,
+  sessionRegistryWrites,
   SessionRegistryError,
   updateRegistry,
   updateSessionGroup,
@@ -243,6 +244,28 @@ test("group checkout defaults survive read, rename and reorder and can be cleare
   assert.deepEqual((await readSessionGroups())[0], { label: "Renamed", cwd: "/srv/checkout", worker: "w1" });
   await updateSessionGroup("Renamed", { worker: "" });
   assert.deepEqual((await readSessionGroups())[0], { label: "Renamed", cwd: "/srv/checkout" });
+});
+
+test("a group is created with its New session defaults in one registry write", async () => {
+  await writeRegistry([]);
+  const writes = sessionRegistryWrites();
+  const created = await createSessionGroup("Remote", {
+    cwd: "/srv/checkout", worker: "w1", workspaceMode: "worktree", baseRef: "release/1.0",
+  });
+  assert.equal(sessionRegistryWrites() - writes, 1, "the group and its defaults land in one write");
+  assert.deepEqual(created, {
+    label: "Remote", cwd: "/srv/checkout", workspaceMode: "worktree", baseRef: "release/1.0", worker: "w1",
+  });
+  assert.deepEqual(await readSessionGroups(), [created]);
+  const stored = JSON.parse(await readFile(join(configHome, "hui", "sessions.json"), "utf8"));
+  assert.deepEqual(stored.groups, [created], "the registry file holds every default");
+  assert.equal(stored.version, 2);
+});
+
+test("empty New session defaults are created unset", async () => {
+  await writeRegistry([]);
+  await createSessionGroup("Plain", { cwd: "", worker: "", workspaceMode: "", baseRef: "" });
+  assert.deepEqual(await readSessionGroups(), [{ label: "Plain" }]);
 });
 
 test("an investigation marker round-trips, and one that cannot be meant is dropped", async () => {
