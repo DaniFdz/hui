@@ -2416,10 +2416,11 @@ legacy `backlog`) is in Investigation. Within a cell cards are ordered by
 session status, top to bottom: Error, Waiting input, Done (a finished run you
 have not read), Working (running or starting) and Idle; pins, then recency,
 break ties. Session cards show the status, one chip per pull request the
-session created (`#12`, with its state's icon and colour, the full reference in
-its accessible name, and the description in the sidebar marks' hovercard), and,
-when linked, the Jira key and status with the sidebar's Jira hovercard. Each
-pull-request chip opens that pull request on GitHub in a new tab.
+session created (`#12`, coloured by its state, the full reference in its
+accessible name, and the description in the sidebar marks' hovercard), and,
+when linked, the Jira key and status with the sidebar's Jira hovercard. A
+session running on a worker names it beside the status. Each pull-request chip
+opens that pull request on GitHub in a new tab.
 
 A **View** menu, stored in the browser like the sidebar's Filter & sort,
 configures the board: lanes by Project (default), Custom groups or None; sort

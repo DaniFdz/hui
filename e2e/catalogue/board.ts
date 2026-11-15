@@ -15,7 +15,7 @@ const cases: UseCase[] = [
   {
     id: "BOARD-002",
     title: "See what each session card needs",
-    behaviour: "Each session card shows its status (Error, Waiting input, Done for an unread finished run, Working or Idle), one chip per pull request the session created (\"#12\", with its state's icon and colour, and the reference in its name such as \"Pull request acme/web#12, open: Ship the checkout\"), and the linked Jira key and status. With Sort by Status (the default) cards run Error, Waiting input, Done, Working, Idle, then pinned, then most recent; Sort by Last updated or Created orders by that time instead.",
+    behaviour: "Each session card shows its status (Error, Waiting input, Done for an unread finished run, Working or Idle), one chip per pull request the session created (\"#12\", coloured by its state, with the reference in its name such as \"Pull request acme/web#12, open: Ship the checkout\"), the worker's name when it runs on one, and the linked Jira key and status. With Sort by Status (the default) cards run Error, Waiting input, Done, Working, Idle, then pinned, then most recent; Sort by Last updated or Created orders by that time instead.",
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],

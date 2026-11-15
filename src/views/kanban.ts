@@ -9,7 +9,6 @@ import { live } from "lit/directives/live.js";
 import { KANBAN_COLUMNS, SESSION_STAGE_LABELS, SESSION_STAGES, type KanbanColumn } from "../lib/kanban.ts";
 import type { SessionStage } from "../api/schema/sessions.ts";
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
-import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
 import { jiraIssueAccessibleLabel, jiraStatusLabel } from "../lib/jira.ts";
 import type { SessionJiraIssue } from "../api/schema/sessions.ts";
 import type { BacklogItem, BacklogJiraState } from "../api/schema/backlog.ts";
@@ -234,9 +233,17 @@ function jiraChip(issues: readonly SessionJiraIssue[] | undefined) {
   </a>`;
 }
 
-/** One chip per pull request the session created: its state's icon and the
- * number, so the card says which work it produced. Each chip opens GitHub and
- * carries the pull request for the shared hovercard. */
+/** The machine a session runs on, when it is a remote worker. */
+function workerChip(session: SessionView) {
+  const worker = session.worker;
+  if (!worker) return nothing;
+  return html`<span class="kanban-card__worker" data-hui-tooltip=${`Runs on ${worker.name}`}>
+    ${icons.globe}<span class="sr-only">Runs on </span><span class="kanban-card__worker-name">${worker.name}</span>
+  </span>`;
+}
+
+/** One chip per pull request the session created. The number carries the
+ * state's colour; the chip opens GitHub and feeds the shared hovercard. */
 function pullRequestChips(session: SessionView) {
   const pullRequests = session.pullRequests ?? [];
   if (!pullRequests.length) return nothing;
@@ -251,7 +258,7 @@ function pullRequestChips(session: SessionView) {
       draggable="false"
       aria-label=${pullRequestAccessibleLabel(pullRequest)}
       .pullRequest=${pullRequest}
-    >${pullRequestStateIcon(pullRequest.state)}<span class="kanban-card__pr-number">#${pullRequest.number}</span></a>`)}
+    ><span class="kanban-card__pr-number">#${pullRequest.number}</span></a>`)}
   </span>`;
 }
 
@@ -309,6 +316,7 @@ function card(session: SessionView, props: KanbanPageProps): TemplateResult {
         <span class="kanban-status kanban-status--${status}">
           <span class="kanban-status__dot" aria-hidden="true"></span>${KANBAN_STATUS_LABELS[status]}
         </span>
+        ${workerChip(session)}
         ${pullRequestChips(session)}
         ${jiraChip(session.jiraIssues)}
         <span class="kanban-card__updated" title=${`${ORIGIN_LABELS[session.stageOrigin ?? "default"]} · updated ${session.updatedAt}`}>

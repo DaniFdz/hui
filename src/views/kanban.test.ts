@@ -28,6 +28,7 @@ async function renderBoard(pullRequests: KanbanPageProps["groups"][number]["sess
     groups: [{ label: "Group", sessions: [{
       id: "session-1", title: "Ship the checkout", group: "", cwd: "/repo", displayCwd: "/repo",
       tool: "durable", status: "idle", stage: "implementation", stageOrigin: "agent", createdAt: now, updatedAt: now,
+      worker: { id: "devbox", name: "devbox" },
       pullRequests,
     }] }],
     loading: false, error: "", query: "", options: DEFAULT_KANBAN_OPTIONS, movePendingId: "", draggingId: "", dropTarget: "",
@@ -36,7 +37,7 @@ async function renderBoard(pullRequests: KanbanPageProps["groups"][number]["sess
   return markup(renderKanbanPage(props)).replace(/\s+/gu, " ");
 }
 
-test("a card draws one state-colored chip per pull request instead of a count", async () => {
+test("a card draws one state-colored chip per pull request and names its worker", async () => {
   const html = await renderBoard([
     { repository: "acme/web", number: 12, url: "https://github.com/acme/web/pull/12", state: "open", title: "Ship the checkout" },
     { repository: "acme/web", number: 13, url: "https://github.com/acme/web/pull/13", state: "merged" },
@@ -44,10 +45,12 @@ test("a card draws one state-colored chip per pull request instead of a count", 
   assert.match(html, /aria-label=2 pull requests/u);
   assert.match(html, /class="session-pr-badge kanban-card__pr" data-state=open href=https:\/\/github.com\/acme\/web\/pull\/12/u);
   assert.match(html, /aria-label=Pull request acme\/web#12, open: Ship the checkout/u);
-  assert.match(html, /<span class="kanban-card__pr-number">#12<\/span>/u);
+  assert.match(html, /<span class="kanban-card__pr-number">#12<\/span><\/a>/u, "the number alone, without a per-chip icon");
   assert.match(html, /class="session-pr-badge kanban-card__pr" data-state=merged href=https:\/\/github.com\/acme\/web\/pull\/13/u);
-  assert.match(html, /<span class="kanban-card__pr-number">#13<\/span>/u);
+  assert.match(html, /<span class="kanban-card__pr-number">#13<\/span><\/a>/u);
   assert.doesNotMatch(html, /PRs ·|1 PR/u, "the count label is gone");
+  assert.match(html, /class="kanban-card__worker" data-hui-tooltip=Runs on devbox/u);
+  assert.match(html, /<span class="sr-only">Runs on <\/span><span class="kanban-card__worker-name">devbox<\/span>/u);
 
   const none = await renderBoard(undefined);
   assert.doesNotMatch(none, /kanban-card__prs/u);
