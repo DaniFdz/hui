@@ -11449,14 +11449,10 @@
     "StaffChiefInput": {
       "type": "object",
       "required": [
-        "group",
-        "cwd"
+        "group"
       ],
       "properties": {
         "group": {
-          "type": "string"
-        },
-        "cwd": {
           "type": "string"
         }
       }

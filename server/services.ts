@@ -284,6 +284,7 @@ async function staffDeps(): Promise<StaffDeps> {
   };
 }
 export const staffRoutes = createStaffRoutes({
+  groups: readSessionGroups,
   bots: () => botRegistry.list(),
   getBot: (id) => bots.get(id),
   createBot: (body) => bots.create(body),

@@ -1,8 +1,10 @@
 /**
- * `POST /__hui/staff/chiefs`: the Chief of Staff for one custom session group. A group is a project here, so its chief
- * gets that project's directory as its cwd, its own OptChat memory (every bot has one) and its own copy of the staff
- * pack's skills in its home folder. Asking twice for the same group returns the chief it already has, restoring it if
- * it was archived, so the group's menu cannot create a second one.
+ * `POST /__hui/staff/chiefs`: the Chief of Staff for one custom session group. The group's stored New session defaults
+ * name the project directory and the machine its sessions run on; the chief runs on that machine and works in its own
+ * folder, which HUI makes, with its own OptChat memory (every bot has one) and its own copy of the staff pack's skills
+ * there. The project directory is where the sessions the chief creates run, not where its chat is.
+ * Asking twice for the same group returns the chief it already has, restoring it if it was archived, so the group's menu
+ * cannot create a second one.
  *
  * The pack is installed at creation: SOUL.md is the seed, and its skills are written into the new bot's own folder. The
  * routes are merged by name. HUI records what it installed the next time the gateway starts (server/staff/service.ts),
@@ -23,6 +25,9 @@ const ROUTE = /^\/__hui\/staff\/chiefs$/u;
 const CONTROL = /[\p{Cc}]/u;
 
 export type StaffRouteDeps = {
+  /** The configured session groups: the label the bot record carries, and the machine its sessions and its chief run
+   * on. Read from the registry, so a group's New session defaults stay the one place they are stated. */
+  groups: () => Promise<readonly { label: string; worker?: string }[]>;
   /** The bot roster, by the fields a group needs to find its existing chief. */
   bots: () => Promise<readonly { id: string; group?: string; archived?: boolean }[]>;
   getBot: (id: string) => Promise<BotView>;
@@ -50,14 +55,15 @@ export function createStaffRoutes(deps: StaffRouteDeps) {
     if (request.method !== "POST") return { status: 405, body: { error: "method not allowed" } };
     try {
       const body: unknown = await request.json(16_384);
-      if (typeof body !== "object" || body === null || Array.isArray(body)) throw new BotInputError("A chief needs { group, cwd }.");
+      if (typeof body !== "object" || body === null || Array.isArray(body)) throw new BotInputError("A chief needs { group }.");
       const input = body as Record<string, unknown>;
-      const unknown = Object.keys(input).filter((key) => key !== "group" && key !== "cwd");
+      const unknown = Object.keys(input).filter((key) => key !== "group");
       if (unknown.length) throw new BotInputError(`Unknown chief field: ${unknown.join(", ")}.`);
       const group = (typeof input["group"] === "string" ? input["group"].replace(/\s+/gu, " ") : "").trim();
-      const cwd = (typeof input["cwd"] === "string" ? input["cwd"] : "").trim();
       if (!group || group.length > 200 || CONTROL.test(group)) throw new BotInputError("group must be 1-200 characters, without control characters.");
-      if (!cwd || cwd.length > 4_096 || CONTROL.test(cwd)) throw new BotInputError("cwd must be a project directory.");
+
+      const configured = (await deps.groups()).find((candidate) => candidate.label === group);
+      if (!configured) throw new BotInputError(`No session group named ${group}.`);
 
       const existing = (await deps.bots()).find((bot) => bot.group === group);
       if (existing) {
@@ -69,8 +75,8 @@ export function createStaffRoutes(deps: StaffRouteDeps) {
         name: `${pack.bot.name} · ${group}`,
         title: pack.bot.title,
         description: `${pack.bot.description} For the ${group} group.`,
-        cwd,
         group,
+        ...(configured.worker ? { worker: configured.worker } : {}),
         soul: pack.soul,
       });
       const skills = deps.skills ?? localBotSkills();

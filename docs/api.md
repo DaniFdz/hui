@@ -2205,7 +2205,7 @@ goal's status. It never prompts the watched session itself; the chief reads the 
 
 ### `POST /__hui/staff/chiefs`
 
-201 `BotResponse`. `{ group, cwd }`, nothing else: the custom session group's label (1-200 characters) and its project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its home, its `group` set, and its chat in `cwd`; the pack's routes are added to Settings when missing. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, cwd or an unknown field
+201 `BotResponse`. `{ group }`, nothing else: the custom session group's label (1-200 characters), which must name a configured group. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its own folder, its `group` set, and its chat in that folder (`<HUI config>/bots/<id>`) on the machine the group runs on: the group's `worker` when it names one, this gateway otherwise. The group's project directory is where the sessions its chief creates run, not where the chief's own chat works. The pack's routes are added to Settings when missing. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, an unknown group or an unknown field
 
 ### `GET /__hui/bots/:id/catalog`
 

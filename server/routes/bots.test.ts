@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
 import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotQuestion, type BotsUpdate, type BotView } from "../bots-format.ts";
 import type { BotIO } from "../../cli/gateway-client.ts";
+import type { RouteRequest } from "../http/route.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
@@ -49,7 +50,8 @@ const { readRegistry } = await import("../sessions/sessions.ts");
 const { durableHost } = await import("../runtimes/durable-host.ts");
 const { optChatBotMemory } = await import("../bots/memory.ts");
 const { botChat } = await import("../../cli/bots.ts");
-const { HUI_SETTINGS_FILE } = await import("../hui-settings.ts");
+const { HUI_SETTINGS_FILE, DEFAULT_SETTINGS } = await import("../hui-settings.ts");
+const { createStaffRoutes } = await import("./staff.ts");
 const { BotDoc } = await import("../bots/durable.ts");
 const { OptChatDoc } = await import("../runtimes/durable-optchat.ts");
 const { durableContext } = await import("../runtimes/durable-host.ts");
@@ -89,6 +91,18 @@ async function call(path: string, method = "GET", body?: unknown, guard = true):
 
 const botOf = (reply: { body: Record<string, unknown> }) => reply.body["bot"] as BotView;
 const EMPTY_MEMORY = { messages: 0, built: 0, pending: 0, viewBytes: 0, viewLines: 0, usage: { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 } };
+
+/** A chief request routed straight to its module, for the cases the running gateway's own service cannot make here. */
+const staffRequest = (body: unknown): RouteRequest => ({
+  method: "POST",
+  path: "/__hui/staff/chiefs",
+  query: new URLSearchParams(),
+  headers: {},
+  json: async () => body,
+  bytes: async () => Buffer.alloc(0),
+  stream: async function* () {},
+  signal: new AbortController().signal,
+});
 
 /** Resolves with a bot's memory status once `done` holds, as OptChat reports each change. */
 async function memoryWhere(sessionId: string, done: (status: BotMemoryStatus) => boolean): Promise<BotMemoryStatus> {
@@ -861,23 +875,58 @@ test("explicit memories are guarded, revisioned and freshly included without cha
 });
 
 test("a group gets one Chief of Staff with the pack's skills", async () => {
-  const made = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E", cwd: workspace });
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "Chief E2E" })).status, 200);
+  const made = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E" });
   assert.equal(made.status, 201, JSON.stringify(made.body));
   const bot = botOf(made);
   assert.equal(bot.group, "Chief E2E");
-  assert.equal(bot.cwd, workspace);
+  assert.equal(bot.cwd, join(process.env["XDG_CONFIG_HOME"]!, "hui", "bots", bot.id), "the chief's chat works in its own folder");
+  assert.notEqual(bot.cwd, workspace, "the project directory is where its sessions run, not where it works");
   assert.match(bot.name, /^Chief of Staff · Chief E2E$/u);
-  const again = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E", cwd: workspace });
+  const again = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E" });
   assert.equal(again.status, 200, JSON.stringify(again.body));
   assert.equal(botOf(again).id, bot.id, "the group's menu cannot create a second chief");
   const skill = await call(`/__hui/bots/${bot.id}/skills/verify`);
   assert.equal(skill.status, 200, JSON.stringify(skill.body));
   assert.match(String(skill.body["text"]), /Read the project first/u, "the pack's verify is installed in its home");
-  assert.equal((await call("/__hui/staff/chiefs", "POST", { group: " ", cwd: workspace })).status, 400);
+  assert.equal((await call("/__hui/staff/chiefs", "POST", { group: " " })).status, 400);
+});
+
+test("a chief needs a configured group, and the group is its only input", async () => {
+  const unknown = await call("/__hui/staff/chiefs", "POST", { group: "No such group" });
+  assert.equal(unknown.status, 400, JSON.stringify(unknown.body));
+  assert.match(String(unknown.body["error"]), /No session group named No such group/u);
+  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).filter((bot) => bot.group === "No such group"), [], "an unknown group creates no bot");
+
+  const directory = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E", cwd: workspace });
+  assert.equal(directory.status, 400, JSON.stringify(directory.body));
+  assert.match(String(directory.body["error"]), /Unknown chief field: cwd\./u);
+});
+
+test("a chief is created without a directory, on the machine its group runs on", async () => {
+  const created: Record<string, unknown>[] = [];
+  const routes = createStaffRoutes({
+    groups: async () => [{ label: "Remote project", worker: "w1" }],
+    bots: async () => [],
+    getBot: async () => { throw new Error("the chief already exists"); },
+    createBot: async (body) => { created.push(body); return { id: "chief-remote" } as BotView; },
+    restoreBot: async () => { throw new Error("the chief is archived"); },
+    skills: { files: true, write: async () => {}, read: async () => [] },
+    readSettings: async () => DEFAULT_SETTINGS,
+    writeSettings: async (settings) => settings,
+    recordChief: async () => {},
+  });
+  const made = await routes.handle(staffRequest({ group: "Remote project" }));
+  assert.equal(made?.status, 201);
+  assert.equal(created.length, 1);
+  assert.equal(created[0]!["worker"], "w1", "the chief runs where its group runs");
+  assert.equal("cwd" in created[0]!, false, "the service makes the chief's own folder");
+  assert.equal(created[0]!["group"], "Remote project");
 });
 
 test("a session a chief starts opens with its brief tagged from the chief, never as the operator's own words", { timeout: 120_000 }, async () => {
-  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "Brief E2E", cwd: workspace }));
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "Brief E2E" })).status, 200);
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "Brief E2E" }));
   const brief = "This session owns PR #167221: address the three open review threads, then request review again.";
   const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
     text: toolCalls({ name: "create_session", input: { prompt: brief, title: "PR shepherding" } }),
@@ -909,7 +958,7 @@ test("a chief's session follows its group's New session defaults", { timeout: 12
     cwd: repo, workspaceMode: "worktree", baseRef: "main",
   });
   assert.equal(saved.status, 200, JSON.stringify(saved.body));
-  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group, cwd: repo }));
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group }));
 
   // The chief's own directory, machine and "no worktree" cannot move the session off the group's defaults.
   const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {

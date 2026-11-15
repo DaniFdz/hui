@@ -806,7 +806,7 @@ skill that can take the shipped text, one you edited, and one the pack no longer
 ships (which you can delete); `hui doctor --fix` installs the untouched updates
 and leaves everything else alone.
 
-A **custom session group** is a project here, so its ⋯ menu offers **Create Chief of Staff**: one bot named *Chief of Staff · <group>* whose chat works in that project's folder, with its own OptChat memory and its own copy of the pack's skills. Asking again opens that same chief. The seeded default chief stays for work that belongs to no group.
+A **custom session group** is a project here, so its ⋯ menu offers **Create Chief of Staff**: one bot named *Chief of Staff · <group>* whose chat works in its own folder, on the machine the group runs on, with its own OptChat memory and its own copy of the pack's skills. The group's directory is where the sessions it creates run, not where the chief's own chat works. Asking again opens that same chief. The seeded default chief stays for work that belongs to no group.
 
 Deleting the Chief of Staff is how you opt out: HUI records the seed in
 `staff.json` and does not create another. To get it back, stop the gateway,
