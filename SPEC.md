@@ -58,7 +58,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the same boundary, so moving between the two never changes the column. The
   boundary is a separator named *Resize sidebar* that
   the arrow keys also move, 16px a press and 48px with Shift. Narrow screens
-  show the drawer at its own width, with no boundary.
+  show the drawer at 86% of the screen's width, up to 320px, with no boundary;
+  there a session row keeps one trailing control, its **Actions** menu, which
+  also carries **Pin session**, and gives its name the width that saves.
+  Dragging right from the screen's left edge pulls the drawer open with the
+  finger. Nothing covers the chat there, so a tap or a vertical scroll at the
+  edge works as before. **Open navigation** remains the click and keyboard
+  path.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
   system modes. Theme, color mode, accent, interface font, chat-prose font,
   terminal font, text size and the chat preferences persist per device, in the
