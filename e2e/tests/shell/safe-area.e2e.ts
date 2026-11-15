@@ -1,5 +1,6 @@
 /**
- * SHELL-050: the header, tappable menu and composer clear the display's unsafe bands on every target.
+ * SHELL-050: the header, tappable menu and composer clear the display's unsafe bands on every target. SHELL-053:
+ * the composer sits on the phone's soft keyboard, with the native backdrop following the page.
  * Browsers retain exact synthetic 47/34 CSS insets; Android uses a real system cutout overlay and independently
  * measured system-bar bounds and native WebView origin. Native page tokens stay shell-owned (zero), not injected.
  * Effective before/after bounds account for Android's already-fitted bars and its unchanged navigation-bar inset.
@@ -89,7 +90,7 @@ test("every route's own chrome starts below the status bar, not only the shell's
   }
 });
 
-test("the phone's soft keyboard replaces the home-indicator gap under the composer", { tags: ["SHELL-050"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the phone's soft keyboard replaces the home-indicator gap under the composer", { tags: ["SHELL-053"], platforms: ["web"] }, async ({ screen, hui }) => {
   const session = await hui.createSession({ title: "Sits on the keyboard" });
   await hui.phoneScreen();
   await hui.open(`/sessions/${session.id}`);

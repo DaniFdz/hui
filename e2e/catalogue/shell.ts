@@ -514,7 +514,7 @@ const cases: UseCase[] = [
     id: "SHELL-050",
     title: "Clear of the phone's own chrome",
     behaviour:
-      "The status bar, the notch and the home indicator never cover HUI's own chrome: the header a phone draws starts below the top inset so its menu button is a full tap, and the composer ends above the bottom one. While the phone's soft keyboard is open the composer sits on its top edge instead of leaving the home-indicator gap, New Session's recent chats make way for it, and the native strip the keyboard uncovers is painted in the page's own background rather than black. A page loaded in a browser reserves the insets itself (\`viewport-fit=cover\` is set, and Safari does not inset the layout); the installed app pads the page's frame natively and reports the tokens as zero, and a standalone page pads \`body\`, so no surface counts an inset twice.",
+      "The status bar, the notch and the home indicator never cover HUI's own chrome: the header a phone draws starts below the top inset so its menu button is a full tap, and the composer ends above the bottom one. A page loaded in a browser reserves the insets itself (\`viewport-fit=cover\` is set, and Safari does not inset the layout); the installed app pads the page's frame natively and reports the tokens as zero, and a standalone page pads \`body\`, so no surface counts an inset twice.",
     spec: [LAYOUT],
     surfaces: ["nav:session", "nav:home"],
     journeys: ["phone", "shell-navigation"],
@@ -558,6 +558,21 @@ const cases: UseCase[] = [
       excluded:
         "A phone has no window to keep and no View → Back: switching rebuilds its native bridge on the chosen gateway (SHELL-049, proved on the android target), and its WebView hands a link to another origin to the system browser (SPEC.md \"The phone apps wrap the web UI\").",
       decision: "SPEC.md#the-window-belongs-to-the-gateways-this-device-knows",
+    },
+  },
+  {
+    id: "SHELL-053",
+    title: "Sit the composer on the phone's keyboard",
+    behaviour:
+      "While the phone's soft keyboard is open the composer ends on its top edge instead of keeping the home-indicator gap, and the native strip the keyboard uncovers is painted in the page's own background rather than black. New Session's recent chats below the composer make way until the keyboard closes.",
+    spec: [LAYOUT, "SPEC.md#the-phone-apps-wrap-the-web-ui-2026-11-09"],
+    surfaces: [],
+    journeys: ["phone"],
+    web: "required",
+    phone: {
+      excluded:
+        "Neither phone target can open a soft keyboard: the Android app's is the system's and WebKit has none. The device procedure in e2e/phone.browser.md checks the real keyboard and the iOS window colour.",
+      decision: "SPEC.md#the-phone-apps-wrap-the-web-ui-2026-11-09",
     },
   },
 ];
