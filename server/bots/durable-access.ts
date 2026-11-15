@@ -495,6 +495,9 @@ export type DurableBotsDeps = {
   home?: BotHomeHost | undefined;
   /** Mirrors a bot's lists into the gateway's roster after the operator allowed one of its requests. */
   recorded?(botId: string, access: BotAccess): Promise<void>;
+  /** The project directory of a bot's group, which its chat's prompt carries beside its own folder's context file; the
+   * gateway answers from its session groups, and a host that keeps none leaves it. */
+  projectDir?(botId: string): Promise<string | undefined>;
 };
 
 /** The bots `host` runs (`DurableHost.configureDurableBots`): `message_bot`, `write_soul`, `set_profile`,
@@ -525,6 +528,7 @@ export function createDurableBots(host: DurableHost, deps: DurableBotsDeps): Dur
     },
     state: (reader, conversationId) => conversationBotState(reader, conversationId, durableContext),
     mayCall: (state: BotState, action) => botMayCall(state, action),
+    projectDir: async (state) => deps.projectDir ? deps.projectDir(state.bot) : undefined,
     skillsDir(state) {
       const home = deps.home?.home(state.bot);
       return home ? botSkillsDir(home) : undefined;

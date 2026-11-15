@@ -139,6 +139,7 @@ import {
   readSessionGroups,
   SessionNotFoundError,
   updateRegistry,
+  type SessionGroupConfig,
   type SessionRecord,
 } from "./sessions/sessions.ts";
 import { createSessionLifecycle, defaultSessionTool, SESSION_TITLE_MAX } from "./sessions/lifecycle.ts";
@@ -361,6 +362,15 @@ export const botTemplateRoutes = createBotTemplateRoutes({
     },
   }),
 });
+/**
+ * The session group a chat's bot works for, by its bot id: its stored New session defaults name the project directory
+ * and the machine the sessions and children the bot's chat starts belong to (`group-session-defaults.ts`). A bot of no
+ * group, or a label no group of the registry carries, answers none.
+ */
+async function groupForBot(botId: string): Promise<SessionGroupConfig | undefined> {
+  const label = (await botRegistry.list()).find(({ id }) => id === botId)?.group;
+  return label ? (await readSessionGroups()).find((group) => group.label === label) : undefined;
+}
 // A bot's chat lists the other bots in its `bots` prompt section, and a session the bots it may tag (a
 // worker's host asks for those of its sessions and bots, and learns each bot's name with it), and a bot reads its
 // SOUL.md, USER.md and MEMORY.md in its `soul`, `operator` and `memory` sections, from its home folder in HUI's
@@ -375,6 +385,8 @@ durableHost().configureDurableBots(createDurableBots(durableHost(), {
   },
   // A bot's chat that turns tools back on (the operator allowed a request there) updates the roster's copy of its lists.
   recorded: (botId, access) => bots.accessRecorded(botId, access),
+  // A group chief works in its own folder, so its group's project lends its prompt the project's context file.
+  projectDir: async (botId) => (await groupForBot(botId))?.cwd,
 }));
 workers.serve("bot.section", async (workerId, params) => {
   const botId = typeof params["botId"] === "string" ? params["botId"] : undefined;
@@ -384,6 +396,8 @@ workers.serve("bot.section", async (workerId, params) => {
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 export const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 export const subagents = new SubagentService(liveSessions);
+// A chief's children belong to the project and machine its group states, not to the chief's own bot folder.
+subagents.botGroup = groupForBot;
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 export const watchers = new WatcherService({
   file: WATCHERS_FILE,
@@ -596,7 +610,9 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
       ? { kind: "worker", worker: (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker }
       : undefined;
   const defaults = groupSessionDefaults({
-    ...(groupDefaults ? { group: groupDefaults } : {}),
+    // A label is enough to be grouped: a group that names no directory refuses rather than place the session in the
+    // chief's own bot folder, even when the registry carries no record of it yet.
+    ...(group ? { group: groupDefaults ?? {} } : {}),
     caller: { cwd: caller.cwd, ...(caller.worker ? { worker: caller.worker } : {}) },
     requested: {
       ...(requestedCwd ? { cwd: requestedCwd } : {}),

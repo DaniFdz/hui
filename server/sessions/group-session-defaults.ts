@@ -2,11 +2,29 @@
  * The New session defaults a group lends to a session a Chief of Staff creates with `create_session`. A value the group
  * stores wins over the chief's argument and over the caller's context, so the group's directory, machine, Git mode and
  * base ref hold for every session it owns. An argument fills in only what the group leaves unset.
+ *
+ * A chief works in its own bot folder, which belongs to no project: a grouped session never falls back to it, and a
+ * group that names no directory refuses with one sentence rather than place work in the bot's home.
  */
 import type { SessionGroupConfig } from "./sessions.ts";
 
 /** A chief named `local` explicitly, or a worker to place the session on. */
 export type RequestedWorker = { kind: "local" } | { kind: "worker"; worker: string };
+
+/** What a grouped chief reads when neither its group nor its call names the project its sessions belong to. */
+export const GROUP_PROJECT_MISSING = "This group has no project directory. Set it in the group's New session defaults.";
+
+/**
+ * Where a session a chief starts works: its group's directory, or the one the call named. It is never the chief's own
+ * folder, which belongs to the bot rather than to a project: a group that names neither refuses with
+ * `GROUP_PROJECT_MISSING`. Without a group there is no project, and the caller's own directory stands.
+ */
+export function projectDirectory(group: { cwd?: string } | undefined, requestedCwd: string | undefined, callerCwd: string): string {
+  const named = group?.cwd ?? requestedCwd;
+  if (named) return named;
+  if (group) throw new Error(GROUP_PROJECT_MISSING);
+  return callerCwd;
+}
 
 export type GroupSessionDefaults = {
   cwd: string;
@@ -21,7 +39,7 @@ export function groupSessionDefaults(options: {
   requested?: { cwd?: string; worker?: RequestedWorker; worktree?: boolean; baseRef?: string };
 }): GroupSessionDefaults {
   const { group, caller, requested = {} } = options;
-  const cwd = group?.cwd ?? requested.cwd ?? caller.cwd;
+  const cwd = projectDirectory(group, requested.cwd, caller.cwd);
   const worker = group?.worker
     ?? (requested.worker?.kind === "local" ? undefined
       : requested.worker ? requested.worker.worker : caller.worker);

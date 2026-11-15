@@ -925,7 +925,8 @@ test("a chief is created without a directory, on the machine its group runs on",
 });
 
 test("a session a chief starts opens with its brief tagged from the chief, never as the operator's own words", { timeout: 120_000 }, async () => {
-  assert.equal((await call("/__hui/session-groups", "POST", { name: "Brief E2E" })).status, 200);
+  // The group names the project its sessions belong to: a chief works in its own folder, never in theirs.
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "Brief E2E", cwd: workspace })).status, 200);
   const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "Brief E2E" }));
   const brief = "This session owns PR #167221: address the three open review threads, then request review again.";
   const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
@@ -939,6 +940,52 @@ test("a session a chief starts opens with its brief tagged from the chief, never
   await settledWith(child.id, says("user", brief));
   assert.deepEqual(liveSessions.transcript(child.id).flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []),
     [`[from @${chief.handle}] ${brief}`]);
+});
+
+test("a group with no project directory refuses a session rather than place it in its chief's folder", { timeout: 120_000 }, async () => {
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "No project E2E" })).status, 200);
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "No project E2E" }));
+  const before = (await readRegistry()).length;
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "create_session", input: { prompt: "Work somewhere.", title: "Nowhere child" } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  assert.match(String(asked.body["reply"]), /This group has no project directory\. Set it in the group's New session defaults\./u);
+  const records = await readRegistry();
+  assert.equal(records.length, before, "no session was created");
+  assert.equal(records.some((record) => record.title === "Nowhere child"), false);
+});
+
+test("a group chief's chat carries its project's context file, and what it spawns lands in that project", { timeout: 180_000 }, async () => {
+  const project = join(dir, "chief-project");
+  await mkdir(project);
+  await writeFile(join(project, "AGENTS.md"), "PROJECT_CONTEXT_MARKER\n");
+  const group = "Chief context E2E";
+  assert.equal((await call("/__hui/session-groups", "POST", { name: group, cwd: project })).status, 200);
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group }));
+  // The chief works in its own folder, with context of its own beside the project's. A folder's context files are read
+  // once per loader, as in PI, so a file written after the chief's first read needs the reload any PI session would.
+  await writeFile(join(dir, "config", "hui", "bots", chief.id, "AGENTS.md"), "CHIEF_FOLDER_MARKER\n");
+  durableHost().prompt.reload(chief.cwd);
+  assert.equal((await call(`/__hui/bots/${chief.id}/messages`, "POST", { text: "PROJECT_CONTEXT_TURN", wait: true })).body["status"], "answered");
+  const request = (await providerRequests()).findLast((entry) => JSON.stringify(entry.messages).includes("PROJECT_CONTEXT_TURN"));
+  const system = JSON.stringify(request?.system);
+  assert.match(system, /CHIEF_FOLDER_MARKER/u, "its own folder's context file");
+  assert.match(system, /PROJECT_CONTEXT_MARKER/u, "the group's project's context file");
+  assert.ok(system.indexOf("CHIEF_FOLDER_MARKER") < system.indexOf("PROJECT_CONTEXT_MARKER"), "its own folder's file first");
+
+  // A child it starts belongs to the project, not to the chief's folder.
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "sessions_spawn", input: { task: "Inspect the project", label: "Project child" } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  const child = (await readRegistry()).find((record) => record.title === "Project child");
+  assert.ok(child, JSON.stringify(asked.body));
+  assert.equal(child.cwd, project);
 });
 
 test("a chief's session follows its group's New session defaults", { timeout: 120_000 }, async () => {

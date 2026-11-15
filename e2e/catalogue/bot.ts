@@ -694,7 +694,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-072",
     title: "Create a Chief of Staff for a custom project group",
-    behaviour: "A custom group's ⋯ menu offers Create Chief of Staff. It creates one bot named Chief of Staff · <group>, working in the group's project folder, with the staff pack's skills. Asking again opens that same chief, and the Bots tab lists it.",
+    behaviour: "A custom group's ⋯ menu offers Create Chief of Staff. It creates one bot named Chief of Staff · <group>, working in its own bot folder on the group's machine, with the staff pack's skills, and its prompt carries the group's project context beside its own. Asking again opens that same chief, and the Bots tab lists it.",
     spec: ["SPEC.md#bots", "docs/api.md#post-__huistaffchiefs"],
     surfaces: ["route:POST /__hui/staff/chiefs"],
     journeys: ["bots"],
@@ -724,7 +724,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-073",
     title: "Create an ordinary session from an agent",
-    behaviour: "An agent calls create_session with a brief and a group and optionally a worker, a worktree, a model and thinking. The target group's stored New session defaults decide the session's directory, machine, Git environment and base ref, and the call fills in only what the group leaves unset; a group chief's own group is the default. A top-level session appears in that group with the brief as its first prompt, tagged from the calling bot so its chat shows the brief under that bot's name rather than as the operator's own words; it is not a child, so sessions_list and sessions_history do not show it to the caller. The session it creates runs Autonomous, and its prompt carries the PR lead's phases: stop once on the plan for the chief's approval, then ship a draft pull request.",
+    behaviour: "An agent calls create_session with a brief and a group and optionally a worker, a worktree, a model and thinking. The target group's stored New session defaults decide the session's directory, machine, Git environment and base ref, and the call fills in only what the group leaves unset; a group chief's own group is the default, and a group that names no directory refuses rather than place the session in the chief's bot folder. A top-level session appears in that group with the brief as its first prompt, tagged from the calling bot so its chat shows the brief under that bot's name rather than as the operator's own words; it is not a child, so sessions_list and sessions_history do not show it to the caller. The session it creates runs Autonomous, and its prompt carries the PR lead's phases: stop once on the plan for the chief's approval, then ship a draft pull request.",
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#pi-session-coordination-tools"],
     surfaces: ["tool:create_session"],
     journeys: ["bots"],

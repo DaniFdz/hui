@@ -6,6 +6,7 @@ import type { SessionRecord } from "../sessions/sessions.ts";
 import { DEFAULT_SETTINGS } from "../hui-settings.ts";
 import type { Settings } from "../api/settings.ts";
 import { SubagentService } from "./subagents.ts";
+import { GROUP_PROJECT_MISSING } from "../sessions/group-session-defaults.ts";
 import { workers, type RemoteSessionSink } from "../workers.ts";
 import { RuntimeUnreachableError } from "../runtimes/types.ts";
 import type {
@@ -360,6 +361,47 @@ test("a bot's subagent carries the bot whose skills it loads, and so does a work
   await state.service.handle(chained.id, "sessions_spawn", { task: "Work" });
   const children = state.records().filter((item) => item.parentId);
   assert.deepEqual(children.map((child) => [child.parentId, child.botSkills]), [[bot.id, "bot-1"], [chained.id, "bot-2"]]);
+});
+
+test("a chief's child belongs to the project its group states, not to the chief's own folder", async (t) => {
+  const worker = scriptedWorker();
+  const chief = record("chief", { bot: "payments", group: "", cwd: "/home/op/.config/hui/bots/payments", worker: "chief-machine" });
+  const helper = record("helper", { bot: "release-helper", group: "", cwd: "/home/op/.config/hui/bots/release-helper" });
+  const state = harness([chief, helper], { ids: ["task-1", "child-1", "task-2", "child-2", "task-3", "child-3"] });
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  for (const parent of [chief, helper]) {
+    state.manager.ensure(parent);
+    await waitForStatus(state.manager, parent.id, "idle");
+  }
+  // The gateway answers with the group the bot belongs to: its directory and machine, or none for a bot of no group.
+  state.service.botGroup = async (botId) => botId === "payments" ? { cwd: "/project/checkout", worker: "group-machine" } : undefined;
+  const made: { cwd: string; worker?: string }[] = [];
+  state.manager.subagentWorktree = async (caller) => {
+    made.push({ cwd: caller.cwd, ...(caller.worker ? { worker: caller.worker } : {}) });
+    return { cwd: "/project/checkout-worktree", branch: "hui/child", rollback: async () => undefined };
+  };
+  await state.service.initialize();
+  const prompted = worker.prompted("child-1");
+  await state.service.handle(chief.id, "sessions_spawn", { task: "Change the checkout" });
+  await prompted;
+  await state.service.handle(chief.id, "sessions_spawn", { task: "Change it in a worktree", worktree: true });
+  await state.service.handle(helper.id, "sessions_spawn", { task: "Write the release note" });
+  const child = (parentId: string) => state.records().find((item) => item.parentId === parentId)!;
+  assert.deepEqual({ cwd: child(chief.id).cwd, worker: child(chief.id).worker }, { cwd: "/project/checkout", worker: "group-machine" });
+  assert.deepEqual(made, [{ cwd: "/project/checkout", worker: "group-machine" }], "the worktree comes off the project, on its machine");
+  assert.deepEqual({ cwd: child(helper.id).cwd, worker: child(helper.id).worker }, { cwd: helper.cwd, worker: undefined }, "a chat of no group is unchanged");
+});
+
+test("a chief whose group names no project does not spawn into its own folder", async (t) => {
+  const chief = record("chief", { bot: "payments", group: "", cwd: "/home/op/.config/hui/bots/payments" });
+  const state = harness([chief]);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(chief);
+  await waitForStatus(state.manager, chief.id, "idle");
+  state.service.botGroup = async () => ({});
+  await state.service.initialize();
+  await assert.rejects(() => state.service.handle(chief.id, "sessions_spawn", { task: "Work" }), { message: GROUP_PROJECT_MISSING });
+  assert.deepEqual(state.records().filter((item) => item.parentId), [], "no child was registered");
 });
 
 test("a spawn with worktree runs the child in the checkout the sessions layer made", async (t) => {
