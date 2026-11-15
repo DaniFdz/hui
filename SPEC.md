@@ -4935,6 +4935,7 @@ deliver independently: one failing does not stop the other, and a notification
 is reported as sent when either accepted it. A gateway with neither skips HUI's
 own events without an error and tells an agent's `notify_user` caller how to set
 one up.
+- **The tap opens the web app or an HUI app (2026-11-15).** The owner, with HUI installed on the iPhone, reported that a notification's tap landed in the browser instead of the app. *Phone (ntfy)* therefore carries **Opens in**: **Browser**, the default, publishes the gateway's own `http(s)` address, which any device can open; **HUI on my phone** publishes the phone shell's deep link (`hui://open?path=/sessions/<id>`, the link `mobile/AGENTS.md` already defines); **HUI on my desktop** publishes `hui://sessions/<id>`. An app link carries no address, because each shell appends the path to the gateway it is already connected to and refuses one that would point elsewhere — so an app link only resolves on the gateway that app is connected to, and a device without the app ignores the tap. The setting belongs to the relay and is saved beside its server and topic.
 - **No APNs, no browser push.** The relay is the phone channel: it needs the
 ntfy app installed and subscribed, and it carries no promise about delivery
 timing beyond ntfy's own queue. The HUI app itself is unchanged.

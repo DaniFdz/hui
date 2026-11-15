@@ -208,19 +208,26 @@ test("the default reasoning is a PI level, or PI's own default when unset", () =
   assert.deepEqual(normalizeSettings(normalizeSettings({ models: { thinking: "xhigh" } })).models.thinking, "xhigh", "round-trips");
 });
 
-test("the ntfy relay keeps a capability topic and repairs a malformed server", () => {
+test("the ntfy relay keeps a capability topic, repairs a malformed server and a malformed link", () => {
   const normalize = (ntfy: unknown) => normalizeSettings({ notifications: { ntfy } }).notifications.ntfy;
-  assert.deepEqual(normalize(undefined), { server: "https://ntfy.sh", topic: "" }, "no relay until a topic is set");
-  assert.deepEqual(normalize({ topic: " hui-abc_123 " }), { server: "https://ntfy.sh", topic: "hui-abc_123" });
-  assert.deepEqual(normalize({ server: "https://ntfy.example.com/", topic: "a".repeat(64) }), { server: "https://ntfy.example.com", topic: "a".repeat(64) });
-  assert.deepEqual(normalize({ server: "http://127.0.0.1:8080/hui", topic: "phone" }), { server: "http://127.0.0.1:8080/hui", topic: "phone" }, "a self-hosted base path stays");
+  assert.deepEqual(normalize(undefined), { server: "https://ntfy.sh", topic: "", link: "web" }, "no relay until a topic is set, and a tap opens the browser");
+  assert.deepEqual(normalize({ topic: " hui-abc_123 " }), { server: "https://ntfy.sh", topic: "hui-abc_123", link: "web" });
+  assert.deepEqual(normalize({ server: "https://ntfy.example.com/", topic: "a".repeat(64) }), { server: "https://ntfy.example.com", topic: "a".repeat(64), link: "web" });
+  assert.deepEqual(normalize({ server: "http://127.0.0.1:8080/hui", topic: "phone" }), { server: "http://127.0.0.1:8080/hui", topic: "phone", link: "web" }, "a self-hosted base path stays");
   for (const server of ["", "not a url", "ftp://ntfy.sh", "https://user:pass@ntfy.sh", "https://ntfy.sh/?q=1", "https://ntfy.sh/#a", "x".repeat(2_100)]) {
     assert.equal(normalize({ server, topic: "phone" }).server, "https://ntfy.sh", JSON.stringify(server));
   }
   for (const topic of ["", "has space", "slash/name", "x".repeat(65), 42, null]) {
     assert.equal(normalize({ server: "https://ntfy.sh", topic }).topic, "", JSON.stringify(topic));
   }
-  assert.deepEqual(normalize(normalize({ server: "https://ntfy.example.com/", topic: "phone" })), { server: "https://ntfy.example.com", topic: "phone" }, "round-trips");
+  // What a tap opens is one of the two apps or the browser; anything else is the browser, which every device can open.
+  for (const link of ["phone", "desktop"]) {
+    assert.equal(normalize({ server: "https://ntfy.sh", topic: "phone", link }).link, link);
+  }
+  for (const link of ["app", "WEB", "ios", "", 42, null, ["phone"]]) {
+    assert.equal(normalize({ server: "https://ntfy.sh", topic: "phone", link }).link, "web", JSON.stringify(link));
+  }
+  assert.deepEqual(normalize(normalize({ server: "https://ntfy.example.com/", topic: "phone", link: "phone" })), { server: "https://ntfy.example.com", topic: "phone", link: "phone" }, "round-trips");
 });
 
 const fixtures: { input: unknown; expected: ReturnType<typeof normalizeSettings> }[] = JSON.parse(readFileSync(new URL("./settings.fixture.json", import.meta.url), "utf8"));

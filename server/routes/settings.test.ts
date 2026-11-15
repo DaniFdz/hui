@@ -84,7 +84,7 @@ type OriginalVscodeSettings = {
   licenseAcceptedAt: string;
 };
 
-type OriginalNtfySettings = { server: string; topic: string };
+type OriginalNtfySettings = { server: string; topic: string; link: "web" | "phone" | "desktop" };
 
 
 expectTypeOf<VscodeProviderPreference>().toEqualTypeOf<OriginalVscodeProviderPreference>();

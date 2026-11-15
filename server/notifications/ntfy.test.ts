@@ -27,9 +27,9 @@ async function relay(status = 200): Promise<{ server: string; requests: { url?: 
 }
 
 test("a topic is the capability, and nothing malformed turns the relay on", () => {
-  assert.equal(ntfyConfigured({ server: "https://ntfy.sh", topic: "hui-abc_123" }), true);
+  assert.equal(ntfyConfigured({ server: "https://ntfy.sh", topic: "hui-abc_123", link: "web" }), true);
   for (const topic of ["", " ", "has space", "slash/name", "x".repeat(65), "émoji"]) {
-    assert.equal(ntfyConfigured({ server: "https://ntfy.sh", topic }), false, JSON.stringify(topic));
+    assert.equal(ntfyConfigured({ server: "https://ntfy.sh", topic, link: "web" }), false, JSON.stringify(topic));
   }
   assert.equal(ntfyConfigured(undefined), false);
 });
@@ -55,7 +55,7 @@ test("a notification becomes the chat's title, its subtitle and message, and a t
 
 test("publishing posts the message as JSON to the topic, with the token from outside settings", async () => {
   const local = await relay();
-  await publishNtfy({ server: `${local.server}/`, topic: "hui-abc" }, { title: "HUI", message: "Hello", priority: 3 }, { token: " secret-token " });
+  await publishNtfy({ server: `${local.server}/`, topic: "hui-abc", link: "web" }, { title: "HUI", message: "Hello", priority: 3 }, { token: " secret-token " });
   assert.equal(local.requests.length, 1);
   const [request] = local.requests;
   assert.equal(request?.url, "/hui-abc", "a trailing slash on the server does not double");
@@ -63,13 +63,13 @@ test("publishing posts the message as JSON to the topic, with the token from out
   assert.equal(request?.headers["authorization"], "Bearer secret-token");
   assert.deepEqual(JSON.parse(request?.body ?? "{}"), { title: "HUI", message: "Hello", priority: 3 });
 
-  await publishNtfy({ server: local.server, topic: "hui-abc" }, { title: "HUI", priority: 2 });
+  await publishNtfy({ server: local.server, topic: "hui-abc", link: "web" }, { title: "HUI", priority: 2 });
   assert.equal(local.requests[1]?.headers["authorization"], undefined, "no token, no header");
 });
 
 test("a refused or unreachable relay rejects without naming the topic", async () => {
   const refused = await relay(403);
-  await assert.rejects(publishNtfy({ server: refused.server, topic: "hui-secret-topic" }, { title: "HUI", priority: 3 }), (error: Error) => {
+  await assert.rejects(publishNtfy({ server: refused.server, topic: "hui-secret-topic", link: "web" }, { title: "HUI", priority: 3 }), (error: Error) => {
     assert.match(error.message, /HTTP 403/u);
     assert.doesNotMatch(error.message, /hui-secret-topic/u, "the topic is a password and never appears in an error");
     return true;
@@ -78,11 +78,11 @@ test("a refused or unreachable relay rejects without naming the topic", async ()
   const unreachable = await relay();
   const address = unreachable.server;
   const controller = new AbortController();
-  const pending = publishNtfy({ server: address, topic: "hui-abc" }, { title: "HUI", priority: 3 }, { signal: controller.signal });
+  const pending = publishNtfy({ server: address, topic: "hui-abc", link: "web" }, { title: "HUI", priority: 3 }, { signal: controller.signal });
   controller.abort();
   await assert.rejects(pending);
 
-  await assert.rejects(publishNtfy({ server: "not a url", topic: "hui-abc" }, { title: "HUI", priority: 3 }), /valid http\(s\) address/u);
-  await assert.rejects(publishNtfy({ server: "ftp://example.com", topic: "hui-abc" }, { title: "HUI", priority: 3 }), /valid http\(s\) address/u);
-  await assert.rejects(publishNtfy({ server: "https://user:pass@example.com", topic: "hui-abc" }, { title: "HUI", priority: 3 }), /valid http\(s\) address/u);
+  await assert.rejects(publishNtfy({ server: "not a url", topic: "hui-abc", link: "web" }, { title: "HUI", priority: 3 }), /valid http\(s\) address/u);
+  await assert.rejects(publishNtfy({ server: "ftp://example.com", topic: "hui-abc", link: "web" }, { title: "HUI", priority: 3 }), /valid http\(s\) address/u);
+  await assert.rejects(publishNtfy({ server: "https://user:pass@example.com", topic: "hui-abc", link: "web" }, { title: "HUI", priority: 3 }), /valid http\(s\) address/u);
 });

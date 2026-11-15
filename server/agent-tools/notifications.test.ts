@@ -31,7 +31,7 @@ vi.mock("node:child_process", () => ({
     }
   },
 }));
-import { notifyUser } from "./notifications.ts";
+import { appChatLink, notificationChatLink, notifyUser } from "./notifications.ts";
 
 beforeEach(async () => {
   host.home = await mkdtemp(join(tmpdir(), "hui-notifications-"));
@@ -46,6 +46,26 @@ beforeEach(async () => {
   await writeFile(join(resources, "hui-notifications"), "3");
 });
 afterEach(() => rm(host.home, { recursive: true, force: true }));
+
+test("an app link opens the chat on the gateway the app is connected to, and never carries an address", async () => {
+  // The phone shell's deep link (`mobile/android` DeepLink, `mobile/ios` SceneDelegate) and the desktop app's.
+  const chat = { id: "4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f" };
+  assert.equal(appChatLink("phone", chat), "hui://open?path=/sessions/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f");
+  assert.equal(appChatLink("desktop", chat), "hui://sessions/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f");
+  assert.equal(appChatLink("phone", { id: "bot-session", bot: "stable-bot" }), "hui://open?path=/bots/stable-bot", "a bot chat opens where its own name does");
+  assert.equal(appChatLink("desktop", { id: "bot-session", bot: "stable-bot" }), "hui://bots/stable-bot");
+  // A shell refuses a path that hides a scheme or a character a URL cannot carry, so an id stays encoded as an address
+  // encodes it and cannot smuggle anything of its own into the path.
+  assert.equal(appChatLink("phone", { id: "http://evil.example/" }), "hui://open?path=/sessions/http%3A%2F%2Fevil.example%2F");
+  assert.equal(appChatLink("phone", { id: "a b" }), "hui://open?path=/sessions/a%20b");
+
+  // The browser link is the gateway's own address, which needs the managed gateway; an app link needs no address at all.
+  assert.equal(await notificationChatLink(chat, "web"), "http://127.0.0.1:4173/sessions/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f");
+  assert.equal(await notificationChatLink(chat, "phone"), "hui://open?path=/sessions/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f");
+  host.gateway = undefined;
+  assert.equal(await notificationChatLink(chat, "web"), undefined, "no gateway address, no browser link");
+  assert.equal(await notificationChatLink(chat, "desktop"), "hui://sessions/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f");
+});
 
 test("notifications carry the caller's regular or stable bot chat, not a model-supplied destination", async () => {
   for (const [caller, expected] of [
