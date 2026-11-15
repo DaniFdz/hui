@@ -110,6 +110,18 @@ export const SessionView = Type.Object({
   })),
   interrupted: Type.Optional(Type.Literal(true)),
   runFailed: Type.Optional(Type.Literal(true)),
+  /** The pending question a waiting session shows in lists; see SessionQuestion for the full card. */
+  question: Type.Optional(Type.Object({
+    id: Type.String(),
+    method: Type.Union([
+      Type.Literal("select"), Type.Literal("confirm"), Type.Literal("input"), Type.Literal("editor"),
+      Type.Literal("secret"), Type.Literal("questionnaire"),
+    ]),
+    title: Type.String(),
+    options: Type.Optional(Type.Array(Type.String())),
+  })),
+  /** Why the failed run ended, when the transcript (or the live run) still names it. */
+  failure: Type.Optional(Type.String()),
   background: Type.Optional(Type.Literal(true)),
   model: Type.Optional(Type.String()),
   thinking: Type.Optional(Type.String()),
