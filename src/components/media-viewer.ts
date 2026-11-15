@@ -164,7 +164,10 @@ export class HuiMediaViewer extends HuiElement {
     }
     this.#resize = new ResizeObserver(() => (this.#fitted ? this.#fit() : this.#set(this.#transform)));
     this.#resize.observe(stage);
-    stage.focus({ preventScroll: true });
+    // Keys bubble to the dialog from whichever of its descendants holds focus.
+    // Focusing the stage would paint its keyboard focus ring around the whole
+    // picture on open, which iOS does even for a tap.
+    dialog.focus({ preventScroll: true });
   }
 
   #stage(): HTMLElement | null {
@@ -467,7 +470,7 @@ export class HuiMediaViewer extends HuiElement {
     const label = source.kind === "diagram" ? source.label : "Image";
     const zoom = formatZoom(this.#transform.scale);
     const external = source.kind === "image" && !source.src.startsWith("data:");
-    return html`<dialog class="hui-media-viewer" aria-label=${`${label} viewer: ${source.name}`} data-kind=${source.kind}
+    return html`<dialog class="hui-media-viewer" tabindex="-1" aria-label=${`${label} viewer: ${source.name}`} data-kind=${source.kind}
       @keydown=${this.#keydown} @close=${this.#closed}>
       <header class="hui-media-viewer__bar">
         <span class="hui-media-viewer__title" title=${source.name}>${source.name}</span>
@@ -490,7 +493,7 @@ export class HuiMediaViewer extends HuiElement {
           ${this.#button("Close viewer", icons.close, this.#close, { className: "hui-media-viewer__close" })}
         </div>
       </header>
-      <div class="hui-media-viewer__stage" tabindex="0" autofocus aria-label=${`${label}: scroll or pinch to zoom, drag to pan`}
+      <div class="hui-media-viewer__stage" tabindex="0" aria-label=${`${label}: scroll or pinch to zoom, drag to pan`}
         @pointerdown=${this.#pointerDown} @pointermove=${this.#pointerMove} @pointerup=${this.#pointerUp} @pointercancel=${this.#pointerUp} @pointerleave=${this.#pointerUp}
         @wheel=${this.#wheel} @click=${this.#stageClick} @dblclick=${this.#doubleClick}>
         ${source.kind === "image"
