@@ -32,7 +32,7 @@ test("Filter cards… keeps cards matching a title, path, group, pull request or
     for (const title of hidden) await expect(board.getByText(title)).toBeHidden();
   };
 
-  await expect(card("Pulled request card").getByText("1 PR")).toBeVisible();
+  await expect(card("Pulled request card").getByText("#42")).toBeVisible();
   await only("alpha", "Alpha card", ["Grouped card", "Repo card", "Pulled request card", "Keyed card"]);
   await only("beta squad", "Grouped card", ["Alpha card", "Repo card"]);
   await only(basename(repo.path), "Repo card", ["Alpha card", "Grouped card", "Pulled request card"]);

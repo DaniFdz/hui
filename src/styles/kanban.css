@@ -142,9 +142,9 @@
 .kanban-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
+  gap: 3px;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 5px 7px;
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
   border-radius: var(--radius-md);
@@ -180,7 +180,7 @@
   overflow: hidden;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 }
 
 .kanban-card__stage-trigger {
@@ -205,7 +205,7 @@
   flex-wrap: wrap;
   min-width: 0;
   align-items: center;
-  gap: 4px 10px;
+  gap: 2px 5px;
   color: var(--muted);
   font-size: var(--control-ui-text-xs);
 }
@@ -226,22 +226,37 @@
   .kanban-status--working .kanban-status__dot { animation: none; }
 }
 
-/* Pull requests: count plus a state breakdown, coloured by the dominant state. */
+/* Pull requests: one state-colored chip per pull request, reusing the sidebar's
+ * badge and its hovercard. The number alone keeps the card dense. */
 .kanban-card__prs {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 2px 3px;
   min-width: 0;
-  color: var(--muted);
-  text-decoration: none;
+}
+.app-shell .kanban-card__prs .session-pr-badge {
+  width: auto;
+  gap: 0;
+  padding: 0 3px;
+  font-family: var(--mono);
+  font-size: var(--control-ui-text-xs);
+  line-height: 1;
+}
+.kanban-card__pr-number { font-variant-numeric: tabular-nums; }
+.kanban-card__prs a:hover .kanban-card__pr-number { text-decoration: underline; }
+
+/* The machine a remote session runs on, beside its status. */
+.kanban-card__worker {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  max-width: 12ch;
   white-space: nowrap;
 }
-.kanban-card__prs svg { flex: none; width: 12px; height: 12px; }
-a.kanban-card__prs:hover span { text-decoration: underline; }
-.kanban-card__prs[data-state="open"] svg { color: var(--ok); }
-.kanban-card__prs[data-state="draft"] svg { color: var(--muted); }
-.kanban-card__prs[data-state="merged"] svg { color: var(--accent); }
-.kanban-card__prs[data-state="closed"] svg { color: var(--danger); }
+.kanban-card__worker svg { flex: none; width: 11px; height: 11px; }
+.kanban-card__worker-name { overflow: hidden; text-overflow: ellipsis; }
 
 /* Jira key and status; the mark reuses the sidebar badge and its hovercard. */
 .kanban-card__jira {
@@ -346,6 +361,7 @@ a.kanban-card__prs:hover span { text-decoration: underline; }
 }
 
 .kanban-card__updated { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
+.kanban-card__updated--head { align-self: flex-start; margin-left: auto; padding-top: 2px; font-size: var(--control-ui-text-xs); }
 .kanban-card__pin svg { width: 11px; height: 11px; }
 
 @media (max-width: 768px) {
