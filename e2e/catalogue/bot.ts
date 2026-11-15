@@ -694,7 +694,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-072",
     title: "Create a Chief of Staff for a custom project group",
-    behaviour: "A custom group's ⋯ menu offers Create Chief of Staff. It creates one bot named Chief of Staff · <group>, working in its own bot folder on the group's machine, with the staff pack's skills, and its prompt carries the group's project context beside its own. Asking again opens that same chief, and the Bots tab lists it.",
+    behaviour: "A custom group's ⋯ menu offers Create Chief of Staff, whether or not the group holds a session. It creates one bot named Chief of Staff · <group>, working in its own bot folder on the group's machine, which Settings → Workspace names as “Its own folder” rather than the group's project directory, with the staff pack's skills, and its prompt carries the group's project context beside its own. The group keeps its own sessions apart from that folder. Asking again opens that same chief, and the Bots tab lists it.",
     spec: ["SPEC.md#bots", "docs/api.md#post-__huistaffchiefs"],
     surfaces: ["route:POST /__hui/staff/chiefs"],
     journeys: ["bots"],
