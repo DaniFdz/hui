@@ -725,6 +725,16 @@ const cases: UseCase[] = [
     phone: "required",
   },
   {
+    id: "CHAT-089",
+    title: "Open the chat a reply names",
+    behaviour:
+      'A reply that writes session:<id> names another chat: once HUI\'s session list knows it, the reference becomes a chip that reads that session\'s title and status, links to /sessions/<id> and is named Open session <title> (<status>), as in Open session Referenced target (Idle). A full id and a prefix of at least 8 characters that names one session both resolve, and a plain click on the chip opens that chat in place, with Back returning to the reply. A Markdown link to the same /sessions/<id> opens it the same way. The same text in an inline code span or a fenced code block stays literal, and an id no session has stays exactly the text the reply wrote.',
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    web: "required",
+    phone: "required",
+  },
+  {
     id: "CHAT-056",
     title: "See who sent a bot's message",
     behaviour:

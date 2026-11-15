@@ -1122,6 +1122,33 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // A reply naming another chat by the id the prompt carried: two chips (the full id and its 8-character prefix), the
+  // same text in an inline code span and a fenced block, an id no session has, and an ordinary link to the chat's own
+  // address. Only the text after the marker is searched, so a UUID elsewhere in the request cannot name the chat.
+  const reference = /E2E_SESSION_REFERENCE/u.test(source)
+    ? /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/iu.exec(source.slice(source.indexOf("E2E_SESSION_REFERENCE")))?.[0]
+    : undefined;
+  if (!naming && reference) {
+    const typed = `session:${reference}`;
+    text(response, [
+      "Two ways to name the chat:",
+      "",
+      `- By id: ${typed}`,
+      `- By prefix: session:${reference.slice(0, 8)}`,
+      "",
+      `The inline code \`${typed}\` and the block below stay plain:`,
+      "",
+      "```text",
+      typed,
+      "```",
+      "",
+      `An unknown id stays plain: session:0badc0de`,
+      "",
+      `[the same chat](/sessions/${reference})`,
+    ].join("\n"));
+    return finish(response);
+  }
+
   if (source.includes("E2E_MARKDOWN_PARITY")) {
     text(response, "# Markdown parity\n\nParagraph with **bold**, *emphasis*, ~~removed~~, `inline code` and [a link](https://example.com).\n\n## Subheading\n\n- First item\n- Second item\n\n1. First ordered\n2. Second ordered\n\n> A quoted paragraph.\n> Its second line.\n\n---\n\n```text\nfixture code\nsecond line\n```\n\nFinal paragraph.");
     return finish(response);

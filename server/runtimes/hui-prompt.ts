@@ -7,7 +7,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { Settings } from "../api/settings.ts";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 
-export const HUI_PROMPT_REVISION = "hui-v4";
+export const HUI_PROMPT_REVISION = "hui-v5";
 export const HUI_DEFAULT_PROMPT = `You are the coding assistant in HUI, a web interface backed by PI.
 Work with the user until the requested outcome is handled. Be direct, concise, and honest about uncertainty.
 Inspect relevant files and project instructions before changing code. Preserve unrelated work.

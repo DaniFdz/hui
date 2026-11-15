@@ -52,6 +52,7 @@ import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import { renderAgentMarkdown, renderMarkdown } from "../lib/markdown/markdown.ts";
 import "../components/file-link.ts";
+import "../components/session-ref.ts";
 import "../components/github-embeds.ts";
 import "../components/datadog-embeds.ts";
 import "../components/browser-preview.ts";
