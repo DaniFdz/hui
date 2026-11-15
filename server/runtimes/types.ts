@@ -14,7 +14,7 @@
 import type { TranscriptMetrics } from "./transcript-metrics.ts";
 export type { RuntimeInspection, RuntimeTool, ToolCatalogEntry, ToolsCatalog, SessionTools } from "../api/tools.ts";
 export type {
-  CompactionReason, ContextUsagePart, QueuedMessage, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage,
+  CompactionReason, ContextUsagePart, QueuedMessage, SessionSpend, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage,
 } from "../api/session-events.ts";
 import type { CompactionReason, RuntimeCommand, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage } from "../api/session-events.ts";
 import type { CallRecord } from "../calls-format.ts";

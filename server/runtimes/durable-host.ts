@@ -819,6 +819,25 @@ export class DurableHost implements ExtensionHost {
     }, durableContext);
   }
 
+  /** What every model call of one conversation cost, summed from that ledger: compaction summaries and tool-side calls
+   * included, which no entry holds. `usd` is null when no call carried a price. */
+  async conversationSpend(conversationId: ConversationId): Promise<{ tokens: number; usd: number | null } | undefined> {
+    const ledger = await this.conversationUsage(conversationId);
+    if (!ledger) return undefined;
+    let tokens = 0;
+    let usd = 0;
+    let priced = false;
+    for (const bucket of [ledger.models, ledger.tools]) {
+      for (const spend of Object.values(bucket ?? {})) {
+        if (typeof spend["totalTokens"] === "number" && Number.isFinite(spend["totalTokens"])) tokens += spend["totalTokens"];
+        const cost = spend["cost"];
+        const total = typeof cost === "object" && cost !== null ? (cost as Record<string, unknown>)["total"] : cost;
+        if (typeof total === "number" && Number.isFinite(total) && total >= 0) { usd += total; priced = true; }
+      }
+    }
+    return { tokens, usd: priced ? usd : null };
+  }
+
   /** Closing records no outcome: running work resumes when the store reopens.
    * It settles once the store is released. An open in progress finishes
    * first, and a close called meanwhile shares the one already running. */
