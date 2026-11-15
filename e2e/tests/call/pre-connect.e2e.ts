@@ -21,7 +21,7 @@ const SIGNED_IN = JSON.stringify({
 });
 
 /** What the gateway says when a call reaches it with no ChatGPT login: the obstacle left once the microphone opened. */
-const NO_LOGIN = "Sign in to ChatGPT in Settings → Models (OpenAI Codex) to call bots with GPT-Live.";
+const NO_LOGIN = "Sign in to ChatGPT in Settings → Models → OpenAI → ChatGPT account to call bots with GPT-Live.";
 
 test("a call opens its view and asks the gateway to start once the microphone is allowed", { tags: ["CALL-003"], platforms: ["web"] }, async ({ screen, hui }) => {
   const bot = (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Juno", soul: "# Who I am\nA fixture bot.\n" })).bot;

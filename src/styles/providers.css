@@ -131,3 +131,39 @@ hui-provider-settings, hui-local-provider-settings { display: block; min-width: 
   .hui-provider-dialog { padding: var(--space-4); }
   .hui-provider-detail .hui-provider-heading h3 { font-size: var(--control-ui-text-md); }
 }
+
+/* --- Provider setup wizard (HUI) --- */
+/* A wizard step is its own surface: the card's one-column tokens still own spacing, radii and body type, and only the
+ * device code is deliberately larger than the type scale so it can be read across a room. */
+.hui-provider-empty { display: grid; justify-items: center; gap: var(--space-3); padding: var(--space-7) var(--space-4); margin: 0; border: 1px dashed var(--border); border-radius: var(--radius-md); text-align: center; color: var(--muted); font-size: var(--control-ui-text-sm); }
+.hui-provider-empty h3 { margin: 0; color: var(--text-strong); font-size: var(--control-ui-text-lg); }
+.hui-provider-empty p { margin: 0; line-height: 1.6; }
+
+/* One dialog, one screen at a time. Every step fits a 390 px phone without sideways scrolling, so cards and actions
+ * wrap and long codes break instead of widening the dialog. */
+.hui-provider-dialog-title { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.hui-provider-dialog-title h3 { min-width: 0; overflow-wrap: anywhere; }
+.hui-provider-dialog .hui-provider-dialog-title .hui-provider-icon { width: 24px; height: 24px; flex: 0 0 24px; }
+.hui-provider-muted { color: var(--muted); font-size: var(--control-ui-text-sm); }
+.hui-provider-status { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.hui-provider-spinner { width: 14px; height: 14px; flex: 0 0 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: var(--radius-full); animation: hui-provider-spin 900ms linear infinite; }
+@keyframes hui-provider-spin { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .hui-provider-spinner { animation: none; } }
+.hui-provider-field-label { font-size: var(--control-ui-text-sm); color: var(--text); }
+.hui-provider-code-input { font-family: var(--mono); font-size: var(--control-ui-text-sm); }
+.hui-provider-device-code { display: flex; justify-content: center; margin: var(--space-2) 0; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-elevated); }
+.hui-provider-device-code code { font-family: var(--mono); font-size: clamp(20px, 7vw, 30px); font-weight: 600; letter-spacing: 0.12em; overflow-wrap: anywhere; text-align: center; }
+.hui-provider-warning { border-left: 3px solid var(--warn); padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--control-ui-text-sm); line-height: 1.6; }
+.hui-provider-meta { color: var(--muted); font-size: var(--control-ui-text-sm); }
+.hui-provider-manual { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0 var(--space-3) var(--space-3); margin: var(--space-3) 0; }
+.hui-provider-manual > summary { cursor: pointer; padding: var(--space-3) 0; font-size: var(--control-ui-text-sm); }
+.hui-provider-manual > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hui-provider-manual > p { margin: 0 0 var(--space-2); color: var(--muted); font-size: var(--control-ui-text-sm); line-height: 1.6; }
+.hui-provider-confirm { border: 1px solid var(--warn); border-radius: var(--radius-md); padding: var(--space-4); margin-top: var(--space-3); }
+.hui-provider-confirm p { margin: 0; font-size: var(--control-ui-text-sm); }
+.hui-provider-model-list { display: grid; gap: 0; min-width: 0; max-height: 340px; overflow-y: auto; margin: var(--space-3) 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.hui-provider-model-list > legend { padding: 0 var(--space-1); margin-inline-start: var(--space-3); color: var(--muted); font-size: var(--control-ui-text-sm); }
+.hui-provider-model-list .hui-provider-model:first-of-type { border-top: 0; }
+.hui-provider-verified { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-7); margin: var(--space-4) 0; font-size: var(--control-ui-text-sm); }
+.hui-provider-verified dt { color: var(--muted); font-size: var(--control-ui-text-sm); margin-bottom: var(--space-1); }
+.hui-provider-verified dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
