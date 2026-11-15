@@ -854,6 +854,10 @@ function huiTest(offline: boolean) {
         const to = await centre(onto);
         await browser().mouse.move(from.x, from.y);
         await browser().mouse.down();
+        // HTML5 drag and drop commits on `dragover`: cross into the destination, then move there again, as the
+        // engine's own pointer drag does.
+        await browser().mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2);
+        await browser().mouse.move(to.x, to.y);
         await browser().mouse.move(to.x, to.y);
         await whileOver();
         await browser().mouse.up();
@@ -864,6 +868,10 @@ function huiTest(offline: boolean) {
         const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
         await browser().mouse.move(from.x, from.y);
         await browser().mouse.down();
+        // HTML5 drag and drop commits on `dragover`: cross into the destination, then move there again, as the
+        // engine's own pointer drag does.
+        await browser().mouse.move(from.x + dx / 2, from.y + dy / 2);
+        await browser().mouse.move(from.x + dx, from.y + dy);
         await browser().mouse.move(from.x + dx, from.y + dy);
         await whileOver();
         await browser().mouse.up();
