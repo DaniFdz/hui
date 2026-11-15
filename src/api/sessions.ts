@@ -19,7 +19,7 @@ import { decodeSseFrame, reconnectDelay } from "../lib/event-stream.ts";
 import { OutdatedBuildError } from "./offline.ts";
 import { GatewayHttpError, isGatewayUnavailable } from "./gateway-error.ts";
 
-export type { SessionGoal, SessionGroup, SessionList, SessionSearchResult, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
+export type { ProgressCard, ProgressStep, SessionGoal, SessionGroup, SessionList, SessionSearchResult, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
 export type {
   QueuedMessage, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SubagentTaskView,
 } from "./schema/session-events.ts";

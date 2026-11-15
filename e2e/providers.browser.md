@@ -92,9 +92,10 @@ subscription access or real external OAuth approvals.
 
 ### Drag-and-drop priority
 
-There are no up/down priority buttons. Each account has a 44px grip. Dragging
-shows the picked account and an insertion line; only dropping commits the order.
-Test mouse dragging and touch-emulated dragging separately, including a list
+There are no up/down priority buttons. Each account has a 24px-wide grip
+(44px wide on touch pointers). Dragging shows the picked account and an insertion
+line; only dropping commits the order. Test mouse dragging and touch-emulated
+dragging separately, including a list
 long enough to scroll. Dropping outside the account section or pointer cancellation
 must leave the saved order unchanged. Reconnect/remove/limits controls must still
 work without starting a drag. Tab to a grip, Space to pick up, arrows or Home/End
@@ -111,10 +112,17 @@ test-only Vite entrypoint; the production parser and UI handle synthetic upstrea
 payloads. Other provider routes stay real, including unsupported API-key usage.
 No external credentials, OAuth, billing verification or provider requests occur.
 
-1. Navigate Settings → Models and open Provider configuration. Within each
-   account, limits are visible without another disclosure. Claude shows 5 hours,
-   weekly, Sonnet weekly and monthly extra usage;
-   absent plan/billing/reset data is explicitly not reported.
+1. Navigate Settings → Models and open Provider configuration. Each provider card
+   is one content column: its heading, each account row (grip, name and status,
+   with Reconnect and Remove account sharing that line on a wide window and
+   taking their own line on a phone) and the Models disclosure share one left
+   edge, separated by hairlines instead of nested borders. Within each account,
+   limits are visible without another disclosure, under "Subscription and
+   limits" as a single meta line: the usage status, `Plan <value>` only when the
+   connection reports a plan, and when it was checked.
+   Claude shows 5 hours, weekly, Sonnet weekly and monthly extra usage; each
+   period keeps its reset time or "Reset not reported", and there is no
+   subscription-status row or billing note.
 2. OpenAI ChatGPT Personal shows plan plus, usage Available and five meters:
    5 hours, weekly, code review weekly, Spark 5 hours and monthly credits. Backup
    shows plan pro and Limit reached. Refresh each account independently and

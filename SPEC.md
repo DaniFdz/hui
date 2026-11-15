@@ -31,6 +31,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   reasoning), displayed once on its last text/reasoning block (or last tool call when no text exists). Missing values
   remain absent; HUI never estimates per-fragment tokens or historical duration.
   Live timings survive browser reconnects, not a PI runtime/gateway restart.
+- The composer's context ring opens Context usage: the window occupancy over a stacked bar of what the context carries,
+  and the estimated split between the system prompt, the tool definitions (with how many tools), the conversation (with
+  how many messages) and the summaries compaction left; a bot's chat whose memory rewrites its request shows its memory's
+  view of the chat in place of that conversation. The latest run's tokens, cost and Compact now stay below it. The split
+  fits the occupancy the runtime reports and is labelled as an estimate; a runtime that reports no split draws the plain
+  bar. A bot's chat also carries the bot's cost there, as its panel totals it (its chat, its subagents and its memory
+  summaries), or where it is kept when the bot runs on a worker.
 
 - Session search is the field directly below the sidebar header; it filters the
   session list and is not duplicated in the Sessions toolbar or a bottom footer.
@@ -330,7 +337,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   Each view retains its transcript, composer, draft, queue and detailed stream.
   Column and row dividers support pointer resizing, arrow keys (2%, Shift 5%)
   and Home/End (15%/85%). Layout, focus and weights are browser-local, not registry
-  data; the URL identifies the active session. Below 1100px only the active pane
+  data; the URL identifies the active session. A session's address or another
+  link to it focuses the pane that already shows it, and only a session no pane
+  shows takes the focused pane's place. Below 1100px only the active pane
   is visible, with the other panes still mounted; sidebar selection changes focus.
   Any pane can close without stopping its runtime or remounting survivors.
 - Existing chat panes can be repositioned by dragging their header
@@ -895,8 +904,9 @@ prefills the existing label. Mistral API-key connections show their reported API
 and Vibe Code monthly allowances, the included amount and a pay-as-you-go note,
 with the plan (EDU) shown as Student. Subscription/usage status and all reported
 hourly, weekly, monthly and model/feature-specific limits stay visible per
-account, including reset times. Unknown plan or billing status stays explicitly
-not reported; stored credentials do not prove an active subscription. SDK requests use the first ready account;
+account, including reset times. Only a plan the connection reports appears, on one
+line with the usage status and the checked time, and HUI never infers a plan, a
+subscription, a renewal or a billing state from stored credentials. SDK requests use the first ready account;
 quota/rate-limit rejection before any output moves to the next account, bounded
 by one attempt per account. Partial output, tool calls, aborts and unrelated errors
 are not replayed. Cooldowns persist across workers/restarts; reported reset times
@@ -1818,11 +1828,11 @@ later turns. Examples include `/btw which file are we editing?` and
 HUI keeps each conversation's Task progress card itself, not the agent. A
 session's turn settling, and every five minutes while one is still running, send
 a bounded digest of the conversation to the configured utility model; its
-summary and `done`/`doing`/`todo` plan become a collapsible card attached above
-the composer, stored with the session. Nothing waits on that call: without a
+summary and `done`/`doing`/`todo` plan become the Plan section of the chat
+header's Run status popover, stored with the session. Nothing waits on that call: without a
 utility model, on a failure, or on an answer with neither a summary nor a plan,
-the previous card stays and the turn is unaffected. Subagent sessions get no
-card of their own; their work is the parent's. HUI never infers plan state from
+the previous plan stays and the turn is unaffected. Subagent sessions get no
+plan of their own; their work is the parent's. HUI never infers plan state from
 prose in the transcript, and the agent has no tool for it.
 Session rows retain OpenClaw’s single-line layout. Hover or keyboard focus opens
 the ported OpenClaw 2026.9.5 hovercard: session age, workspace, current unfinished
@@ -1832,24 +1842,49 @@ no invented percentage. Touch does not gain an extra progress button absent
 from the original. Background sessions refresh while the page is visible. The
 card is registry state, so it is there immediately after a gateway restart.
 
+### Run status
+
+The chat header's rightmost control is **Run status**, present whenever the
+conversation has a goal, a plan, a recent batch of helpers or background
+watchers; otherwise it is absent. It reads the most urgent state — Waiting for
+your answer, Goal blocked, Working, Watcher failed, Helper failed, Goal paused,
+Goal achieved, Done or Pursuing goal — with the plan's done/total (or the
+helpers' or watchers' count) beside it. Its accessible name names the goal, plan
+and helper facts it summarizes. On a narrow pane or a phone the trigger keeps
+only its mark and count.
+
+Clicking the trigger opens one popover anchored to its right edge: **Goal** (the
+objective, its status note, when it was set, its automatic turns, and
+Pause/Resume, Edit and Clear), **Plan** (the Task progress steps and summary),
+**Helpers** (the latest batch, its counts, one dot per child and each child's
+row) and **Watchers** (each watcher's purpose, latest output, state, details,
+log tail and Stop/Restart/Dismiss; a list longer than four folds its rows behind
+Watcher details while the section header keeps the running count). Empty sections are absent. The popover
+scrolls inside itself, closes on Escape or an outside click, and never resizes
+the conversation. None of those surfaces draws above the composer or in the
+transcript; a helper or watcher that settles still writes its own transcript
+event.
+
 ## Goals
 
 A goal is one objective attached to a conversation, so a long job keeps going
 without the operator repeating themselves. It is session state: it survives a
-restart, shows above the composer, and reaches every request's system prompt.
+restart, shows in the chat header's Run status popover, and reaches every
+request's system prompt.
 
 `/goal <objective>` starts one and sends the objective as the goal's first turn,
 so gathering the work and starting it is one step. `/goal pause`, `/goal resume`
-and `/goal clear` are the other operator controls; the pill above the composer
-offers the same three, with the status (Pursuing goal, Goal paused, Goal
+and `/goal clear` are the other operator controls; the Run status popover's Goal
+section offers the same three, with the status (Pursuing goal, Goal paused, Goal
 blocked, Goal achieved) and the objective.
 
-The pill expands in place, in OpenClaw's own goal detail: the whole objective
-wrapped and readable, the status note when it paused or blocked itself, when it
-was set, and the editor. Editing the objective there replaces the goal and sends
-the new objective as its next turn, exactly as `/goal <objective>` does. Starting
-or editing a goal while a turn runs is refused, never queued. A conversation has
-one goal; starting another replaces it.
+The Goal section shows the whole objective wrapped and readable, the status
+note when it paused or blocked itself, when it was set, and how many automatic
+turns it has had. Edit reveals the objective's editor there; saving replaces the
+goal and sends the new objective as its next turn, exactly as `/goal
+<objective>` does. Starting or editing a goal while a turn runs is refused, never
+queued. A conversation has one goal; starting another replaces it. No goal pill
+draws above the composer.
 
 Only the operator pauses, resumes or clears a goal. The agent may report
 `complete` or `blocked` through `update_goal`, with a note, and cannot move the
@@ -1986,19 +2021,18 @@ Visibility is the current session tree, not the whole registry: parent, child
 and sibling sessions can exchange bounded messages and history, while unrelated
 sessions remain inaccessible. PI reaches this contract through a random-token,
 loopback-only bridge inherited by its process; no browser route exposes these
-operations. Between the transcript and the composer, the UI shows OpenClaw's
-**Parallel tasks** card for the latest batch of a conversation's children (a child
-spawned while an earlier one is still active joins its batch; a batch of one is
-titled with that child): "complete of total", one dot per child (running, queued,
-failed or stopped, done), the running/queued/failed-or-stopped counts, and once all
-have finished, a note that the parent is processing their results or that its
-final response is in the conversation. **Child details** lists each child with its
-status, latest summary or error and run time; activating one opens the real child
-transcript. A batch that all succeeded folds into a single "N completed" row. The
-card stays for an hour after the batch finished (OpenClaw's retention). Child
-sessions nest below their parent in the sidebar, except collected children, which
-have no sidebar row (as in OpenClaw): the card lists and opens them, and the parent
-row still shows their work as background activity. A bot's subagents, and anything
+operations. The Run status popover's **Helpers** section shows the latest batch
+of a conversation's children (a child spawned while an earlier one is still active
+joins its batch): "complete of total", one dot per child (running, queued, failed
+or stopped, done), the running/queued/failed-or-stopped counts, and once all have
+finished, a note that the parent is processing their results or that its final
+response is in the conversation. Each child's row names its status, latest summary or error and run time; activating one opens the real child transcript. A
+batch larger than six folds those rows behind **Child details** while its counts and dots stay visible; a batch that all
+succeeded folds into a single "N completed" row. The batch stays in
+the popover for an hour after it finished (OpenClaw's retention). Child sessions
+nest below their parent in the sidebar, except collected children, which have no
+sidebar row (as in OpenClaw): the Helpers section lists and opens them, and the
+parent row still shows their work as background activity. A bot's subagents, and anything
 below them, have no row either: like the bot's chat, which is never listed, they
 stay out of every session list, and the bot chat's cards list and open them; a
 subagent's *Open parent* opens its bot's chat in the Bots tab. Each parent with visible children has a separate keyboard-accessible
@@ -4044,6 +4078,25 @@ Session, never in a bot's chat or a subagent, and persists as `autonomous: true`
 - Turning the mode off removes the section and takes back the watch HUI gave the chief (not a chief's own, and not one
   given before the gateway last restarted), so the operator has the session back. HUI does not refuse a merge command
   in this mode: the stop before a merge is the prompt's and the repository's rule.
+
+### An Autonomy plan takes the form its change needs (2026-11-14)
+
+The owner does not read a long plan in prose, but a widget is not the answer either: the plan's form follows the change
+it describes, and a visual is used only when it explains the change better than words.
+
+- **The change chooses the form.** `hui_autonomous` tells an Autonomous session the operator supervises to give its
+  plan the form that helps the operator judge it: a `show_widget` before/after card (following the `visualize` skill)
+  for a change to a screen, a control or a layout; a `mermaid` diagram for a change to how parts fit, flow or move
+  between states; a table or a chart for a comparison or a set of numbers; and a short text plan, following the
+  `technical-writing` skill, when no picture explains the change better. A visual is never mandatory.
+- **The plan still says the same things.** Whatever the form, it gives the goal, what changes, what stays, the evidence
+  that will prove it, the risks and where it stops, keeping in prose only what the picture cannot show, and it ends on
+  one question that asks for approval or a change. Neither the card nor the diagram can answer it.
+- **A chief's session keeps the text plan.** A Chief of Staff that started a session reads the reply HUI delivers
+  through the heartbeat and cannot see a widget, so such a session writes its plan in the reply, following the
+  `technical-writing` skill as before; a `mermaid` diagram or a table is still text it can read.
+
+This changes the plan step of [Autonomous mode drives a session to a draft pull request](#autonomous-mode-drives-a-session-to-a-draft-pull-request-2026-11-12).
 
 ### A custom group's chief is its own bot (2026-11-08)
 

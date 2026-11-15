@@ -3,6 +3,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import { expectChatTitle } from "../sess/chat-header.ts";
+import { openHelpers } from "./run-status.ts";
 
 test("a tree follows the open session from an address or a card, while disclosures leave the chat alone", { tags: ["AGENT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
   const parent = await hui.createSession({ title: "Tree root" });
@@ -67,10 +68,9 @@ test("a tree follows the open session from an address or a card, while disclosur
 
   // The parent's actual card opens the child, not a sidebar-only substitute for the card's navigation.
   await hui.open(`/sessions/${parent.id}`);
-  const card = screen.getByLabel("Parallel tasks");
-  await expect(card).toBeVisible();
-  const open = card.getByRole("button", { name: /^Open subagent /u });
-  if (await open.count() === 0) await card.getByText("1 completed", { exact: true }).tap();
+  const helpers = await openHelpers(screen);
+  const open = helpers.getByRole("button", { name: /^Open subagent /u });
+  if (await open.count() === 0) await helpers.getByText("1 completed", { exact: true }).tap();
   await expect(open).toHaveCount(1);
   await expect(open).toBeVisible();
   await open.tap();

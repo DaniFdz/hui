@@ -7,6 +7,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "../../fixtures/hui.ts";
 import type { LocalProviderSnapshot } from "../../../src/api/schema/local-providers.ts";
+import type { ModelMetricSession } from "../../../src/api/schema/model-metrics.ts";
 
 function body(request: AsyncIterable<Buffer>): Promise<Buffer> {
   return (async () => {
@@ -33,7 +34,9 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     try {
       const upstream = await fetch(`${hui.provider.url}${url.pathname}`, { method: request.method, headers, body: (await body(request)).toString("utf8") });
       response.writeHead(upstream.status, { "content-type": upstream.headers.get("content-type") ?? "application/json" });
-      response.end(Buffer.from(await upstream.arrayBuffer()));
+      // Streamed, as a model server answers: buffering the stream would hide HUI's progress commits before the answer.
+      for await (const chunk of upstream.body ?? []) response.write(chunk);
+      response.end();
     } catch (error) {
       response.writeHead(502, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: error instanceof Error ? error.message : "local fixture failed" }));
@@ -85,15 +88,18 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     await hui.open(`/sessions/${session.id}`);
     await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
     await expect.poll(async () => (await hui.api<LocalProviderSnapshot>("GET", "/__hui/local-providers")).providers.find((provider) => provider.id === "local-e2e")?.status).toBe("starting");
-    await screen.getByLabel("Message").fill("Hello local model");
+    await screen.getByLabel("Message").fill("Hello local model E2E_SLOW_TTFT");
     await screen.getByRole("button", { name: "Send message" }).tap();
     await expect(screen.getByText("Waiting for Local fixture to start…", { exact: true })).toBeVisible();
     await writeFile(release, "");
     await expect(screen.getByText("Fixture response.", { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
 
-    const metricPill = screen.getByLabel(/Last model request: .*tok\/s/u);
+    const metricPill = screen.getByLabel(/Last model request: .*tok\/s, time to first token (?:0\.[1-9]\d|[1-9]\d*\.\d\d) s/u);
     await expect(metricPill).toBeVisible();
+    // The fixture holds its answer open past the first token, so HUI must measure that token from the request's start
+    // rather than from the partial it first sees, which already holds it and would always read 0.00 s.
+    await expect.poll(async () => (await hui.api<ModelMetricSession>("GET", `/__hui/model-metrics/sessions/${session.id}`)).metric?.ttftMs ?? 0).toBeGreaterThanOrEqual(50);
     await metricPill.tap();
     const metricDetail = screen.getByLabel("Last model request metrics");
     await expect(metricDetail).toBeVisible();
@@ -130,5 +136,8 @@ test("a local model server starts on demand and a chat waits for it", { tags: ["
     await hui.api("DELETE", "/__hui/local-providers/local-e2e").catch(() => undefined);
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    // The gateway reads models.json into its live model registry when it opens: the provider this test added stays in the
+    // catalog after the file no longer names it, so the next test in this shard would list a model that is gone.
+    await hui.restartGateway();
   }
 });

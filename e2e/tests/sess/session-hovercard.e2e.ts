@@ -12,7 +12,7 @@ test("a row's card opens on hover or focus with the age, workspace, paused plan 
   await hui.open(`/sessions/${session.id}`);
   await screen.getByLabel("Message").fill("E2E_PROGRESS");
   await screen.getByRole("button", "Send message").tap();
-  await expect(screen.getByText("1 of 2")).toBeVisible();
+  await expect(screen.getByTestId("run-status-trigger")).toHaveAccessibleName(/1 of 2 steps done/u);
 
   await hui.open("/");
   const row = screen.getByLabel(/^Preview me, status idle, tool durable, stage investigation$/u);

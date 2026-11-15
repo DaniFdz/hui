@@ -1,0 +1,645 @@
+/**
+ * The chat header's Run status: the compact trigger beside the pane's window
+ * actions and the popover that holds the goal, Task progress plan and helpers.
+ * This is HUI's own surface, so it follows the shell's tokens rather than
+ * OpenClaw's composer-attached cards.
+ */
+
+.chat-run-status__trigger {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 28px;
+  margin-inline-start: 4px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chat-run-status__trigger:hover {
+  border-color: var(--border-strong);
+  background: var(--elevated);
+}
+
+.chat-run-status__trigger:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.chat-run-status__mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+}
+
+.chat-run-status__mark > svg,
+.chat-run-status__state-mark > svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chat-run-status__label {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-run-status__count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-run-status__trigger-chevron {
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.chat-run-status__trigger-chevron svg {
+  width: 10px;
+  height: 10px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.chat-run-status__trigger[aria-expanded="true"] .chat-run-status__trigger-chevron svg {
+  transform: rotate(180deg);
+}
+
+.chat-run-status__trigger[data-tone="running"] .chat-run-status__mark,
+.chat-run-status__state[data-tone="running"] {
+  color: var(--accent);
+}
+
+.chat-run-status__trigger[data-tone="waiting"] .chat-run-status__mark,
+.chat-run-status__state[data-tone="waiting"] {
+  color: var(--info);
+}
+
+.chat-run-status__trigger[data-tone="paused"] .chat-run-status__mark,
+.chat-run-status__state[data-tone="paused"],
+.chat-run-status__trigger[data-tone="idle"] .chat-run-status__mark {
+  color: var(--muted);
+}
+
+.chat-run-status__trigger[data-tone="blocked"] .chat-run-status__mark,
+.chat-run-status__state[data-tone="blocked"],
+.chat-run-status__trigger[data-tone="attention"] .chat-run-status__mark,
+.chat-run-status__state[data-tone="attention"] {
+  color: var(--warn);
+}
+
+.chat-run-status__trigger[data-tone="done"] .chat-run-status__mark,
+.chat-run-status__state[data-tone="done"] {
+  color: var(--ok);
+}
+
+/* The popover's shadow body owns the padding; the panel supplies its own so
+   section rules run edge to edge. */
+.chat-run-status__popover {
+  --max-width: min(400px, calc(100vw - 16px));
+  --wa-space-l: 0;
+  --wa-color-surface-default: var(--card);
+  --wa-color-surface-border: var(--border-strong);
+  --wa-panel-border-radius: 14px;
+}
+
+.chat-run-status__panel {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  /* The popover body shrink-wraps its content; a fixed panel width keeps a watchers-only or goal-only popover
+     as wide as the full one, and leaves room for a watcher row's purpose. */
+  width: min(398px, calc(100vw - 16px));
+  /* Keep the popover above the composer on a short phone or in landscape. */
+  max-height: min(72dvh, 640px, calc(100dvh - 160px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  /* The inner scroll box carries the body's corner radius: its background and sticky header would otherwise paint
+     four square corners over the popover's rounded border. */
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--text);
+}
+
+.chat-run-status__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 2px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+.chat-run-status__head strong {
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chat-run-status__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-run-status__state-mark {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+}
+
+.chat-run-status__section {
+  padding: 9px 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-run-status__section:last-child {
+  border-bottom: 0;
+}
+
+.chat-run-status__section-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.chat-run-status__section-title {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.chat-run-status__meta {
+  margin-inline-start: auto;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-run-status__meta[data-status="blocked"] {
+  color: var(--warn);
+}
+
+.chat-run-status__meta[data-status="complete"] {
+  color: var(--ok);
+}
+
+.chat-run-status__objective {
+  max-height: min(160px, 24dvh);
+  margin: 5px 0 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-run-status__note {
+  margin: 5px 0 0;
+  padding: 5px 8px;
+  border-inline-start: 2px solid color-mix(in srgb, var(--warn) 55%, transparent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  color: color-mix(in srgb, var(--warn) 74%, var(--text));
+  font-size: 11.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.chat-run-status__set {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.chat-run-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.chat-run-status__panel .goal-edit {
+  margin-top: 9px;
+}
+
+.chat-run-status__panel .goal-edit textarea {
+  max-height: 24dvh;
+}
+
+.chat-run-status__plan {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-run-status__plan-summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.chat-run-status__plan-summary::-webkit-details-marker {
+  display: none;
+}
+
+.chat-run-status__plan-current {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-run-status__chevron {
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.chat-run-status__chevron svg {
+  width: 11px;
+  height: 11px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.chat-run-status__plan[open] > .chat-run-status__plan-summary .chat-run-status__plan-current {
+  display: none;
+}
+
+.chat-run-status__plan[open] > .chat-run-status__plan-summary .chat-run-status__chevron svg,
+.chat-run-status__success[open] > .chat-run-status__section-head .chat-run-status__chevron svg {
+  transform: rotate(180deg);
+}
+
+.chat-run-status__steps {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-run-status__step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.chat-run-status__step[data-status="in_progress"] {
+  color: var(--text);
+}
+
+.chat-run-status__step-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 16px;
+  color: var(--muted);
+}
+
+.chat-run-status__step-mark > svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chat-run-status__step[data-status="completed"] .chat-run-status__step-mark {
+  color: var(--ok);
+}
+
+.chat-run-status__step[data-status="in_progress"] .chat-run-status__step-mark {
+  color: var(--accent);
+}
+
+.chat-run-status__step-mark > .session-run-spinner {
+  width: 12px;
+  height: 12px;
+}
+
+.chat-run-status__plan-note {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.chat-run-status__plan-note > :is(p, ul, ol):first-child {
+  margin-top: 0;
+}
+
+.chat-run-status__plan-note > :is(p, ul, ol):last-child {
+  margin-bottom: 0;
+}
+
+.chat-run-status__markers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.chat-run-status__marker {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.chat-run-status__marker[data-state="queued"] {
+  border: 1px solid var(--border-strong);
+  background: transparent;
+}
+
+.chat-run-status__marker[data-state="completed"] {
+  background: var(--ok);
+}
+
+.chat-run-status__marker[data-state="failed"],
+.chat-run-status__marker[data-state="cancelled"] {
+  background: var(--danger);
+}
+
+.chat-run-status__counts {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.chat-run-status__helpers-list {
+  display: grid;
+  gap: 2px;
+  margin-top: 7px;
+}
+
+.chat-run-status__helper {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.chat-run-status__helper:hover,
+.chat-run-status__helper:focus-visible {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.chat-run-status__helper-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.chat-run-status__helper-icon > svg {
+  width: 12px;
+  height: 12px;
+}
+
+.chat-run-status__helper-icon .hui-orbit {
+  width: 12px;
+  height: 12px;
+}
+
+.chat-run-status__helper-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.chat-run-status__helper-title {
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-run-status__helper-snippet {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-run-status__helper-time {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chat-run-status__helper--failed .chat-run-status__helper-title,
+.chat-run-status__helper--cancelled .chat-run-status__helper-title {
+  color: color-mix(in srgb, var(--danger) 65%, var(--text));
+}
+
+.chat-run-status__outcome {
+  margin: 7px 0 0;
+  padding-top: 7px;
+  border-top: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.chat-run-status__success {
+  display: grid;
+  gap: 0;
+}
+
+.chat-run-status__success > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.chat-run-status__success > summary::-webkit-details-marker {
+  display: none;
+}
+
+.chat-run-status__success > summary .chat-run-status__meta {
+  margin-inline-start: auto;
+}
+
+.chat-run-status__success-mark {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ok);
+}
+
+.chat-run-status__success-mark svg {
+  width: 12px;
+  height: 12px;
+}
+
+.chat-run-status__success .chat-run-status__outcome {
+  margin-top: 7px;
+}
+
+/* In a split pane or a phone the trigger keeps its mark and count; the words move into the
+   accessible name so the header never wraps. */
+@container session-header (max-width: 620px) {
+  .chat-run-status__trigger .chat-run-status__label {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .chat-run-status__trigger .chat-run-status__label {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-run-status__popover {
+    --max-width: calc(100vw - 12px);
+  }
+
+  .chat-run-status__section {
+    padding-inline: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-run-status__trigger-chevron svg,
+  .chat-run-status__chevron svg {
+    transition: none;
+  }
+}
+
+/* Watchers keep their rows and their own disclosures, compacted for the popover. */
+.chat-run-status__watchers {
+  display: grid;
+  gap: 1px;
+  margin-top: 6px;
+}
+
+.chat-run-status__watchers .chat-subagents__summary {
+  min-height: 28px;
+  padding: 3px 2px;
+}
+
+.chat-run-status__watchers .chat-subagents__label {
+  font-size: 11.5px;
+}
+
+.chat-run-status__watchers .chat-subagents__snippet,
+.chat-run-status__watchers .chat-subagents__time {
+  font-size: 10.5px;
+}
+
+.chat-run-status__watchers .chat-watcher__details {
+  margin: 2px 2px 7px 24px;
+}
+
+.chat-run-status__watchers .chat-watcher__log {
+  max-height: 120px;
+}
+
+.chat-run-status__watchers .chat-watcher__path {
+  font-size: 10px;
+}
+
+/* A large batch keeps the counts and dots, and folds the per-child rows behind one disclosure. */
+.chat-run-status__children,
+.chat-run-status__watchers-details {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.chat-run-status__children > summary,
+.chat-run-status__watchers-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 2px;
+  color: var(--muted);
+  font-size: 10.5px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.chat-run-status__children > summary::-webkit-details-marker,
+.chat-run-status__watchers-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.chat-run-status__children > summary .chat-run-status__meta,
+.chat-run-status__watchers-details > summary .chat-run-status__meta {
+  margin-inline-start: auto;
+}
+
+.chat-run-status__children[open] > summary .chat-run-status__chevron svg,
+.chat-run-status__watchers-details[open] > summary .chat-run-status__chevron svg {
+  transform: rotate(180deg);
+}
+
+.chat-run-status__children .chat-run-status__helpers-list {
+  margin-top: 2px;
+}
+
+.chat-run-status__watchers-details .chat-run-status__watchers {
+  margin-top: 2px;
+}

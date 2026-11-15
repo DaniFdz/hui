@@ -355,21 +355,16 @@ test("a saved, reconnecting or outdated conversation rewinds, queues and stops n
   }
 });
 
-test("the goal pill expands in place and keeps a refused objective where it was typed", async () => {
+test("the goal editor keeps a refused objective where it was typed", async () => {
   const goal = { objective: "get CI green on PR 1", status: "active", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 0 };
   const { controller, notes } = composer({ current: { id: "s1", status: "idle", goal } as SessionView });
   const props = controller.props();
-  assert.deepEqual({ ...props.goalPanel }, { expanded: false, editing: false, error: "" });
-  props.onGoalToggle();
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: true, editing: false, error: "" });
-  controller.props().onGoalToggle();
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: false, editing: false, error: "" });
+  assert.deepEqual({ ...props.goalPanel }, { editing: false, error: "" });
 
-  controller.props().onGoalToggle();
   controller.props().onGoalEdit();
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: true, editing: true, error: "" });
+  assert.deepEqual({ ...controller.goalPanel }, { editing: true, error: "" });
   controller.props().onGoalCancelEdit();
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: true, editing: false, error: "" }, "cancelling leaves the objective readable");
+  assert.deepEqual({ ...controller.goalPanel }, { editing: false, error: "" }, "cancelling closes the editor");
 
   controller.props().onGoalEdit();
   controller.props().onGoalSave("keep the release branch green");
@@ -378,13 +373,13 @@ test("the goal pill expands in place and keeps a refused objective where it was 
   fake.goals[0]?.reject(new Error("Finish or stop the active turn before starting a goal."));
   await settle();
   assert.equal(controller.sending, false);
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: true, editing: true, error: "Finish or stop the active turn before starting a goal." });
+  assert.deepEqual({ ...controller.goalPanel }, { editing: true, error: "Finish or stop the active turn before starting a goal." });
   assert.deepEqual(notes, ["info:"], "the refusal stays in the editor instead of a floating note");
 
   controller.props().onGoalSave("keep the release branch green");
   fake.goals[1]?.resolve();
   await settle();
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: false, editing: false, error: "" });
+  assert.deepEqual({ ...controller.goalPanel }, { editing: false, error: "" });
   assert.deepEqual(notes.at(-1), "info:Goal set. The agent keeps working until it is achieved or you pause it.");
 
   controller.props().onGoalEdit();
@@ -393,12 +388,12 @@ test("the goal pill expands in place and keeps a refused objective where it was 
   assert.equal(controller.goalPanel.error, "A goal needs an objective.");
 });
 
-test("switching sessions closes the goal pill's detail", () => {
+test("switching sessions closes the goal editor", () => {
   const selected = { current: { id: "s1", status: "idle", goal: { objective: "ship it", status: "active", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 0 } } as SessionView };
   const { controller } = composer(selected);
   controller.switchDraft(sessionDraftKey("s1"));
-  controller.props().onGoalToggle();
-  assert.equal(controller.goalPanel.expanded, true);
+  controller.props().onGoalEdit();
+  assert.equal(controller.goalPanel.editing, true);
   controller.switchDraft(sessionDraftKey("s2"));
-  assert.deepEqual({ ...controller.goalPanel }, { expanded: false, editing: false, error: "" });
+  assert.deepEqual({ ...controller.goalPanel }, { editing: false, error: "" });
 });

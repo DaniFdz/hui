@@ -750,6 +750,16 @@ const cases: UseCase[] = [
     web: "required",
     phone: { excluded: "A touch screen has no secondary click; the phone app opens the same row menu by long-pressing the row.", decision: "SPEC.md#a-secondary-click-is-the-webs-way-into-a-rows-menu-2026-11-04" },
   },
+  {
+    id: "SESS-078",
+    title: "Open the pane that already shows a session",
+    behaviour: "A session's address, a Sessions row or another link to it focuses the pane that already shows it instead of repeating the session in the focused pane, and a session no pane shows takes the focused pane's place. Clicking or focusing a pane still makes it active and the URL follows it, and a reload keeps the focused pane, including one of two views of the same session.",
+    spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-split-layout"],
+    surfaces: ["nav:session"],
+    journeys: ["session-multiplexing"],
+    web: "required",
+    phone: { excluded: "Two panes side by side need the wide layout: below 1100px only the active pane is visible and no second pane can be created, so a route can never name a session another pane shows.", decision: "SPEC.md#behaviour" },
+  },
 ];
 
 export default cases;

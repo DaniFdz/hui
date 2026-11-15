@@ -6,6 +6,7 @@
  * the transcript's rows.
  */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
+import { contextBreakdown } from "../lib/context-breakdown.ts";
 import { messageShare, nativeShell, type NativeShell } from "../lib/native-shell.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";
@@ -27,7 +28,6 @@ import type {
   TranscriptAttachment,
   SessionConnection,
   SessionGroup,
-  SessionGoal,
   SessionView,
   SubagentTaskView,
   TranscriptItem,
@@ -38,14 +38,15 @@ import type { WorkerView } from "../api/workers.ts";
 import type { ModelMetric } from "../api/schema/model-metrics.ts";
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
-import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
+import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { composerEnterMode, composerPlaceholder, queueRows } from "../lib/composer/state.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
 import { sessionStatusLabel } from "../lib/session/labels.ts";
-import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer/textarea.ts";
+import { adjustTextareaHeight as syncComposerTextarea, mountEditorAtEnd } from "../lib/composer/textarea.ts";
 import { icons } from "../lib/icons.ts";
 import { renderEffortSelector } from "./effort-selector.ts";
+import { renderRunStatus, type GoalPanelState } from "./chat/run-status.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import { renderAgentMarkdown, renderMarkdown } from "../lib/markdown/markdown.ts";
@@ -73,7 +74,7 @@ import { renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
 import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
 import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath, toolTiming } from "../lib/tool-cards.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
-import { renderWatcherActivity, renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
+import { renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
@@ -114,7 +115,6 @@ const composerDragDepth = new WeakMap<HTMLElement, number>();
 const arrowUpIcon = icons.arrowUp;
 const chevronDownIcon = icons.chevronDown;
 const checkIcon = icons.check;
-const circleIcon = icons.circle;
 const stopIcon = icons.stop;
 const copyIcon = icons.copy;
 /** Lucide "share": the phone's own sheet, which a browser never draws (see `renderShare`). */
@@ -207,9 +207,8 @@ function focusComposerFromSurface(event: MouseEvent) {
   (event.currentTarget as HTMLElement).querySelector<HTMLTextAreaElement>("textarea")?.focus();
 }
 
-/** The goal pill's transient state: whether its detail block is open, whether the objective is being retyped, and a
- * refused save. */
-export type GoalPanelState = { expanded: boolean; editing: boolean; error: string };
+/** The goal editor's transient state, owned by the composer controller and read by the Run status popover. */
+export type { GoalPanelState };
 
 export type HomeProps = {
   session: SessionView | undefined;
@@ -266,6 +265,8 @@ export type HomeProps = {
   usage: RuntimeUsage | undefined;
   /** The latest model request HUI measured for this session; absent until one completes. */
   modelMetric: ModelMetric | undefined;
+  /** What a bot has cost: its chat's, its subagents' and its memory summaries' spend, as its panel totals it. */
+  botCost?: { usd?: number | null; memory?: number; subagents?: number; reading?: true; unavailable?: true; remote?: string };
   /** A running compaction, or one that ended without a summary. */
   compaction: RuntimeCompaction | undefined;
   /** Files picked but not yet sent. */
@@ -306,11 +307,10 @@ export type HomeProps = {
   onLocalPathKeydown: (event: KeyboardEvent) => void;
   onSendPrompt: (text: string, attachments: readonly Attachment[], mode: PromptMode) => void;
   onContinueInterrupted: () => void;
-  /** Pauses, resumes or clears the conversation's goal from the pill above the composer. */
+  /** Pauses, resumes or clears the conversation's goal from the Run status popover. */
   onGoalChange: (action: "pause" | "resume" | "clear") => void;
-  /** The goal pill's detail block: whether it is open, whether the objective is being retyped, and a refused save. */
+  /** The goal editor inside the Run status popover: whether the objective is being retyped, and a refused save. */
   goalPanel: GoalPanelState;
-  onGoalToggle: () => void;
   onGoalEdit: () => void;
   onGoalSave: (objective: string) => void;
   onGoalCancelEdit: () => void;
@@ -1509,17 +1509,6 @@ function renderWorkingIndicator(props: HomeProps) {
   </div>`;
 }
 
-function subagentSnippet(task: SubagentTaskView): string {
-  if (task.status === "queued") return "Waiting for a free slot…";
-  if (task.status === "starting") return "Starting…";
-  if (task.status === "running") return task.summary?.trim() || "Running…";
-  if (task.status === "completed") return task.summary?.trim() || "Completed";
-  if (task.status === "cancelled") return task.error?.trim() || "Cancelled";
-  if (task.status === "timed_out") return task.error?.trim() || "Timed out";
-  if (task.status === "interrupted") return task.error?.trim() || "Interrupted";
-  return task.error?.trim() || "Failed";
-}
-
 function renderSubagentStatusIcon(status: string) {
   const state = subagentVisualState(status);
   if (state === "running") return orbitIcon;
@@ -1527,74 +1516,6 @@ function renderSubagentStatusIcon(status: string) {
   if (state === "queued") return html`<span class="hui-subagent-status hui-subagent-status--queued">${icons.circle}</span>`;
   if (state === "cancelled") return html`<span class="hui-subagent-status hui-subagent-status--cancelled">${icons.circleX}</span>`;
   return html`<span class="hui-subagent-status hui-subagent-status--failed">${icons.alertTriangle}</span>`;
-}
-
-function renderSubagentRow(props: HomeProps, task: SubagentTaskView, now: number) {
-  const snippet = subagentSnippet(task).replace(/\s+/g, " ");
-  const elapsed = task.status === "queued" ? undefined : subagentElapsed(task, now);
-  return html`<button
-    class="chat-subagents__row chat-subagents__row--${subagentVisualState(task.status)}"
-    data-subagent-task-id=${task.taskId}
-    data-subagent-session-id=${task.sessionId}
-    type="button"
-    aria-label=${`Open subagent ${task.title}${elapsed ? `, ${elapsed}` : ""}`}
-    @click=${() => props.onSelectSubagent(task.sessionId)}
-  >
-    <span class="chat-subagents__icon">${renderSubagentStatusIcon(task.status)}</span>
-    <span class="chat-subagents__label">${task.title}</span>
-    <span class="chat-subagents__snippet">${snippet}</span>
-    ${elapsed ? html`<span class="chat-subagents__time">${elapsed}</span>` : nothing}
-  </button>`;
-}
-
-/** OpenClaw's Swarm card, between the transcript and the composer, for the latest batch of this session's subagents:
- * one dot per child, counts, and under Child details the children, each opening its session. A batch that all
- * succeeded folds into one row. */
-function renderSubagentActivity(props: HomeProps) {
-  const now = Date.now();
-  const tasks = latestSubagentBatch(props.subagents, now);
-  if (tasks.length === 0) return nothing;
-  const states = tasks.map((task) => subagentVisualState(task.status));
-  const count = (state: SubagentVisualState) => states.filter((each) => each === state).length;
-  const running = count("running");
-  const queued = count("queued");
-  const done = count("completed");
-  const failed = tasks.length - running - queued - done;
-  const finished = running + queued === 0;
-  const succeeded = finished && failed === 0;
-  const title = tasks.length === 1 ? tasks[0]!.title : "Parallel tasks";
-  const counts = finished
-    ? `${done} completed · ${failed} failed or stopped`
-    : `${running} running · ${queued} queued · ${failed} failed or stopped`;
-  const outcome = html`<span class="chat-swarm__outcome">${props.streaming
-    ? "Child runs finished. The parent is processing their results."
-    : "Child runs finished. Check the conversation for the final response."}</span>`;
-  const markers = (["running", "queued", "failed", "done"] as const).flatMap((marker) =>
-    Array.from({ length: { running, queued, failed, done }[marker] }, () => html`<span class="chat-swarm__marker chat-swarm__marker--${marker}"></span>`));
-  // Per batch, so a new batch starts folded.
-  const id = `subagents:${tasks[0]!.taskId}`;
-  const expanded = props.expandedActivityIds.has(id);
-  return html`<aside class="chat-swarm" aria-label="Parallel tasks">
-    <details class="chat-swarm__group ${succeeded ? "chat-swarm__group--completed" : ""}" .open=${expanded}
-      @toggle=${(event: Event) => {
-        const open = (event.currentTarget as HTMLDetailsElement).open;
-        if (open !== expanded) props.onActivityExpanded(id, open);
-      }}>
-      <summary class="chat-swarm__summary">${succeeded
-        ? html`<span class="chat-swarm__task-icon chat-swarm__task-icon--done" aria-hidden="true">${icons.check}</span>
-          <span class="chat-swarm__header"><strong title=${title}>${title}</strong></span>
-          <span class="chat-swarm__counts">${done} completed</span>
-          <span class="chat-swarm__disclosure"><span class="sr-only">Child details</span>${chevronDownIcon}</span>`
-        : html`<span class="chat-swarm__header"><strong title=${title}>${title}</strong><span>${done + failed} of ${tasks.length}</span></span>
-          <span class="chat-swarm__markers" aria-hidden="true">${markers}</span>
-          <span class="chat-swarm__counts">${counts}</span>
-          ${finished ? outcome : nothing}
-          <span class="chat-swarm__disclosure">Child details ${chevronDownIcon}</span>`}
-      </summary>
-      ${succeeded ? outcome : nothing}
-      <div class="chat-swarm__tasks">${tasks.map((task) => renderSubagentRow(props, task, now))}</div>
-    </details>
-  </aside>`;
 }
 
 function submitPromptFromForm(props: HomeProps, form: HTMLFormElement, mode: PromptMode) {
@@ -1838,9 +1759,7 @@ function renderComposer(props: HomeProps) {
         </div>
       ` : nothing}
       ${props.session?.status === "starting" && props.transcript.length ? renderStartingSession() : nothing}
-      ${renderTaskProgress(props)}
       ${renderQueue(props)}
-      ${renderGoalPill(props)}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
         @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
         @click=${focusComposerFromSurface}>
@@ -1898,7 +1817,7 @@ function renderComposer(props: HomeProps) {
           <div class="agent-chat__composer-trail">
             <div class="agent-chat__composer-controls">
           ${renderModelMetric(props.modelMetric)}
-          ${renderContextPicker(props.usage, disconnected || props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot)}
+          ${renderContextPicker(props.usage, disconnected || props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot, props.botCost)}
           <div class="chat-controls__session chat-controls__model chat-controls__model-settings">${renderModelPicker({
             models: props.models,
             current: props.currentModel,
@@ -1966,118 +1885,6 @@ function renderRunError(props: HomeProps, blocked: boolean) {
       <button type="button" class="btn btn--sm chat-run-error-notice__continue" ?disabled=${blocked || props.sending} @click=${props.onContinueAfterError}>Continue</button>
       <button type="button" class="chat-error__dismiss" aria-label="Dismiss error" title="Dismiss error" @click=${props.onDismissRunError}>${icons.close}</button>
     </span>
-  </div>`;
-}
-
-const goalTargetIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3" /></svg>`;
-const goalPauseIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5v14M14.5 5v14" /></svg>`;
-const goalPlayIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none" /></svg>`;
-
-/** The goal above the composer, in OpenClaw's own pill: status, objective, the operator's controls, and the detail
- * block the row expands into. The detail carries the whole objective, why the goal stopped, and the objective's editor,
- * so reading, retyping and acting on a goal all happen in the pill. */
-function renderGoalPill(props: HomeProps) {
-  const session = props.session;
-  const goal = session?.goal;
-  if (!session || !goal) return nothing;
-  const label = goalStatusLabel(goal.status);
-  const icon = goal.status === "complete" ? checkIcon
-    : goal.status === "blocked" ? icons.alertTriangle
-      : goal.status === "paused" ? goalPauseIcon
-        : goalTargetIcon;
-  const { expanded, editing, error } = props.goalPanel;
-  // Starting a goal also sends its objective, so a turn in flight refuses it.
-  const editable = !props.sending && props.connection === "live" && !props.streaming && session.status === "idle";
-  const detailId = sessionControlId(props, "goal-detail");
-  const toggle = (event: Event) => {
-    if ((event.target as Element).closest("button, form")) return;
-    props.onGoalToggle();
-  };
-  const action = (kind: "pause" | "resume" | "clear", icon: unknown, disabled: boolean) => html`<button
-    type="button" class="agent-chat__goal-action" aria-label=${`${GOAL_ACTIONS[kind]} goal`} title=${`${GOAL_ACTIONS[kind]} goal`}
-    ?disabled=${disabled} @click=${() => props.onGoalChange(kind)}>${icon}<span class="agent-chat__goal-action-label">${GOAL_ACTIONS[kind]}</span></button>`;
-  return html`<div class="agent-chat__goal-float">
-    <div class="agent-chat__goal agent-chat__goal--${goal.status}" data-expanded=${expanded} title=${goal.note ?? goal.objective} @click=${toggle}>
-      <div class="agent-chat__goal-row">
-        <span class="agent-chat__goal-icon" aria-hidden="true">${icon}</span>
-        <span class="agent-chat__goal-copy">
-          <span class="agent-chat__goal-label">${label}</span>
-          <span class="agent-chat__goal-objective">${goal.objective}</span>
-        </span>
-        <span class="agent-chat__goal-actions">
-          <span class="agent-chat__goal-command-actions">
-            ${goal.status === "active"
-              ? action("pause", goalPauseIcon, props.sending)
-              : goal.status === "complete"
-                ? nothing
-                : action("resume", goalPlayIcon, props.sending)}
-            ${action("clear", icons.trash, props.sending)}
-            <button type="button" class="agent-chat__goal-action" aria-label="Edit goal objective" title="Edit goal objective"
-              ?disabled=${!editable || editing} @click=${props.onGoalEdit}>${icons.edit}<span class="agent-chat__goal-action-label">Edit</span></button>
-          </span>
-          <button type="button" class="agent-chat__goal-action agent-chat__goal-expand" aria-expanded=${expanded}
-            aria-controls=${detailId} aria-label=${expanded ? "Collapse goal" : "Expand goal"} title=${expanded ? "Collapse goal" : "Expand goal"}
-            @click=${props.onGoalToggle}>${expanded ? icons.chevronUp : icons.chevronDown}</button>
-        </span>
-      </div>
-      <div class="agent-chat__goal-detail" id=${detailId} data-testid="goal-detail" data-expanded=${expanded} ?inert=${!expanded}>
-        <div class="agent-chat__goal-detail-content">
-          ${editing ? html`<form class="goal-edit" @submit=${(event: Event) => {
-            event.preventDefault();
-            const field = (event.currentTarget as HTMLFormElement).elements.namedItem("objective");
-            if (field instanceof HTMLTextAreaElement) props.onGoalSave(field.value);
-          }}>
-            <textarea name="objective" rows="3" aria-label="Goal objective" spellcheck="true"
-              ${ref((element) => mountEditor(element, goal.objective))}></textarea>
-            ${error ? html`<p class="goal-edit__error" role="alert">${error}</p>` : nothing}
-            <p class="goal-edit__hint">${editable
-              ? "Saving starts the goal again with this objective and sends it as the next turn."
-              : "Finish or stop the active turn before changing the objective."}</p>
-            <div class="goal-edit__actions">
-              <button type="submit" class="btn btn--sm primary" ?disabled=${!editable}>Save goal</button>
-              <button type="button" class="btn btn--sm" @click=${props.onGoalCancelEdit}>Cancel</button>
-            </div>
-          </form>` : html`<p class="agent-chat__goal-detail-objective">${goal.objective}</p>`}
-          ${goal.note ? html`<p class="agent-chat__goal-detail-note">${goal.note}</p>` : nothing}
-          ${editing ? nothing : html`<div class="agent-chat__goal-detail-meta">
-            <span class="agent-chat__goal-detail-duration">Set ${relativeTime(Date.parse(goal.createdAt))}</span>
-          </div>`}
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-
-const GOAL_ACTIONS = { pause: "Pause", resume: "Resume", clear: "Clear" } as const;
-
-function goalStatusLabel(status: SessionGoal["status"]): string {
-  return { active: "Pursuing goal", paused: "Goal paused", blocked: "Goal blocked", complete: "Goal achieved" }[status];
-}
-
-function renderTaskProgress(props: HomeProps) {
-  const card = props.session?.progress;
-  if (!card) return nothing;
-  const completed = card.steps.filter((step) => step.status === "completed").length;
-  const current = card.steps.find((step) => step.status === "in_progress")
-    ?? card.steps.find((step) => step.status === "pending")
-    ?? card.steps.at(-1);
-  const allComplete = card.steps.length > 0 && completed === card.steps.length;
-  // A phone's card sits over the conversation it documents, so it starts folded to its current step there.
-  const folded = props.chatPreferences.collapseTaskProgress || allComplete || Boolean(props.mobileNavLayout);
-  return html`<div class="agent-chat__progress-float">
-    <details class="session-progress-card session-progress-card--composer" data-testid="task-progress" ?open=${!folded}>
-      <summary class="session-progress-card__summary" data-testid="task-progress-summary">
-        <span class="session-progress-card__summary-indicator ${allComplete ? "session-progress-card__summary-indicator--complete" : ""}" data-status=${current?.status ?? "pending"} aria-hidden="true">${allComplete ? checkIcon : current?.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span>
-        <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
-        <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
-        <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
-        <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
-      </summary>
-      <div class="session-progress-card__body" role="region" aria-label="Task progress" data-testid="task-progress-steps">
-        ${card.markdown ? html`<div class="session-progress-card__markdown">${renderMarkdown(card.markdown)}</div>` : nothing}
-        ${card.steps.length ? html`<ol class="session-progress-card__steps">${card.steps.map((step) => html`<li class="session-progress-card__step session-progress-card__step--${step.status}" data-testid="task-progress-step" data-status=${step.status}><span class="session-progress-card__step-marker" aria-hidden="true">${step.status === "completed" ? checkIcon : step.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span><span>${step.step}</span></li>`)}</ol>` : nothing}
-      </div>
-    </details>
   </div>`;
 }
 
@@ -2256,7 +2063,7 @@ function renderModelMetric(metric: ModelMetric | undefined) {
 
 /** `onCompact` is absent while the session is busy; `compactable` is false
  * for a bot's permanent chat, whose memory summarizes older messages itself. */
-function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => void, compactable = true) {
+function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => void, compactable = true, botCost?: HomeProps["botCost"]) {
   const percent = usage?.percent;
   const label = percent === null || percent === undefined
     ? (usage?.contextWindow ? `Context window: ${compactTokens(usage.contextWindow)} · usage unavailable` : "Context usage unavailable")
@@ -2264,17 +2071,27 @@ function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => 
   const circumference = 2 * Math.PI * 6.5;
   const warningMix = Math.min(1, Math.max(0, ((percent ?? 0) - 85) / 10));
   const color = (percent ?? 0) >= 85 ? `color-mix(in srgb, var(--warn) ${(1 - warningMix) * 100}%, var(--danger))` : "var(--muted)";
+  const breakdown = contextBreakdown(usage?.breakdown ?? [], usage?.contextTokens ?? 0, usage?.contextWindow ?? 0);
+  const remaining = usage ? usage.contextWindow - (usage.contextTokens ?? 0) : 0;
+  const bar = breakdown.length
+    ? [...breakdown.map((row) => html`<span class="context-usage__bar-segment context-usage__bar-segment--${row.id}" style=${`flex-grow: ${row.tokens}`}></span>`),
+      ...(remaining > 0 ? [html`<span class="context-usage__bar-remaining" style=${`flex-grow: ${remaining}`}></span>`] : [])]
+    : html`<span style=${`width: ${percent ?? 0}%`}></span>`;
   return html`<div class="context-usage" style=${`--ctx-color: ${color}`}><details class="chat-controls__context-picker" @keydown=${closeComposerPicker} @toggle=${positionComposerPicker}>
     <summary class="context-ring" aria-label=${label} title=${label} @click=${prepareComposerPicker}>
       <svg class="context-ring__dial" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle class="context-ring__track" cx="8" cy="8" r="6.5" /><circle class="context-ring__fill" cx="8" cy="8" r="6.5" stroke-dasharray=${circumference.toFixed(2)} stroke-dashoffset=${(circumference * (1 - Math.min(100, Math.max(0, percent ?? 0)) / 100)).toFixed(2)} /></svg>
     </summary>
     <section class="context-usage__popover" popover="manual" aria-label="Context usage">
       <div class="context-usage__header"><span class="context-usage__title">Context window</span><strong class="context-usage__context-value">${usage?.contextTokens === null || usage?.contextTokens === undefined ? (usage?.contextWindow ? `${compactTokens(usage.contextWindow)} · occupancy unavailable` : "Unavailable") : `${compactTokens(usage.contextTokens)} / ${compactTokens(usage.contextWindow)} · ${Math.round(percent ?? 0)}%`}</strong></div>
-      <div class="context-usage__bar" role="progressbar" aria-label="Context window used" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${percent === null || percent === undefined ? nothing : String(Math.round(percent))}><span style=${`width: ${percent ?? 0}%`}></span></div>
+      <div class="context-usage__bar ${breakdown.length ? "context-usage__bar--breakdown" : ""}" role="progressbar" aria-label="Context window used" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${percent === null || percent === undefined ? nothing : String(Math.round(percent))}>${bar}</div>
+      ${breakdown.length ? html`<ul class="context-usage__breakdown">${breakdown.map((row) => html`<li class="context-usage__part context-usage__part--${row.id}"><span class="context-usage__dot"></span><span class="context-usage__part-label">${row.label}</span>${row.detail ? html`<span class="context-usage__part-detail">${row.detail}</span>` : nothing}<span class="context-usage__part-tokens">${compactTokens(row.tokens)}</span><span class="context-usage__part-percent">${Math.round(row.percent)}%</span></li>`)}</ul>
+        <p class="context-usage__note">Category breakdown is estimated</p>` : nothing}
         <div class="context-usage__section-label">Latest run tokens</div>
         ${usage
           ? html`<dl class="context-usage__stats"><div><dt>Input</dt><dd>${compactTokens(usage.inputTokens)}</dd></div><div><dt>Output</dt><dd>${compactTokens(usage.outputTokens)}</dd></div><div><dt>Est. cost</dt><dd>${usage.costUsd === null ? "Unavailable" : `$${usage.costUsd.toFixed(2)}`}</dd></div></dl>`
           : html`<p>The runtime has not reported usage for this session yet.</p>`}
+        ${botCost ? html`<div class="context-usage__section-label">Bot cost</div>
+          <dl class="context-usage__stats"><div><dt>${botCost.remote ? "Kept on" : botCost.reading ? "Reading" : botCost.unavailable ? "Could not read" : botCost.subagents ? (botCost.subagents === 1 ? "Includes one subagent" : `Includes ${botCost.subagents} subagents`) : "Chat, subagents and memory"}</dt><dd>${botCost.remote ?? (botCost.reading ? "cost…" : botCost.unavailable ? "Unavailable" : botCost.usd === null || (botCost.usd === undefined && !botCost.memory) ? "Not reported" : `$${((botCost.usd ?? 0) + (botCost.memory ?? 0)).toFixed(2)}`)}</dd></div></dl>` : nothing}
         ${usage?.sessionCost ? html`<div class="context-usage__section-label">Session cost</div>
           <dl class="context-usage__stats"><div><dt>${usage.sessionCost.source}</dt><dd>$${usage.sessionCost.usd.toFixed(2)}</dd></div><div><dt>Checked</dt><dd>${relativeTime(usage.sessionCost.asOf)}</dd></div></dl>` : nothing}
         ${compactable ? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact" ?disabled=${!onCompact}
@@ -2332,20 +2149,6 @@ function renderModelPicker(options: ModelPickerOptions) {
 }
 
 const QUEUE_DRAG_MIME = "application/x-hui-queued-message";
-/** One editor per element: Lit re-rendering around a textarea must not overwrite what the operator is typing. */
-const mountedEditors = new WeakSet<HTMLTextAreaElement>();
-
-function mountEditor(element: Element | undefined, value: string) {
-  if (!(element instanceof HTMLTextAreaElement) || mountedEditors.has(element)) return;
-  mountedEditors.add(element);
-  element.value = value;
-  queueMicrotask(() => {
-    if (!element.isConnected) return;
-    element.focus();
-    element.setSelectionRange(value.length, value.length);
-  });
-}
-
 function renderQueue(props: HomeProps) {
   const editable = props.queue.items ?? [];
   const rows = queueRows(props.queue);
@@ -2413,7 +2216,7 @@ function renderQueue(props: HomeProps) {
             <span class="chat-queue__grip-state chat-queue__grip-state--active" aria-hidden="true">${gripIcon}</span>
           </button>` : html`<span class="chat-queue__leading chat-queue__icon" aria-hidden="true">${queueIcon}</span>`}
           ${editing ? html`<textarea class="chat-queue__edit-input" rows="1"
-            ${ref((element) => mountEditor(element, props.queueEditingText))}
+            ${ref((element) => mountEditorAtEnd(element, props.queueEditingText))}
             aria-label="Edit queued message"
             @input=${(event: Event) => props.onQueueEditChange((event.currentTarget as HTMLTextAreaElement).value)}
             @keydown=${(event: KeyboardEvent) => {
@@ -2693,6 +2496,24 @@ function renderHeader(props: HomeProps, session: SessionView) {
               @click=${props.onClosePane}
             >${icons.close}</button>
           ` : nothing}
+          ${renderRunStatus({
+            id: sessionControlId(props, "run-status"),
+            session,
+            loading: props.opening || session.status === "starting",
+            subagents: props.subagents,
+            ...(props.watchers ? { watchers: props.watchers } : {}),
+            streaming: props.streaming,
+            waiting: Boolean(props.question),
+            sending: props.sending,
+            connectionLive: props.connection === "live",
+            goalPanel: props.goalPanel,
+            collapsePlan: props.chatPreferences.collapseTaskProgress || Boolean(props.mobileNavLayout),
+            onGoalChange: props.onGoalChange,
+            onGoalEdit: props.onGoalEdit,
+            onGoalSave: props.onGoalSave,
+            onGoalCancelEdit: props.onGoalCancelEdit,
+            onSelectSubagent: props.onSelectSubagent,
+          })}
         </div>
       </div>
     </header>
@@ -2736,11 +2557,10 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                   <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript" data-window-start=${start}
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}>
                     ${positionRail({ sessionId: session.id, markers, onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
-                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers && !loadingConversation ? renderWatcherActivity(props.watchers) : nothing}${renderQuestion(props)}</div>
+                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${renderQuestion(props)}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>
-                ${renderSubagentActivity(props)}
                 ${renderComposer(props)}
               </div>
             </div>

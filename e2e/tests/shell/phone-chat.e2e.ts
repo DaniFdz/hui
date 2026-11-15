@@ -1,11 +1,11 @@
 /** A phone's chat spends one header row: the Active panel chooser sits in the header in place of the title, and the
- * Task progress card starts folded to its current step and count (SHELL-047). */
+ * Run status popover's plan starts folded to its current step and count (SHELL-047). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
 
 test(
-  "a phone's chat keeps its chooser in the header and starts the task progress card folded",
+  "a phone's chat keeps its chooser in the header and starts the plan folded in Run status",
   { tags: ["SHELL-047"], platforms: ["web"] },
   async ({ screen, hui }) => {
     const settings = await hui.api<Settings>("GET", "/__hui/settings");
@@ -49,10 +49,13 @@ test(
 
     await screen.getByLabel("Message").fill("E2E_PROGRESS");
     await screen.getByRole("button", "Send message").tap();
-    await expect(screen.getByText("1/2", { visible: true })).toBeVisible();
-    const steps = screen.getByLabel("Task progress");
+    const trigger = screen.getByTestId("run-status-trigger");
+    await trigger.tap();
+    await expect(screen.getByLabel("Run status")).toBeVisible();
+    await expect(screen.getByText("1 of 2", { visible: true })).toBeVisible();
+    const steps = screen.getByLabel("Task progress steps");
     await expect(steps).toBeHidden();
-    await screen.getByText("1/2", { visible: true }).tap();
+    await screen.getByText("1 of 2", { visible: true }).tap();
     await expect(steps.getByText("Read fixture")).toBeVisible();
   },
 );

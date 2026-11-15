@@ -8,7 +8,7 @@ import type { SessionsController } from "./controllers/sessions-controller.ts";
 import type { WorkLayoutController } from "./controllers/work-layout-controller.ts";
 import type { PanePresentation } from "./components/session-multiplexer.ts";
 import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "./lib/composer/drafts.ts";
-import { singleSessionLayout, type SessionPane } from "./lib/session/multiplexer.ts";
+import { sessionPanes, singleSessionLayout, splitSessionPane, type SessionPane } from "./lib/session/multiplexer.ts";
 import type { HomeProps } from "./views/home.ts";
 import { closeDrawerOnEscape } from "./views/shell.ts";
 import { HuiApp } from "./hui-app.ts";
@@ -62,6 +62,7 @@ type Shell = {
   renderGroupActionDialog: () => unknown;
   homeProps: () => HomeProps;
   navigate: (target: { kind: "session"; id: string }) => void;
+  syncFromLocation: () => void;
   applyNavigation: (target: { kind: "session"; id: string }) => void;
   openPendingSession: () => void;
   activateSession: (session: SessionView) => void;
@@ -160,6 +161,27 @@ test("returning to the still-selected session restores its composer draft key", 
   app.applyNavigation({ kind: "session", id: "s1" });
   assert.equal(app.composer.draftKey, sessionDraftKey("s1"));
   assert.equal(app.pendingSessionId, "");
+});
+
+test("a session's address focuses the pane that already shows it instead of giving the focused pane a second view", () => {
+  // Two panes showing different sessions; the address names the first while the second has focus, as a deep link,
+  // Back or a reload can.
+  const layout = splitSessionPane(singleSessionLayout("first"), "p1", "second", "right");
+  const history = { state: { huiSessionLayout: layout }, pushState: () => {}, replaceState: () => {} };
+  vi.stubGlobal("window", { location: { pathname: "/sessions/first", search: "", hash: "" }, history });
+  const app = shell();
+  app.syncFromLocation();
+  assert.deepEqual(sessionPanes(app.work.layout!).map(({ sessionId }) => sessionId), ["first", "second"]);
+  assert.equal(app.work.layout!.activePaneId, "p1");
+
+  // The same route through navigation: the other pane's session takes focus there, keeping both views.
+  app.navigate({ kind: "session", id: "second" });
+  assert.deepEqual(sessionPanes(app.work.layout!).map(({ sessionId }) => sessionId), ["first", "second"]);
+  assert.equal(app.work.layout!.activePaneId, "p2");
+  // A session no pane shows still takes the focused pane's place.
+  app.navigate({ kind: "session", id: "third" });
+  assert.deepEqual(sessionPanes(app.work.layout!).map(({ sessionId }) => sessionId), ["first", "third"]);
+  assert.equal(app.work.layout!.activePaneId, "p2");
 });
 
 test("Escape on the shell's frame closes the mobile drawer", () => {

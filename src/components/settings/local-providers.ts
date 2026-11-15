@@ -43,10 +43,23 @@ function modelCount(count: number): string {
   return count === 0 ? "Models from PI's catalog" : count === 1 ? "1 model" : `${count} models`;
 }
 
+/** After a refresh, a start notice belongs to the provider the operator started: it stays while that provider is
+ * still starting, and goes away once it settled. A newer notice, such as a saved command, is left alone. */
+export function startNoticeAfterRefresh(
+  notice: string,
+  startedId: string,
+  providers: readonly Pick<LocalProvider, "id" | "status">[],
+): { notice: string; settled: boolean } {
+  if (!startedId) return { notice, settled: false };
+  const settled = providers.find((provider) => provider.id === startedId)?.status !== "starting";
+  return { notice: settled && notice.startsWith("Starting ") ? "" : notice, settled };
+}
+
 export class HuiLocalProviderSettings extends LitElement {
   #snapshot?: LocalProviderSnapshot;
   #error = "";
   #notice = "";
+  #startedId = "";
   #busy = "";
   #editing?: string;
   #draft?: Draft;
@@ -82,6 +95,10 @@ export class HuiLocalProviderSettings extends LitElement {
       if (generation !== this.#generation || !this.isConnected) return;
       this.#snapshot = next;
       this.#error = "";
+      // The start settled on Online or Failed: its "Starting…" notice is now a lie.
+      const start = startNoticeAfterRefresh(this.#notice, this.#startedId, next.providers);
+      if (start.settled) this.#startedId = "";
+      this.#notice = start.notice;
       // A provider that disappeared from the list closes its editor.
       if (this.#editing && !next.providers.some((provider) => provider.id === this.#editing)) this.#closeDialog();
       if (this.#metricsFor && !next.providers.some((provider) => provider.id === this.#metricsFor)) this.#closeMetrics();
@@ -192,6 +209,7 @@ export class HuiLocalProviderSettings extends LitElement {
     this.requestUpdate();
     try {
       this.#replace(await startLocalProvider(provider.id));
+      this.#startedId = provider.id;
       this.#notice = `Starting ${provider.name}…`;
     } catch (error) {
       this.#error = error instanceof Error ? error.message : "The start command could not run.";
@@ -263,15 +281,17 @@ export class HuiLocalProviderSettings extends LitElement {
     return status === "online" ? "Online" : status === "offline" ? "Offline" : status === "starting" ? "Starting…" : status === "failed" ? "Failed" : "Unknown";
   }
 
-  #note(provider: LocalProvider): string {
-    const checked = provider.checkedAt && provider.status !== "starting" ? `Checked ${new Date(provider.checkedAt).toLocaleTimeString()}` : "";
-    const message = provider.message
+  #checked(provider: LocalProvider): string {
+    return provider.checkedAt && provider.status !== "starting" ? `Checked ${new Date(provider.checkedAt).toLocaleTimeString()}` : "";
+  }
+
+  #message(provider: LocalProvider): string {
+    return provider.message
       ?? (provider.status === "offline" ? "The server did not answer."
         : provider.status === "starting" ? "Starting the server…"
           : provider.status === "failed" ? "The start command failed."
             : provider.status === "unknown" ? "Set a health URL, or a baseUrl for this provider in PI's models.json, to check the server."
               : "");
-    return [message, checked].filter(Boolean).join(" · ");
   }
 
   #summary(providers: readonly LocalProvider[]): string {
@@ -400,16 +420,19 @@ export class HuiLocalProviderSettings extends LitElement {
   #entry(provider: LocalProvider) {
     const busy = this.#busy === provider.id;
     const startable = provider.configured && provider.inPi && provider.status !== "online" && provider.status !== "starting";
+    const checked = this.#checked(provider);
+    const message = this.#message(provider);
     return html`<div class="hui-local-provider-entry" role="listitem" data-testid="local-provider" data-status=${provider.status}>
       <div class="hui-local-provider-row">
         <div class="hui-local-provider-row__name">
           <strong>${provider.name}</strong>
           <small><code>${provider.id}</code> · ${modelCount(provider.models)}</small>
         </div>
-        <div class="hui-local-provider-row__status" role="status">
+        <div class="hui-local-provider-row__status" role="status" aria-describedby=${message ? `hui-local-provider-message-${provider.id}` : nothing}>
           <span class="hui-local-provider-status" data-status=${provider.status}>${this.#statusLabel(provider.status)}</span>
-          <small class="hui-local-provider-note">${this.#note(provider)}</small>
+          ${checked ? html`<small class="hui-local-provider-note hui-local-provider-note__checked">${checked}</small>` : nothing}
         </div>
+        ${message ? html`<p class="hui-local-provider-row__message" id=${`hui-local-provider-message-${provider.id}`}>${message}</p>` : nothing}
         <div class="hui-local-provider-row__actions">
           <button class="btn primary" ?disabled=${!startable || busy} @click=${() => void this.#start(provider)}>${provider.status === "starting" ? "Starting…" : provider.status === "online" ? "Running" : "Start server"}</button>
           <button class="btn" data-metrics=${provider.id} @click=${() => void this.#openMetrics(provider)}>Metrics</button>

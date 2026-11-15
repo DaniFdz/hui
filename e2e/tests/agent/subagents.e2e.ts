@@ -3,6 +3,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 import { expectChatTitle } from "../sess/chat-header.ts";
+import { openHelpers } from "./run-status.ts";
 
 const spawn = (input: Record<string, unknown>) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name: "sessions_spawn", input })).toString("base64url")}`;
@@ -10,18 +11,18 @@ const spawn = (input: Record<string, unknown>) =>
 const SLOW = { task: "E2E_SUBAGENT_CHILD_SLOW", label: "Slow verifier" };
 
 test("a spawned child nests under its parent in the sidebar and runs on while the parent is idle", { tags: ["AGENT-022"] }, async ({ screen, hui }) => {
-  const swarm = screen.getByLabel("Parallel tasks");
   const session = await hui.createSession({ title: "Spawn parent" });
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, spawn(SLOW));
 
-  // One child is its own card, titled with the child's name, above the composer.
-  await expect.poll(async () => hui.textOf(swarm)).toContain(SLOW.label);
-  expect((await swarm.boundingBox())!.y).toBeLessThan((await screen.getByLabel("Message").boundingBox())!.y);
-  await expect(swarm.getByText("1 running · 0 queued · 0 failed or stopped")).toBeVisible();
+  // One child is its own row in the Helpers section of Run status, above the composer.
+  const helpers = await openHelpers(screen);
+  await expect.poll(async () => hui.textOf(helpers)).toContain(SLOW.label);
+  expect((await helpers.boundingBox())!.y).toBeLessThan((await screen.getByLabel("Message").boundingBox())!.y);
+  await expect(helpers.getByText("1 running · 0 queued · 0 failed or stopped")).toBeVisible();
   // The parent has finished its turn; the child keeps running on its own.
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-  await expect(swarm.getByText("1 running · 0 queued · 0 failed or stopped")).toBeVisible();
+  await expect(helpers.getByText("1 running · 0 queued · 0 failed or stopped")).toBeVisible();
 
   // The sidebar nests it under the parent, behind the parent's own disclosure.
   await hui.sessionList();
@@ -29,12 +30,13 @@ test("a spawned child nests under its parent in the sidebar and runs on while th
   await screen.getByRole("button", "Expand subagents of Spawn parent").tap();
   await expect(screen.getByLabel(/^Slow verifier, status (running|idle|waiting),/u)).toBeVisible();
 
-  // Once it ends, the card shows its result and the row opens it. A phone still holds the drawer over the chat, so
-  // activating the parent's row is what returns to its card.
+  // Once it ends, the Helpers section folds into one completed row, which still opens it. A phone still holds the
+  // drawer over the chat, so activating the parent's row is what returns to it.
   await hui.activateSidebarRow("Spawn parent");
-  await expect(swarm.getByText("1 completed")).toBeVisible();
-  await swarm.getByText("1 completed").tap();
-  const row = swarm.getByRole("button", { name: /^Open subagent Slow verifier, .+$/u });
+  const completedHelpers = await openHelpers(screen);
+  await expect(completedHelpers.getByText("1 completed")).toBeVisible();
+  await completedHelpers.getByText("1 completed").tap();
+  const row = completedHelpers.getByRole("button", { name: /^Open subagent Slow verifier, .+$/u });
   await expect(row).toBeVisible();
   await expect(row).toContainText("Slow verifier result: all checks passed.");
 });
@@ -45,15 +47,14 @@ test("a child's card opens its own transcript, which names the parent session, a
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, spawn(SLOW));
 
-  const swarm = screen.getByLabel("Parallel tasks");
-  await expect.poll(async () => hui.textOf(swarm)).toContain(SLOW.label);
-  await swarm.getByText(SLOW.label).first().tap();
-  const row = swarm.getByRole("button", { name: /^Open subagent Slow verifier(, .+)?$/u });
+  const helpers = await openHelpers(screen);
+  await expect.poll(async () => hui.textOf(helpers)).toContain(SLOW.label);
+  const row = helpers.getByRole("button", { name: /^Open subagent Slow verifier(, .+)?$/u });
   await expect(row).toBeVisible();
   await row.tap();
 
   await expectChatTitle(screen, SLOW.label);
-  await expect.poll(async () => hui.textOf(screen.getByTestId("chat-header").filter({ hasText: SLOW.label }))).toContain("Subagent");
+  await expect.poll(async () => hui.textOf(screen.getByTestId("chat-header").filter({ hasText: SLOW.label }).last())).toContain("Subagent");
   // Its first turn is the task, attributed to the parent session, which the header links to.
   await expect(transcript.getByText(SLOW.task)).toBeVisible();
   await hui.expectLinkTo(transcript, "Subagent parent", `/sessions/${session.id}`);
@@ -61,7 +62,11 @@ test("a child's card opens its own transcript, which names the parent session, a
   await screen.getByRole("button", { name: "Open parent" }).tap();
   await expectChatTitle(screen, "Subagent parent");
   await expect(transcript.getByText(/^tool answered: .*"label": "Slow verifier"/su)).toBeVisible();
-  await expect(swarm.getByText(SLOW.label).first()).toBeVisible();
+  const reopened = await openHelpers(screen);
+  const completed = reopened.getByText("1 completed");
+  await expect(completed).toBeVisible();
+  await completed.tap();
+  await expect(reopened.getByText(SLOW.label).first()).toBeVisible();
 });
 
 test("a finished child lands as a system card, siblings arrive as one card, and the parent continues on it", { tags: ["AGENT-024"] }, async ({ screen, hui }) => {

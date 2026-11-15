@@ -4653,6 +4653,45 @@
         }
       ]
     },
+    "ContextUsagePart": {
+      "type": "object",
+      "required": [
+        "id",
+        "tokens"
+      ],
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "system"
+            },
+            {
+              "type": "string",
+              "const": "tools"
+            },
+            {
+              "type": "string",
+              "const": "conversation"
+            },
+            {
+              "type": "string",
+              "const": "summary"
+            },
+            {
+              "type": "string",
+              "const": "memory"
+            }
+          ]
+        },
+        "tokens": {
+          "type": "number"
+        },
+        "count": {
+          "type": "number"
+        }
+      }
+    },
     "DatadogConnection": {
       "type": "object",
       "required": [
@@ -9214,6 +9253,12 @@
         },
         "sessionCost": {
           "$ref": "#/$defs/SessionCostReport"
+        },
+        "breakdown": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ContextUsagePart"
+          }
         }
       }
     },
@@ -14899,6 +14944,7 @@
     ],
     "session-events": [
       "CompactionReason",
+      "ContextUsagePart",
       "QueuedMessage",
       "RuntimeCommand",
       "RuntimeCompaction",

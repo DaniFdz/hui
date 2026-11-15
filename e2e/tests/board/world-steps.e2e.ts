@@ -41,7 +41,7 @@ test("hui.openSubagent opens a child's own conversation from the card its parent
   const parent = await hui.createSession({ title: "Subagent parent" });
   const child = await hui.createSubagent(parent);
   await hui.open(`/sessions/${parent.id}`);
-  await expect(screen.getByLabel("Parallel tasks")).toBeVisible();
+  await expect(screen.getByTestId("run-status-trigger")).toBeVisible();
 
   await hui.openSubagent(child);
   await expect.poll(() => hui.url()).toContain(child.id);
