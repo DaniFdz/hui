@@ -2,7 +2,7 @@
 
 export type ModelMetric = { "at": number; "provider": string; "model": string; "inputTokens"?: number; "outputTokens"?: number; "cacheReadTokens"?: number; "cacheWriteTokens"?: number; "ttftMs"?: number; "durationMs"?: number; "generationMs"?: number; "tokensPerSecond"?: number; "promptTokensPerSecond"?: number; "status": ("ok") | ("error"); };
 
-export type ModelMetricAverage = { "tokensPerSecond"?: number; "ttftMs"?: number; "promptTokensPerSecond"?: number; };
+export type ModelMetricAverage = { "tokensPerSecond"?: number; "ttftMs"?: number; "promptTokensPerSecond"?: number; "cacheHitRate"?: number; };
 
 export type ModelMetricError = { "error": string; };
 

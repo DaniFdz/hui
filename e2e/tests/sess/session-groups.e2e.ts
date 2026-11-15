@@ -1,6 +1,9 @@
 /** Session groups are created from the Sessions toolbar on desktop and phone, renamed, deleted, reordered and collapsed from their headers (SESS-023, SESS-024, SESS-025, SESS-026, SESS-027). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
+import { roster } from "../bot/bot-panel.ts";
+
+type Listed = { groups: { label: string; cwd?: string; sessions: { id: string }[] }[] };
 
 const groupMenu = async (screen: Screen, hui: Hui, label: string, item: string) => {
   // A group's header and its menu live in the sidebar, which a phone keeps in its drawer; its actions button is drawn
@@ -10,10 +13,17 @@ const groupMenu = async (screen: Screen, hui: Hui, label: string, item: string) 
   await screen.getByText(item, { visible: true }).tap();
 };
 
-test("New group in the toolbar or a group's menu creates a group above OTHER even when filters hid every row, resets search and status but keeps the sort, and shows a rejected name", { tags: ["SESS-023"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("New group in the toolbar or a group's menu creates a group above OTHER even when filters hid every row, saves its directory and creates its chief, resets search and status but keeps the sort, and shows a rejected name", { tags: ["SESS-023"], platforms: ["web"] }, async ({ screen, hui }) => {
+  // A worker in the list, so the dialog also offers the machine a group's sessions and its chief run on.
+  await hui.api("POST", "/__hui/workers", { name: "Group box", command: "ssh nowhere" });
   const newGroup = screen.getByRole("button", "New group");
   const name = screen.getByLabel("Group name");
   const search = screen.getByPlaceholder("Search sessions");
+  const dialog = screen.getByRole("dialog", { name: "New group" });
+  const directory = dialog.getByRole("combobox", "Working directory");
+  const chiefChoice = dialog.getByRole("checkbox", { name: /^Create a Chief of Staff/u });
+  const researchLab = async () => (await hui.api<Listed>("GET", "/__hui/sessions")).groups.find((entry) => entry.label === "Research Lab");
+  const hasChief = async () => (await hui.api<{ bots: { group?: string }[] }>("GET", "/__hui/bots")).bots.some((bot) => bot.group === "Research Lab");
   // The control a group's dialog came from holds focus again: the toolbar's New group on the wide layout, and the
   // drawer's opener on a phone, which closed before the dialog opened (the test below is that case).
   const dialogOpener = screen.getByRole("button", /^(New group|Open navigation)$/u, { visible: true });
@@ -38,9 +48,21 @@ test("New group in the toolbar or a group's menu creates a group above OTHER eve
 
   await newGroup.tap();
   await expect(name).toBeFocused();
+  // The dialog asks for the group's New session defaults and its chief in the same step.
+  await expect(dialog.getByRole("button", /^Run on/u)).toContainText("Local");
+  await expect(directory).toBeVisible();
+  await expect(chiefChoice).not.toBeChecked();
   await name.fill("Research Lab");
+  await directory.fill(hui.workspace);
+  // The suggestion list the field opens would cover the checkbox below it: leaving the field closes it.
+  await dialog.getByText("New group", { exact: true }).tap();
+  await expect(directory).toHaveAttribute("aria-expanded", "false");
+  await chiefChoice.tap();
+  await expect(chiefChoice).toBeChecked();
   await screen.getByRole("button", "Create group").tap();
   await expect(dialogOpener).toBeFocused();
+  expect((await researchLab())?.cwd).toBe(hui.workspace);
+  await expect.poll(hasChief, { timeout: 60_000 }).toBe(true);
   // Creating a group closes the drawer it came from on a phone, so the group and the rows are read again from there.
   await hui.sessionList();
   await expect(screen.getByRole("button", "RESEARCH LAB")).toBeVisible();
@@ -62,6 +84,10 @@ test("New group in the toolbar or a group's menu creates a group above OTHER eve
   await expect(name).toBeVisible();
   await screen.getByRole("button", "Cancel").tap();
   await expect(name).toBeHidden();
+
+  // The chief the dialog created is a bot of its own, listed on the Bots tab.
+  await roster(screen, hui);
+  await expect(screen.getByLabel(/^Chief of Staff · Research Lab,/u)).toBeVisible();
 });
 
 test("on a phone the drawer closes before the New group dialog opens and focus returns to Open navigation", { tags: ["SESS-023"], platforms: ["web"] }, async ({ screen, hui }) => {

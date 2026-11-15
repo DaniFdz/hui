@@ -15,11 +15,23 @@ export type StoredModelMetric = ModelMetric & { session?: string };
 export const MODEL_METRIC_HISTORY = 5_000;
 const COMPACT_AT = MODEL_METRIC_HISTORY * 2;
 
+/** The cache-read share of a request's prompt tokens, from the counts PI reports: cache reads over new input, cache
+ * reads and cache writes. Undefined when the provider reports no cache counts at all, so a provider that does not cache
+ * is never counted as a total miss. */
+export function cacheHitRate(sample: Pick<ModelMetric, "inputTokens" | "cacheReadTokens" | "cacheWriteTokens">): number | undefined {
+  const read = sample.cacheReadTokens;
+  const write = sample.cacheWriteTokens;
+  if (read === undefined && write === undefined) return undefined;
+  const prompt = (sample.inputTokens ?? 0) + (read ?? 0) + (write ?? 0);
+  return prompt > 0 ? (read ?? 0) / prompt : undefined;
+}
+
 export function averageMetrics(samples: readonly ModelMetric[]): ModelMetricAverage {
   return averageOf(samples.map((sample) => ({
     tokensPerSecond: sample.tokensPerSecond,
     ttftMs: sample.ttftMs,
     promptTokensPerSecond: sample.promptTokensPerSecond,
+    cacheHitRate: cacheHitRate(sample),
   })));
 }
 
@@ -34,6 +46,7 @@ export function percentileMetrics(samples: readonly ModelMetric[], percentile: n
     tokensPerSecond: at(samples.map((sample) => sample.tokensPerSecond)),
     ttftMs: at(samples.map((sample) => sample.ttftMs)),
     promptTokensPerSecond: at(samples.map((sample) => sample.promptTokensPerSecond)),
+    cacheHitRate: at(samples.map((sample) => cacheHitRate(sample))),
   });
 }
 
@@ -42,7 +55,7 @@ function averageOf(values: readonly ModelMetricAverage[]): ModelMetricAverage {
     const seen = values.map(pick).filter((value): value is number => value !== undefined);
     return seen.length ? seen.reduce((sum, value) => sum + value, 0) / seen.length : undefined;
   };
-  return cleanAverage({ tokensPerSecond: mean((v) => v.tokensPerSecond), ttftMs: mean((v) => v.ttftMs), promptTokensPerSecond: mean((v) => v.promptTokensPerSecond) });
+  return cleanAverage({ tokensPerSecond: mean((v) => v.tokensPerSecond), ttftMs: mean((v) => v.ttftMs), promptTokensPerSecond: mean((v) => v.promptTokensPerSecond), cacheHitRate: mean((v) => v.cacheHitRate) });
 }
 
 function cleanAverage(value: ModelMetricAverage): ModelMetricAverage {
@@ -50,6 +63,7 @@ function cleanAverage(value: ModelMetricAverage): ModelMetricAverage {
     ...(value.tokensPerSecond === undefined ? {} : { tokensPerSecond: value.tokensPerSecond }),
     ...(value.ttftMs === undefined ? {} : { ttftMs: value.ttftMs }),
     ...(value.promptTokensPerSecond === undefined ? {} : { promptTokensPerSecond: value.promptTokensPerSecond }),
+    ...(value.cacheHitRate === undefined ? {} : { cacheHitRate: value.cacheHitRate }),
   };
 }
 

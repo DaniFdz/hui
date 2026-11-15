@@ -982,11 +982,13 @@ for that provider waits and its chat shows **Waiting for <name> to start…**; a
 failed start fails the request with its reason. PI's base URL and credentials
 are never returned to the browser.
 Each provider row opens a **Metrics** dialog for HUI's own measurements of its
-completed model requests: time to first token, generation tok/s, prompt tok/s
-(an estimate that includes queue and prefill), token counts, averages and a
-recent trend. The chat composer shows the latest request's speed and opens its
-detail. The last 5,000 samples persist in HUI's `model-metrics.jsonl` (mode
-0600); older PI SDK-worker sessions are not measured.
+completed model requests: prefill (time to first token and an estimated prompt
+tok/s that includes queue and prefill), decode tok/s over the generation span,
+the cache hit share of the prompt with its read and write counts, token counts,
+averages and a recent trend. The chat composer shows the latest request's decode
+speed and opens the same prefill, decode and cache detail. The last 5,000 samples
+persist in HUI's `model-metrics.jsonl` (mode 0600); older PI SDK-worker sessions
+are not measured.
 The same page saves the **default reasoning** new sessions and bots start on:
 PI's levels from Off through Maximum, or **Use PI default** (the default), which
 follows PI's own `defaultThinkingLevel` at the runtime. A model that supports
@@ -2002,7 +2004,9 @@ prompt and optionally a fresh worktree, a worker, a model and thinking. The
 target group's stored New session defaults decide its directory, machine, Git
 environment and base ref; the call fills in only what the group leaves unset. A
 group chief's own group is the default, then the caller's cwd, group, worker,
-model and thinking. The brief reaches
+model and thinking. A group chief works in its own bot folder, so a group that
+names no directory is refused ("This group has no project directory. Set it in
+the group's New session defaults.") rather than place the session there. The brief reaches
 the new chat tagged from the calling bot, like every message a bot sends into a
 chat, so the new session's own chat shows it under that bot's name rather than
 as the operator's words. It writes no
@@ -2027,6 +2031,8 @@ reasoning level, so a seeded default route never goes stale. The spawn's own
 `thinking` overrides it. HUI's Ultra delegation mode is not a route
 reasoning level. The route block in the prompt lists names and descriptions, not model ids.
 A spawn with `worktree: true` gets its own checkout: HUI creates a worktree off the caller's directory (on the worker that runs the caller), with Settings' branch prefix and the child's title, and the child's `cwd` is that worktree. A checkout that cannot be made refuses the spawn before a child exists, and a registry write that fails puts the worktree and its branch back. Parallel workers never share one working tree.
+
+A spawn from a group chief's chat belongs to the group, not to the chief's folder: the child's `cwd` and the source of its worktree are the group's stored directory, and it runs on the group's `worker` when it names one. A group that names no directory refuses the spawn with the same sentence `create_session` uses. A spawn from any other chat keeps the caller's directory and machine, including an ordinary bot the operator filed under a group: only a Chief of Staff's group lends its project and machine.
 
 A bot's subagent carries the bot whose skills it loads (`botSkills`), in its `hui.botSkills` conversation document, so the staff pack reaches the workers that need it and no other session sees it. Its own children inherit the same bot. That document grants skills only: the bot's soul, memory and tools stay its chat's.
 
@@ -4153,7 +4159,7 @@ This changes the plan step of [Autonomous mode drives a session to a draft pull 
 
 ### A custom group's chief is its own bot (2026-11-08)
 
-The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label and project directory, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its home, sets the bot's `group`, and puts its chat in that directory; the pack's routes are merged by name. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
+The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label, reads that group from the session-group registry, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its own folder, sets the bot's `group`, and puts its chat in that folder: on the group's worker when it names one, this gateway otherwise. The group's project directory is where the sessions the chief creates run, not where the chief's own chat works; the chief's prompt carries the project's context file (the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` there), read on every request, beside its own folder's — a directory named from the worker's home (`~/work`) is expanded by that worker. A chief needs that directory, so a group that names none gets no new chief: `POST /__hui/staff/chiefs` is a 400 with "This group has no project directory. Set it in the group's New session defaults.", the sentence its sessions refuse with, while a group that already has its chief still answers it, as asking twice does. A group whose directory is cleared after its chief exists refuses `create_session` and `sessions_spawn` with the same sentence rather than place work in the chief's own folder, and what the chief does start lands in the group's directory and on the group's machine. A chief keeps the group's project and machine for its own children and for its prompt; a group is an ordinary bot field, so an ordinary bot filed under one keeps its own directory, machine and prompt. The pack's routes are merged by name. An unknown group is a 400 and creates nothing. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
 
 A group chief's skills are installed at creation and recorded, and every later pack update reaches it the same way as the
 seeded chief: `staff.json` keeps a per-bot manifest (`{ version: 2, bots: { <bot id>: { packVersion, installedAt, files } } }`),
@@ -4163,6 +4169,10 @@ records) is adopted on the next start when it carries the pack's text: what matc
 recorded, a missing skill is installed, and a skill that differs is kept and reported, because there the text could be
 the operator's or an older pack's. The operator can edit any of its skills in Tools & skills; the pack keeps an edited
 skill whole and `hui doctor` reports it per chief.
+
+### New group asks where its sessions run and offers its chief (2026-11-15)
+
+Creating a group used to collect a name and nothing else, so a new group had no project directory until a session or the New session defaults dialog supplied one, and its chief could not be created before that. The owner asked for the group to be configured where it is created. The New group dialog now collects the group's New session defaults with it: **Run on** (this machine or a worker), **Working directory**, **Environment** (**Branch** or **New worktree**) and **Base branch**, and offers **Create a Chief of Staff**. `POST /__hui/session-groups` takes `{ name, cwd?, worker?, workspaceMode?, baseRef? }` and stores them in the same registry write, so a group never exists half configured. The validation is the one `PATCH` uses, and an empty string leaves a default unset. `POST /__hui/staff/chiefs` takes `{ group }` only: the group states the machine and the project, and the chief works in its own folder ([A custom group's chief is its own bot](#a-custom-groups-chief-is-its-own-bot-2026-11-08)). A chief needs a project directory because that is where the sessions it starts run, so the dialog refuses a chief without one and creates nothing, and so does `POST /__hui/staff/chiefs`: a group that names no directory is a 400 with the same sentence, and neither entry point creates a bot. If the group is created and the chief fails, the group stays and its ⋯ menu can create the chief. The ⋯ menu and the New session defaults dialog keep working for groups that already exist.
 
 ### Bots write their own SOUL.md in a first conversation (2026-10-06)
 

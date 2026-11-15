@@ -2087,6 +2087,17 @@ test("a worker's host gets the bots section only for a bot that runs on it", asy
   await assert.rejects(h.service.workerSection("w-2", rover.id), BotNotFoundError);
 });
 
+test("a worker's bot.project proves a bot runs there without building the bots section", async (t) => {
+  const h = await harness(t);
+  const home = await h.service.create({ name: "Home" });
+  const rover = await h.service.create({ name: "Rover", worker: "w-1" });
+  // The gateway answers `bot.project` with this predicate: a bot of another worker, or of this machine, is refused.
+  assert.deepEqual(
+    [await h.service.runsOn("w-1", rover.id), await h.service.runsOn("w-1", home.id), await h.service.runsOn("w-2", rover.id), await h.service.runsOn("w-1", "missing")],
+    [true, false, false, false],
+  );
+});
+
 test("a bot's cost counts its chat and every subagent under it, never another session", async (t) => {
   const h = await harness(t);
   const ada = await h.service.create({ soul: SOUL, name: "Ada" });

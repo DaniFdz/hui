@@ -89,7 +89,7 @@ test("the report lists sessions still on PI, changes nothing, and --fix waits fo
   await setup();
   const registry = await readFile(registryFile, "utf8");
   const report = await runDoctor({ installation });
-  assert.deepEqual(report.checks.map((check) => check.id), ["pi-sessions", "triggers", "bots", "optchat", "staff", "datadog", "appearance", "extensions", "desktop-app"]);
+  assert.deepEqual(report.checks.map((check) => check.id), ["pi-sessions", "triggers", "bots", "chiefs", "optchat", "staff", "datadog", "appearance", "extensions", "desktop-app"]);
   assert.equal(report.checks.find((check) => check.id === "desktop-app")?.summary, "no HUI desktop app is installed");
   assert.equal(report.ok, false);
   assert.equal(piCheck(report).status, "issue");
@@ -168,6 +168,45 @@ test("--fix refuses a store another gateway owns and changes nothing", async (t)
   assert.equal(existsSync(join(config, "backups")) ? (await readdir(join(config, "backups"))).length : 0, 0, "no backup without a change");
 });
 
+test("a chief that still works in its project folder is reported and --fix moves it into its own folder", async (t) => {
+  await setup();
+  const botsFile = join(config, "bots.json");
+  const botsDir = join(config, "bots");
+  t.onTestFinished(async () => {
+    await rm(botsFile, { force: true });
+    await rm(botsDir, { recursive: true, force: true });
+  });
+  const project = join(root, "payments-project");
+  const own = join(botsDir, "payments");
+  await mkdir(project, { recursive: true });
+  await mkdir(own, { recursive: true });
+  // A chief's chat as the old route made it: its conversation in the group's project directory.
+  const host = inspector();
+  const chat = await startDurable({ cwd: project, huiSessionId: "payments-chat" }, host);
+  const reference = chat.sessionFile!;
+  chat.dispose();
+  await host.close();
+  await writeRegistry([record("payments-chat", "Chief of Staff · Payments", { tool: "durable", piSessionFile: reference, cwd: project })]);
+  await writeFile(botsFile, JSON.stringify({ version: 1, bots: [{
+    id: "payments", handle: "payments", name: "Chief of Staff · Payments", title: "Chief of Staff", group: "Payments",
+    cwd: project, sessionId: "payments-chat", createdAt: TIME, updatedAt: TIME,
+  }] }));
+
+  const report = await runDoctor({ installation });
+  const chiefs = report.checks.find((check) => check.id === "chiefs")!;
+  assert.equal(chiefs.status, "issue");
+  assert.deepEqual(chiefs.items.map(({ id, status }) => [id, status]), [["payments", "issue"]]);
+  const detail = chiefs.items[0]!.detail ?? "";
+  assert.ok(detail.includes(project) && detail.includes(own), detail);
+
+  const fixed = await runDoctor({ installation, fix: true });
+  const result = fixed.checks.find((check) => check.id === "chiefs")!;
+  assert.deepEqual(result.items.map(({ id, status }) => [id, status]), [["payments", "fixed"]]);
+  assert.equal(result.status, "fixed");
+  assert.equal((await readRegistry()).find((session) => session.id === "payments-chat")!.cwd, own);
+  assert.equal(JSON.parse(await readFile(botsFile, "utf8")).bots[0].cwd, own);
+});
+
 test("a state with every session on Durable is healthy", async () => {
   await rm(store, { recursive: true, force: true });
   await writeRegistry([record("durable-session", "Already on Durable", { tool: "durable" })]);
@@ -176,6 +215,7 @@ test("a state with every session on Durable is healthy", async () => {
     { id: "pi-sessions", title: "PI sessions", status: "ok", summary: "every session runs on Pi Durable", items: [], notes: [] },
     { id: "triggers", title: "Triggers", status: "ok", summary: "nothing left of GitHub, Sessions, Webhook or Slack triggers", items: [], notes: [] },
     { id: "bots", title: "Bot files", status: "ok", summary: "No bot keeps a memory section in SOUL.md or needs hui bot split", items: [], notes: ["A bot's split needs judgement: hui bot split <bot> sends it the three files, what belongs in each, and asks it to sort its own."] },
+    { id: "chiefs", title: "Chief of Staff folders", status: "ok", summary: "No Chief of Staff bot exists", items: [], notes: [] },
     { id: "optchat", title: "OptChat documents", status: "ok", summary: "every OptChat document is the current one", items: [], notes: [] },
     { id: "staff", title: "Staff pack", status: "ok", summary: "No staff pack installed yet", items: [], notes: ["Start the gateway once: it seeds the Chief of Staff and installs the pack's skills."] },
     { id: "datadog", title: "Datadog", status: "ok", summary: "no Datadog org is configured", items: [], notes: [] },
@@ -183,5 +223,5 @@ test("a state with every session on Durable is healthy", async () => {
     { id: "extensions", title: "Gateway extensions", status: "ok", summary: "Every enabled extension can load", items: [], notes: [] },
     { id: "desktop-app", title: "HUI desktop app", status: "ok", summary: "no HUI desktop app is installed", items: [], notes: [] },
   ] });
-  assert.equal(formatDoctorReport(report), "✓ PI sessions: every session runs on Pi Durable\n✓ Triggers: nothing left of GitHub, Sessions, Webhook or Slack triggers\n✓ Bot files: No bot keeps a memory section in SOUL.md or needs hui bot split\n  A bot's split needs judgement: hui bot split <bot> sends it the three files, what belongs in each, and asks it to sort its own.\n✓ OptChat documents: every OptChat document is the current one\n✓ Staff pack: No staff pack installed yet\n  Start the gateway once: it seeds the Chief of Staff and installs the pack's skills.\n✓ Datadog: no Datadog org is configured\n✓ Appearance: no appearance is stored on the gateway\n✓ Gateway extensions: Every enabled extension can load\n✓ HUI desktop app: no HUI desktop app is installed");
+  assert.equal(formatDoctorReport(report), "✓ PI sessions: every session runs on Pi Durable\n✓ Triggers: nothing left of GitHub, Sessions, Webhook or Slack triggers\n✓ Bot files: No bot keeps a memory section in SOUL.md or needs hui bot split\n  A bot's split needs judgement: hui bot split <bot> sends it the three files, what belongs in each, and asks it to sort its own.\n✓ Chief of Staff folders: No Chief of Staff bot exists\n✓ OptChat documents: every OptChat document is the current one\n✓ Staff pack: No staff pack installed yet\n  Start the gateway once: it seeds the Chief of Staff and installs the pack's skills.\n✓ Datadog: no Datadog org is configured\n✓ Appearance: no appearance is stored on the gateway\n✓ Gateway extensions: Every enabled extension can load\n✓ HUI desktop app: no HUI desktop app is installed");
 });

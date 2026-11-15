@@ -621,6 +621,21 @@ test("Autonomy sits under Speed with Supervised or Autonomous, names the mode on
   assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: opus, thinking: "high" }), /Autonomy/u);
 });
 
+test("the composer's speed chip opens prefill, decode and cache apart", async () => {
+  const metric = {
+    at: 1, provider: "llama-local", model: "qwen", status: "ok" as const,
+    inputTokens: 100, outputTokens: 20, cacheReadTokens: 300, cacheWriteTokens: 100,
+    ttftMs: 1_200, generationMs: 900, durationMs: 2_100, tokensPerSecond: 22.2, promptTokensPerSecond: 83.3,
+  };
+  const html = await renderWorkerSession("idle", { modelMetric: metric });
+  assert.match(html, /class="chat-metrics__speed">22\.2 tok\/s<\/span><span class="chat-metrics__ttft">1\.20 s TTFT/u);
+  assert.match(html, /aria-label="Last model request metrics"/u);
+  assert.match(html, /<dt>Prefill<\/dt><dd>1\.20 s TTFT · 83\.3 tok\/s prompt \(est\.\)<\/dd>/u);
+  assert.match(html, /<dt>Decode<\/dt><dd>22\.2 tok\/s · 0\.90 s<\/dd>/u);
+  assert.match(html, /<dt>Cache<\/dt><dd>60\.0% hit · 300 read · 100 written<\/dd>/u);
+  assert.match(html, /<dt>Tokens<\/dt><dd>100 in \/ 20 out<\/dd>/u);
+});
+
 test("Ultra is the stop above Maximum where the runtime offers it, and both glow", async () => {
   const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] };
   const ultra = await renderWorkerSession("idle", { currentModel: opus, thinking: "ultra" });
