@@ -148,3 +148,101 @@ test("both apps declare the microphone a call needs, and iOS explains it", async
   }
   assert.match(plist, /<key>NSMicrophoneUsageDescription<\/key>\s*<string>[^<]{20,}<\/string>/u, "the iOS shell explains why it wants the microphone");
 });
+
+test("the Android Share sheet offers HUI for text and images, and nothing else", async () => {
+  // Three halves have to agree for a share to reach New Session: the sheet has to offer HUI for it, the activity has to
+  // read it and open the page's own route, and the page has to take the route's query. The page's half is pinned by its
+  // own tests; these are the shell's two.
+  const manifest = await read("mobile/android/app/src/main/AndroidManifest.xml");
+  const activity = /<activity\b[\s\S]*?<\/activity>/u.exec(manifest)?.[0];
+  assert.ok(activity, "MainActivity is the manifest's activity");
+  const filters = [...activity.matchAll(/<intent-filter>([\s\S]*?)<\/intent-filter>/gu)].map(([, filter]) => filter);
+  const send = filters.filter((filter) => filter.includes("android.intent.action.SEND"));
+  assert.equal(send.length, 1, "the activity declares exactly one ACTION_SEND filter");
+  assert.match(send[0], /android\.intent\.category\.DEFAULT/u, "the sheet needs CATEGORY_DEFAULT to list the filter");
+  const types = [...send[0].matchAll(/android:mimeType="([^"]+)"/gu)].map(([, type]) => type);
+  assert.deepEqual(types, ["text/plain", "image/*"], "the sheet offers exactly the text and the image New Session can take");
+  assert.doesNotMatch(send[0], /text\/\*/u, "no wildcard text: a markup or contact-card share is never offered");
+});
+
+test("the activity opens a share once and takes it back out of the launch intent", async () => {
+  const activity = await read("mobile/android/app/src/main/java/dev/hui/app/MainActivity.java");
+  assert.match(activity, /Intent\.ACTION_SEND\.equals\(/u, "the activity answers ACTION_SEND, not every intent it is handed");
+  assert.match(activity, /getCharSequenceExtra\(Intent\.EXTRA_TEXT\)/u, "the text is read as a CharSequence: X sends a SpannedString");
+  // Every restart the activity asks for applies the launch intent again, so a share left in it opens New Session twice.
+  assert.match(activity, /setAction\(null\)/u, "the share's action is dropped with it");
+  for (const extra of ["EXTRA_TEXT", "EXTRA_STREAM", "EXTRA_TITLE"]) {
+    assert.match(activity, new RegExp(`removeExtra\\(Intent\\.${extra}\\)`, "u"), `the share's ${extra} is dropped with it`);
+  }
+  assert.match(activity, /setClipData\(null\)/u, "the share's clip data is dropped with it");
+  assert.match(activity, /ShareTarget\.url\(gateway,/u, "the address is built from the gateway this launch loaded");
+  assert.match(activity, /web\.loadUrl\(address\)/u, "the page's own New Session route opens in the WebView");
+});
+
+test("the Android share is the page's own address, within the page's own bounds", async () => {
+  const share = await read("mobile/android/app/src/main/java/dev/hui/app/ShareTarget.java");
+  const page = await read("src/lib/composer/share-seed.ts");
+  const pages = await read("src/lib/pages.ts");
+  assert.match(share, /"\/new-session\?share="/u, "ShareTarget builds the route the page's intake reads");
+  assert.match(pages, /\[\s*"new-session",/u, "and the page does route /new-session");
+  assert.match(share, /URLEncoder\.encode\(/u, "the value is percent-encoded exactly once");
+  // The two bounds are the page's and the iOS half's, so one share cannot be cut differently on each phone.
+  assert.match(share, /MAX_CHARACTERS = 8_000;/u, "the text is capped at the page's 8 000 characters");
+  assert.match(page, /SHARE_SEED_LIMIT = 8000/u, "the page caps the same value at the same 8 000 characters");
+  assert.match(share, /MAX_URL_BYTES = 32 \* 1024;/u, "the finished address is bounded at 32 KiB");
+  assert.doesNotMatch(share, /^import android\./mu, "the parser stays pure Java, so the host JVM can run ShareTargetTest");
+});
+
+test("the iOS project embeds a Share Extension that inherits the app's version", async () => {
+  const project = await read("mobile/ios/App/App.xcodeproj/project.pbxproj");
+  assert.equal([...project.matchAll(/isa = PBXNativeTarget;/gu)].length, 2, "the project has the app and one extension");
+  assert.match(project, /isa = PBXNativeTarget;[\s\S]*?productType = "com\.apple\.product-type\.app-extension";/u, "the second target is an app extension");
+  assert.match(project, /name = ShareExtension;/u, "the extension is the one the workflow and the release look for");
+  assert.match(project, /PRODUCT_BUNDLE_IDENTIFIER = dev\.hui\.app\.ShareExtension;/u, "the appex lives under the app's own bundle id");
+  // dstSubfolderSpec 13 is the PlugIns folder: an appex built but never embedded is missing from the archive and the IPA.
+  const embed = /([0-9A-F]{24}) \/\* Embed Foundation Extensions \*\/ = \{[\s\S]*?dstSubfolderSpec = 13;[\s\S]*?\n\t\t\};/u.exec(project);
+  assert.ok(embed, "a copy phase embeds the appex into PlugIns");
+  const app = /^\t\t([0-9A-F]{24}) \/\* App \*\/ = \{\n\t\t\tisa = PBXNativeTarget;[\s\S]*?productType = "com\.apple\.product-type\.application";/mu.exec(project);
+  assert.ok(app, "the App target exists");
+  assert.ok(app[0].includes(`${embed[1]} /* Embed Foundation Extensions */`), "the App target runs that phase");
+  // Both versions sit on the project, so the appex inherits the one the release stamps; a target-level value would win.
+  const configurations = [...project.matchAll(/\t\tisa = XCBuildConfiguration;[\s\S]*?\n\t\t\};/gu)].map(([block]) => block);
+  const versioned = configurations.filter((block) => /(?:MARKETING_VERSION|CURRENT_PROJECT_VERSION) =/u.test(block));
+  assert.equal(versioned.length, 2, "only the project's Debug and Release configurations carry the versions");
+  for (const block of versioned) {
+    assert.doesNotMatch(block, /PRODUCT_BUNDLE_IDENTIFIER/u, "a target configuration would override the stamped version");
+  }
+});
+
+test("the iOS Share Extension activates for text and web addresses only", async () => {
+  const plist = await read("mobile/ios/App/ShareExtension/Info.plist");
+  assert.match(plist, /<key>NSExtensionPointIdentifier<\/key>\s*<string>com\.apple\.share-services<\/string>/u, "the extension is a share extension");
+  assert.match(plist, /<key>NSExtensionActivationSupportsText<\/key>\s*<true\/>/u, "it offers itself for text");
+  assert.match(plist, /<key>NSExtensionActivationSupportsWebURLWithMaxCount<\/key>\s*<integer>1<\/integer>/u, "and for one web address");
+  for (const key of ["Image", "Movie", "File", "Attachments"]) {
+    assert.ok(!plist.includes(`NSExtensionActivationSupports${key}WithMaxCount`), `it does not offer itself for a ${key.toLowerCase()}: New Session takes words`);
+  }
+});
+
+test("the iOS app opens a share on the gateway it remembers, as the Android one does", async () => {
+  const scene = await read("mobile/ios/App/App/SceneDelegate.swift");
+  assert.match(scene, /case "share":/u, "the SceneDelegate answers the extension's hui://share link");
+  assert.match(scene, /DeepLink\.share\(url:/u, "the value goes through the parser that bounds it");
+  assert.match(swiftDeepLink, /static func share\(url: String\?, gateway: String\) -> URL\?/u, "DeepLink.share builds the address");
+  assert.match(swiftDeepLink, /"\/new-session"/u, "the same route the Android half builds");
+  assert.match(swiftDeepLink, /maxShareCharacters = 8_000/u, "the same 8 000-character cap as the Android half");
+  assert.match(swiftDeepLink, /maxShareQueryBytes = 32 \* 1024/u, "the same 32 KiB bound as the Android half");
+});
+
+test("both workflows refuse a build whose Share Extension is missing from the app", async () => {
+  const ios = await read(".github/workflows/ios.yml");
+  assert.match(ios, /Check the Share Extension is embedded/u, "ios-smoke reads the built bundle, not only the project file");
+  assert.match(ios, /test -d "\$app\/PlugIns"/u, "the app must have embedded something");
+  assert.match(ios, /com\.apple\.share-services/u, "and the point identifier has to be the one the sheet lists");
+  const release = await read(".github/workflows/release.yml");
+  const appex = 'appex="$app/PlugIns/ShareExtension.appex"';
+  assert.ok(release.includes(appex), "the release reads the appex out of the archive's app");
+  // The check has to run before the Payload is zipped: an IPA built from an app without the appex cannot be repaired.
+  assert.ok(release.indexOf(appex) < release.indexOf('mkdir -p "$RUNNER_TEMP/Payload"'), "the appex is checked before the IPA is built");
+  assert.match(release, /grep -q "Payload\/App\.app\/PlugIns\/ShareExtension\.appex\/"/u, "and the IPA's own listing has to carry it");
+});
