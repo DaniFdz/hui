@@ -64,7 +64,7 @@ test("Dashboard queues a parked session and a running one, opens it, and charts 
   await screen.getByLabel("Message").fill("E2E_REPLAY");
   await screen.getByRole("button", "Send message").tap();
   await hui.provider.held();
-  await screen.getByTestId("primary-navigation").getByText("Dashboard").tap();
+  await hui.open("/dashboard");
   await expect(lane(screen, "flight").getByText("Dashboard running")).toBeVisible();
   await expect(lane(screen, "flight")).toContainText("Running");
   await expect(lane(screen, "flight")).toContainText("Investigation");
@@ -241,6 +241,7 @@ test("a failed turn waits in Fix with the provider's own reason, and Resume cont
 });
 
 test("a crashed runtime waits in Fix with no Resume, and its row opens the session to be retried", { tags: ["PAGE-045"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const desktop = (await hui.viewportSize()).width > 900;
   const session = await hui.createSession({ title: "Dashboard crashed", tool: "pi" });
   await hui.prompt(session, "Answer this, then go.");
   await hui.open("/dashboard");
@@ -259,7 +260,7 @@ test("a crashed runtime waits in Fix with no Resume, and its row opens the sessi
 
   // Opening it is the retry: the session is back in front of the operator, ready for its next message.
   await crashed.getByRole("link", "Open Dashboard crashed", { exact: true }).tap();
-  await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Dashboard crashed");
+  if (desktop) await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Dashboard crashed");
   await expect(screen.getByLabel("Message")).toBeEnabled();
 });
 
@@ -323,8 +324,12 @@ test("the filters narrow every lane together, the counts follow them, and a relo
   await expect(count).toContainText("1 of 2 sessions");
   await expect(lane(screen, "parked")).toHaveCount(0);
   // Leaving the page and coming back keeps the filters, because only a reload clears them.
+  // In the app, not by address: a load would clear the state this step is about. A phone's destinations are behind
+  // its drawer, which sessionList opens; on a wide screen the call does nothing.
+  await hui.sessionList();
   await screen.getByTestId("primary-navigation").getByText("Kanban").tap();
   await expect(screen.getByTestId("page-title")).toHaveText("Kanban");
+  await hui.sessionList();
   await screen.getByTestId("primary-navigation").getByText("Dashboard").tap();
   await expect(count).toContainText("1 of 2 sessions");
 
