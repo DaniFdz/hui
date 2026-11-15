@@ -26,7 +26,7 @@ test("after a gateway restart the open terminal tab reports its shell is gone by
   const pane = screen.getByLabel("Work pane");
 
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Open terminal").tap();
+  await openWork(screen, "New terminal");
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);

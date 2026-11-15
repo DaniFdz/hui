@@ -10,9 +10,11 @@ screenshots outside Git and include them in the PR description.
    `HUI_E2E_PORT=43340 NO_PROXY=localhost,127.0.0.1 npm run e2e:sdk`.
 2. Open the printed fixture URL in a dedicated Browser tab at 1440×1000.
    Create a session using the printed workspace path and a long title.
-3. Click **Open split view**, then type a draft in one view. Drag its **Move
-   panel** handle onto the other transcript's center, then its header and
-   composer regions to exercise swapping and vertical edge movement.
+3. Open the second session's row menu and choose **Open in split pane** (the chat
+   header's split controls were removed on 2026-11-14), then type a draft in one
+   view. Drag its **Move panel** handle onto the other transcript's center, then
+   its header and composer regions to exercise swapping and vertical edge
+   movement.
 4. Open a second fixture session, send `E2E_COMMAND_RUNNING`, and open its
    terminal. The provider's `/control/wait-command` keeps a real tool turn
    active until `POST /control/release-replay` releases it.

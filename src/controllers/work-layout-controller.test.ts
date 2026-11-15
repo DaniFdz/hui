@@ -148,14 +148,14 @@ const split = () => {
   return { layout, left: sessionPanes(layout)[0]!, right: sessionPanes(layout)[1]! };
 };
 
-test("a pane offers close only while split and split only on wide screens", () => {
+test("a pane offers close only while split", () => {
   const { work } = setup();
   const { left } = split();
   const state = { active: true, visible: true, narrow: false, split: false };
   assert.equal(work.paneControls(left, state).close, undefined);
-  assert.ok(work.paneControls(left, state).split);
   assert.ok(work.paneControls(left, { ...state, split: true }).close);
-  assert.equal(work.paneControls(left, { ...state, narrow: true }).split, undefined);
+  // A narrow workspace shows one pane at a time, and its header still offers that pane's close.
+  assert.ok(work.paneControls(left, { ...state, narrow: true, split: true }).close);
 });
 
 test("closing a pane shows the remaining conversation, saves the layout and focuses its header", async () => {
