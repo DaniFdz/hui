@@ -4111,6 +4111,10 @@ recorded, a missing skill is installed, and a skill that differs is kept and rep
 the operator's or an older pack's. The operator can edit any of its skills in Tools & skills; the pack keeps an edited
 skill whole and `hui doctor` reports it per chief.
 
+### New group asks where its sessions run and offers its chief (2026-11-15)
+
+Creating a group used to collect a name and nothing else, so a new group had no project directory until a session or the New session defaults dialog supplied one, and its chief could not be created before that. The owner asked for the group to be configured where it is created. The New group dialog now collects the group's New session defaults with it: **Run on** (this machine or a worker), **Working directory**, **Environment** (**Branch** or **New worktree**) and **Base branch**, and offers **Create a Chief of Staff**. `POST /__hui/session-groups` takes `{ name, cwd?, worker?, workspaceMode?, baseRef? }` and stores them in the same registry write, so a group never exists half configured. The validation is the one `PATCH` uses, and an empty string leaves a default unset. `POST /__hui/staff/chiefs` takes `{ group }` only: the group states the machine and the project, and the chief works in its own folder ([A custom group's chief is its own bot](#a-custom-groups-chief-is-its-own-bot-2026-11-08)). A chief needs a project directory because that is where the sessions it starts run, so the dialog refuses a chief without one and creates nothing. If the group is created and the chief fails, the group stays and its ⋯ menu can create the chief. The ⋯ menu and the New session defaults dialog keep working for groups that already exist.
+
 ### Bots write their own SOUL.md in a first conversation (2026-10-06)
 
 Reviewing the Bots stack, the owner asked for bots to have a SOUL.md "like
