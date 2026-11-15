@@ -361,6 +361,7 @@
 }
 
 .kanban-card__updated { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
+.kanban-card__updated--head { align-self: flex-start; margin-left: auto; padding-top: 2px; font-size: var(--control-ui-text-xs); }
 .kanban-card__pin svg { width: 11px; height: 11px; }
 
 @media (max-width: 768px) {

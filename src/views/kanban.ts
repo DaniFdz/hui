@@ -310,6 +310,10 @@ function card(session: SessionView, props: KanbanPageProps): TemplateResult {
           ${session.icon ? html`<span class="kanban-card__icon" aria-hidden="true">${session.icon}</span>` : nothing}
           <span class="kanban-card__title-text">${session.title}</span>
         </a>
+        <span class="kanban-card__updated kanban-card__updated--head" title=${`${ORIGIN_LABELS[session.stageOrigin ?? "default"]} · updated ${session.updatedAt}`}>
+          ${session.stageOrigin === "operator" ? html`<span class="kanban-card__pin" aria-label="Stage placed by you">${icons.pin}</span>` : nothing}
+          ${formatUpdated(session.updatedAt)}
+        </span>
         ${sessionMenu(session, props)}
       </div>
       <div class="kanban-card__meta">
@@ -319,10 +323,6 @@ function card(session: SessionView, props: KanbanPageProps): TemplateResult {
         ${workerChip(session)}
         ${pullRequestChips(session)}
         ${jiraChip(session.jiraIssues)}
-        <span class="kanban-card__updated" title=${`${ORIGIN_LABELS[session.stageOrigin ?? "default"]} · updated ${session.updatedAt}`}>
-          ${session.stageOrigin === "operator" ? html`<span class="kanban-card__pin" aria-label="Stage placed by you">${icons.pin}</span>` : nothing}
-          ${formatUpdated(session.updatedAt)}
-        </span>
       </div>
     </article>`;
 }
