@@ -1,21 +1,31 @@
 /* Full-screen image/diagram viewer (components/media-viewer.ts) and the
    transcript affordances that open it. The dialog lives in the top layer. */
 
+/* The dialog is in the top layer, so it is fixed to the viewport and ignores
+   the standalone shell's own safe-area padding (openclaw-reference/base.css).
+   Pad it here, or the bar sits under the status bar and the stage runs under
+   the home indicator on a phone. The dialog background still fills the padded
+   area. */
 .hui-media-viewer {
   position: fixed;
   inset: 0;
   display: none;
+  box-sizing: border-box;
   width: 100vw;
   max-width: none;
   height: 100dvh;
   max-height: none;
   margin: 0;
-  padding: 0;
+  padding: var(--safe-area-top, 0px) var(--safe-area-right, 0px) var(--safe-area-bottom, 0px) var(--safe-area-left, 0px);
   overflow: hidden;
   border: 0;
   background: color-mix(in srgb, var(--bg) 94%, transparent);
   color: var(--text);
 }
+/* The dialog takes focus when it opens; only the stage shows a focus ring, and
+   only once the keyboard reaches it. */
+.hui-media-viewer:focus,
+.hui-media-viewer:focus-visible { outline: none; }
 .hui-media-viewer[open] {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
