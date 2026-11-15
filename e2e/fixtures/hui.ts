@@ -134,6 +134,9 @@ export type Hui = {
   /** The statuses recorded since `recordStatuses()`, in the order the page added them. */
   statuses(): Promise<string[]>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
+  /** Models the phone shell's soft keyboard from the Keyboard plugin's show/hide events: the root mark it sets and the
+   * CSS viewport a phone leaves above the keys. Browser-only; the Android app's keyboard is the system's. */
+  softKeyboard(open: boolean): Promise<void>;
   type(text: string): Promise<void>;
   peek(target: Locator): Promise<void>;
   sessionList(): Promise<void>;
@@ -606,6 +609,14 @@ function huiTest(offline: boolean) {
       },
       statuses: () => browser().evaluate(() => (window as unknown as { huiStatuses?: string[] }).huiStatuses ?? []),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+      softKeyboard: async (open) => {
+        await browser().setViewport(open ? { width: 390, height: 664 } : { width: 390, height: 844 });
+        await browser().evaluate((open) => {
+          if (open) document.documentElement.setAttribute("data-hui-keyboard", "open");
+          else document.documentElement.removeAttribute("data-hui-keyboard");
+          return null;
+        }, open);
+      },
       type: (text) => browser().keyboard.type(text),
       phoneScreen: async (orientation = "portrait") => {
         const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
@@ -1118,6 +1129,7 @@ function huiTest(offline: boolean) {
               return size!;
             },
             insets: async () => { throw new Error("Android owns its frame insets; use safeDisplay for real native measurements"); },
+            softKeyboard: async () => { throw new Error("The Android app's soft keyboard is the system's: its frame is not a page state a test can state."); },
             safeDisplay: async (insets) => {
               nativeDisplay!.prepare();
               if (insets) {

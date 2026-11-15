@@ -514,7 +514,7 @@ const cases: UseCase[] = [
     id: "SHELL-050",
     title: "Clear of the phone's own chrome",
     behaviour:
-      "The status bar, the notch and the home indicator never cover HUI's own chrome: the header a phone draws starts below the top inset so its menu button is a full tap, and the composer ends above the bottom one. A page loaded in a browser reserves the insets itself (\`viewport-fit=cover\` is set, and Safari does not inset the layout); the installed app pads the page's frame natively and reports the tokens as zero, and a standalone page pads \`body\`, so no surface counts an inset twice.",
+      "The status bar, the notch and the home indicator never cover HUI's own chrome: the header a phone draws starts below the top inset so its menu button is a full tap, and the composer ends above the bottom one. While the phone's soft keyboard is open the composer sits on its top edge instead of leaving the home-indicator gap, New Session's recent chats make way for it, and the native strip the keyboard uncovers is painted in the page's own background rather than black. A page loaded in a browser reserves the insets itself (\`viewport-fit=cover\` is set, and Safari does not inset the layout); the installed app pads the page's frame natively and reports the tokens as zero, and a standalone page pads \`body\`, so no surface counts an inset twice.",
     spec: [LAYOUT],
     surfaces: ["nav:session", "nav:home"],
     journeys: ["phone", "shell-navigation"],

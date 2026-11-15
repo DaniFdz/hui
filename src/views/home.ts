@@ -752,7 +752,7 @@ function renderLaunchForm(props: HomeProps) {
           <input id="launch-group" name="group" type="hidden" .value=${initialGroup} />
           ${renderCheckoutPicker(props)}
         </div>
-        <div class="agent-chat__composer-shell new-session-page__composer">
+        <div class="agent-chat__composer-shell new-session-page__composer" data-testid="new-session-composer-shell">
           <div class="agent-chat__input agent-chat__input--mobile-toolbar" data-testid="new-session-composer" @click=${focusComposerFromSurface}>
             ${renderLocalPathMenu({ ...props.localPathMenu, id: sessionControlId(props, LOCAL_PATH_MENU_ID) })}
             ${renderSlashMenu({ ...props.commandMenu, id: sessionControlId(props, SLASH_MENU_ID), loading: false, error: "", streaming: false,
@@ -1739,7 +1739,7 @@ function renderComposer(props: HomeProps) {
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
   return html`
-    <div class="agent-chat__composer-shell"
+    <div class="agent-chat__composer-shell" data-testid="chat-composer-shell"
       @dragenter=${onComposerDragEnter}
       @dragleave=${onComposerDragLeave}
       @dragover=${(event: DragEvent) => {

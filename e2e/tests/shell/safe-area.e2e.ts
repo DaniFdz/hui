@@ -88,3 +88,47 @@ test("every route's own chrome starts below the status bar, not only the shell's
     expect(await hui.reachable(control)).toBe(true);
   }
 });
+
+test("the phone's soft keyboard replaces the home-indicator gap under the composer", { tags: ["SHELL-050"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const session = await hui.createSession({ title: "Sits on the keyboard" });
+  await hui.phoneScreen();
+  await hui.open(`/sessions/${session.id}`);
+  const composer = screen.getByTestId("chat-composer-shell");
+  await expect(composer).toBeVisible();
+
+  const resting = await composer.boundingBox();
+  expect(resting).not.toBeNull();
+  const restingGap = Math.round(844 - (resting!.y + resting!.height));
+  expect(restingGap).toBeGreaterThan(0);
+
+  await hui.softKeyboard(true);
+  await expect.poll(async () => {
+    const box = await composer.boundingBox();
+    return box ? Math.round(box.y + box.height) : -1;
+  }).toBe(664);
+
+  await hui.softKeyboard(false);
+  await expect.poll(async () => {
+    const box = await composer.boundingBox();
+    return box ? Math.round(844 - (box.y + box.height)) : -1;
+  }).toBeGreaterThan(0);
+
+  // New Session centres its hero and recent chats around the composer; with the keyboard up the draft owns the
+  // bottom and those recent chats, now under the keys, make way.
+  await hui.open("/new-session");
+  const draft = screen.getByRole("combobox", { name: "What should this session work on?" });
+  const newSessionComposer = screen.getByTestId("new-session-composer-shell");
+  const recents = screen.getByRole("region", { name: "Recent chats" });
+  await expect(draft).toBeVisible();
+  await expect(recents).toBeVisible();
+
+  await draft.focus();
+  await hui.softKeyboard(true);
+  await expect.poll(async () => {
+    const box = await newSessionComposer.boundingBox();
+    return box ? Math.round(box.y + box.height) : -1;
+  }).toBe(664);
+  await expect(recents).toBeHidden();
+  expect(await hui.overflowsSideways()).toBe(false);
+  await expect(draft).toBeFocused();
+});
