@@ -2087,6 +2087,28 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   .agent-chat__composer-combobox > :is(textarea, input) { padding-top: 7px; padding-bottom: 7px; }
 }
 
+/* The phone's keyboard ends the page: nothing sits below it, so the home-indicator gap (and the composer's own
+ * breathing room above it) would read as a strip between the composer and the keys. `installNativeShell` marks the
+ * root from the keyboard plugin's show/hide events; while it is open the composer sits directly on the keyboard.
+ * New Session centres its hero, draft and recent chats in the scroll, so the same state gives that free space back
+ * and lets the draft reach the bottom of the visible page; the recent chats below the composer are not reachable while
+ * the keyboard covers them, and they return when it closes. */
+:root[data-hui-keyboard="open"] {
+  --safe-area-bottom: 0px;
+}
+:root[data-hui-keyboard="open"] .agent-chat__composer-shell {
+  margin-bottom: 0;
+}
+:root[data-hui-keyboard="open"] .new-session-page__scroll {
+  padding-bottom: 0;
+}
+:root[data-hui-keyboard="open"] .new-session-page__scroll .agent-chat__welcome {
+  padding-bottom: 0;
+}
+:root[data-hui-keyboard="open"] .new-session-page__scroll .agent-chat__welcome-secondary {
+  display: none;
+}
+
 @media (max-width: 560px) {
   /* The phone's taller top scroll fade (sidebar.css) also sized the transcript's bottom padding. A resting
    * conversation needs the composer's underlap and a gap, not the fade's height. */

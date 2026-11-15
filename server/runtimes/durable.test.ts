@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,7 +37,7 @@ const { estimateContext } = await import(new URL("./harness/compaction.js", impo
 const { estimateTextTokens } = await import("@earendil-works/pi-ai/utils/estimate");
 const { getCurrentSystemPrompt, getCurrentTools } = await import("@earendil-works/pi-ai/utils/transcript");
 const { contextParts, durableConversationId, durableReference, expandSkill, startDurable } = await import("./durable.ts");
-const { autonomousSection, DurablePrompt } = await import("./durable-prompt.ts");
+const { autonomousSection, DurablePrompt, projectContextFile } = await import("./durable-prompt.ts");
 const { importPiSession } = await import("./pi-import.ts");
 const { searchTranscripts } = await import("./transcript-search.ts");
 const { aggregateUsage } = await import("../observability.ts");
@@ -86,14 +86,15 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
     ...options.settings,
   }));
   const invocations: AgentToolInvocation[] = [];
-  const host = (options: { invokeTool?: (invocation: AgentToolInvocation) => Promise<unknown>; huiSettings?: typeof settings } = {}) => {
+  /** `projectDir` is a bot's group's directory, as the gateway answers it from its session groups. */
+  const host = (options: { invokeTool?: (invocation: AgentToolInvocation) => Promise<unknown>; huiSettings?: typeof settings; projectDir?: (botId: string) => Promise<string | undefined> } = {}) => {
     const created = new DurableHost({
       dir: store, agentDir,
       readSettings: async () => options.huiSettings ?? settings,
       invokeTool: options.invokeTool ?? (async (invocation) => { invocations.push(invocation); return { ok: true }; }),
       lookupCaller: async () => undefined,
     });
-    created.configureDurableBots(createDurableBots(created, {}));
+    created.configureDurableBots(createDurableBots(created, { ...(options.projectDir ? { projectDir: options.projectDir } : {}) }));
     hosts.push(created);
     return created;
   };
@@ -382,6 +383,89 @@ test("the Autonomous plan takes the form that explains the change, and stays tex
   const chief = await prompt.render(f.cwd, tools, 1 as ConversationId);
   assert.match(chief, /A chief reads text and cannot see a widget/u);
   assert.doesNotMatch(chief, /before\/after card with `show_widget`/u);
+});
+
+test("a group chief's prompt carries its own folder's context and its group's project's", { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const folder = join(f.dir, "bots", "payments");
+  const project = join(f.dir, "project");
+  await mkdir(folder, { recursive: true }); await mkdir(project, { recursive: true });
+  await writeFile(join(folder, "AGENTS.md"), "BOT_FOLDER_RULES\n");
+  await writeFile(join(project, "AGENTS.md"), "PROJECT_RULES\n");
+  const folderFile = `path="${join(folder, "AGENTS.md")}"`;
+  const projectFile = `path="${join(project, "AGENTS.md")}"`;
+  const prompt = new DurablePrompt(f.agentDir, async () => settings);
+  prompt.projectContextFor = async () => ({ path: join(project, "AGENTS.md"), content: "PROJECT_RULES\n" });
+
+  const grouped = await prompt.render(folder, ["read"], 1 as ConversationId);
+  assert.ok(grouped.includes(`<project_instructions ${folderFile}>`) && grouped.includes("BOT_FOLDER_RULES"), "its own folder's file");
+  assert.ok(grouped.includes(`<project_instructions ${projectFile}>`) && grouped.includes("PROJECT_RULES"), "the project's file");
+  assert.ok(grouped.indexOf(folderFile) < grouped.indexOf(projectFile), "the folder's own file first");
+
+  // A conversation with no group, and one no request was made for, carry exactly what they carried before.
+  const plain = new DurablePrompt(f.agentDir, async () => settings);
+  assert.equal(await plain.render(folder, ["read"], 1 as ConversationId), await plain.render(folder, ["read"]));
+  assert.doesNotMatch(await plain.render(folder, ["read"], 1 as ConversationId), /PROJECT_RULES/u);
+
+  // A file the loader already lists is listed once.
+  const own = (await prompt.loader(folder)).getAgentsFiles().agentsFiles.find((file) => file.path === join(folder, "AGENTS.md"))!;
+  prompt.projectContextFor = async () => ({ path: own.path, content: own.content });
+  assert.equal((await prompt.render(folder, ["read"], 1 as ConversationId)).split(folderFile).length - 1, 1);
+
+  // Read per request: a group whose directory changes reaches the next prompt.
+  prompt.projectContextFor = async () => ({ path: join(project, "AGENTS.md"), content: "PROJECT_RULES_V2\n" });
+  const moved = await prompt.render(folder, ["read"], 1 as ConversationId);
+  assert.match(moved, /PROJECT_RULES_V2/u);
+  assert.doesNotMatch(moved, /PROJECT_RULES\n/u);
+});
+
+test("a symlinked project directory lists its context file once", { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const project = join(f.dir, "project");
+  const link = join(f.dir, "project-link");
+  await mkdir(project, { recursive: true });
+  await writeFile(join(project, "AGENTS.md"), "PROJECT_RULES\n");
+  await symlink(project, link, "dir");
+  const prompt = new DurablePrompt(f.agentDir, async () => settings);
+  const once = async (cwd: string, path: string) => {
+    prompt.projectContextFor = async () => ({ path: join(path, "AGENTS.md"), content: "PROJECT_RULES\n" });
+    const rendered = await prompt.render(cwd, ["read"], 1 as ConversationId);
+    assert.equal(rendered.split("<project_instructions").length - 1, 1, `${cwd} and ${path} name one file`);
+    assert.equal(rendered.split("PROJECT_RULES").length - 1, 1, "the file's text is listed once");
+  };
+  // Either path may be the symlink: the loader reads the conversation's directory, and the group may store the other.
+  await once(project, link);
+  await once(link, project);
+});
+
+test("a project's context file is the first of PI's names the directory holds", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-project-context-"));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
+  assert.equal(await projectContextFile(dir), undefined, "a directory with none carries none");
+  for (const [name, content] of [["CLAUDE.md", "claude\n"], ["AGENTS.MD", "agents upper\n"], ["AGENTS.md", "agents\n"], ["AGENTS.override.md", "override\n"]] as const) {
+    await writeFile(join(dir, name), content);
+    assert.deepEqual(await projectContextFile(dir), { path: join(dir, name), content });
+  }
+});
+
+test("a bot's chat carries its group's project file, and a conversation without one carries none", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const project = join(f.dir, "project");
+  await mkdir(project, { recursive: true });
+  await writeFile(join(project, "CLAUDE.md"), "PROJECT_RULES\n");
+  // The gateway answers which directory a bot's group names (`services.ts`); a bot of no group names none.
+  const host = f.host({ projectDir: async (botId) => botId === "payments" ? project : undefined });
+  const { BotDoc } = await import("../bots/durable.ts");
+  const chat = await startDurable({ cwd: f.cwd, huiSessionId: "payments-chat" }, host);
+  const other = await startDurable({ cwd: f.cwd, huiSessionId: "plain-chat" }, host);
+  const harness = await host.open();
+  const id = durableConversationId(chat.sessionFile)!;
+  await harness.commit(async (tx) => { const doc = await tx.doc(BotDoc, id); doc.bot = "payments"; }, durableContext);
+  assert.deepEqual(await host.prompt.projectContextFor(id), { path: join(project, "CLAUDE.md"), content: "PROJECT_RULES\n" });
+  assert.match(await host.prompt.render(f.cwd, ["read"], id), /PROJECT_RULES/u);
+  const plainId = durableConversationId(other.sessionFile)!;
+  assert.equal(await host.prompt.projectContextFor(plainId), undefined);
+  assert.doesNotMatch(await host.prompt.render(f.cwd, ["read"], plainId), /PROJECT_RULES/u);
 });
 
 test("Durable runs a real tool turn and reopens the conversation from its store", { timeout: 45_000 }, async (t) => {
@@ -849,6 +933,22 @@ test("the context meter is Durable's own estimate, system prompt included", { ti
   assert.equal(part("tools").count, getCurrentTools(view.messages).length, "with how many tools they were");
   assert(part("conversation").tokens > 0 && (part("conversation").count ?? 0) > 0, "the kept turn, as messages");
   assert(part("summary").tokens > 0, "the summary compaction left is its own part");
+});
+
+test("the meter reports what every model call cost, the compaction's own call included", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t, { ...KEPT_WINDOW, settings: { ...KEPT_WINDOW.settings, retry: { enabled: false } } });
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-cost" }, host);
+  await turns(session, ["COMPACT_ONE first turn", "COMPACT_TWO second turn"]);
+  const before = await waitFor("the ledger after the runs", () => session.currentUsage()?.sessionTotal);
+  assert(before.tokens > 0, "the runs are in it");
+  assert.equal(before.usd, 0, "the fixture prices every call at zero, which is a price, not a missing one");
+  await compacted(session);
+  const after = await waitFor("the ledger after the compaction", () => {
+    const total = session.currentUsage()?.sessionTotal;
+    return total && total.asOf >= before.asOf && total.tokens > before.tokens ? total : undefined;
+  });
+  assert(after.tokens > before.tokens, "a summary is a model call of its own, and no entry holds it");
 });
 
 test("the meter's split counts the messages Durable sends, not a repeated tool result", () => {

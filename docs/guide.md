@@ -847,7 +847,7 @@ skill that can take the shipped text, one you edited, and one the pack no longer
 ships (which you can delete); `hui doctor --fix` installs the untouched updates
 and leaves everything else alone.
 
-A **custom session group** is a project here, so its ⋯ menu offers **Create Chief of Staff**: one bot named *Chief of Staff · <group>* whose chat works in that project's folder, with its own OptChat memory and its own copy of the pack's skills. Asking again opens that same chief. The seeded default chief stays for work that belongs to no group.
+A **custom session group** is a project here: the sidebar's **New group** asks for its name, machine, project directory, **Branch** or **New worktree** and base branch, and can create its chief in the same step. Its ⋯ menu also offers **Create Chief of Staff**: one bot named *Chief of Staff · <group>* whose chat works in its own folder, on the machine the group runs on, with its own OptChat memory and its own copy of the pack's skills. The group's directory is where the sessions it creates run, not where the chief's own chat works, and the chief's prompt carries that project's `AGENTS.md` (or the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` it holds) beside its own folder's. What it starts belongs to the project too: a `create_session` or a `sessions_spawn` lands in the group's directory and on the group's machine. A group with no directory refuses instead of working in the chief's folder: *This group has no project directory. Set it in the group's New session defaults.* Asking again opens that same chief. The seeded default chief stays for work that belongs to no group. A chief created before its chat moved into its own folder is reported by `hui doctor`, which moves it there with `--fix` while the gateway is stopped; the sessions it starts still run in its group's project.
 
 Deleting the Chief of Staff is how you opt out: HUI records the seed in
 `staff.json` and does not create another. To get it back, stop the gateway,
@@ -1898,6 +1898,19 @@ never invents a preference. Once its message is accepted, HUI marks the bot spli
 of time leaves it unmarked, so run the command again. A bot on a worker keeps its
 home there, and doctor cannot read a worker's files offline: it lists the bot until
 you run the same command once the worker is connected.
+
+### Chief of Staff folders
+
+A group's Chief of Staff used to work in its group's project directory. It now works
+in its own bot folder (`bots/<bot id>`), and the group's directory is where the
+sessions it starts run. `hui doctor` lists each chief whose chat still works
+elsewhere, naming both directories; `--fix` moves the chat's conversation, its session
+record and its bot record there, as Settings → Workspace does, and copies both
+registries to `$XDG_CONFIG_HOME/hui/backups/` before its first change. The bot's
+home, the pack, the group and its project stay as they are. A chief with an
+interrupted run waits until you start the gateway and let that run finish or stop
+it; a chief whose chat lives on a worker is left to that machine, because doctor
+does not read a worker's home offline.
 
 ### OptChat documents
 

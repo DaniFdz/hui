@@ -560,6 +560,57 @@ const cases: UseCase[] = [
       decision: "SPEC.md#the-window-belongs-to-the-gateways-this-device-knows",
     },
   },
+  {
+    id: "SHELL-053",
+    title: "Sit the composer on the phone's keyboard",
+    behaviour:
+      "While the phone's soft keyboard is open the composer ends on its top edge instead of keeping the home-indicator gap, and the native strip the keyboard uncovers is painted in the page's own background rather than black. New Session's recent chats below the composer make way until the keyboard closes.",
+    spec: [LAYOUT, "SPEC.md#the-phone-apps-wrap-the-web-ui-2026-11-09"],
+    surfaces: [],
+    journeys: ["phone"],
+    web: "required",
+    phone: {
+      excluded:
+        "Neither phone target can open a soft keyboard: the Android app's is the system's and WebKit has none. The device procedure in e2e/phone.browser.md checks the real keyboard and the iOS window colour.",
+      decision: "SPEC.md#the-phone-apps-wrap-the-web-ui-2026-11-09",
+    },
+  },
+  {
+    id: "SHELL-054",
+    title: "Read a session's name in the phone drawer",
+    behaviour:
+      "On a phone-sized screen the navigation drawer stays at 86% of the width, up to 320px, and a session row gives its name the width it saves by keeping one trailing control, **Actions for <name>**, whose menu still carries **Pin session** and **Unpin session**, and by dropping the empty details slot. Nothing overflows sideways.",
+    spec: [BEHAVIOUR, LAYOUT],
+    surfaces: [],
+    journeys: ["shell-navigation", "sidebar-toolbar"],
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "SHELL-055",
+    title: "Open the phone drawer by dragging from the chat",
+    behaviour:
+      "On a phone-sized screen, dragging right from the screen's left edge brings the navigation drawer with the finger and opens it when released past about a third of its width; a shorter drag springs back, and a vertical drag there leaves the drawer closed. Nothing covers the chat at that edge, so taps and vertical scrolling work as before. **Open navigation** still opens the drawer by click or keyboard.",
+    spec: [BEHAVIOUR],
+    surfaces: [],
+    journeys: ["shell-navigation"],
+    web: "required",
+    phone: "required",
+  },
+  {
+    id: "SHELL-056",
+    title: "Pin a session from its row's button",
+    behaviour:
+      "On the wide layout a session row's **Pin session** button pins the session and becomes **Unpin session**, which unpins it, and the row's accessible name ends with *pinned* while it is pinned. Narrow screens keep one trailing control on a row, whose **Actions** menu carries **Pin session** (SESS-031).",
+    spec: [BEHAVIOUR],
+    surfaces: [],
+    journeys: ["shell-navigation", "session-menu-shortcuts"],
+    web: "required",
+    phone: {
+      excluded: "The row's pin shortcut exists only in the wide layout; the phone drawer keeps one row control whose Actions menu carries Pin session (SESS-031).",
+      decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21",
+    },
+  },
 ];
 
 export default cases;

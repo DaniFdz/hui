@@ -15,8 +15,9 @@
  * integration logins its mirror carries and the answer to a session's
  * `secret_request`, in a private file its agent reads (SecretFiles).
  * A bot whose chat runs here keeps its conversation and memory in this host's
- * store (`host-bots.ts`); its `bots` prompt section comes from the connected
- * gateway, which owns the roster. Sessions here browse in this machine's own
+ * store (`host-bots.ts`); its `bots` prompt section and its group's project
+ * directory come from the connected gateway, which owns the roster and the
+ * session groups. Sessions here browse in this machine's own
  * managed browser (`browser/manager.ts`), one profile under the data
  * directory, so a page a session opens is that machine's and its tabs never
  * leave it. It also samples its own machine's resources (`host.metrics`) for
@@ -72,6 +73,8 @@ const MAX_FILE_BYTES = 100 * 1024 * 1024;
 const TRANSCRIPT_PAGE_BYTES = 8 * 1024 * 1024;
 /** How long a bot chat's model request waits for its `bots` section from the gateway before going without it. */
 const BOT_SECTION_TIMEOUT_MS = 10_000;
+/** How long it waits for its group's project directory: the same budget, asked before the same request. */
+const BOT_PROJECT_TIMEOUT_MS = BOT_SECTION_TIMEOUT_MS;
 
 /** The runtime methods a gateway may call; anything else is refused. */
 const CALLS = new Set(["prompt", "steer", "takeSteeringQueue", "followUp", "abort", "setModel", "setThinking", "setFast", "setAutonomous", "respondQuestion", "cancelQuestion",
@@ -178,6 +181,8 @@ export class WorkerHost {
       defaultThinking: async () => (await readHuiSettings()).models.thinking || undefined,
       // A bot's chat here lists the other bots as the gateway that owns them says, and a session the bots it may tag.
       section: (botId, conversationId) => this.#botSection(botId, conversationId),
+      // Its group's project is the gateway's too: its chat carries that project's context file, as a local chat's does.
+      projectDir: (botId) => this.#botProject(botId),
       // The operator's name comes from the Settings the gateway mirrors here, as the gateway reads its own.
       operator: async () => operatorName((await readHuiSettings()).profileName),
       // The operator allowed a bot's request here: its lists are already in its document, which this host enforces;
@@ -569,6 +574,22 @@ export class WorkerHost {
       // Its name with it: the soul section asks a bot still called "New Bot" for a real one.
       if (typeof reply?.name === "string") this.#bots.named(botId, reply.name);
       if (typeof reply?.section === "string") return reply.section;
+    }
+    return undefined;
+  }
+
+  /** A bot's group's project directory, from a connected gateway: only the one the bot runs for answers it, so the loop
+   * stops at its answer (a bot of no group gets `cwd: null`). With none attached, or one that does not serve it, the
+   * chat goes without its group's context file, as a gateway that keeps no session groups does. Asked before each of the
+   * chat's model requests, so a gateway that has gone quiet (before the keep-alive drops it) delays a request by seconds
+   * at most. A group stores its remote directory as typed (`~/work`), and only this host knows its own home: it expands
+   * `~/` here, before the context file is read. */
+  async #botProject(botId: string): Promise<string | undefined> {
+    for (const peer of [...this.#peers]) {
+      if (peer.closed) continue;
+      // A refusal (another gateway's bot) rejects, and the loop asks the next one.
+      const reply = await peer.request<{ cwd?: unknown }>("bot.project", { botId }, BOT_PROJECT_TIMEOUT_MS).catch(() => undefined);
+      if (reply !== undefined) return typeof reply.cwd === "string" ? resolveWorkingDirectory(reply.cwd, this.paths.home) : undefined;
     }
     return undefined;
   }

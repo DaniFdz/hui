@@ -1,12 +1,15 @@
 /**
  * What a group lends a chief's new session: its stored directory, machine, Git mode and base ref beat the chief's
- * arguments and the caller's context, and an argument fills in what the group leaves unset.
+ * arguments and the caller's context, and an argument fills in what the group leaves unset. A chief's own folder is
+ * never one of those places, so a grouped call with no directory refuses.
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { groupSessionDefaults } from "./group-session-defaults.ts";
+import { GROUP_PROJECT_MISSING, groupNamed, groupSessionDefaults } from "./group-session-defaults.ts";
 
 const caller = { cwd: "/caller/checkout", worker: "caller-worker" };
+/** A group chief's own folder, which no session may land in: `/home/op/.config/hui/bots/<id>`. */
+const chief = { cwd: "/home/op/.config/hui/bots/payments" };
 
 test("a group's stored defaults beat the chief's choices and the caller's context", () => {
   assert.deepEqual(groupSessionDefaults({
@@ -58,10 +61,32 @@ test("without a group the caller's context stays the fallback", () => {
   });
 });
 
+test("a group without a directory never places its session in the chief's own folder", () => {
+  assert.throws(() => groupSessionDefaults({ group: {}, caller: chief }), { message: GROUP_PROJECT_MISSING });
+  assert.throws(() => groupSessionDefaults({ group: { worker: "devbox" }, caller: chief }), { message: GROUP_PROJECT_MISSING });
+  assert.equal(GROUP_PROJECT_MISSING, "This group has no project directory. Set it in the group's New session defaults.");
+});
+
+test("a directory the chief names still wins over its own folder", () => {
+  assert.deepEqual(groupSessionDefaults({
+    group: {},
+    caller: chief,
+    requested: { cwd: "/another/checkout" },
+  }), { cwd: "/another/checkout", worktree: false });
+});
+
 test("a group's Git defaults need its own directory to describe", () => {
   assert.deepEqual(groupSessionDefaults({
     group: { workspaceMode: "worktree", baseRef: "release/1.0" },
     caller,
     requested: { cwd: "/another/checkout" },
   }), { cwd: "/another/checkout", worker: "caller-worker", worktree: false });
+});
+
+test("a chief's call names a stored group, and a label no group carries is left to the call", () => {
+  const groups = [{ label: "Payments", cwd: "/project/payments" }, { label: "Research  Lab" }];
+  assert.deepEqual(groupNamed("Payments", groups), { label: "Payments", cwd: "/project/payments" });
+  assert.deepEqual(groupNamed("Research  Lab", groups), { label: "Research  Lab" }, "a label is matched as the registry keeps it");
+  assert.equal(groupNamed("Ghost group", groups), undefined, "an unknown label is not a stored group");
+  assert.equal(groupNamed("payments", groups), undefined, "a label is matched exactly");
 });

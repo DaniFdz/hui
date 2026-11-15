@@ -1,10 +1,12 @@
 # Phone chrome verification
 
 What a real iPhone and a real Android phone add to the shared suite: the phone's own chrome — the status bar, the
-notch or cutout, the home indicator — must never cover HUI's header, its menu button or its composer. The shared case
-`e2e/tests/shell/safe-area.e2e.ts` (SHELL-049) states the insets on a page and reads the boxes, and both phone targets
-run it; what they cannot do is report a real device's insets, because every emulator and every simulator reports zero
-(`npm run mobile -- doctor` prints what it found). This is the procedure for the device.
+notch or cutout, the home indicator and the soft keyboard — must never cover HUI's header, its menu button or its
+composer. The shared case `e2e/tests/shell/safe-area.e2e.ts` (SHELL-050) states the insets on a page and reads the
+boxes, and both phone targets run it; what they cannot do is report a real device's insets or open a soft keyboard,
+because every emulator and every simulator reports zero and the suite models the keyboard's page state instead
+(`npm run mobile -- doctor` prints what it found). The keyboard's page state is SHELL-053, which the web case
+proves and the phone targets cannot open for real. This is the procedure for the device.
 
 Run it against a gateway the phone can reach over **https** (`tailscale serve`); iOS refuses cleartext HTTP for
 anything but `127.0.0.1` (`mobile/ios/App/App/Info.plist`).
@@ -26,6 +28,7 @@ anything but `127.0.0.1` (`mobile/ios/App/App/Info.plist`).
 | The header's title and trailing buttons | On the same band as the menu button, nothing clipped by the notch in landscape |
 | The chat header when a session is open | Starts below the status bar, its 52 px band intact below the inset |
 | The composer | Its bottom edge above the home indicator, the send button reachable |
+| The composer with the keyboard open (SHELL-053) | Ends on the keyboard's top edge with no home-indicator strip or breathing gap; on iOS the rounded keyboard's uncovered backdrop is the page's own light or dark background, never black, and New Session's recent chats give way to the draft |
 | Landscape | The same two bands, with the left and right insets respected (the drawer does not slide under the notch) |
 
 A page loaded in a browser reserves the insets itself: `index.html` opts into `viewport-fit=cover`, and Safari does

@@ -28,6 +28,7 @@ class FakeAnchor extends FakeElement {
 function page(options: { shell?: boolean } = {}): {
   window: EventTarget & Record<string, unknown>;
   document: EventTarget;
+  root: { getAttribute: (name: string) => string | null; setAttribute: (name: string, value: string) => void; removeAttribute: (name: string) => void };
   calls: Call[];
   emit: (plugin: string, event: string, data: unknown) => void;
   click: (anchor: FakeAnchor, extra?: Record<string, unknown>) => { prevented: boolean };
@@ -38,8 +39,9 @@ function page(options: { shell?: boolean } = {}): {
   const listeners = new Map<string, Array<(data: unknown) => void>>();
   const plugin = (name: string) => ({
     addListener: (event: string, listener: (data: unknown) => void) => {
-      listeners.set(`${name}:${event}`, [...(listeners.get(`${name}:${event}`) ?? []), listener]);
-      return Promise.resolve({ remove: async () => undefined });
+      const key = `${name}:${event}`;
+      listeners.set(key, [...(listeners.get(key) ?? []), listener]);
+      return Promise.resolve({ remove: async () => { listeners.set(key, (listeners.get(key) ?? []).filter((item) => item !== listener)); } });
     },
     open: (payload: unknown) => { calls.push({ plugin: name, method: "open", options: payload }); return Promise.resolve(); },
   });
@@ -50,10 +52,17 @@ function page(options: { shell?: boolean } = {}): {
     pageWindow["Capacitor"] = {
       isNativePlatform: () => true,
       getPlatform: () => "android",
-      Plugins: Object.fromEntries(["App", "Browser", "LocalNotifications", "Share", "StatusBar", "HuiGateway"].map((name) => [name, plugin(name)])),
+      Plugins: Object.fromEntries(["App", "Browser", "Keyboard", "LocalNotifications", "Share", "StatusBar", "HuiGateway"].map((name) => [name, plugin(name)])),
     };
   }
   const pageDocument = new EventTarget() as EventTarget & Record<string, unknown>;
+  const rootAttributes = new Map<string, string>();
+  const root = {
+    getAttribute: (name: string) => rootAttributes.get(name) ?? null,
+    setAttribute: (name: string, value: string) => { rootAttributes.set(name, value); },
+    removeAttribute: (name: string) => { rootAttributes.delete(name); },
+  };
+  pageDocument["documentElement"] = root;
   const clicks: Array<(event: unknown) => void> = [];
   const realAdd = pageDocument.addEventListener.bind(pageDocument);
   pageDocument.addEventListener = ((type: string, listener: (event: unknown) => void, capture?: boolean) => {
@@ -65,6 +74,7 @@ function page(options: { shell?: boolean } = {}): {
   return {
     window: pageWindow,
     document: pageDocument,
+    root,
     calls,
     emit: (name, event, data) => {
       for (const listener of [...(listeners.get(`${name}:${event}`) ?? [])]) listener(data);
@@ -135,4 +145,20 @@ test("a resumed shell runs the reconnect event the web already listens for", () 
   uninstall();
   harness.emit("App", "appStateChange", { isActive: true });
   assert.equal(online, 1, "the uninstall stops listening");
+});
+
+test("an open keyboard marks the root so the composer sits on it, and a hide clears the mark", async () => {
+  const harness = page({ shell: true });
+  const uninstall = installNativeShell();
+  assert.equal(harness.root.getAttribute("data-hui-keyboard"), null, "a resting page keeps its home-indicator gap");
+  harness.emit("Keyboard", "keyboardWillShow", { keyboardHeight: 336 });
+  assert.equal(harness.root.getAttribute("data-hui-keyboard"), "open");
+  harness.emit("Keyboard", "keyboardWillHide", undefined);
+  assert.equal(harness.root.getAttribute("data-hui-keyboard"), null);
+  harness.emit("Keyboard", "keyboardWillShow", { keyboardHeight: 336 });
+  uninstall();
+  await Promise.resolve();
+  assert.equal(harness.root.getAttribute("data-hui-keyboard"), null, "the uninstall drops the mark");
+  harness.emit("Keyboard", "keyboardWillShow", { keyboardHeight: 336 });
+  assert.equal(harness.root.getAttribute("data-hui-keyboard"), null, "the uninstall stops listening");
 });

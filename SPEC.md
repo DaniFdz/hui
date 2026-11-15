@@ -34,10 +34,14 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - The composer's context ring opens Context usage: the window occupancy over a stacked bar of what the context carries,
   and the estimated split between the system prompt, the tool definitions (with how many tools), the conversation (with
   how many messages) and the summaries compaction left; a bot's chat whose memory rewrites its request shows its memory's
-  view of the chat in place of that conversation. The latest run's tokens, cost and Compact now stay below it. The split
+  view of the chat in place of that conversation. Compact now stays below it, beside the spend: a Durable session's
+  Session total, what every model call of that conversation cost, its compaction summaries and tool-side calls included,
+  with when it was read; a runtime that reports no total shows the latest run's tokens and cost there instead. The split
   fits the occupancy the runtime reports and is labelled as an estimate; a runtime that reports no split draws the plain
   bar. A bot's chat also carries the bot's cost there, as its panel totals it (its chat, its subagents and its memory
-  summaries), or where it is kept when the bot runs on a worker.
+  summaries), or where it is kept when the bot runs on a worker. A Durable session's meter also carries Session total:
+  what every model call of that conversation cost, the compaction summaries and tool-side calls included, with when it
+  was read, since the per-run figure leaves them out.
 
 - Session search is the field directly below the sidebar header; it filters the
   session list and is not duplicated in the Sessions toolbar or a bottom footer.
@@ -54,7 +58,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the same boundary, so moving between the two never changes the column. The
   boundary is a separator named *Resize sidebar* that
   the arrow keys also move, 16px a press and 48px with Shift. Narrow screens
-  show the drawer at its own width, with no boundary.
+  show the drawer at 86% of the screen's width, up to 320px, with no boundary;
+  there a session row keeps one trailing control, its **Actions** menu, which
+  also carries **Pin session**, and gives its name the width that saves.
+  Dragging right from the screen's left edge pulls the drawer open with the
+  finger. Nothing covers the chat there, so a tap or a vertical scroll at the
+  edge works as before. **Open navigation** remains the click and keyboard
+  path.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
   system modes. Theme, color mode, accent, interface font, chat-prose font,
   terminal font, text size and the chat preferences persist per device, in the
@@ -1985,7 +1995,9 @@ prompt and optionally a fresh worktree, a worker, a model and thinking. The
 target group's stored New session defaults decide its directory, machine, Git
 environment and base ref; the call fills in only what the group leaves unset. A
 group chief's own group is the default, then the caller's cwd, group, worker,
-model and thinking. The brief reaches
+model and thinking. A group chief works in its own bot folder, so a group that
+names no directory is refused ("This group has no project directory. Set it in
+the group's New session defaults.") rather than place the session there. The brief reaches
 the new chat tagged from the calling bot, like every message a bot sends into a
 chat, so the new session's own chat shows it under that bot's name rather than
 as the operator's words. It writes no
@@ -2010,6 +2022,8 @@ reasoning level, so a seeded default route never goes stale. The spawn's own
 `thinking` overrides it. HUI's Ultra delegation mode is not a route
 reasoning level. The route block in the prompt lists names and descriptions, not model ids.
 A spawn with `worktree: true` gets its own checkout: HUI creates a worktree off the caller's directory (on the worker that runs the caller), with Settings' branch prefix and the child's title, and the child's `cwd` is that worktree. A checkout that cannot be made refuses the spawn before a child exists, and a registry write that fails puts the worktree and its branch back. Parallel workers never share one working tree.
+
+A spawn from a group chief's chat belongs to the group, not to the chief's folder: the child's `cwd` and the source of its worktree are the group's stored directory, and it runs on the group's `worker` when it names one. A group that names no directory refuses the spawn with the same sentence `create_session` uses. A spawn from any other chat keeps the caller's directory and machine, including an ordinary bot the operator filed under a group: only a Chief of Staff's group lends its project and machine.
 
 A bot's subagent carries the bot whose skills it loads (`botSkills`), in its `hui.botSkills` conversation document, so the staff pack reaches the workers that need it and no other session sees it. Its own children inherit the same bot. That document grants skills only: the bot's soul, memory and tools stay its chat's.
 
@@ -2417,9 +2431,12 @@ Sessions sit in the stage columns. A session with no stored stage (or a stored
 legacy `backlog`) is in Investigation. Within a cell cards are ordered by
 session status, top to bottom: Error, Waiting input, Done (a finished run you
 have not read), Working (running or starting) and Idle; pins, then recency,
-break ties. Session cards show the status, a pull-request count with its state
-breakdown (for example `2 PRs · 1 open, 1 merged`) and, when linked, the Jira
-key and status with the sidebar's Jira hovercard.
+break ties. Session cards show the status, one chip per pull request the
+session created (`#12`, coloured by its state, the full reference in its
+accessible name, and the description in the sidebar marks' hovercard), and,
+when linked, the Jira key and status with the sidebar's Jira hovercard. A
+session running on a worker names it beside the status. Each pull-request chip
+opens that pull request on GitHub in a new tab.
 
 A **View** menu, stored in the browser like the sidebar's Filter & sort,
 configures the board: lanes by Project (default), Custom groups or None; sort
@@ -4133,7 +4150,7 @@ This changes the plan step of [Autonomous mode drives a session to a draft pull 
 
 ### A custom group's chief is its own bot (2026-11-08)
 
-The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label and project directory, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its home, sets the bot's `group`, and puts its chat in that directory; the pack's routes are merged by name. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
+The owner creates one custom session group per project and wants the memory, skills and rules of each project kept apart, so **a group's ⋯ menu creates its own Chief of Staff** instead of routing every project through the one seeded bot. `POST /__hui/staff/chiefs` takes the group's label, reads that group from the session-group registry, creates `Chief of Staff · <group>` with the pack's SOUL.md and skills in its own folder, sets the bot's `group`, and puts its chat in that folder: on the group's worker when it names one, this gateway otherwise. The group's project directory is where the sessions the chief creates run, not where the chief's own chat works; the chief's prompt carries the project's context file (the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` there), read on every request, beside its own folder's — a directory named from the worker's home (`~/work`) is expanded by that worker. A chief needs that directory, so a group that names none gets no new chief: `POST /__hui/staff/chiefs` is a 400 with "This group has no project directory. Set it in the group's New session defaults.", the sentence its sessions refuse with, while a group that already has its chief still answers it, as asking twice does. A group whose directory is cleared after its chief exists refuses `create_session` and `sessions_spawn` with the same sentence rather than place work in the chief's own folder, and what the chief does start lands in the group's directory and on the group's machine. A chief keeps the group's project and machine for its own children and for its prompt; a group is an ordinary bot field, so an ordinary bot filed under one keeps its own directory, machine and prompt. The pack's routes are merged by name. An unknown group is a 400 and creates nothing. Asking again returns that chief (restoring it if archived), so a group never has two. The default seeded chief remains for work with no group.
 
 A group chief's skills are installed at creation and recorded, and every later pack update reaches it the same way as the
 seeded chief: `staff.json` keeps a per-bot manifest (`{ version: 2, bots: { <bot id>: { packVersion, installedAt, files } } }`),
@@ -4143,6 +4160,10 @@ records) is adopted on the next start when it carries the pack's text: what matc
 recorded, a missing skill is installed, and a skill that differs is kept and reported, because there the text could be
 the operator's or an older pack's. The operator can edit any of its skills in Tools & skills; the pack keeps an edited
 skill whole and `hui doctor` reports it per chief.
+
+### New group asks where its sessions run and offers its chief (2026-11-15)
+
+Creating a group used to collect a name and nothing else, so a new group had no project directory until a session or the New session defaults dialog supplied one, and its chief could not be created before that. The owner asked for the group to be configured where it is created. The New group dialog now collects the group's New session defaults with it: **Run on** (this machine or a worker), **Working directory**, **Environment** (**Branch** or **New worktree**) and **Base branch**, and offers **Create a Chief of Staff**. `POST /__hui/session-groups` takes `{ name, cwd?, worker?, workspaceMode?, baseRef? }` and stores them in the same registry write, so a group never exists half configured. The validation is the one `PATCH` uses, and an empty string leaves a default unset. `POST /__hui/staff/chiefs` takes `{ group }` only: the group states the machine and the project, and the chief works in its own folder ([A custom group's chief is its own bot](#a-custom-groups-chief-is-its-own-bot-2026-11-08)). A chief needs a project directory because that is where the sessions it starts run, so the dialog refuses a chief without one and creates nothing, and so does `POST /__hui/staff/chiefs`: a group that names no directory is a 400 with the same sentence, and neither entry point creates a bot. If the group is created and the chief fails, the group stays and its ⋯ menu can create the chief. The ⋯ menu and the New session defaults dialog keep working for groups that already exist.
 
 ### Bots write their own SOUL.md in a first conversation (2026-10-06)
 

@@ -12,8 +12,13 @@
  * Autonomous mode the section that makes it the lead of its own task: its plan
  * takes the form the change needs (a before/after widget, a diagram, a table or
  * prose) for the operator, or prose for a chief, then it drives the task to a
- * draft pull request.
+ * draft pull request. A group chief's chat works in its own bot folder rather than
+ * in the project its group names, so that project's context file joins the
+ * folder's own on every request (`projectContextFor`); a conversation with no bot
+ * or no group carries exactly the files it carried before.
  */
+import { readFile, realpath } from "node:fs/promises";
+import { join } from "node:path";
 import { DefaultResourceLoader, type BuildSystemPromptOptions, type Skill } from "@earendil-works/pi-coding-agent";
 import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
 import type { Settings } from "../hui-settings.ts";
@@ -32,6 +37,51 @@ export type BotSkills = {
   skills(skills: readonly Skill[]): Skill[];
   section(skills: readonly Skill[], selectedTools: readonly string[]): string | undefined;
 };
+
+/** A context file as PI's prompt renders it: `<project_instructions path="…">`. */
+export type ContextFile = { path: string; content: string };
+
+/** What a conversation lends its prompt: a bot's chat lists only the skills the operator left on and adds its own
+ * folder's, and a group's chief also carries its project's context file. */
+export type PromptConversation = {
+  bot?: BotSkills;
+  /** A bot's own skill folders, loaded after its directory's. */
+  skillDirs?: readonly string[];
+  ultra?: boolean;
+  autonomous?: boolean;
+  /** Whether a Chief of Staff supervises the session: its plan is then text, since a chief cannot see a widget. */
+  supervisedByChief?: boolean;
+  /** The context file of the conversation's project, appended to the ones its directory carries. */
+  projectFile?: ContextFile;
+};
+
+/** PI's context file names, in its own order (its resource loader's `loadProjectContextFiles`): the first one a
+ * directory holds is that directory's context. */
+const CONTEXT_FILE_NAMES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
+
+/** The context file of `dir`, the first of PI's names it holds, read on every call so a group whose directory or file
+ * changes reaches the very next prompt; undefined when the directory holds none. */
+export async function projectContextFile(dir: string): Promise<ContextFile | undefined> {
+  for (const name of CONTEXT_FILE_NAMES) {
+    const path = join(dir, name);
+    const content = await readFile(path, "utf8").catch(() => undefined);
+    // A directory named like a context file reads as unreadable, as PI treats it: the next name gets its chance.
+    if (content !== undefined) return { path, content: content.replace(/^\uFEFF/u, "") };
+  }
+  return undefined;
+}
+
+/** The files a directory carries, then the project's: a path is listed once, even when a symlinked directory names the
+ * same file, and a conversation without one gets exactly the files it already had. A path that does not resolve is
+ * compared as given. */
+async function withProjectContext(own: readonly ContextFile[], project: ContextFile | undefined): Promise<ContextFile[]> {
+  const files = own.map((file) => ({ ...file }));
+  if (!project || files.some(({ path }) => path === project.path)) return files;
+  const canonical = (path: string) => realpath(path).catch(() => path);
+  const [projectPath, ...ownPaths] = await Promise.all([canonical(project.path), ...files.map(({ path }) => canonical(path))]);
+  if (!ownPaths.includes(projectPath!)) files.push(project);
+  return files;
+}
 
 /** What a conversation's PI extensions add: their tools' snippets, and the prompt `before_agent_start` gave the run. */
 export type PromptExtras = { readonly contributions: Record<string, Contribution>; readonly run?: RunPrompt };
@@ -142,6 +192,9 @@ export class DurablePrompt {
   botContributions: Readonly<Record<string, Contribution>> = {};
   /** A bot's own skill folders, which only its chat loads; none for every other conversation. The Durable host answers. */
   skillDirsFor: (conversationId: ConversationId) => Promise<readonly string[]> = async () => [];
+  /** The context file of the conversation's project, which a group chief's chat carries beside its own folder's. Read
+   * on every request, never cached: a group whose directory changes reaches the next prompt. The Durable host answers. */
+  projectContextFor: (conversationId: ConversationId) => Promise<ContextFile | undefined> = async () => undefined;
   /** Whether the conversation's session is on Ultra. The Durable host answers. */
   ultraFor: (conversationId: ConversationId) => boolean = () => false;
   /** Whether the conversation's session is in Autonomous mode. The Durable host answers. */
@@ -225,11 +278,13 @@ export class DurablePrompt {
     return sections;
   }
 
-  /** PI's builder input for a request offering these tools. A bot's chat (`bot` given) lists only the skills the operator
-   * left on: in PI's own section while it has read or bash, otherwise in one of HUI's that loads them with `load_skill`,
-   * which such a chat is offered. */
-  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, bot?: BotSkills, skillDirs: readonly string[] = [], ultra = false, autonomous = false, supervisedByChief = false): Promise<BuildSystemPromptOptions> {
-    const loader = await this.loader(cwd, skillDirs);
+  /** PI's builder input for a request offering these tools. A bot's chat (`conversation.bot`) lists only the skills the
+   * operator left on: in PI's own section while it has read or bash, otherwise in one of HUI's that loads them with
+   * `load_skill`, which such a chat is offered. A conversation whose group names a project carries that project's
+   * context file after the ones its directory holds. */
+  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, conversation: PromptConversation = {}): Promise<BuildSystemPromptOptions> {
+    const loader = await this.loader(cwd, conversation.skillDirs ?? []);
+    const bot = conversation.bot;
     const skills = bot ? bot.skills(loader.getSkills().skills) : loader.getSkills().skills;
     const own = bot?.section(skills, selectedTools);
     const contributions = { ...PI_TOOL_CONTRIBUTIONS, ...extra, ...this.botContributions, ...HUI_TOOL_CONTRIBUTIONS };
@@ -249,11 +304,11 @@ export class DurablePrompt {
       ...(append ? { appendSystemPrompt: append } : {}),
       sections: {
         ...huiToolSections(selectedTools, contributions, (await this.#readSettings()).models.routes), ...(own ? { skills: own } : {}),
-        ...(ultra ? { hui_ultra: ultraSection(selectedTools.includes("sessions_spawn")) } : {}),
-        ...(autonomous ? { hui_autonomous: autonomousSection(selectedTools.includes("sessions_spawn"), supervisedByChief) } : {}),
+        ...(conversation.ultra ? { hui_ultra: ultraSection(selectedTools.includes("sessions_spawn")) } : {}),
+        ...(conversation.autonomous ? { hui_autonomous: autonomousSection(selectedTools.includes("sessions_spawn"), conversation.supervisedByChief === true) } : {}),
       },
       cwd,
-      contextFiles: loader.getAgentsFiles().agentsFiles,
+      contextFiles: await withProjectContext(loader.getAgentsFiles().agentsFiles, conversation.projectFile),
       skills: own ? [] : skills,
     };
   }
@@ -268,7 +323,11 @@ export class DurablePrompt {
     const ultra = conversationId !== undefined && this.ultraFor(conversationId);
     const autonomous = conversationId !== undefined && this.autonomousFor(conversationId);
     const lead = conversationId === undefined ? undefined : await this.leadFor(conversationId);
-    const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra, autonomous, lead !== undefined);
+    const projectFile = conversationId === undefined ? undefined : await this.projectContextFor(conversationId);
+    const base = await this.options(cwd, selectedTools, extras?.contributions, {
+      ...(bot ? { bot } : {}), skillDirs, ultra, autonomous, supervisedByChief: lead !== undefined,
+      ...(projectFile ? { projectFile } : {}),
+    });
     const goal = conversationId === undefined ? undefined : await this.goalFor(conversationId);
     if (goal) base.sections = { ...base.sections, hui_goal: goal };
     if (lead) base.sections = { ...base.sections, hui_lead: lead };

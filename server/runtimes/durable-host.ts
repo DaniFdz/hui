@@ -30,7 +30,7 @@ import { resolvePiAgentDir } from "../pi/paths.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import { createSessionModelRuntime } from "./hui-models.ts";
 import { withFastMode } from "./model-controls.ts";
-import { DurablePrompt, type PromptSettings } from "./durable-prompt.ts";
+import { DurablePrompt, projectContextFile, type PromptSettings } from "./durable-prompt.ts";
 import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
 import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
@@ -249,6 +249,9 @@ export type DurableBots = {
   skillsDirForBot(botId: string): string | undefined;
   /** The bot a subagent's conversation loads skills from (`hui.botSkills`); undefined for every other conversation. */
   skillsBot(reader: DocumentReader, conversationId: ConversationId): Promise<string | undefined>;
+  /** The project directory of the bot's group, whose context file its chat carries beside its own folder's; undefined
+   * for a bot of no group, and on a host that keeps no session groups. */
+  projectDir(state: DurableBotState): Promise<string | undefined>;
   /** Marks a subagent's conversation as loading `botId`'s skills, in its creating commit. */
   writeSkills(tx: Tx, conversationId: ConversationId, botId: string): Promise<void>;
   /** The skills of `skills` a bot's chat has: all but the ones the operator turned off. */
@@ -400,6 +403,14 @@ export class DurableHost implements ExtensionHost {
       return bots && state ? { skills: (skills) => bots.skills(skills, state), section: (skills, selectedTools) => bots.skillsPrompt(skills, selectedTools) } : undefined;
     };
     this.prompt.skillDirsFor = (conversationId) => this.skillDirsFor(conversationId);
+    // A chief works in its own folder, so its group's project lends the prompt its context file beside the folder's own.
+    this.prompt.projectContextFor = async (conversationId) => {
+      const bots = this.#bots;
+      if (!bots) return undefined;
+      const state = await this.botStateFor(conversationId).catch(() => undefined);
+      const dir = state ? await bots.projectDir(state).catch(() => undefined) : undefined;
+      return dir ? await projectContextFile(dir).catch(() => undefined) : undefined;
+    };
     this.prompt.ultraFor = (conversationId) => this.#ultra.has(this.#callers.get(conversationId) ?? "");
     this.prompt.autonomousFor = (conversationId) => this.#autonomous.has(this.#callers.get(conversationId) ?? "");
     const goalFor = options.goalFor;
@@ -817,6 +828,25 @@ export class DurableHost implements ExtensionHost {
       const lastEntryId = (await tx.scanEntries({ conversationId, order: "descending" }, 1)).items[0]?.id ?? null;
       return JSON.parse(JSON.stringify({ ...await tx.doc(UsageDoc, conversationId), lastEntryId })) as ConversationSpend;
     }, durableContext);
+  }
+
+  /** What every model call of one conversation cost, summed from that ledger: compaction summaries and tool-side calls
+   * included, which no entry holds. `usd` is null when no call carried a price. */
+  async conversationSpend(conversationId: ConversationId): Promise<{ tokens: number; usd: number | null } | undefined> {
+    const ledger = await this.conversationUsage(conversationId);
+    if (!ledger) return undefined;
+    let tokens = 0;
+    let usd = 0;
+    let priced = false;
+    for (const bucket of [ledger.models, ledger.tools]) {
+      for (const spend of Object.values(bucket ?? {})) {
+        if (typeof spend["totalTokens"] === "number" && Number.isFinite(spend["totalTokens"])) tokens += spend["totalTokens"];
+        const cost = spend["cost"];
+        const total = typeof cost === "object" && cost !== null ? (cost as Record<string, unknown>)["total"] : cost;
+        if (typeof total === "number" && Number.isFinite(total) && total >= 0) { usd += total; priced = true; }
+      }
+    }
+    return { tokens, usd: priced ? usd : null };
   }
 
   /** Closing records no outcome: running work resumes when the store reopens.

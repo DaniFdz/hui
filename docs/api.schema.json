@@ -9404,6 +9404,9 @@
           "items": {
             "$ref": "#/$defs/ContextUsagePart"
           }
+        },
+        "sessionTotal": {
+          "$ref": "#/$defs/SessionSpend"
         }
       }
     },
@@ -9965,6 +9968,42 @@
         }
       }
     },
+    "SessionGroupCreateRequest": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "worker": {
+          "type": "string"
+        },
+        "workspaceMode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "branch"
+            },
+            {
+              "type": "string",
+              "const": "worktree"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        },
+        "baseRef": {
+          "type": "string"
+        }
+      }
+    },
     "SessionJiraIssue": {
       "type": "object",
       "required": [
@@ -10453,6 +10492,32 @@
         },
         "compaction": {
           "$ref": "#/$defs/RuntimeCompaction"
+        }
+      }
+    },
+    "SessionSpend": {
+      "type": "object",
+      "required": [
+        "tokens",
+        "usd",
+        "asOf"
+      ],
+      "properties": {
+        "tokens": {
+          "type": "number"
+        },
+        "usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "asOf": {
+          "type": "number"
         }
       }
     },
@@ -11611,14 +11676,10 @@
     "StaffChiefInput": {
       "type": "object",
       "required": [
-        "group",
-        "cwd"
+        "group"
       ],
       "properties": {
         "group": {
-          "type": "string"
-        },
-        "cwd": {
           "type": "string"
         }
       }
@@ -15123,6 +15184,7 @@
       "SessionGoalRequest",
       "SessionGoalStatus",
       "SessionGroup",
+      "SessionGroupCreateRequest",
       "SessionJiraIssue",
       "SessionList",
       "SessionListLayoutGroup",
@@ -15166,6 +15228,7 @@
       "SessionOpenResponse",
       "SessionQuestion",
       "SessionSnapshot",
+      "SessionSpend",
       "SessionStreamFrame",
       "SessionStreamSnapshot",
       "SessionThinkingRequest",
@@ -16481,6 +16544,9 @@
     {
       "method": "POST",
       "path": "/__hui/session-groups",
+      "request": {
+        "$ref": "#/$defs/SessionGroupCreateRequest"
+      },
       "response": {
         "$ref": "#/$defs/SessionList"
       }

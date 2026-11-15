@@ -6,7 +6,6 @@
  * preferences, like the sidebar's.
  */
 import type { BacklogItem } from "../api/schema/backlog.ts";
-import type { SessionPullRequest } from "../api/schema/github.ts";
 import type { SessionStage } from "../api/schema/sessions.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
 import { sessionGroupLabel } from "./session/sessions.ts";
@@ -317,28 +316,4 @@ export function backlogLaneAccepts(
  * edge; Backlog is not a session stage. */
 export function adjacentStage(stage: SessionStage, direction: -1 | 1): SessionStage | undefined {
   return SESSION_STAGES[SESSION_STAGES.indexOf(stage) + direction];
-}
-
-export type PullRequestSummary = {
-  total: number;
-  counts: Partial<Record<NonNullable<SessionPullRequest["state"]> | "unknown", number>>;
-  /** The state that best describes the set: open work first, then merged. */
-  dominant: NonNullable<SessionPullRequest["state"]> | "unknown";
-  label: string;
-};
-
-const PR_STATE_ORDER = ["open", "draft", "merged", "closed", "unknown"] as const;
-
-/** Count and state breakdown for a card, e.g. `2 PRs · 1 open, 1 merged`. */
-export function pullRequestSummary(pullRequests: readonly Pick<SessionPullRequest, "state">[] | undefined): PullRequestSummary | undefined {
-  if (!pullRequests?.length) return undefined;
-  const counts: PullRequestSummary["counts"] = {};
-  for (const pr of pullRequests) {
-    const state = pr.state ?? "unknown";
-    counts[state] = (counts[state] ?? 0) + 1;
-  }
-  const dominant = PR_STATE_ORDER.find((state) => counts[state]) ?? "unknown";
-  const parts = PR_STATE_ORDER.filter((state) => counts[state] && state !== "unknown").map((state) => `${counts[state]} ${state}`);
-  const total = pullRequests.length;
-  return { total, counts, dominant, label: `${total} PR${total === 1 ? "" : "s"}${parts.length ? ` · ${parts.join(", ")}` : ""}` };
 }

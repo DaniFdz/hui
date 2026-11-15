@@ -88,7 +88,11 @@ export type Hui = {
   gateway: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
-  /** A real group chief owned by this test, so its conversation and usage are removed by the normal bot cleanup. */
+  /**
+   * A real group chief owned by this test, so its conversation and usage are removed by the normal bot cleanup. It gets a
+   * group of its own, which names this checkout's workspace as the project its sessions run in: without a directory a
+   * group refuses `create_session` and `sessions_spawn` rather than place the work in the chief's own folder.
+   */
   createChief(): Promise<{ id: string; name: string; sessionId: string; group: string }>;
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   prompt(session: { id: string }, text: string): Promise<void>;
@@ -136,6 +140,9 @@ export type Hui = {
   /** The statuses recorded since `recordStatuses()`, in the order the page added them. */
   statuses(): Promise<string[]>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
+  /** Models the phone shell's soft keyboard from the Keyboard plugin's show/hide events: the root mark it sets and the
+   * CSS viewport a phone leaves above the keys. Browser-only; the Android app's keyboard is the system's. */
+  softKeyboard(open: boolean): Promise<void>;
   type(text: string): Promise<void>;
   peek(target: Locator): Promise<void>;
   sessionList(): Promise<void>;
@@ -608,6 +615,14 @@ function huiTest(offline: boolean) {
       },
       statuses: () => browser().evaluate(() => (window as unknown as { huiStatuses?: string[] }).huiStatuses ?? []),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+      softKeyboard: async (open) => {
+        await browser().setViewport(open ? { width: 390, height: 664 } : { width: 390, height: 844 });
+        await browser().evaluate((open) => {
+          if (open) document.documentElement.setAttribute("data-hui-keyboard", "open");
+          else document.documentElement.removeAttribute("data-hui-keyboard");
+          return null;
+        }, open);
+      },
       type: (text) => browser().keyboard.type(text),
       phoneScreen: async (orientation = "portrait") => {
         const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
@@ -1134,6 +1149,7 @@ function huiTest(offline: boolean) {
               return size!;
             },
             insets: async () => { throw new Error("Android owns its frame insets; use safeDisplay for real native measurements"); },
+            softKeyboard: async () => { throw new Error("The Android app's soft keyboard is the system's: its frame is not a page state a test can state."); },
             safeDisplay: async (insets) => {
               nativeDisplay!.prepare();
               if (insets) {
@@ -1277,9 +1293,10 @@ function huiTest(offline: boolean) {
       createChief: async () => {
         // Never prompt the launcher's shared seeded chief: its real usage otherwise leaks into later tests.
         const group = `E2E ${randomUUID()}`;
-        await api("POST", "/__hui/session-groups", { name: group });
+        await api("POST", "/__hui/session-groups", { name: group, cwd: receipt.workspace });
+        // The chief works in the bot folder the gateway makes for it; its group names the directory its sessions run in.
         const { bot } = await api<{ bot: { id: string; name: string; sessionId: string; group: string } }>(
-          "POST", "/__hui/staff/chiefs", { group, cwd: receipt.workspace },
+          "POST", "/__hui/staff/chiefs", { group },
         );
         expect(existingBots.has(bot.id)).toBe(false);
         return bot;

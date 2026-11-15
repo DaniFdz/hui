@@ -163,6 +163,31 @@ export type SessionGroupConfig = {
   worker?: string;
 };
 
+/** A group's New session defaults as a request states them: an empty string
+ * clears a field, and an absent key leaves it as it was. */
+export type SessionGroupDefaults = {
+  cwd?: string;
+  workspaceMode?: "branch" | "worktree" | "";
+  baseRef?: string;
+  worker?: string;
+};
+
+/** The group with `defaults` applied; a cleared field is dropped rather than
+ * stored as an empty string, so the registry keeps no unset value. */
+function withGroupDefaults(group: SessionGroupConfig, defaults: SessionGroupDefaults): SessionGroupConfig {
+  const cwd = defaults.cwd === undefined ? group.cwd : defaults.cwd;
+  const workspaceMode = defaults.workspaceMode === undefined ? group.workspaceMode : defaults.workspaceMode || undefined;
+  const baseRef = defaults.baseRef === undefined ? group.baseRef : defaults.baseRef || undefined;
+  const worker = defaults.worker === undefined ? group.worker : defaults.worker || undefined;
+  return {
+    label: group.label,
+    ...(cwd ? { cwd } : {}),
+    ...(workspaceMode ? { workspaceMode } : {}),
+    ...(baseRef ? { baseRef } : {}),
+    ...(worker ? { worker } : {}),
+  };
+}
+
 type Registry = {
   version: number;
   sessions: SessionRecord[];
@@ -522,13 +547,18 @@ function updateRegistryState(
   return operation;
 }
 
-export async function createSessionGroup(label: string): Promise<SessionGroupConfig> {
+/** Creates the group together with its New session defaults in one registry
+ * write: a refused name or default leaves no half-configured group behind. */
+export async function createSessionGroup(
+  label: string,
+  defaults: SessionGroupDefaults = {},
+): Promise<SessionGroupConfig> {
   let created: SessionGroupConfig | undefined;
   await updateRegistryState((registry) => {
     if (registry.groups.some((group) => group.label === label)) {
       throw new Error(`A group named "${label}" already exists.`);
     }
-    created = { label };
+    created = withGroupDefaults({ label }, defaults);
     return { ...registry, groups: [...registry.groups, created] };
   });
   if (!created) throw new Error("The group was not created.");
@@ -537,7 +567,7 @@ export async function createSessionGroup(label: string): Promise<SessionGroupCon
 
 export async function updateSessionGroup(
   label: string,
-  patch: { label?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string; worker?: string },
+  patch: SessionGroupDefaults & { label?: string },
 ): Promise<SessionGroupConfig> {
   let updated: SessionGroupConfig | undefined;
   await updateRegistryState((registry) => {
@@ -550,14 +580,7 @@ export async function updateSessionGroup(
     ) {
       throw new Error(`A group named "${nextLabel}" already exists.`);
     }
-    updated = {
-      ...current,
-      label: nextLabel,
-      ...(patch.workspaceMode !== undefined ? { workspaceMode: patch.workspaceMode || undefined } : {}),
-      ...(patch.baseRef !== undefined ? { baseRef: patch.baseRef || undefined } : {}),
-      ...(patch.worker !== undefined ? { worker: patch.worker || undefined } : {}),
-      ...(patch.cwd !== undefined ? (patch.cwd ? { cwd: patch.cwd } : { cwd: undefined }) : {}),
-    };
+    updated = { ...withGroupDefaults(current, patch), label: nextLabel };
     return {
       ...registry,
       groups: registry.groups.map((group) => (group.label === label ? updated! : group)),

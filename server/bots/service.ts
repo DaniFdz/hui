@@ -1363,6 +1363,12 @@ export class BotService {
     return self ? botsSection(self, bots.filter((bot) => bot.id !== self.id)) : undefined;
   }
 
+  /** Whether a bot's chat runs on `workerId`: what a worker's `bot.project` proves before answering with the bot's
+   * project directory, without building the `bots` section it does not send. */
+  async runsOn(workerId: string, botId: string): Promise<boolean> {
+    return (await this.#registry.list()).some((bot) => bot.id === botId && bot.worker === workerId);
+  }
+
   /** The section a worker's host asks for: a session's there, or a bot's whose chat runs on that worker only. */
   async workerSection(workerId: string, botId?: string): Promise<string | undefined> {
     if (botId === undefined) return this.section();

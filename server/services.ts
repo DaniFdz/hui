@@ -9,7 +9,7 @@ import { homedir, hostname, userInfo } from "node:os";
 
 import { browserMirror, workers } from "./workers.ts";
 import { createWorkerRoutes } from "./routes/workers.ts";
-import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots/bots.ts";
+import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotNotFoundError, BotRegistry } from "./bots/bots.ts";
 import { BotService } from "./bots/service.ts";
 import { remoteBots } from "./bots/remote.ts";
 import { createBotRoutes } from "./routes/bots.ts";
@@ -94,7 +94,7 @@ import { WatcherInputError, WatcherService } from "./agent-tools/watchers.ts";
 import { SecretFiles, SecretRequests } from "./agent-tools/secret-requests.ts";
 import { Questionnaires } from "./agent-tools/questionnaires.ts";
 import { summarizeWorkerStats } from "./agent-tools/worker-stats.ts";
-import { isChiefTitle } from "./bots/chief-title.ts";
+import { isChiefTitle, chiefGroupLabel } from "./bots/chief-title.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";
 import { createSessionListHub } from "./sessions/list.ts";
@@ -139,10 +139,11 @@ import {
   readSessionGroups,
   SessionNotFoundError,
   updateRegistry,
+  type SessionGroupConfig,
   type SessionRecord,
 } from "./sessions/sessions.ts";
 import { createSessionLifecycle, defaultSessionTool, SESSION_TITLE_MAX } from "./sessions/lifecycle.ts";
-import { groupSessionDefaults, type RequestedWorker } from "./sessions/group-session-defaults.ts";
+import { groupNamed, groupSessionDefaults, type RequestedWorker } from "./sessions/group-session-defaults.ts";
 import { setAgentStage } from "./sessions/stages.ts";
 import { claimGoalContinuation, updateGoalFromAgent } from "./sessions/goals.ts";
 import { SessionProgress } from "./sessions/session-progress.ts";
@@ -284,11 +285,13 @@ async function staffDeps(): Promise<StaffDeps> {
   };
 }
 export const staffRoutes = createStaffRoutes({
+  groups: readSessionGroups,
   bots: () => botRegistry.list(),
   getBot: (id) => bots.get(id),
   createBot: (body) => bots.create(body),
   restoreBot: (id) => bots.restore(id),
-  skills: localBotSkills(),
+  // A chief keeps its skills where it keeps its home: on its group's worker, or here.
+  skills: (bot) => botSkillFiles(bot.worker?.id),
   readSettings: readHuiSettings,
   writeSettings: writeHuiSettings,
   recordChief: async (botId) => recordChief(await staffDeps(), botId),
@@ -360,6 +363,17 @@ export const botTemplateRoutes = createBotTemplateRoutes({
     },
   }),
 });
+/**
+ * The session group a chat's bot works for, by its bot id: its stored New session defaults name the project directory
+ * and the machine the sessions and children the bot's chat starts belong to (`group-session-defaults.ts`). Only a Chief
+ * of Staff's own group lends them (`chiefGroupLabel`): a group is an ordinary field, and an ordinary bot filed under one
+ * keeps its own directory, machine and prompt. A bot of no group, or a label no group of the registry carries, answers
+ * none.
+ */
+async function groupForBot(botId: string): Promise<SessionGroupConfig | undefined> {
+  const label = chiefGroupLabel((await botRegistry.list()).find(({ id }) => id === botId));
+  return label ? (await readSessionGroups()).find((group) => group.label === label) : undefined;
+}
 // A bot's chat lists the other bots in its `bots` prompt section, and a session the bots it may tag (a
 // worker's host asks for those of its sessions and bots, and learns each bot's name with it), and a bot reads its
 // SOUL.md, USER.md and MEMORY.md in its `soul`, `operator` and `memory` sections, from its home folder in HUI's
@@ -374,15 +388,30 @@ durableHost().configureDurableBots(createDurableBots(durableHost(), {
   },
   // A bot's chat that turns tools back on (the operator allowed a request there) updates the roster's copy of its lists.
   recorded: (botId, access) => bots.accessRecorded(botId, access),
+  // A group chief works in its own folder, so its group's project lends its prompt the project's context file; a
+  // worker's host asks for that directory too (`bot.project`).
+  projectDir: async (botId) => (await groupForBot(botId))?.cwd,
 }));
 workers.serve("bot.section", async (workerId, params) => {
   const botId = typeof params["botId"] === "string" ? params["botId"] : undefined;
   const section = await bots.workerSection(workerId, botId);
   return { section: section ?? null, name: botId === undefined ? null : bots.identity(botId)?.name ?? null };
 });
+// A bot's chat on a worker asks which directory its group's project is, so its prompt carries that project's context
+// file as a local chat's does; the same rule as `bot.section` answers only for a bot that runs on that worker, and a bot
+// of no group names none.
+workers.serve("bot.project", async (workerId, params) => {
+  // A bot only, never a session's section: the same rule as `bot.section` refuses one that runs elsewhere, or none,
+  // without building the section this answer does not carry.
+  const botId = typeof params["botId"] === "string" ? params["botId"] : "";
+  if (!await bots.runsOn(workerId, botId)) throw new BotNotFoundError("That bot does not run on this worker.");
+  return { cwd: (await groupForBot(botId))?.cwd ?? null };
+});
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 export const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 export const subagents = new SubagentService(liveSessions);
+// A chief's children belong to the project and machine its group states, not to the chief's own bot folder.
+subagents.botGroup = groupForBot;
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 export const watchers = new WatcherService({
   file: WATCHERS_FILE,
@@ -584,9 +613,15 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
     const value = params[key];
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
   };
-  const group = text("group") ?? owner.group ?? caller.group ?? "";
-  const groupDefaults = group ? (await readSessionGroups()).find((entry) => entry.label === group) : undefined;
+  const label = text("group") ?? owner.group ?? caller.group ?? "";
+  // A stored group lends its New session defaults. A label the registry does not carry yet stays a label: a call that
+  // names its own directory may open the session there, and one that names none is refused rather than placed in the
+  // chief's own folder.
+  const stored = label ? groupNamed(label, await readSessionGroups()) : undefined;
   const requestedCwd = text("cwd");
+  if (label && !stored && !requestedCwd) {
+    throw new Error(`No session group named ${label}. Pass cwd, or create the group first.`);
+  }
   const requestedBaseRef = text("baseRef");
   const requestedWorker = text("worker");
   const workerRequest: RequestedWorker | undefined = requestedWorker === "local"
@@ -595,7 +630,8 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
       ? { kind: "worker", worker: (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker }
       : undefined;
   const defaults = groupSessionDefaults({
-    ...(groupDefaults ? { group: groupDefaults } : {}),
+    // A stored group that names no directory refuses rather than place the session in the chief's own bot folder.
+    ...(stored ? { group: stored } : {}),
     caller: { cwd: caller.cwd, ...(caller.worker ? { worker: caller.worker } : {}) },
     requested: {
       ...(requestedCwd ? { cwd: requestedCwd } : {}),
@@ -608,7 +644,7 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
   const thinking = text("thinking") ?? caller.thinking;
   const record = await createSession({
     cwd: defaults.cwd,
-    group,
+    group: label,
     initialPrompt: prompt.slice(0, 4_000),
     ...(text("title") ? { title: text("title") } : {}),
     ...(defaults.worker ? { worker: defaults.worker } : {}),

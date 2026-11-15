@@ -333,6 +333,19 @@ test("a group's default directory uses the themed combobox instead of a native d
   assert.doesNotMatch(dialog, /<datalist/u);
 });
 
+test("the new group's chief checkbox is named by its label, not by the sentence that describes it", () => {
+  const app = shell();
+  app.groupAction = { action: "new" };
+  const dialog = text(app.renderGroupActionDialog());
+  assert.match(dialog, /<input type="checkbox" aria-describedby="group-action-chief-description"/u);
+  const start = dialog.indexOf('<label class="group-action-dialog__chief-choice">');
+  assert.notEqual(start, -1, dialog);
+  const label = dialog.slice(start, dialog.indexOf("</label>", start) + "</label>".length);
+  assert.match(label, /Create a Chief of Staff/u);
+  assert.doesNotMatch(label, /A chief plans/u, "the description stays out of the control's accessible name");
+  assert.match(dialog, /<span class="exec-approval-sub" id="group-action-chief-description">A chief plans and starts/u);
+});
+
 test("Configure default prefix opens Settings → Worktrees at the branch prefix", () => {
   const app = shell();
   const opened: unknown[] = [];
