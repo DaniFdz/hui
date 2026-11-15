@@ -100,7 +100,7 @@ export class HuiSessionRef extends Base {
     if (title) title.textContent = reference.title;
     const state = anchor.querySelector(".session-ref__status");
     if (state) {
-      state.textContent = status;
+      state.textContent = ` ${status}`;
       state.setAttribute("data-status", reference.status);
     }
     this.#relabel(reference);
@@ -126,7 +126,9 @@ export class HuiSessionRef extends Base {
     const state = document.createElement("span");
     state.className = "session-ref__status";
     state.setAttribute("data-status", reference.status);
-    state.textContent = status;
+    // The space belongs to the status span: it separates the two words a copy takes, while a leading space in a flex
+    // item is trimmed, so the gap the chip draws stays the stylesheet's.
+    state.textContent = ` ${status}`;
     anchor.append(title, state);
     this.replaceChildren(anchor);
     this.#anchor = anchor;
