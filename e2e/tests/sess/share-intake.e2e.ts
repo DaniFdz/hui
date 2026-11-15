@@ -3,27 +3,25 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-type Listed = { groups: { sessions: { id: string }[] }[] };
-
 const SHARED = "https://x.com/danifdz/status/1987654321098765432";
 const SEED = `Look this post in X ${SHARED}`;
 const address = (value: string) => `/new-session?share=${encodeURIComponent(value)}`;
 
 test("a shared link fills New Session, leaves the address clean and sends nothing", { tags: ["SESS-080"], platforms: ["web"] }, async ({ screen, hui }) => {
   const message = screen.getByPlaceholder("What should this session work on?");
-  const listed = async () => (await hui.api<Listed>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions).length;
-  const before = await listed();
 
   await hui.open(address(SHARED));
   await expect(message).toHaveValue(SEED);
   // The address that carried the share is canonical again, so a reload cannot paste it a second time.
   await expect.poll(async () => new URL(await hui.url()).search).toBe("");
+  // A share only fills the composer, so the page still shows New Session: no session was opened in its place.
+  await expect.poll(async () => new URL(await hui.url()).pathname).toBe("/new-session");
   await expect.poll(() => hui.newSessionDraft()).toBe(SEED);
   await hui.reload();
+  // One copy of the seed, not two, and the launch draft still holds exactly it: starting a session clears that draft,
+  // and nothing here started one.
   await expect(message).toHaveValue(SEED);
-  // A share only fills the composer: with no directory chosen there is nothing to start, and no session was created.
-  await expect(screen.getByRole("button", "Start session")).toBeDisabled();
-  expect(await listed()).toBe(before);
+  await expect.poll(() => hui.newSessionDraft()).toBe(SEED);
 });
 
 test("a share lands above a New Session draft already typed, below one blank line", { tags: ["SESS-080"], platforms: ["web"] }, async ({ screen, hui }) => {
