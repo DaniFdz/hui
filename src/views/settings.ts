@@ -10,6 +10,7 @@ import { ACCENTS, TEXT_SCALE_STOPS, TYPEFACES } from "../lib/theme/appearance.ts
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
 import { MESSAGE_WIDTHS, SEND_SHORTCUTS, type ChatAppearance, type DeviceAppearance } from "../lib/appearance/store.ts";
+import { useModelRoles } from "../lib/provider-choices.ts";
 import { PI_THINKING_LEVELS, THINKING_LABELS } from "../lib/thinking.ts";
 import { closeEffortSelector, placeEffortPanel, renderEffortSelector } from "./effort-selector.ts";
 import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
@@ -115,6 +116,8 @@ export type SettingsProps = AutomationProps & {
   onCopyNtfyAddress: () => void;
   onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
+  /** Opens New Session the way the app's own New Session control does. */
+  onStartChat: () => void;
   onSaveSubagentRoute: (route: Settings["models"]["routes"][number], originalName?: string) => Promise<boolean>;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
@@ -673,11 +676,38 @@ function renderCallsSection(props: SettingsProps) {
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
 
+/** The Model providers area: the setup wizard and the folded local model servers share one section, as main's Models
+ * page expects. A verified model fills the roles new sessions use where nothing is chosen yet; existing choices are
+ * never overwritten. */
+function renderProviderSection(props: SettingsProps) {
+  return html`<section class="settings-section hui-providers"><hui-provider-settings
+    @providers-changed=${props.onRetryPi}
+    .onUseModel=${(target: string) => {
+      const next = useModelRoles(props.settings.models, target);
+      props.onChangeModels({ ...props.settings.models, primary: next.primary, utility: next.utility });
+      return next;
+    }}
+    .onStartChat=${props.onStartChat}
+  ></hui-provider-settings><hui-local-provider-settings></hui-local-provider-settings></section>`;
+}
+
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
-  if (!pi) {
-    return html`<section class="settings-section hui-providers"><hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings><hui-local-provider-settings></hui-local-provider-settings></section>${renderCallsSection(props)}${renderPiMissing(props)}`;
-  }
+  // One template shape with or without PI's configuration: the intro joins it once the catalog lands, but the
+  // provider wizard keeps its element, so a sign-in opened while the page was loading is never closed underfoot.
+  return html`
+    ${pi ? html`<p class="settings-page__intro">
+      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
+    </p>` : nothing}
+    <div class="settings-stack">
+      ${renderProviderSection(props)}
+      ${pi ? renderModelRouting(props, pi) : html`${renderCallsSection(props)}${renderPiMissing(props)}`}
+    </div>
+  `;
+}
+
+/** The half of Models that waits for PI: model routing, subagent routes, the catalog and its diagnostics. */
+function renderModelRouting(props: SettingsProps, pi: NonNullable<SettingsProps["pi"]>) {
   const model = pi.model;
   const modelOptions = [
     { value: "", label: "Use PI default" },
@@ -714,72 +744,63 @@ function renderModelsPage(props: SettingsProps) {
     },
   });
   return html`
-    <p class="settings-page__intro">
-      Connect providers and choose models without changing PI's configuration. Three roles: the primary model does the real work, the utility model the quick work, and GPT-Live (Calls, below) talks on calls. Default reasoning is the effort new sessions start with.
-    </p>
-    <div class="settings-stack">
-      <section class="settings-section hui-providers">
-        <hui-provider-settings @providers-changed=${props.onRetryPi}></hui-provider-settings>
-        <hui-local-provider-settings></hui-local-provider-settings>
-      </section>
-      ${renderSection(
-        "HUI model routing",
-        "Saved by HUI. Model choices apply to new sessions; retries apply to every Durable session.",
-        html`
-          ${renderRow(
-            "Primary model",
-            `The smartest model you have. Speed doesn't matter: it does the real work of new sessions and bots.`,
-            routePicker("Primary model", "primary"),
-          )}
-          ${renderRow(
-            "Fallback model",
-            "Tried when the primary fails before producing useful output. Example: Anthropic Sonnet when OpenAI is unavailable.",
-            routePicker("Fallback model", "fallback"),
-          )}
-          ${renderRow(
-            "Provider retries",
-            "How many times a failed model request is retried on the same model before the fallback is tried. Retries keep the same model and cached context, and wait as long as the provider asks.",
-            renderSettingsPicker("Provider retries", String(retryAttempts),
-              [0, 1, 2, 3, 4, 5].map((attempts) => ({ value: String(attempts), label: attempts ? String(attempts) : "Off" })),
-              (value) => props.onChangeModels({ ...props.settings.models, retryAttempts: Number(value) })),
-          )}
-          ${renderRow(
-            "Utility model",
-            `The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries.`,
-            routePicker("Utility model", "utility"),
-          )}
-          ${renderRow(
-            "Default reasoning",
-            "The effort new sessions and new bots start with. A model that supports fewer levels uses the closest one it has. PI's own default applies while this is unset.",
-            reasoningSelector,
-          )}
-        `,
-      )}
-      <hui-subagent-routes .routes=${props.settings.models.routes} .models=${modelOptions.filter((option) => option.value)}
-        .onSave=${props.onSaveSubagentRoute}
-        .onRemove=${(name: string) => props.onChangeModels({ ...props.settings.models, routes: props.settings.models.routes.filter((route) => route.name !== name) })}
-      ></hui-subagent-routes>
-      ${renderCallsSection(props)}
-      <details class="hui-provider-catalog"><summary>Available catalog · ${model.catalog.length} models</summary>
-      ${renderSection(
-        "Available catalog",
-        model.catalog.length === 0
-          ? "No available models match your PI configuration."
-          : `${model.catalog.length} available model${model.catalog.length === 1 ? "" : "s"}. Includes HUI selections and PI custom providers.`,
-        model.catalog.length === 0
-          ? renderRow("No models", "Check PI provider configuration and refresh.", html`<span class="settings-row__muted">—</span>`)
-          : html`${model.catalog.map((entry) => renderRow(entry.name, `${entry.provider}/${entry.id}`, html`<span class="settings-row__muted">${entry.contextWindow ? `${entry.contextWindow.toLocaleString()} context` : "Context not reported"}${entry.maxTokens ? ` · ${entry.maxTokens.toLocaleString()} max output` : ""}</span>`))}`,
-      )}
-      </details>
-      ${pi.diagnostics.length > 0
-        ? renderSection(
-            "Diagnostics",
-            "Problems reading pi's configuration.",
-            html`${pi.diagnostics.map((note) => renderRow("Configuration diagnostic", note, html`<span class="settings-row__muted">Review</span>`))}`,
-          )
-        : nothing}
-      ${renderPiOrigin(props)}
-    </div>
+    ${renderSection(
+      "HUI model routing",
+      "Saved by HUI. Model choices apply to new sessions; retries apply to every Durable session.",
+      html`
+        ${renderRow(
+          "Primary model",
+          `The smartest model you have. Speed doesn't matter: it does the real work of new sessions and bots.`,
+          routePicker("Primary model", "primary"),
+        )}
+        ${renderRow(
+          "Fallback model",
+          "Tried when the primary fails before producing useful output. Example: Anthropic Sonnet when OpenAI is unavailable.",
+          routePicker("Fallback model", "fallback"),
+        )}
+        ${renderRow(
+          "Provider retries",
+          "How many times a failed model request is retried on the same model before the fallback is tried. Retries keep the same model and cached context, and wait as long as the provider asks.",
+          renderSettingsPicker("Provider retries", String(retryAttempts),
+            [0, 1, 2, 3, 4, 5].map((attempts) => ({ value: String(attempts), label: attempts ? String(attempts) : "Off" })),
+            (value) => props.onChangeModels({ ...props.settings.models, retryAttempts: Number(value) })),
+        )}
+        ${renderRow(
+          "Utility model",
+          `The fastest model you have, ideally a cheap one. It names sessions and branches, drafts Jira items and answers /btw; for bots without their own, it writes memory summaries, answers quick questions on calls and writes call summaries.`,
+          routePicker("Utility model", "utility"),
+        )}
+        ${renderRow(
+          "Default reasoning",
+          "The effort new sessions and new bots start with. A model that supports fewer levels uses the closest one it has. PI's own default applies while this is unset.",
+          reasoningSelector,
+        )}
+      `,
+    )}
+    <hui-subagent-routes .routes=${props.settings.models.routes} .models=${modelOptions.filter((option) => option.value)}
+      .onSave=${props.onSaveSubagentRoute}
+      .onRemove=${(name: string) => props.onChangeModels({ ...props.settings.models, routes: props.settings.models.routes.filter((route) => route.name !== name) })}
+    ></hui-subagent-routes>
+    ${renderCallsSection(props)}
+    <details class="hui-provider-catalog"><summary>Available catalog · ${model.catalog.length} models</summary>
+    ${renderSection(
+      "Available catalog",
+      model.catalog.length === 0
+        ? "No available models match your PI configuration."
+        : `${model.catalog.length} available model${model.catalog.length === 1 ? "" : "s"}. Includes HUI selections and PI custom providers.`,
+      model.catalog.length === 0
+        ? renderRow("No models", "Check PI provider configuration and refresh.", html`<span class="settings-row__muted">—</span>`)
+        : html`${model.catalog.map((entry) => renderRow(entry.name, `${entry.provider}/${entry.id}`, html`<span class="settings-row__muted">${entry.contextWindow ? `${entry.contextWindow.toLocaleString()} context` : "Context not reported"}${entry.maxTokens ? ` · ${entry.maxTokens.toLocaleString()} max output` : ""}</span>`))}`,
+    )}
+    </details>
+    ${pi.diagnostics.length > 0
+      ? renderSection(
+          "Diagnostics",
+          "Problems reading pi's configuration.",
+          html`${pi.diagnostics.map((note) => renderRow("Configuration diagnostic", note, html`<span class="settings-row__muted">Review</span>`))}`,
+        )
+      : nothing}
+    ${renderPiOrigin(props)}
   `;
 }
 
