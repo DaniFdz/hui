@@ -31,6 +31,9 @@ export const ModelMetricAverage = Type.Object({
   tokensPerSecond: Type.Optional(Type.Number()),
   ttftMs: Type.Optional(Type.Number()),
   promptTokensPerSecond: Type.Optional(Type.Number()),
+  /** Each request's cache-read share of its prompt tokens (input + cache read + cache write); requests that report no
+   * cache counts contribute none. */
+  cacheHitRate: Type.Optional(Type.Number()),
 }, { $id: "ModelMetricAverage" });
 export type ModelMetricAverage = Static<typeof ModelMetricAverage>;
 
