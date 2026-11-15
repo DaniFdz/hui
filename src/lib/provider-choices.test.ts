@@ -70,12 +70,15 @@ test("the wizard lists OpenAI, Claude, OpenCode Go and Mistral, and derives each
   assert.equal(providerBrand("custom-provider"), undefined);
 });
 
-test("OpenCode Go and Mistral keep their API-key method and hint", () => {
+test("OpenCode Go and Mistral keep their API-key method and name what the key carries", () => {
   const providers = [provider("opencode-go", ["api_key"]), provider("mistral", ["api_key"]), provider("opencode", ["api_key"]), provider("mistral-zen", ["api_key"])];
   for (const brand of ["opencode-go", "mistral"]) {
     const methods = connectionMethods(brand, providers);
-    assert.deepEqual(methods.map(({ provider: entry, method, label, hint }) => [entry.id, method, label, hint]), [
-      [(brand === "mistral" ? "mistral" : "opencode-go"), "api_key", "API key", "Enter a key saved securely by HUI."],
+    const hint = brand === "mistral"
+      ? "Pay per use with a Mistral API key; plan usage comes with it."
+      : "Paste the key from your OpenCode Go subscription; its usage limits come with it.";
+    assert.deepEqual(methods.map(({ provider: entry, method, label, hint: shown }) => [entry.id, method, label, shown]), [
+      [(brand === "mistral" ? "mistral" : "opencode-go"), "api_key", "API key", hint],
     ]);
   }
 });

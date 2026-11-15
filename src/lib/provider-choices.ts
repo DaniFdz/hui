@@ -51,6 +51,9 @@ const METHOD_COPY: Readonly<Record<string, { label: string; hint: string }>> = {
   "openai/api_key": { label: "API key", hint: "Pay per use with an OpenAI API key." },
   "anthropic/oauth": { label: "Claude Pro / Max", hint: "Sign in with your Claude subscription." },
   "anthropic/api_key": { label: "API key", hint: "Pay per use with an Anthropic API key." },
+  // These two are API-key only: the key is what ties the connection to the plan, and it is also what reads the limits.
+  "opencode-go/api_key": { label: "API key", hint: "Paste the key from your OpenCode Go subscription; its usage limits come with it." },
+  "mistral/api_key": { label: "API key", hint: "Pay per use with a Mistral API key; plan usage comes with it." },
 };
 
 /** The sign-in methods a brand can start now, in its provider order. A provider PI does not expose is left out. */
