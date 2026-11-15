@@ -122,10 +122,6 @@ hui-session-multiplexer {
 .hui-embedded-session > .transcript__head.chat-pane__header { padding-left: var(--hui-pane-chrome-inset, 12px); }
 .app-shell > .content--chat:has(> hui-session-multiplexer) { gap: 0; padding: 0; }
 .chat-pane__header { container-type: inline-size; }
-.chat-pane__actions > .chat-pane__split-menu { display: none; }
-@container (max-width: 800px) {
-  .chat-pane__actions > .chat-pane__split-menu { display: inline-flex; }
-}
 /* HUI merges its mobile shell navigation into the active pane header. Keep
    that route reachable when upstream sheds desktop split-header controls. */
 .app-shell.shell--mobile-nav .chat-split-view--narrow .chat-pane__header .chat-pane__nav-toggle {

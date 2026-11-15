@@ -51,6 +51,32 @@ test("on a phone held either way Open navigation shows the drawer over unreachab
   }
 });
 
+test("on a phone New Session keeps Open navigation, and the drawer it opens still reaches the destinations", { tags: ["SHELL-011"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const open = screen.getByRole("button", "Open navigation");
+  const close = screen.getByRole("button", { name: "Close navigation", expanded: true });
+  const sessions = screen.getByTestId("nav-item").filter({ hasText: "Sessions" });
+
+  await hui.createSession({ title: "Phone anchor", group: "Phone" });
+  await hui.phoneScreen();
+  await hui.open("/");
+  await expect(open).toBeVisible();
+  await open.tap();
+  await expect(close).toBeVisible();
+  await screen.getByRole("button", "New session in PHONE").tap();
+  await expect(screen.getByTestId("new-session-composer")).toBeVisible();
+  expect(await hui.url()).toMatch(/\/new-session$/u);
+  await expect(open).toBeVisible();
+  await expect(sessions).toBeHidden();
+  expect(await hui.overflowsSideways()).toBe(false);
+
+  await open.tap();
+  await expect(close).toBeVisible();
+  await expect(sessions).toBeVisible();
+  await sessions.tap();
+  await expect(screen.getByTestId("page-title")).toHaveText("Sessions");
+  await expect(open).toBeVisible();
+});
+
 test("on a phone Open settings navigation names the page, hides it behind the drawer, opens a chosen page with focus on its heading, and a tap outside stays", { tags: ["SHELL-012"], platforms: ["web"] }, async ({ screen, hui }) => {
   const open = screen.getByRole("button", "Open settings navigation");
   const title = screen.getByTestId("settings-page-title");
