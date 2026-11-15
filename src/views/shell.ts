@@ -459,7 +459,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
             : nothing}
         </span>
         <span class="sidebar-recent-session__text">
-          <span class="sidebar-recent-session__title-row">${renderHoverMarquee(session.title, "sidebar-recent-session__name")}</span>
+          <span class="sidebar-recent-session__title-row" data-testid="session-row-title">${renderHoverMarquee(session.title, "sidebar-recent-session__name")}</span>
           <span class="sidebar-recent-session__details"></span>
           ${depth > 0 && session.subagent ? html`<span class="sidebar-recent-session__duration">${subagentElapsed(session.subagent) ?? ""}</span>` : nothing}
           ${session.creating?.percent !== undefined ? html`<span class="sidebar-recent-session__duration">${session.creating.percent}%</span>` : nothing}
