@@ -2415,9 +2415,12 @@ Sessions sit in the stage columns. A session with no stored stage (or a stored
 legacy `backlog`) is in Investigation. Within a cell cards are ordered by
 session status, top to bottom: Error, Waiting input, Done (a finished run you
 have not read), Working (running or starting) and Idle; pins, then recency,
-break ties. Session cards show the status, a pull-request count with its state
-breakdown (for example `2 PRs · 1 open, 1 merged`) and, when linked, the Jira
-key and status with the sidebar's Jira hovercard.
+break ties. Session cards show the status, one chip per pull request the
+session created (`#12`, coloured by its state, the full reference in its
+accessible name, and the description in the sidebar marks' hovercard), and,
+when linked, the Jira key and status with the sidebar's Jira hovercard. A
+session running on a worker names it beside the status. Each pull-request chip
+opens that pull request on GitHub in a new tab.
 
 A **View** menu, stored in the browser like the sidebar's Filter & sort,
 configures the board: lanes by Project (default), Custom groups or None; sort
