@@ -12,6 +12,7 @@ import { promisify } from "node:util";
 import { Type, type Static } from "typebox";
 import Value from "typebox/value";
 import { readState } from "../../cli/state.ts";
+import type { NtfyLink } from "../api/settings.ts";
 
 const parameters = Type.Object({
   title: Type.String({ minLength: 1, maxLength: 120 }),
@@ -40,9 +41,30 @@ export async function notificationChatUrl(chat: NotificationChat): Promise<strin
   return chatUrl(state.url, chat);
 }
 
+/** The link that opens one chat in an HUI app instead of the browser. It carries no address by design, so the app
+ * opens the chat on the gateway it is already connected to: `hui://open?path=/sessions/<id>` is the phone shell's deep
+ * link (`DeepLink` on Android, `SceneDelegate` on iOS), and `hui://sessions/<id>` is the desktop app's.
+ *
+ * The path stays percent-encoded the way an address carries it (`/sessions/a%20b`), never encoded as a query value:
+ * both shells decode a copy to validate it and refuse one that hides a scheme behind an escape.
+ */
+export function appChatLink(target: "phone" | "desktop", chat: NotificationChat): string {
+  const path = chatPath(chat);
+  return target === "phone" ? `hui://open?path=${path}` : `hui://${path.replace(/^\//u, "")}`;
+}
+
+/** The click a phone notification follows: the gateway's own address for `web`, which every device can open including
+ * one without the HUI app, and the app's own link otherwise. */
+export async function notificationChatLink(chat: NotificationChat, link: NtfyLink): Promise<string | undefined> {
+  return link === "web" ? notificationChatUrl(chat) : appChatLink(link, chat);
+}
+
+function chatPath(chat: NotificationChat): string {
+  return chat.bot ? `/bots/${encodeURIComponent(chat.bot)}` : `/sessions/${encodeURIComponent(chat.id)}`;
+}
+
 function chatUrl(base: string, chat: NotificationChat): string {
-  const path = chat.bot ? `/bots/${encodeURIComponent(chat.bot)}` : `/sessions/${encodeURIComponent(chat.id)}`;
-  return new URL(path, base).href;
+  return new URL(chatPath(chat), base).href;
 }
 
 export async function deliverDesktopNotification(

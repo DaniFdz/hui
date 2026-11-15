@@ -57,7 +57,7 @@ export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headle
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
 /** The public ntfy service: a phone subscribes to a topic there, and a gateway that runs its own sets its address. */
 export const DEFAULT_NTFY_SERVER = "https://ntfy.sh";
-export const DEFAULT_NTFY_SETTINGS: NtfySettings = { server: DEFAULT_NTFY_SERVER, topic: "" };
+export const DEFAULT_NTFY_SETTINGS: NtfySettings = { server: DEFAULT_NTFY_SERVER, topic: "", link: "web" };
 const VSCODE_PROVIDERS: readonly VscodeProviderPreference[] = ["auto", "configured", "desktop", "managed", "path"];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -156,7 +156,8 @@ function normalizeNotifications(value: unknown): Settings["notifications"] {
  * The ntfy relay a phone subscribes to. A topic is ntfy's own capability: `[-_A-Za-z0-9]` up to 64 characters, and
  * nothing else means off. The server is an `http(s)` base address with no credentials, query or fragment, so a saved
  * address cannot smuggle a token into a URL HUI prints, and anything malformed falls back to the public service with
- * no topic rather than publishing somewhere else.
+ * no topic rather than publishing somewhere else. `link` names what a tap opens; an unknown value is the web address,
+ * which every device can open.
  */
 export function normalizeNtfySettings(value: unknown): NtfySettings {
   const source = isRecord(value) ? value : {};
@@ -165,6 +166,7 @@ export function normalizeNtfySettings(value: unknown): NtfySettings {
   return {
     server: normalizeNtfyServer(server),
     topic: /^[A-Za-z0-9_-]{1,64}$/u.test(topic) ? topic : "",
+    link: source["link"] === "phone" || source["link"] === "desktop" ? source["link"] : "web",
   };
 }
 

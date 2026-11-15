@@ -7,7 +7,8 @@
  */
 import { NOTIFICATION_SUBTITLES, type DesktopNotification } from "../agent-tools/notifications.ts";
 
-export type NtfySettings = { server: string; topic: string };
+import type { NtfySettings } from "../api/settings.ts";
+export type { NtfySettings } from "../api/settings.ts";
 
 /** What one ntfy message says. `priority` is ntfy's own 1–5 scale. */
 export type NtfyMessage = {

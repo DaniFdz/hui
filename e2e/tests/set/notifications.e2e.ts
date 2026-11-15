@@ -14,7 +14,7 @@ test("Notifications keeps which session events notify you", { tags: ["SET-076"],
   await finished.tap({ position: { x: 8, y: 8 } });
   await failed.tap({ position: { x: 8, y: 8 } });
   await expect.poll(async () => (await hui.api<{ notifications: unknown }>("GET", "/__hui/settings")).notifications)
-    .toEqual({ tool: false, runFinished: true, runFailed: false, needsInput: true, ntfy: { server: "https://ntfy.sh", topic: "" } });
+    .toEqual({ tool: false, runFinished: true, runFailed: false, needsInput: true, ntfy: { server: "https://ntfy.sh", topic: "", link: "web" } });
 
   await hui.reload();
   await expect(finished).toBeChecked();

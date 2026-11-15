@@ -39,7 +39,7 @@ export function renderSettingsPicker(
   options: readonly { value: string; label: string; style?: string }[],
   onChange: (value: string) => void,
   /** The rest of the picker's own parameters, such as keeping option values out of the browser's tooltip. */
-  extra: Pick<PickerParams, "showOptionTooltips"> = {},
+  extra: Pick<PickerParams, "showOptionTooltips" | "onChangeTarget"> = {},
 ) {
   return renderPicker({
     label, value, options: options.map(({ style, ...option }) => ({ ...option, labelStyle: style })), onChange, ...extra,

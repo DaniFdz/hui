@@ -826,9 +826,9 @@ const cases: UseCase[] = [
   {
     id: "SET-099",
     title: "Send HUI notifications to your phone through ntfy",
-    behaviour: "Settings → Notifications → Phone (ntfy) saves an ntfy server and topic, generates a long random topic, and copies the address the phone's ntfy app subscribes to. “Send test” publishes one message to the saved topic, answers with a toast when ntfy accepted it, and shows ntfy's own error otherwise; a blank topic publishes nothing.",
+    behaviour: "Settings → Notifications → Phone (ntfy) saves an ntfy server and topic, generates a long random topic, copies the address the phone's ntfy app subscribes to, and picks what a tap opens: the browser at the gateway's address (the default), the HUI app on the phone (`hui://open?path=/sessions/<id>`) or the HUI app on the desktop (`hui://sessions/<id>`). An app link carries no address, so it opens the chat on the gateway that app is connected to. “Send test” publishes one message to the saved topic, answers with a toast when ntfy accepted it, and shows ntfy's own error otherwise; a blank topic publishes nothing.",
     spec: ["SPEC.md#notifications-reach-the-phone-through-ntfy-2026-11-13", "docs/api.md#post-__huinotificationstest"],
-    surfaces: ["settings-page:notifications", "setting:notifications.ntfy.server", "setting:notifications.ntfy.topic", "route:POST /__hui/notifications/test"],
+    surfaces: ["settings-page:notifications", "setting:notifications.ntfy.server", "setting:notifications.ntfy.topic", "setting:notifications.ntfy.link", "route:POST /__hui/notifications/test"],
     web: "required",
     phone: "required",
   },
