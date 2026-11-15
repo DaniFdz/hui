@@ -14,12 +14,11 @@ export type RequestedWorker = { kind: "local" } | { kind: "worker"; worker: stri
 /** What a grouped chief reads when neither its group nor its call names the project its sessions belong to. */
 export const GROUP_PROJECT_MISSING = "This group has no project directory. Set it in the group's New session defaults.";
 
-/** The stored group a chief's call names, by its label: a label no group of the registry carries is refused, naming it,
- * rather than placed anywhere as a group that lists no defaults. */
-export function groupNamed<Group extends { label: string }>(label: string, groups: readonly Group[]): Group {
-  const found = groups.find((group) => group.label === label);
-  if (!found) throw new Error(`No session group named ${label}.`);
-  return found;
+/** The stored group a chief's call names, by its label exactly as the registry keeps it. Undefined when no group carries
+ * it: a call that names its own directory may open a session under a new label, and one that names none is refused by
+ * name (`createSessionFromAgent`), never placed in the chief's own folder. */
+export function groupNamed<Group extends { label: string }>(label: string, groups: readonly Group[]): Group | undefined {
+  return groups.find((group) => group.label === label);
 }
 
 /**

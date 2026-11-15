@@ -613,11 +613,15 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
     const value = params[key];
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
   };
-  const group = text("group") ?? owner.group ?? caller.group ?? "";
-  // A label only counts when a group carries it: its New session defaults are what a chief's session is placed by, and
-  // an unknown label is refused by name rather than placed as a group that states nothing.
-  const groupDefaults = group ? groupNamed(group, await readSessionGroups()) : undefined;
+  const label = text("group") ?? owner.group ?? caller.group ?? "";
+  // A stored group lends its New session defaults. A label the registry does not carry yet stays a label: a call that
+  // names its own directory may open the session there, and one that names none is refused rather than placed in the
+  // chief's own folder.
+  const stored = label ? groupNamed(label, await readSessionGroups()) : undefined;
   const requestedCwd = text("cwd");
+  if (label && !stored && !requestedCwd) {
+    throw new Error(`No session group named ${label}. Pass cwd, or create the group first.`);
+  }
   const requestedBaseRef = text("baseRef");
   const requestedWorker = text("worker");
   const workerRequest: RequestedWorker | undefined = requestedWorker === "local"
@@ -626,8 +630,8 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
       ? { kind: "worker", worker: (await workers.list()).find(({ id, name }) => id === requestedWorker || name === requestedWorker)?.id ?? requestedWorker }
       : undefined;
   const defaults = groupSessionDefaults({
-    // A group that names no directory refuses rather than place the session in the chief's own bot folder.
-    ...(groupDefaults ? { group: groupDefaults } : {}),
+    // A stored group that names no directory refuses rather than place the session in the chief's own bot folder.
+    ...(stored ? { group: stored } : {}),
     caller: { cwd: caller.cwd, ...(caller.worker ? { worker: caller.worker } : {}) },
     requested: {
       ...(requestedCwd ? { cwd: requestedCwd } : {}),
@@ -640,7 +644,7 @@ async function createSessionFromAgent(callerSessionId: string, params: Record<st
   const thinking = text("thinking") ?? caller.thinking;
   const record = await createSession({
     cwd: defaults.cwd,
-    group,
+    group: label,
     initialPrompt: prompt.slice(0, 4_000),
     ...(text("title") ? { title: text("title") } : {}),
     ...(defaults.worker ? { worker: defaults.worker } : {}),

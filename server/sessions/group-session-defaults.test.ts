@@ -83,10 +83,10 @@ test("a group's Git defaults need its own directory to describe", () => {
   }), { cwd: "/another/checkout", worker: "caller-worker", worktree: false });
 });
 
-test("a chief's call names a stored group, and an unknown label is refused by name", () => {
+test("a chief's call names a stored group, and a label no group carries is left to the call", () => {
   const groups = [{ label: "Payments", cwd: "/project/payments" }, { label: "Research  Lab" }];
   assert.deepEqual(groupNamed("Payments", groups), { label: "Payments", cwd: "/project/payments" });
   assert.deepEqual(groupNamed("Research  Lab", groups), { label: "Research  Lab" }, "a label is matched as the registry keeps it");
-  assert.throws(() => groupNamed("Ghost group", groups), { message: "No session group named Ghost group." });
-  assert.throws(() => groupNamed("payments", groups), { message: "No session group named payments." }, "a label is matched exactly");
+  assert.equal(groupNamed("Ghost group", groups), undefined, "an unknown label is not a stored group");
+  assert.equal(groupNamed("payments", groups), undefined, "a label is matched exactly");
 });

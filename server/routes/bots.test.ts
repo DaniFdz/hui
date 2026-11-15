@@ -987,6 +987,21 @@ test("a chief naming a group that does not exist is refused by name", { timeout:
   assert.equal((await readRegistry()).length, before, "no session was created");
 });
 
+test("a chief may open a session under a label no group carries yet when the call names its directory", { timeout: 120_000 }, async () => {
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "Label E2E", cwd: workspace })).status, 200);
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "Label E2E" }));
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "create_session", input: { prompt: "Work under a new label.", title: "Labelled child", group: "Fresh label E2E", cwd: workspace } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  const created = (await readRegistry()).find((record) => record.title === "Labelled child");
+  assert.ok(created, JSON.stringify(asked.body));
+  assert.equal(created.group, "Fresh label E2E", "a label the registry does not carry yet is the session's group");
+  assert.equal(created.cwd, workspace, "the directory the call named places it, never the chief's own folder");
+});
+
 test("a group chief's chat carries its project's context file, and what it spawns lands in that project", { timeout: 180_000 }, async () => {
   const project = join(dir, "chief-project");
   await mkdir(project);
