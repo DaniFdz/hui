@@ -928,7 +928,7 @@ const cases: UseCase[] = [
     surfaces: ["settings-page:connection", "route:GET /__hui/update", "route:GET /__hui/health"],
     journeys: ["gateway-settings"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "SET-097",
