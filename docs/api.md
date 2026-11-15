@@ -762,10 +762,10 @@ session stream.
 A provider's measurements in the window (default 24 hours, at most 7 days):
 `requests`, the latest `last` sample, `average`, `p50` and `p95` for
 `tokensPerSecond`, `ttftMs`, `promptTokensPerSecond` and `cacheHitRate`, and up
-to 80 recent `samples` oldest first. A request's `cacheHitRate` is that
-request's share; `average` is the mean of those shares and `p50`/`p95` their
-percentiles. Samples have `at` (epoch ms), `provider`, `model`, `status` (`ok` or
-`error`), optional token counts and the timings above.
+to 80 recent `samples` oldest first. `cacheHitRate` covers each request's
+cache-read share of its prompt tokens: `average` is the mean of those shares and
+`p50`/`p95` their percentiles. Samples have `at` (epoch ms), `provider`, `model`,
+`status` (`ok` or `error`), optional token counts and the timings above.
 
 ### `GET /__hui/model-metrics/sessions/:session`
 

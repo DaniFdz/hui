@@ -99,5 +99,9 @@
 @media (max-width: 560px) {
   .hui-model-metrics__last { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hui-model-metrics__toolbar { align-items: flex-start; flex-direction: column; }
-  .hui-model-metrics__recent th:nth-child(2), .hui-model-metrics__recent td:nth-child(2) { display: none; }
+  /* The narrow dialog keeps the phase split in view: when a request ran, its model and its token counts are on the
+     first sample's cards above, while prefill, decode, TTFT and the cache share stay readable without scrolling. */
+  .hui-model-metrics__recent th:nth-child(1), .hui-model-metrics__recent td:nth-child(1),
+  .hui-model-metrics__recent th:nth-child(2), .hui-model-metrics__recent td:nth-child(2),
+  .hui-model-metrics__recent th:nth-child(7), .hui-model-metrics__recent td:nth-child(7) { display: none; }
 }
