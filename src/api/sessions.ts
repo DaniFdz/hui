@@ -4,7 +4,7 @@
  * the registry and the contract is fixed in `docs/api.md`; this module holds no session state of its own.
  */
 import type {
-  QuestionnaireQuestion, SessionList, SessionListUpdate, SessionSearchResult, SessionStage, SessionStatus, SessionView, TranscriptMetrics,
+  QuestionnaireQuestion, SessionGroupCreateRequest, SessionList, SessionListUpdate, SessionSearchResult, SessionStage, SessionStatus, SessionView, TranscriptMetrics,
 } from "./schema/sessions.ts";
 
 /** One question's answer from the questionnaire card: chosen labels and typed text. */
@@ -173,11 +173,11 @@ export function searchSessionTranscripts(query: string, signal: AbortSignal): Pr
   return fetchJson<SessionSearchResult>(`${SESSIONS_URL}/search?q=${encodeURIComponent(query)}`, { signal });
 }
 
-export async function createSessionGroup(name: string): Promise<SessionList> {
+export async function createSessionGroup(input: SessionGroupCreateRequest): Promise<SessionList> {
   const body = await fetchJson<Partial<SessionList>>("/__hui/session-groups", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(input),
   });
   return sessionList(body);
 }

@@ -278,6 +278,8 @@ export class HuiApp extends HuiElement {
   @state() private groupDefaultMode: "branch" | "worktree" = "branch";
   @state() private groupDefaultRef = "";
   @state() private groupDefaultWorker = "";
+  /** The checkbox on a new group: also create its Chief of Staff in the same step. */
+  @state() private groupCreateChief = false;
   @state() private groupCheckout: GitCheckoutInfo | undefined;
   @state() private groupCheckoutLoading = false;
   @state() private groupCheckoutError = "";
@@ -1982,7 +1984,8 @@ export class HuiApp extends HuiElement {
   };
 
   private requestDirectorySuggestions = (input: string) => {
-    if (this.groupAction?.action === "defaults") {
+    const action = this.groupAction?.action;
+    if (action === "defaults" || action === "new") {
       this.launcher.loadDirectorySuggestions(input, this.groupDefaultWorker || undefined);
       this.requestGroupCheckout(input);
     } else {
@@ -2651,6 +2654,20 @@ export class HuiApp extends HuiElement {
       group ? `[data-group-menu-trigger="${CSS.escape(group.label)}"]` : "[data-new-group-trigger]",
     ) ?? undefined;
     this.groupAction = next;
+    if (next.action === "new") {
+      this.groupDefaultCwd = "";
+      this.groupDefaultMode = "branch";
+      this.groupDefaultRef = "";
+      this.groupDefaultWorker = "";
+      this.groupCheckout = undefined;
+      this.groupCheckoutDirectory = "";
+      this.groupCheckoutLoading = false;
+      this.groupCheckoutError = "";
+      // A checkout read from a dialog opened earlier must not land in this one.
+      this.groupCheckoutRequest += 1;
+      this.groupCreateChief = false;
+      this.launcher.loadWorkers();
+    }
     if (next.action === "defaults") {
       this.groupDefaultCwd = next.group.cwd ?? next.group.sessions[0]?.cwd ?? "~/";
       this.groupDefaultMode = next.group.workspaceMode ?? "branch";
@@ -2662,18 +2679,13 @@ export class HuiApp extends HuiElement {
     }
   };
 
-  /** The project group's own chief: one bot, its own memory, working in that project. Asking twice opens the one it
-   * already has. */
+  /** The group's own chief: one bot in its own folder, on the group's machine, whose chat carries the project's
+   * context. The group's directory is where the sessions it starts run. Asking twice opens the one it already has. */
   private createChiefForGroup = async (group: SessionGroup): Promise<void> => {
     if (this.chiefPending) return;
-    const cwd = group.cwd ?? group.sessions[0]?.cwd;
-    if (!cwd) {
-      this.sessions.notify(`Add a session to “${group.label}” first: its chief needs the project folder.`, true);
-      return;
-    }
     this.chiefPending = true;
     try {
-      const bot = await createStaffChief({ group: group.label, cwd });
+      const bot = await createStaffChief({ group: group.label });
       this.bots.selectTab("bots");
       this.ensureBots();
       void this.bots.refresh();
@@ -2684,6 +2696,28 @@ export class HuiApp extends HuiElement {
       this.chiefPending = false;
     }
   };
+
+  /** A group created with the checkbox already exists, so its chief's failure only reports; the group's menu can
+   * create it again. */
+  private createChiefForCreatedGroup = async (group: string): Promise<void> => {
+    if (this.chiefPending) return;
+    this.chiefPending = true;
+    try {
+      await createStaffChief({ group });
+      this.ensureBots();
+      void this.bots.refresh();
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "The chief could not be created.";
+      this.sessions.notify(`Group “${group}” was created, but its Chief of Staff was not: ${reason} Create it from the group's ⋯ menu.`, true);
+    } finally {
+      this.chiefPending = false;
+    }
+  };
+
+  /** A directory whose Git read has not settled cannot be saved as a group's target. */
+  private groupCheckoutBlocked(): boolean {
+    return Boolean(this.groupDefaultCwd.trim()) && (this.groupCheckoutLoading || Boolean(this.groupCheckoutError));
+  }
 
   private requestGroupCheckout(input: string, initial = false) {
     this.groupDefaultCwd = input;
@@ -2736,21 +2770,29 @@ export class HuiApp extends HuiElement {
   private submitGroupAction = (event: SubmitEvent) => {
     event.preventDefault();
     if (!this.groupAction || this.groupMutationPending) return;
-    if (this.groupAction.action === "defaults" && (this.groupCheckoutLoading || this.groupCheckoutError)) return;
+    if ((this.groupAction.action === "defaults" || this.groupAction.action === "new") && this.groupCheckoutBlocked()) return;
     const form = event.currentTarget;
     if (!(form instanceof HTMLFormElement)) return;
     const data = new FormData(form);
     const value = (name: string) => String(data.get(name) ?? "").trim();
     const state = this.groupAction;
+    const name = value("name");
+    const directory = value("cwd");
+    const wantsChief = state.action === "new" && this.groupCreateChief;
+    if (wantsChief && !directory) {
+      this.groupMutationError = "Choose a working directory first: a Chief of Staff starts this group's sessions there.";
+      return;
+    }
     this.groupMutationPending = true;
     this.groupMutationError = "";
     const git = this.groupCheckout?.available;
     const operation = state.action === "new"
-      ? createSessionGroup(value("name"))
+      ? createSessionGroup({ name, cwd: directory, worker: this.groupDefaultWorker,
+          workspaceMode: git ? this.groupDefaultMode : "", baseRef: git ? this.groupDefaultRef : "" })
       : state.action === "rename"
-        ? updateSessionGroup(state.group.label, { name: value("name") })
+        ? updateSessionGroup(state.group.label, { name })
         : state.action === "defaults"
-          ? updateSessionGroup(state.group.label, { cwd: value("cwd"), worker: this.groupDefaultWorker,
+          ? updateSessionGroup(state.group.label, { cwd: directory, worker: this.groupDefaultWorker,
               workspaceMode: git ? this.groupDefaultMode : "", baseRef: git ? this.groupDefaultRef : "" })
           : deleteSessionGroup(state.group.label);
     void operation
@@ -2760,13 +2802,14 @@ export class HuiApp extends HuiElement {
           // A successful creation must be visible even when filters hid every row.
           this.search = "";
           this.updateSessionOptions({ ...this.sessionOptions, groupBy: "custom", status: "all", hideEmpty: "filtering" });
-          this.sessions.expandGroup(value("name"));
+          this.sessions.expandGroup(name);
         }
         if (this.conversation.selected) {
           const refreshed = groups.flatMap((entry) => entry.sessions).find((session) => session.id === this.conversation.selected?.id);
           if (refreshed) this.conversation.select(refreshed);
         }
         this.closeGroupAction();
+        if (wantsChief) void this.createChiefForCreatedGroup(name);
       })
       .catch((error: unknown) => {
         this.groupMutationError = error instanceof Error ? error.message : "Could not update that group.";
@@ -2775,6 +2818,47 @@ export class HuiApp extends HuiElement {
         this.groupMutationPending = false;
       });
   };
+
+  /** The machine, directory and Git targets a group's sessions start in, shared by creating a group and editing its
+   * New session defaults. */
+  private renderGroupTargetFields() {
+    return html`
+      ${this.launcher.workers.length ? html`<div class="field input-dialog__field"><span>Run on</span>
+        ${renderPicker({ label: "Run on", value: this.groupDefaultWorker, disabled: this.groupMutationPending,
+          options: [{ value: "", label: "Local", description: "This machine." },
+            ...this.launcher.workers.map((worker) => ({ value: worker.id, label: worker.name,
+              description: worker.state === "connected" ? "Remote worker, connected." : `Remote worker, ${worker.state}.` }))],
+          showSelectedDescription: true,
+          onChange: (value) => {
+            this.groupDefaultWorker = value;
+            this.groupCheckoutDirectory = "";
+            this.requestGroupCheckout(this.groupDefaultCwd, true);
+          } })}
+      </div>` : null}
+      <div class="field input-dialog__field"><label for="group-default-cwd">Working directory</label>
+        ${renderDirectoryPicker({ id: "group-default-cwd", label: "Working directory", value: this.groupDefaultCwd, suggestions: this.launcher.directorySuggestionsFrom === this.groupDefaultWorker ? this.launcher.directorySuggestions : [], onInput: this.requestDirectorySuggestions, inputClass: "settings-input", externalLabel: true, openOnFocus: false })}
+      </div>
+      ${this.groupCheckoutLoading ? html`<p role="status">Checking repository…</p>` : null}
+      ${this.groupCheckoutError ? html`<p role="alert">${this.groupCheckoutError}</p>` : null}
+      ${this.groupCheckout?.available ? html`
+        <div class="field input-dialog__field"><span>Environment</span>
+          ${renderPicker({ label: "Environment", value: this.groupDefaultMode, disabled: this.groupMutationPending,
+            options: [{ value: "branch", label: "Branch", description: "Work in the current checkout." },
+              { value: "worktree", label: "New worktree", description: "Start each session in an isolated Git worktree." }],
+            showSelectedDescription: true,
+            onChange: (value) => { this.groupDefaultMode = value === "worktree" ? "worktree" : "branch"; } })}
+        </div>
+        <div class="field input-dialog__field"><span>Base branch</span>
+          ${renderPicker({ label: "Base branch", value: this.groupDefaultRef, disabled: this.groupMutationPending,
+            options: [...new Set([this.groupDefaultRef, this.groupCheckout.defaultBranch, ...this.groupCheckout.branches].filter(Boolean))].map((value) => ({ value, label: value })),
+            searchable: true, searchPlaceholder: "Search branches or enter a commit",
+            customOption: (query) => query.trim() ? { value: query.trim(), label: query.trim() } : null,
+            onChange: (value) => { this.groupDefaultRef = value; } })}
+        </div>
+        ${this.groupDefaultMode === "worktree" ? html`<p class="exec-approval-sub">Choose a branch suffix when starting each session.</p>` : null}
+      ` : null}
+    `;
+  }
 
   private renderGroupActionDialog() {
     const state = this.groupAction;
@@ -2796,48 +2880,23 @@ export class HuiApp extends HuiElement {
         <div class="exec-approval-title" id="group-action-title">${title}</div>
         ${state.action === "defaults" ? html`
           <div class="exec-approval-sub">Choose where sessions created from this group start.</div>
-          ${this.launcher.workers.length ? html`<div class="field input-dialog__field"><span>Run on</span>
-            ${renderPicker({ label: "Run on", value: this.groupDefaultWorker, disabled: this.groupMutationPending,
-              options: [{ value: "", label: "Local", description: "This machine." },
-                ...this.launcher.workers.map((worker) => ({ value: worker.id, label: worker.name,
-                  description: worker.state === "connected" ? "Remote worker, connected." : `Remote worker, ${worker.state}.` }))],
-              showSelectedDescription: true,
-              onChange: (value) => {
-                this.groupDefaultWorker = value;
-                this.groupCheckoutDirectory = "";
-                this.requestGroupCheckout(this.groupDefaultCwd, true);
-              } })}
-          </div>` : null}
-          <div class="field input-dialog__field"><label for="group-default-cwd">Working directory</label>
-            ${renderDirectoryPicker({ id: "group-default-cwd", label: "Working directory", value: this.groupDefaultCwd, suggestions: this.launcher.directorySuggestionsFrom === this.groupDefaultWorker ? this.launcher.directorySuggestions : [], onInput: this.requestDirectorySuggestions, inputClass: "settings-input", externalLabel: true, openOnFocus: false })}
-          </div>
-          ${this.groupCheckoutLoading ? html`<p role="status">Checking repository…</p>` : null}
-          ${this.groupCheckoutError ? html`<p role="alert">${this.groupCheckoutError}</p>` : null}
-          ${this.groupCheckout?.available ? html`
-            <div class="field input-dialog__field"><span>Environment</span>
-              ${renderPicker({ label: "Environment", value: this.groupDefaultMode, disabled: this.groupMutationPending,
-                options: [{ value: "branch", label: "Branch", description: "Work in the current checkout." },
-                  { value: "worktree", label: "New worktree", description: "Start each session in an isolated Git worktree." }],
-                showSelectedDescription: true,
-                onChange: (value) => { this.groupDefaultMode = value === "worktree" ? "worktree" : "branch"; } })}
-            </div>
-            <div class="field input-dialog__field"><span>Base branch</span>
-              ${renderPicker({ label: "Base branch", value: this.groupDefaultRef, disabled: this.groupMutationPending,
-                options: [...new Set([this.groupDefaultRef, this.groupCheckout.defaultBranch, ...this.groupCheckout.branches].filter(Boolean))].map((value) => ({ value, label: value })),
-                searchable: true, searchPlaceholder: "Search branches or enter a commit",
-                customOption: (query) => query.trim() ? { value: query.trim(), label: query.trim() } : null,
-                onChange: (value) => { this.groupDefaultRef = value; } })}
-            </div>
-            ${this.groupDefaultMode === "worktree" ? html`<p class="exec-approval-sub">Choose a branch suffix when starting each session.</p>` : null}
-          ` : null}
+          ${this.renderGroupTargetFields()}
+        ` : state.action === "new" ? html`
+          <label class="field input-dialog__field"><span>Group name</span><input class="settings-input" name="name" type="text" required maxlength="200" /></label>
+          ${this.renderGroupTargetFields()}
+          <label class="input-dialog__field group-action-dialog__chief">
+            <span class="group-action-dialog__chief-choice"><input type="checkbox" .checked=${this.groupCreateChief} ?disabled=${this.groupMutationPending}
+              @change=${(event: Event) => { this.groupCreateChief = (event.currentTarget as HTMLInputElement).checked; }} /><span>Create a Chief of Staff</span></span>
+            <span class="exec-approval-sub">A chief plans and starts this group's work from its own chat, using this directory for the sessions it creates.</span>
+          </label>
         ` : action === "delete" ? html`
           <div class="exec-approval-sub">The group is removed. Its sessions move back to OTHER.</div>
         ` : html`
-          <label class="field input-dialog__field"><span>Group name</span><input class="settings-input" name="name" type="text" required maxlength="200" .value=${state.action === "rename" ? state.group.label : ""} /></label>
+          <label class="field input-dialog__field"><span>Group name</span><input class="settings-input" name="name" type="text" required maxlength="200" .value=${state.group.label} /></label>
         `}
         ${this.groupMutationError ? html`<p class="group-action-dialog__error" role="alert">${this.groupMutationError}</p>` : null}
         <div class="exec-approval-actions">
-          <button type="submit" class="btn ${action === "delete" ? "danger" : "primary"}" ?disabled=${this.groupMutationPending || (action === "defaults" && (this.groupCheckoutLoading || Boolean(this.groupCheckoutError)))}>${this.groupMutationPending ? "Saving…" : action === "delete" ? "Delete" : action === "new" ? "Create group" : "Save"}</button>
+          <button type="submit" class="btn ${action === "delete" ? "danger" : "primary"}" ?disabled=${this.groupMutationPending || ((action === "defaults" || action === "new") && this.groupCheckoutBlocked())}>${this.groupMutationPending ? "Saving…" : action === "delete" ? "Delete" : action === "new" ? "Create group" : "Save"}</button>
           <button type="button" class="btn" @click=${this.closeGroupAction}>Cancel</button>
         </div>
       </form>
