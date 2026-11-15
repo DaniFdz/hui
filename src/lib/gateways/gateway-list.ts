@@ -1,9 +1,10 @@
 /**
  * The gateways this device knows, as pure rules: the address a typed value names, the one key the list is saved under,
- * what a corrupt or absent list reads as, how an entry joins, is edited, marked seen or removed, and what each row shows
- * (current, known with its last sighting, or offline). The current gateway is the one that served the page: it names
- * itself through `/__hui/health` and is never stored, renamed or removed here (SPEC.md "A device keeps a list of
- * gateways"). `gateway-store.ts` is the thin storage adapter around these rules.
+ * what a corrupt or absent list reads as, how an entry joins, is edited, marked seen, removed or carried to the page a
+ * switch opens, and what each row shows (current, known with its last sighting, or offline). The current gateway is the
+ * one that served the page: it names itself through `/__hui/health` and is never stored, renamed or removed here
+ * (SPEC.md "A device keeps a list of gateways"). `gateway-store.ts` is the thin storage adapter around these rules and
+ * `gateway-handoff.ts` appends and adopts the fragment a switch carries.
  */
 
 /** One gateway this device has added by address. */
@@ -19,6 +20,12 @@ export type GatewayEntry = {
 /** The single localStorage key holding the whole list. */
 export const GATEWAY_LIST_KEY = "hui.gateways";
 
+/** The fragment parameter a switch carries this device's list in, so the page it opens can get back. */
+export const GATEWAY_HANDOFF_PARAM = "hui-gateways";
+
+/** How many rows a carried list holds: this device's own list is far shorter. */
+export const MAX_GATEWAY_HANDOFF = 32;
+
 /** The saved shape's version, so a later change can migrate instead of guessing. */
 export const GATEWAY_LIST_VERSION = 1;
 
@@ -26,6 +33,8 @@ export const GATEWAY_LIST_VERSION = 1;
 export const GATEWAY_NOT_AN_ADDRESS = "Enter an http:// or https:// address.";
 /** What it reports when an address answers with something that is not a HUI gateway. */
 export const GATEWAY_REFUSED = "This address doesn't answer as a HUI gateway.";
+/** What it reports when an http:// gateway is out of reach of the https page asking: a browser blocks that request. */
+export const GATEWAY_MIXED_CONTENT = "This page is on https, so it can't reach an http:// gateway. Use the gateway's own https:// address.";
 /** What it reports when the address is the gateway already serving the page. */
 export const GATEWAY_IS_CURRENT = "This is the gateway serving this page.";
 /** What it reports when the address already belongs to another saved gateway. */
@@ -67,6 +76,36 @@ export function normalizeGatewayAddress(raw: string): string | null {
   if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
   if (!HOST.test(parsed.hostname)) return null;
   return `${parsed.origin}${parsed.pathname.replace(/\/+$/u, "")}`;
+}
+
+/** Whether `url` is this device's own loopback: `127.0.0.1` and `localhost` name the machine running the page, so a
+ * gateway on another machine is not at that address. */
+export function isLoopbackGateway(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/gu, "").toLowerCase();
+    return host === "localhost" || host === "::1" || /^127\./u.test(host);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a browser would block this page from reaching `url`: an https page may not fetch an http one, except at
+ * loopback, which a browser treats as this device. The answer is what the dialog says instead of blaming the address
+ * for a request that never left.
+ */
+export function blockedFromHttpsPage(url: string, pageProtocol: string): boolean {
+  if (pageProtocol !== "https:") return false;
+  try {
+    return new URL(url).protocol === "http:" && !isLoopbackGateway(url);
+  } catch {
+    return false;
+  }
+}
+
+/** What it reports when nothing answered a loopback address, which is never another machine's gateway. */
+export function loopbackRefusal(url: string): string {
+  return `Nothing answered at ${url}. 127.0.0.1 and localhost name the device running this app, not another machine.`;
 }
 
 /** The saved list, newest sighting first. Corrupt, absent or unknown-version storage reads as an empty list. */
@@ -143,6 +182,69 @@ export function markGatewaySeen(entries: readonly GatewayEntry[], url: string, s
   return newestFirst(entries.map((entry) => entry.url === url
     ? { ...entry, name: name ? name : entry.name, lastSeen: seen.lastSeen }
     : entry));
+}
+
+/**
+ * The fragment that carries `entries` to the page a switch opens, so the gateway it left stays one tap away. It is
+ * compact (`[[url, name, lastSeen], …]`, in this device's own order) and percent-encoded, and a fragment never reaches
+ * the gateway, its log or another tab.
+ */
+export function gatewayHandoff(entries: readonly GatewayEntry[]): string {
+  const rows = newestFirst(entries).slice(0, MAX_GATEWAY_HANDOFF).map((entry) => [entry.url, entry.name, entry.lastSeen]);
+  return `${GATEWAY_HANDOFF_PARAM}=${encodeURIComponent(JSON.stringify(rows))}`;
+}
+
+/** `url` with `entries` in its fragment; `url` alone when there is nothing to carry. */
+export function gatewayHandoffAddress(url: string, entries: readonly GatewayEntry[]): string {
+  if (!entries.length) return url;
+  const target = new URL(url);
+  target.hash = gatewayHandoff(entries);
+  return target.toString();
+}
+
+/** The rows a page's own address fragment carries, newest first. A malformed, foreign or absent fragment reads as none. */
+export function readGatewayHandoff(hash: string): GatewayEntry[] {
+  const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
+  const carried = fragment.split("&").find((part) => part.startsWith(`${GATEWAY_HANDOFF_PARAM}=`));
+  if (!carried) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(decodeURIComponent(carried.slice(GATEWAY_HANDOFF_PARAM.length + 1)));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const entries: GatewayEntry[] = [];
+  for (const row of parsed) {
+    if (!Array.isArray(row)) continue;
+    const url = typeof row[0] === "string" ? normalizeGatewayAddress(row[0]) : null;
+    if (!url || entries.some((entry) => entry.url === url)) continue;
+    const lastSeen = Number(row[2]);
+    entries.push({
+      url,
+      name: typeof row[1] === "string" ? row[1].trim().slice(0, 60) : "",
+      lastSeen: Number.isFinite(lastSeen) && lastSeen > 0 ? lastSeen : 0,
+    });
+    if (entries.length === MAX_GATEWAY_HANDOFF) break;
+  }
+  return newestFirst(entries);
+}
+
+/**
+ * `entries` with the rows a switch carried, so the page it opened keeps what this device can get back to: one row per
+ * address, never the gateway serving that page, and a row it already knows replaced only by one reached later.
+ */
+export function adoptGateways(entries: readonly GatewayEntry[], carried: readonly GatewayEntry[], current: string): GatewayEntry[] {
+  const kept = [...entries];
+  for (const entry of newestFirst(carried)) {
+    const url = normalizeGatewayAddress(entry.url);
+    if (!url || url === current) continue;
+    const name = entry.name.trim().slice(0, 60);
+    const known = kept.findIndex((candidate) => candidate.url === url);
+    if (known === -1) kept.push({ url, name, lastSeen: entry.lastSeen });
+    else if (entry.lastSeen > kept[known]!.lastSeen) kept[known] = { url, name, lastSeen: entry.lastSeen };
+  }
+  return newestFirst(kept);
 }
 
 /** How a row reads: the gateway serving the page, one this device reached, or one it cannot reach right now. */

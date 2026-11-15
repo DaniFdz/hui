@@ -3,13 +3,22 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
   addGateway,
+  adoptGateways,
+  blockedFromHttpsPage,
   editGateway,
+  GATEWAY_HANDOFF_PARAM,
   GATEWAY_LIST_VERSION,
+  gatewayHandoff,
+  gatewayHandoffAddress,
   gatewayName,
   gatewayViews,
+  isLoopbackGateway,
   lastSeenLabel,
+  loopbackRefusal,
   markGatewaySeen,
+  MAX_GATEWAY_HANDOFF,
   normalizeGatewayAddress,
+  readGatewayHandoff,
   readGatewayHandshake,
   readGatewayList,
   removeGateway,
@@ -132,12 +141,75 @@ test("last seen reads in minutes, hours and days", () => {
   assert.equal(lastSeenLabel(0, now), new Date(0).toISOString().slice(0, 10));
 });
 
-test("only HUI's own update snapshot counts as a handshake, and it carries the gateway's name", () => {
-  assert.deepEqual(readGatewayHandshake({ currentVersion: "0.1.6", job: null, name: "Studio", check: null }), { name: "Studio" });
+test("only HUI's own update snapshot counts as a handshake, and it carries the gateway's name", () => {  assert.deepEqual(readGatewayHandshake({ currentVersion: "0.1.6", job: null, name: "Studio", check: null }), { name: "Studio" });
   assert.deepEqual(readGatewayHandshake({ currentVersion: null, job: null }), { name: "" });
   assert.equal(readGatewayHandshake({ currentVersion: 6, job: null }), null);
   assert.equal(readGatewayHandshake({ job: null }), null);
   assert.equal(readGatewayHandshake([{ currentVersion: "0.1.6", job: null }]), null);
   assert.equal(readGatewayHandshake("<html>"), null);
   assert.equal(readGatewayHandshake(null), null);
+});
+
+test("a switch carries this device's rows in the address it opens, and reads back as saved", () => {
+  const carried: GatewayEntry[] = [
+    { url: "http://studio.local:8787", name: "Studio", lastSeen: 200 },
+    { url: "https://loft.test/panel", name: "", lastSeen: 100 },
+  ];
+  const address = gatewayHandoffAddress("https://loft.test/", carried);
+  assert.equal(address, `https://loft.test/#${gatewayHandoff(carried)}`);
+  assert.deepEqual(readGatewayHandoff(new URL(address).hash), carried);
+  // Nothing to carry leaves the address exactly as it was.
+  assert.equal(gatewayHandoffAddress("https://loft.test/", []), "https://loft.test/");
+  // A foreign, malformed or half-readable fragment adds nothing it cannot trust.
+  assert.deepEqual(readGatewayHandoff(""), []);
+  assert.deepEqual(readGatewayHandoff("#other=1"), []);
+  assert.deepEqual(readGatewayHandoff(`#${GATEWAY_HANDOFF_PARAM}=%7B`), []);
+  assert.deepEqual(readGatewayHandoff(`#${GATEWAY_HANDOFF_PARAM}=${encodeURIComponent("{}")}`), []);
+  assert.deepEqual(readGatewayHandoff(`#${GATEWAY_HANDOFF_PARAM}=${encodeURIComponent(JSON.stringify([
+    ["ftp://nope", "Nope", 1],
+    ["http://studio.local:8787/", "  Studio  ", 200],
+    ["http://studio.local:8787", "Duplicate", 300],
+    ["http://bare.local:8787", 7, "soon"],
+    "nope",
+  ]))}`), [
+    { url: "http://studio.local:8787", name: "Studio", lastSeen: 200 },
+    { url: "http://bare.local:8787", name: "", lastSeen: 0 },
+  ]);
+  // A page cannot be taught an endless list.
+  const many = Array.from({ length: MAX_GATEWAY_HANDOFF + 5 }, (_, index) => [`http://g${index}.local:8787`, `G${index}`, index] as const);
+  assert.equal(readGatewayHandoff(`#${GATEWAY_HANDOFF_PARAM}=${encodeURIComponent(JSON.stringify(many))}`).length, MAX_GATEWAY_HANDOFF);
+});
+
+test("adopting carried rows keeps every gateway, never this page's own, newest first", () => {
+  const here: GatewayEntry[] = [{ url: "http://studio.local:8787", name: "Studio", lastSeen: 400 }];
+  const carried: GatewayEntry[] = [
+    { url: CURRENT, name: "Here", lastSeen: 500 },
+    { url: "http://studio.local:8787", name: "Studio older", lastSeen: 100 },
+    { url: "https://loft.test", name: "Loft", lastSeen: 300 },
+  ];
+  assert.deepEqual(adoptGateways(here, carried, CURRENT), [
+    { url: "http://studio.local:8787", name: "Studio", lastSeen: 400 },
+    { url: "https://loft.test", name: "Loft", lastSeen: 300 },
+  ]);
+  // A row reached later on the other page replaces the one this page kept.
+  assert.deepEqual(adoptGateways(here, [{ ...carried[1]!, lastSeen: 900 }], CURRENT), [
+    { url: "http://studio.local:8787", name: "Studio older", lastSeen: 900 },
+  ]);
+});
+
+test("loopback is this device, and an https page cannot reach another machine's http gateway", () => {
+  for (const url of ["http://127.0.0.1:4173", "http://localhost:4173", "http://[::1]:4173", "http://127.8.0.1"]) {
+    assert.equal(isLoopbackGateway(url), true, url);
+  }
+  for (const url of ["http://100.76.75.106:4175", "https://geekom.tail.test:10447", "http://studio.local:8787"]) {
+    assert.equal(isLoopbackGateway(url), false, url);
+  }
+
+  // A browser blocks http from an https page, except at loopback, which it treats as this device.
+  assert.equal(blockedFromHttpsPage("http://100.76.75.106:4175", "https:"), true);
+  assert.equal(blockedFromHttpsPage("http://localhost:4173", "https:"), false);
+  assert.equal(blockedFromHttpsPage("https://geekom.tail.test:10447", "https:"), false);
+  assert.equal(blockedFromHttpsPage("http://100.76.75.106:4175", "http:"), false);
+
+  assert.equal(loopbackRefusal("http://127.0.0.1:4173"), "Nothing answered at http://127.0.0.1:4173. 127.0.0.1 and localhost name the device running this app, not another machine.");
 });

@@ -6,6 +6,7 @@
  */
 import {
   addGateway,
+  adoptGateways,
   editGateway,
   GATEWAY_LIST_KEY,
   markGatewaySeen,
@@ -59,6 +60,11 @@ export class GatewayStore {
   /** Records another sighting of a gateway and what it calls itself now. */
   markSeen(url: string, name?: string): readonly GatewayEntry[] {
     return this.#commit(markGatewaySeen(this.#entries, url, { name, lastSeen: this.#now() }, this.#current));
+  }
+
+  /** Takes the rows the switch that opened this page carried, so the gateway it left is in this page's list. */
+  adopt(carried: readonly GatewayEntry[]): readonly GatewayEntry[] {
+    return this.#commit(adoptGateways(this.#entries, carried, this.#current));
   }
 
   /** Renames a saved gateway and/or moves it to another address. A move records a fresh sighting; a rename keeps it. */

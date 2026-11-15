@@ -826,7 +826,11 @@ the dialog and is not stored. The stored name is this device's own label: a late
 reach refreshes when the gateway was last seen, never what it calls itself today.
 An address with no scheme means `http`, a query, fragment or credentials are
 refused rather than dropped, and duplicate addresses collapse into one row.
-Corrupt or absent storage reads as an empty list.
+Corrupt or absent storage reads as an empty list. A refusal names what it can
+tell: an address on `127.0.0.1` or `localhost` that answers nothing says that
+those names mean the device running the app, so a gateway on another machine
+needs its own address, and an `http://` address the browser would block from an
+`https://` page is refused with that reason instead of being probed at all.
 
 Adding and editing use one dialog with a name and an address. **Add gateway**
 opens it empty. Every row has **Edit**: a saved gateway's name and address are
@@ -839,12 +843,17 @@ connects sees.
 
 Switching navigates: the page opens the chosen gateway's own address, so
 everything on screen afterwards belongs to that gateway, with that gateway's
-sessions, settings and name. A saved gateway this page cannot reach reads as
-offline, with Retry, and it is kept rather than dropped: a gateway that is down
-today may be the one this device wants tomorrow. The list is presentation only —
-a per-device shortcut — and changes no PI configuration, credential, session or
-transcript. The sidebar footer shows the current gateway's name and opens the
-list, whose **Add a gateway…** opens that same dialog in place.
+sessions, settings and name. **The list travels with the switch**: the chosen
+address carries this device's rows in its fragment, which the page it opens
+saves and drops from its own address, so the gateway it left is one tap away and
+no address has to be retyped. A fragment never reaches a gateway or a log, and a
+phone hands its shell the plain address and keeps its own chooser instead. A
+saved gateway this page cannot reach reads as offline, with Retry, and it is
+kept rather than dropped: a gateway that is down today may be the one this
+device wants tomorrow. The list is presentation only — a per-device shortcut —
+and changes no PI configuration, credential, session or transcript. The sidebar
+footer shows the current gateway's name and opens the list, whose **Add a
+gateway…** opens that same dialog in place.
 
 ### Appearance belongs to the device that shows it (2026-11-16)
 
