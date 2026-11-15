@@ -1,9 +1,9 @@
-/** Pinning, from the row's button or the session menu, keeps a session first in every sidebar sort and on the Sessions page until it is unpinned, and Rename… saves a new title from the session header (SESS-031, SESS-032). */
+/** Pinning, from the wide layout's row button or from the session menu, keeps a session first in every sidebar sort and on the Sessions page until it is unpinned, and Rename… saves a new title from the session header (SESS-031, SESS-032, SHELL-056). */
 import { expect } from "e2e";
 import { expectChatTitle } from "./chat-header.ts";
 import { test } from "../../fixtures/hui.ts";
 
-test("the row's Pin session button pins a session and its Unpin session button unpins it", { tags: ["SESS-031"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the wide layout's row Pin session button pins a session and its Unpin session button unpins it", { tags: ["SHELL-056"], platforms: ["web"] }, async ({ screen, hui }) => {
   const zuluRow = screen.getByTestId("session-row").filter({ hasText: "Zulu pin" });
   await hui.createSession({ title: "Zulu pin" });
 

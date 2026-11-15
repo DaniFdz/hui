@@ -469,6 +469,25 @@ test("narrow navigation drawers start closed and share the reference breakpoint"
   assert.equal(APP_SHELL_DRAWER_MEDIA, "(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)");
 });
 
+test("a phone drawer keeps one row control so session names fit, and hosts the edge drag's states", () => {
+  const css = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
+  const opened = css.indexOf("@media (max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)");
+  const drawer = css.slice(opened, css.indexOf("@media (hover: none), (pointer: coarse)", opened));
+  assert.match(drawer, /width:\s*min\(86vw, 320px\)/);
+  // The row's one trailing control is its actions menu, which carries Pin session.
+  assert.match(drawer, /\.app-shell \.session-row-actions \.session-action--pin \{\s*display: none;/);
+  assert.match(drawer, /\.app-shell \.sidebar-recent-session\.session-row-host \{\s*--session-row-actions-reserve: 48px;/);
+  // A drag writes the drawer's own transform until it settles into a state.
+  assert.match(drawer, /\.app-shell\.shell--drawer-dragging \.shell-nav,\s*\.app-shell\.shell--drawer-dragging \.shell-nav-backdrop \{\s*transition: none;/);
+  assert.match(drawer, /\.app-shell\.shell--drawer-settling \.shell-nav[\s\S]{0,160}visibility: visible/);
+  // The wide layout keeps both row controls and none of the drag states.
+  const wide = css.slice(0, opened);
+  assert.doesNotMatch(wide, /session-action--pin \{\s*display: none/);
+  assert.doesNotMatch(wide, /shell--drawer-(dragging|settling)/);
+  // Every layout gives a one-line row's whole text slot to its name.
+  assert.match(css, /\.app-shell \.sidebar-recent-session--single-line \.sidebar-recent-session__details:empty \{\s*display: none;/);
+});
+
 test("the floating sidebar restore control matches the in-sidebar collapse control", () => {
   const css = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
   const rule = (selector: string) => {
