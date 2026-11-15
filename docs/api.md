@@ -1788,8 +1788,10 @@ and its browser runs on the host),
 `bot.section {botId}` (`{ section: string | null }`, the `bots` prompt section of
 a bot whose chat runs on that worker; any other bot is refused),
 `bot.project {botId}` (`{ cwd: string | null }`, the project directory of that
-bot's group, whose context file its chat's prompt carries; any other bot is
-refused, and a bot of no group gets `null`) and
+Chief of Staff's group, whose context file its chat's prompt carries; any other
+bot is refused, a bot the operator filed under a group is of none, and a bot of
+no group gets `null`; a directory typed from that machine's home (`~/work`) is
+expanded by the host against its own home) and
 `secret-request {key,params}`, whose answer `{status:"provided",label,value}`
 (or `cancelled`/`expired`) only the host sees: it writes the value to its own
 private file and gives the agent the path. The gateway answers it only for a
@@ -2208,7 +2210,7 @@ goal's status. It never prompts the watched session itself; the chief reads the 
 
 ### `POST /__hui/staff/chiefs`
 
-201 `BotResponse`. `{ group }`, nothing else: the custom session group's label (1-200 characters), which must name a configured group. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its own folder, its `group` set, and its chat in that folder (`<HUI config>/bots/<id>`) on the machine the group runs on: the group's `worker` when it names one, this gateway otherwise. The group's project directory is where the sessions its chief creates run, not where the chief's own chat works; the chief's prompt carries the project's context file (the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` there) beside its own folder's. The pack's routes are added to Settings when missing. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, an unknown group or an unknown field
+201 `BotResponse`. `{ group }`, nothing else: the custom session group's label (1-200 characters, trimmed as `POST /__hui/session-groups` trims it), which must name a configured group that states a project directory. Creates one bot named `Chief of Staff · <group>`, with the staff pack's SOUL.md and skills in its own folder, its `group` set, and its chat in that folder (`<HUI config>/bots/<id>`) on the machine the group runs on: the group's `worker` when it names one, this gateway otherwise. The group's project directory is where the sessions its chief creates run, not where the chief's own chat works; the chief's prompt carries the project's context file (the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` there) beside its own folder's. The pack's routes are added to Settings when missing. The pack's skills are written in the bot's own folder on the host that keeps it: its group's worker, or this gateway; a worker that keeps no bot skills gets no write. Asking again for the same group answers 200 with that chief, restoring it first if it was archived, so a group never has two. 400 for a missing group, an unknown group, a group with no project directory ("This group has no project directory. Set it in the group's New session defaults.") or an unknown field. A group that already has its chief still answers it, whatever its directory
 
 ### `GET /__hui/bots/:id/catalog`
 
@@ -3392,8 +3394,9 @@ Body: `{ "name": "Research" }`, or:
 { "name": "Research", "cwd": "/abs/path", "worker": "1f718aa4-b8b4-4284-957c-d59b716e8d9d", "workspaceMode": "worktree", "baseRef": "main" }
 ```
 
-Group names are trimmed, limited to 200 characters and unique; `ungrouped` is
-reserved. The optional defaults are validated and stored exactly as
+Group names are trimmed, limited to 200 characters, carry no control
+characters and are unique; `ungrouped` is reserved. The optional defaults are
+validated and stored exactly as
 [`PATCH /__hui/session-groups/:name`](#patch-__huisession-groupsname) defines
 them (`cwd` must be an existing local directory, or an absolute or `~/` path
 when a `worker` is named; the worker must exist; `workspaceMode` is `branch`,

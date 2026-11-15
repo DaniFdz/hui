@@ -14,6 +14,14 @@ export type RequestedWorker = { kind: "local" } | { kind: "worker"; worker: stri
 /** What a grouped chief reads when neither its group nor its call names the project its sessions belong to. */
 export const GROUP_PROJECT_MISSING = "This group has no project directory. Set it in the group's New session defaults.";
 
+/** The stored group a chief's call names, by its label: a label no group of the registry carries is refused, naming it,
+ * rather than placed anywhere as a group that lists no defaults. */
+export function groupNamed<Group extends { label: string }>(label: string, groups: readonly Group[]): Group {
+  const found = groups.find((group) => group.label === label);
+  if (!found) throw new Error(`No session group named ${label}.`);
+  return found;
+}
+
 /**
  * Where a session a chief starts works: its group's directory, or the one the call named. It is never the chief's own
  * folder, which belongs to the bot rather than to a project: a group that names neither refuses with

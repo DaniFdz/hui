@@ -52,6 +52,7 @@ const { optChatBotMemory } = await import("../bots/memory.ts");
 const { botChat } = await import("../../cli/bots.ts");
 const { HUI_SETTINGS_FILE, DEFAULT_SETTINGS } = await import("../hui-settings.ts");
 const { createStaffRoutes } = await import("./staff.ts");
+const { GROUP_PROJECT_MISSING } = await import("../sessions/group-session-defaults.ts");
 const { BotDoc } = await import("../bots/durable.ts");
 const { OptChatDoc } = await import("../runtimes/durable-optchat.ts");
 const { durableContext } = await import("../runtimes/durable-host.ts");
@@ -875,7 +876,8 @@ test("explicit memories are guarded, revisioned and freshly included without cha
 });
 
 test("a group gets one Chief of Staff with the pack's skills", async () => {
-  assert.equal((await call("/__hui/session-groups", "POST", { name: "Chief E2E" })).status, 200);
+  // A chief needs its group's project directory: that is where the sessions it starts run.
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "Chief E2E", cwd: workspace })).status, 200);
   const made = await call("/__hui/staff/chiefs", "POST", { group: "Chief E2E" });
   assert.equal(made.status, 201, JSON.stringify(made.body));
   const bot = botOf(made);
@@ -903,15 +905,25 @@ test("a chief needs a configured group, and the group is its only input", async 
   assert.match(String(directory.body["error"]), /Unknown chief field: cwd\./u);
 });
 
-test("a chief is created without a directory, on the machine its group runs on", async () => {
+test("a group with no project directory gets no chief either", async () => {
+  // The New group dialog refuses a chief without a working directory; the route refuses it by the same sentence, so a
+  // client that does not is answered the same way.
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "No project chief E2E" })).status, 200);
+  const refused = await call("/__hui/staff/chiefs", "POST", { group: "No project chief E2E" });
+  assert.equal(refused.status, 400, JSON.stringify(refused.body));
+  assert.equal(refused.body["error"], GROUP_PROJECT_MISSING);
+  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).filter((bot) => bot.group === "No project chief E2E"), [], "no chief was created");
+});
+
+test("a chief is created for a group with a project, on the machine its group runs on", async () => {
   const created: Record<string, unknown>[] = [];
   const routes = createStaffRoutes({
-    groups: async () => [{ label: "Remote project", worker: "w1" }],
+    groups: async () => [{ label: "Remote project", worker: "w1", cwd: "/srv/project" }],
     bots: async () => [],
     getBot: async () => { throw new Error("the chief already exists"); },
     createBot: async (body) => { created.push(body); return { id: "chief-remote" } as BotView; },
     restoreBot: async () => { throw new Error("the chief is archived"); },
-    skills: { files: true, write: async () => {}, read: async () => [] },
+    skills: () => ({ files: true, write: async () => {}, read: async () => [] }),
     readSettings: async () => DEFAULT_SETTINGS,
     writeSettings: async (settings) => settings,
     recordChief: async () => {},
@@ -942,9 +954,12 @@ test("a session a chief starts opens with its brief tagged from the chief, never
     [`[from @${chief.handle}] ${brief}`]);
 });
 
-test("a group with no project directory refuses a session rather than place it in its chief's folder", { timeout: 120_000 }, async () => {
-  assert.equal((await call("/__hui/session-groups", "POST", { name: "No project E2E" })).status, 200);
+test("a group that loses its project directory refuses a session rather than place it in its chief's folder", { timeout: 120_000 }, async () => {
+  // The chief exists because its group named a directory; clearing it later leaves a chief whose sessions have no place.
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "No project E2E", cwd: workspace })).status, 200);
   const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "No project E2E" }));
+  const cleared = await call(`/__hui/session-groups/${encodeURIComponent("No project E2E")}`, "PATCH", { cwd: "" });
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
   const before = (await readRegistry()).length;
   const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
     text: toolCalls({ name: "create_session", input: { prompt: "Work somewhere.", title: "Nowhere child" } }),
@@ -952,10 +967,24 @@ test("a group with no project directory refuses a session rather than place it i
     timeoutSeconds: 120,
   });
   assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
-  assert.match(String(asked.body["reply"]), /This group has no project directory\. Set it in the group's New session defaults\./u);
+  assert.ok(String(asked.body["reply"]).includes(GROUP_PROJECT_MISSING), String(asked.body["reply"]));
   const records = await readRegistry();
   assert.equal(records.length, before, "no session was created");
   assert.equal(records.some((record) => record.title === "Nowhere child"), false);
+});
+
+test("a chief naming a group that does not exist is refused by name", { timeout: 120_000 }, async () => {
+  assert.equal((await call("/__hui/session-groups", "POST", { name: "Named group E2E", cwd: workspace })).status, 200);
+  const chief = botOf(await call("/__hui/staff/chiefs", "POST", { group: "Named group E2E" }));
+  const before = (await readRegistry()).length;
+  const asked = await call(`/__hui/bots/${chief.id}/messages`, "POST", {
+    text: toolCalls({ name: "create_session", input: { prompt: "Work somewhere.", title: "Ghost child", group: "Ghost group E2E" } }),
+    wait: true,
+    timeoutSeconds: 120,
+  });
+  assert.equal(asked.body["status"], "answered", JSON.stringify(asked.body));
+  assert.ok(String(asked.body["reply"]).includes("No session group named Ghost group E2E."), String(asked.body["reply"]));
+  assert.equal((await readRegistry()).length, before, "no session was created");
 });
 
 test("a group chief's chat carries its project's context file, and what it spawns lands in that project", { timeout: 180_000 }, async () => {
@@ -986,6 +1015,21 @@ test("a group chief's chat carries its project's context file, and what it spawn
   const child = (await readRegistry()).find((record) => record.title === "Project child");
   assert.ok(child, JSON.stringify(asked.body));
   assert.equal(child.cwd, project);
+});
+
+test("an ordinary bot filed under a group carries its own folder's context, not that group's project", { timeout: 120_000 }, async () => {
+  const project = join(dir, "filed-bot-project");
+  await mkdir(project);
+  await writeFile(join(project, "AGENTS.md"), "FILED_GROUP_PROJECT_MARKER\n");
+  const group = "Filed bot E2E";
+  assert.equal((await call("/__hui/session-groups", "POST", { name: group, cwd: project })).status, 200);
+  // A group is an ordinary bot field: only a Chief of Staff's group lends its project to its chat.
+  const bot = botOf(await call("/__hui/bots", "POST", { name: "Filed bot", group, soul: "# Who I am\nFiled.\n" }));
+  assert.equal(bot.group, group);
+  assert.equal((await call(`/__hui/bots/${bot.id}/messages`, "POST", { text: "FILED_GROUP_TURN", wait: true })).body["status"], "answered");
+  const request = (await providerRequests()).findLast((entry) => JSON.stringify(entry.messages).includes("FILED_GROUP_TURN"));
+  assert.doesNotMatch(JSON.stringify(request?.system), /FILED_GROUP_PROJECT_MARKER/u, "its group's project is not its project");
+  await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE");
 });
 
 test("a chief's session follows its group's New session defaults", { timeout: 120_000 }, async () => {

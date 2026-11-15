@@ -582,13 +582,14 @@ export class WorkerHost {
    * stops at its answer (a bot of no group gets `cwd: null`). With none attached, or one that does not serve it, the
    * chat goes without its group's context file, as a gateway that keeps no session groups does. Asked before each of the
    * chat's model requests, so a gateway that has gone quiet (before the keep-alive drops it) delays a request by seconds
-   * at most. */
+   * at most. A group stores its remote directory as typed (`~/work`), and only this host knows its own home: it expands
+   * `~/` here, before the context file is read. */
   async #botProject(botId: string): Promise<string | undefined> {
     for (const peer of [...this.#peers]) {
       if (peer.closed) continue;
       // A refusal (another gateway's bot) rejects, and the loop asks the next one.
       const reply = await peer.request<{ cwd?: unknown }>("bot.project", { botId }, BOT_PROJECT_TIMEOUT_MS).catch(() => undefined);
-      if (reply !== undefined) return typeof reply.cwd === "string" ? reply.cwd : undefined;
+      if (reply !== undefined) return typeof reply.cwd === "string" ? resolveWorkingDirectory(reply.cwd, this.paths.home) : undefined;
     }
     return undefined;
   }

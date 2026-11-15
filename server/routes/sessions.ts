@@ -38,6 +38,8 @@ const SESSION_GROUP_ONE = /^\/__hui\/session-groups\/([^/]+)$/;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
+/** Characters no group label may carry: a label reaches bot names, menus and prompts. */
+const CONTROL = /[\p{Cc}]/u;
 
 /** Prompts may carry images inline, so they get their own, larger ceiling. */
 export const MAX_PROMPT_BYTES = 24 * 1024 * 1024;
@@ -54,11 +56,14 @@ export function foreverChatRefusal(handle: string | undefined, operation: "compa
   }[operation];
 }
 
-function sessionGroupName(body: Record<string, unknown>, key = "name"): string {
+/** A group's label, normalised the one way every route reads one: trimmed, 1-`SESSION_GROUP_MAX` characters, without
+ * control characters, and never the reserved `ungrouped`. Both the group routes and the chief route call this, so a
+ * group created here can always be named there. */
+export function sessionGroupName(body: Record<string, unknown>, key = "name"): string {
   if (typeof body[key] !== "string") throw new Error("A group name is required.");
   const value = body[key].trim();
-  if (!value || value.length > SESSION_GROUP_MAX) {
-    throw new Error(`A group name must be 1-${SESSION_GROUP_MAX} characters.`);
+  if (!value || value.length > SESSION_GROUP_MAX || CONTROL.test(value)) {
+    throw new Error(`A group name must be 1-${SESSION_GROUP_MAX} characters, without control characters.`);
   }
   if (value.toLocaleLowerCase() === "ungrouped") {
     throw new Error('"ungrouped" is reserved for sessions without a group.');

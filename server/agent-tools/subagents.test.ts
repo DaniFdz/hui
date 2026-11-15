@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS } from "../hui-settings.ts";
 import type { Settings } from "../api/settings.ts";
 import { SubagentService } from "./subagents.ts";
 import { GROUP_PROJECT_MISSING } from "../sessions/group-session-defaults.ts";
+import { chiefGroupLabel } from "../bots/chief-title.ts";
 import { workers, type RemoteSessionSink } from "../workers.ts";
 import { RuntimeUnreachableError } from "../runtimes/types.ts";
 import type {
@@ -390,6 +391,29 @@ test("a chief's child belongs to the project its group states, not to the chief'
   assert.deepEqual({ cwd: child(chief.id).cwd, worker: child(chief.id).worker }, { cwd: "/project/checkout", worker: "group-machine" });
   assert.deepEqual(made, [{ cwd: "/project/checkout", worker: "group-machine" }], "the worktree comes off the project, on its machine");
   assert.deepEqual({ cwd: child(helper.id).cwd, worker: child(helper.id).worker }, { cwd: helper.cwd, worker: undefined }, "a chat of no group is unchanged");
+});
+
+test("a bot filed under a group that is not a chief keeps its own directory and machine", async (t) => {
+  // Its chat runs on a worker of its own, which is the machine its children must stay on.
+  scriptedWorker();
+  const helper = record("helper", { bot: "release-helper", group: "Releases", cwd: "/home/op/work/releases", worker: "helper-machine" });
+  const state = harness([helper]);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(helper);
+  await waitForStatus(state.manager, helper.id, "idle");
+  // What services.ts answers for a bot's group: only a Chief of Staff's group lends its project and machine, so a bot
+  // the operator filed under one still starts its children in its own directory, on its own machine.
+  const bots = [{ id: "release-helper", title: "Release helper", group: "Releases" }];
+  const groups = [{ label: "Releases", cwd: "/project/releases", worker: "group-machine" }];
+  state.service.botGroup = async (botId) => {
+    const label = chiefGroupLabel(bots.find((bot) => bot.id === botId));
+    return label ? groups.find((group) => group.label === label) : undefined;
+  };
+  await state.service.initialize();
+  await state.service.handle(helper.id, "sessions_spawn", { task: "Write the release note" });
+  const child = state.records().find((item) => item.parentId === helper.id)!;
+  assert.deepEqual({ cwd: child.cwd, worker: child.worker }, { cwd: "/home/op/work/releases", worker: "helper-machine" },
+    "its own directory and machine, not its group's");
 });
 
 test("a chief whose group names no project does not spawn into its own folder", async (t) => {

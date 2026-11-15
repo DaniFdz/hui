@@ -342,6 +342,23 @@ test("a bot's chat here carries its group's project file, as the gateway answers
   }
 });
 
+test("a group's project named from the worker's home reaches its chief's prompt", async () => {
+  const project = join(root, "home-project");
+  await mkdir(project, { recursive: true });
+  await writeFile(join(project, "AGENTS.md"), "HOME_PROJECT_RULES\n");
+  // A group stores its remote directory as typed, and only this host knows what `~` names: the answer is expanded here,
+  // before the context file is read.
+  const gateway = await botGateway({ project: "~/home-project" });
+  try {
+    const chat = await gateway.peer.request<{ reference: string; cwd: string }>("bot.create", { botId: "bot-home-project", memory: { name: "Chief" }, soul: "# Who I am\nChief." });
+    const prompt = await chatPrompt(gateway.peer, "home-project-chat", chat);
+    assert.ok(prompt.includes(`<project_instructions path="${join(project, "AGENTS.md")}">`), prompt);
+    assert.match(prompt, /HOME_PROJECT_RULES/u);
+  } finally {
+    gateway.disconnect();
+  }
+});
+
 test("the host browses in its own browser, without a gateway: a browser call is answered here", async () => {
   const socket = connect(host.paths.socket);
   const peer = attachPeer(socket, socket);

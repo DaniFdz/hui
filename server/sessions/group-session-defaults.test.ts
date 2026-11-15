@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { GROUP_PROJECT_MISSING, groupSessionDefaults } from "./group-session-defaults.ts";
+import { GROUP_PROJECT_MISSING, groupNamed, groupSessionDefaults } from "./group-session-defaults.ts";
 
 const caller = { cwd: "/caller/checkout", worker: "caller-worker" };
 /** A group chief's own folder, which no session may land in: `/home/op/.config/hui/bots/<id>`. */
@@ -81,4 +81,12 @@ test("a group's Git defaults need its own directory to describe", () => {
     caller,
     requested: { cwd: "/another/checkout" },
   }), { cwd: "/another/checkout", worker: "caller-worker", worktree: false });
+});
+
+test("a chief's call names a stored group, and an unknown label is refused by name", () => {
+  const groups = [{ label: "Payments", cwd: "/project/payments" }, { label: "Research  Lab" }];
+  assert.deepEqual(groupNamed("Payments", groups), { label: "Payments", cwd: "/project/payments" });
+  assert.deepEqual(groupNamed("Research  Lab", groups), { label: "Research  Lab" }, "a label is matched as the registry keeps it");
+  assert.throws(() => groupNamed("Ghost group", groups), { message: "No session group named Ghost group." });
+  assert.throws(() => groupNamed("payments", groups), { message: "No session group named payments." }, "a label is matched exactly");
 });
