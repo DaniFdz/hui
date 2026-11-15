@@ -2,9 +2,9 @@
  * `GatewaysController` owns this device's gateway list for the page: the saved entries, the current gateway's own name
  * from its health route, which saved gateways this page could not reach, and the Add/Edit dialog with its probe. The
  * sidebar's footer opens Add, Settings → Gateway opens both Add and Edit, and switching navigates this page to the
- * chosen address — in HUI's desktop app that is the same window, because the shell is told which gateways this device
- * lists and is asked for the switch. The rules and the storage are in `lib/gateways/`; this controller only sequences
- * them and reports what to show.
+ * chosen address carrying this device's list, so the page it opens can switch back. In HUI's desktop app the switch is
+ * the same window, because the shell is told which gateways this device lists and is asked for it. The rules, the
+ * storage and the handoff are in `lib/gateways/`; this controller only sequences them and reports what to show.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { loadGatewayHealth } from "../api/control-surfaces.ts";
@@ -13,14 +13,22 @@ import { reportGatewaysToShell, switchGateway } from "../lib/gateways/desktop-ga
 import {
   GATEWAY_ALREADY_SAVED,
   GATEWAY_IS_CURRENT,
+  GATEWAY_MIXED_CONTENT,
   GATEWAY_NAME_UNSAVED,
   GATEWAY_NOT_AN_ADDRESS,
   GATEWAY_REFUSED,
+  blockedFromHttpsPage,
+  gatewayHandoffAddress,
+  gatewayName,
   gatewayViews,
+  isLoopbackGateway,
+  loopbackRefusal,
   normalizeGatewayAddress,
   type GatewayDialogState,
+  type GatewayEntry,
   type GatewayView,
 } from "../lib/gateways/gateway-list.ts";
+import { adoptGatewayHandoff } from "../lib/gateways/gateway-handoff.ts";
 import { GatewayStore } from "../lib/gateways/gateway-store.ts";
 import { nativeShell } from "../lib/native-shell.ts";
 
@@ -63,8 +71,15 @@ export class GatewaysController implements ReactiveController {
   }
 
   hostConnected(): void {
+    // Before the first render and before the shell hears the list: a switch's rows are this page's from its first draw.
+    this.adoptHandoff();
     void this.loadCurrentName();
     this.#report();
+  }
+
+  /** Takes the rows the switch that opened this page carried in its address, then leaves the address without them. */
+  adoptHandoff(): boolean {
+    return adoptGatewayHandoff(this.store);
   }
 
   hostDisconnected(): void {
@@ -157,7 +172,6 @@ export class GatewaysController implements ReactiveController {
     if (this.store.list().some((entry) => entry.url === url && entry.url !== dialog.originalUrl)) {
       return this.#refuse(dialog, address, GATEWAY_ALREADY_SAVED);
     }
-
     // A saved gateway renamed in place is about this device, not about whether the gateway is up right now.
     if (dialog.mode === "edit" && url === dialog.originalUrl) {
       this.store.edit(dialog.originalUrl, { url, name });
@@ -166,12 +180,22 @@ export class GatewaysController implements ReactiveController {
       return;
     }
 
+    // A request the browser will refuse before it leaves says why, rather than reading as a gateway that is down.
+    if (blockedFromHttpsPage(url, globalThis.location?.protocol ?? "")) {
+      return this.#refuse(dialog, address, GATEWAY_MIXED_CONTENT);
+    }
+
     this.dialog = { ...dialog, address, busy: true, error: "" };
     this.#changed();
     const answer = await this.#probe(url);
     if (!this.dialog) return;
     if (!answer.ok) {
-      this.dialog = { ...this.dialog, address, busy: false, error: GATEWAY_REFUSED };
+      this.dialog = {
+        ...this.dialog,
+        address,
+        busy: false,
+        error: isLoopbackGateway(url) ? loopbackRefusal(url) : GATEWAY_REFUSED,
+      };
       this.#changed();
       return;
     }
@@ -222,16 +246,26 @@ export class GatewaysController implements ReactiveController {
   }
 
   /**
-   * Switching opens the chosen gateway's own page. A phone must rebuild its native bridge on that origin rather than
-   * navigate the old WebView across origins (which would hand it to the external browser); HUI's desktop app shows it
-   * in the window it already has; a browser navigates this page.
+   * Switching opens the chosen gateway's own page, carrying this device's list in its address so the page it opens can
+   * get back here without retyping an address. A phone must rebuild its native bridge on that origin rather than
+   * navigate the old WebView across origins (which would hand it to the external browser), and its own chooser lists
+   * the gateways there; HUI's desktop app shows the chosen page in the window it already has; a browser navigates it.
    */
   async switchTo(url: string): Promise<void> {
     const address = normalizeGatewayAddress(url);
     if (!address) throw new Error(GATEWAY_NOT_AN_ADDRESS);
     const shell = nativeShell();
-    if (shell) await shell.connectGateway(address);
-    else switchGateway(address);
+    if (shell) {
+      await shell.connectGateway(address);
+      return;
+    }
+    switchGateway(gatewayHandoffAddress(address, this.#handoffEntries()));
+  }
+
+  /** The rows a switch carries: this page's gateway, just reached, then every gateway this device saved. */
+  #handoffEntries(): GatewayEntry[] {
+    const name = gatewayName(this.currentName, this.store.current);
+    return [{ url: this.store.current, name, lastSeen: Date.now() }, ...this.store.list()];
   }
 
   /** Tells HUI's desktop app which gateways this device lists, so switching to one keeps the app's window. */

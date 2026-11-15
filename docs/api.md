@@ -1030,12 +1030,22 @@ credentials and sends no cookies; `*` is refused by a browser for a request made
 with them, which is why it is safe here.
 
 Switching loads the chosen gateway's own UI; it does not make the old page a
-cross-origin API client. A browser navigates that page. The phone calls its
-existing `HuiGateway.connect({ url })` handoff so the shell remembers the chosen
-address and rebuilds its bridge on that origin. An unavailable or refused
-handoff reports an error in HUI instead of silently opening an external browser.
-The phone still remembers one connected address; its native saved-gateway
-chooser is separate from the page's origin-local list.
+cross-origin API client. A browser navigates that page. The address it opens
+carries this device's rows in its fragment (`#hui-gateways=…`, a percent-encoded
+array of `[url, name, lastSeen]`), and the page adopts them into its own list and
+replaces the fragment out of its address, so the gateway it left is one tap away.
+The fragment is never sent to a gateway: a fragment is not part of an HTTP
+request. Writing it is this device teaching itself its own list, so a page whose
+storage refuses the write still shows the rows for as long as it is open. The
+phone calls its existing `HuiGateway.connect({ url })` handoff with the plain
+address — its native chooser lists the gateways, and a WebView rebuilt on a new
+origin has no use for the fragment. An unavailable or refused handoff reports an
+error in HUI instead of silently opening an external browser. A refused probe
+says what the browser or the address determined: an `https://` page refuses an
+`http://` gateway that is not loopback before asking it, and a loopback address
+that answers nothing says that `127.0.0.1` and `localhost` are the device
+running the app. The phone still remembers one connected address; its native
+saved-gateway chooser is separate from the page's origin-local list.
 
 ### macOS power
 

@@ -24,10 +24,11 @@ test("a gateway is added from a dialog with a name and an address, and an unreac
   await expect(address).toHaveValue("");
 
   // An address that does not answer as HUI shows HUI's own wording in the dialog, keeps both values, and adds nothing.
+  // This one is loopback, so the wording says why a gateway on another machine is never at that address.
   await name.fill("Nothing here");
   await address.fill(refused.url);
   await dialog.getByRole("button", "Add gateway").tap();
-  await expect(dialog.getByText("This address doesn't answer as a HUI gateway.", { exact: true })).toBeVisible();
+  await expect(dialog.getByText(`Nothing answered at ${refused.url}. 127.0.0.1 and localhost name the device running this app, not another machine.`, { exact: true })).toBeVisible();
   await expect(dialog).toBeVisible();
   await expect(name).toHaveValue("Nothing here");
   await expect(address).toHaveValue(refused.url);
@@ -154,6 +155,7 @@ test("Edit changes a saved gateway's name and address, and only the current gate
 test("switching opens the chosen gateway in this page", { tags: ["SET-094"], platforms: ["web"] }, async ({ screen, hui }) => {
   // The same gateway at another origin: the switch must load a real HUI there, so this is a second origin, not a stub.
   const here = new URL(await hui.url());
+  const origin = here.origin;
   const there = `http://localhost:${here.port}`;
   const name = (await hui.api<{ name: string }>("GET", "/__hui/health")).name;
 
@@ -174,12 +176,13 @@ test("switching opens the chosen gateway in this page", { tags: ["SET-094"], pla
   await expect(trigger).toBeVisible();
   await expect(trigger).toContainText(name);
 
-  // The list belongs to the address it was saved from: this origin starts its own.
-  await trigger.tap();
-  await expect(screen.getByText("Current", { exact: true })).toBeVisible();
-  await expect(screen.getByText("127.0.0.1", { exact: true })).toHaveCount(0);
-  await trigger.tap();
-  await expect(screen.getByText("Add a gateway…", { exact: true })).toBeHidden();
+  // The list travelled with the switch: the gateway this page left is a row here, offering the way back, and the
+  // fragment it arrived in is not left in the address.
+  await expect.poll(() => hui.url()).not.toContain("hui-gateways");
+  await hui.open("/settings/connection");
+  const arriving = screen.getByTestId("settings-page");
+  await expect(arriving.getByText(origin, { exact: true })).toBeVisible();
+  await expect(arriving.getByRole("button", `Switch to ${name}`)).toBeVisible();
 
   // Back to the checkout's own origin for the tests that follow.
   await hui.open("/");

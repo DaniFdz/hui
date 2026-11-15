@@ -72,3 +72,23 @@ test("every change tells the page once", () => {
   store.add("http://loft.local:8787", "Loft");
   assert.equal(changes, 3);
 });
+
+test("the rows a switch carried join this page's list under its one key", () => {
+  const storage = memoryStorage({ [GATEWAY_LIST_KEY]: '{"version":1,"gateways":[{"url":"http://studio.local:8787","name":"Studio","lastSeen":100}]}' });
+  const store = new GatewayStore({ storage, current: CURRENT, now: () => 500 });
+  let changes = 0;
+  store.subscribe(() => { changes += 1; });
+  const adopted = store.adopt([
+    { url: "http://127.0.0.1:4173", name: "macbook", lastSeen: 400 },
+    { url: CURRENT, name: "Here", lastSeen: 900 },
+  ]);
+  assert.deepEqual(adopted.map((entry) => entry.url), ["http://127.0.0.1:4173", "http://studio.local:8787"]);
+  assert.equal(changes, 1, "one change tells the page once");
+  assert.deepEqual(JSON.parse(storage.saved[GATEWAY_LIST_KEY]!), {
+    version: 1,
+    gateways: [
+      { url: "http://127.0.0.1:4173", name: "macbook", lastSeen: 400 },
+      { url: "http://studio.local:8787", name: "Studio", lastSeen: 100 },
+    ],
+  });
+});

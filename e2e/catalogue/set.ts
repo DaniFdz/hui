@@ -923,7 +923,7 @@ const cases: UseCase[] = [
     id: "SET-093",
     title: "Add a gateway by its name and address",
     behaviour:
-      "Settings → Gateway lists **Gateways** above the gateway's own name: the gateway serving this page first, marked *Current*, then each gateway this device added with its name, its address and when it was last reached, or *Offline* with **Retry** when this page cannot reach it. **Add gateway** opens a dialog with **Name** and **Address**; its **Add gateway** probes the address and adds it under the name typed there, or the name the gateway gives when **Name** is empty. A gateway that refuses shows *This address doesn't answer as a HUI gateway.* in the dialog, an address with no scheme means http, an address with a query, fragment or credentials shows *Enter an http:// or https:// address.*, and nothing is added. Every row has **Edit**, and **Remove** forgets a saved gateway, never the current one.",
+      "Settings → Gateway lists **Gateways** above the gateway's own name: the gateway serving this page first, marked *Current*, then each gateway this device added with its name, its address and when it was last reached, or *Offline* with **Retry** when this page cannot reach it. **Add gateway** opens a dialog with **Name** and **Address**; its **Add gateway** probes the address and adds it under the name typed there, or the name the gateway gives when **Name** is empty. A gateway that refuses shows *This address doesn't answer as a HUI gateway.* in the dialog, an address with no scheme means http, an address with a query, fragment or credentials shows *Enter an http:// or https:// address.*, and nothing is added. An address on 127.0.0.1 or localhost that answers nothing says instead that those names mean the device running the app, and an http:// gateway is refused at once on an https:// page with *This page is on https, so it can't reach an http:// gateway. Use the gateway's own https:// address.* Every row has **Edit**, and **Remove** forgets a saved gateway, never the current one.",
     spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "docs/api.md#adding-a-gateway", "SPEC.md#installed-gateway"],
     surfaces: ["settings-page:connection", "route:GET /__hui/update", "route:GET /__hui/health"],
     journeys: ["gateway-settings"],
@@ -945,7 +945,7 @@ const cases: UseCase[] = [
     id: "SET-094",
     title: "Switch this page to another gateway",
     behaviour:
-      "**Switch** on a saved gateway, or choosing it in the sidebar footer's list, opens that address: this page becomes that gateway's own UI, and its footer names the gateway serving it as *Current*. The list belongs to the address it was saved from, so each gateway opened this way keeps its own.",
+      "**Switch** on a saved gateway, or choosing it in the sidebar footer's list, opens that address: this page becomes that gateway's own UI, and its footer names the gateway serving it as *Current*. The list travels with the switch — the new address carries this device's rows in its fragment, the page saves them and drops the fragment — so the gateway it left is one tap away and its address never has to be retyped.",
     spec: ["SPEC.md#a-device-keeps-a-list-of-gateways-2026-11-11", "SPEC.md#installed-gateway"],
     surfaces: ["settings-page:connection", "route:GET /__hui/update"],
     journeys: ["gateway-settings"],

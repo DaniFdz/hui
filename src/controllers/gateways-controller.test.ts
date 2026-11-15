@@ -1,8 +1,8 @@
 /** The gateways controller: the Add/Edit dialog's rules, the probe they depend on, and the current gateway's own name. */
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import type { GatewayProbe } from "../api/gateways.ts";
-import { GATEWAY_ALREADY_SAVED, GATEWAY_IS_CURRENT, GATEWAY_LIST_KEY, GATEWAY_NAME_UNSAVED, GATEWAY_NOT_AN_ADDRESS, GATEWAY_REFUSED, writeGatewayList, type GatewayEntry } from "../lib/gateways/gateway-list.ts";
+import { GATEWAY_ALREADY_SAVED, GATEWAY_IS_CURRENT, GATEWAY_LIST_KEY, GATEWAY_MIXED_CONTENT, GATEWAY_NAME_UNSAVED, GATEWAY_NOT_AN_ADDRESS, GATEWAY_REFUSED, writeGatewayList, type GatewayEntry } from "../lib/gateways/gateway-list.ts";
 import { GatewayStore, type GatewayStorage } from "../lib/gateways/gateway-store.ts";
 import { GatewaysController } from "./gateways-controller.ts";
 
@@ -179,4 +179,56 @@ test("a browser, which has no shell, keeps the list and reports nothing", () => 
   assert.deepEqual(store.list().map((entry) => entry.url), ["http://studio.local:8787"]);
   assert.equal(host.updates > 0, true, "the page still redraws its own list");
   controller.hostDisconnected();
+});
+
+test("an address nothing answered at loopback says that loopback is this device, not another machine", async () => {
+  const { controller, probes } = setup({ probe: async () => ({ ok: false }) });
+  controller.openAddGateway();
+  controller.setDialogName("macbook");
+  controller.setDialogAddress("127.0.0.1:4173");
+  await controller.submitGatewayDialog();
+  assert.deepEqual(probes, ["http://127.0.0.1:4173"]);
+  assert.equal(controller.dialog?.error, "Nothing answered at http://127.0.0.1:4173. 127.0.0.1 and localhost name the device running this app, not another machine.");
+  assert.equal(controller.dialog?.address, "127.0.0.1:4173");
+  assert.deepEqual(controller.store.list(), []);
+});
+
+test("an https page refuses an http gateway at once, because the browser would block the probe", async () => {
+  vi.stubGlobal("location", { protocol: "https:" });
+  const { controller, probes } = setup();
+  controller.openAddGateway();
+  controller.setDialogAddress("http://100.76.75.106:4175");
+  await controller.submitGatewayDialog();
+  assert.deepEqual(probes, [], "a request the browser blocks never leaves");
+  assert.equal(controller.dialog?.error, GATEWAY_MIXED_CONTENT);
+  assert.deepEqual(controller.store.list(), []);
+
+  // Loopback is exempt from that rule, so it is still probed and can be added.
+  controller.setDialogAddress("http://localhost:4173");
+  await controller.submitGatewayDialog();
+  assert.deepEqual(probes, ["http://localhost:4173"]);
+  assert.deepEqual(controller.store.list().map((entry) => entry.url), ["http://localhost:4173"]);
+});
+
+test("the page a switch opens adopts the rows its address carried before it draws them", () => {
+  const hash = `#hui-gateways=${encodeURIComponent(JSON.stringify([["http://127.0.0.1:4173", "macbook", 1_000]]))}`;
+  const replaced: string[] = [];
+  vi.stubGlobal("location", { protocol: "http:", hash, pathname: "/settings/connection", search: "" });
+  vi.stubGlobal("history", { state: null, replaceState: (_state: unknown, _title: string, url: string) => { replaced.push(url); } });
+  const { controller, store, host } = setup();
+  const before = host.updates;
+  controller.hostConnected();
+  assert.deepEqual(store.list(), [{ url: "http://127.0.0.1:4173", name: "macbook", lastSeen: 1_000 }]);
+  assert.deepEqual(replaced, ["/settings/connection"], "the address the app keeps has no handoff in it");
+  assert.equal(host.updates, before + 1, "the footer and Settings draw the carried rows at once");
+});
+
+test("an https page still renames a saved http gateway, because a rename asks nothing of it", async () => {
+  vi.stubGlobal("location", { protocol: "https:" });
+  const { controller, store, probes } = setup({ entries: [{ url: "http://100.76.75.106:4175", name: "Room", lastSeen: 900 }] });
+  controller.openEditGateway(controller.views()[1]!);
+  controller.setDialogName("Room gateway");
+  await controller.submitGatewayDialog();
+  assert.deepEqual(probes, [], "a rename in place needs no handshake");
+  assert.deepEqual(store.list(), [{ url: "http://100.76.75.106:4175", name: "Room gateway", lastSeen: 900 }]);
 });
