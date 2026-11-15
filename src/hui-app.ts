@@ -3358,10 +3358,12 @@ export class HuiApp extends HuiElement {
       onSearch: this.updateSearch,
     };
 
+    // New Session draws the launch form, not a chat pane, so it keeps the
+    // shell's topbar on a phone: merging the chrome would leave the page with
+    // no Open navigation control and no way back to the drawer.
     const chatLikeRoute =
       (this.view === "home" && Boolean(this.conversation.selected)) ||
-      this.view === "bot" ||
-      (this.view === "surface" && this.activePage?.id === "new-session");
+      this.view === "bot";
 
     return html`<div
       class="shell app-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${chatLikeRoute ? "shell--chat" : ""} ${chatLikeRoute && this.mobileNavLayout ? "shell--merged-chat-chrome" : ""} ${this.floatingCall() ? "shell--call-bar" : ""}"
