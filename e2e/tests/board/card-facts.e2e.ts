@@ -1,4 +1,4 @@
-/** A session card carries what its session needs: its status, its pull requests with their state breakdown, and its linked
+/** A session card carries what its session needs: its status, one state-colored chip per pull request, and its linked
  * Jira work item. Sort by Status, the default, runs Error, Waiting input, Done, Working and Idle, then a pinned card, then
  * the most recent; Sort by Last updated and Created order by that time instead (BOARD-002). The `github` fixture world
  * answers the pull request states, and the `jira` one the linked work item's key and status. */
@@ -31,7 +31,7 @@ const rowOf = async (world: World, title: string) => {
   return found;
 };
 
-test("a card reads its status, its pull requests with their breakdown and its Jira item, and Sort by Status, Last updated or Created orders the cards", { tags: ["BOARD-002"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a card reads its status, one chip per pull request with its state and its Jira item, and Sort by Status, Last updated or Created orders the cards", { tags: ["BOARD-002"], platforms: ["web"] }, async ({ screen, hui }) => {
   // A card's status comes from the session itself, so the five states are driven on one board of this world.
   const world = await hui.world("jira");
   // The world's own seed sessions would sit in the same lane; they are archived out of the default view.
@@ -100,7 +100,7 @@ test("a card reads its status, its pull requests with their breakdown and its Ji
   await sortBy("Created");
   await expect.poll(order).toEqual(["Idle pinned", "Error card", "Asking card", "Working card", "Finished card", "Idle newest", "Idle older"]);
 
-  // A card's pull requests carry their count and the states behind it, from the world whose fake gh answers them.
+  // A card carries one chip per pull request, named with its reference, state and title, from the world whose fake gh answers them.
   const github = await hui.world("github");
   await writeFile(join(github.runDir, "gh", "previews.json"), JSON.stringify({
     "acme/web#12": node(12, "Ship the checkout"),
@@ -116,5 +116,12 @@ test("a card reads its status, its pull requests with their breakdown and its Ji
 
   await hui.open(`${github.url}/kanban`);
   const other = screen.getByLabel("Kanban board").getByRole("listitem").filter({ hasText: "Pulled card" });
-  await expect(other.getByText("2 PRs · 1 open, 1 merged")).toBeVisible();
+  const open = other.getByRole("link", { name: "Pull request acme/web#12, open: Ship the checkout" });
+  const merged = other.getByRole("link", { name: "Pull request acme/web#13, merged: Retire the old form" });
+  await expect(open).toBeVisible();
+  await expect(open).toHaveAttribute("data-state", "open");
+  await expect(open.getByText("#12")).toBeVisible();
+  await expect(merged).toBeVisible();
+  await expect(merged).toHaveAttribute("data-state", "merged");
+  await expect(merged.getByText("#13")).toBeVisible();
 });

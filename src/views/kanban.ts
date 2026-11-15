@@ -9,6 +9,7 @@ import { live } from "lit/directives/live.js";
 import { KANBAN_COLUMNS, SESSION_STAGE_LABELS, SESSION_STAGES, type KanbanColumn } from "../lib/kanban.ts";
 import type { SessionStage } from "../api/schema/sessions.ts";
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
+import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
 import { jiraIssueAccessibleLabel, jiraStatusLabel } from "../lib/jira.ts";
 import type { SessionJiraIssue } from "../api/schema/sessions.ts";
 import type { BacklogItem, BacklogJiraState } from "../api/schema/backlog.ts";
@@ -25,7 +26,6 @@ import {
   kanbanDropMove,
   laneAccepts,
   kanbanBoard,
-  pullRequestSummary,
   kanbanStatus,
   KANBAN_STATUS_LABELS,
   normalizeKanbanOptions,
@@ -234,15 +234,25 @@ function jiraChip(issues: readonly SessionJiraIssue[] | undefined) {
   </a>`;
 }
 
-function pullRequestChip(session: SessionView) {
-  const summary = pullRequestSummary(session.pullRequests);
-  if (!summary) return nothing;
-  const first = session.pullRequests!.length === 1 ? session.pullRequests![0]! : undefined;
-  const label = session.pullRequests!.map(pullRequestAccessibleLabel).join("; ");
-  return first
-    ? html`<a class="kanban-card__prs" data-state=${summary.dominant} href=${first.url} target="_blank" rel="noopener noreferrer" draggable="false"
-        aria-label=${label} title=${label}>${icons.gitBranch}<span>${summary.label}</span></a>`
-    : html`<span class="kanban-card__prs" data-state=${summary.dominant} title=${label} aria-label=${label}>${icons.gitBranch}<span>${summary.label}</span></span>`;
+/** One chip per pull request the session created: its state's icon and the
+ * number, so the card says which work it produced. Each chip opens GitHub and
+ * carries the pull request for the shared hovercard. */
+function pullRequestChips(session: SessionView) {
+  const pullRequests = session.pullRequests ?? [];
+  if (!pullRequests.length) return nothing;
+  return html`<span class="kanban-card__prs" role="group"
+    aria-label=${`${pullRequests.length} pull request${pullRequests.length === 1 ? "" : "s"}`}>
+    ${pullRequests.map((pullRequest) => html`<a
+      class="session-pr-badge kanban-card__pr"
+      data-state=${pullRequest.state ?? "unknown"}
+      href=${pullRequest.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      draggable="false"
+      aria-label=${pullRequestAccessibleLabel(pullRequest)}
+      .pullRequest=${pullRequest}
+    >${pullRequestStateIcon(pullRequest.state)}<span class="kanban-card__pr-number">#${pullRequest.number}</span></a>`)}
+  </span>`;
 }
 
 function isInteractive(event: MouseEvent): boolean {
@@ -299,7 +309,7 @@ function card(session: SessionView, props: KanbanPageProps): TemplateResult {
         <span class="kanban-status kanban-status--${status}">
           <span class="kanban-status__dot" aria-hidden="true"></span>${KANBAN_STATUS_LABELS[status]}
         </span>
-        ${pullRequestChip(session)}
+        ${pullRequestChips(session)}
         ${jiraChip(session.jiraIssues)}
         <span class="kanban-card__updated" title=${`${ORIGIN_LABELS[session.stageOrigin ?? "default"]} · updated ${session.updatedAt}`}>
           ${session.stageOrigin === "operator" ? html`<span class="kanban-card__pin" aria-label="Stage placed by you">${icons.pin}</span>` : nothing}
