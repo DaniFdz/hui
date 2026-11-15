@@ -9401,6 +9401,9 @@
           "items": {
             "$ref": "#/$defs/ContextUsagePart"
           }
+        },
+        "sessionTotal": {
+          "$ref": "#/$defs/SessionSpend"
         }
       }
     },
@@ -10486,6 +10489,32 @@
         },
         "compaction": {
           "$ref": "#/$defs/RuntimeCompaction"
+        }
+      }
+    },
+    "SessionSpend": {
+      "type": "object",
+      "required": [
+        "tokens",
+        "usd",
+        "asOf"
+      ],
+      "properties": {
+        "tokens": {
+          "type": "number"
+        },
+        "usd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "asOf": {
+          "type": "number"
         }
       }
     },
@@ -15196,6 +15225,7 @@
       "SessionOpenResponse",
       "SessionQuestion",
       "SessionSnapshot",
+      "SessionSpend",
       "SessionStreamFrame",
       "SessionStreamSnapshot",
       "SessionThinkingRequest",

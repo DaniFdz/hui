@@ -109,6 +109,7 @@ import { workerAction } from "./api/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, closeNavigationDrawerOnBack, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
 import { nativeShell } from "./lib/native-shell.ts";
+import { endDrawerEdgeTouch, holdDrawerEdgeDrag, startDrawerSwipe, trackDrawerEdgeTouch } from "./views/shell-drawer-swipe.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
 import { renderSettingsPage, SETTINGS_PAGES, type SettingsPage } from "./views/settings.ts";
 import { clampSuggestionIndex, taskSuggestionPrompt } from "./lib/task-suggestions.ts";
@@ -3406,6 +3407,11 @@ export class HuiApp extends HuiElement {
     return html`<div
       class="shell app-shell ${this.mobileNavLayout ? "shell--mobile-nav" : ""} ${chatLikeRoute ? "shell--chat" : ""} ${chatLikeRoute && this.mobileNavLayout ? "shell--merged-chat-chrome" : ""} ${this.floatingCall() ? "shell--call-bar" : ""}"
       @keydown=${closeDrawerOnEscape}
+      @pointerdown=${startDrawerSwipe}
+      @touchstart=${trackDrawerEdgeTouch}
+      @touchmove=${holdDrawerEdgeDrag}
+      @touchend=${endDrawerEdgeTouch}
+      @touchcancel=${endDrawerEdgeTouch}
     >
       ${renderSidebar(props)}
       ${this.renderGroupActionDialog()}

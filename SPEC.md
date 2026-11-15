@@ -34,10 +34,14 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - The composer's context ring opens Context usage: the window occupancy over a stacked bar of what the context carries,
   and the estimated split between the system prompt, the tool definitions (with how many tools), the conversation (with
   how many messages) and the summaries compaction left; a bot's chat whose memory rewrites its request shows its memory's
-  view of the chat in place of that conversation. The latest run's tokens, cost and Compact now stay below it. The split
+  view of the chat in place of that conversation. Compact now stays below it, beside the spend: a Durable session's
+  Session total, what every model call of that conversation cost, its compaction summaries and tool-side calls included,
+  with when it was read; a runtime that reports no total shows the latest run's tokens and cost there instead. The split
   fits the occupancy the runtime reports and is labelled as an estimate; a runtime that reports no split draws the plain
   bar. A bot's chat also carries the bot's cost there, as its panel totals it (its chat, its subagents and its memory
-  summaries), or where it is kept when the bot runs on a worker.
+  summaries), or where it is kept when the bot runs on a worker. A Durable session's meter also carries Session total:
+  what every model call of that conversation cost, the compaction summaries and tool-side calls included, with when it
+  was read, since the per-run figure leaves them out.
 
 - Session search is the field directly below the sidebar header; it filters the
   session list and is not duplicated in the Sessions toolbar or a bottom footer.
@@ -54,7 +58,13 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the same boundary, so moving between the two never changes the column. The
   boundary is a separator named *Resize sidebar* that
   the arrow keys also move, 16px a press and 48px with Shift. Narrow screens
-  show the drawer at its own width, with no boundary.
+  show the drawer at 86% of the screen's width, up to 320px, with no boundary;
+  there a session row keeps one trailing control, its **Actions** menu, which
+  also carries **Pin session**, and gives its name the width that saves.
+  Dragging right from the screen's left edge pulls the drawer open with the
+  finger. Nothing covers the chat there, so a tap or a vertical scroll at the
+  edge works as before. **Open navigation** remains the click and keyboard
+  path.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
   system modes. Theme, color mode, accent, interface font, chat-prose font,
   terminal font, text size and the chat preferences persist per device, in the

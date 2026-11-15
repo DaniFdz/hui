@@ -291,7 +291,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-031",
     title: "Pin a session",
-    behaviour: "The row's Pin session button or the menu's Pin session pins it; pinned sessions stay first in every sort, show a Pinned chip on the Sessions page and remain pinned after a reload. Unpin session reverses it.",
+    behaviour: "**Pin session** in the row's **Actions** menu pins it; pinned sessions stay first in every sort, show a Pinned chip on the Sessions page and remain pinned after a reload. **Unpin session** reverses it. The wide layout's rows also show the pin as their own button (SHELL-056).",
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-registry", "session-menu-shortcuts"],
