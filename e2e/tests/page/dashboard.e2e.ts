@@ -27,6 +27,8 @@ test("the Dashboard is in the sidebar with the other destinations, by click and 
   const dashboard = screen.getByTestId("dashboard");
 
   await hui.open("/");
+  // A phone shows one screen, so the destinations live behind its drawer; on a wide screen this is a no-op.
+  await hui.sessionList();
   await expect(navigation.getByText("Dashboard")).toBeVisible();
   await navigation.getByText("Dashboard").tap();
   await expect(dashboard).toBeVisible();
@@ -41,6 +43,8 @@ test("the Dashboard is in the sidebar with the other destinations, by click and 
 });
 
 test("Dashboard queues a parked session and a running one, opens it, and charts the machines", { tags: ["PAGE-045"], platforms: ["web"] }, async ({ screen, hui }) => {
+  // The wide layout and the keyboard belong to the web's big screen; a phone stacks the page and has no keys.
+  const desktop = (await hui.viewportSize()).width > 900;
   const session = await hui.createSession({ title: "Dashboard running" });
   await hui.createSession({ title: "Dashboard parked" });
   await hui.open("/dashboard");
@@ -77,30 +81,34 @@ test("Dashboard queues a parked session and a running one, opens it, and charts 
   await expect(gateway.getByTestId(/^dashboard-metric-cpu$/u)).toContainText(/Load [\d.]+ · [\d.]+ · [\d.]+ · \d+ cores/u);
   await expect(gateway.getByTestId(/^dashboard-metric-memory$/u)).toContainText(/ of /u);
   await expect(gateway.getByTestId(/^dashboard-metric-gateway$/u)).toContainText(/CPU of one core/u);
-  const sessionsBox = await screen.getByTestId("dashboard-sessions").boundingBox();
-  const activityBox = await screen.getByTestId("dashboard-activity").boundingBox();
-  expect(sessionsBox !== null && activityBox !== null && activityBox.x >= sessionsBox.x + sessionsBox.width).toBe(true);
+  if (desktop) {
+    const sessionsBox = await screen.getByTestId("dashboard-sessions").boundingBox();
+    const activityBox = await screen.getByTestId("dashboard-activity").boundingBox();
+    expect(sessionsBox !== null && activityBox !== null && activityBox.x >= sessionsBox.x + sessionsBox.width).toBe(true);
+  }
 
   // One chart over every machine the chips show, for the metric and window their switches name.
   await expect(screen.getByLabel("Machines").getByRole("button", "This gateway")).toHaveAttribute("aria-pressed", "true");
   await expect(screen.getByLabel("Metric").getByRole("button", "CPU")).toHaveAttribute("aria-pressed", "true");
   await expect(screen.getByLabel("Window").getByRole("button", "5m")).toHaveAttribute("aria-pressed", "true");
   await expect(screen.getByTestId("dashboard-chart")).toContainText("This gateway");
-  // Hovering the plot names the time and every machine's reading at it and lets go when the pointer leaves; the
-  // keyboard reads the newest one and Escape lets go.
+  // Touching or pointing at the plot names the time and every machine's reading at it.
   const plot = screen.getByTestId("dashboard-chart-plot");
   const tip = screen.getByTestId("dashboard-chart-tip");
-  await plot.hover();
+  await plot.tap();
   await expect(tip).toContainText("This gateway");
   await expect(screen.getByTestId("dashboard-chart-crosshair")).toBeAttached();
-  await screen.getByTestId("dashboard-filters").hover();
-  await expect(tip).toBeHidden();
-  await plot.focus();
-  await plot.press("End");
-  await expect(tip).toContainText(/\d+%/u);
-  await expect(tip).toContainText("This gateway");
-  await plot.press("Escape");
-  await expect(tip).toBeHidden();
+  if (desktop) {
+    // The pointer leaves and the keyboard reads the newest reading, then Escape lets go.
+    await screen.getByTestId("dashboard-filters").hover();
+    await expect(tip).toBeHidden();
+    await plot.focus();
+    await plot.press("End");
+    await expect(tip).toContainText(/\d+%/u);
+    await expect(tip).toContainText("This gateway");
+    await plot.press("Escape");
+    await expect(tip).toBeHidden();
+  }
   await screen.getByLabel("Window").getByRole("button", "15m").tap();
   await expect(screen.getByLabel("Window").getByRole("button", "15m")).toHaveAttribute("aria-pressed", "true");
   await screen.getByLabel("Metric").getByRole("button", "Memory").tap();

@@ -210,7 +210,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#the-dashboard-is-on-for-everyone-2026-11-06"],
     surfaces: ["page:dashboard"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "PAGE-045",
@@ -219,7 +219,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#dashboard-is-a-queue-of-decisions-2026-11-14", "SPEC.md#the-dashboard-is-on-for-everyone-2026-11-06", "SPEC.md#dashboard-counts-the-sessions-in-flight-2026-10-27", "SPEC.md#dashboard-lists-show-three-rows-each-2026-10-27", "docs/api.md#shapes", "docs/api.md#post-__huisessionsidquestion", "docs/api.md#post-__huisessionsidresume", "docs/api.md#get-__huihost-metrics", "docs/api.md#get-__huihost-metricshistory", "docs/api.md#get-__huiworkersmetrics", "docs/api.md#get-__huiworkersmetricshistoryminutesids"],
     surfaces: ["page:dashboard", "route:GET /__hui/host-metrics", "route:GET /__hui/host-metrics/history", "route:GET /__hui/workers/metrics", "route:GET /__hui/workers/metrics/history", "route:POST /__hui/sessions/:id/question", "route:POST /__hui/sessions/:id/resume"],
     web: "required",
-    phone: "backlog",
+    phone: "required",
   },
   {
     id: "PAGE-047",
