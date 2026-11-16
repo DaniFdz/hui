@@ -1913,20 +1913,25 @@ and helper facts it summarizes. On a narrow pane or a phone the trigger keeps
 only its mark and count.
 
 Clicking the trigger opens one popover whose settled top-right corner is
-the trigger's; while it is out the pill is not drawn at all — the panel's header
-is the converted pill, its mark, word and count in the pill's slot and its
-chevron, now pointing up, the close — so the two boxes never show together. The
+the trigger's; while it is out the pill is not drawn at all — the panel's first
+line is its own title, the pill's mark, one state word and count set at the
+card's left padding on the same 12px the rows below use, with the chevron, now
+pointing up, at the box's right edge as the close — so the two boxes never show
+together and no word floats alone at the right. The
 pill morphs into the panel and back as one painted box: the panel's own width and
 height grow out of the pill's box — the trigger's top-right corner, the pill's
 round at the pill's height — and that corner stays put, so the box only grows
-left and down while only the panel is painted, its head keeping the pill's copy
-at the box's right edge and the rows inside it fading in near the end of the
-growth; a close draws the same box back into the pill before it hides, and the
-pill returns only once that close has landed, so the state never leaves the
-screen mid-morph. Its head reads what the pill reads — the mark, the state word
-and the count — and the chevron it turns into closes the panel and returns focus
-to the trigger; the trigger stays in place as the popover's anchor, unpainted,
-and gives its accessible name and aria-expanded back when the pill paints again.
+left and down while only the panel is painted and the rows inside it fade in near
+the end of the growth. Left-aligned copy inside a box growing to the left would
+travel with its left edge, so the title's copy is held while the box grows — the
+chevron carries the first frame — and written once the box has arrived, where it
+stays; a close drops it with the fold's first frame. A close draws the same box
+back into the pill before it hides, and the pill returns only once that close has
+landed, so the pill and the panel never show together. The head reads what the
+pill reads — the mark, the state word and the count — and the chevron it turns
+into closes the panel and returns focus to the trigger; the trigger stays in
+place as the popover's anchor, unpainted, and gives its accessible name and
+aria-expanded back when the pill paints again.
 Escape or an outside click closes it too. A window
 that asks for reduced motion gets no morph and opens and closes at once, and
 only a real open or close animates: a streamed frame that changes the plan or
@@ -1971,8 +1976,10 @@ operator already shut, so an arrival re-reads the window and the run instead of 
 preference. One control opens and closes it: a closed panel's pill opens it, and
 the chevron in the open panel's head closes it, with focus returning to the
 trigger. Because the pill becomes the panel, the head carries the state word and
-count the pill showed, and the pill itself is not drawn while the panel is out —
-whichever way it opened — so the state is read once on screen.
+count the pill showed — in the panel's own left-aligned title line, written once
+the box has arrived rather than gliding with the growth — and the pill itself is
+not drawn while the panel is out, whichever way it opened, so the state is read
+once on screen.
 
 ## Goals
 

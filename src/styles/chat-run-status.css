@@ -76,8 +76,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The pill and the head are one control: an open panel's header holds the pill's slot, and the trigger keeps its box only
-   as the popover's anchor and its aria-expanded, hidden by the show and painted again by the hide that ends a close. */
+/* The pill and the panel are one control: an open panel's first line carries the pill's mark, state word and count, and
+   the trigger keeps its box only as the popover's anchor and its aria-expanded, hidden by the show and painted again by
+   the hide that ends a close. */
 
 .chat-run-status__trigger-chevron {
   display: inline-flex;
@@ -184,48 +185,43 @@
   }
 }
 
-/* The head is the pill's copy, so it hugs the box's right edge: the pill is the right-hand end of the box while the box
-   grows leftward, and the state must not slide away from where the operator read it. Its padding is the pill's 9px plus
-   the chevron's slot, so the mark, word and count sit where the pill's do when the box is the pill's size, and the
-   chevron it turns into sits in that slot. */
+/* The panel's first line is its own title, not the pill's copy parked at the box's right edge: the mark, the one state
+   word and the count start at the card's left padding, on the same 12px the section rows below them use, and the close
+   chevron keeps the box's right edge in the pill's chevron slot (its 24px and 4px inset, so 28px of padding here).
+   Nothing else is added to that line: no eyebrow and no second title above the rows. */
 .chat-run-status__head {
   position: sticky;
   top: 0;
   z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
+  justify-content: flex-start;
   min-height: 28px;
-  padding: 0 28px 0 9px;
+  padding: 0 28px 0 12px;
   border-bottom: 1px solid var(--border);
   background: var(--card);
 }
 
-/* The body holds the panel's rows, and it is the part that arrives: the head is the pill's own copy and stays legible
-   from the box's first frame, while these rows fade in once the box has taken its room. Its overflow is clipped during
-   the morph by the panel itself, so a growing box never shows a row spilling past its edge. */
+/* The body holds the panel's rows, and it is the part that arrives with the box: they fade in once it has taken its room,
+   after the head's copy has been held back (it is left-aligned, so it waits for the box to arrive instead of travelling
+   with its left edge). Its overflow is clipped during the morph by the panel itself, so a growing box never shows a row
+   spilling past its edge. */
 .chat-run-status__body {
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
-/* The head repeats the pill's word and count in the pill's own type, so one control visibly becomes the other: the copy
-   reads the same weight, size and colour on both sides of the conversion, because a word that thickens as the box opens
-   reads as a different control rather than the same one grown. The tone colour stays on the mark. The word's overflow is
-   clipped so a narrow header, which has no room for it at the pill's size, can wipe it in once the box is wide enough. */
-.chat-run-status__head .chat-run-status__label {
-  overflow: hidden;
-}
-
+/* The head's copy is the panel's title in the pill's own type — one weight, size and colour on both sides of the
+   conversion, because a word that thickens as the box opens reads as a different control rather than the same one grown.
+   The tone colour stays on the mark. */
 .chat-run-status__head .chat-run-status__count {
   font-size: 12.5px;
 }
 
-/* The head's chevron is the pill's chevron, converted: it sits in the pill's slot at the right edge, points up while the
-   panel is out, and closes. The head keeps the pill's own padding plus that slot, so its mark, word and count sit where
-   the pill's did, and the chevron's hit area is 24px in place of the X it replaces. */
+/* The head's chevron is the pill's chevron, converted: it keeps the box's right edge and the pill's slot, points up while
+   the panel is out, and closes. It is the one part of the head painted from the first frame, which is why the title's copy
+   can wait for the box to arrive. */
 .chat-run-status__collapse {
   position: absolute;
   inset-inline-end: 4px;
@@ -659,6 +655,12 @@
 
   .chat-run-status__section {
     padding-inline: 11px;
+  }
+
+  /* The head's title keeps the rows' own left edge: a phone's tighter section padding moves both, so the panel's first
+     line still starts where the rows under it do. */
+  .chat-run-status__head {
+    padding-inline-start: 11px;
   }
 }
 

@@ -260,9 +260,9 @@ test("Task progress lives in the Run status popover and never draws in the trans
   });
   assert.match(html, /class="chat-run-status__trigger"[^>]*data-tone=running/u);
   assert.match(html, /aria-label=Run status: Working, 1 of 2 steps done/u);
-  // The pill and the panel head read one state: the word and the count are drawn twice, and while the panel is out the
-  // trigger itself is not painted — its box stays as the popover's anchor and its accessible name still carries the whole
-  // state. The morph is what makes that one control visible as both.
+  // The pill and the panel's title line read one state: the word and the count are drawn twice in the markup, and while
+  // the panel is out the trigger itself is not painted — its box stays as the popover's anchor and its accessible name
+  // still carries the whole state. The morph is what makes that one control visible as both.
   assert.equal(html.match(/>Working</gu)?.length, 2, "the pill and the panel head both carry the state word");
   assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__label">Working</u);
   assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__count">1\/2</u);
@@ -283,7 +283,8 @@ test("Task progress lives in the Run status popover and never draws in the trans
     "the wrapper Web Awesome draws around the panel paints no second card",
   );
   assert.match(panelStyles, /\.chat-run-status__panel \{[^}]*border: var\(--wa-panel-border-width\) solid var\(--wa-color-surface-border\);[^}]*box-shadow: var\(--wa-shadow-l\);/s, "the panel is the card, and it is the box the morph moves");
-  assert.match(panelStyles, /\.chat-run-status__head \{[^}]*justify-content: flex-end;/s, "the head's copy hugs the box's right edge, where the pill's copy was");
+  assert.match(panelStyles, /\.chat-run-status__head \{[^}]*justify-content: flex-start;/s, "the head is the panel's own title line, left-aligned rather than parked at the box's right edge");
+  assert.match(panelStyles, /\.chat-run-status__head \{[^}]*padding: 0 28px 0 12px;/s, "its left padding is the section rows' 12px, and its right keeps the close chevron's slot");
   assert.match(html, /data-testid="task-progress"/u);
   assert.match(html, /Check the build/u);
   assert.match(html, /1 of 2/u);

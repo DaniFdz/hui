@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { ProgressCard, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
 import { FINISHED_BATCH_VISIBLE_MS } from "../subagent-activity.ts";
-import { goalSectionStatus, goalStatusLabel, runStatus, runStatusMorphBoxes, runStatusMorphPhase, runStatusMorphTiming, runStatusPanel, runStatusPanelChosen, runStatusPanelOpen, runStatusTriggerPainted } from "./run-status.ts";
+import { goalSectionStatus, goalStatusLabel, runStatus, runStatusHeadCopyTiming, runStatusMorphBoxes, runStatusMorphPhase, runStatusMorphTiming, runStatusPanel, runStatusPanelChosen, runStatusPanelOpen, runStatusTriggerPainted } from "./run-status.ts";
 
 const now = Date.parse("2026-11-14T12:00:00.000Z");
 const startedAt = new Date(now - 60_000).toISOString();
@@ -191,8 +191,8 @@ test("the Run status popover opens by itself on a wide window while a run stream
 });
 
 test("the pill is drawn exactly while the panel is not out", () => {
-  // One box: an open panel's header is the converted pill, so the trigger keeps its box as the anchor and is not painted
-  // beside or above the panel. The pill returns only once a close has landed.
+  // One box: an open panel's title line carries the pill's copy, so the trigger keeps its box as the anchor and is not
+  // painted beside or above the panel. The pill returns only once a close has landed.
   assert.equal(runStatusTriggerPainted(true), false, "an open panel does not draw the pill");
   assert.equal(runStatusTriggerPainted(false), true, "the closed panel draws it again");
   // A wide window's own open hides it too, while a collapsed phone keeps the pill.
@@ -365,6 +365,17 @@ test("only a real open or close morphs, and a render that keeps the panel's stat
   // A window that asked for no motion never animates, whichever way the panel changed.
   assert.equal(runStatusMorphPhase(false, true, true), undefined);
   assert.equal(runStatusMorphPhase(true, false, true), undefined);
+});
+
+test("the head's copy is held across the growth and written once the box has arrived, so it never travels", () => {
+  // The head is the panel's title, left-aligned at the card's padding: inside a box that grows to the left, copy painted
+  // during the growth would glide with the box's left edge. It waits out the whole growth, then fades in on the box that
+  // has arrived — where its x stays still in every frame it is painted.
+  assert.deepEqual(runStatusHeadCopyTiming({ duration: 180 }, "opening"), { delay: 180, duration: 126 });
+  assert.deepEqual(runStatusHeadCopyTiming({ duration: 400 }, "opening"), { delay: 400, duration: 280 }, "the hold is the shape's own duration");
+  assert.equal(runStatusHeadCopyTiming({ duration: 0 }, "opening").duration, 1, "a fade no shorter than a frame");
+  // A close is the mirror: the copy goes with the fold's first frame, before the box starts moving back.
+  assert.deepEqual(runStatusHeadCopyTiming({ duration: 180 }, "closing"), { delay: 0, duration: 1 });
 });
 
 test("the morph's timing reads the shell's own tokens and refuses a duration it cannot use", () => {

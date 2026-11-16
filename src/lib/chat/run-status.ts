@@ -93,9 +93,9 @@ export function runStatusPanelOpen(state: RunStatusPanelState, input: { running:
 }
 
 /**
- * Whether the pill is painted, which is exactly while the panel is not out. An open panel's header holds the pill's slot
- * — its mark, word, count and the chevron that now closes — so the trigger keeps its box only as the popover's anchor and
- * as the aria-expanded state the close returns with, and the two boxes never show together.
+ * Whether the pill is painted, which is exactly while the panel is not out. An open panel's title line carries the pill's
+ * mark, word and count — with the chevron that now closes at the box's right edge — so the trigger keeps its box only as
+ * the popover's anchor and as the aria-expanded state the close returns with, and the two boxes never show together.
  */
 export function runStatusTriggerPainted(open: boolean): boolean {
   return !open;
@@ -183,6 +183,21 @@ export function runStatusMorphTiming(duration: string, easing: string): { durati
   const ms = raw.endsWith("ms") ? value : raw.endsWith("s") ? value * 1000 : Number.NaN;
   if (!Number.isFinite(ms) || ms <= 0) return undefined;
   return { duration: ms, easing: easing.trim() || "ease-out" };
+}
+
+/** How much of the morph's own duration the head's copy takes to fade in once the box has arrived. */
+const HEAD_COPY_ARRIVAL_SHARE = 0.7;
+
+/**
+ * When the panel head's copy is painted during a morph: a delay before its fade, and how long that fade lasts. The head is
+ * the panel's own title, left-aligned at the card's padding, and left-aligned copy inside a box that grows to the left
+ * travels with the box's left edge — a glide a title must not have. So an open holds the copy for the whole growth, the
+ * close chevron (already at the box's right edge) carrying the first frame, and fades it in when the box has arrived,
+ * where its x no longer moves; a close hides it with the fold's first frame, before the box starts moving back.
+ */
+export function runStatusHeadCopyTiming(timing: { duration: number }, phase: RunStatusMorphPhase): { delay: number; duration: number } {
+  if (phase === "closing") return { delay: 0, duration: 1 };
+  return { delay: timing.duration, duration: Math.max(1, Math.round(timing.duration * HEAD_COPY_ARRIVAL_SHARE)) };
 }
 
 /** The current step: the one in progress, else the first still to do, else the last one. */

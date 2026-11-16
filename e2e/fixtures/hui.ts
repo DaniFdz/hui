@@ -221,12 +221,16 @@ export type Hui = {
    * across a run cannot use.
    */
   contentOf(selector: string): Promise<string>;
+  /** A node's viewport rect by CSS selector, or null when the page has no such node: the settled geometry a layout
+   * assertion reads, rather than a screenshot. */
+  rect(selector: string): Promise<{ x: number; y: number; width: number; height: number } | null>;
   /**
    * A morph's frames: the box's painted rect and the trigger it starts and ends on, read on every animation frame while
    * `action` runs, from before the box's first frame until its own animation ends. No sleep: the read ends when the
-   * animation does.
+   * animation does. `track` follows nodes inside the box — one per selector — and each frame carries their own x, width
+   * and the opacity they are painted with, so a test can prove a word never travels while it is readable.
    */
-  morphFrames(box: string, trigger: string, action: () => Promise<void>): Promise<MorphFrame[]>;
+  morphFrames(box: string, trigger: string, action: () => Promise<void>, track?: readonly string[]): Promise<MorphFrame[]>;
   /** A task progress step's state, its `data-status`. */
   stepState(step: Locator, state: string): Promise<void>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
@@ -368,10 +372,11 @@ type CardChrome = { background: string; shadow: string; border: number; radius: 
 
 /** One animation frame of a morph: the box travelling and whether it is painted at all, and the trigger it starts and
  * ends on. A frame before the box's own show holds the panel's still-unpainted settled rect, so its paint is what tells a
- * drawn frame from that one. */
+ * drawn frame from that one. `tracked` holds each node a test asked to follow, with the opacity it is painted with. */
 type MorphFrame = {
   box: { width: number; height: number; right: number; top: number; painted: boolean };
   trigger: { width: number; right: number; top: number; painted: boolean };
+  tracked?: Record<string, { x: number; width: number; opacity: number }>;
 };
 
 /**
@@ -379,10 +384,16 @@ type MorphFrame = {
  * starts until its animation has ended: a test reads the frames between the two ends without sleeping. The read arms itself
  * on a quiet frame first, so a morph still in flight from before the action is never mistaken for this one.
  */
-const startMorphSampling = ({ box, trigger }: { box: string; trigger: string }) => {
+const startMorphSampling = ({ box, trigger, track = [] }: { box: string; trigger: string; track?: readonly string[] }) => {
   const state: { frames: MorphFrame[]; armed: boolean; started: boolean; done: boolean } = { frames: [], armed: false, started: false, done: false };
   (window as unknown as { huiMorphSampling?: typeof state }).huiMorphSampling = state;
   const painted = (node: Element) => getComputedStyle(node).visibility === "visible" && node.getClientRects().length > 0;
+  /** The opacity a node is painted with: its own and every ancestor's, so a fade on a container is read through its child. */
+  const opacityOf = (node: Element) => {
+    let opacity = 1;
+    for (let current: Element | null = node; current; current = current.parentElement) opacity *= Number(getComputedStyle(current).opacity);
+    return Math.round(opacity * 100) / 100;
+  };
   const round = (value: number) => Math.round(value * 10) / 10;
   const frame = () => {
     const panel = document.querySelector(box);
@@ -402,9 +413,17 @@ const startMorphSampling = ({ box, trigger }: { box: string; trigger: string }) 
     }
     const shape = panel.getBoundingClientRect();
     const pill = anchor.getBoundingClientRect();
+    const tracked: Record<string, { x: number; width: number; opacity: number }> = {};
+    for (const selector of track) {
+      const node = document.querySelector(selector);
+      if (!node) continue;
+      const rect = node.getBoundingClientRect();
+      tracked[selector] = { x: round(rect.x), width: round(rect.width), opacity: opacityOf(node) };
+    }
     state.frames.push({
       box: { width: round(shape.width), height: round(shape.height), right: round(shape.right), top: round(shape.top), painted: painted(panel) },
       trigger: { width: round(pill.width), right: round(pill.right), top: round(pill.top), painted: painted(anchor) },
+      ...(track.length > 0 ? { tracked } : {}),
     });
     if (running) state.started = true;
     else if (state.started) {
@@ -1063,8 +1082,8 @@ function huiTest(offline: boolean) {
         const parent = node.assignedSlot?.parentElement ?? node.parentElement;
         return { node: chrome(node), wrapper: parent && parent.getRootNode() instanceof ShadowRoot ? chrome(parent) : null };
       }, selector),
-      morphFrames: async (box, trigger, action) => {
-        await browser().evaluate(startMorphSampling, { box, trigger });
+      morphFrames: async (box, trigger, action, track = []) => {
+        await browser().evaluate(startMorphSampling, { box, trigger, track });
         // The read arms itself on the first frame the box is not animating: a morph this call is not about has to finish
         // before the frames it keeps can be attributed to `action`.
         await expect.poll(async () => (await browser().evaluate(readMorphSampling)).armed, { timeout: 10_000 }).toBe(true);
@@ -1078,6 +1097,12 @@ function huiTest(offline: boolean) {
         return frames;
       },
       contentOf: (selector) => browser().evaluate((query) => (document.querySelector(query)?.textContent ?? "").replace(/\s+/gu, " ").trim(), selector),
+      rect: (selector) => browser().evaluate((query) => {
+        const node = document.querySelector(query);
+        if (!node) return null;
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { x, y, width, height };
+      }, selector),
       stepState: (step, state) => expect(step).toHaveAttribute("data-status", state),
       tapAt,
       scrollSideways: async (target) => {

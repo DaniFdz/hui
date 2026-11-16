@@ -6,12 +6,16 @@
  * phone keeps the whole conversation. The pill morphs into the panel and back as
  * one painted box: the panel's width and height grow out of the trigger's box
  * from the same top-right corner, so the box only grows left and down, and the
- * pill is not drawn at all while the panel is out — its header is the converted
- * pill, its chevron now the close. The copy inside it fades in behind the box,
- * and a close draws the same box back into the pill before Web Awesome hides the
- * dialog; the pill returns once that close has landed. Escape and an outside
- * click close it too, and so does the phone header's session-list control, whose
- * tap the panel would otherwise take.
+ * pill is not drawn at all while the panel is out — the panel's first line is its
+ * own title, the pill's mark, one state word and count at the card's left padding,
+ * and its chevron, now the close, at the box's right edge. Left-aligned copy inside
+ * a box growing to the left would glide with that edge, so the title's copy is held
+ * while the box grows and written once it has arrived; the rows inside it fade in
+ * behind the box, and a close draws the same box back into the pill before Web
+ * Awesome hides the dialog, dropping the title with its first frame and painting the
+ * pill once that close has landed. Escape and an outside click close it too, and so
+ * does the phone header's session-list control, whose tap the panel would otherwise
+ * take.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
@@ -20,6 +24,7 @@ import { mountEditorAtEnd } from "../../lib/composer/textarea.ts";
 import {
   goalSectionStatus,
   runStatus,
+  runStatusHeadCopyTiming,
   runStatusMorphBoxes,
   runStatusMorphPhase,
   runStatusMorphTiming,
@@ -316,6 +321,8 @@ type RunStatusMorph = {
   panel: HTMLElement;
   trigger: HTMLElement;
   animations: readonly Animation[];
+  /** An open's head copy fading in once the box has landed: it is not cut with the shape, it is that arrival. */
+  arrival: Animation | undefined;
   phase: RunStatusMorphPhase;
 };
 
@@ -424,12 +431,13 @@ function runStatusBoxFrame(box: RunStatusMorphBox): Keyframe {
   return { left: `${box.x}px`, top: `${box.y}px`, width: `${box.width}px`, height: `${box.height}px`, borderRadius: `${box.radius}px` };
 }
 
-/** How much of a growing panel's copy is legible by the morph's progress: the box takes its room first. */
+/** How much of the panel's rows are legible by the morph's progress: the box takes its room first. The head's copy is
+ * not on this curve: left-aligned, it would travel with the box's left edge, so it waits for the box to arrive. */
 const CONTENT_SHOWN_FROM = 0.45;
 const CONTENT_SHOWN_TO = 0.75;
-/** The head's rule and the panel's X belong to the panel, not to the pill's box: they arrive after the copy has. */
+/** The head's rule and the close chevron belong to the panel, not to the pill's box: they arrive after the rows have. */
 const CHROME_SHOWN_FROM = 0.7;
-/** A closing box has to read as the pill before it arrives, so the copy and the chrome leave in its first quarter. */
+/** A closing box has to read as the pill before it arrives, so the rows and the chrome leave in its first quarter. */
 const CONTENT_HIDDEN_BY = 0.25;
 
 /** The inline styles a morph borrows, in the names CSS knows them by. */
@@ -451,29 +459,33 @@ function borrowRunStatusPanel(panel: HTMLElement): void {
 }
 
 /**
- * The pill is drawn exactly while the panel is not out: while it is, the panel's header holds the pill's slot and the
- * trigger keeps its box only as the anchor and for the name it gives back on close, so the two boxes never show together.
+ * The pill is drawn exactly while the panel is not out: while it is, the panel's own title line carries the pill's mark,
+ * word and count and the trigger keeps its box only as the anchor and for the name it gives back on close, so the two
+ * boxes never show together.
  */
 function paintRunStatusTrigger(trigger: HTMLElement, open: boolean): void {
   if (runStatusTriggerPainted(open)) trigger.style.removeProperty("visibility");
   else trigger.style.visibility = "hidden";
 }
 
-/** The copy over the box: faded by hand, because nothing inside the panel is scaled. */
-function runStatusContentMorphs(panel: HTMLElement, trigger: HTMLElement, timing: { duration: number; easing: string }, phase: RunStatusMorphPhase): Animation[] {
+/** The copy over the box: faded by hand, because nothing inside the panel is scaled. The head's copy is not in this fade:
+ * it is left-aligned, so it is held while the box grows and written once the box has arrived (see the arrival in
+ * `startRunStatusGrow`), and a close drops it with its own first frame. */
+function runStatusContentMorphs(panel: HTMLElement, timing: { duration: number; easing: string }, phase: RunStatusMorphPhase): { animations: Animation[]; arrival: Animation | undefined } {
   const options: KeyframeAnimationOptions = { duration: timing.duration, easing: "linear", fill: "both" };
   const animations: Animation[] = [];
   const body = panel.querySelector<HTMLElement>(".chat-run-status__body");
   const head = panel.querySelector<HTMLElement>(".chat-run-status__head");
   const chevron = panel.querySelector<HTMLElement>(".chat-run-status__collapse > svg");
+  let arrival: Animation | undefined;
   if (body) {
     animations.push(body.animate(phase === "opening"
       ? [{ opacity: 0 }, { opacity: 0, offset: CONTENT_SHOWN_FROM }, { opacity: 1, offset: CONTENT_SHOWN_TO }]
       : [{ opacity: 1 }, { opacity: 0, offset: CONTENT_HIDDEN_BY }, { opacity: 0 }], options));
   }
   if (chevron) {
-    // The head's chevron is the pill's, converted: it starts pointing the way the closed pill's did and flips to the close
-    // over the growth, so the first frame is still the pill the operator pressed.
+    // The close chevron: it starts pointing the way the closed pill's did and flips up over the growth, so the frames the
+    // copy is held for still carry the control the operator pressed.
     animations.push(chevron.animate(phase === "opening"
       ? [{ transform: "rotate(0deg)" }, { transform: "rotate(180deg)" }]
       : [{ transform: "rotate(180deg)" }, { transform: "rotate(0deg)" }], { duration: timing.duration, easing: timing.easing, fill: "both" }));
@@ -485,25 +497,18 @@ function runStatusContentMorphs(panel: HTMLElement, trigger: HTMLElement, timing
       ? [{ borderBottomColor: "transparent" }, { borderBottomColor: "transparent", offset: CHROME_SHOWN_FROM }, { borderBottomColor: rule }]
       : [{ borderBottomColor: rule }, { borderBottomColor: "transparent", offset: CONTENT_HIDDEN_BY }, { borderBottomColor: "transparent" }], options));
   }
-  animations.push(...runStatusHeadWordMorphs(head, trigger, timing, phase));
-  return animations;
-}
-
-/**
- * The head's word where the pill at its own size has none: a narrow header keeps only the pill's mark and count, so on
- * its first frame the head shows exactly that and the word wipes in once the box is wide enough to hold it. A trigger
- * that shows its word needs nothing — the head's copy already is what the pill's was.
- */
-function runStatusHeadWordMorphs(head: HTMLElement | null, trigger: HTMLElement, timing: { duration: number; easing: string }, phase: RunStatusMorphPhase): Animation[] {
-  const word = head?.querySelector<HTMLElement>(".chat-run-status__label");
-  const pillWord = trigger.querySelector<HTMLElement>(".chat-run-status__label");
-  if (!word || (pillWord && pillWord.getClientRects().length > 0)) return [];
-  const width = word.scrollWidth;
-  if (width <= 0) return [];
-  return [word.animate(phase === "opening"
-    ? [{ maxWidth: "0px", opacity: 0 }, { maxWidth: "0px", opacity: 0, offset: CONTENT_SHOWN_FROM }, { maxWidth: `${width}px`, opacity: 1 }]
-    : [{ maxWidth: `${width}px`, opacity: 1 }, { maxWidth: "0px", opacity: 0, offset: CONTENT_HIDDEN_BY }, { maxWidth: "0px", opacity: 0 }],
-  { duration: timing.duration, easing: "linear", fill: "both" })];
+  const copy = panel.querySelector<HTMLElement>(".chat-run-status__state");
+  if (copy) {
+    const headCopy = runStatusHeadCopyTiming(timing, phase);
+    const fade = copy.animate(phase === "opening"
+      ? [{ opacity: 0 }, { opacity: 1 }]
+      : [{ opacity: 1 }, { opacity: 0 }], { duration: headCopy.duration, delay: headCopy.delay, easing: timing.easing, fill: "both" });
+    // An open's copy is written after the growth, so it is kept out of the shape's own cut; a close's fade is one of the
+    // animations the fold draws and cancels.
+    if (phase === "opening") arrival = fade;
+    else animations.push(fade);
+  }
+  return { animations, arrival };
 }
 
 /** Stops whatever the last open or close started, leaving the panel its flow. */
@@ -513,6 +518,7 @@ function stopRunStatusMorph(state: RunStatusPopoverState): void {
   if (!morph) return;
   state.morph = undefined;
   for (const animation of morph.animations) animation.cancel();
+  morph.arrival?.cancel();
   returnRunStatusPanel(morph.panel);
 }
 
@@ -522,6 +528,7 @@ function releaseRunStatusPainted(state: RunStatusPopoverState): void {
   if (!painted) return;
   state.painted = undefined;
   for (const animation of painted.animations) animation.cancel();
+  painted.arrival?.cancel();
   returnRunStatusPanel(painted.panel);
   // The panel was out of the popover's flow while its box travelled, so the popup re-reads the anchor and the panel.
   painted.popover.popup?.reposition();
@@ -569,15 +576,28 @@ function startRunStatusGrow(popover: RunStatusPopover, state: RunStatusPopoverSt
   borrowRunStatusPanel(panel);
   panel.style.removeProperty("visibility");
   const shape = panel.animate([runStatusBoxFrame(boxes.from), runStatusBoxFrame(boxes.to)], { duration: timing.duration, easing: timing.easing, fill: "both" });
-  const morph: RunStatusMorph = { popover, panel, trigger, phase: "opening", animations: [shape, ...runStatusContentMorphs(panel, trigger, timing, "opening")] };
+  const content = runStatusContentMorphs(panel, timing, "opening");
+  const morph: RunStatusMorph = { popover, panel, trigger, phase: "opening", animations: [shape, ...content.animations], arrival: content.arrival };
   state.morph = morph;
   shape.onfinish = () => {
     if (state.morph !== morph) return;
-    state.morph = undefined;
+    // The box has arrived, so the panel's title is written where it stays: every other animation is cut, and only the
+    // panel gets its flow back — the pill is not painted again until a close has landed.
     for (const animation of morph.animations) animation.cancel();
-    // Only the panel gets its flow back: the pill is not painted again until a close has landed.
     returnRunStatusPanel(panel);
     popover.popup?.reposition();
+    const arrival = morph.arrival;
+    if (!arrival) {
+      state.morph = undefined;
+      return;
+    }
+    // The copy keeps fading in over the box it arrived on. A finished fade holds no effect of its own, so it is cancelled
+    // once it ends and the morph is done.
+    void arrival.finished.then(() => {
+      if (state.morph !== morph) return;
+      state.morph = undefined;
+      arrival.cancel();
+    }, () => {});
   };
 }
 
@@ -605,7 +625,8 @@ function startRunStatusReverse(popover: RunStatusPopover, state: RunStatusPopove
     panel,
     trigger,
     phase: "closing",
-    animations: [shape, ...runStatusContentMorphs(panel, trigger, timing, "closing")],
+    animations: [shape, ...runStatusContentMorphs(panel, timing, "closing").animations],
+    arrival: undefined,
   };
   state.morph = morph;
   shape.onfinish = () => {
@@ -655,8 +676,8 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, inpu
       // The show is dispatched before Web Awesome places its popup, so pinning the corner here decides the settled box and
       // the morph's first frame alike.
       if (anchor) pinRunStatusPanel(surface, anchor);
-      // The panel's header is the converted pill from here on: the pill itself is not drawn beside it, whether this open
-      // morphs or opens at once.
+      // The panel's own title line carries the pill's copy from here on: the pill itself is not drawn beside it, whether
+      // this open morphs or opens at once.
       if (anchor) paintRunStatusTrigger(anchor, true);
       // A popover Web Awesome shows while a close is drawing would steal the panel's box: the close owns it until it
       // ends.

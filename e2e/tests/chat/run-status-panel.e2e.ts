@@ -21,6 +21,13 @@ const TRIGGER = ".chat-run-status__trigger";
 const PANEL = "[data-testid=\"run-status\"]";
 const LABEL = `${TRIGGER} .chat-run-status__label`;
 const HEAD_LABEL = `.chat-run-status__head .chat-run-status__label`;
+/** The head's whole copy — mark, the one state word and the count — the panel's own title line. */
+const HEAD_COPY = `.chat-run-status__head .chat-run-status__state`;
+/** The mark that opens that title line, and the close chevron that keeps the box's right edge. */
+const HEAD_MARK = `.chat-run-status__head .chat-run-status__state-mark`;
+const CLOSE = ".chat-run-status__collapse";
+/** A section's own title, the rows' left padding the head's title has to line up with. */
+const SECTION_TITLE = `${PANEL} .chat-run-status__section-title`;
 
 test("Run status opens by itself while a run works, and its chevron folds it back", { tags: ["CHAT-090"], platforms: ["web"] }, async ({ screen, hui }) => {
   // HUI writes the plan with the utility model; this instance points it at the fixture.
@@ -114,7 +121,7 @@ test("Run status opens by itself while a run works, and its chevron folds it bac
   expect(chrome?.node?.border, "the panel is the card, and the box the morph moves").toBeGreaterThan(0);
   expect(chrome?.node?.shadow).not.toBe("none");
 
-  const closing = await hui.morphFrames(PANEL, TRIGGER, () => screen.getByLabel("Close run status").tap());
+  const closing = await hui.morphFrames(PANEL, TRIGGER, () => screen.getByLabel("Close run status").tap(), [HEAD_COPY, CLOSE]);
   const shrinking = closing.filter((frame) => frame.box.painted && frame.box.width > 0);
   const settledWidth = Math.max(...shrinking.map((frame) => frame.box.width));
   expect(shrinking.some((frame) => frame.box.width < settledWidth - 20), "the close draws the box shrinking").toBe(true);
@@ -127,12 +134,19 @@ test("Run status opens by itself while a run works, and its chevron folds it bac
   expect(Math.abs((arrived?.box.right ?? 0) - (arrived?.trigger.right ?? 0))).toBeLessThanOrEqual(1);
   expect(Math.abs((arrived?.box.top ?? 0) - (arrived?.trigger.top ?? 0))).toBeLessThanOrEqual(1);
   expect(arrived?.trigger.painted, "and the pill returns only once the close has landed").toBe(false);
+  // The title's copy is left-aligned, so a box folding back to the right would carry it with its left edge: it leaves with
+  // the fold's first frame instead, and the frames it is painted in all show it at the one x it had while settled.
+  const closeTitle = closing.filter((frame) => frame.box.painted && (frame.tracked?.[HEAD_COPY]?.opacity ?? 0) > 0.05);
+  expect(closeTitle.length, "the close paints the title before it goes").toBeGreaterThan(0);
+  const closeTitleX = closeTitle.map((frame) => frame.tracked?.[HEAD_COPY]?.x ?? Number.NaN);
+  expect(Math.max(...closeTitleX) - Math.min(...closeTitleX), "a closing box never carries the title's copy with it").toBeLessThanOrEqual(1);
+  expect(arrived?.tracked?.[HEAD_COPY]?.opacity ?? 0, "and the box arrives as the chevron alone").toBeLessThanOrEqual(0.05);
   await expect(popover).toBeHidden();
   await expect(trigger).not.toBeExpanded();
   // The pill paints again once the box has arrived.
   await expect(trigger).toBeVisible();
 
-  const opening = await hui.morphFrames(PANEL, TRIGGER, () => trigger.tap());
+  const opening = await hui.morphFrames(PANEL, TRIGGER, () => trigger.tap(), [HEAD_COPY, CLOSE]);
   const travelling = opening.filter((frame) => frame.box.painted && frame.box.width > 0);
   const start = travelling[0];
   expect(start?.trigger.painted, "from the first frame only the panel is painted").toBe(false);
@@ -148,6 +162,20 @@ test("Run status opens by itself while a run works, and its chevron folds it bac
     expect(Math.abs(frame.box.top - frame.trigger.top), `the frame ${frame.box.width}px wide keeps the pill's top edge`).toBeLessThanOrEqual(1);
     expect(Math.abs(frame.box.right - frame.trigger.right), `the frame ${frame.box.width}px wide keeps the pill's right edge`).toBeLessThanOrEqual(1);
   }
+  // No glide: the head's copy is left-aligned, so a box widening to the left would carry the word with its left edge. The
+  // copy is held for the whole growth instead — the chevron, already at the box's right edge, carries the first frame —
+  // and written once the box has arrived, where every painted frame shows it at the same x.
+  const firstDrawn = opening.filter((frame) => frame.box.painted)[0];
+  expect(firstDrawn?.tracked?.[CLOSE]?.opacity ?? 0, "the chevron carries the first frame").toBeGreaterThan(0.5);
+  expect(firstDrawn?.tracked?.[HEAD_COPY]?.opacity ?? 0, "while the title waits for the box").toBeLessThanOrEqual(0.05);
+  for (const frame of travelling) {
+    const copy = frame.tracked?.[HEAD_COPY]?.opacity ?? 0;
+    if (frame.box.width < settledWidth - 2) expect(copy, `the ${frame.box.width}px-wide box paints no travelling title`).toBeLessThanOrEqual(0.05);
+  }
+  const openingTitle = opening.filter((frame) => frame.box.painted && (frame.tracked?.[HEAD_COPY]?.opacity ?? 0) > 0.05);
+  expect(openingTitle.length, "the title's copy is written once the box has arrived").toBeGreaterThan(0);
+  const openingTitleX = openingTitle.map((frame) => frame.tracked?.[HEAD_COPY]?.x ?? Number.NaN);
+  expect(Math.max(...openingTitleX) - Math.min(...openingTitleX), "and it never travels while the box grows").toBeLessThanOrEqual(1);
   // And the settled panel is that corner, covering the pill's whole box: no fragment of the pill is left above it.
   const settled = await popover.boundingBox();
   const pill = await trigger.boundingBox();
@@ -157,6 +185,21 @@ test("Run status opens by itself while a run works, and its chevron folds it bac
   expect(Math.abs(((settled?.x ?? 0) + (settled?.width ?? 0)) - ((pill?.x ?? 0) + (pill?.width ?? 0))), "and its right edge is the trigger's").toBeLessThanOrEqual(1);
   expect((settled?.x ?? Number.POSITIVE_INFINITY), "the panel reaches left of the pill").toBeLessThan((pill?.x ?? 0) - 20);
   expect((settled?.y ?? 0) + (settled?.height ?? 0), "and its box covers the pill's").toBeGreaterThanOrEqual((pill?.y ?? 0) + (pill?.height ?? 0));
+  // The settled panel reads like a card: its first line is the panel's own title — the mark, the one state word and the
+  // count — left-aligned on the card's padding, where the section rows below it start, with the close chevron keeping the
+  // box's right edge. No word floats alone at the right, and no second title line is added above or below it.
+  const headMark = await hui.rect(HEAD_MARK);
+  const headWord = await hui.rect(HEAD_LABEL);
+  const rowTitle = await hui.rect(SECTION_TITLE);
+  const closeChevron = await hui.rect(CLOSE);
+  expect(headMark, "the head draws its mark").not.toBeNull();
+  expect(rowTitle, "a section row draws its title").not.toBeNull();
+  expect(closeChevron, "the close sits in the head").not.toBeNull();
+  expect(Math.abs((headMark?.x ?? 0) - (rowTitle?.x ?? 0)), "the head's mark sits on the rows' own left padding").toBeLessThanOrEqual(1);
+  expect((headWord?.x ?? 0) - (headMark?.x ?? 0), "the word follows its mark inside the card").toBeGreaterThan(4);
+  expect(((settled?.x ?? 0) + (settled?.width ?? 0)) - ((headWord?.x ?? 0) + (headWord?.width ?? 0)), "and it stands clear of the box's right edge").toBeGreaterThan(60);
+  expect(((settled?.x ?? 0) + (settled?.width ?? 0)) - ((closeChevron?.x ?? 0) + (closeChevron?.width ?? 0)), "the close chevron keeps the box's right edge").toBeLessThanOrEqual(6);
+  await expect(popover.getByText("Working", { exact: true })).toHaveCount(1);
   await expect(popover).toBeVisible();
   await expect(trigger).toBeExpanded();
   await screen.getByLabel("Close run status").tap();
