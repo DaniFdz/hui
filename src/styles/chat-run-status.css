@@ -131,21 +131,29 @@
   color: var(--ok);
 }
 
-/* The popover's shadow body owns the padding; the panel supplies its own so
-   section rules run edge to edge. HUI owns the open and close: Web Awesome's own
-   scale and fade would fight the morph and hide the panel before a fold could copy
-   it, so its show and hide are instant and the trigger's word bridges the instant. */
+/* HUI owns the open and close: Web Awesome's own scale and fade would fight the morph and hide the panel before its box
+   could travel, so its show and hide are instant and the morph draws them. */
 .chat-run-status__popover {
   --max-width: min(420px, calc(100vw - 16px));
   --show-duration: 0ms;
   --hide-duration: 0ms;
-  --wa-space-l: 0;
-  --wa-color-surface-default: var(--card);
-  --wa-color-surface-border: var(--border-strong);
-  --wa-panel-border-radius: 14px;
+}
+
+/* Web Awesome's shadow body is a card of its own: its theme paints a surface, a border and a large shadow on the
+   wrapper the panel sits in. The panel is the one painted card the morph grows, so the wrapper paints nothing at all and
+   the chrome lives on the panel: two identical cards, one moving inside the other, is a morph nobody sees. */
+.chat-run-status__popover::part(body) {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .chat-run-status__panel {
+  /* The card's own tokens sit on the panel, the box the morph travels and the one a close draws back into the pill. */
+  --wa-color-surface-border: var(--border-strong);
+  --wa-panel-border-radius: 14px;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -157,27 +165,36 @@
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  /* The inner scroll box carries the body's corner radius: its background and sticky header would otherwise paint
-     four square corners over the popover's rounded border. */
-  border-radius: 14px;
+  /* The inner scroll box carries the card's corner: its background and sticky header would otherwise paint four square
+     corners over the rounded border. */
+  border: var(--wa-panel-border-width) solid var(--wa-color-surface-border);
+  border-radius: var(--wa-panel-border-radius);
   background: var(--card);
+  box-shadow: var(--wa-shadow-l);
   color: var(--text);
 }
 
+/* The head is the pill's copy, so it hugs the box's right edge: the pill is the right-hand end of the box while the box
+   grows leftward, and the state must not slide away from where the operator read it. Its padding is the pill's 9px plus
+   the chevron's slot, so the mark, word and count sit where the pill's do when the box is the pill's size, and the X
+   arrives in that slot once the box has grown. */
 .chat-run-status__head {
   position: sticky;
   top: 0;
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 2px 12px;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 30px 0 9px;
   border-bottom: 1px solid var(--border);
   background: var(--card);
 }
 
-/* The content layer the morph crossfades: the panel's own surface and corner stay put while the state word arrives. */
+/* The body holds the panel's rows, and it is the part that arrives: the head is the pill's own copy and stays legible
+   from the box's first frame, while these rows fade in once the box has taken its room. Its overflow is clipped during
+   the morph by the panel itself, so a growing box never shows a row spilling past its edge. */
 .chat-run-status__body {
   display: flex;
   flex-direction: column;
@@ -185,25 +202,25 @@
 }
 
 /* The head repeats the pill's word and count in the pill's own type, so one control visibly becomes the other. The tone
-   color stays on the mark; the word is the same text in both places. */
+   color stays on the mark; the word is the same text in both places. The word's overflow is clipped so a narrow header,
+   which has no room for it at the pill's size, can wipe it in once the box is wide enough. */
 .chat-run-status__head .chat-run-status__label {
+  overflow: hidden;
   color: var(--text-strong);
   font-size: 12.5px;
   font-weight: 600;
 }
 
 .chat-run-status__head .chat-run-status__count {
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
-/* The copy a close folds back into the pill: a picture of the panel, fixed where the panel was, above the header. */
-.chat-run-status__ghost {
-  z-index: 2000;
-  overflow: hidden;
-}
-
-/* The X sits at the head's right edge; the trigger already carries the chevron that says the panel is open. */
+/* The X sits in the pill's chevron slot, which the head keeps clear at its right edge; the trigger already carries the
+   chevron that says the panel is open. */
 .chat-run-status__close {
+  position: absolute;
+  inset-inline-end: 6px;
+  top: 2px;
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -212,7 +229,6 @@
   min-width: 24px;
   height: 24px;
   min-height: 24px;
-  margin-inline-start: auto;
   padding: 0;
   border-radius: var(--radius-sm);
   color: var(--muted);

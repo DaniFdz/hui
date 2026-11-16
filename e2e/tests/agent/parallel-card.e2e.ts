@@ -67,7 +67,7 @@ test("helpers wait in one Helpers section that counts them and lists them, witho
   // The timed-out child's completion starts the parent's own turn after the spawn's run ends. Wait for that turn's own
   // reply — the only proof it has happened and settled — so the read below is made on a settled batch.
   await expect(transcript.getByText("Parent reviewed 1 subagent result(s) against the task and continued on its own.")).toBeVisible();
-  const timedOutHelpers = await openSettledHelpers(screen, "Timed out helper");
+  const timedOutHelpers = await openSettledHelpers(hui, screen, "Timed out helper");
   await expect(timedOutHelpers.getByText("0 completed · 1 failed or stopped")).toBeVisible({ timeout: 90_000 });
   const timedOut = timedOutHelpers.getByRole("button", { name: /^Open subagent Timed out helper(, .+)?$/u });
   await expect(timedOut).toContainText("The subagent exceeded 1 seconds.");

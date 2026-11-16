@@ -16,6 +16,8 @@ const askDatabase = `E2E_CALL:${Buffer.from(JSON.stringify({ name: "ask_user_que
 }] } })).toString("base64url")}`;
 /** The pill's box and the words it shows: read by selector, because a clipped label carries no name of its own. */
 const TRIGGER = ".chat-run-status__trigger";
+/** The panel itself: the only card the morph paints. */
+const PANEL = "[data-testid=\"run-status\"]";
 const LABEL = `${TRIGGER} .chat-run-status__label`;
 const HEAD_LABEL = `.chat-run-status__head .chat-run-status__label`;
 
@@ -92,11 +94,38 @@ test("Run status opens by itself while a run works, and its X and trigger are on
   await expect(popover).toBeVisible();
 
   // The trigger is one toggle: it closes the open panel and opens the closed one, and the chevron points up while the
-  // panel is out. Close run status closes it too and gives focus back.
-  await trigger.tap();
+  // panel is out. Close run status closes it too and gives focus back. Each direction draws one painted card — the panel
+  // itself — whose width, height and corner grow out of the trigger's own box, read here from the frames the browser drew.
+  const chrome = await hui.cardChrome(PANEL);
+  expect(chrome?.wrapper).not.toBeNull();
+  expect(chrome?.wrapper?.background, "Web Awesome's shadow body paints no card of its own").toMatch(/^(transparent|rgba\(0, 0, 0, 0\))$/u);
+  expect(chrome?.wrapper?.shadow, "and casts no shadow of its own").toBe("none");
+  expect(chrome?.wrapper?.border, "nor draws a border of its own").toBe(0);
+  expect(chrome?.node?.border, "the panel is the card, and the box the morph moves").toBeGreaterThan(0);
+  expect(chrome?.node?.shadow).not.toBe("none");
+
+  const closing = await hui.morphFrames(PANEL, TRIGGER, () => trigger.tap());
+  const shrinking = closing.filter((frame) => frame.box.width > 0);
+  const settledWidth = Math.max(...shrinking.map((frame) => frame.box.width));
+  expect(shrinking.some((frame) => frame.box.width < settledWidth - 20), "the close draws the box shrinking").toBe(true);
+  const arrived = shrinking.at(-1);
+  expect(Math.abs((arrived?.box.width ?? 0) - (arrived?.trigger.width ?? 0)), "it arrives as the pill's own box").toBeLessThanOrEqual(1);
+  expect(Math.abs((arrived?.box.right ?? 0) - (arrived?.trigger.right ?? 0))).toBeLessThanOrEqual(1);
+  expect(Math.abs((arrived?.box.top ?? 0) - (arrived?.trigger.top ?? 0))).toBeLessThanOrEqual(1);
   await expect(popover).toBeHidden();
   await expect(trigger).not.toBeExpanded();
-  await trigger.tap();
+  // The pill paints again once the box has arrived.
+  await expect(trigger).toBeVisible();
+
+  const opening = await hui.morphFrames(PANEL, TRIGGER, () => trigger.tap());
+  const travelling = opening.filter((frame) => frame.box.width > 0);
+  const start = travelling[0];
+  expect(start?.trigger.painted, "from the first frame only the panel is painted").toBe(false);
+  expect(Math.abs((start?.box.width ?? 0) - (start?.trigger.width ?? 0)), "the first frame is the pill's own width").toBeLessThanOrEqual(1);
+  expect(Math.abs((start?.box.right ?? 0) - (start?.trigger.right ?? 0)), "on the pill's own top-right corner").toBeLessThanOrEqual(1);
+  expect(Math.abs((start?.box.top ?? 0) - (start?.trigger.top ?? 0))).toBeLessThanOrEqual(1);
+  expect(travelling.some((frame) => frame.box.width > (start?.trigger.width ?? 0) + 20 && frame.box.width < settledWidth - 20), "the box travels between the two").toBe(true);
+  expect(Math.max(...travelling.map((frame) => frame.box.width)), "and ends on the panel's settled width").toBeGreaterThanOrEqual(settledWidth - 1);
   await expect(popover).toBeVisible();
   await expect(trigger).toBeExpanded();
   await screen.getByLabel("Close run status").tap();

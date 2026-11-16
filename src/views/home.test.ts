@@ -273,7 +273,15 @@ test("Task progress lives in the Run status popover and never draws in the trans
     "the open panel hides the trigger's copy by opacity alone, never by display",
   );
   assert.match(panelStyles, /\.chat-run-status__trigger-chevron svg \{[^}]*width: 13px;[^}]*height: 13px;/s, "the chevron reads as the affordance it is");
-  assert.match(panelStyles, /\.chat-run-status__ghost \{[^}]*z-index: 2000;/s, "the copy a close folds back is drawn above the header");
+  // One painted card: Web Awesome's own shadow body is the box the morph moves, so it paints no surface of its own and
+  // the panel carries the border and shadow that travel with the box.
+  assert.match(
+    panelStyles,
+    /\.chat-run-status__popover::part\(body\) \{[^}]*background: transparent;[^}]*box-shadow: none;/s,
+    "the wrapper Web Awesome draws around the panel paints no second card",
+  );
+  assert.match(panelStyles, /\.chat-run-status__panel \{[^}]*border: var\(--wa-panel-border-width\) solid var\(--wa-color-surface-border\);[^}]*box-shadow: var\(--wa-shadow-l\);/s, "the panel is the card, and it is the box the morph moves");
+  assert.match(panelStyles, /\.chat-run-status__head \{[^}]*justify-content: flex-end;/s, "the head's copy hugs the box's right edge, where the pill's copy was");
   assert.match(html, /data-testid="task-progress"/u);
   assert.match(html, /Check the build/u);
   assert.match(html, /1 of 2/u);

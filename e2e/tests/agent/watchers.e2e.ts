@@ -25,7 +25,7 @@ test("watchers live in the Run status popover, one row each, and keep only purpo
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, "E2E_WATCHER");
 
-  const watchers = await openSettledWatchers(screen, "1 running", "Wait for #21532 review signals");
+  const watchers = await openSettledWatchers(hui, screen, "1 running", "Wait for #21532 review signals");
   await expect(watchers.getByText("1 running", { exact: true })).toBeVisible();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for #21532 review signals");
   const [listBox, composerBox] = [(await watchers.boundingBox())!, (await screen.getByLabel("Message").boundingBox())!];
@@ -55,7 +55,7 @@ test("an opened watcher shows its target, outcome, times, log, path and controls
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, "E2E_WATCHER");
 
-  const watchers = await openSettledWatchers(screen, "Wait for #21532 review signals", "Done · ");
+  const watchers = await openSettledWatchers(hui, screen, "Wait for #21532 review signals", "Done · ");
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for #21532 review signals");
   await watchers.getByText("Post /merge when approved").tap();
 
@@ -71,7 +71,7 @@ test("an opened watcher shows its target, outcome, times, log, path and controls
   await expect(screen.getByRole("button", "Stop")).toBeHidden();
 
   await hui.prompt(session, start({ purpose: "Check the deploy", command: "exit 3" }));
-  const failed = await openSettledWatchers(screen, "Check the deploy", "Failed · ");
+  const failed = await openSettledWatchers(hui, screen, "Check the deploy", "Failed · ");
   await expect.poll(async () => hui.textOf(failed), { timeout: 90_000 }).toContain("Failed · ");
   await failed.getByText("Check the deploy").tap();
   await expect(screen.getByText("Exited with status 3.")).toBeVisible();
@@ -79,7 +79,7 @@ test("an opened watcher shows its target, outcome, times, log, path and controls
 
   await hui.prompt(session, start({ purpose: "Wait for the reboot", command: "kill -9 $$" }));
   // The row reads its purpose and state together once the gateway's poll has recorded the death this watcher caused.
-  const rebooted = await openSettledWatchers(screen, "Wait for the reboot Dead");
+  const rebooted = await openSettledWatchers(hui, screen, "Wait for the reboot Dead");
   await expect.poll(async () => hui.textOf(rebooted), { timeout: 90_000 }).toContain("Wait for the reboot Dead");
   await rebooted.getByText("Wait for the reboot").tap();
   await expect(screen.getByText("The process is gone and recorded no exit status, for example after a restart.")).toBeVisible();
@@ -87,7 +87,7 @@ test("an opened watcher shows its target, outcome, times, log, path and controls
 
   await hui.prompt(session, start({ purpose: "Wait for a review", command: "sleep 600" }));
   // The fifth watcher folds the rows; open the list before reading the new row.
-  const fifth = await openSettledWatchers(screen, "Watcher details", "Wait for a review");
+  const fifth = await openSettledWatchers(hui, screen, "Watcher details", "Wait for a review");
   const details = fifth.getByText(/^Watcher details/u);
   await expect(details).toBeVisible({ timeout: 90_000 });
   await details.tap();
@@ -102,7 +102,7 @@ test("Stop settles a running watcher, updates the summary and offers Restart and
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, "E2E_WATCHER");
 
-  const watchers = await openSettledWatchers(screen, "Wait for #21532 review signals");
+  const watchers = await openSettledWatchers(hui, screen, "Wait for #21532 review signals");
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for #21532 review signals");
   await watchers.getByText("Wait for #21532 review signals").tap();
   await screen.getByRole("button", "Stop").tap();
@@ -132,7 +132,7 @@ test("Restart runs a settled watcher's command again under a new process and a f
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, start({ purpose: "Check the deploy", command: "sleep 6; printf 'ran again\\n'" }));
 
-  const watchers = await openSettledWatchers(screen, "Check the deploy", "Done · ");
+  const watchers = await openSettledWatchers(hui, screen, "Check the deploy", "Done · ");
   await expect(watchers.getByText("Check the deploy")).toBeVisible();
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Done · ");
   await watchers.getByText("Check the deploy").tap();
@@ -156,14 +156,14 @@ test("Dismiss removes a settled watcher and its log, folding the list back into 
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, "E2E_WATCHER");
 
-  const watchers = await openSettledWatchers(screen, "Wait for #21532 review signals");
+  const watchers = await openSettledWatchers(hui, screen, "Wait for #21532 review signals");
   await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("Wait for #21532 review signals");
 
   // The quick watcher's exit reaches its row on the gateway's ten-second watcher poll, and that same poll wakes the
   // conversation with HUI's own turn, which opens the panel while it streams and closes it when it ends. Wait for the row
   // to read Done, then for that turn to be over, and open Run status again over the settled row.
   await expect.poll(async () => hui.textOf(screen.getByLabel("Run status")), { timeout: 90_000 }).toContain("Done · ");
-  const settled = await openSettledWatchers(screen, "Post /merge when approved");
+  const settled = await openSettledWatchers(hui, screen, "Post /merge when approved");
   await settled.getByText("Post /merge when approved").tap();
   await expect(settled.getByLabel("Watcher log").getByText("posted /merge")).toBeVisible();
   await settled.getByRole("button", "Dismiss").tap();
@@ -180,11 +180,11 @@ test("a watcher keeps its real state across a gateway restart and a dead one say
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, start({ purpose: "Wait for a review", command: "sleep 600" }));
 
-  const watchers = await openSettledWatchers(screen, "Wait for a review");
+  const watchers = await openSettledWatchers(hui, screen, "Wait for a review");
   await expect(watchers.getByText("Wait for a review")).toBeVisible();
   await hui.prompt(session, start({ purpose: "Wait for the reboot", command: "kill -9 $$" }));
   // The second turn's run closed the panel it opened by itself; the rows are read through the operator's open again.
-  const reboot = await openSettledWatchers(screen, "Wait for the reboot Dead");
+  const reboot = await openSettledWatchers(hui, screen, "Wait for the reboot Dead");
   await expect(reboot.getByText("1 running", { exact: true })).toBeVisible();
   await expect.poll(async () => hui.textOf(reboot), { timeout: 90_000 }).toContain("Wait for the reboot Dead");
   await expect.poll(async () => hui.textOf(reboot), { timeout: 90_000 }).toContain("Wait for a review");
@@ -207,7 +207,7 @@ test("deleting a conversation stops its running watcher and forgets its log", { 
   await hui.open(`/sessions/${session.id}`);
   await hui.prompt(session, start({ purpose: "Wait for a review", command: "sleep 600" }));
 
-  const watchers = await openSettledWatchers(screen, "Wait for a review");
+  const watchers = await openSettledWatchers(hui, screen, "Wait for a review");
   await expect(watchers.getByText("Wait for a review")).toBeVisible();
   await watchers.getByText("Wait for a review").tap();
   const path = String(await watchers.getByText(/^PID \d+ · .+\.log$/u).textContent());

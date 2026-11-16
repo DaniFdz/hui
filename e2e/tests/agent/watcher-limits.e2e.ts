@@ -38,7 +38,7 @@ test("a conversation at ten watchers refuses a new one, and the agent's own dism
     start("Settled watcher", "printf 'settled\\n'"),
     ...Array.from({ length: 9 }, (_, index) => start(`Wait ${index + 1}`, "sleep 600")),
   ]));
-  const watchers = await openSettledWatchers(screen, "Settled watcher", "9 running");
+  const watchers = await openSettledWatchers(hui, screen, "Settled watcher", "9 running");
   await expect(watchers.getByText("9 running", { exact: true })).toBeVisible({ timeout: 90_000 });
   await watchers.getByText(/^Watcher details/u).tap();
 
@@ -79,7 +79,7 @@ test("a conversation at ten watchers refuses a new one, and the agent's own dism
 
   // The freed slot takes the new watcher, in the same list.
   await hui.prompt(session, watcher([start("One too many", "sleep 600")]));
-  const again = await openSettledWatchers(screen, "One too many", "10 running");
+  const again = await openSettledWatchers(hui, screen, "One too many", "10 running");
   await expect(again.getByText("10 running", { exact: true })).toBeVisible();
   await expect(again.getByText("One too many")).toBeVisible();
 });
@@ -91,7 +91,7 @@ test("a keep-running watcher survives its shell, starts again with a new PID whe
   const ticks = async () => (await hui.textOf(log)).split("tick").length - 1;
 
   await hui.prompt(session, watcher([start("Watch the deploy", "i=0; while true; do i=$((i+1)); printf 'tick %s\\n' \"$i\"; sleep 1; done", { keepRunning: true })]));
-  const watchers = await openSettledWatchers(screen, "Watch the deploy", "Running · ");
+  const watchers = await openSettledWatchers(hui, screen, "Watch the deploy", "Running · ");
   const log = screen.getByLabel("Watcher log");
   await expect(watchers.getByText("Watch the deploy")).toBeVisible({ timeout: 90_000 });
   await watchers.getByText("Watch the deploy").tap();

@@ -1913,24 +1913,27 @@ and helper facts it summarizes. On a narrow pane or a phone the trigger keeps
 only its mark and count.
 
 Clicking the trigger opens one popover anchored to its right edge, and clicking
-it again closes it. The pill morphs into the panel and back, so one control
-visibly becomes the other: the panel grows out of the pill's own shape from the
-corner the two share, its content becomes legible near the end of the growth,
-and a close folds a copy of the panel back into that shape before it hides, so
-the pill's word carries the state until the head's copy is legible. Its head
-reads what the pill reads — the mark, the state word and the count — and a Close
-run status X at the head's right closes the panel and returns focus to the
-trigger; while the panel is open the trigger keeps its box, its mark and its
-chevron, and only its copy steps aside, so the state is read once on screen and
-once again in the trigger's accessible name. A window that asks for reduced
-motion gets no morph and opens and closes at once, and only a real open or close
-animates: a streamed frame that changes the plan or the helpers never restarts
-it. On a wide window it opens by itself while a run streams, so the run's state
-is readable without a press, and closes again when that run ends; the operator's
-own open holds until they close it, because a run the conversation starts on its
-own — a watcher settling, a helper finishing — must never shut the panel they are
-reading, while their own close lasts that run and the next run starts from the
-default. A reload forgets both, so the wide window's default applies again:
+it again closes it. The pill morphs into the panel and back as one painted box,
+so one control visibly becomes the other: the panel's own width, height and
+corner grow out of the pill's box — the trigger's top-right corner, the pill's
+round at the pill's height — while only the panel is painted, its head keeping
+the pill's copy at the box's right edge and the rows inside it fading in near
+the end of the growth; a close draws the same box back into the pill before it
+hides, so the state never leaves the screen mid-morph. Its head reads what the
+pill reads — the mark, the state word and the count — and a Close run status X
+arrives in the pill's chevron slot once the box has grown, closing the panel and
+returning focus to the trigger; while the panel is open the trigger keeps its
+box, its mark and its chevron, and only its copy steps aside, so the state is
+read once on screen and once again in the trigger's accessible name. A window
+that asks for reduced motion gets no morph and opens and closes at once, and
+only a real open or close animates: a streamed frame that changes the plan or
+the helpers never restarts it. On a wide window it opens by itself while a run
+streams, so the run's state is readable without a press, and closes again when
+that run ends; the operator's own open holds until they close it, because a run
+the conversation starts on its own — a watcher settling, a helper finishing —
+must never shut the panel they are reading, while their own close lasts that
+run and the next run starts from the default. A reload forgets both, so the
+wide window's default applies again:
 open while the run still streams, closed once it has settled. A phone keeps it
 collapsed until the operator opens it.
 The popover holds **Goal** (the objective, its status note, when it was set, its

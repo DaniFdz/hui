@@ -89,8 +89,11 @@ export function runStatusPanelChosen(state: RunStatusPanelState, open: boolean):
 /** A box the morph reads once: the trigger's or the panel's, in viewport pixels. */
 export type RunStatusMorphRect = { x: number; y: number; width: number; height: number };
 
-/** How the panel is drawn on its first frame: the pill's shape about the corner the two share. */
-export type RunStatusMorphShape = { transform: string; origin: string };
+/**
+ * One end of the morph: the panel's own box, in viewport pixels, with the corner it draws. The morph animates these
+ * three properties on the panel itself, so it never scales the card or the copy inside it.
+ */
+export type RunStatusMorphBox = { x: number; y: number; width: number; height: number; radius: number };
 
 /** Which way the panel is morphing: growing out of the pill, or folding back into it. */
 export type RunStatusMorphPhase = "opening" | "closing";
@@ -103,32 +106,48 @@ export function runStatusMorphPhase(previous: boolean | undefined, next: boolean
   return previous === true ? "closing" : undefined;
 }
 
-/** Rounded, so a subpixel box cannot print a transform of thirty digits. */
+/** Rounded, so a subpixel box cannot print a width of thirty digits. */
 function round(value: number, digits: number): number {
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
 }
 
+/** A radius no taller than the box it rounds: the trigger's `999px` is the pill's 14px at 28px tall. */
+function corner(value: number, height: number): number {
+  const radius = Number.isFinite(value) && value > 0 ? value : 0;
+  return round(Math.min(radius, height / 2), 2);
+}
+
 /**
- * The transform that draws the panel as the pill it grew out of: the pill's width and height, its near corner on the
- * corner the two boxes share. The panel paints above the header, so its first frame hangs off the pill's own outer corner
- * instead of covering the pill's word: the state has to stay readable at every frame of the morph. `origin` is that
- * shared corner, which is why the panel only ever moves outward from it.
+ * The morph's two ends: the trigger's own box — so the first frame is the pill, not a picture of it — and the panel's
+ * settled box. Both are the panel's own box in viewport pixels: its top-right corner is the trigger's at the start, and
+ * it travels down and left as the panel takes the room its content needs. Nothing here is a transform or a scale.
  */
-export function runStatusMorphShape(input: { pill: RunStatusMorphRect | undefined; panel: RunStatusMorphRect | undefined; reducedMotion: boolean }): RunStatusMorphShape | undefined {
+export function runStatusMorphBoxes(input: {
+  pill: RunStatusMorphRect | undefined;
+  panel: RunStatusMorphRect | undefined;
+  pillRadius: number;
+  panelRadius: number;
+  reducedMotion: boolean;
+}): { from: RunStatusMorphBox; to: RunStatusMorphBox } | undefined {
   const { pill, panel } = input;
   if (input.reducedMotion || !pill || !panel) return undefined;
   if (!(pill.width > 0 && pill.height > 0 && panel.width > 0 && panel.height > 0)) return undefined;
-  const originX = pill.x + pill.width / 2 < panel.x + panel.width / 2 ? "left" : "right";
-  const originY = pill.y + pill.height / 2 < panel.y + panel.height / 2 ? "top" : "bottom";
-  const scaleX = pill.width / panel.width;
-  const scaleY = pill.height / panel.height;
-  // The scaled panel keeps the origin corner where it is; the translate puts that corner on the pill's own near corner.
-  const dx = originX === "right" ? pill.x + pill.width - (panel.x + panel.width) : pill.x - panel.x;
-  const dy = originY === "top" ? pill.y + pill.height - panel.y : pill.y - (panel.y + panel.height);
   return {
-    transform: `translate(${round(dx, 2)}px, ${round(dy, 2)}px) scale(${round(scaleX, 4)}, ${round(scaleY, 4)})`,
-    origin: `${originY} ${originX}`,
+    from: {
+      x: round(pill.x, 2),
+      y: round(pill.y, 2),
+      width: round(pill.width, 2),
+      height: round(pill.height, 2),
+      radius: corner(input.pillRadius, pill.height),
+    },
+    to: {
+      x: round(panel.x, 2),
+      y: round(panel.y, 2),
+      width: round(panel.width, 2),
+      height: round(panel.height, 2),
+      radius: corner(input.panelRadius, panel.height),
+    },
   };
 }
 

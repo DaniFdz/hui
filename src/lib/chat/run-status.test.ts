@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { ProgressCard, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
 import { FINISHED_BATCH_VISIBLE_MS } from "../subagent-activity.ts";
-import { runStatus, runStatusMorphPhase, runStatusMorphShape, runStatusMorphTiming, runStatusPanel, runStatusPanelChosen, runStatusPanelOpen } from "./run-status.ts";
+import { runStatus, runStatusMorphBoxes, runStatusMorphPhase, runStatusMorphTiming, runStatusPanel, runStatusPanelChosen, runStatusPanelOpen } from "./run-status.ts";
 
 const now = Date.parse("2026-11-14T12:00:00.000Z");
 const startedAt = new Date(now - 60_000).toISOString();
@@ -259,38 +259,43 @@ test("background watchers keep the trigger alive and count as working", () => { 
   assert.match(failed.summary, /1 watcher$/u);
 });
 
-test("the panel's first frame is the pill's shape on the corner the two share", () => {
-  // The chat header's pill sits above the panel's top-right corner, six pixels past the popover's distance.
+test("the morph's first frame is the trigger's own box, with nothing scaled", () => {
+  // The chat header's pill sits above the panel: the box has to reach up and right to be the pill on its first frame.
   const pill = { x: 1100, y: 20, width: 104, height: 28 };
   const panel = { x: 784, y: 54, width: 420, height: 360 };
-  const shape = runStatusMorphShape({ pill, panel, reducedMotion: false });
-  assert.deepEqual(shape, {
-    // The panel's top-right corner lands on the pill's bottom-right corner: the panel never covers the pill.
-    transform: "translate(0px, -6px) scale(0.2476, 0.0778)",
-    origin: "top right",
+  const boxes = runStatusMorphBoxes({ pill, panel, pillRadius: 999, panelRadius: 14, reducedMotion: false });
+  assert.deepEqual(boxes, {
+    // Exactly the pill's rect and the panel's corner: the pill's own round at 28px tall.
+    from: { x: 1100, y: 20, width: 104, height: 28, radius: 14 },
+    // And the panel's settled rect, unchanged by the morph.
+    to: { x: 784, y: 54, width: 420, height: 360, radius: 14 },
   });
-  // The scaled panel and the pill's box agree to a fraction of a pixel: 420 * 0.2476 = 104, 360 * 0.0778 = 28.
-  assert.equal(Math.round(panel.width * 0.2476), pill.width);
-  assert.equal(Math.round(panel.height * 0.0778), pill.height);
+  // The box's top-right corner is the trigger's, and its width is the trigger's: no scale is involved.
+  assert.equal(boxes!.from.x + boxes!.from.width, pill.x + pill.width);
+  assert.equal(boxes!.from.y, pill.y);
+  assert.equal(boxes!.from.width, pill.width);
+  assert.equal(boxes!.from.height, pill.height);
 });
 
-test("the morph's corner follows the side the pill is on, so a flipped panel grows outward too", () => {
+test("the morph ends where the panel rests, and a panel that hangs off the pill's right edge is still anchored on it", () => {
   const pill = { x: 100, y: 40, width: 90, height: 24 };
-  const panel = { x: 380, y: 76, width: 300, height: 240 };
-  // A panel below and to the right of its trigger shares its top-left corner, not its top-right one.
-  assert.deepEqual(runStatusMorphShape({ pill, panel, reducedMotion: false }), {
-    transform: "translate(-280px, -12px) scale(0.3, 0.1)",
-    origin: "top left",
+  // A panel whose right edge is four pixels left of the pill's: the start box is still the pill's own rect.
+  const panel = { x: 286, y: 76, width: 300, height: 240 };
+  const boxes = runStatusMorphBoxes({ pill, panel, pillRadius: 20, panelRadius: 6, reducedMotion: false });
+  assert.deepEqual(boxes, {
+    from: { x: 100, y: 40, width: 90, height: 24, radius: 12 },
+    to: { x: 286, y: 76, width: 300, height: 240, radius: 6 },
   });
 });
 
 test("reduced motion, or a box nobody laid out, draws no morph", () => {
   const pill = { x: 10, y: 10, width: 80, height: 24 };
   const panel = { x: 0, y: 40, width: 300, height: 300 };
-  assert.equal(runStatusMorphShape({ pill, panel, reducedMotion: true }), undefined);
-  assert.equal(runStatusMorphShape({ pill: undefined, panel, reducedMotion: false }), undefined);
-  assert.equal(runStatusMorphShape({ pill, panel: undefined, reducedMotion: false }), undefined, "a panel measured before Web Awesome laid it out animates nothing");
-  assert.equal(runStatusMorphShape({ pill, panel: { x: 0, y: 0, width: 0, height: 0 }, reducedMotion: false }), undefined);
+  const radii = { pillRadius: 999, panelRadius: 14 };
+  assert.equal(runStatusMorphBoxes({ pill, panel, ...radii, reducedMotion: true }), undefined);
+  assert.equal(runStatusMorphBoxes({ pill: undefined, panel, ...radii, reducedMotion: false }), undefined);
+  assert.equal(runStatusMorphBoxes({ pill, panel: undefined, ...radii, reducedMotion: false }), undefined, "a panel measured before Web Awesome laid it out animates nothing");
+  assert.equal(runStatusMorphBoxes({ pill, panel: { x: 0, y: 0, width: 0, height: 0 }, ...radii, reducedMotion: false }), undefined);
 });
 
 test("only a real open or close morphs, and a render that keeps the panel's state draws nothing new", () => {

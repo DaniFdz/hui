@@ -3,10 +3,10 @@
  * conversation's goal (with its controls and editor), its Task progress plan, the
  * latest batch of helpers and its background watchers. The popover is HUI's only
  * home for those four surfaces; the trigger stays out of the transcript so a
- * phone keeps the whole conversation. The pill morphs into the panel and back:
- * the panel grows out of the pill's box on open and a copy of it folds back into
- * that box on close, while the pill's own word carries the state until the head's
- * copy is legible.
+ * phone keeps the whole conversation. The pill morphs into the panel and back as
+ * one painted box: the panel's own width, height and corner grow out of the
+ * trigger's box on open, the copy inside it fades in behind the box, and a close
+ * draws the same box back into the pill before Web Awesome hides the dialog.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
@@ -15,13 +15,15 @@ import { mountEditorAtEnd } from "../../lib/composer/textarea.ts";
 import {
   goalStatusLabel,
   runStatus,
+  runStatusMorphBoxes,
   runStatusMorphPhase,
-  runStatusMorphShape,
   runStatusMorphTiming,
   runStatusPanel,
   runStatusPanelChosen,
   runStatusPanelOpen,
   type RunStatusModel,
+  type RunStatusMorphBox,
+  type RunStatusMorphPhase,
   type RunStatusMorphRect,
   type RunStatusPanelState,
   type RunStatusTone,
@@ -264,11 +266,13 @@ function renderGoal(props: RunStatusProps, model: RunStatusModel, id: string) {
   </section>`;
 }
 
-/** A `wa-popover` as this view drives it: `open` is the real state and updateComplete settles its first update. */
+/** A `wa-popover` as this view drives it: `open` is the real state, `updateComplete` settles its first update, and
+ * `popup` re-anchors the panel after a morph has taken it out of the popover's own flow. */
 type RunStatusPopover = HTMLElement & {
   open: boolean;
   updateComplete: Promise<unknown>;
   hide: () => Promise<void> | void;
+  popup?: { reposition: () => void };
 };
 
 /** One popover's panel state, kept by element so a streamed frame never loses the operator's choice. */
@@ -283,28 +287,33 @@ type RunStatusPopoverState = {
   ready: boolean;
   /** The panel is drawn: the last open state its own wa-show or wa-hide reported. */
   shown: boolean | undefined;
-  /** The morph drawing the panel out of the pill, or folding a copy of it back. */
+  /** The box travelling out of the pill or back into it. */
   morph: RunStatusMorph | undefined;
   /** The open whose first frame waits for Web Awesome's own show to settle. */
   grow: RunStatusGrow | undefined;
+  /** The panel still drawn at the pill's box after a close, until Web Awesome has taken the dialog off screen. */
+  painted: RunStatusMorph | undefined;
+  /** The trigger a close took the focus from, until the panel is gone and can give it back. */
+  returnFocus: HTMLElement | undefined;
 };
 
-/** What one morph owns while it runs: the animations drawing it, and the elements only it touches. */
+/** One morph in flight: the panel's own box, the trigger it grew from, and the animations drawing it. */
 type RunStatusMorph = {
+  popover: RunStatusPopover;
+  panel: HTMLElement;
+  trigger: HTMLElement;
   animations: readonly Animation[];
-  /** The real panel, kept unpainted until its first frame is in place. */
-  panel?: HTMLElement;
-  /** The copy carrying the panel's picture through a close. */
-  ghost?: HTMLElement;
+  phase: RunStatusMorphPhase;
 };
 
-/** An open waiting for Web Awesome's own show to finish, so the panel can be measured at its final size. */
+/** An open held unpainted until Web Awesome has shown it, so the panel's first frame can be the pill's box. */
 type RunStatusGrow = {
   panel: HTMLElement;
-  body: HTMLElement;
+  trigger: HTMLElement;
   timing: { duration: number; easing: string };
-  /** The pill's box, read before the panel was drawn. */
+  /** The pill's box and corner, read before the panel painted its settled size over it. */
   pill: RunStatusMorphRect;
+  pillRadius: number;
 };
 
 const popoverStates = new WeakMap<Element, RunStatusPopoverState>();
@@ -350,6 +359,9 @@ function settleRunStatusPanel(popover: RunStatusPopover, open: boolean): void {
 /** Sets the popover's open state and the trigger's aria-expanded, writing nothing when both already agree. */
 function applyRunStatusPanel(trigger: HTMLElement, popover: RunStatusPopover, panelId: string, state: RunStatusPopoverState): void {
   if (trigger.getAttribute("aria-controls") !== panelId) trigger.setAttribute("aria-controls", panelId);
+  // A close draws before it hides: while the box travels back into the pill, Web Awesome stays open, and a render that
+  // wants the panel again waits for the box to arrive rather than cutting the close short.
+  if (state.morph?.phase === "closing") return;
   const open = runStatusPanelOpen(state.panel, { running: state.panel.running, wide: state.wide });
   if (state.ready && popover.open !== open) {
     state.expect = open;
@@ -378,138 +390,205 @@ function runStatusMorphRect(element: Element): RunStatusMorphRect {
   return { x, y, width, height };
 }
 
-/** The panel's content becomes legible over the last stretch of the growth, after the pill's own word has carried it. */
+/** The corner a box rounds with: the trigger's `999px` is the pill's own 14px at 28px tall. */
+function runStatusRadiusOf(element: Element): number {
+  return Number.parseFloat(getComputedStyle(element).borderTopLeftRadius) || 0;
+}
+
+/** One end of the box as the three properties the morph travels on: its width, its height and its corner. */
+function runStatusBoxFrame(box: RunStatusMorphBox): Keyframe {
+  return { left: `${box.x}px`, top: `${box.y}px`, width: `${box.width}px`, height: `${box.height}px`, borderRadius: `${box.radius}px` };
+}
+
+/** How much of a growing panel's copy is legible by the morph's progress: the box takes its room first. */
 const CONTENT_SHOWN_FROM = 0.45;
 const CONTENT_SHOWN_TO = 0.75;
-/** The copy of a closing panel fades out as it reaches the pill's corner, leaving the pill's own word to take over. */
-const FOLD_FADE_FROM = 0.55;
+/** The head's rule and the panel's X belong to the panel, not to the pill's box: they arrive after the copy has. */
+const CHROME_SHOWN_FROM = 0.7;
+/** A closing box has to read as the pill before it arrives, so the copy and the chrome leave in its first quarter. */
+const CONTENT_HIDDEN_BY = 0.25;
+
+/** The inline styles a morph borrows, in the names CSS knows them by. */
+const MORPH_STYLES = ["position", "left", "top", "width", "height", "border-radius", "overflow", "contain", "will-change", "visibility"] as const;
+
+/** Hands the panel the popover's own flow and scrolling back, and paints the trigger the morph hid. */
+function returnRunStatusPanel(panel: HTMLElement, trigger: HTMLElement): void {
+  for (const name of MORPH_STYLES) panel.style.removeProperty(name);
+  trigger.style.removeProperty("visibility");
+}
+
+/** Takes the panel's box out of the popover's flow for the morph: the box is the only thing that travels, and the
+ * trigger's space stays where the pill was. */
+function borrowRunStatusPanel(panel: HTMLElement, trigger: HTMLElement): void {
+  panel.style.position = "fixed";
+  panel.style.overflow = "hidden";
+  panel.style.contain = "layout paint";
+  panel.style.willChange = "width, height";
+  trigger.style.visibility = "hidden";
+}
+
+/** The copy over the box: faded by hand, because nothing inside the panel is scaled. */
+function runStatusContentMorphs(panel: HTMLElement, trigger: HTMLElement, timing: { duration: number; easing: string }, phase: RunStatusMorphPhase): Animation[] {
+  const options: KeyframeAnimationOptions = { duration: timing.duration, easing: "linear", fill: "both" };
+  const animations: Animation[] = [];
+  const body = panel.querySelector<HTMLElement>(".chat-run-status__body");
+  const head = panel.querySelector<HTMLElement>(".chat-run-status__head");
+  const close = panel.querySelector<HTMLElement>(".chat-run-status__close");
+  if (body) {
+    animations.push(body.animate(phase === "opening"
+      ? [{ opacity: 0 }, { opacity: 0, offset: CONTENT_SHOWN_FROM }, { opacity: 1, offset: CONTENT_SHOWN_TO }]
+      : [{ opacity: 1 }, { opacity: 0, offset: CONTENT_HIDDEN_BY }, { opacity: 0 }], options));
+  }
+  if (close) {
+    animations.push(close.animate(phase === "opening"
+      ? [{ opacity: 0 }, { opacity: 0, offset: CHROME_SHOWN_FROM }, { opacity: 1 }]
+      : [{ opacity: 1 }, { opacity: 0, offset: CONTENT_HIDDEN_BY }, { opacity: 0 }], options));
+  }
+  if (head) {
+    // The rule under the head is the panel's: its colour is the only part of a border a box can fade.
+    const rule = getComputedStyle(head).borderBottomColor;
+    animations.push(head.animate(phase === "opening"
+      ? [{ borderBottomColor: "transparent" }, { borderBottomColor: "transparent", offset: CHROME_SHOWN_FROM }, { borderBottomColor: rule }]
+      : [{ borderBottomColor: rule }, { borderBottomColor: "transparent", offset: CONTENT_HIDDEN_BY }, { borderBottomColor: "transparent" }], options));
+  }
+  animations.push(...runStatusHeadWordMorphs(head, trigger, timing, phase));
+  return animations;
+}
 
 /**
- * What a picture of the panel must not keep: every name, role, id, test id and tab stop a query or the accessibility
- * tree reads. `alt` and `for` ride along because a picture can carry them — the plan's Markdown note allows an image,
- * and a labelled field would otherwise re-label the panel's own control — and the panel has to stay the only node
- * answering for either.
+ * The head's word where the pill at its own size has none: a narrow header keeps only the pill's mark and count, so on
+ * its first frame the head shows exactly that and the word wipes in once the box is wide enough to hold it. A trigger
+ * that shows its word needs nothing — the head's copy already is what the pill's was.
  */
-const NOT_IN_A_PICTURE = ["id", "data-testid", "role", "aria-label", "aria-labelledby", "aria-describedby", "tabindex", "alt", "for"] as const;
+function runStatusHeadWordMorphs(head: HTMLElement | null, trigger: HTMLElement, timing: { duration: number; easing: string }, phase: RunStatusMorphPhase): Animation[] {
+  const word = head?.querySelector<HTMLElement>(".chat-run-status__label");
+  const pillWord = trigger.querySelector<HTMLElement>(".chat-run-status__label");
+  if (!word || (pillWord && pillWord.getClientRects().length > 0)) return [];
+  const width = word.scrollWidth;
+  if (width <= 0) return [];
+  return [word.animate(phase === "opening"
+    ? [{ maxWidth: "0px", opacity: 0 }, { maxWidth: "0px", opacity: 0, offset: CONTENT_SHOWN_FROM }, { maxWidth: `${width}px`, opacity: 1 }]
+    : [{ maxWidth: `${width}px`, opacity: 1 }, { maxWidth: "0px", opacity: 0, offset: CONTENT_HIDDEN_BY }, { maxWidth: "0px", opacity: 0 }],
+  { duration: timing.duration, easing: "linear", fill: "both" })];
+}
 
-/** Stops whatever the last open or close started, leaving no inline transform and no leftover copy behind. */
+/** Stops whatever the last open or close started, leaving the panel its flow and the trigger its box. */
 function stopRunStatusMorph(state: RunStatusPopoverState): void {
   state.grow = undefined;
   const morph = state.morph;
   if (!morph) return;
   state.morph = undefined;
   for (const animation of morph.animations) animation.cancel();
-  if (morph.panel) {
-    morph.panel.style.visibility = "";
-    morph.panel.style.transformOrigin = "";
-  }
-  morph.ghost?.remove();
+  returnRunStatusPanel(morph.panel, morph.trigger);
+}
+
+/** Gives a panel that has closed its flow back, once Web Awesome is done with it. */
+function releaseRunStatusPainted(state: RunStatusPopoverState): void {
+  const painted = state.painted;
+  if (!painted) return;
+  state.painted = undefined;
+  for (const animation of painted.animations) animation.cancel();
+  returnRunStatusPanel(painted.panel, painted.trigger);
+  // The panel was out of the popover's flow while its box travelled, so the popup re-reads the anchor and the panel.
+  painted.popover.popup?.reposition();
 }
 
 /**
- * Prepares the panel to grow out of the pill: the pill's box is read once, and the panel is held unpainted until Web
- * Awesome has finished its own show and laid the popup out at its final size. Measuring before that would read the
- * popup's own scale-in, and the morph would start from a fraction of the pill's box. Nothing here is recorded: the open
- * belongs to `settleRunStatusPanel`.
+ * Holds the panel unpainted until Web Awesome has shown it, so the open can measure the box it has to become. A frame of
+ * the finished panel is the flash the morph exists to avoid. Nothing here is recorded: the open belongs to
+ * `settleRunStatusPanel`.
  */
 function prepareRunStatusGrow(popover: RunStatusPopover, state: RunStatusPopoverState, trigger: HTMLElement): void {
-  // An open can follow a close before that fold has finished, and the picture it left would be orphaned by the morph
-  // prepared here: its own finish no longer matches `state.morph`, so nothing would ever take it out of the page.
   stopRunStatusMorph(state);
-  const panel = popover.querySelector<HTMLElement>(".chat-run-status__panel");
-  const body = panel?.querySelector<HTMLElement>(".chat-run-status__body");
-  const timing = panel ? runStatusMorphTimingOf(panel) : undefined;
-  if (!panel || !body || !timing) return;
-  panel.style.visibility = "hidden";
-  state.grow = { panel, body, timing, pill: runStatusMorphRect(trigger) };
-  state.morph = { animations: [], panel };
-}
-
-/** Starts the prepared growth: the panel's box is measured once, then only transform and opacity move. */
-function startRunStatusGrow(state: RunStatusPopoverState): void {
-  const grow = state.grow;
-  if (!grow) return;
-  state.grow = undefined;
-  // A close that overtook this open cleared the morph, and with it the panel's unpainted first frame.
-  if (state.morph?.panel !== grow.panel) return;
-  const panel = grow.panel;
-  const shape = runStatusMorphShape({ pill: grow.pill, panel: runStatusMorphRect(panel), reducedMotion: false });
-  if (!shape) {
-    panel.style.visibility = "";
-    state.morph = undefined;
-    return;
-  }
-  panel.style.transformOrigin = shape.origin;
-  panel.style.visibility = "";
-  const shapeAnimation = panel.animate([{ transform: shape.transform }, { transform: "none" }], { duration: grow.timing.duration, easing: grow.timing.easing, fill: "both" });
-  // The crossfade runs on the clock, not on the growth's front-loaded curve: those offsets pick the moment the head's
-  // copy becomes legible, and the pill's own word hands it over after that.
-  const reveal = grow.body.animate([
-    { opacity: 0 },
-    { opacity: 0, offset: CONTENT_SHOWN_FROM },
-    { opacity: 1, offset: CONTENT_SHOWN_TO },
-  ], { duration: grow.timing.duration, easing: "linear", fill: "both" });
-  state.morph = { animations: [shapeAnimation, reveal], panel };
-  shapeAnimation.onfinish = () => {
-    if (state.morph?.panel !== panel) return;
-    state.morph = undefined;
-    shapeAnimation.cancel();
-    reveal.cancel();
-    panel.style.transformOrigin = "";
-  };
-}
-
-/**
- * Folds a copy of the closing panel back into the pill. Web Awesome hides its dialog at once, so the copy carries the
- * panel's picture for the fold; the close's own bookkeeping already happened in `settleRunStatusPanel`, and nothing here
- * waits on the animation or writes a choice. The copy is a picture: no node in it, its own root included, has an id,
- * role, label, test id or tab stop to answer a query with, and it takes no press. Stripping only the root would leave
- * the head's own button answering `Close run status` from the copy drawn over the panel it closed.
- */
-function foldRunStatusPanel(popover: RunStatusPopover, state: RunStatusPopoverState, trigger: HTMLElement): void {
-  stopRunStatusMorph(state);
+  releaseRunStatusPainted(state);
   const panel = popover.querySelector<HTMLElement>(".chat-run-status__panel");
   const timing = panel ? runStatusMorphTimingOf(panel) : undefined;
   if (!panel || !timing) return;
-  const box = runStatusMorphRect(panel);
-  const shape = runStatusMorphShape({ pill: runStatusMorphRect(trigger), panel: box, reducedMotion: false });
-  if (!shape) return;
-  const ghost = panel.cloneNode(true) as HTMLElement;
-  for (const node of [ghost, ...ghost.querySelectorAll("*")]) {
-    for (const name of NOT_IN_A_PICTURE) node.removeAttribute(name);
-  }
-  ghost.setAttribute("aria-hidden", "true");
-  ghost.setAttribute("inert", "");
-  ghost.classList.add("chat-run-status__ghost");
-  Object.assign(ghost.style, {
-    position: "fixed",
-    left: `${box.x}px`,
-    top: `${box.y}px`,
-    width: `${box.width}px`,
-    height: `${box.height}px`,
-    maxHeight: "none",
-    margin: "0",
-    pointerEvents: "none",
-    transformOrigin: shape.origin,
-  });
-  ghost.scrollTop = panel.scrollTop;
-  document.body.append(ghost);
-  const fold = ghost.animate([{ transform: "none" }, { transform: shape.transform }], { duration: timing.duration, easing: timing.easing, fill: "both" });
-  // The copy dissolves on the clock once the fold has done its travelling, so the chip it becomes does not sit opaque
-  // under the pill while the pill's own word fades back in.
-  const dissolve = ghost.animate([
-    { opacity: 1 },
-    { opacity: 1, offset: FOLD_FADE_FROM },
-    { opacity: 0 },
-  ], { duration: timing.duration, easing: "linear", fill: "both" });
-  state.morph = { animations: [fold, dissolve], ghost };
-  fold.onfinish = () => {
-    if (state.morph?.ghost !== ghost) return;
-    state.morph = undefined;
-    fold.cancel();
-    dissolve.cancel();
-    ghost.remove();
+  panel.style.visibility = "hidden";
+  state.grow = {
+    panel,
+    trigger,
+    timing,
+    pill: runStatusMorphRect(trigger),
+    pillRadius: runStatusRadiusOf(trigger),
   };
+}
+
+/** Starts the prepared open: the panel's own box grows out of the pill's, and nothing inside it is transformed. */
+function startRunStatusGrow(popover: RunStatusPopover, state: RunStatusPopoverState): void {
+  const grow = state.grow;
+  if (!grow) return;
+  state.grow = undefined;
+  const { panel, trigger, timing } = grow;
+  const boxes = runStatusMorphBoxes({
+    pill: grow.pill,
+    panel: runStatusMorphRect(panel),
+    pillRadius: grow.pillRadius,
+    panelRadius: runStatusRadiusOf(panel),
+    reducedMotion: false,
+  });
+  if (!boxes) {
+    panel.style.removeProperty("visibility");
+    return;
+  }
+  borrowRunStatusPanel(panel, trigger);
+  panel.style.removeProperty("visibility");
+  const shape = panel.animate([runStatusBoxFrame(boxes.from), runStatusBoxFrame(boxes.to)], { duration: timing.duration, easing: timing.easing, fill: "both" });
+  const morph: RunStatusMorph = { popover, panel, trigger, phase: "opening", animations: [shape, ...runStatusContentMorphs(panel, trigger, timing, "opening")] };
+  state.morph = morph;
+  shape.onfinish = () => {
+    if (state.morph !== morph) return;
+    state.morph = undefined;
+    for (const animation of morph.animations) animation.cancel();
+    returnRunStatusPanel(panel, trigger);
+    popover.popup?.reposition();
+  };
+}
+
+/**
+ * Draws a closing panel back into the pill's box. Web Awesome asked to hide the dialog and the panel is still painted, so
+ * the same box that grew travels back; the hide itself is held (`wa-hide` is cancelable) until the box has arrived. The
+ * close's own bookkeeping already happened in `settleRunStatusPanel`, and nothing here waits on the animation or writes a
+ * choice.
+ */
+function startRunStatusReverse(popover: RunStatusPopover, state: RunStatusPopoverState, trigger: HTMLElement): void {
+  stopRunStatusMorph(state);
+  const panel = popover.querySelector<HTMLElement>(".chat-run-status__panel");
+  const timing = panel ? runStatusMorphTimingOf(panel) : undefined;
+  const boxes = panel && timing
+    ? runStatusMorphBoxes({ pill: runStatusMorphRect(trigger), panel: runStatusMorphRect(panel), pillRadius: runStatusRadiusOf(trigger), panelRadius: runStatusRadiusOf(panel), reducedMotion: false })
+    : undefined;
+  if (!panel || !timing || !boxes) {
+    popover.open = false;
+    return;
+  }
+  borrowRunStatusPanel(panel, trigger);
+  const shape = panel.animate([runStatusBoxFrame(boxes.to), runStatusBoxFrame(boxes.from)], { duration: timing.duration, easing: timing.easing, fill: "both" });
+  const morph: RunStatusMorph = {
+    popover,
+    panel,
+    trigger,
+    phase: "closing",
+    animations: [shape, ...runStatusContentMorphs(panel, trigger, timing, "closing")],
+  };
+  state.morph = morph;
+  shape.onfinish = () => {
+    if (state.morph !== morph) return;
+    // The box stays at the pill's, filled by its own animation, until Web Awesome has taken the dialog off screen: putting
+    // the panel back in flow first would flash its settled size for the frame between.
+    state.morph = undefined;
+    state.painted = morph;
+    popover.open = false;
+  };
+}
+
+/** Finishes a close once Web Awesome has taken the dialog off screen: the panel gets its flow back and the trigger paints
+ * where the box arrived, with the focus a close took from it. */
+function settleRunStatusClose(state: RunStatusPopoverState): void {
+  releaseRunStatusPainted(state);
+  const focus = state.returnFocus;
+  state.returnFocus = undefined;
+  focus?.focus({ preventScroll: true });
 }
 
 /**
@@ -527,7 +606,7 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, inpu
   const surface = popover as RunStatusPopover;
   let state = popoverStates.get(surface);
   if (!state) {
-    state = { panel: runStatusPanel(undefined, { running: input.running }), wide: input.wide, expect: undefined, focus: undefined, ready: false, shown: undefined, morph: undefined, grow: undefined };
+    state = { panel: runStatusPanel(undefined, { running: input.running }), wide: input.wide, expect: undefined, focus: undefined, ready: false, shown: undefined, morph: undefined, grow: undefined, painted: undefined, returnFocus: undefined };
     popoverStates.set(surface, state);
     // The anchor is looked up per event: the trigger's element survives HUI's renders, but the attribute is the truth.
     const anchored = () => {
@@ -535,6 +614,9 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, inpu
       return anchor instanceof HTMLElement ? anchor : undefined;
     };
     surface.addEventListener("wa-show", () => {
+      // A popover Web Awesome shows while a close is drawing would steal the panel's box: the close owns it until it
+      // ends.
+      if (state!.morph?.phase === "closing") return;
       settleRunStatusPanel(surface, true);
       const phase = runStatusMorphPhase(state!.shown, true, prefersReducedMotion());
       state!.shown = true;
@@ -542,21 +624,39 @@ function driveRunStatusPanel(trigger: Element | undefined, panelId: string, inpu
       if (phase === "opening" && anchor) prepareRunStatusGrow(surface, state!, anchor);
       else stopRunStatusMorph(state!);
     });
-    surface.addEventListener("wa-hide", () => {
-      // The close's bookkeeping runs first and unchanged: the morph only draws, and never records a choice.
-      settleRunStatusPanel(surface, false);
-      const phase = runStatusMorphPhase(state!.shown, false, prefersReducedMotion());
-      state!.shown = false;
-      const anchor = anchored();
-      if (phase === "closing" && anchor) foldRunStatusPanel(surface, state!, anchor);
-      else stopRunStatusMorph(state!);
-    });
-    // Web Awesome moves the focus into its dialog just after the show, then finishes its own scale-in; HUI's own open
-    // gives the focus back once it has, and the prepared growth starts from the panel measured after it.
+    // Web Awesome moves the focus into its dialog just after the show, then finishes its own scale-in: HUI's own open
+    // gives the focus back once it has, and the box starts from the panel measured after it.
     surface.addEventListener("wa-after-show", () => {
       restoreRunStatusFocus(surface, state!);
-      startRunStatusGrow(state!);
+      startRunStatusGrow(surface, state!);
     });
+    surface.addEventListener("wa-hide", (event) => {
+      // A close already drawing holds the dialog open until its box has arrived.
+      if (state!.morph?.phase === "closing") {
+        event.preventDefault();
+        return;
+      }
+      const closing = runStatusMorphPhase(state!.shown, false, prefersReducedMotion()) === "closing";
+      state!.shown = false;
+      // The close's bookkeeping runs first and unchanged: the morph only draws, and never records a choice.
+      settleRunStatusPanel(surface, false);
+      const anchor = anchored();
+      const active = document.activeElement;
+      // A close that already drew gives the focus back where it began; the hide that ends it must not reset that, because
+      // the trigger is hidden by then and the focus has already fallen to the page.
+      if (!state!.painted) state!.returnFocus = anchor && (popover.contains(active) || active === anchor) ? anchor : undefined;
+      if (!closing || !anchor) {
+        stopRunStatusMorph(state!);
+        return;
+      }
+      // Web Awesome asked to hide while the panel is still painted, so its own hide is held (the event is cancelable) and
+      // the box draws itself back into the pill. Web Awesome puts itself back into its open state once the dispatch
+      // returns, without a new show, so the panel keeps the position the popup gave it; the reverse ends by closing the
+      // popover for real.
+      event.preventDefault();
+      startRunStatusReverse(surface, state!, anchor);
+    });
+    surface.addEventListener("wa-after-hide", () => settleRunStatusClose(state!));
     // Setting open before Web Awesome's first update skips its open-change handling; wait for it once.
     void surface.updateComplete.then(() => {
       state!.ready = true;
@@ -587,12 +687,12 @@ export function renderRunStatus(props: RunStatusProps) {
     const popover = document.getElementById(`${panelId}-surface`) as RunStatusPopover | null;
     const state = popover ? popoverStates.get(popover) : undefined;
     if (popover && state) {
-      // The X is the operator's close, not HUI's: the wa-hide it causes records the same choice.
+      // The X is the operator's close, not HUI's: the wa-hide it causes records the same choice, and the focus comes back
+      // to the trigger once the box has drawn back into it.
       state.panel = runStatusPanelChosen(state.panel, false);
       state.expect = undefined;
       void popover.hide();
     }
-    document.getElementById(triggerId)?.focus();
   };
   return html`
     <button
@@ -620,15 +720,15 @@ export function renderRunStatus(props: RunStatusProps) {
       without-arrow
     >
       <div class="chat-run-status__panel" id=${panelId} data-testid="run-status" role="dialog" aria-label="Run status">
+        <header class="chat-run-status__head">
+          <span class="chat-run-status__state" data-tone=${model.tone} aria-hidden="true">
+            <span class="chat-run-status__state-mark">${renderRunStatusMark(model.tone)}</span>
+            <span class="chat-run-status__label">${model.label}</span>
+            ${model.count ? html`<span class="chat-run-status__count">${model.count}</span>` : nothing}
+          </span>
+          <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-run-status__close" aria-label="Close run status" @click=${closePanel}>${icons.close}</button>
+        </header>
         <div class="chat-run-status__body">
-          <header class="chat-run-status__head">
-            <span class="chat-run-status__state" data-tone=${model.tone} aria-hidden="true">
-              <span class="chat-run-status__state-mark">${renderRunStatusMark(model.tone)}</span>
-              <span class="chat-run-status__label">${model.label}</span>
-              ${model.count ? html`<span class="chat-run-status__count">${model.count}</span>` : nothing}
-            </span>
-            <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-run-status__close" aria-label="Close run status" @click=${closePanel}>${icons.close}</button>
-          </header>
           ${renderGoal(props, model, panelId)}
           ${renderPlan(props, model, panelId)}
           ${renderHelpers(props, model, panelId)}
