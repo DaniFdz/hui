@@ -170,3 +170,37 @@ test("a cancelled waiting model request ends without reaching the provider", asy
   assert.match(message.errorMessage ?? "", /Stopped by the operator/u);
   assert.deepEqual(calls, []);
 });
+
+test.for(runtimes)("a session names HUI to the AI Gateway and leaves other providers untagged (%s)", async (kind, t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-gateway-tags-"));
+  t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
+  const agentDir = join(dir, "pi");
+  await mkdir(agentDir);
+  const provider = (baseUrl: string) => ({
+    baseUrl, api: "openai-completions", apiKey: "sk-test", models: [{ id: "m" }],
+    headers: { source: "pi", "x-dd-tag-ml_app": "pi", "x-dd-tag-ml_app_id": "aidevx.pi" },
+  });
+  await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: {
+    gateway: provider("https://ai-gateway.us1.ddbuild.io/v1"), direct: provider("https://api.openai.com/v1"),
+  } }));
+  if (kind === "with a HUI provider selected") await writeProviderSelections({ openai: { models: [] } }, join(dir, "hui"));
+  const runtime = await createSessionModelRuntime(agentDir, join(dir, "hui"));
+  const sent = new Map<string, Record<string, string | null> | undefined>();
+  for (const id of ["gateway", "direct"]) {
+    const current = runtime.getProvider(id)!;
+    runtime.registerNativeProvider({ ...current, streamSimple: (_model, _context, options) => {
+      sent.set(id, options?.headers);
+      const output = createAssistantMessageEventStream();
+      output.push({ type: "done", reason: "stop", message: fauxAssistantMessage("OK") });
+      output.end();
+      return output;
+    } });
+  }
+  await runtime.completeSimple(runtime.getModel("gateway", "m")!, { messages: [] });
+  await runtime.completeSimple(runtime.getModel("direct", "m")!, { messages: [] });
+  const gateway = sent.get("gateway")!;
+  assert.equal(gateway["x-dd-tag-ml_app"], "hui");
+  assert.equal(gateway["x-dd-tag-ml_app_id"], "aidevx.hui");
+  assert.equal(gateway["source"], "pi", "the gateway app and its other headers stay as configured");
+  assert.equal(sent.get("direct")?.["x-dd-tag-ml_app"], "pi", "a non-gateway provider keeps its own headers");
+});
