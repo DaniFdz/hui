@@ -1794,8 +1794,10 @@ direction, plus pushed `session.event` and `session.exit` frames. A requester
 that gives up on a request (its caller aborted, or it timed out) sends
 `{t:"cancel",id}`, which aborts the handler's signal; a closed connection
 aborts them all. Peers that predate it ignore the frame.
-Gateway requests: `hello` (the host's protocol version and release; a
-mismatch replaces an idle host), `shutdown` (only when idle and no other
+Gateway requests: `hello` (the host's protocol version, release and features;
+a `trigger-hooks` feature and the `hookPort` beside it name the loopback port
+that host serves the trigger endpoint on, and both are absent when it could not
+bind; a mismatch replaces an idle host), `shutdown` (only when idle and no other
 gateway is connected; running Durable work does not count, it resumes in the
 new host), `session.start {key,tool,launch}` (start or reattach the `durable`
 or `pi` runtime for one HUI session id; replies `{state,seq,transcript,methods}`
@@ -1864,11 +1866,19 @@ no group gets `null`; a directory typed from that machine's home (`~/work`) is
 expanded by the host against its own home) and
 `secret-request {key,params}`, whose answer `{status:"provided",label,value}`
 (or `cancelled`/`expired`) only the host sees: it writes the value to its own
-private file and gives the agent the path. The gateway answers it only for a
-session on that worker, a bot's chat there included, and a secret request from
-anywhere else for a worker's session is refused. A Stop on the worker cancels
-the request and closes the card. With no gateway connected a `bridge` or
-`secret-request` call fails at once, and one in flight fails when the
+private file and gives the agent the path. It also asks `hooks.report {token,
+body}`: one report of a listener running on that machine, its body unparsed and
+at most 64 KiB, answered with the trigger decision the gateway's own route
+makes (`{status,body}`, 202, 400, 404, 409 or 413), which the endpoint gives the
+listener as it came. A host sends it as soon as its socket is up, before the
+gateway has finished registering the connection, and the gateway waits for that
+connection, and for the sessions of that worker to reattach, instead of
+refusing it or waking a bot's chat that still says it is reconnecting; only a
+connected worker's own peer can make it. The gateway answers `secret-request`
+only for a session on that worker, a bot's chat there included, and a secret
+request from anywhere else for a worker's session is refused. A Stop on the
+worker cancels the request and closes the card. With no gateway connected a
+`bridge` or `secret-request` call fails at once, and one in flight fails when the
 connection drops. `read` and `list` answers are cached in host memory
 until the credential's `expires` (API keys: while the host runs) and served
 while no gateway is connected; nothing is written to disk. Without a cached
@@ -1974,6 +1984,41 @@ opening any session of a worker this route disconnected (gateway memory, until
 a `connect` or `sync`); any successful `connect` (automatic or this route)
 reattaches them. Prompts and
 other runtime requests to them return 409 with a message saying why.
+
+### A host that keeps serving
+
+`main connect` starts a plain `daemon`, and that daemon stops when it has
+nothing left to do: no sessions, no gateway attached, and idle for thirty
+minutes. A worker whose listeners report to it must not stop like that, since
+reports that waited for a gateway are only worth keeping while it runs:
+`daemon --serve` (or `HUI_WORKER_SERVE=1` in its environment) keeps the host up
+with no gateway attached, until it is stopped. The endpoint's port is
+`HUI_WORKER_HOOK_PORT` (default 4180, `0` for any free one). Under the worker
+user's own home, a systemd user unit can run it without HUI ever connecting:
+
+```ini
+# ~/.config/systemd/user/hui-worker.service
+[Unit]
+Description=HUI worker host
+After=network-online.target
+
+[Service]
+# The newest release HUI installed under this worker's data directory. A
+# release installed from a package carries its entry at
+# build/server/worker/main.js; one installed by a gateway running in a checkout
+# carries it at server/worker/main.ts.
+ExecStart=/bin/sh -c 'D="${XDG_DATA_HOME:-$HOME/.local/share}/hui-worker"; R=$(ls -1dt "$D/releases"/*/ | head -n 1); E="$R/build/server/worker/main.js"; [ -f "$E" ] || E="$R/server/worker/main.ts"; exec node "$E" daemon --serve'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+`systemctl --user enable --now hui-worker` starts it, and `loginctl
+enable-linger` keeps it up while nobody is logged in. A gateway that connects
+shows the release it found under `host.release` (`GET /__hui/workers`) and
+replaces an idle host with its own, as it does for a daemon a `connect` started.
 
 ## Bots
 
@@ -2719,15 +2764,52 @@ be read is reported as blocked and left as it is; the other files still go.
 
 **The URL.** `POST /__hui/hooks/<token>` on the gateway, with a token of 32
 random bytes in base64url: creating a trigger answers it once as
-`hook: { token, path }`, as does `POST …/:trigger/token`, which replaces it (the
-old URL stops working at once). HUI stores only its SHA-256 and shows
-`tokenHint`, its first four characters. The route takes no `x-hui` (its callers
-are other programs; the token is the credential) and answers only callers on
-this machine or Tailscale's addresses (127.0.0.0/8, ::1, 100.64.0.0/10,
-fd7a:115c:a1e0::/48), else 403; the gateway's Host check applies as everywhere.
+`hook: { token, path, worker? }`, as does `POST …/:trigger/token`, which
+replaces it (the old URL stops working at once). HUI stores only its SHA-256
+and shows `tokenHint`, its first four characters. `worker` is left out for a bot
+whose chat runs on this machine: its URL is `path` on the origin the request
+came to. It is there for a bot whose chat runs on a worker (Settings → Workers)
+as `{ id, name, url?, error? }`: `url` is that machine's own address for the
+trigger, `http://127.0.0.1:<hookPort>/__hui/hooks/<token>` (what a listener
+running there reports to, below), and `error` is one sentence for the operator
+when the machine has none to give (HUI is not connected to it, it runs a
+release from before the endpoint, or the endpoint could not bind). The route
+takes no `x-hui` (its callers are other programs; the token is the credential)
+and answers only callers on this machine or Tailscale's addresses
+(127.0.0.0/8, ::1, 100.64.0.0/10, fd7a:115c:a1e0::/48), else 403; the gateway's
+Host check applies as everywhere.
 Only `POST` (405). The gateway stays on the tailnet: exposing the route to the
 internet with Tailscale Funnel is the operator's choice, never on by default,
 and then the token is all that guards it.
+
+**A worker's endpoint.** A worker's host whose `hello` lists `trigger-hooks`
+serves the same `POST /__hui/hooks/<token>` on its own machine, bound to
+`127.0.0.1` only: port 4180 unless `HUI_WORKER_HOOK_PORT` names another (`0`
+binds any free one), the port it bound in the host's `hello` as `hookPort`. It
+takes the same body, the same Content-Type rule and answers with the same
+decision as the gateway's route, relayed to the gateway that owns the trigger
+(`hooks.report { token, body }` → `{ status, body }`). With no gateway that can
+take a report (none attached, one from before the relay, a link that failed or
+timed out) it answers `202 { "status": "queued" }` and keeps the report,
+unparsed, in its state directory; `503` when 500 reports already wait there, so
+the listener sends that one again later. What waited is relayed, in order, when
+the next gateway attaches, and a report that arrives while older ones wait goes
+behind them rather than past the queue. A queued report is dropped once the
+gateway answered definitively (202, 400, 404, 409, 413) and kept on a transport
+failure, a timeout or a 5xx; sending it again is harmless, since the ids HUI
+keeps wake each event once. While a gateway is still attached, a drain that
+stopped that way offers the queue again by itself after 15 seconds; one a
+gateway from before the relay refused waits for a gateway that can take it.
+
+Several gateways may be attached to one worker: its host asks the newest first,
+and a 404 (a trigger that gateway does not own) falls through to the next, so a
+report reaches the gateway holding the token.
+
+On the relayed path the worker reads the body before the gateway checks the
+token, since it carries the bytes: unlike the route, which refuses an unknown
+token without reading it. The 64 KiB cap bounds what it reads, and the token is
+the only credential on both paths — the worker's endpoint binds loopback on
+that machine, as the route's caller rule is this machine and the tailnet.
 
 **A report.** JSON (`application/json` or `…+json`, else 400; 400 too for a body
 that isn't the JSON it claims) of at most 64 KiB (413):
@@ -2798,8 +2880,9 @@ a line with what was cut said. What `gh` can't read is said instead. A bot
 reviews from the delivery alone, without a shell. The whole text is cut at
 40,000 characters. It goes through the bot's message path like an operator's
 message without `wait`: a prompt while the chat is idle, a follow-up while it
-works, and for a bot on a worker its remote session there (the listener reports
-to the gateway). A name is 1–60 characters on one line without `[`, `]` or `·`,
+works, and for a bot on a worker its remote session there (the gateway's route
+or that worker's own endpoint relays the listener's report here). A name is
+1–60 characters on one line without `[`, `]` or `·`,
 unique per bot in any case; a summary carries no brackets of its own.
 `botTurnOrigin` reads a turn started this way as `{ kind: "trigger", name }`:
 `set_profile`, `write_soul` and the `routines` tool's `add` and `update` refuse
@@ -2852,7 +2935,7 @@ an unknown bot or trigger, 409 for a state that refuses it, 500 for storage.
 
 ### `POST /__hui/bots/:id/triggers`
 
-201 `BotTriggerCreated`. `{ name, source?, filter?, prompt?, delivery?, enabled?, cooldownSeconds? }` (`prompt` ≤ 4,000 characters; `source`, when given, is `listener`: another is 400). Its `hook` comes this once. Archived bots are 409
+201 `BotTriggerCreated`. `{ name, source?, filter?, prompt?, delivery?, enabled?, cooldownSeconds? }` (`prompt` ≤ 4,000 characters; `source`, when given, is `listener`: another is 400). Its `hook` comes this once, with `worker` for a bot whose chat runs on a worker (`url`, that machine's own endpoint, or its `error`). Archived bots are 409
 
 ### `PATCH /__hui/bots/:id/triggers/:trigger`
 
@@ -2992,7 +3075,9 @@ names them; an unknown or shared name is 400). It is chosen once: a `PATCH`
 naming `worker` is 400, "A bot stays on the machine it was created on.", since
 the bot's conversation and memory live in that machine's store. The record
 keeps the worker's id; views carry `worker: { id, name }` like session views,
-and HUI shows its folder as `<worker>:<path>` (`botDisplayCwd`).
+and HUI shows its folder as `<worker>:<path>` (`botDisplayCwd`). Its triggers
+are the gateway's, as any bot's are, and their listeners report to that
+machine's own endpoint, which relays them here ([Triggers](#triggers)).
 
 Creating one needs a live connection to the worker (503 naming it otherwise:
 "HUI is not connected to <worker>. Connect it in Settings → Workers, then

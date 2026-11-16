@@ -762,6 +762,16 @@ const cases: UseCase[] = [
     web: "required",
     phone: "backlog",
   },
+  {
+    id: "BOT-078",
+    title: "Take a trigger's URL on the bot's worker",
+    behaviour: "For a bot whose chat runs on a worker, adding a trigger shows \"<name>: its URL\" with the address that machine serves, http://127.0.0.1:<port>/__hui/hooks/<token>, and Copy takes it as it came rather than this page's origin; the panel says \"Your listener runs on <worker>: it reports to this address there.\" and that after every check the listener POSTs { \"events\": [...] } to it there. An event POSTed to that address wakes the bot, whose chat shows the trigger's message and the run's card. A worker HUI is not connected to, one that runs an older release, or one that could not open its endpoint shows its own reason instead of an address (\"HUI is not connected to <worker>: connect it to take its listener URL.\") and only Done, with no Copy. A bot on this machine keeps the gateway's URL, \"from this machine or your tailnet\".",
+    spec: ["SPEC.md#bots", "SPEC.md#bots-run-on-remote-workers-2026-10-06", "SPEC.md#listeners-are-the-only-triggers-2026-10-09", "docs/api.md#triggers", "docs/api.md#bots-on-a-worker"],
+    surfaces: ["route:POST /__hui/bots/:id/triggers", "route:POST /__hui/hooks/<token>"],
+    journeys: ["bot-triggers"],
+    web: "required",
+    phone: "backlog",
+  },
 ];
 
 export default cases;
