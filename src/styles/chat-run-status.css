@@ -64,6 +64,11 @@
 .chat-run-status__label {
   flex: none;
   white-space: nowrap;
+  /* One type for the pill's copy and the panel head's, so the word does not thicken or brighten as the box converts:
+     the head is the pill, not a second surface with its own emphasis. */
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 400;
 }
 
 .chat-run-status__count {
@@ -206,14 +211,12 @@
   min-height: 0;
 }
 
-/* The head repeats the pill's word and count in the pill's own type, so one control visibly becomes the other. The tone
-   color stays on the mark; the word is the same text in both places. The word's overflow is clipped so a narrow header,
-   which has no room for it at the pill's size, can wipe it in once the box is wide enough. */
+/* The head repeats the pill's word and count in the pill's own type, so one control visibly becomes the other: the copy
+   reads the same weight, size and colour on both sides of the conversion, because a word that thickens as the box opens
+   reads as a different control rather than the same one grown. The tone colour stays on the mark. The word's overflow is
+   clipped so a narrow header, which has no room for it at the pill's size, can wipe it in once the box is wide enough. */
 .chat-run-status__head .chat-run-status__label {
   overflow: hidden;
-  color: var(--text-strong);
-  font-size: 12.5px;
-  font-weight: 600;
 }
 
 .chat-run-status__head .chat-run-status__count {
