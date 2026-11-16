@@ -26,7 +26,8 @@ import com.getcapacitor.WebViewListener;
  * <p>The shell's own behaviour hangs off the same WebView: the system back button ({@link ShellBack}), the window's
  * edges and the status bar's colours ({@link ShellWindow}), downloads ({@link ShellDownloads}), the app's script inside
  * the page ({@link ShellPage}) and the link policy that keeps the gateway's own links in the app ({@link ShellLinks}).
- * A {@code hui://open?path=…} link ({@link DeepLink}) opens one screen of that same page.
+ * A {@code hui://open?path=…} link ({@link DeepLink}) opens one screen of that same page, and a share another app sends
+ * ({@link ShareTarget}) opens New Session with what was shared.
  */
 public class MainActivity extends BridgeActivity {
 
@@ -73,9 +74,11 @@ public class MainActivity extends BridgeActivity {
             if (gateway != null) {
                 attachGatewayLoad();
                 ShellPage.attach(bridge);
-                openDeepLink();
             }
         }
+        // What this launch carried — a `hui://open` path or a share — opens over the gateway it loaded, if any. This is
+        // the launch that created the activity, which is what an image-only share may close again.
+        openLaunch(true);
         ready = true;
         if (waitingForLocalNetwork) getWindow().getDecorView().post(() -> LocalNetwork.request(this));
     }
@@ -84,7 +87,14 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LocalNetwork.REQUEST && LocalNetwork.granted(this)) recreate();
+        if (requestCode != LocalNetwork.REQUEST) return;
+        if (LocalNetwork.granted(this)) {
+            recreate();
+            return;
+        }
+        // The restart the share was kept for never comes: drop it, so a gateway the operator picks on Connect does not
+        // open New Session with a share of some earlier launch.
+        consumeShare(getIntent());
     }
 
     @Override
@@ -98,18 +108,31 @@ public class MainActivity extends BridgeActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        // The launch intent arrives here from inside super.onCreate, before any of this is attached; onCreate opens the
-        // deep link that launch carried.
+        // The launch intent arrives here from inside super.onCreate, before any of this is attached; onCreate opens what
+        // that launch carried.
         if (!ready) return;
         // The gateway question is answered first and alone. A launch that names another gateway restarts the bridge on
-        // it, and the restart applies that same intent again (onCreate opens its deep link), so the launch lands on the
-        // path it named over the gateway it named: one load, never a deep link and a gateway changing under each other.
+        // it, and the restart applies that same intent again (onCreate opens what it carried), so the launch lands on
+        // the path it named over the gateway it named: one load, never a deep link or a share and a gateway changing
+        // under each other.
         String next = Gateway.resolve(this);
         if (next == null ? gateway != null : !next.equals(gateway)) {
             recreate();
             return;
         }
+        // A launch handed to an activity that is already running: whatever it carries lands in the session HUI is in,
+        // so an image-only share leaves that session alone rather than closing it.
+        openLaunch(false);
+    }
+
+    /**
+     * What this launch carried: the screen a `hui://open` link names, then the share another app sent. `cold` says this
+     * delivery created the activity (`onCreate`) rather than arriving at one that was already running
+     * (`onNewIntent`).
+     */
+    private void openLaunch(boolean cold) {
         openDeepLink();
+        openShare(cold);
     }
 
     /**
@@ -131,6 +154,89 @@ public class MainActivity extends BridgeActivity {
     private String link() {
         Intent intent = getIntent();
         return intent == null ? null : intent.getDataString();
+    }
+
+    /** Whether this intent is another app's Share sheet rather than a launch of the app's own. */
+    private static boolean isShare(Intent intent) {
+        return intent != null && Intent.ACTION_SEND.equals(intent.getAction());
+    }
+
+    /**
+     * Open New Session with what another app shared: `<gateway>/new-session?share=…`, the address the page's own intake
+     * fills the composer from ({@link ShareTarget}).
+     *
+     * <p>The share is taken out of the launch intent before anything loads. Every restart this activity asks for — a
+     * gateway that did not answer ({@link #fallBack}), a bridge rebuilt on another gateway — applies that same intent
+     * again, and a share left in it would open New Session a second time. The one launch that keeps it is the
+     * local-network question: the activity Android 17 restarts when the operator allows the network is the one that can
+     * open it.
+     *
+     * <p>A share HUI cannot take is dropped with a toast instead of being applied later: an image on its own (the
+     * composer has no place for one yet, and the sheet is where it came from), a share with nothing the composer can
+     * hold, and a launch with no gateway to open anything on. A share too long for the address opens with its first part
+     * ({@link ShareTarget#MAX_URL_BYTES}). An image-only share also finishes the activity when this delivery created it
+     * — `cold`, from `onCreate` — so the operator lands back in the app they shared from rather than in an empty HUI; a
+     * share handed to an app that is already running leaves the session it arrived in alone.
+     */
+    private void openShare(boolean cold) {
+        Intent intent = getIntent();
+        if (!isShare(intent)) return;
+        // Android 17's local-network question restarts this activity, and that restart is where a share opens.
+        if (waitingForLocalNetwork) return;
+        CharSequence shared;
+        try {
+            shared = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        } catch (RuntimeException wrongType) {
+            // Another app can put anything under that key: a value that is not text is a share with no text.
+            shared = null;
+        }
+        ShareTarget.Share share = ShareTarget.parse(
+            intent.getType(),
+            shared,
+            intent.getDataString(),
+            intent.hasExtra(Intent.EXTRA_STREAM)
+        );
+        consumeShare(intent);
+        if (share.text == null) {
+            say(share.image ? R.string.share_image : R.string.share_nothing);
+            if (share.image && cold) finish();
+            return;
+        }
+        if (gateway == null) {
+            say(R.string.share_no_gateway);
+            return;
+        }
+        WebView web = bridge == null ? null : bridge.getWebView();
+        if (web == null) return;
+        String address = ShareTarget.url(gateway, share.text);
+        if (address == null) {
+            // A long share is cut to the bound rather than refused, so only a value that cannot be encoded at all lands
+            // here; saying so beats an empty load.
+            say(R.string.share_too_long);
+            return;
+        }
+        // The bridge queued the gateway's own root page by the time this runs, exactly as the deep link does; this
+        // load supersedes it under the "Connecting to HUI…" cover.
+        web.loadUrl(address);
+    }
+
+    /**
+     * Drop the share from the launch intent, mirroring {@link Gateway#clearLaunch}: the action, the extras a share
+     * carries and its clip data are what make the intent a share, and none of them may reach the next activity this
+     * launch builds.
+     */
+    private static void consumeShare(Intent intent) {
+        if (!isShare(intent)) return;
+        intent.setAction(null);
+        intent.removeExtra(Intent.EXTRA_TEXT);
+        intent.removeExtra(Intent.EXTRA_STREAM);
+        intent.removeExtra(Intent.EXTRA_TITLE);
+        intent.setClipData(null);
+    }
+
+    /** Say what became of a share, the one way the shell talks to the operator outside the page. */
+    private void say(int message) {
+        ShellDownloads.say(this, getString(message));
     }
 
     /** Cover the loading WebView, and turn a main-frame failure into the Connect page. */

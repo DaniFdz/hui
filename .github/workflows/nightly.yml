@@ -306,12 +306,20 @@ jobs:
           # never got overridden fails here instead of on a user's phone.
           [ "$short" = "$VERSION" ]
           [ "$build" = "$CODE" ]
+          # The Share Extension is what lets the app answer "Share to HUI"; an app whose appex was not embedded archives
+          # just the same, so the bundle is read here and the IPA's own listing below.
+          appex="$app/PlugIns/ShareExtension.appex"
+          test -d "$appex"
+          test "$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$appex/Info.plist")" = "com.apple.share-services"
+          test "$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$appex/Info.plist")" = "$short"
+          test "$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$appex/Info.plist")" = "$build"
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -R "$app" "$RUNNER_TEMP/Payload/App.app"
           (cd "$RUNNER_TEMP" && zip -qry "hui-$VERSION.ipa" Payload)
           mv "$RUNNER_TEMP/hui-$VERSION.ipa" .
           unzip -l "hui-$VERSION.ipa" > "$RUNNER_TEMP/ipa-listing.txt"
           head -5 "$RUNNER_TEMP/ipa-listing.txt"
+          grep -q "Payload/App.app/PlugIns/ShareExtension.appex/" "$RUNNER_TEMP/ipa-listing.txt"
           # macOS has no sha256sum; shasum writes the same "<hash>  <file>" line it would.
           shasum -a 256 "hui-$VERSION.ipa" > "hui-$VERSION.ipa.sha256"
       - name: Write the SideStore source

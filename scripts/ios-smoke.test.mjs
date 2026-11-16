@@ -100,6 +100,22 @@ test("iOS spends macOS minutes only on a change that can reach the native shell"
   }
 });
 
+test("the app it built is checked for the Share Extension it embedded", () => {
+  const start = workflow.indexOf("- name: Check the Share Extension is embedded");
+  assert.notEqual(start, -1, "the embed check is wired into the job");
+  const step = workflow.slice(start, workflow.indexOf("- name: Compile and self-test", start));
+  assert.ok(workflow.indexOf("- name: Build for the simulator") < start, "the check reads what the build produced");
+  for (const line of [
+    'test -d "$app/PlugIns"',
+    'appex=$(find "$app/PlugIns" -maxdepth 1 -name "*.appex" -print -quit)',
+    'test "$point" = "com.apple.share-services"',
+  ]) assert.ok(step.includes(line), line);
+  assert.doesNotMatch(step, /\|\s*head\b/u, "a find into head fails under pipefail");
+  for (const key of ["CFBundleShortVersionString", "CFBundleVersion"]) {
+    assert.equal((step.match(new RegExp(`Print :${key}`, "gu")) ?? []).length, 2, `${key} is read from the appex and the app`);
+  }
+});
+
 test("the simulator build targets the device it captures on, so one architecture is compiled", () => {
   assert.match(workflow, /-destination "id=\$HUI_IOS_UDID" ONLY_ACTIVE_ARCH=YES/u);
   assert.doesNotMatch(workflow, /generic\/platform\/iOS Simulator/u);

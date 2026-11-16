@@ -16,15 +16,28 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     /// `hui://open?path=/sessions/…` loads that path on the gateway the app is on, as the Android shell's deep link does.
-    /// Without a gateway the link is ignored, and anything that is not a plain path is refused.
+    /// `hui://share?url=…` starts a New Session with what a Share Extension was given. Without a gateway a link is ignored
+    /// (the Connect page has no screens), and anything that is not a plain path or a share HUI takes is refused.
     private func openDeepLink(_ url: URL) -> Bool {
-        guard url.scheme?.lowercased() == "hui", url.host?.lowercased() == "open" else { return false }
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let path = components.queryItems?.first(where: { $0.name == "path" })?.value,
-              let gateway = Gateway.resolve(),
-              let target = DeepLink.target(path: path, gateway: gateway) else { return true }
-        (window?.rootViewController as? HUIBridgeViewController)?.open(target)
-        return true
+        guard url.scheme?.lowercased() == "hui" else { return false }
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return false }
+        let query: (String) -> String? = { name in components.queryItems?.first(where: { $0.name == name })?.value }
+        switch url.host?.lowercased() {
+        case "open":
+            guard let path = query("path"),
+                  let gateway = Gateway.resolve(),
+                  let target = DeepLink.target(path: path, gateway: gateway) else { return true }
+            (window?.rootViewController as? HUIBridgeViewController)?.open(target)
+            return true
+        case "share":
+            guard let value = query("url"),
+                  let gateway = Gateway.resolve(),
+                  let target = DeepLink.share(url: value, gateway: gateway) else { return true }
+            (window?.rootViewController as? HUIBridgeViewController)?.open(target)
+            return true
+        default:
+            return false
+        }
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {

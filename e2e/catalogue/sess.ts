@@ -770,6 +770,16 @@ const cases: UseCase[] = [
     web: "required",
     phone: "required",
   },
+  {
+    id: "SESS-080",
+    title: "Open New Session with a link shared from another app",
+    behaviour: "Opening /new-session?share=<text or link> fills \"What should this session work on?\" and leaves the share out of the address: a link becomes \"Look this post in X https://x.com/…\", naming X, Reddit, YouTube, Instagram or the site's own host, and a text with no link is seeded as it was shared. A reload shows one copy, a draft already typed stays below it after one blank line, and nothing is sent, so no session exists until Start session.",
+    spec: ["SPEC.md#share-to-hui-opens-new-session-prefilled-2026-11-16", "docs/api.md#browser-owned-composer-drafts"],
+    surfaces: ["page:new-session"],
+    journeys: ["session-launch"],
+    web: "required",
+    phone: "required",
+  },
 ];
 
 export default cases;

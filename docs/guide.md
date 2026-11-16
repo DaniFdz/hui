@@ -187,6 +187,18 @@ Every release publishes the phone app beside the CLI archive: the APK, the IPA,
 a SideStore source file and a `.sha256` for each, from the same commit as
 `hui-<version>.tgz`. The rolling `nightly` prerelease carries the same files.
 
+Sharing from another app is the quickest way to start a session on the phone:
+choose HUI in the Share sheet and New Session opens with the shared text already
+in the message box, ready to edit and send. A link becomes one sentence naming
+the site it came from, `Look this post in X https://x.com/…` (Reddit, YouTube and
+Instagram too, and any other site by its own host), while a text with no link
+arrives as you wrote it. Nothing starts until you press **Start session**, a
+draft you had already typed in New Session stays below the shared text, and a
+share longer than 8 000 characters is cut there. On iOS a share can fail to
+reach a HUI that is not running, because the system does not let a share
+extension start it that way; the extension then offers Copy instead of losing
+the text.
+
 ### Android
 
 Download `hui-<version>.apk` from the release's assets and open it; Android asks

@@ -11,6 +11,7 @@ const fake = vi.hoisted(() => ({
   mutations: [] as { id: string; mutation: unknown; resolve: () => void; reject: (error: Error) => void }[],
   goals: [] as { id: string; action: string; objective?: string; resolve: () => void; reject: (error: Error) => void }[],
   drafts: new Map<string, ComposerDraft>(),
+  draftWrites: [] as { key: string; text: string }[],
   pathRequests: [] as { cwd: string; input: string }[],
   commandRequests: [] as { id: string; resolve: (commands: RuntimeCommand[]) => void; reject: (error: Error) => void }[],
   prompts: [] as { id: string; text: string; resolve: () => void; reject: (error: Error) => void }[],
@@ -43,7 +44,7 @@ vi.mock("../api/local-paths.ts", () => ({
 vi.mock("../lib/composer/drafts.ts", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/composer/drafts.ts")>(),
   readComposerDraft: async (key: string) => fake.drafts.get(key) ?? { text: "", attachments: [] },
-  writeComposerDraft: async (key: string, draft: ComposerDraft) => { fake.drafts.set(key, draft); return "persisted"; },
+  writeComposerDraft: async (key: string, draft: ComposerDraft) => { fake.drafts.set(key, draft); fake.draftWrites.push({ key, text: draft.text }); return "persisted"; },
   listComposerDraftSessionIds: async () => [],
 }));
 
@@ -51,6 +52,7 @@ beforeEach(() => {
   fake.mutations = [];
   fake.goals = [];
   fake.drafts = new Map();
+  fake.draftWrites = [];
   fake.pathRequests = [];
   fake.commandRequests = [];
   fake.prompts = [];
@@ -147,6 +149,39 @@ test("a draft follows its session's key, reports its presence and marks the sess
   controller.props().onDraftChange("");
   assert.deepEqual(reported, ["s1:true", "s1:true", "s1:false"]);
   assert.deepEqual([...controller.draftSessionIds], []);
+});
+
+test("a share seeds the New Session draft ahead of what was already typed, and stores it once", async () => {
+  fake.drafts.set(NEW_SESSION_DRAFT_KEY, { text: "typed", attachments: [] });
+  const { controller } = composer({ current: undefined });
+  const seed = "Look this post in X https://x.com/danifdz/status/1987654321098765432";
+  controller.switchDraft(NEW_SESSION_DRAFT_KEY, seed);
+  await settle();
+  assert.equal(controller.draft, `${seed}\n\ntyped`, "the share sits above the operator's own draft");
+  assert.deepEqual(controller.attachments, [], "a share carries no attachments");
+  assert.deepEqual(fake.drafts.get(NEW_SESSION_DRAFT_KEY), { text: `${seed}\n\ntyped`, attachments: [] });
+  assert.deepEqual(fake.draftWrites, [{ key: NEW_SESSION_DRAFT_KEY, text: `${seed}\n\ntyped` }], "one write stores both sides");
+  assert.deepEqual(fake.prompts, [], "a share only fills the composer; the operator still presses Start session");
+});
+
+test("a share with no stored draft is the whole New Session draft", async () => {
+  const { controller } = composer({ current: undefined });
+  controller.switchDraft(NEW_SESSION_DRAFT_KEY, "Remember to water the plants");
+  await settle();
+  assert.equal(controller.draft, "Remember to water the plants");
+  assert.deepEqual(fake.drafts.get(NEW_SESSION_DRAFT_KEY), { text: "Remember to water the plants", attachments: [] });
+  assert.deepEqual(fake.prompts, []);
+});
+
+test("a share never reaches the launch draft an embedded pane may not own", async () => {
+  fake.drafts.set(NEW_SESSION_DRAFT_KEY, { text: "launch text", attachments: [] });
+  const { controller } = composer({ current: { id: "s1" } as SessionView }, { embeddedPane: true });
+  controller.switchDraft(NEW_SESSION_DRAFT_KEY, "Look this post in X https://x.com/a/status/1");
+  await settle();
+  assert.equal(controller.draft, "");
+  assert.deepEqual(fake.draftWrites, []);
+  assert.deepEqual(fake.drafts.get(NEW_SESSION_DRAFT_KEY), { text: "launch text", attachments: [] });
+  assert.deepEqual(fake.prompts, []);
 });
 
 test("an embedded pane never reads or writes the New Session draft", async () => {

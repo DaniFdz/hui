@@ -8,6 +8,8 @@ import type { SessionsController } from "./controllers/sessions-controller.ts";
 import type { WorkLayoutController } from "./controllers/work-layout-controller.ts";
 import type { PanePresentation } from "./components/session-multiplexer.ts";
 import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "./lib/composer/drafts.ts";
+import { HUI_PAGES } from "./lib/pages.ts";
+import type { NavigationTarget } from "./lib/navigation.ts";
 import { sessionPanes, singleSessionLayout, splitSessionPane, type SessionPane } from "./lib/session/multiplexer.ts";
 import type { HomeProps } from "./views/home.ts";
 import { closeDrawerOnEscape } from "./views/shell.ts";
@@ -61,9 +63,9 @@ type Shell = {
   renderSessionMultiplex: () => unknown;
   renderGroupActionDialog: () => unknown;
   homeProps: () => HomeProps;
-  navigate: (target: { kind: "session"; id: string }) => void;
+  navigate: (target: NavigationTarget, replace?: boolean) => void;
   syncFromLocation: () => void;
-  applyNavigation: (target: { kind: "session"; id: string }) => void;
+  applyNavigation: (target: NavigationTarget) => void;
   openPendingSession: () => void;
   activateSession: (session: SessionView) => void;
   activePaneApp: () => { handleGlobalEscape: (event: KeyboardEvent) => void } | undefined;
@@ -161,6 +163,43 @@ test("returning to the still-selected session restores its composer draft key", 
   app.applyNavigation({ kind: "session", id: "s1" });
   assert.equal(app.composer.draftKey, sessionDraftKey("s1"));
   assert.equal(app.pendingSessionId, "");
+});
+
+test("a shared link seeds New Session once and leaves the address canonical", () => {
+  // A phone's Share sheet opens `<gateway>/new-session?share=…`; the address is canonicalised in the same sync, so the
+  // seed has to be read before that rewrite and applied once, never on a later popstate or visit.
+  const replaced: { state: Record<string, unknown>; url: string }[] = [];
+  const history = {
+    state: { navigationIndex: 7 },
+    pushState: () => {},
+    replaceState: (state: Record<string, unknown>, _title: string, url: string) => replaced.push({ state, url }),
+  };
+  const shared = "Look this post in X https://x.com/danifdz/status/1987654321098765432";
+  vi.stubGlobal("window", { location: { pathname: "/new-session", search: `?share=${encodeURIComponent(shared)}`, hash: "" }, history });
+  const app = shell();
+  app.renderRoot = { querySelector: () => null };
+  const internals = app as unknown as Record<string, unknown>;
+  internals["loadLaunchPreferences"] = () => {};
+  const launcher = internals["launcher"] as { requestCheckout: () => void; loadWorkers: () => void };
+  launcher.requestCheckout = () => {};
+  launcher.loadWorkers = () => {};
+  const calls: { key: string; seed: string | undefined }[] = [];
+  app.composer.switchDraft = (key, seed) => calls.push({ key, seed });
+  const newSession = HUI_PAGES.find((page) => page.id === "new-session")!;
+
+  app.syncFromLocation();
+  assert.deepEqual(calls, [{ key: NEW_SESSION_DRAFT_KEY, seed: shared }]);
+  assert.deepEqual(replaced.map(({ url }) => url), ["/new-session"], "the address that carried the share is canonical again");
+  assert.equal(replaced[0]!.state["navigationIndex"], 7, "the rewrite keeps history.state");
+
+  // A popstate, a notification or the first update syncing again never pastes the share a second time; neither does
+  // coming back to New Session, which restores the stored (already merged) draft instead.
+  app.syncFromLocation();
+  app.applyNavigation({ kind: "home" });
+  app.applyNavigation({ kind: "page", page: newSession });
+  const reseeded = calls.filter(({ seed }) => seed !== undefined);
+  assert.deepEqual(reseeded, [{ key: NEW_SESSION_DRAFT_KEY, seed: shared }], "the share reaches the composer once");
+  assert.deepEqual(calls.map(({ key }) => key), [NEW_SESSION_DRAFT_KEY, NEW_SESSION_DRAFT_KEY, NEW_SESSION_DRAFT_KEY, NEW_SESSION_DRAFT_KEY]);
 });
 
 test("a session's address focuses the pane that already shows it instead of giving the focused pane a second view", () => {

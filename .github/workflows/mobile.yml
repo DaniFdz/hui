@@ -374,13 +374,22 @@ jobs:
           echo "archive: $short ($build); this build was given $VERSION ($CODE)"
           [ "$short" = "$VERSION" ]
           [ "$build" = "$CODE" ]
+          # The Share Extension is what lets the app answer "Share to HUI"; an app whose appex was not embedded archives
+          # just the same, so the bundle is read here and the IPA's own listing below.
+          appex="$app/PlugIns/ShareExtension.appex"
+          test -d "$appex"
+          test "$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$appex/Info.plist")" = "com.apple.share-services"
+          test "$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$appex/Info.plist")" = "$short"
+          test "$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$appex/Info.plist")" = "$build"
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -R "$app" "$RUNNER_TEMP/Payload/App.app"
           (cd "$RUNNER_TEMP" && zip -qry "hui-$VERSION-unsigned.ipa" Payload)
           mv "$RUNNER_TEMP/hui-$VERSION-unsigned.ipa" .
           # macOS has no sha256sum; shasum writes the same "<hash>  <file>" line it would.
           shasum -a 256 "hui-$VERSION-unsigned.ipa" > "hui-$VERSION-unsigned.ipa.sha256"
-          unzip -l "hui-$VERSION-unsigned.ipa" | head -5
+          unzip -l "hui-$VERSION-unsigned.ipa" > "$RUNNER_TEMP/ipa-listing.txt"
+          head -5 "$RUNNER_TEMP/ipa-listing.txt"
+          grep -q "Payload/App.app/PlugIns/ShareExtension.appex/" "$RUNNER_TEMP/ipa-listing.txt"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-ipa

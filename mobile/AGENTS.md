@@ -60,6 +60,30 @@ package runs `npm install` or edits `package.json`/`package-lock.json`** without
   screens). A launch that also names another gateway restarts the bridge first and then opens the path on *that* gateway:
   one load, never a link and a gateway changing under each other. `HuiGateway.connect`/`forget` drop the link with the
   rest of the launch, so a freshly chosen gateway starts on its own root.
+- **The Share sheet's intake is one address.** Another app's Share sheet offers HUI for `text/plain` and for `image/*`
+  (the activity's second `intent-filter`, and not `text/*`, so a markup or contact-card share is never offered; `image/*`
+  is listed so a text-plus-photo share still reaches its text, which means an image-only share is offered and then
+  refused with a toast). Choosing HUI opens `<gateway>/new-session?share=<value>` on the gateway this launch loaded — the
+  page's own intake fills the composer from that query — and `ShareTarget` builds it: percent-encoded once with
+  `URLEncoder` (`+` for a space, `%2B` for a literal `+`, `&` and `#` escaped so the value cannot break its own query),
+  `\r\n` and a bare `\r` folded to `\n`, with `\n` and `\t` kept as shared and any other control character refusing the
+  whole share, at most 8 000 characters cut on a character boundary, and the finished address cut to **12 KiB on a code
+  point boundary** rather than refused, so a long share opens with its first part. **The 12 KiB is the gateway's:** the
+  gateway is Node's `createServer`, whose 16 KiB request-head budget (`maxHeaderSize`, the default) counts the request
+  line the address is, and the other headers need the remainder — the wider bound this first allowed answered the page's
+  own navigation with 431 and the WebView marked the gateway failed. The value is `EXTRA_TEXT` read as a `CharSequence`,
+  because X sends a `SpannedString`; the intent's own `data` counts only for a `text/*` type and an `http(s)` address; an
+  `EXTRA_STREAM` **or an `image/*` type** marks the share as an image, so a photo that arrives in clip data or in the
+  intent's data is refused as an image instead of being called "nothing"; text beside an image prefills the text; and an
+  image on its own is refused with "HUI can't take an image from the share sheet yet", after which the app leaves again
+  only when that share is the delivery that created the activity — a share handed to a running HUI leaves the session it
+  arrived in alone. `MainActivity` takes the share out of the launch intent before anything loads, so the restarts this
+  launch asks for — the fallback, a bridge rebuilt on another gateway — cannot open New Session a second time; the one
+  launch that keeps it is Android 17's local-network question, and a refusal drops it. A share with no remembered gateway
+  is dropped with a toast and leaves the operator on Connect. `hui://open` is unchanged by any of this. **What is
+  proven:** `ShareTargetTest` under `./gradlew testDebugUnitTest`, and `assembleDebug`, whose merged manifest carries this
+  filter. **Not proven:** no device or emulator share sheet was opened in this change, so the sheet's own matching and
+  the warm `onNewIntent` path are reasoned from the platform contracts.
 - **Cleartext stays on loopback.** `mobile/android/app/src/main/res/xml/network_security_config.xml` permits plain HTTP
   only for `127.0.0.1`, `localhost` and `10.0.2.2` (the host from the emulator, reached through `adb reverse`). Every
   other gateway needs `https://` (owner decision O3).
@@ -378,6 +402,27 @@ screen, on the paths that can break it (not on every PR, because macOS minutes c
   so a rebuild replaces the root view controller.
 - **Deep links.** `SceneDelegate` handles `hui://open?path=/…` the way Android's `DeepLink` does: a plain path on the
   gateway the app is on, ignored without a gateway, refused if it carries `://`, a backslash or whitespace.
+- **Share to HUI is a Share Extension.** The `ShareExtension` target ships inside the app
+  (`PlugIns/ShareExtension.appex`, bundle id `dev.hui.app.ShareExtension`) and offers itself for text and one web
+  address, never for an image or a file, because New Session starts with words. It builds `hui://share?url=<value>`;
+  `SceneDelegate` checks the value alone (`DeepLink.share`: 8 000 characters, a query under 12 KiB, `\r\n` and `\r`
+  folded to `\n` with `\n` and `\t` kept, and every other control character refused) and opens
+  `<gateway>/new-session?share=…` on the gateway the app remembers, ignoring a share with no gateway as the deep link is
+  ignored. **The 12 KiB is the gateway's, as on Android:** Node's `createServer` refuses a request head past its default
+  16 KiB (`maxHeaderSize`), the request line included, so the extension cuts the value to the budget on a character
+  boundary and the share opens with its first part. The contract is the Android one: a multi-line share arrives as it was
+  written — the extension trims the value's ends only instead of flattening it to one line and collapsing whitespace — a
+  `public.url` candidate counts only when its scheme is `http(s)` (`public.file-url` conforms to `public.url`, so a file
+  beside text would otherwise seed `file:///…`) with the plain-text candidate used instead, text beside an image prefills
+  the text, and an image on its own is refused — the extension does not even offer itself for it. A provider callback
+  that lands after the operator tapped Done, or after the request completed, is ignored, so it cannot open HUI from under
+  them. **The transport is best-effort:** Apple documents `NSExtensionContext.open(_:)`, how an extension asks iOS to
+  open its app, for the Today and iMessage extension points only; a share extension calling it is unsupported, and it is
+  reported to fail on iOS 18 and later cold starts. The extension then shows the share with a Copy action instead of
+  losing it, and an App Group the extension writes into — read by the app on its next start — is the known upgrade path,
+  touching the two native targets and their entitlement, not the web intake or this contract. **What is proven:** the
+  parser's JVM tests, the web intake's tests, and the appex's embedding checked by `ios.yml` and `release.yml`. **Not
+  proven:** no device's share sheet, no emulator run and no Xcode build were available in this change.
 - **Cleartext is loopback only** (`NSExceptionDomains` for `127.0.0.1` and `localhost`), the same rule as Android's
   network security config and owner decision O3. A tailnet gateway needs HTTPS (`tailscale serve`).
 - **The pickers need their usage strings.** The composer's "Take photo" is an image input with `capture`, and WebKit's
