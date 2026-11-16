@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { connect } from "node:net";
@@ -21,8 +21,13 @@ if (!process.env["PLAYWRIGHT_BROWSERS_PATH"] && userHome) process.env["PLAYWRIGH
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 process.env["XDG_DATA_HOME"] = join(root, "data");
 process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
+// Every host this file runs binds an ephemeral hook endpoint: the fixed default would collide with the other test
+// files' worker hosts on this machine.
+process.env["HUI_WORKER_HOOK_PORT"] = "0";
 const { workerPaths } = await import("./paths.ts");
-const { WorkerHost } = await import("./host.ts");
+const { WorkerHost, hostIdles, serveRequested } = await import("./host.ts");
+const { HOOK_QUEUE_DIR } = await import("./hook-endpoint.ts");
+const { waitFor } = await import("../test-support/wait-for.ts");
 const { attachPeer } = await import("./protocol.ts");
 const { brokeredStore, ownLogin } = await import("./credentials.ts");
 const { GATEWAY_ONLY_TOOLS } = await import("./gateway-tools.ts");
@@ -56,6 +61,147 @@ async function gateway(credentials: Map<string, unknown>) {
 /** The remote's own login, used when the host has no answer from a gateway. */
 const own = { read: async (id: string) => ({ type: "api_key", key: `own-${id}` }) } as unknown as Store;
 const store = brokeredStore("pi", () => own);
+
+/** A listener's report as it reaches this worker's hook endpoint, answered by whatever is connected. */
+async function report(url: string, body: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body });
+  return { status: response.status, body: await response.json() as Record<string, unknown> };
+}
+
+const hookUrl = (port: number, token: string) => `http://127.0.0.1:${port}/__hui/hooks/${token}`;
+
+/** A gateway for this worker that answers `hooks.report` for `token` only, as a gateway that owns the trigger would; any
+ * other token is a 404, its own gateway not holding it. */
+async function hookGateway(token: string, answer: { status: number; body: Record<string, unknown> }) {
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  const seen: Record<string, unknown>[] = [];
+  peer.handle("hooks.report", (params) => {
+    if (params["token"] !== token) return { status: 404, body: { error: "No trigger has this URL." } };
+    seen.push(params);
+    return answer;
+  });
+  return { peer, seen, disconnect: () => socket.destroy() };
+}
+
+test("a host serves its trigger hook endpoint on loopback and says where in hello", async () => {
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  try {
+    const info = await peer.request<HostInfo>("hello");
+    assert.ok(info.features?.includes("trigger-hooks"), "hello names the endpoint's feature");
+    assert.equal(typeof info.hookPort, "number", "and the port it bound");
+    assert.ok((info.hookPort ?? 0) > 0, "a bound port is a real one, even when it was asked for ephemeral");
+  } finally {
+    socket.destroy();
+  }
+});
+
+test("with no gateway attached a report waits on this machine, and the next gateway receives it in order", async () => {
+  const dir = join(host.paths.stateDir, HOOK_QUEUE_DIR);
+  const port = host.info().hookPort;
+  assert.ok(port, "the endpoint is listening");
+  const token = "waiting-report-token-7a1c3e5d9f0b2c4e";
+  const bodies = ["first", "second"].map((text) => JSON.stringify({ events: [{ id: text, summary: text }] }));
+  for (const body of bodies) assert.deepEqual(await report(hookUrl(port, token), body), { status: 202, body: { status: "queued" } });
+  assert.equal((await readdir(dir)).length, 2, "one file per report waits here");
+
+  const gateway = await hookGateway(token, { status: 202, body: { status: "fired" } });
+  try {
+    await gateway.peer.request("hello");
+    // Attaching drains the queue, in order, without anyone asking.
+    await waitFor("the queue to reach the gateway", async () => (await readdir(dir).catch(() => [] as string[])).length === 0);
+    assert.deepEqual(gateway.seen, bodies.map((body) => ({ token, body })), "oldest first, each body as it came");
+  } finally {
+    gateway.disconnect();
+  }
+});
+
+test("a report is relayed to the connected gateway and its answer is the listener's", async () => {
+  const token = "relayed-report-token-3c9a1f5e7b0d2a4c";
+  const gateway = await hookGateway(token, { status: 202, body: { status: "fired" } });
+  const port = host.info().hookPort;
+  assert.ok(port);
+  const body = JSON.stringify({ events: [{ id: "relayed", summary: "there it is" }] });
+  try {
+    await gateway.peer.request("hello");
+    assert.deepEqual(await report(hookUrl(port, token), body), { status: 202, body: { status: "fired" } });
+    assert.deepEqual(gateway.seen, [{ token, body }], "the gateway saw the token and the body as the listener sent them");
+  } finally {
+    gateway.disconnect();
+  }
+});
+
+test("a gateway too old for the relay leaves the report waiting instead of failing it", async () => {
+  const token = "old-gateway-token-5e8d1b7f3a9c0e2d";
+  const port = host.info().hookPort;
+  assert.ok(port);
+  // No `hooks.report` handler: the peer's own unsupported-request refusal, as an older gateway's.
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  const dir = join(host.paths.stateDir, HOOK_QUEUE_DIR);
+  try {
+    await peer.request("hello");
+    assert.deepEqual(await report(hookUrl(port, token), JSON.stringify({ events: [{ id: "old", summary: "old" }] })), { status: 202, body: { status: "queued" } });
+    assert.equal((await readdir(dir)).some((name) => name.endsWith(".json")), true, "it waits for a gateway that can take it");
+  } finally {
+    socket.destroy();
+  }
+  // The next gateway takes what waited.
+  const gateway = await hookGateway(token, { status: 202, body: { status: "ignored" } });
+  try {
+    await gateway.peer.request("hello");
+    await waitFor("the older gateway's report to be taken by the newer one", async () => (await readdir(dir).catch(() => [] as string[])).length === 0);
+    assert.equal(gateway.seen.length, 1, "the report the older gateway left behind");
+  } finally {
+    gateway.disconnect();
+  }
+});
+
+test("the host keeps answering its gateway while a report is waiting on it", async () => {
+  const token = "reentrant-report-token-9b2e4f6a8c0d1e3f";
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  let nested: HostInfo | undefined;
+  peer.handle("hooks.report", async (params) => {
+    if (params["token"] !== token) return { status: 404, body: { error: "No trigger has this URL." } };
+    // The host must answer a request of its own while this one is pending, as it does for sessions.
+    nested = await peer.request<HostInfo>("hello");
+    return { status: 202, body: { status: "ignored" } };
+  });
+  try {
+    const { hookPort } = await peer.request<HostInfo>("hello");
+    assert.ok(hookPort);
+    assert.deepEqual(await report(hookUrl(hookPort, token), JSON.stringify({ events: [] })), { status: 202, body: { status: "ignored" } });
+    assert.ok(nested, "the host answered while the relay was pending");
+  } finally {
+    socket.destroy();
+  }
+});
+
+test("a host asked to serve, or holding a report, never stops; a plain daemon with nothing to do does", () => {
+  const now = 1_000_000_000;
+  const idle = { persistent: false, hookBusy: false, sessions: 0, peers: 0, starting: 0, lastActivity: now - 31 * 60_000 };
+  assert.equal(hostIdles(idle, now), true, "nothing to do for half an hour");
+  assert.equal(hostIdles({ ...idle, lastActivity: now }, now), false, "a host still at work");
+  assert.equal(hostIdles({ ...idle, sessions: 1 }, now), false, "a session here");
+  assert.equal(hostIdles({ ...idle, peers: 1 }, now), false, "a gateway attached");
+  assert.equal(hostIdles({ ...idle, starting: 1 }, now), false, "a session starting");
+  assert.equal(hostIdles({ ...idle, persistent: true }, now), false, "asked to keep serving");
+  assert.equal(hostIdles({ ...idle, hookBusy: true }, now), false, "holding a listener's report");
+});
+
+test("a host was asked to serve by its flag or its environment, and by nothing else", () => {
+  assert.equal(serveRequested(["node", "main.ts", "daemon", "--serve"], {}), true);
+  assert.equal(serveRequested(["node", "main.ts", "daemon"], {}), false);
+  assert.equal(serveRequested(["node", "main.ts", "connect"], {}), false);
+  assert.equal(serveRequested(["node", "main.ts", "connect", "--serve"], {}), false, "only the daemon serves");
+  assert.equal(serveRequested(["node", "main.ts", "daemon"], { HUI_WORKER_SERVE: "1" }), true);
+  assert.equal(serveRequested(["node", "main.ts", "daemon"], { HUI_WORKER_SERVE: "yes" }), true);
+  for (const value of ["0", "false", "FALSE", " "]) {
+    assert.equal(serveRequested(["node", "main.ts", "daemon"], { HUI_WORKER_SERVE: value }), false, `HUI_WORKER_SERVE=${JSON.stringify(value)}`);
+  }
+});
 
 test("cached gateway credentials end at their expiry or deletion; then the remote's own login answers", async () => {
   const connected = await gateway(new Map<string, unknown>([
@@ -523,5 +669,51 @@ test("Git operations run on the worker, and a new worktree lands in its own fold
     assert.throws(() => git("rev-parse", "--verify", "--quiet", `refs/heads/${created.branch}`), "and its branch");
   } finally {
     socket.destroy();
+  }
+});
+
+// Last in this file: a second WorkerHost re-registers the process-wide bridge and credential hooks, so no test may run
+// after it that needs the first host's.
+test("a host whose hook port is taken still serves its socket, and its hello leaves the endpoint out", async (t) => {
+  const taken = createServer((_request, response) => response.end());
+  taken.listen(0, "127.0.0.1");
+  await once(taken, "listening");
+  t.onTestFinished(() => { taken.close(); });
+  const address = taken.address();
+  assert.ok(address && typeof address !== "string");
+  const env = {
+    ...process.env,
+    HOME: join(root, "taken", "home"),
+    XDG_DATA_HOME: join(root, "taken", "data"),
+    XDG_CONFIG_HOME: join(root, "taken", "config"),
+  };
+  const paths = workerPaths(env);
+  const other = new WorkerHost(paths, { persistent: true });
+  // The host reads its hook port from this process's environment, as `main.ts` gives it; a bind that fails is reported,
+  // never fatal.
+  const configured = process.env["HUI_WORKER_HOOK_PORT"];
+  process.env["HUI_WORKER_HOOK_PORT"] = String(address.port);
+  try {
+    await other.listen();
+  } finally {
+    if (configured === undefined) delete process.env["HUI_WORKER_HOOK_PORT"];
+    else process.env["HUI_WORKER_HOOK_PORT"] = configured;
+  }
+  try {
+    const info = other.info();
+    assert.equal(info.hookPort, undefined, "the endpoint could not bind, so no port is offered");
+    assert.equal(info.features?.includes("trigger-hooks") ?? false, false, "and no gateway is told there is one");
+    const socket = connect(paths.socket);
+    const peer = attachPeer(socket, socket);
+    try {
+      const hello = await peer.request<HostInfo>("hello");
+      assert.equal(hello.hookPort, undefined);
+      assert.equal(hello.features?.includes("trigger-hooks") ?? false, false);
+      assert.equal(hello.hostname, info.hostname, "the host serves its sessions either way");
+    } finally {
+      socket.destroy();
+    }
+  } finally {
+    await other.close();
   }
 });

@@ -22,6 +22,12 @@
  * directory, so a page a session opens is that machine's and its tabs never
  * leave it. It also samples its own machine's resources (`host.metrics`) for
  * the gateway's Dashboard.
+ *
+ * A listener on this machine reaches its trigger here, without the gateway's
+ * tailnet route: the host opens a loopback endpoint (`hook-endpoint.ts`), relays
+ * each report to a connected gateway (`hooks.report`) and keeps what no gateway
+ * could take in its own queue until one attaches. A host started with `--serve`
+ * stays up for that queue even with nobody connected.
  */
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -48,7 +54,8 @@ import type { RuntimeSession, TranscriptEntry } from "../runtimes/types.ts";
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setIntegrationEnv, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../git/working-directories.ts";
 import { checkoutSessionRef, createSessionWorktree, inspectGitCheckout, removeSessionWorktree } from "../git/worktrees.ts";
-import { attachPeer, HOST_METRICS_FEATURE, isRecord, PROTOCOL_VERSION, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
+import { attachPeer, HOST_METRICS_FEATURE, HOOK_REPORT_OP, isRecord, isUnsupportedRequest, PROTOCOL_VERSION, TRIGGER_HOOKS_FEATURE, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
+import { HOOK_QUEUE_DIR, HOOK_RELAY_TIMEOUT_MS, HookRelayUnavailable, WorkerHookEndpoint, type HookAnswer } from "./hook-endpoint.ts";
 import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE, hostBots } from "./host-bots.ts";
 import { GATEWAY_ONLY_TOOLS, HOST_BROWSER_FEATURE } from "./gateway-tools.ts";
 import { PACKAGE_ROOT } from "./release.ts";
@@ -67,6 +74,8 @@ const DETACHED_QUESTION_MS = 24 * 60 * 60_000;
 const ATTACHMENT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 /** A host with nothing to do exits after this, unless Durable work remains. */
 const HOST_IDLE_MS = 30 * 60_000;
+/** The loopback port the host's trigger hook endpoint listens on, unless `HUI_WORKER_HOOK_PORT` names another. */
+const DEFAULT_HOOK_PORT = 4180;
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 /** A transcript larger than this is fetched in pages instead of riding along
  * with a frame, which could exceed the frame limit or hold up other sessions. */
@@ -111,6 +120,37 @@ type Cached = { value: unknown; until: number };
 
 const logPiRuns = (error: unknown) => console.error(`Could not record PI runs: ${error instanceof Error ? error.message : String(error)}`);
 
+/** The loopback port the host's trigger hook endpoint binds: `HUI_WORKER_HOOK_PORT`, an integer (`0` for any free
+ * one), else the default. A value that is not an integer is the default too. */
+export function hookPortFrom(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = (env["HUI_WORKER_HOOK_PORT"] ?? "").trim();
+  if (!raw) return DEFAULT_HOOK_PORT;
+  const port = Number(raw);
+  return Number.isInteger(port) && port >= 0 && port <= 65_535 ? port : DEFAULT_HOOK_PORT;
+}
+
+/** Whether this process was started as a host that must keep serving (`daemon --serve`, or `HUI_WORKER_SERVE`): a
+ * worker a listener reports to stays up with no gateway attached, so its endpoint and queue keep working. */
+export function serveRequested(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): boolean {
+  if (argv.includes("daemon") && argv.includes("--serve")) return true;
+  const value = (env["HUI_WORKER_SERVE"] ?? "").trim().toLowerCase();
+  return value !== "" && value !== "0" && value !== "false";
+}
+
+/** Whether a host with nothing to do may stop. A host asked to keep serving, and one holding a report nothing took yet,
+ * never idles: what it keeps is only worth keeping while it runs. */
+export function hostIdles(state: {
+  persistent: boolean;
+  hookBusy: boolean;
+  sessions: number;
+  peers: number;
+  starting: number;
+  lastActivity: number;
+}, now: number): boolean {
+  return !state.persistent && !state.hookBusy && state.sessions === 0 && state.peers === 0 && state.starting === 0
+    && now - state.lastActivity > HOST_IDLE_MS;
+}
+
 function expiry(value: unknown): number {
   const expires = isRecord(value) ? value["expires"] : undefined;
   return typeof expires === "number" ? expires : Infinity;
@@ -148,9 +188,14 @@ export class WorkerHost {
   readonly #browser: ManagedBrowser;
   /** This worker's mirrored browser state, kept beside its profile. */
   readonly #browserState: BrowserStateFile;
+  /** Started with `--serve`: it stays up, so a listener on this machine always has an endpoint to report to. */
+  readonly #persistent: boolean;
+  /** The loopback endpoint listeners on this machine report to, once it bound. */
+  #hook: WorkerHookEndpoint | undefined;
 
-  constructor(paths: WorkerPaths) {
+  constructor(paths: WorkerPaths, options: { persistent?: boolean } = {}) {
     this.paths = paths;
+    this.#persistent = options.persistent === true;
     this.#browserState = new BrowserStateFile(join(paths.dataDir, "browser", "state.json"));
     this.#browser = new ManagedBrowser({
       profileDir: join(paths.dataDir, "browser", "profile"),
@@ -194,8 +239,12 @@ export class WorkerHost {
   }
 
   info(): HostInfo {
+    const hookPort = this.#hook?.port;
     return {
-      version: PROTOCOL_VERSION, release: this.#release, features: [BOT_FACTS_FEATURE, BOTS_FEATURE, BOT_ACCESS_FEATURE, BOT_SKILLS_FEATURE, BOT_SKILL_FILES_FEATURE, HOST_BROWSER_FEATURE, HOST_METRICS_FEATURE], pid: process.pid, hostname: hostname(),
+      version: PROTOCOL_VERSION, release: this.#release,
+      features: [BOT_FACTS_FEATURE, BOTS_FEATURE, BOT_ACCESS_FEATURE, BOT_SKILLS_FEATURE, BOT_SKILL_FILES_FEATURE, HOST_BROWSER_FEATURE, HOST_METRICS_FEATURE, ...(hookPort === undefined ? [] : [TRIGGER_HOOKS_FEATURE])],
+      ...(hookPort === undefined ? {} : { hookPort }),
+      pid: process.pid, hostname: hostname(),
       platform: process.platform, arch: process.arch, node: process.version, home: this.paths.home,
       dataDir: this.paths.dataDir, mirrorDir: this.paths.mirrorDir, agentDir: this.paths.agentDir,
       providersDir: this.paths.providersDir, releaseDir: this.releaseDir,
@@ -240,12 +289,30 @@ export class WorkerHost {
     });
     await chmod(this.paths.socket, 0o600);
     await writeFile(join(this.paths.stateDir, "release"), this.#release);
+    // The endpoint a listener on this machine reports to. An address already in use, or a port this host may not bind,
+    // costs the endpoint only: the host serves its sessions either way, and its hello leaves the feature out.
+    const hookPort = hookPortFrom(process.env);
+    const hook = new WorkerHookEndpoint({
+      dir: join(this.paths.stateDir, HOOK_QUEUE_DIR),
+      port: hookPort,
+      relay: (token, body) => this.#relayHook(token, body),
+      onActivity: () => this.#touch(),
+    });
+    try {
+      await hook.listen();
+      this.#hook = hook;
+    } catch (error) {
+      console.error(`HUI could not open its trigger hook endpoint on 127.0.0.1:${hookPort}: ${error instanceof Error ? error.message : String(error)}`);
+    }
     this.#timer = setInterval(() => this.#sweep(), 30_000);
     this.#timer.unref();
   }
 
   async close(): Promise<void> {
     clearInterval(this.#timer);
+    // Nothing new is reported here; a relay already in flight finishes over the connection that is still open.
+    await this.#hook?.close().catch(() => undefined);
+    this.#hook = undefined;
     for (const hosted of [...this.#sessions.values()]) this.#stop(hosted);
     this.#bots.close();
     for (const peer of this.#peers) peer.close("Remote worker host stopped.");
@@ -272,6 +339,8 @@ export class WorkerHost {
     peer.keepAlive();
     this.#peers.add(peer);
     this.#touch();
+    // What waited for a gateway goes now, in order, over this one.
+    this.#hook?.drain();
     peer.onClose(() => {
       this.#peers.delete(peer);
       for (const hosted of this.#sessions.values()) if (hosted.peer === peer) hosted.peer = undefined;
@@ -727,6 +796,45 @@ export class WorkerHost {
   }
 
   #idle(): boolean {
-    return !this.#sessions.size && !this.#peers.size && !this.#starting.size && Date.now() - this.#lastActivity > HOST_IDLE_MS;
+    return hostIdles({
+      persistent: this.#persistent,
+      hookBusy: this.#hook?.busy ?? false,
+      sessions: this.#sessions.size,
+      peers: this.#peers.size,
+      starting: this.#starting.size,
+      lastActivity: this.#lastActivity,
+    }, Date.now());
+  }
+
+  /**
+   * `hooks.report { token, body }` on a connected gateway: its trigger decision, as its own route makes it. The newest
+   * gateway is asked first, and a 404 (a trigger the gateway does not own) lets the next one answer, so a machine that
+   * runs several gateways' listeners finds the one holding the trigger. Nothing else is retried: an older gateway, or a
+   * link that fails or times out, leaves the report to the queue instead of holding the listener across a reconnect.
+   */
+  async #relayHook(token: string, body: string): Promise<HookAnswer> {
+    this.#touch();
+    let missing: HookAnswer | undefined;
+    for (const peer of [...this.#peers].reverse()) {
+      if (peer.closed) continue;
+      let answer: unknown;
+      try {
+        answer = await peer.request<HookAnswer>(HOOK_REPORT_OP, { token, body }, HOOK_RELAY_TIMEOUT_MS);
+      } catch (error) {
+        // `isUnsupportedRequest`: a gateway from before this relay, which would only refuse the next one too.
+        throw new HookRelayUnavailable(isUnsupportedRequest(error, HOOK_REPORT_OP)
+          ? "The connected HUI serves no trigger relay."
+          : "No HUI answered the report.");
+      }
+      const status = isRecord(answer) ? answer["status"] : undefined;
+      const reply = isRecord(answer) ? answer["body"] : undefined;
+      if (typeof status !== "number" || !isRecord(reply)) throw new HookRelayUnavailable("HUI answered the report with something that is not a trigger decision.");
+      const decided: HookAnswer = { status, body: reply };
+      if (status !== 404) return decided;
+      missing = decided;
+    }
+    // Every gateway denied the token: that answer is the listener's, not a reason to queue.
+    if (missing) return missing;
+    throw new HookRelayUnavailable("HUI is not connected to this worker.");
   }
 }

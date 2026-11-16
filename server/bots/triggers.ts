@@ -50,6 +50,10 @@ export type BotTriggerServiceDeps = {
   perHour?: number;
   resyncMs?: number;
   report?: (level: "info" | "warning" | "error", action: string, summary: string, detail?: string) => void;
+  /** Where a bot on a worker takes its listeners' reports: that worker's own loopback endpoint (`base`, such as
+   * `http://127.0.0.1:4180`), or why it has none. Absent, or undefined for a bot, the bot is on this machine and its URL
+   * is the gateway's. */
+  hookWorker?(bot: BotRecord): { id: string; name: string; base?: string; error?: string } | undefined;
 };
 
 type Plan =
@@ -225,7 +229,7 @@ export class BotTriggerService {
       return { value: { ...state, triggers: [...state.triggers, created] }, result: created };
     });
     await this.#sync();
-    return { trigger: this.#view(record, await this.#read(), this.#now()), hook: { token: token.token, path: `${BOT_TRIGGER_HOOK_PREFIX}${token.token}` } };
+    return { trigger: this.#view(record, await this.#read(), this.#now()), hook: this.#hookOf(bot, token.token) };
   }
 
   async update(target: string, ref: string, body: unknown): Promise<BotTrigger> {
@@ -291,7 +295,19 @@ export class BotTriggerService {
       const next = { ...current, tokenHash: token.hash, tokenHint: token.hint, updatedAt: now };
       return { value: { ...state, triggers: state.triggers.map((trigger) => (trigger.id === current.id ? next : trigger)) }, result: next };
     });
-    return { trigger: this.#view(record, await this.#read(), this.#now()), hook: { token: token.token, path: `${BOT_TRIGGER_HOOK_PREFIX}${token.token}` } };
+    return { trigger: this.#view(record, await this.#read(), this.#now()), hook: this.#hookOf(bot, token.token) };
+  }
+
+  /** A created (or rotated) trigger's URL: the token, this once, and its path, and, for a bot whose chat runs on a
+   * worker, where that machine takes the report (its own loopback endpoint) or why it has none. A bot here gets exactly
+   * the URL it always did. */
+  #hookOf(bot: BotRecord, token: string): BotTriggerCreated["hook"] {
+    const path = `${BOT_TRIGGER_HOOK_PREFIX}${token}`;
+    const worker = this.#deps.hookWorker?.(bot);
+    if (!worker) return { token, path };
+    return worker.base === undefined
+      ? { token, path, worker: { id: worker.id, name: worker.name, ...(worker.error ? { error: worker.error } : {}) } }
+      : { token, path, worker: { id: worker.id, name: worker.name, url: `${worker.base}${path}` } };
   }
 
   /** Delivers a sample event now, outside the cooldown and the hourly cap, and answers how it went. */

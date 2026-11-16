@@ -87,7 +87,7 @@ beforeAll(async () => {
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   origin = `http://127.0.0.1:${address.port}`;
-  const command = ["env", "-u", "PI_CODING_AGENT_DIR", "-u", "XDG_CONFIG_HOME", "-u", "PI_OFFLINE", `HOME=${remoteHome}`, "SHELL=/bin/sh"];
+  const command = ["env", "-u", "PI_CODING_AGENT_DIR", "-u", "XDG_CONFIG_HOME", "-u", "PI_OFFLINE", "HUI_WORKER_HOOK_PORT=0", `HOME=${remoteHome}`, "SHELL=/bin/sh"];
   const added = await call("/__hui/workers", "POST", { name: "devbox", command: command.map((word) => `'${word}'`).join(" ") });
   assert.equal(added.status, 201, JSON.stringify(added.body));
   workerId = (added.body["worker"] as { id: string }).id;
@@ -836,4 +836,60 @@ test("explicit memories stay on the worker and its next request reads edits and 
   const results = await Promise.all(saves);
   assert.ok(results.every((reply) => reply.status === 201 || reply.status === 404), JSON.stringify(results.map((reply) => reply.status)));
   assert.ok(!existsSync(join(remoteData, "bots", bot.id)), "late writes never recreate a deleted worker bot's home");
+});
+
+// `HUI_WORKER_HOOK_PORT=0` in this file's connect command gives the daemon an ephemeral endpoint, so the suites running
+// beside this one never fight over the default port.
+test("a listener on the worker reports to that machine's own endpoint, and a report it sends while HUI is away waits there until the gateway is back", { timeout: 240_000 }, async (t) => {
+  // A bot here keeps the gateway's URL: no worker key at all.
+  const local = botOf(await call("/__hui/bots", "POST", { name: "Local Hook", soul: "# Who I am\nLocal." }));
+  t.onTestFinished(async () => { await call(`/__hui/bots/${local.id}?permanent=1`, "DELETE"); });
+  const localTrigger = await call(`/__hui/bots/${local.id}/triggers`, "POST", { name: "Local ping" });
+  assert.equal(localTrigger.status, 201, JSON.stringify(localTrigger.body));
+  assert.equal((localTrigger.body["hook"] as { worker?: unknown }).worker, undefined, "a local bot has no worker URL");
+
+  const beacon = botOf(await call("/__hui/bots", "POST", { name: "Beacon", worker: "devbox", soul: "# Who I am\nBeacon." }));
+  assert.equal(beacon.worker?.name, "devbox");
+  t.onTestFinished(async () => { await call(`/__hui/bots/${beacon.id}?permanent=1`, "DELETE"); });
+  const made = await call(`/__hui/bots/${beacon.handle}/triggers`, "POST", { name: "Ridge endpoint", prompt: "E2E_WORKER_HOOK look", cooldownSeconds: 0 });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const hook = (made.body["hook"] as { token: string; path: string; worker?: { id: string; name: string; url?: string; error?: string } });
+  assert.equal(hook.worker?.id, workerId);
+  assert.equal(hook.worker?.name, "devbox");
+  assert.equal(hook.worker?.error, undefined, "a connected, current worker serves its endpoint");
+  // The worker's own loopback endpoint, at the trigger's own path: where a listener on that machine reports.
+  assert.match(String(hook.worker?.url), /^http:\/\/127\.0\.0\.1:\d+\/__hui\/hooks\/[A-Za-z0-9_-]{43}$/u);
+  assert.equal(hook.worker?.url, `http://127.0.0.1:${new URL(hook.worker!.url!).port}${hook.path}`);
+
+  const report = async (token: string, id: string) => {
+    const response = await fetch(`http://127.0.0.1:${new URL(hook.worker!.url!).port}/__hui/hooks/${token}`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ events: [{ id, summary: `${id} from the worker's own endpoint` }] }),
+    });
+    return { status: response.status, body: await response.json() as Record<string, unknown> };
+  };
+  const runOf = async (id: string) => ((await call(`/__hui/bots/${beacon.handle}/triggers`)).body as { runs: Array<{ triggerName: string; status: string; summary: string }> })
+    .runs.find((run) => run.triggerName === "Ridge endpoint" && run.summary.includes(id));
+
+  // A report on the endpoint is relayed over the worker connection and wakes the bot there, as the gateway's own URL does.
+  assert.deepEqual(await report(hook.token, "worker-endpoint-1"), { status: 202, body: { status: "fired" } });
+  await waitFor(() => runOf("worker-endpoint-1"), "the first report's run");
+
+  // HUI is away: nothing answers, so the endpoint keeps the report on the worker's disk and says so, instead of the
+  // listener losing it. An unknown token polls for that state without delivering anything: a gateway that is still there
+  // answers it 404, and once the link is gone the endpoint queues it.
+  assert.equal((await call(`/__hui/workers/${workerId}/disconnect`, "POST", {})).status, 200);
+  assert.equal(workers.connected(workerId), false);
+  const unknown = "k".repeat(43);
+  await waitFor(async () => {
+    const answer = await report(unknown, "probe");
+    return answer.status === 202 && answer.body["status"] === "queued" ? answer : undefined;
+  }, "the worker's endpoint to see no gateway", 30_000);
+  assert.deepEqual(await report(hook.token, "worker-endpoint-2"), { status: 202, body: { status: "queued" } });
+  assert.equal(await runOf("worker-endpoint-2"), undefined, "nothing was delivered while HUI was away");
+
+  // Connected again, what waited goes without anyone asking: its decision is the gateway's, and the bot is woken there.
+  await workers.connect(workerId);
+  const delivered = await waitFor(() => runOf("worker-endpoint-2"), "the queued report's run", 120_000);
+  assert.equal(delivered.status, "fired");
 });

@@ -17,6 +17,7 @@ import { createStaffRoutes } from "./routes/staff.ts";
 import { createHeartbeat } from "./heartbeat.ts";
 import { createHeartbeatRoutes } from "./routes/heartbeat.ts";
 import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
+import { HOOK_REPORT_OP, TRIGGER_HOOKS_FEATURE } from "./worker/protocol.ts";
 import { accountFullName, BotExportService } from "./bots/export.ts";
 import { nameFromUsername } from "./bots/templates/cleanup.ts";
 import { BotTemplateService } from "./bots/template-import.ts";
@@ -895,12 +896,31 @@ async function browserStatus(): Promise<BrowserStatus> {
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 export const githubCli = new GitHubCli({ command: GH_COMMAND });
 /** Bots' triggers: what listeners the operator runs report, with the pull requests it links to read through the
- * same `gh`. */
+ * same `gh`. A bot whose chat runs on a worker takes its listeners' reports on that machine's own endpoint, which relays
+ * them here (`hooks.report`). */
 export const triggers = createGatewayTriggers({
   send: (botId, message) => bots.send(botId, message),
   listBots: () => botRegistry.list(),
   ghCommand: GH_COMMAND,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+  hookWorker: (bot) => {
+    const id = bot.worker;
+    if (!id) return undefined;
+    const name = workers.nameOf(id) ?? id;
+    if (!workers.connected(id)) return { id, name, error: `HUI is not connected to ${name}: connect it to take its listener URL.` };
+    if (!workers.features(id)?.includes(TRIGGER_HOOKS_FEATURE)) return { id, name, error: `${name} runs an older HUI release: update it to serve its listener URL.` };
+    const port = workers.hookPort(id);
+    if (port === undefined) return { id, name, error: `${name} could not open its listener endpoint.` };
+    return { id, name, base: `http://127.0.0.1:${port}` };
+  },
+});
+/** A worker's own listener endpoint relays its reports to the gateway that owns the trigger: only a connected worker's
+ * host can make this request, and its loopback bind is the caller rule on that machine. A host relays as soon as its
+ * socket is up, before the gateway has registered the connection, so the report waits for it: only then does it reach the
+ * worker's own chats. */
+workers.serve(HOOK_REPORT_OP, async (workerId, params) => {
+  await workers.ready(workerId);
+  return triggers.relay(params);
 });
 const githubPreviews = new GitHubPreviews(ghGraphQL(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);

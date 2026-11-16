@@ -12,6 +12,9 @@ const TRIGGER = {
   pending: { events: 2, until: "2026-10-07T10:05:00.000Z" }, watch: { polledAt: "2026-10-07T10:01:00.000Z" },
 };
 
+const WORKER_TOKEN = "w".repeat(43);
+const WORKER_URL = `http://127.0.0.1:4180/__hui/hooks/${WORKER_TOKEN}`;
+
 function host(): ReactiveControllerHost & { updates: number } {
   const controllers: ReactiveController[] = [];
   return {
@@ -66,6 +69,46 @@ test("the section reads the bot's triggers, adds one and shows its URL once, and
   controller.reset("id-bob");
   assert.equal(controller.state.revealed, undefined, "another bot shows nothing of the last one");
   assert.equal(controller.props(BOT).state.loading, true);
+});
+
+test("a bot on a worker shows that machine's own URL as it came, with the sentence that says where it lives", async () => {
+  const fake = api({
+    create: async (_botId, input) => ({
+      trigger: { ...parseTrigger(TRIGGER)!, id: "t3", name: input.name, filter: {} },
+      hook: { token: WORKER_TOKEN, path: `/__hui/hooks/${WORKER_TOKEN}`, worker: { id: "w1", name: "devbox", url: WORKER_URL } },
+    } satisfies BotTriggerCreated),
+  });
+  const controller = new BotTriggersController(host(), { api: fake });
+  await controller.refresh(BOT);
+  assert.equal(await controller.props(BOT).onCreate({ name: "Reviews", source: "listener", filter: {} }), true);
+  const revealed = controller.state.revealed;
+  assert.equal(revealed?.url, WORKER_URL, "the worker's URL is used as it came, not this page's origin and the path");
+  assert.equal(revealed?.note, "Your listener runs on devbox: it reports to this address there.");
+  controller.props(BOT).onCopy();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(fake.calls.includes(`copy ${WORKER_URL}`), "Copy takes that same address");
+  assert.equal(controller.state.revealed?.copied, true);
+  assert.doesNotMatch(fake.calls.join("\n"), /gateway\.test/u, "nothing is put on this page's origin");
+});
+
+test("a bot on a worker with no endpoint shows the server's sentence, no URL and nothing to copy", async () => {
+  const fake = api({
+    create: async (_botId, input) => ({
+      trigger: { ...parseTrigger(TRIGGER)!, id: "t4", name: input.name, filter: {} },
+      hook: { token: "x", path: "/__hui/hooks/x", worker: { id: "w1", name: "devbox", error: "HUI is not connected to devbox: connect it to take its listener URL." } },
+    } satisfies BotTriggerCreated),
+  });
+  const controller = new BotTriggersController(host(), { api: fake });
+  await controller.refresh(BOT);
+  await controller.props(BOT).onCreate({ name: "Reviews", source: "listener", filter: {} });
+  const revealed = controller.state.revealed;
+  assert.equal(revealed?.url, undefined, "there is no address to show");
+  assert.deepEqual([revealed?.name, revealed?.copied], ["Reviews", false]);
+  assert.equal(revealed?.note, "HUI is not connected to devbox: connect it to take its listener URL.");
+  controller.props(BOT).onCopy();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(fake.calls.filter((call) => call.startsWith("copy")), [], "Copy has nothing to take");
+  assert.equal(controller.state.revealed?.copied, false);
 });
 
 test("a refused create keeps the form's input and says why; a refused action shows above the list", async () => {

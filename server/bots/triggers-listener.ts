@@ -15,6 +15,10 @@
  * ids with the delivery it decides), never for an event older than the trigger, and only for what the trigger's filter
  * passes; the GitHub pull requests an event links to are read as its delivery goes out. The listener keeps its own
  * place in what it watches: a report HUI refuses (409) is its cue to send those events again later.
+ *
+ * A bot whose chat runs on a remote worker reports to that machine's own loopback endpoint instead (a listener there,
+ * `worker/hook-endpoint.ts`), which relays the body here unparsed. Both paths read a report through this module's own
+ * checks, so a body refused at one is refused the same way at the other.
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
@@ -72,8 +76,10 @@ export class HookBodyError extends Error {
   }
 }
 
-/** A report's body, at most `maxBytes`, parsed: a listener sends JSON (`application/json`, `…+json`). */
-export async function readHookBody(request: IncomingMessage, maxBytes: number = BOT_TRIGGER_LIMITS.body): Promise<unknown> {
+/** A report's body as text, at most `maxBytes`: a listener sends JSON (`application/json`, `…+json`). It is read, never
+ * parsed, so a caller that carries it somewhere else (a worker's endpoint, on the way to the gateway) can parse it
+ * there. */
+export async function readHookText(request: IncomingMessage, maxBytes: number = BOT_TRIGGER_LIMITS.body): Promise<string> {
   const type = String(request.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase();
   if (type !== "application/json" && !type.endsWith("+json")) {
     throw new HookBodyError("A listener reports JSON (Content-Type: application/json): { \"events\": [...] }, the list empty when nothing happened.", 400);
@@ -88,11 +94,23 @@ export async function readHookBody(request: IncomingMessage, maxBytes: number = 
     if (size > maxBytes) throw new HookBodyError(`The body is larger than ${maxBytes / 1024} KiB.`, 413);
     chunks.push(buffer);
   }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/** A report's text, at most `maxBytes`, parsed as the JSON it claims to be; the same 413 and 400 the request varies on,
+ * for a body that came from somewhere other than the request's own stream. */
+export function parseHookBody(text: string, maxBytes: number = BOT_TRIGGER_LIMITS.body): unknown {
+  if (Buffer.byteLength(text, "utf8") > maxBytes) throw new HookBodyError(`The body is larger than ${maxBytes / 1024} KiB.`, 413);
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return JSON.parse(text);
   } catch {
     throw new HookBodyError("The body says it is JSON but isn't.", 400);
   }
+}
+
+/** A report's body, at most `maxBytes`, parsed: what the route hands the trigger service. */
+export async function readHookBody(request: IncomingMessage, maxBytes: number = BOT_TRIGGER_LIMITS.body): Promise<unknown> {
+  return parseHookBody(await readHookText(request, maxBytes), maxBytes);
 }
 
 /** The value at a dot path (`fields.channel`, `links.0`); undefined when the path leads nowhere. */
