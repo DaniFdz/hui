@@ -21,8 +21,9 @@ if (!process.env["PLAYWRIGHT_BROWSERS_PATH"] && userHome) process.env["PLAYWRIGH
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 process.env["XDG_DATA_HOME"] = join(root, "data");
 process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
-const { workerPaths } = await import("./paths.ts");
+const { workerPaths, mirroredUserSkillPaths } = await import("./paths.ts");
 const { WorkerHost } = await import("./host.ts");
+const { mirrorPath } = await import("./sync.ts");
 const { attachPeer } = await import("./protocol.ts");
 const { brokeredStore, ownLogin } = await import("./credentials.ts");
 const { GATEWAY_ONLY_TOOLS } = await import("./gateway-tools.ts");
@@ -310,6 +311,38 @@ test("a bot's tool and skill lists live in its document here: made with it, read
     await assert.rejects(peer.request("bot.access.write", { reference, access: { disabledTools: [] } }), /no bot's chat/u);
   } finally {
     gateway.disconnect();
+  }
+});
+
+test("the gateway's ~/.agents/skills reach this host only through the mirror, where its Durable prompt lists them", async () => {
+  const { mirrorDir } = host.paths;
+  const homeSkills = join(host.paths.home, ".agents", "skills");
+  // Where the sync keeps them (`sync.ts`), rather than that layout restated here, so the two cannot drift apart.
+  const mirrored = join(mirrorDir, mirrorPath(homeSkills, { agentDir: host.paths.agentDir, home: host.paths.home }));
+  // No path while the directory is absent, on a mirror no other test makes and on this host's before the sync has
+  // run: the absence is part of the loader's key, so the sync's first copy is a fresh loader rather than a stale one.
+  assert.deepEqual(mirroredUserSkillPaths({ mirrorDir: join(root, "no-mirror") }), []);
+  assert.deepEqual(mirroredUserSkillPaths({ mirrorDir }), []);
+
+  const gateway = await botGateway();
+  const { peer } = gateway;
+  try {
+    await mkdir(join(mirrored, "mirrored-user-agents-skill"), { recursive: true });
+    await writeFile(join(mirrored, "mirrored-user-agents-skill", "SKILL.md"), "---\nname: mirrored-user-agents-skill\ndescription: Mirrored from the gateway.\n---\n\n# mirrored\n");
+    assert.deepEqual(mirroredUserSkillPaths(host.paths), [mirrored]);
+
+    type Offer = { skills: Array<{ name: string; path: string; source: string; description: string }> };
+    // The PI launch reads this directory too (`HostLaunch.hostSkillPaths`); workers.test.ts runs that end to end. Here
+    // a folder no earlier loader read proves the Durable prompt lists the skill from the mirror as it is now.
+    const offer = (await peer.request<{ offer: Offer }>("bot.offer", { botId: "bot-mirrored-skills" })).offer;
+    assert.deepEqual(offer.skills.filter((skill) => skill.name === "mirrored-user-agents-skill"), [{
+      name: "mirrored-user-agents-skill", path: join(mirrored, "mirrored-user-agents-skill", "SKILL.md"),
+      description: "Mirrored from the gateway.", source: "~/data/hui-worker/mirror/home/.agents/skills",
+    }]);
+  } finally {
+    gateway.disconnect();
+    // No leftover mirror for the tests after this one, which would then list a skill of the gateway's home.
+    await rm(join(mirrorDir, "home"), { recursive: true, force: true });
   }
 });
 
