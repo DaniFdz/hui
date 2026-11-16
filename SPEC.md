@@ -1912,17 +1912,74 @@ helpers' or watchers' count) beside it. Its accessible name names the goal, plan
 and helper facts it summarizes. On a narrow pane or a phone the trigger keeps
 only its mark and count.
 
-Clicking the trigger opens one popover anchored to its right edge: **Goal** (the
-objective, its status note, when it was set, its automatic turns, and
-Pause/Resume, Edit and Clear), **Plan** (the Task progress steps and summary),
-**Helpers** (the latest batch, its counts, one dot per child and each child's
-row) and **Watchers** (each watcher's purpose, latest output, state, details,
-log tail and Stop/Restart/Dismiss; a list longer than four folds its rows behind
-Watcher details while the section header keeps the running count). Empty sections are absent. The popover
-scrolls inside itself, closes on Escape or an outside click, and never resizes
-the conversation. None of those surfaces draws above the composer or in the
-transcript; a helper or watcher that settles still writes its own transcript
-event.
+Clicking the trigger opens one popover whose settled top-right corner is
+the trigger's; while it is out the pill is not drawn at all — the panel's first
+line is its own title, the pill's mark, one state word and count set at the
+card's left padding on the same 12px the rows below use, with the chevron, now
+pointing up, at the box's right edge as the close — so the two boxes never show
+together and no word floats alone at the right. The
+pill morphs into the panel and back as one painted box: the panel's own width and
+height grow out of the pill's box — the trigger's top-right corner, the pill's
+round at the pill's height — and that corner stays put, so the box only grows
+left and down while only the panel is painted and the rows inside it fade in near
+the end of the growth. Left-aligned copy inside a box growing to the left would
+travel with its left edge, so the title's copy is held while the box grows — the
+chevron carries the first frame — and written once the box has arrived, where it
+stays; a close drops it with the fold's first frame. A close draws the same box
+back into the pill before it hides, and the pill returns only once that close has
+landed, so the pill and the panel never show together. The head reads what the
+pill reads — the mark, the state word and the count — and the chevron it turns
+into closes the panel and returns focus to the trigger; the trigger stays in
+place as the popover's anchor, unpainted, and gives its accessible name and
+aria-expanded back when the pill paints again.
+Escape or an outside click closes it too. A window
+that asks for reduced motion gets no morph and opens and closes at once, and
+only a real open or close animates: a streamed frame that changes the plan or
+the helpers never restarts it. On a wide window it opens by itself while a run
+streams, so the run's state is readable without a press, and closes again when
+that run ends; the operator's own open holds until they close it, because a run
+the conversation starts on its own — a watcher settling, a helper finishing —
+must never shut the panel they are reading, while their own close lasts that
+run and the next run starts from the default. A reload forgets both, so the
+wide window's default applies again:
+open while the run still streams, closed once it has settled. A phone keeps it
+collapsed until the operator opens it.
+The popover holds **Goal** (the objective, its status note, when it was set, its
+automatic turns, and Pause/Resume, Edit and Clear), **Plan** (the Task progress
+steps and summary), **Helpers** (the latest batch, its counts, one dot per child
+and each child's row) and **Watchers** (each watcher's purpose, latest output,
+state, details, log tail and Stop/Restart/Dismiss; a list longer than four folds
+its rows behind Watcher details while the section header keeps the running
+count). Empty sections are absent. A state word is written once per box: a
+goal's own word is the head's whenever the head reads it, so the Goal section
+head then prints its title alone, and the section carries the goal's status
+only while the head says another state — Working, Waiting for your answer, or a
+failed helper or watcher. The popover scrolls inside itself, closes on
+its chevron (Close run status), Escape or an outside click, and never resizes
+the conversation. None of those
+surfaces draws above the composer or in the transcript; a helper or watcher that
+settles still writes its own transcript event.
+
+### Run status opens by itself on a wide window (2026-11-15)
+
+On a wide window the chat header has room for the popover beside the
+conversation, and the question it answers — what is this run doing? — is the one
+the operator looks for while it works, so it opens as soon as a run streams. On
+a phone the same panel would cover the conversation it describes, so it waits
+for the operator there; that is the phone's own limit, not a second behaviour.
+The panel follows the run, but the operator is not pulled along with it: an
+explicit open is theirs until they close it, so a run the conversation starts on
+its own cannot shut the panel they are reading, and an explicit close answers the
+run it was made in and is cleared by the next one. Neither choice is stored, past
+that run or a reload: a stored one would hide a run's panel or reopen one the
+operator already shut, so an arrival re-reads the window and the run instead of a
+preference. One control opens and closes it: a closed panel's pill opens it, and
+the chevron in the open panel's head closes it, with focus returning to the
+trigger. Because the pill becomes the panel, the head carries the state word and
+count the pill showed — in the panel's own left-aligned title line, written once
+the box has arrived rather than gliding with the growth — and the pill itself is
+not drawn while the panel is out, whichever way it opened, so the state is read
+once on screen.
 
 ## Goals
 
@@ -1934,8 +1991,9 @@ request's system prompt.
 `/goal <objective>` starts one and sends the objective as the goal's first turn,
 so gathering the work and starting it is one step. `/goal pause`, `/goal resume`
 and `/goal clear` are the other operator controls; the Run status popover's Goal
-section offers the same three, with the status (Pursuing goal, Goal paused, Goal
-blocked, Goal achieved) and the objective.
+section offers the same three, with the objective and, while the panel's head
+names another state, the goal's own (Pursuing goal, Goal paused, Goal blocked,
+Goal achieved).
 
 The Goal section shows the whole objective wrapped and readable, the status
 note when it paused or blocked itself, when it was set, and how many automatic

@@ -1,6 +1,7 @@
 /** Appearance's Chat preferences change the conversation: Message width narrows or widens it and the composer in every open session, Collapse task progress starts a progress card collapsed, and Send shortcut decides what Enter does (SET-012, SET-013, SET-014). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
+import { openRunStatus } from "../agent/run-status.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
 
 test("Message width narrows or widens the conversation and the composer in every open session", { tags: ["SET-012"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -51,14 +52,14 @@ test("Collapse task progress starts an agent's plan collapsed but expandable, an
   const collapse = screen.getByRole("switch", "Collapse task progress");
   const card = screen.getByTestId("task-progress");
   const steps = card.getByLabel("Task progress steps");
-  const trigger = screen.getByTestId("run-status-trigger");
   const settings = await hui.api<Settings>("GET", "/__hui/settings");
   await hui.api("PUT", "/__hui/settings", { ...settings, models: { ...settings.models, utility: "hui-e2e/fixture" } });
   const progress = async (title: string) => {
     const session = await hui.createSession({ title });
     await hui.prompt(session, "E2E_PROGRESS");
     await hui.open(`/sessions/${session.id}`);
-    await trigger.tap();
+    // A wide window opens the popover itself while the turn streams; the shared helper takes it once it has settled.
+    await openRunStatus(screen);
     await expect(card).toBeVisible();
   };
 

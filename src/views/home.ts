@@ -47,7 +47,7 @@ import { sessionStatusLabel } from "../lib/session/labels.ts";
 import { adjustTextareaHeight as syncComposerTextarea, mountEditorAtEnd } from "../lib/composer/textarea.ts";
 import { icons } from "../lib/icons.ts";
 import { renderEffortSelector } from "./effort-selector.ts";
-import { renderRunStatus, type GoalPanelState } from "./chat/run-status.ts";
+import { dismissRunStatusPanel, renderRunStatus, type GoalPanelState } from "./chat/run-status.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import { renderAgentMarkdown, renderMarkdown } from "../lib/markdown/markdown.ts";
@@ -2454,7 +2454,11 @@ function renderHeader(props: HomeProps, session: SessionView) {
           aria-label="Open navigation"
           aria-controls="primary-navigation-drawer"
           aria-expanded="false"
-          @click=${toggleNavigationDrawer}
+          @click=${(event: Event) => {
+            // The Run status panel is pinned over this row's right end, so this tap also closes it.
+            dismissRunStatusPanel(sessionControlId(props, "run-status"));
+            toggleNavigationDrawer(event);
+          }}
         >${icons.menu}</button>` : nothing}
         ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs ${props.panelPicker ? "chat-pane__crumbs--picker" : ""}">
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
@@ -2501,6 +2505,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
             waiting: Boolean(props.question),
             sending: props.sending,
             connectionLive: props.connection === "live",
+            wide: !props.mobileNavLayout,
             goalPanel: props.goalPanel,
             collapsePlan: props.chatPreferences.collapseTaskProgress || Boolean(props.mobileNavLayout),
             onGoalChange: props.onGoalChange,

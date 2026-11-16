@@ -202,6 +202,35 @@ export type Hui = {
    */
   world(name: WorldName): Promise<World>;
   textOf(target: Locator): Promise<string>;
+  /**
+   * A node's own text width against the box that draws it, by CSS selector. A scroll width wider than the client width
+   * means the node cuts its own text, which a visibility read cannot see. `null` when the page has no such node.
+   */
+  textOverflow(selector: string): Promise<{ clientWidth: number; scrollWidth: number } | null>;
+  /** Whether a node draws at all, by CSS selector: `false` for one its own CSS hides, `display: none` or otherwise. */
+  drawn(selector: string): Promise<boolean>;
+  /**
+   * The card a popover paints, read from the page: the node's own background, border width and shadow, and the same
+   * chrome for the shadow wrapper Web Awesome draws around it. A wrapper that paints nothing over a node that carries the
+   * border and shadow is one card; a wrapper painting the same surface hides the box a morph is moving.
+   */
+  cardChrome(selector: string): Promise<{ node: CardChrome; wrapper: CardChrome | null } | null>;
+  /**
+   * A node's whole text by CSS selector, folded and hidden rows included: what a panel holds, rather than what it paints.
+   * The rendered read (`textOf`) leaves a closed disclosure's rows out, which a gate on a panel that now stays open
+   * across a run cannot use.
+   */
+  contentOf(selector: string): Promise<string>;
+  /** A node's viewport rect by CSS selector, or null when the page has no such node: the settled geometry a layout
+   * assertion reads, rather than a screenshot. */
+  rect(selector: string): Promise<{ x: number; y: number; width: number; height: number } | null>;
+  /**
+   * A morph's frames: the box's painted rect and the trigger it starts and ends on, read on every animation frame while
+   * `action` runs, from before the box's first frame until its own animation ends. No sleep: the read ends when the
+   * animation does. `track` follows nodes inside the box — one per selector — and each frame carries their own x, width
+   * and the opacity they are painted with, so a test can prove a word never travels while it is readable.
+   */
+  morphFrames(box: string, trigger: string, action: () => Promise<void>, track?: readonly string[]): Promise<MorphFrame[]>;
   /** A task progress step's state, its `data-status`. */
   stepState(step: Locator, state: string): Promise<void>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
@@ -336,6 +365,80 @@ const statusRecorder = () => {
     }
   }).observe(document, { childList: true, subtree: true });
   return null;
+};
+
+/** The chrome a node paints, as the reads that decide which of two cards a person sees: a surface, a shadow, a border. */
+type CardChrome = { background: string; shadow: string; border: number; radius: string };
+
+/** One animation frame of a morph: the box travelling and whether it is painted at all, and the trigger it starts and
+ * ends on. A frame before the box's own show holds the panel's still-unpainted settled rect, so its paint is what tells a
+ * drawn frame from that one. `tracked` holds each node a test asked to follow, with the opacity it is painted with. */
+type MorphFrame = {
+  box: { width: number; height: number; right: number; top: number; painted: boolean };
+  trigger: { width: number; right: number; top: number; painted: boolean };
+  tracked?: Record<string, { x: number; width: number; opacity: number }>;
+};
+
+/**
+ * Samples a morphing box and the trigger it grew from on every animation frame, from the first frame of the morph `action`
+ * starts until its animation has ended: a test reads the frames between the two ends without sleeping. The read arms itself
+ * on a quiet frame first, so a morph still in flight from before the action is never mistaken for this one.
+ */
+const startMorphSampling = ({ box, trigger, track = [] }: { box: string; trigger: string; track?: readonly string[] }) => {
+  const state: { frames: MorphFrame[]; armed: boolean; started: boolean; done: boolean } = { frames: [], armed: false, started: false, done: false };
+  (window as unknown as { huiMorphSampling?: typeof state }).huiMorphSampling = state;
+  const painted = (node: Element) => getComputedStyle(node).visibility === "visible" && node.getClientRects().length > 0;
+  /** The opacity a node is painted with: its own and every ancestor's, so a fade on a container is read through its child. */
+  const opacityOf = (node: Element) => {
+    let opacity = 1;
+    for (let current: Element | null = node; current; current = current.parentElement) opacity *= Number(getComputedStyle(current).opacity);
+    return Math.round(opacity * 100) / 100;
+  };
+  const round = (value: number) => Math.round(value * 10) / 10;
+  const frame = () => {
+    const panel = document.querySelector(box);
+    const anchor = document.querySelector(trigger);
+    if (!panel || !anchor) {
+      state.done = true;
+      return;
+    }
+    const running = panel.getAnimations().length > 0;
+    if (!state.armed) {
+      if (running) {
+        requestAnimationFrame(frame);
+        return;
+      }
+      state.armed = true;
+      state.frames = [];
+    }
+    const shape = panel.getBoundingClientRect();
+    const pill = anchor.getBoundingClientRect();
+    const tracked: Record<string, { x: number; width: number; opacity: number }> = {};
+    for (const selector of track) {
+      const node = document.querySelector(selector);
+      if (!node) continue;
+      const rect = node.getBoundingClientRect();
+      tracked[selector] = { x: round(rect.x), width: round(rect.width), opacity: opacityOf(node) };
+    }
+    state.frames.push({
+      box: { width: round(shape.width), height: round(shape.height), right: round(shape.right), top: round(shape.top), painted: painted(panel) },
+      trigger: { width: round(pill.width), right: round(pill.right), top: round(pill.top), painted: painted(anchor) },
+      ...(track.length > 0 ? { tracked } : {}),
+    });
+    if (running) state.started = true;
+    else if (state.started) {
+      state.done = true;
+      return;
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+  return null;
+};
+
+const readMorphSampling = () => {
+  const page = window as unknown as { huiMorphSampling?: { frames: MorphFrame[]; armed: boolean; done: boolean } };
+  return { frames: page.huiMorphSampling?.frames ?? [], armed: page.huiMorphSampling?.armed === true, done: page.huiMorphSampling?.done === true };
 };
 
 /** Mobile WebKit cannot emit a protocol mouse wheel. Canvas controls consume the same wheel path their touch adapter
@@ -953,6 +1056,53 @@ function huiTest(offline: boolean) {
       tab: async () => (await steps.tabs()).at(-1),
       expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
       textOf: async (target) => (await target.textContent()) ?? "",
+      textOverflow: (selector) => browser().evaluate((query) => {
+        const node = document.querySelector(query);
+        return node ? { clientWidth: node.clientWidth, scrollWidth: node.scrollWidth } : null;
+      }, selector),
+      drawn: (selector) => browser().evaluate((query) => {
+        const node = document.querySelector(query);
+        return node ? node.getClientRects().length > 0 : false;
+      }, selector),
+      cardChrome: (selector) => browser().evaluate((query) => {
+        const node = document.querySelector(query);
+        if (!node) return null;
+        const chrome = (element: Element) => {
+          const style = getComputedStyle(element);
+          return {
+            background: style.backgroundColor,
+            shadow: style.boxShadow,
+            border: Number.parseFloat(style.borderTopWidth) || 0,
+            radius: style.borderTopLeftRadius,
+          };
+        };
+        // The wrapper is the popover's own shadow body: reading it is what proves which of the two cards a person sees.
+        // The wrapper is the popover's own shadow body, which holds the slotted panel: the flattened parent, not the
+        // light-DOM one, is the node that paints around it.
+        const parent = node.assignedSlot?.parentElement ?? node.parentElement;
+        return { node: chrome(node), wrapper: parent && parent.getRootNode() instanceof ShadowRoot ? chrome(parent) : null };
+      }, selector),
+      morphFrames: async (box, trigger, action, track = []) => {
+        await browser().evaluate(startMorphSampling, { box, trigger, track });
+        // The read arms itself on the first frame the box is not animating: a morph this call is not about has to finish
+        // before the frames it keeps can be attributed to `action`.
+        await expect.poll(async () => (await browser().evaluate(readMorphSampling)).armed, { timeout: 10_000 }).toBe(true);
+        await action();
+        let frames: MorphFrame[] = [];
+        await expect.poll(async () => {
+          const sampling = await browser().evaluate(readMorphSampling);
+          frames = sampling.frames;
+          return sampling.done;
+        }, { timeout: 10_000 }).toBe(true);
+        return frames;
+      },
+      contentOf: (selector) => browser().evaluate((query) => (document.querySelector(query)?.textContent ?? "").replace(/\s+/gu, " ").trim(), selector),
+      rect: (selector) => browser().evaluate((query) => {
+        const node = document.querySelector(query);
+        if (!node) return null;
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { x, y, width, height };
+      }, selector),
       stepState: (step, state) => expect(step).toHaveAttribute("data-status", state),
       tapAt,
       scrollSideways: async (target) => {
@@ -1324,10 +1474,18 @@ function huiTest(offline: boolean) {
         // popover, so no target branches here.
         const trigger = fixtures.screen.getByTestId("run-status-trigger");
         const popover = fixtures.screen.getByLabel("Run status");
-        if (!(await popover.isVisible())) {
+        // While the panel is out its header is the converted pill, so the trigger keeps its box and its aria-expanded but
+        // is not painted; the pill is pressed, and its visibility read, only in the closed state.
+        await expect(trigger).toBeAttached();
+        const expanded = async () => (await trigger.getAttribute("aria-expanded")) === "true";
+        // A wide window opens and closes it by itself around a run, and the dialog stays on screen through its show and
+        // hide animations, so the one toggle is pressed only once its state and the screen agree.
+        await expect.poll(async () => (await expanded()) === (await popover.isVisible())).toBe(true);
+        if (!(await expanded())) {
           await expect(trigger).toBeVisible();
           await trigger.tap();
         }
+        await expect(popover).toBeVisible();
         const helpers = popover.getByRole("region", { name: "Helpers" });
         const row = helpers.getByLabel(new RegExp(`^Open subagent ${escapeRegExp(title)}`, "u"));
         if (!(await row.isVisible())) {
