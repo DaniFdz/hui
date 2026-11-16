@@ -4,7 +4,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-import { openSettledWatchers, openWatchers } from "./run-status.ts";
+import { openRunStatus, openSettledWatchers, openWatchers } from "./run-status.ts";
 
 const start = (input: { purpose: string; command: string }) =>
   `E2E_CALL:${Buffer.from(JSON.stringify({ name: "watcher", input: { action: "start", ...input } })).toString("base64url")}`;
@@ -107,11 +107,19 @@ test("Stop settles a running watcher, updates the summary and offers Restart and
   await watchers.getByText("Wait for #21532 review signals").tap();
   await screen.getByRole("button", "Stop").tap();
 
-  await expect.poll(async () => hui.textOf(watchers), { timeout: 90_000 }).toContain("2 watchers");
-  await expect(watchers.getByText(/^Stopped · /u)).toBeVisible();
+  // The quick watcher's exit reaches the gateway's ten-second watcher poll, and that same poll wakes the conversation
+  // with HUI's own turn. That turn's start clears an explicit open, so on a phone, where the default is collapsed, the
+  // panel closes under the operator — unless the turn's frames land in one render. Its answer in the transcript is the
+  // one mark that the turn ran and is over, whichever of the two happened; then read the stopped row over the
+  // operator's open again. The row keeps its open across the close.
+  await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible({ timeout: 90_000 });
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  const stopped = (await openRunStatus(screen)).getByLabel("Background watchers");
+  await expect(stopped.getByText("2 watchers", { exact: true })).toBeVisible();
+  await expect(stopped.getByText(/^Stopped · /u)).toBeVisible();
   await expect(screen.getByRole("button", "Stop")).toBeHidden();
-  await expect(watchers.getByRole("button", "Restart")).toBeVisible();
-  await expect(watchers.getByRole("button", "Dismiss")).toBeVisible();
+  await expect(stopped.getByRole("button", "Restart")).toBeVisible();
+  await expect(stopped.getByRole("button", "Dismiss")).toBeVisible();
 
   await hui.reload();
   const reopened = await openWatchers(screen);
