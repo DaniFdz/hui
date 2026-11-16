@@ -1913,15 +1913,24 @@ and helper facts it summarizes. On a narrow pane or a phone the trigger keeps
 only its mark and count.
 
 Clicking the trigger opens one popover anchored to its right edge, and clicking
-it again closes it. On a wide window it opens by itself while a run streams, so
-the run's state is readable without a press, and closes again when that run
-ends; the operator's own open or close holds for that run and the next run
-starts from the default, and a reload forgets that choice, so the wide window's
-default applies again: open while the run still streams, closed once it has
-settled. A phone keeps it collapsed until the operator opens it.
-Its head names Run status and marks the current tone once, without repeating the
-trigger's state word, and a Close run status X at the head's right closes the
-panel and returns focus to the trigger.
+it again closes it. The pill morphs into the panel and back, so one control
+visibly becomes the other: the panel grows out of the pill's own shape from the
+corner the two share, its content becomes legible near the end of the growth,
+and a close folds a copy of the panel back into that shape before it hides, so
+the pill's word carries the state until the head's copy is legible. Its head
+reads what the pill reads — the mark, the state word and the count — and a Close
+run status X at the head's right closes the panel and returns focus to the
+trigger; while the panel is open the trigger keeps its box, its mark and its
+chevron, and only its copy steps aside, so the state is read once on screen and
+once again in the trigger's accessible name. A window that asks for reduced
+motion gets no morph and opens and closes at once, and only a real open or close
+animates: a streamed frame that changes the plan or the helpers never restarts
+it. On a wide window it opens by itself while a run streams, so the run's state
+is readable without a press, and closes again when that run ends; the operator's
+own open or close holds for that run and the next run starts from the default,
+and a reload forgets that choice, so the wide window's default applies again:
+open while the run still streams, closed once it has settled. A phone keeps it
+collapsed until the operator opens it.
 The popover holds **Goal** (the objective, its status note, when it was set, its
 automatic turns, and Pause/Resume, Edit and Clear), **Plan** (the Task progress
 steps and summary), **Helpers** (the latest batch, its counts, one dot per child
@@ -1946,8 +1955,10 @@ overriding it, and the next run starts from the default. Neither choice is
 stored, past that run or a reload: a stored one would hide a run's panel or
 reopen one the operator already shut, so an arrival re-reads the window and the
 run instead of a preference. The trigger stays the one
-toggle, the head does not repeat the state word the trigger already says, and the
-X is the operator's close with focus returning to the trigger.
+toggle and the X is the operator's close with focus returning to the trigger.
+Because the pill becomes the panel, the head repeats the state word and count the
+trigger shows; the trigger's own copy is hidden while the panel is open, so the
+word is still read once on screen.
 
 ## Goals
 

@@ -67,14 +67,33 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The pill and the head are one control. While the panel is open the trigger keeps its box, its mark and its chevron,
+   and only its copy steps aside, so the state reads once on screen; the trigger's accessible name keeps the whole
+   summary either way. Each direction has its own moment: a close brings the pill's word back while the folding copy is
+   still readable, so the state is never absent, and an open hides it only in the last fifth, once the head's copy is
+   legible. */
+.chat-run-status__trigger .chat-run-status__label,
+.chat-run-status__trigger .chat-run-status__count {
+  transition: opacity calc(var(--duration-normal) * 0.2) var(--ease-out) calc(var(--duration-normal) * 0.15);
+}
+
+.chat-run-status__trigger[aria-expanded="true"] .chat-run-status__label,
+.chat-run-status__trigger[aria-expanded="true"] .chat-run-status__count {
+  opacity: 0;
+  transition-duration: calc(var(--duration-normal) * 0.2);
+  transition-delay: calc(var(--duration-normal) * 0.8);
+}
+
 .chat-run-status__trigger-chevron {
   display: inline-flex;
   color: var(--muted);
 }
 
+/* The chevron is the affordance that folds the panel: at 10px it was a speck on a phone, where it is the only sign the
+   same control closes what it opened. */
 .chat-run-status__trigger-chevron svg {
-  width: 10px;
-  height: 10px;
+  width: 13px;
+  height: 13px;
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
@@ -111,11 +130,13 @@
 }
 
 /* The popover's shadow body owns the padding; the panel supplies its own so
-   section rules run edge to edge. */
+   section rules run edge to edge. HUI owns the open and close: Web Awesome's own
+   scale and fade would fight the morph and hide the panel before a fold could copy
+   it, so its show and hide are instant and the trigger's word bridges the instant. */
 .chat-run-status__popover {
   --max-width: min(420px, calc(100vw - 16px));
-  --show-duration: var(--duration-fast);
-  --hide-duration: var(--duration-fast);
+  --show-duration: 0ms;
+  --hide-duration: 0ms;
   --wa-space-l: 0;
   --wa-color-surface-default: var(--card);
   --wa-color-surface-border: var(--border-strong);
@@ -154,10 +175,29 @@
   background: var(--card);
 }
 
-.chat-run-status__head strong {
+/* The content layer the morph crossfades: the panel's own surface and corner stay put while the state word arrives. */
+.chat-run-status__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The head repeats the pill's word and count in the pill's own type, so one control visibly becomes the other. The tone
+   color stays on the mark; the word is the same text in both places. */
+.chat-run-status__head .chat-run-status__label {
   color: var(--text-strong);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
+}
+
+.chat-run-status__head .chat-run-status__count {
+  font-size: 12px;
+}
+
+/* The copy a close folds back into the pill: a picture of the panel, fixed where the panel was, above the header. */
+.chat-run-status__ghost {
+  z-index: 2000;
+  overflow: hidden;
 }
 
 /* The X sits at the head's right edge; the trigger already carries the chevron that says the panel is open. */
@@ -601,7 +641,13 @@
     transition: none;
   }
 
-  /* Web Awesome's scale-in and scale-out are the popover's only animation and never check this itself. */
+  /* No morph at all: the word changes hands at once, and Web Awesome's scale-in and scale-out are the popover's only
+     other animation and never check this itself. */
+  .chat-run-status__trigger .chat-run-status__label,
+  .chat-run-status__trigger .chat-run-status__count {
+    transition: none;
+  }
+
   .chat-run-status__popover {
     --show-duration: 0ms;
     --hide-duration: 0ms;

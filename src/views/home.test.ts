@@ -260,7 +260,20 @@ test("Task progress lives in the Run status popover and never draws in the trans
   });
   assert.match(html, /class="chat-run-status__trigger"[^>]*data-tone=running/u);
   assert.match(html, /aria-label=Run status: Working, 1 of 2 steps done/u);
-  assert.equal(html.match(/>Working</gu)?.length, 1, "the trigger carries the state word and the popover head does not repeat it");
+  // The pill and the panel head read one state: the word and the count are drawn twice, and the trigger's copy is the
+  // one that steps aside — opacity only, so its box stays and its accessible name still carries the whole state —
+  // while the panel is open. The morph is what makes that one control visible as both.
+  assert.equal(html.match(/>Working</gu)?.length, 2, "the pill and the panel head both carry the state word");
+  assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__label">Working</u);
+  assert.match(html, /class="chat-run-status__head"[\s\S]*?class="chat-run-status__count">1\/2</u);
+  const panelStyles = readStyles("../styles/chat-run-status.css");
+  assert.match(
+    panelStyles,
+    /\.chat-run-status__trigger\[aria-expanded="true"\] \.chat-run-status__label,\s*\.chat-run-status__trigger\[aria-expanded="true"\] \.chat-run-status__count \{[^}]*opacity: 0;/s,
+    "the open panel hides the trigger's copy by opacity alone, never by display",
+  );
+  assert.match(panelStyles, /\.chat-run-status__trigger-chevron svg \{[^}]*width: 13px;[^}]*height: 13px;/s, "the chevron reads as the affordance it is");
+  assert.match(panelStyles, /\.chat-run-status__ghost \{[^}]*z-index: 2000;/s, "the copy a close folds back is drawn above the header");
   assert.match(html, /data-testid="task-progress"/u);
   assert.match(html, /Check the build/u);
   assert.match(html, /1 of 2/u);

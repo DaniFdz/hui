@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { ProgressCard, SessionGoal, SubagentTaskView } from "../../api/sessions.ts";
 import { FINISHED_BATCH_VISIBLE_MS } from "../subagent-activity.ts";
-import { runStatus, runStatusPanel, runStatusPanelChosen, runStatusPanelOpen } from "./run-status.ts";
+import { runStatus, runStatusMorphPhase, runStatusMorphShape, runStatusMorphTiming, runStatusPanel, runStatusPanelChosen, runStatusPanelOpen } from "./run-status.ts";
 
 const now = Date.parse("2026-11-14T12:00:00.000Z");
 const startedAt = new Date(now - 60_000).toISOString();
@@ -214,8 +214,7 @@ test("a first render mid-run opens on a wide window", () => {
   assert.equal(runStatusPanelOpen(first, { running: true, wide: true }), true);
 });
 
-test("background watchers keep the trigger alive and count as working", () => {
-  const watcher = (id: string, state: "running" | "done" | "failed" | "dead") => ({
+test("background watchers keep the trigger alive and count as working", () => {  const watcher = (id: string, state: "running" | "done" | "failed" | "dead") => ({
     id,
     purpose: `Watch ${id}`,
     target: "",
@@ -255,4 +254,59 @@ test("background watchers keep the trigger alive and count as working", () => {
   assert.equal(failed.label, "Watcher failed");
   assert.equal(failed.attention, true);
   assert.match(failed.summary, /1 watcher$/u);
+});
+
+test("the panel's first frame is the pill's shape on the corner the two share", () => {
+  // The chat header's pill sits above the panel's top-right corner, six pixels past the popover's distance.
+  const pill = { x: 1100, y: 20, width: 104, height: 28 };
+  const panel = { x: 784, y: 54, width: 420, height: 360 };
+  const shape = runStatusMorphShape({ pill, panel, reducedMotion: false });
+  assert.deepEqual(shape, {
+    // The panel's top-right corner lands on the pill's bottom-right corner: the panel never covers the pill.
+    transform: "translate(0px, -6px) scale(0.2476, 0.0778)",
+    origin: "top right",
+  });
+  // The scaled panel and the pill's box agree to a fraction of a pixel: 420 * 0.2476 = 104, 360 * 0.0778 = 28.
+  assert.equal(Math.round(panel.width * 0.2476), pill.width);
+  assert.equal(Math.round(panel.height * 0.0778), pill.height);
+});
+
+test("the morph's corner follows the side the pill is on, so a flipped panel grows outward too", () => {
+  const pill = { x: 100, y: 40, width: 90, height: 24 };
+  const panel = { x: 380, y: 76, width: 300, height: 240 };
+  // A panel below and to the right of its trigger shares its top-left corner, not its top-right one.
+  assert.deepEqual(runStatusMorphShape({ pill, panel, reducedMotion: false }), {
+    transform: "translate(-280px, -12px) scale(0.3, 0.1)",
+    origin: "top left",
+  });
+});
+
+test("reduced motion, or a box nobody laid out, draws no morph", () => {
+  const pill = { x: 10, y: 10, width: 80, height: 24 };
+  const panel = { x: 0, y: 40, width: 300, height: 300 };
+  assert.equal(runStatusMorphShape({ pill, panel, reducedMotion: true }), undefined);
+  assert.equal(runStatusMorphShape({ pill: undefined, panel, reducedMotion: false }), undefined);
+  assert.equal(runStatusMorphShape({ pill, panel: undefined, reducedMotion: false }), undefined, "a panel measured before Web Awesome laid it out animates nothing");
+  assert.equal(runStatusMorphShape({ pill, panel: { x: 0, y: 0, width: 0, height: 0 }, reducedMotion: false }), undefined);
+});
+
+test("only a real open or close morphs, and a render that keeps the panel's state draws nothing new", () => {
+  assert.equal(runStatusMorphPhase(false, true, false), "opening");
+  assert.equal(runStatusMorphPhase(true, false, false), "closing");
+  // A streamed frame re-renders the panel while it stays open: the same state asks for no second animation.
+  assert.equal(runStatusMorphPhase(true, true, false), undefined);
+  assert.equal(runStatusMorphPhase(false, false, false), undefined);
+  assert.equal(runStatusMorphPhase(undefined, false, false), undefined, "a panel that starts closed draws no fold");
+  // A window that asked for no motion never animates, whichever way the panel changed.
+  assert.equal(runStatusMorphPhase(false, true, true), undefined);
+  assert.equal(runStatusMorphPhase(true, false, true), undefined);
+});
+
+test("the morph's timing reads the shell's own tokens and refuses a duration it cannot use", () => {
+  assert.deepEqual(runStatusMorphTiming(" 180ms ", " cubic-bezier(0.16, 1, 0.3, 1) "), { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" });
+  assert.deepEqual(runStatusMorphTiming("0.2s", ""), { duration: 200, easing: "ease-out" });
+  assert.equal(runStatusMorphTiming("0ms", "ease"), undefined, "no animation when the token says none");
+  assert.equal(runStatusMorphTiming("", "ease"), undefined);
+  assert.equal(runStatusMorphTiming("normal", "ease"), undefined);
+  assert.equal(runStatusMorphTiming("180", "ease"), undefined, "a duration without a unit is not a duration");
 });

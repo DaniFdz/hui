@@ -85,6 +85,63 @@ export function runStatusPanelChosen(state: RunStatusPanelState, open: boolean):
   return { running: state.running, choice: open };
 }
 
+/** A box the morph reads once: the trigger's or the panel's, in viewport pixels. */
+export type RunStatusMorphRect = { x: number; y: number; width: number; height: number };
+
+/** How the panel is drawn on its first frame: the pill's shape about the corner the two share. */
+export type RunStatusMorphShape = { transform: string; origin: string };
+
+/** Which way the panel is morphing: growing out of the pill, or folding back into it. */
+export type RunStatusMorphPhase = "opening" | "closing";
+
+/** The morph a panel change asks for, or nothing. Only a real open or close animates: a render that keeps the panel's
+ * state draws no second animation, and neither does a window that asked for reduced motion. */
+export function runStatusMorphPhase(previous: boolean | undefined, next: boolean, reducedMotion: boolean): RunStatusMorphPhase | undefined {
+  if (reducedMotion) return undefined;
+  if (next) return previous === true ? undefined : "opening";
+  return previous === true ? "closing" : undefined;
+}
+
+/** Rounded, so a subpixel box cannot print a transform of thirty digits. */
+function round(value: number, digits: number): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+/**
+ * The transform that draws the panel as the pill it grew out of: the pill's width and height, its near corner on the
+ * corner the two boxes share. The panel paints above the header, so its first frame hangs off the pill's own outer corner
+ * instead of covering the pill's word: the state has to stay readable at every frame of the morph. `origin` is that
+ * shared corner, which is why the panel only ever moves outward from it.
+ */
+export function runStatusMorphShape(input: { pill: RunStatusMorphRect | undefined; panel: RunStatusMorphRect | undefined; reducedMotion: boolean }): RunStatusMorphShape | undefined {
+  const { pill, panel } = input;
+  if (input.reducedMotion || !pill || !panel) return undefined;
+  if (!(pill.width > 0 && pill.height > 0 && panel.width > 0 && panel.height > 0)) return undefined;
+  const originX = pill.x + pill.width / 2 < panel.x + panel.width / 2 ? "left" : "right";
+  const originY = pill.y + pill.height / 2 < panel.y + panel.height / 2 ? "top" : "bottom";
+  const scaleX = pill.width / panel.width;
+  const scaleY = pill.height / panel.height;
+  // The scaled panel keeps the origin corner where it is; the translate puts that corner on the pill's own near corner.
+  const dx = originX === "right" ? pill.x + pill.width - (panel.x + panel.width) : pill.x - panel.x;
+  const dy = originY === "top" ? pill.y + pill.height - panel.y : pill.y - (panel.y + panel.height);
+  return {
+    transform: `translate(${round(dx, 2)}px, ${round(dy, 2)}px) scale(${round(scaleX, 4)}, ${round(scaleY, 4)})`,
+    origin: `${originY} ${originX}`,
+  };
+}
+
+/** The morph's timing from the shell's own tokens, so CSS and the animation cannot drift; an unreadable duration means
+ * no morph rather than an animation with a guessed length. */
+export function runStatusMorphTiming(duration: string, easing: string): { duration: number; easing: string } | undefined {
+  const raw = duration.trim().toLowerCase();
+  const value = Number.parseFloat(raw);
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  const ms = raw.endsWith("ms") ? value : raw.endsWith("s") ? value * 1000 : Number.NaN;
+  if (!Number.isFinite(ms) || ms <= 0) return undefined;
+  return { duration: ms, easing: easing.trim() || "ease-out" };
+}
+
 /** The current step: the one in progress, else the first still to do, else the last one. */
 function currentStep(steps: readonly ProgressStep[]): ProgressStep | undefined {
   return steps.find((step) => step.status === "in_progress")
