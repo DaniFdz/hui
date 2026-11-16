@@ -141,10 +141,12 @@ async function runDaemon(): Promise<void> {
   for (const name of ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "DD_ACCESS_TOKEN", "DD_API_KEY", "DD_APP_KEY", "DD_ORG"]) delete process.env[name];
   const integrations = join(paths.mirrorDir, "hui", "integrations");
   Object.assign(process.env, { GH_CONFIG_DIR: join(integrations, "gh"), PUP_CONFIG_DIR: join(integrations, "pup"), DD_TOKEN_STORAGE: "file" });
-  const { WorkerHost } = await import("./host.ts");
+  const { WorkerHost, serveRequested } = await import("./host.ts");
   delete process.env["HUI_CONFIG_DIR"];
   delete process.env["PI_CODING_AGENT_DIR"];
-  const host = new WorkerHost(paths);
+  // `main connect` starts a plain `daemon`, which still stops when it has nothing to do; `daemon --serve` (or
+  // `HUI_WORKER_SERVE`) keeps a worker up with no gateway attached, so its trigger listeners always have an endpoint.
+  const host = new WorkerHost(paths, { persistent: serveRequested(process.argv, process.env) });
   // Holding the lock, any socket left behind is stale.
   await unlink(paths.socket).catch(() => undefined);
   await host.listen();

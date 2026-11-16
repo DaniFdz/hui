@@ -2826,7 +2826,8 @@ everything the Bots tab can, through the same routes.
 - **Triggers** wake a bot when something happens elsewhere, beside its routines
   (decisions below). HUI reads no other service for them itself: a listener, a
   program the operator runs, watches what it watches and reports to the
-  trigger's URL, a secret on the tailnet; each event wakes the bot once. By
+  trigger's URL, a secret on the tailnet (or, for a bot on a worker, that
+  machine's own loopback); each event wakes the bot once. By
   default its delivery steers: event summaries, times and PR links only, without
   event details or fetched PR context, into the turn going on or as the next
   turn of an idle bot, before its next model call and without aborting work. The
@@ -3837,7 +3838,11 @@ can feed rather than one for Slack, and HUI's side first. The contract is
 
 - **A source anyone's program feeds.** A listener trigger has a URL with a secret
   token, made, shown once and replaced like a webhook's and answered by the same
-  route on the tailnet. The program (a listener) watches what it watches, as
+  route on the tailnet. Creating a trigger, and replacing its token, answer
+  `hook: { token, path }` once; for a bot whose chat runs on a worker,
+  `hook: { token, path, worker }`, where `worker.url` is that machine's own
+  loopback address for it and `worker.error` says why HUI has none to give. The
+  program (a listener) watches what it watches, as
   often as it likes, and after every check posts `{ events }`: each with its own
   id, one line, details, a time, links and fields. Nothing about any one service
   is in HUI; the work Slack listener lives with the owner's job setup.
@@ -4495,6 +4500,15 @@ session on that worker, as any remote session's.
   its own machine too (see *Shared terminals*). Its secret requests work as a
   worker session's: the card is answered on the gateway and the worker host
   writes the file.
+- **Its triggers' listeners report there.** A trigger of a bot on a worker takes
+  its listener's reports on that machine's own endpoint: `POST
+  /__hui/hooks/<token>` bound to `127.0.0.1`, port 4180 unless
+  `HUI_WORKER_HOOK_PORT` names another, served by the worker's host and relayed
+  to the gateway that owns the trigger. The gateway's route and its tailnet rule
+  are unchanged, and so is a listener that reports to them. While no gateway is
+  attached the host keeps what it could not deliver, so a worker whose listeners
+  report to it runs `daemon --serve` (a `connect`-started daemon still stops when
+  idle). The contract is [docs/api.md#triggers](docs/api.md#triggers).
 
 ### Bots are set up like Grok Bot (2026-10-06)
 
@@ -4944,7 +4958,10 @@ break through Focus or keep a banner on screen. The desktop channel requires a
 managed macOS gateway and a current, registered HUI desktop app; the ntfy relay
 (below, [Notifications reach the phone through
 ntfy](#notifications-reach-the-phone-through-ntfy-2026-11-13)) carries the same
-notification to a phone, and HUI provides no browser push or APNs.
+notification to a phone, and [Web Push](#web-push-where-hui-is-on-a-home-screen-2026-11-16)
+carries it to every device that subscribed through this gateway. HUI provides no
+APNs: Apple's push service needs a paid Apple Developer Program membership, and
+Web Push needs no account at all.
 
 The banner belongs to HUI, not Script Editor. Delivery does not change the
 active chat or open a window. Clicking a banner opens and focuses its own chat,
@@ -4994,9 +5011,10 @@ failed" or "Needs your input". Its body is the first question's title, and is
 empty for finished and failed runs, so agent output never reaches the lock
 screen. Needs-your-input banners play the default sound; finished and failed
 ones are silent. A gateway on another platform sends none unless its ntfy relay
-is set (below). When a channel can't show a notification, HUI skips it, keeps the
-other channels working and records why in diagnostics. Scheduled tasks you set
-up in a regular session count as runs you started; a bot's routines don't.
+is set or a device subscribed through Web Push (both below). When a channel can't
+show a notification, HUI skips it, keeps the other channels working and records
+why in diagnostics. Scheduled tasks you set up in a regular session count as runs
+you started; a bot's routines don't.
 
 ### Notifications reach the phone through ntfy (2026-11-13)
 
@@ -5023,15 +5041,96 @@ a long random one, never prints it in an error or diagnostic, and only
 `HUI_NTFY_TOKEN` in the gateway's environment authenticates a protected server.
 Chat names and question titles reach the ntfy server and the operator's phone,
 never anything else from the transcript.
-- **A channel is a fallback, not a gate.** The macOS desktop app and the relay
-deliver independently: one failing does not stop the other, and a notification
-is reported as sent when either accepted it. A gateway with neither skips HUI's
-own events without an error and tells an agent's `notify_user` caller how to set
-one up.
+- **A channel is a fallback, not a gate.** The macOS desktop app, the relay and
+Web Push deliver independently: one failing does not stop another, and a
+notification is reported as sent when any accepted it. A gateway with none of
+them skips HUI's own events without an error and tells an agent's `notify_user`
+caller how to set one up.
 - **The tap opens the web app or an HUI app (2026-11-15).** The owner, with HUI installed on the iPhone, reported that a notification's tap landed in the browser instead of the app. *Phone (ntfy)* therefore carries **Opens in**: **Browser**, the default, publishes the gateway's own `http(s)` address, which any device can open; **HUI on my phone** publishes the phone shell's deep link (`hui://open?path=/sessions/<id>`, the link `mobile/AGENTS.md` already defines); **HUI on my desktop** publishes `hui://sessions/<id>`. An app link carries no address, because each shell appends the path to the gateway it is already connected to and refuses one that would point elsewhere — so an app link only resolves on the gateway that app is connected to, and a device without the app ignores the tap. The setting belongs to the relay and is saved beside its server and topic.
-- **No APNs, no browser push.** The relay is the phone channel: it needs the
-ntfy app installed and subscribed, and it carries no promise about delivery
-timing beyond ntfy's own queue. The HUI app itself is unchanged.
+- **No APNs.** APNs would need a paid Apple Developer Program membership the
+free SideStore signing does not have and the owner will not buy, so HUI asks
+Apple's push service for nothing. The relay is still the phone channel for a
+phone whose browser cannot subscribe: it needs the ntfy app installed and
+subscribed, and it carries no promise about delivery timing beyond ntfy's own
+queue. The HUI app itself is unchanged. A phone copy that subscribed through
+Web Push is the other path ([below](#web-push-where-hui-is-on-a-home-screen-2026-11-16)).
+
+### Web Push where HUI is on a Home Screen (2026-11-16)
+
+The owner, once the ntfy relay worked, asked why a phone needed a second app at
+all: a copy of HUI added to the iPhone's Home Screen is a web app, and iOS
+delivers Web Push to one. He has no Apple Developer Program membership and will
+not buy one, so APNs stays out; Web Push needs no account, no developer program
+and no service HUI operates. The relay stays the fallback for a phone whose
+browser cannot subscribe.
+
+- **A third channel, never a gate.** Web Push sits beside the macOS desktop app
+  and the ntfy relay. Each delivers on its own, one failing never stops another,
+  a notification is reported sent when any accepted it, and every refusal is a
+  diagnostic instead of a failed run: `notification_skipped` when no channel or
+  service took it, `notification_push_partial` when the push reached only some
+  of its devices. A gateway with none
+  of the three still skips HUI's own events without an error, and
+  `notify_user`'s caller is told which channel carried it.
+- **The keypair is the gateway's, and only its public half travels.** The
+  gateway generates one VAPID keypair (RFC 8292) into its own config directory,
+  `notifications/vapid.json` at mode 0600, and reuses it for every message, so a
+  device that subscribed keeps hearing this gateway across restarts. Only the
+  public key is served, by `GET /__hui/notifications/push`. The private key
+  never enters settings or a `/__hui/` payload.
+- **A subscription is the device's, and its endpoint is a capability.** The
+  browser subscribes through its own push service and hands the gateway the
+  endpoint and the two keys a message is sealed to (`p256dh`, `auth`); the
+  gateway stores them beside the keypair in `notifications/push-subscriptions.json`,
+  also at mode 0600. The endpoint is a capability URL, so HUI never prints it in
+  a payload, a diagnostic or an error, and a screen names a device by a digest of
+  it. One body is sealed per subscription, so a push service only ever carries a
+  message its own device can read.
+- **The setting, and its one optional address.**
+  `Settings.notifications.push = { enabled, subject }` is off by default, so no
+  existing gateway starts pushing. `subject` is VAPID's `sub` claim, a `mailto:`
+  or `https:` address a push service may use to reach the operator, with a host
+  and no credentials in it; empty, the default, omits the claim altogether, which
+  every push service accepts, and so does a malformed one, which becomes empty.
+  Settings → Notifications → *This device* holds the switch, the button that
+  subscribes or forgets this browser, the count of subscribed devices with its
+  `Send test`, and that address; subscribing a fresh device turns the switch on.
+- **What the payload carries, and what a tap opens.** One sealed JSON message:
+  the chat's title, its subtitle and question title as the body, a tag per chat
+  so a device replaces its own banner instead of stacking one, the urgency its
+  priority names, and the chat's own in-app `path` (`/sessions/<id>`, or
+  `/bots/<handle>` for a bot chat). That is the path the desktop app's window and
+  the ntfy link open, so all three channels land in the same chat. The service
+  worker is the one offline worker, `public/offline-worker.js`: its `push`
+  handler shows the banner, and its `notificationclick` handler closes it,
+  focuses a window of this origin or opens one, and sends it to that path.
+- **iOS has its own footing.** On iPhone and iPad only a copy added to the Home
+  Screen subscribes, so the page says so, with the Share → Add to Home Screen
+  steps, instead of offering a button that cannot work; Web Push also needs a
+  secure address (`https:`, or the browser's own localhost). A browser whose
+  operator blocked notifications for HUI is the same kind of answer: the page
+  names the browser's site settings and the reload that follows, and offers no
+  button that could only fail. iOS fires no
+  reliable `pushsubscriptionchange`, so a rotated subscription cannot be
+  followed: when a push service answers 404 or 410 the gateway prunes that
+  subscription, and the page asks the operator to enable the device again rather
+  than pushing into nothing.
+- **`Send test` goes through the real sender and store.** Settings →
+  Notifications' test push reads the saved settings, seals one message per stored
+  subscription, posts it with the VAPID authorization, prunes what a push service
+  says is gone, and answers how many services accepted it of how many devices are
+  subscribed. The page repeats those counts instead of claiming a delivery, and
+  any other refusal is recorded as a diagnostic and reported.
+- **Loopback, for HUI's own tests.** A push endpoint is `https:` and nothing
+  else, with one exception: `http:` on `127.0.0.1` or `[::1]`, so HUI's own tests
+  can stand a push service up on the gateway's machine and decrypt what arrives.
+  That exception is the only reason the route, the store and the publisher share
+  one predicate; every other `http:` endpoint is refused, because a real endpoint
+  is a capability URL that must never be readable on the wire.
+- **The relay stays the fallback.** ntfy still reaches a phone whose browser
+  cannot subscribe, a phone whose operator prefers the ntfy app, and a phone whose
+  browser dropped its subscription. With both configured they both carry the same
+  notification.
 
 ### An export is a setup document (2026-11-04)
 

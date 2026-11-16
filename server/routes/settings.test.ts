@@ -36,7 +36,7 @@ type OriginalSettings = {
     keepAwake: boolean;
   };
 
-  notifications: { tool: boolean; runFinished: boolean; runFailed: boolean; needsInput: boolean; ntfy: OriginalNtfySettings };
+  notifications: { tool: boolean; runFinished: boolean; runFailed: boolean; needsInput: boolean; ntfy: OriginalNtfySettings; push: OriginalPushSettings };
 
   models: {
     primary: string;
@@ -85,6 +85,8 @@ type OriginalVscodeSettings = {
 };
 
 type OriginalNtfySettings = { server: string; topic: string; link: "web" | "phone" | "desktop" };
+
+type OriginalPushSettings = { enabled: boolean; subject: string };
 
 
 expectTypeOf<VscodeProviderPreference>().toEqualTypeOf<OriginalVscodeProviderPreference>();

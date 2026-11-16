@@ -35,6 +35,14 @@ export const NtfySettings = Type.Object({
 }, { $id: "NtfySettings" });
 export type NtfySettings = Static<typeof NtfySettings>;
 
+/** Web Push to this browser or a phone: off until the operator enables it on a device. `subject` is the VAPID `sub`
+ * claim, a `mailto:` or `https:` contact address a push service may use for this gateway; empty omits the claim. The
+ * gateway's private VAPID key never enters settings or a payload: it stays in `CONFIG_DIR/notifications/vapid.json`. */
+export const PushSettings = Type.Object({
+  enabled: Type.Boolean(), subject: Type.String(),
+}, { $id: "PushSettings" });
+export type PushSettings = Static<typeof PushSettings>;
+
 /** HUI's default reasoning is one of PI's levels: Ultra is the orchestrating session's own choice. */
 const SavedReasoningLevel = Type.Exclude(ThinkingLevel, Type.Literal("ultra"));
 
@@ -55,6 +63,8 @@ export const Settings = Type.Object({
   notifications: Type.Object({
     tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean(),
     ntfy: NtfySettings,
+    // Web Push: the device subscribes through the browser, and the gateway's VAPID key signs for it.
+    push: PushSettings,
   }),
   models: Type.Object({
     primary: Type.String(), fallback: Type.String(), utility: Type.String(),

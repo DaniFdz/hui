@@ -47,6 +47,7 @@ export async function notificationChatUrl(chat: NotificationChat): Promise<strin
  *
  * The path stays percent-encoded the way an address carries it (`/sessions/a%20b`), never encoded as a query value:
  * both shells decode a copy to validate it and refuse one that hides a scheme behind an escape.
+ * `chatPath` is exported for the Web Push channel, which opens the same path a tap does.
  */
 export function appChatLink(target: "phone" | "desktop", chat: NotificationChat): string {
   const path = chatPath(chat);
@@ -59,7 +60,8 @@ export async function notificationChatLink(chat: NotificationChat, link: NtfyLin
   return link === "web" ? notificationChatUrl(chat) : appChatLink(link, chat);
 }
 
-function chatPath(chat: NotificationChat): string {
+/** The in-app path that opens one chat: the same path the web app addresses, and what a push message carries. */
+export function chatPath(chat: NotificationChat): string {
   return chat.bot ? `/bots/${encodeURIComponent(chat.bot)}` : `/sessions/${encodeURIComponent(chat.id)}`;
 }
 
@@ -148,6 +150,10 @@ export async function notifyUser(
   }, signal);
   if (channels.includes("ntfy")) {
     return { status, ...(url ? { url } : {}), message: "HUI sent the notification to your phone or another device through ntfy." };
+  }
+  // Web Push is a channel of its own: the devices subscribed in Settings heard it, and no banner promises otherwise.
+  if (channels.includes("push")) {
+    return { status, ...(url ? { url } : {}), message: "HUI pushed the notification to the devices subscribed in Settings → Notifications → This device." };
   }
   return status === "in-view"
     ? { status, ...(url ? { url } : {}), message: "The operator has this chat in front in the HUI app, so HUI showed no banner." }

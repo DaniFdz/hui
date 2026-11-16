@@ -5,7 +5,7 @@
  * `api/bot-triggers.ts`. The view is `src/views/bot-triggers.ts`.
  */
 import type {
-  BotTrigger, BotTriggerCreated, BotTriggerFilter, BotTriggerInput, BotTriggerRun, BotTriggerRunStatus, BotTriggerSource, BotTriggersList,
+  BotTrigger, BotTriggerCreated, BotTriggerFilter, BotTriggerHookWorker, BotTriggerInput, BotTriggerRun, BotTriggerRunStatus, BotTriggerSource, BotTriggersList,
 } from "../../api/schema/bot-triggers.ts";
 
 const BOT_TRIGGER_SOURCES: readonly BotTriggerSource[] = ["listener"];
@@ -109,10 +109,23 @@ export function parseTriggersList(body: unknown): BotTriggersList {
   };
 }
 
+/** A trigger's URL on a bot whose chat runs on a worker: that machine's own address for it, or why HUI has none to
+ * give. Kept only when it names the machine; a URL or an error it can't read is left out. */
+function parseHookWorker(raw: unknown): BotTriggerHookWorker | undefined {
+  if (!isRecord(raw) || !str(raw["id"]) || !str(raw["name"])) return undefined;
+  const url = str(raw["url"]);
+  const error = str(raw["error"]);
+  return { id: str(raw["id"]), name: str(raw["name"]), ...(url ? { url } : {}), ...(error ? { error } : {}) };
+}
+
 export function parseCreated(body: unknown): BotTriggerCreated {
   const trigger = isRecord(body) ? parseTrigger(body["trigger"]) : undefined;
   if (!trigger || !isRecord(body)) throw new Error("The trigger did not come back.");
-  const hook = isRecord(body["hook"]) && str(body["hook"]["token"]) && str(body["hook"]["path"]) ? { token: str(body["hook"]["token"]), path: str(body["hook"]["path"]) } : undefined;
+  const raw = isRecord(body["hook"]) ? body["hook"] : undefined;
+  const token = str(raw?.["token"]);
+  const path = str(raw?.["path"]);
+  const worker = parseHookWorker(raw?.["worker"]);
+  const hook = token && path ? { token, path, ...(worker ? { worker } : {}) } : undefined;
   if (!hook) throw new Error("The trigger's URL did not come back.");
   return { trigger, hook };
 }
@@ -160,7 +173,16 @@ export function triggerFormInput(fields: TriggerFormFields): BotTriggerInput {
 
 /* ── the section's state ─────────────────────────────────────────────── */
 
-export type RevealedHook = { triggerId: string; name: string; url: string; copied: boolean };
+export type RevealedHook = {
+  triggerId: string;
+  name: string;
+  /** Where its listener reports: the gateway's URL on this page, or, for a bot on a worker, that machine's own address as
+   * it came. Absent when a worker has none to give. */
+  url?: string;
+  copied: boolean;
+  /** Where that address lives (a worker's sentence), or why HUI has none (the server's error). */
+  note?: string;
+};
 
 export type BotTriggersState = {
   botId: string;

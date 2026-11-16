@@ -1,7 +1,8 @@
 /**
  * `SettingsController` keeps the settings state outside `hui-app.ts`: this device's appearance and its synchronous
  * saves, the gateway's settings and their saves, the theme picker and imports, PI's configuration and its package
- * and skill changes, the resource reader, and the control surfaces (gateway health, macOS power, the workspace
+ * and skill changes, the resource reader, Web Push on this device (what this browser's permission allows now, its
+ * subscription and the gateway's device count), and the control surfaces (gateway health, macOS power, the workspace
  * inspection and observability). Settings elements that load their own data keep their own requests.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
@@ -16,7 +17,19 @@ import {
   type WorkspaceInspection,
 } from "../api/control-surfaces.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
-import { sendTestNotification } from "../api/notifications.ts";
+import { fetchPushStatus, sendPushTest, sendTestNotification, subscribePushDevice, unsubscribePushDevice } from "../api/notifications.ts";
+import {
+  currentSubscription,
+  isStandalone,
+  pushDeviceState,
+  subscribeDevice,
+  PUSH_SUBSCRIBE_ERRORS,
+  type PushDeviceState,
+  type PushEnvironment,
+  type PushRegistrationLike,
+  type PushSubscribeResult,
+} from "../lib/notifications/web-push.ts";
+import { describePushTest, SETTINGS_COPY } from "../lib/settings/pages.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import type { HuiPage } from "../lib/pages.ts";
 import { skillPreferencePath, type PiMutationKind, type PiMutationResult, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
@@ -47,6 +60,83 @@ type SettingsEvents = {
   /** An outcome the operator should see, such as the ntfy test notification's result. */
   notified: (message: string, failed: boolean) => void;
 };
+
+/**
+ * This page as Web Push sees it: the facts about the browser, its registered service worker, the permission prompt and
+ * its push manager. Injectable so a test drives every outcome without a browser, and the raw browser errors never
+ * leave the pure helpers in `lib/notifications/web-push.ts`.
+ */
+export type PushBrowser = {
+  /** What this browser can do, read when the page loads and again whenever the page learns it may have changed. */
+  environment(): PushEnvironment;
+  /** The service worker registration this page already has, or nothing while it has none. */
+  registration(): Promise<PushRegistrationLike | undefined>;
+  /** Asks for permission when the browser still may, and answers what it then says. */
+  permission(): Promise<NotificationPermission>;
+  /** This page's existing subscription endpoint, for the button's state after a reload. */
+  subscription(registration: PushRegistrationLike | undefined): Promise<string | undefined>;
+  /** Subscribes this page with the gateway's public key, refusing in a sentence rather than a browser error. */
+  subscribe(registration: PushRegistrationLike | undefined, applicationServerKey: string): Promise<PushSubscribeResult>;
+  /** Forgets this page's subscription at its push service, and says whether the browser had one. */
+  unsubscribe(registration: PushRegistrationLike | undefined): Promise<boolean>;
+};
+
+/** This browser's push environment, as the page reports it: no `PushManager`, an insecure address, a notification
+ * permission the operator blocked, or Safari's Home Screen requirement on iPhone and iPad. */
+function readPushEnvironment(): PushEnvironment {
+  const page = typeof window === "undefined" ? undefined : window;
+  const agent: { userAgent?: string; platform?: string; maxTouchPoints?: number; standalone?: boolean } =
+    typeof navigator === "undefined" ? {} : navigator;
+  // A page that has no `matchMedia` is not an installed app; guarding the window alone would still call `.bind` on
+  // nothing. `isStandalone` already answers "no" for an absent source.
+  const matchMedia = typeof page?.matchMedia === "function" ? page.matchMedia.bind(page) : undefined;
+  return {
+    secure: page?.isSecureContext === true,
+    pushManager: typeof page?.PushManager !== "undefined",
+    userAgent: agent.userAgent ?? "",
+    platform: agent.platform,
+    maxTouchPoints: agent.maxTouchPoints,
+    standalone: isStandalone({ matchMedia, navigator: agent }),
+    // Read, never asked: a prompt belongs to the click that needs one, not to drawing the page.
+    permission: typeof Notification === "undefined" ? undefined : Notification.permission,
+  };
+}
+
+/** The real browser behind the push actions. Every call guards the globals it reads, so a page that has no service
+ * worker answers "nothing" instead of throwing. */
+function browserPush(): PushBrowser {
+  const serviceWorker = () => (typeof navigator === "undefined" ? undefined : navigator.serviceWorker);
+  const registration = async (): Promise<PushRegistrationLike | undefined> => {
+    const worker = serviceWorker();
+    if (!worker) return undefined;
+    const existing = await worker.getRegistration().catch(() => undefined);
+    if (existing?.active) return { pushManager: existing.pushManager };
+    if (!existing) return undefined;
+    // A worker that is still installing activates on its own: `ready` waits for it instead of failing a click that
+    // would have worked a moment later.
+    const activated = await worker.ready.catch(() => undefined);
+    return activated?.active ? { pushManager: activated.pushManager } : undefined;
+  };
+  return {
+    environment: readPushEnvironment,
+    registration,
+    async permission() {
+      if (typeof Notification === "undefined") return "denied";
+      return Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+    },
+    subscription: (ready) => currentSubscription(ready),
+    subscribe: (ready, applicationServerKey) => subscribeDevice({
+      applicationServerKey,
+      registration: ready,
+      secure: typeof window !== "undefined" && window.isSecureContext,
+    }),
+    async unsubscribe(ready) {
+      const subscription = await ready?.pushManager.getSubscription().catch(() => null);
+      if (!subscription?.unsubscribe) return false;
+      return subscription.unsubscribe().catch(() => false);
+    },
+  };
+}
 
 export class SettingsController implements ReactiveController {
   settings: Settings = currentSettings();
@@ -79,9 +169,22 @@ export class SettingsController implements ReactiveController {
   observability: ObservabilitySnapshot | undefined;
   observabilityLoading = false;
   observabilityError = "";
+  /** What this browser can do about Web Push. The page re-reads it after every push action, because a permission the
+   * operator just granted or blocked changes it while the page stays open. */
+  pushDevice: PushDeviceState;
+  /** Whether this device already subscribed, so Settings offers the other direction after a reload. */
+  pushSubscribed = false;
+  /** How many devices this gateway pushes to; `undefined` until it answers. */
+  pushDevices: number | undefined;
+  pushStatusError = "";
   readonly #host: SettingsHost;
   readonly #events: SettingsEvents;
+  readonly #push: PushBrowser;
+  /** The endpoint this page subscribed, remembered even after the browser forgot it, so a device the gateway still
+   * holds can be removed from the page that put it there. */
+  #pushEndpoint: string | undefined;
   #saveRevision = 0;
+  #pushStatus: Promise<void> | undefined;
   #healthPending = false;
   #powerRequest = 0;
   #powerPoll: Promise<void> | undefined;
@@ -90,9 +193,11 @@ export class SettingsController implements ReactiveController {
   #readerRequest = 0;
   #copyTimer: number | undefined;
 
-  constructor(host: SettingsHost, events: SettingsEvents) {
+  constructor(host: SettingsHost, events: SettingsEvents, push: PushBrowser = browserPush()) {
     this.#host = host;
     this.#events = events;
+    this.#push = push;
+    this.pushDevice = pushDeviceState(push.environment());
     host.addController(this);
   }
 
@@ -164,6 +269,173 @@ export class SettingsController implements ReactiveController {
       this.#events.notified("Copied the ntfy address.", false);
     });
   };
+
+  /** Reads this gateway's push state and this page's own subscription: the count and the button's direction. */
+  loadPushStatus = (): void => {
+    if (this.#pushStatus) return;
+    this.pushStatusError = "";
+    this.#pushStatus = this.#readPushStatus().finally(() => { this.#pushStatus = undefined; });
+  };
+
+  async #readPushStatus(): Promise<void> {
+    try {
+      const [status, ready] = await Promise.all([fetchPushStatus(), this.#pushRegistration()]);
+      this.pushDevices = status.devices.length;
+      const endpoint = await this.#push.subscription(ready);
+      if (endpoint) this.#pushEndpoint = endpoint;
+      this.pushSubscribed = Boolean(endpoint);
+      this.pushStatusError = "";
+    } catch (error) {
+      this.pushStatusError = error instanceof Error ? error.message : "Could not read this gateway's push state.";
+    } finally {
+      this.#changed();
+    }
+  }
+
+  #pushRegistration(): Promise<PushRegistrationLike | undefined> {
+    return this.#push.registration().catch(() => undefined);
+  }
+
+  /**
+   * Reads the browser's push environment again and takes the state it decides, never a guess from an error a click got:
+   * a permission prompt the operator just answered `Notification.permission` for, and only a changed answer redraws.
+   */
+  #syncPushDevice(): void {
+    const device = pushDeviceState(this.#push.environment());
+    if (device === this.pushDevice) return;
+    this.pushDevice = device;
+    this.#changed();
+  }
+
+  /** The sentence for a page that cannot subscribe at all, so no button has to lie about why. */
+  #pushUnavailable(): string {
+    return SETTINGS_COPY.push.states[this.pushDevice === "ready" ? "ready" : this.pushDevice];
+  }
+
+  /** Saves the push switch against the rest of the notifications settings, so a concurrent edit is kept. */
+  async #savePushEnabled(enabled: boolean): Promise<boolean> {
+    const revision = ++this.#saveRevision;
+    const saved = await patchSettings({
+      notifications: { ...this.settings.notifications, push: { ...this.settings.notifications.push, enabled } },
+    });
+    if (revision === this.#saveRevision) {
+      this.saveFailed = !saved;
+      this.settings = currentSettings();
+      this.#changed();
+    }
+    return saved;
+  }
+
+  /**
+   * Subscribes this browser and turns Web Push on: the gateway's public key, the browser's push service, one registered
+   * subscription, then the switch. A refused permission or a browser without a push service is a sentence, never a
+   * thrown browser error.
+   */
+  enablePushOnThisDevice = async (): Promise<void> => {
+    if (this.pushDevice !== "ready") {
+      this.#events.notified(this.#pushUnavailable(), true);
+      return;
+    }
+    try {
+      // What the gateway says and what this page has come first: a permission prompt nobody could honour is a defect.
+      const { publicKey } = await fetchPushStatus();
+      const ready = await this.#pushRegistration();
+      if (!ready) {
+        this.#events.notified(PUSH_SUBSCRIBE_ERRORS["no-service-worker"], true);
+        return;
+      }
+      const permission = await this.#push.permission();
+      if (permission !== "granted") {
+        this.#events.notified(PUSH_SUBSCRIBE_ERRORS["permission-denied"], true);
+        return;
+      }
+      const subscribed = await this.#push.subscribe(ready, publicKey);
+      if (!subscribed.ok) {
+        this.#events.notified(subscribed.error, true);
+        return;
+      }
+      this.#pushEndpoint = subscribed.endpoint;
+      const device = this.#deviceLabel();
+      await subscribePushDevice({
+        endpoint: subscribed.endpoint,
+        keys: { p256dh: subscribed.p256dh, auth: subscribed.auth },
+        ...(device ? { device } : {}),
+      });
+      const saved = await this.#savePushEnabled(true);
+      this.pushSubscribed = true;
+      this.#changed();
+      this.#events.notified(saved ? SETTINGS_COPY.push.enabled : "This device is subscribed, but the switch could not be saved.", !saved);
+      this.loadPushStatus();
+    } catch (error) {
+      this.#events.notified(error instanceof Error ? error.message : "Could not enable Web Push on this device.", true);
+    } finally {
+      // The prompt, its refusal and the subscription all happen after this page read the environment: a browser the
+      // operator has just blocked says `blocked` here rather than after a reload, and one that refused for another
+      // reason keeps the permission it has.
+      this.#syncPushDevice();
+    }
+  };
+
+  /**
+   * Forgets this device at the gateway and at its push service, then turns the switch off. The gateway is asked first:
+   * a browser that forgot its subscription first would leave the device in the count with no address left to remove it
+   * by, and a retry would only turn the switch off. A failed removal keeps the remembered endpoint, so the retry
+   * finishes the job.
+   */
+  disablePushOnThisDevice = async (): Promise<void> => {
+    const ready = await this.#pushRegistration();
+    const endpoint = this.#pushEndpoint ?? await this.#push.subscription(ready).catch(() => undefined);
+    if (!endpoint) {
+      await this.#savePushEnabled(false);
+      this.pushSubscribed = false;
+      this.#changed();
+      this.#events.notified(SETTINGS_COPY.push.nothingToRemove, false);
+      return;
+    }
+    // Remembered before the gateway is asked, so a removal that fails still has an address to retry with.
+    this.#pushEndpoint = endpoint;
+    try {
+      await unsubscribePushDevice(endpoint);
+    } catch (error) {
+      this.#events.notified(error instanceof Error ? error.message : "Could not remove this device from the gateway.", true);
+      this.loadPushStatus();
+      return;
+    }
+    this.#pushEndpoint = undefined;
+    // The gateway no longer pushes to it, so the switch goes off either way; a browser that kept its subscription is said
+    // out loud rather than hidden behind a switch that looks finished.
+    const gone = await this.#push.unsubscribe(ready).catch(() => false);
+    // Asked before the switch is written: a disable the browser refused may be the sign its permission changed.
+    this.#syncPushDevice();
+    const saved = await this.#savePushEnabled(false);
+    this.pushSubscribed = false;
+    this.#changed();
+    if (!gone) this.#events.notified(SETTINGS_COPY.push.browserKept, true);
+    else this.#events.notified(saved ? SETTINGS_COPY.push.disabled : "This device is forgotten, but the switch could not be saved.", !saved);
+    this.loadPushStatus();
+  };
+
+  /** Publishes one test push and reports the counts the gateway answered with, never a promise it cannot keep. */
+  testPushNotification = async (): Promise<void> => {
+    try {
+      const { sent, devices } = await sendPushTest();
+      this.pushDevices = devices;
+      this.#changed();
+      this.#events.notified(describePushTest(sent, devices), devices === 0 || sent !== devices);
+    } catch (error) {
+      this.#events.notified(error instanceof Error ? error.message : "The test push failed.", true);
+    }
+  };
+
+  /** What the device list may call this browser: its platform, never a capability or an address. */
+  #deviceLabel(): string | undefined {
+    const agent = typeof navigator === "undefined" ? "" : navigator.userAgent;
+    const known: [RegExp, string][] = [
+      [/iPhone/u, "iPhone"], [/iPad/u, "iPad"], [/Android/u, "Android"],
+      [/Macintosh|Mac OS X/u, "Mac"], [/Windows/u, "Windows"], [/Linux/u, "Linux"],
+    ];
+    return known.find(([pattern]) => pattern.test(agent))?.[1];
+  }
 
   saveSubagentRoute = async (route: Settings["models"]["routes"][number], originalName?: string): Promise<boolean> => {
     const revision = ++this.#saveRevision;
@@ -545,6 +817,13 @@ export class SettingsController implements ReactiveController {
       onSaveNtfy: this.saveNtfy,
       onTestNtfy: this.testNtfyNotification,
       onCopyNtfyAddress: this.copyNtfyAddress,
+      pushDevice: this.pushDevice,
+      pushSubscribed: this.pushSubscribed,
+      pushDevices: this.pushDevices,
+      pushStatusError: this.pushStatusError,
+      onEnablePush: () => void this.enablePushOnThisDevice(),
+      onDisablePush: () => void this.disablePushOnThisDevice(),
+      onTestPush: () => void this.testPushNotification(),
       onChangeQuestions: (questions) => void this.save({ questions }),
       onChangeCalls: (calls) => void this.save({ calls }),
       onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),

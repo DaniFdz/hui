@@ -17,6 +17,7 @@ import { createStaffRoutes } from "./routes/staff.ts";
 import { createHeartbeat } from "./heartbeat.ts";
 import { createHeartbeatRoutes } from "./routes/heartbeat.ts";
 import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
+import { HOOK_REPORT_OP } from "./worker/protocol.ts";
 import { accountFullName, BotExportService } from "./bots/export.ts";
 import { nameFromUsername } from "./bots/templates/cleanup.ts";
 import { BotTemplateService } from "./bots/template-import.ts";
@@ -81,8 +82,11 @@ import { registerAgentToolHandler } from "./agent-tools/bridge.ts";
 import { SubagentService } from "./agent-tools/subagents.ts";
 import { presentMediaForSession } from "./agent-tools/presented-media.ts";
 import { deliverDesktopNotification, notificationChatLink, notifyUser } from "./agent-tools/notifications.ts";
-import { createNotificationDelivery } from "./notifications/delivery.ts";
+import { createNotificationDelivery, notificationPushMessage, partialPushRecord } from "./notifications/delivery.ts";
 import { ntfyConfigured, ntfyMessage, publishNtfy } from "./notifications/ntfy.ts";
+import { publishPushBatch, type PushMessage } from "./notifications/push.ts";
+import { addPushSubscription, listPushSubscriptions, prunePushSubscriptions, removePushSubscription, vapidKeys, type StoredPushSubscription } from "./notifications/push-store.ts";
+import type { PushStatusResponse, PushTestResponse } from "./api/notifications.ts";
 import { watchSessionNotifications, type NotificationTarget } from "./sessions/session-notifications.ts";
 import { GitHubCli } from "./integrations/github.ts";
 import { GitHubContributionsReader } from "./integrations/github-contributions.ts";
@@ -166,14 +170,30 @@ const usageReports = new UsageReports(readRegistry);
 const durableUsage = async (conversationId: number) => durableHost().conversationUsage(conversationId as never);
 export const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
-// and stop showing a reconnect once HUI no longer tries.
-function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void): void {
-  void readRegistry().then((records) => {
-    for (const record of records) if (record.worker === workerId && liveSessions.isLive(record.id)) act(record);
-  }).catch(() => undefined);
+// and stop showing a reconnect once HUI no longer tries. They start together,
+// so one session's slow reattach does not hold up the others; the returned
+// promise settles only once every one of them has.
+function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void | Promise<void>): Promise<void> {
+  return readRegistry().then(async (records) => {
+    const due = records.filter((record) => record.worker === workerId && liveSessions.isLive(record.id));
+    await Promise.all(due.map((record) => act(record)));
+  });
 }
-workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
-workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
+
+/** The sweep reattaching a worker's sessions, from the moment it connects: a report its host relays as soon as the
+ * connection is up waits for this, so it reaches a bot's chat once the chat is back instead of failing on a session
+ * that still says it is reconnecting. Held only while the sweep runs. */
+const reattaching = new Map<string, Promise<void>>();
+workers.onConnected((workerId) => {
+  const sweep = forWorkerSessions(workerId, async (record) => {
+    liveSessions.ensure(record, true);
+    await liveSessions.booted(record.id);
+  }).catch(() => undefined).finally(() => { if (reattaching.get(workerId) === sweep) reattaching.delete(workerId); });
+  reattaching.set(workerId, sweep);
+});
+workers.onStopped((workerId) => {
+  void forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)).catch(() => undefined);
+});
 
 /** Bots: their registry, and the service that runs each one's forever chat as an ordinary Durable session
  * whose memory is OptChat's (docs/optchat.md). */
@@ -525,7 +545,88 @@ async function sendTestNotification(): Promise<void> {
     ...(process.env["HUI_NTFY_TOKEN"] ? { token: process.env["HUI_NTFY_TOKEN"] } : {}),
   });
 }
-export const notificationRoutes = createNotificationRoutes({ sendTest: sendTestNotification });
+
+/** What a browser subscribes with: the gateway's public VAPID key and each device by a digest of its endpoint. */
+async function pushStatus(): Promise<PushStatusResponse> {
+  const { publicKey } = await vapidKeys();
+  return {
+    publicKey,
+    devices: (await listPushSubscriptions()).map(({ id, createdAt, device }) => ({ id, createdAt, ...(device ? { device } : {}) })),
+  };
+}
+
+/** Forgets one device, and says whether it was subscribed at all. */
+async function unsubscribe(endpoint: string): Promise<boolean> {
+  if (!(await listPushSubscriptions()).some((subscription) => subscription.endpoint === endpoint)) return false;
+  await removePushSubscription(endpoint);
+  return true;
+}
+
+/**
+ * One message to every subscribed device: sealed per subscription, so each push service carries a body only that
+ * device can read, and published together, so a service that never answers costs the call one deadline instead of one
+ * per device. A subscription the service says is gone (404/410) is pruned, and no error names an endpoint or a key.
+ */
+async function pushToDevices(
+  subscriptions: readonly StoredPushSubscription[],
+  message: PushMessage,
+  settings: Settings["notifications"]["push"],
+): Promise<{ sent: number; gone: number; failure?: unknown }> {
+  const { sent, gone, failure } = await publishPushBatch(
+    subscriptions,
+    message,
+    await vapidKeys(),
+    settings.subject ? { subject: settings.subject } : {},
+  );
+  await prunePushSubscriptions(gone);
+  return { sent, gone: gone.length, ...(failure === undefined ? {} : { failure }) };
+}
+
+/** What a device is told when its push service forgot the subscription: the operator has to subscribe it again. */
+const PUSH_SUBSCRIPTION_GONE = "The push service no longer knows this device's subscription: subscribe it again in Settings → Notifications → This device.";
+
+/**
+ * Records the devices a push service refused while the rest took the notification. The notification arrived, so this
+ * never fails a delivery: a diagnostic that could not be recorded is dropped rather than reported as a push error.
+ */
+function recordPartialPush(sessionId: string, sent: number, devices: number, failure: unknown): void {
+  try {
+    recordDiagnosticEvent({ area: "session", level: "warning", ...partialPushRecord(sent, devices, failure), sessionId });
+  } catch {
+    // Best effort: the devices that took the notification still got it.
+  }
+}
+
+/** The one test push Settings → Notifications can ask for: it proves a subscribed device hears this gateway, and the
+ * count it answers is how many push services accepted, so the page can say the truth. */
+async function sendTestPush(): Promise<PushTestResponse> {
+  const settings = (await readHuiSettings()).notifications;
+  if (!settings.push.enabled) throw new Error("Turn on Web Push in Settings → Notifications → This device, then send the test again.");
+  const subscriptions = await listPushSubscriptions();
+  if (!subscriptions.length) throw new Error("Subscribe this device in Settings → Notifications → This device, then send the test again.");
+  const { sent, failure } = await pushToDevices(subscriptions, {
+    title: "HUI",
+    body: `This is a test notification from ${(await readHuiSettings()).name || "your HUI gateway"}.`,
+    path: "/settings/notifications",
+    tag: "hui-test",
+    priority: "normal",
+  }, settings.push);
+  if (failure !== undefined) {
+    recordDiagnosticEvent({
+      area: "gateway", level: "warning", action: "push_test_failed",
+      summary: `A push service refused ${subscriptions.length - sent} of ${subscriptions.length} test pushes`,
+      detail: failure instanceof Error ? failure.message : String(failure),
+    });
+  }
+  return { sent, devices: subscriptions.length };
+}
+export const notificationRoutes = createNotificationRoutes({
+  sendTest: sendTestNotification,
+  pushStatus,
+  subscribe: async (subscription) => (await addPushSubscription(subscription)).id,
+  unsubscribe,
+  sendTestPush,
+});
 export const appRoutes = createAppRoutes({ openChatInApp });
 const hostMetrics = createHostMetrics();
 sampleInBackground(hostMetrics);
@@ -567,9 +668,10 @@ async function notificationChat(sessionId: string): Promise<NotificationTarget |
   return { id: record.id, title: (bot?.name ?? record.title).slice(0, 120) || "HUI", subagent: record.parentId !== undefined, ...(bot ? { bot: bot.id } : {}) };
 }
 
-/** HUI's own notifications reach the installed desktop app on macOS and a phone through the ntfy relay its operator's
- * app subscribes to. A gateway with neither is not an error for HUI's own events: `canDeliver` keeps those runs out of
- * diagnostics. `notify_user` asks for a notification explicitly, so its caller gets the reason when none arrives. */
+/** HUI's own notifications reach the installed desktop app on macOS, a phone through the ntfy relay its operator's app
+ * subscribes to, and any device that subscribed through Web Push. A gateway with none of them is not an error for HUI's
+ * own events: `canDeliver` keeps those runs out of diagnostics. `notify_user` asks for a notification explicitly, so its
+ * caller gets the reason when none arrives. */
 const notificationDelivery = createNotificationDelivery({
   desktop: { available: () => process.platform === "darwin", deliver: deliverDesktopNotification },
   ntfy: {
@@ -581,9 +683,24 @@ const notificationDelivery = createNotificationDelivery({
       });
     },
   },
+  push: {
+    settings: async () => ({ settings: (await readHuiSettings()).notifications.push, subscriptions: (await listPushSubscriptions()).length }),
+    publish: async (settings, chat, notification) => {
+      const subscriptions = await listPushSubscriptions();
+      const { sent, gone, failure } = await pushToDevices(subscriptions, notificationPushMessage(chat, notification), settings);
+      // One device hearing it is the channel carrying it; a service that refused the others is recorded, because a
+      // partial push that reads as a success hides the device that never got the notification.
+      if (sent > 0) {
+        if (failure !== undefined) recordPartialPush(chat.id, sent, subscriptions.length, failure);
+        return;
+      }
+      if (failure !== undefined) throw failure instanceof Error ? failure : new Error(String(failure));
+      throw new Error(gone > 0 ? PUSH_SUBSCRIPTION_GONE : "No subscribed device accepted the notification.");
+    },
+  },
   skipped: (error, channel, chat) => recordDiagnosticEvent({
     area: "session", level: "warning", action: "notification_skipped",
-    summary: `HUI skipped a ${channel === "desktop" ? "desktop" : "phone"} notification`,
+    summary: `HUI skipped a ${channel === "desktop" ? "desktop" : channel === "ntfy" ? "phone" : "push"} notification`,
     detail: error instanceof Error ? error.message : String(error),
     sessionId: chat.id,
   }),
@@ -895,12 +1012,35 @@ async function browserStatus(): Promise<BrowserStatus> {
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 export const githubCli = new GitHubCli({ command: GH_COMMAND });
 /** Bots' triggers: what listeners the operator runs report, with the pull requests it links to read through the
- * same `gh`. */
+ * same `gh`. A bot whose chat runs on a worker takes its listeners' reports on that machine's own endpoint, which relays
+ * them here (`hooks.report`). */
 export const triggers = createGatewayTriggers({
   send: (botId, message) => bots.send(botId, message),
   listBots: () => botRegistry.list(),
   ghCommand: GH_COMMAND,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+  hookWorker: (bot) => {
+    const id = bot.worker;
+    if (!id) return undefined;
+    const name = workers.nameOf(id) ?? id;
+    if (!workers.connected(id)) return { id, name, error: `HUI is not connected to ${name}: connect it to take its listener URL.` };
+    // The port alone answers it: a host that could not bind its endpoint offers none either, and it is a current release.
+    const port = workers.hookPort(id);
+    if (port === undefined) return { id, name, error: `${name} does not serve its listener endpoint: it runs an older HUI release, or its endpoint could not open.` };
+    return { id, name, base: `http://127.0.0.1:${port}` };
+  },
+});
+/** A worker's own listener endpoint relays its reports to the gateway that owns the trigger: only a connected worker's
+ * host can make this request, and its loopback bind is the caller rule on that machine. A host relays as soon as its
+ * socket is up, before the gateway has registered the connection, so the report waits for it, and for the sweep that
+ * reattaches that worker's sessions (`reattaching`): only then does it reach the worker's own chats, instead of
+ * failing on a chat that still says it is reconnecting. A reattachment slower than the host's own relay cap leaves the
+ * report in the host's queue, which offers it again by itself (`hook-endpoint.ts`), so a listener is never told a
+ * report fired while the chat it wakes was still coming back. */
+workers.serve(HOOK_REPORT_OP, async (workerId, params) => {
+  await workers.ready(workerId);
+  await reattaching.get(workerId);
+  return triggers.relay(params);
 });
 const githubPreviews = new GitHubPreviews(ghGraphQL(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
