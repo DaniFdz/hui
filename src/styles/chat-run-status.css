@@ -56,10 +56,12 @@
   stroke-linejoin: round;
 }
 
+/* The state's own words are never the part that gets cut: the longest phrase a pill prints, "Waiting for your answer",
+   sets its width, the pill takes the header's free space and the session title truncates first. `flex: none` keeps a
+   narrowing header from squeezing the label into an ellipsis of its own, in the pill and in the panel's head alike. */
 .chat-run-status__label {
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: none;
+  white-space: nowrap;
 }
 
 .chat-run-status__count {

@@ -384,6 +384,14 @@ const CONTENT_SHOWN_TO = 0.75;
 /** The copy of a closing panel fades out as it reaches the pill's corner, leaving the pill's own word to take over. */
 const FOLD_FADE_FROM = 0.55;
 
+/**
+ * What a picture of the panel must not keep: every name, role, id, test id and tab stop a query or the accessibility
+ * tree reads. `alt` and `for` ride along because a picture can carry them — the plan's Markdown note allows an image,
+ * and a labelled field would otherwise re-label the panel's own control — and the panel has to stay the only node
+ * answering for either.
+ */
+const NOT_IN_A_PICTURE = ["id", "data-testid", "role", "aria-label", "aria-labelledby", "aria-describedby", "tabindex", "alt", "for"] as const;
+
 /** Stops whatever the last open or close started, leaving no inline transform and no leftover copy behind. */
 function stopRunStatusMorph(state: RunStatusPopoverState): void {
   state.grow = undefined;
@@ -405,6 +413,9 @@ function stopRunStatusMorph(state: RunStatusPopoverState): void {
  * belongs to `settleRunStatusPanel`.
  */
 function prepareRunStatusGrow(popover: RunStatusPopover, state: RunStatusPopoverState, trigger: HTMLElement): void {
+  // An open can follow a close before that fold has finished, and the picture it left would be orphaned by the morph
+  // prepared here: its own finish no longer matches `state.morph`, so nothing would ever take it out of the page.
+  stopRunStatusMorph(state);
   const panel = popover.querySelector<HTMLElement>(".chat-run-status__panel");
   const body = panel?.querySelector<HTMLElement>(".chat-run-status__body");
   const timing = panel ? runStatusMorphTimingOf(panel) : undefined;
@@ -451,8 +462,9 @@ function startRunStatusGrow(state: RunStatusPopoverState): void {
 /**
  * Folds a copy of the closing panel back into the pill. Web Awesome hides its dialog at once, so the copy carries the
  * panel's picture for the fold; the close's own bookkeeping already happened in `settleRunStatusPanel`, and nothing here
- * waits on the animation or writes a choice. The copy is a picture: it has no id, role or label to answer a query with,
- * and it takes no press.
+ * waits on the animation or writes a choice. The copy is a picture: no node in it, its own root included, has an id,
+ * role, label, test id or tab stop to answer a query with, and it takes no press. Stripping only the root would leave
+ * the head's own button answering `Close run status` from the copy drawn over the panel it closed.
  */
 function foldRunStatusPanel(popover: RunStatusPopover, state: RunStatusPopoverState, trigger: HTMLElement): void {
   stopRunStatusMorph(state);
@@ -463,12 +475,9 @@ function foldRunStatusPanel(popover: RunStatusPopover, state: RunStatusPopoverSt
   const shape = runStatusMorphShape({ pill: runStatusMorphRect(trigger), panel: box, reducedMotion: false });
   if (!shape) return;
   const ghost = panel.cloneNode(true) as HTMLElement;
-  for (const node of [ghost, ...ghost.querySelectorAll("[id], [data-testid]")]) {
-    node.removeAttribute("id");
-    node.removeAttribute("data-testid");
+  for (const node of [ghost, ...ghost.querySelectorAll("*")]) {
+    for (const name of NOT_IN_A_PICTURE) node.removeAttribute(name);
   }
-  ghost.removeAttribute("role");
-  ghost.removeAttribute("aria-label");
   ghost.setAttribute("aria-hidden", "true");
   ghost.setAttribute("inert", "");
   ghost.classList.add("chat-run-status__ghost");

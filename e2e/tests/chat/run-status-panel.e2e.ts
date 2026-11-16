@@ -5,6 +5,19 @@ import { test } from "../../fixtures/hui.ts";
 import type { Settings } from "../../../src/api/schema/settings.ts";
 
 const heldEcho = `E2E_HOLD:${Buffer.from(JSON.stringify({ name: "fixture_echo", input: { text: "held" } })).toString("base64url")}`;
+/** The turn that leaves the conversation waiting for the operator: the longest Run status phrase a pill ever draws. */
+const askDatabase = `E2E_CALL:${Buffer.from(JSON.stringify({ name: "ask_user_question", input: { questions: [{
+  header: "Database",
+  question: "Which database should the service use?",
+  options: [
+    { label: "Postgres", description: "Relational, already deployed." },
+    { label: "SQLite", description: "One file, no server." },
+  ],
+}] } })).toString("base64url")}`;
+/** The pill's box and the words it shows: read by selector, because a clipped label carries no name of its own. */
+const TRIGGER = ".chat-run-status__trigger";
+const LABEL = `${TRIGGER} .chat-run-status__label`;
+const HEAD_LABEL = `.chat-run-status__head .chat-run-status__label`;
 
 test("Run status opens by itself while a run works, and its X and trigger are one toggle", { tags: ["CHAT-090"], platforms: ["web"] }, async ({ screen, hui }) => {
   // HUI writes the plan with the utility model; this instance points it at the fixture.
@@ -92,4 +105,32 @@ test("Run status opens by itself while a run works, and its X and trigger are on
 
   await hui.provider.release();
   await expect(idle).toBeVisible();
+
+  // The state's own words are never the part that gets cut. A question turn prints the longest phrase a pill draws —
+  // "Waiting for your answer" — with the plan's count beside it, and the label has to hold all of it: a scroll width
+  // wider than its box means the pill ellipsizes its own state, which a visibility read would never show.
+  await message.fill(askDatabase);
+  await send.tap();
+  await expect(screen.getByLabel("Session status: Waiting for your answer")).toBeVisible();
+  await expect(trigger).toHaveAccessibleName(/^Run status: Waiting for your answer, 1 of 2 steps done$/u);
+  await expect.poll(async () => {
+    const label = await hui.textOverflow(LABEL);
+    return label ? label.scrollWidth - label.clientWidth : Number.NaN;
+  }).toBeLessThanOrEqual(1);
+
+  // The panel the waiting run opened repeats that phrase in its head, in the pill's own type, and the head must not
+  // clip its copy either: it is the only place the state is written while the panel is out.
+  await expect(popover).toBeVisible();
+  await expect.poll(async () => {
+    const head = await hui.textOverflow(HEAD_LABEL);
+    return head ? head.scrollWidth - head.clientWidth : Number.NaN;
+  }).toBeLessThanOrEqual(1);
+
+  // A phone spends the pill's words on its accessible name and keeps the mark and the count, so one header row reads
+  // the state without wrapping (the labels are the view's own media queries, not this test's).
+  await hui.phoneScreen();
+  await expect.poll(() => hui.drawn(LABEL)).toBe(false);
+  await expect.poll(() => hui.drawn(`${TRIGGER} .chat-run-status__mark`)).toBe(true);
+  await expect(trigger.getByText("1/2", { exact: true })).toBeVisible();
+  await hui.wideScreen();
 });

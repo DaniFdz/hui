@@ -64,6 +64,12 @@ test("helpers wait in one Helpers section that counts them and lists them, witho
 
   // A helper the parent's own limit times out says so in its row.
   await hui.prompt(session, calls(call("sessions_spawn", { task: "E2E_SUBAGENT_CHILD_SLOW", label: "Timed out helper", collect: true, runTimeoutSeconds: 1 })));
+  // The timed-out child's completion starts the parent's own turn after the spawn's run ends and closes the panel with
+  // it. That run owns the panel too: it clears the operator's open and closes the panel when it ends. Wait for the
+  // turn's own reply — the only proof it has happened and settled — and for the closed panel, so the read below is made
+  // on a settled batch and cannot be taken away mid-tap.
+  await expect(transcript.getByText("Parent reviewed 1 subagent result(s) against the task and continued on its own.")).toBeVisible();
+  await expect(screen.getByLabel("Run status")).toBeHidden();
   // This turn's run closed the panel it opened by itself; the timed-out row is read through the operator's own open.
   const timedOutHelpers = await openSettledHelpers(screen, "Timed out helper");
   await expect(timedOutHelpers.getByText("0 completed · 1 failed or stopped")).toBeVisible({ timeout: 90_000 });

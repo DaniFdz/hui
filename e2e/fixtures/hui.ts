@@ -202,6 +202,13 @@ export type Hui = {
    */
   world(name: WorldName): Promise<World>;
   textOf(target: Locator): Promise<string>;
+  /**
+   * A node's own text width against the box that draws it, by CSS selector. A scroll width wider than the client width
+   * means the node cuts its own text, which a visibility read cannot see. `null` when the page has no such node.
+   */
+  textOverflow(selector: string): Promise<{ clientWidth: number; scrollWidth: number } | null>;
+  /** Whether a node draws at all, by CSS selector: `false` for one its own CSS hides, `display: none` or otherwise. */
+  drawn(selector: string): Promise<boolean>;
   /** A task progress step's state, its `data-status`. */
   stepState(step: Locator, state: string): Promise<void>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
@@ -953,6 +960,14 @@ function huiTest(offline: boolean) {
       tab: async () => (await steps.tabs()).at(-1),
       expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
       textOf: async (target) => (await target.textContent()) ?? "",
+      textOverflow: (selector) => browser().evaluate((query) => {
+        const node = document.querySelector(query);
+        return node ? { clientWidth: node.clientWidth, scrollWidth: node.scrollWidth } : null;
+      }, selector),
+      drawn: (selector) => browser().evaluate((query) => {
+        const node = document.querySelector(query);
+        return node ? node.getClientRects().length > 0 : false;
+      }, selector),
       stepState: (step, state) => expect(step).toHaveAttribute("data-status", state),
       tapAt,
       scrollSideways: async (target) => {
